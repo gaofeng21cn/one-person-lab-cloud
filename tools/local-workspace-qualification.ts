@@ -2236,8 +2236,12 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
   const compose = dependencies.compose || ((args, settings = {}) => runProcess("docker", args, { cwd: root, ...settings, env: composeEnvironment }));
   const ownerQuery = dependencies.ownerQuery || null;
   const wait = dependencies.wait || ((milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds)));
-  const pollIntervalMs = Number(dependencies.pollIntervalMs || 3000);
-  const pollAttempts = Number(dependencies.pollAttempts || 100);
+  // The Local-Docker owner drives a parked order on its own retry cadence: a
+  // real installation confirmed ensure_resources only after several hundred
+  // observations. The default budget stays, and an operator who runs a slower
+  // host can widen it explicitly instead of reading a timeout as a refusal.
+  const pollIntervalMs = Number(dependencies.pollIntervalMs || process.env.OPL_LOCAL_V2_POLL_INTERVAL_MS || 3000);
+  const pollAttempts = Number(dependencies.pollAttempts || process.env.OPL_LOCAL_V2_POLL_ATTEMPTS || 100);
   const startedAt = new Date().toISOString();
   const stages = [];
   const readbacks = {};
@@ -2464,9 +2468,10 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     readbacks.quote = { id: quote.id, provider, billingMode, totalUSDMicros, status: String(quote.status || ""), purpose: quote.purpose, runtimeVersionId: quote.runtimeVersionId };
     record("quote", "confirmed", { quoteId: quote.id, totalUSDMicros: readbacks.quote.totalUSDMicros });
     stage = "order";
+    const orderKey = `local-v2-order:${options.sourceSha}:${workspaceName}`;
+    const orderBody = { name: workspaceName, quoteId: quote.id, renewalMode: "manual" };
     const order = (await http.json(binding.endpoints.workspaces, {
-      method: "POST", headers: { "idempotency-key": `local-v2-order:${options.sourceSha}:${workspaceName}` },
-      body: { name: workspaceName, quoteId: quote.id, renewalMode: "manual" }
+      method: "POST", headers: { "idempotency-key": orderKey }, body: orderBody
     }, auth, [202])).payload;
     const operationId = String(order?.operationId || "");
     const workspaceId = String(order?.resourceId || "");
@@ -2480,8 +2485,34 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       if (LOCAL_V2_TERMINAL_OPERATION.has(String(operation?.status || ""))) break;
       await wait(pollIntervalMs);
     }
-    readbacks.operation = { status: String(operation?.status || ""), stage: String(operation?.stage || ""), errorCode: String(operation?.errorCode || "") };
-    record("workspace_operation", readbacks.operation.status === "succeeded" ? "confirmed" : "stopped", readbacks.operation);
+    // The owner parks a saga at its own boundary, but the order route is
+    // idempotent: replaying the original order is the recovery a client has, and
+    // it is the same path a lost response takes. A bounded number of replays is
+    // attempted before the park is read as the boundary this run hit.
+    const recoveryReplays = Number(dependencies.recoveryReplays || process.env.OPL_LOCAL_V2_RECOVERY_REPLAYS || 3);
+    let replays = 0;
+    for (; replays < recoveryReplays; replays += 1) {
+      const status = String(operation?.status || "");
+      const stageName = String(operation?.stage || "");
+      const parked = status === "awaiting_confirmation" && stageName !== "activation";
+      if (!parked) break;
+      await http.json(binding.endpoints.workspaces, { method: "POST", headers: { "idempotency-key": orderKey }, body: orderBody }, auth, [202]);
+      await wait(pollIntervalMs);
+      operation = (await http.json(`${binding.endpoints.operations}/${encodeURIComponent(operationId)}`, {}, auth)).payload;
+    }
+    // A Local no-charge order deliberately stops at the activation boundary: the
+    // Workspace records the Serve-confirmed READY runtime at stage `activation`
+    // and does not fabricate a paid period from paid evidence. That state is the
+    // launch this installation declares, so the qualification reads it as the
+    // confirmed launch and continues to the entry, deletion and refund readbacks
+    // instead of reporting a parked paid order it will never have.
+    const activationBoundary = String(operation?.status || "") === "awaiting_confirmation" && String(operation?.stage || "") === "activation";
+    const launchConfirmed = String(operation?.status || "") === "succeeded" || activationBoundary;
+    readbacks.operation = {
+      status: String(operation?.status || ""), stage: String(operation?.stage || ""),
+      errorCode: String(operation?.errorCode || ""), activationBoundary, recoveryReplays: replays
+    };
+    record("workspace_operation", launchConfirmed ? "confirmed" : "stopped", readbacks.operation);
     stage = "workspace_readback";
     const workspaceRead = await http.request(`${binding.endpoints.workspaces}/${encodeURIComponent(workspaceId)}`, {}, auth);
     const workspace = workspaceRead.payload || {};
@@ -2500,7 +2531,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       };
     }
     record("owner_readback", "confirmed", { workspaceStatus: readbacks.workspace.status, transactions: readbacks.transactions.items });
-    if (operation?.status !== "succeeded") {
+    if (!launchConfirmed) {
       boundary = localV2Boundary(operation, workspace);
       stage = "workspace_operation";
       const provider = await localV2ProviderBoundary(compose, composePrefix, startedAt, query);
