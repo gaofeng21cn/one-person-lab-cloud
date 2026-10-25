@@ -868,7 +868,7 @@ function caRequest(url, init, headers, body, ca) {
       headers: Object.fromEntries(headers.entries()),
       ca,
       servername: target.hostname,
-      signal: AbortSignal.timeout(requestTimeoutMs())
+      signal: ownerRequestSignal(init)
     }, (response) => {
       const chunks = [];
       response.on("data", (chunk) => chunks.push(chunk));
@@ -900,6 +900,11 @@ function caRequest(url, init, headers, body, ca) {
 function requestTimeoutMs() {
   const configured = Number(process.env.OPL_LOCAL_V2_REQUEST_TIMEOUT_MS || 0);
   return configured > 0 ? configured : 120_000;
+}
+
+function ownerRequestSignal(init = {}) {
+  const timeout = AbortSignal.timeout(requestTimeoutMs());
+  return init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
 }
 
 export function createHTTP(origin, { caFile = "", mode = "" } = {}) {
@@ -934,7 +939,7 @@ export function createHTTP(origin, { caFile = "", mode = "" } = {}) {
         ...init,
         headers,
         body,
-        signal: AbortSignal.timeout(requestTimeoutMs())
+        signal: ownerRequestSignal(init)
       });
     const text = await response.text();
     let payload = null;
@@ -2195,7 +2200,8 @@ export function localV2ApplicationEntryBoundary(entryUrl, publicOrigin) {
   const publicPort = origin.port || (origin.protocol === "https:" ? "443" : "80");
   // The published entry carries no port, so the only way it is reachable is the
   // installation serving that host on the port the entry implies.
-  if (entryPort !== publicPort) {
+  if (parsed.protocol !== origin.protocol || parsed.hostname !== origin.hostname ||
+      parsed.username || parsed.password || entryPort !== publicPort) {
     return {
       ok: false,
       code: "local_v2_application_entry_port_unreachable",
@@ -2340,7 +2346,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
   const startedAt = new Date().toISOString();
   const stages = [];
   const readbacks = {};
-  const record = (stage, status, detail = {}) => { stages.push({ stage, status, observedAt: new Date().toISOString(), ...detail }); };
+  const record = (stage, status, detail = {}) => { stages.push({ ...detail, stage, status, observedAt: new Date().toISOString() }); };
   let stage = "installation_preflight";
   let boundary = null;
   let failure = null;
@@ -2556,6 +2562,10 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       body: { purpose: "deploy", computePlanId, storagePlanId, periodMonths: 1, applicationSelection: { kind: "opl_app", runtimeVersionId } }
     }, auth, [200, 201])).payload;
     if (!quote?.id) throw namedQualificationError("local_v2_quote_invalid", "the Workspace owner returned no quote identity");
+    if (quote.purpose !== "deploy" || quote.runtimeVersionId !== runtimeVersionId ||
+        quote.computePlanId !== computePlanId || quote.storagePlanId !== storagePlanId || quote.periodMonths !== 1) {
+      throw namedQualificationError("local_v2_quote_invalid", "the quote does not identify the declared application, plans and period");
+    }
     const totalUSDMicros = String(quote.totalUSDMicros ?? "");
     if (provider !== "local-docker" || billingMode !== "LOCAL_NO_CHARGE" || totalUSDMicros !== "0") {
       throw namedQualificationError("local_v2_non_local_no_charge_quote", "the Workspace quote is not local-docker LOCAL_NO_CHARGE at zero total");
@@ -2571,6 +2581,8 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     const operationId = String(order?.operationId || "");
     const workspaceId = String(order?.resourceId || "");
     if (!operationId || !workspaceId) throw namedQualificationError("local_v2_order_identity_missing", "the Workspace owner returned no operation identity");
+    validateLocalV2Replay(order, operationId, workspaceId);
+    const workspaceSQL = `'${workspaceId.replace(/'/g, "''")}'`;
     readbacks.order = { operationId, workspaceId };
     record("order", "accepted", { operationId, workspaceId });
     stage = "workspace_operation";
@@ -2580,9 +2592,20 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     let polls = 0;
     let replays = 0;
     let activationReached = null;
-    while (polls < pollAttempts) {
-      operation = (await http.json(`${binding.endpoints.operations}/${encodeURIComponent(operationId)}`, {}, auth)).payload;
+    const now = dependencies.now || Date.now;
+    const pollDeadline = now() + Math.max(1000, pollAttempts * pollIntervalMs);
+    const pollRequest = (path, init = {}, statuses = [200]) => {
+      const remaining = pollDeadline - now();
+      if (remaining <= 0) throw namedQualificationError("local_v2_operation_poll_budget_exhausted", "the Workspace operation polling deadline expired");
+      return http.json(path, { ...init, signal: AbortSignal.timeout(remaining) }, auth, statuses).catch((error) => {
+        if (now() >= pollDeadline) throw namedQualificationError("local_v2_operation_poll_budget_exhausted", "the Workspace operation polling deadline expired");
+        throw error;
+      });
+    };
+    while (polls < pollAttempts && now() < pollDeadline) {
+      operation = (await pollRequest(`${binding.endpoints.operations}/${encodeURIComponent(operationId)}`)).payload;
       polls += 1;
+      if (now() >= pollDeadline) break;
       // The activation boundary is the state this installation declares for a
       // Local no-charge order, so it is read as soon as the owner reaches it
       // instead of being waited out as a stall.
@@ -2597,15 +2620,15 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       if (unchanged >= LOCAL_V2_STALLED_POLLS) {
         const parked = String(operation?.status || "") === "awaiting_confirmation" && String(operation?.stage || "") !== "activation";
         if (!parked || replays >= recoveryReplays || polls >= pollAttempts) break;
-        const replay = (await http.json(binding.endpoints.workspaces, {
+        const replay = (await pollRequest(binding.endpoints.workspaces, {
           method: "POST", headers: { "idempotency-key": orderKey }, body: orderBody
-        }, auth, [202])).payload;
+        }, [202])).payload;
         validateLocalV2Replay(replay, operationId, workspaceId);
         replays += 1;
         unchanged = 0;
         previousState = "";
       }
-      await wait(pollIntervalMs);
+      await wait(Math.min(pollIntervalMs, Math.max(0, pollDeadline - now())));
     }
     if (activationReached) operation = activationReached;
     const activationBoundary = String(operation?.status || "") === "awaiting_confirmation" && String(operation?.stage || "") === LOCAL_V2_ACTIVATION_STAGE;
@@ -2628,7 +2651,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     const transactions = await http.request(`${binding.endpoints.workspaces}/${encodeURIComponent(workspaceId)}/transactions?limit=100`, {}, auth);
     readbacks.transactions = { status: transactions.response.status, items: Array.isArray(transactions.payload?.items) ? transactions.payload.items.length : 0 };
     if (typeof query === "function") {
-      readbacks.ledger = { receipts: Number(await query("opl_ledger", "select count(*) from public.evidence_receipts")) };
+      readbacks.ledger = { receipts: Number(await query("opl_ledger", `select count(*) from public.evidence_receipts where workspace_id=${workspaceSQL}`)) };
       readbacks.fabric = {
         resourceSets: Number(await query("opl_fabric", "select count(*) from fabric.resource_sets")),
         operations: Number(await query("opl_fabric", "select count(*) from fabric.operations"))
@@ -2639,7 +2662,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     // is a stop the run can read, not poll budget that ran out.
     const operationStopped = LOCAL_V2_TERMINAL_OPERATION.has(String(operation?.status || "")) ||
       activationBoundary || unchanged >= LOCAL_V2_STALLED_POLLS;
-    if (!operationStopped) {
+    if (now() >= pollDeadline || !operationStopped) {
       boundary = { code: "local_v2_operation_poll_budget_exhausted", detail: `the Workspace operation remained non-terminal after ${polls} polls`, stage: "workspace_operation" };
       stage = "workspace_operation";
     } else if (!launchCandidate) {
@@ -2654,12 +2677,22 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       if (!entryBoundary.ok) {
         boundary = entryBoundary;
         stage = "application_entry";
+      } else {
+        stage = "application_entry";
+        try {
+          const fetchEntry = dependencies.fetchEntry || (async (url) => {
+            const response = await caRequest(url, { method: "GET" }, new Headers(), undefined, readFileSync(caFile));
+            return { response, text: await response.text() };
+          });
+          const opened = await fetchEntry(workspace.accessUrl);
+          readbacks.applicationEntry = { url: workspace.accessUrl, status: opened.response.status };
+          if (opened.response.status !== 200) throw new Error(`the declared application entry returned HTTP ${opened.response.status}`);
+          record("application_entry", "confirmed", readbacks.applicationEntry);
+        } catch (error) {
+          boundary = { code: "local_v2_application_entry_unreachable", detail: String(error?.message || error), stage };
+        }
       }
     }
-    // The entry is a topology fact this installation may not provide yet, and the
-    // deletion, absence, ledger and refund obligations do not depend on it. A run
-    // that reached a confirmed launch therefore proves the cleanup path even when
-    // the entry boundary is the earliest failure, and keeps that boundary.
     // DELETE is authorized only after the Workspace and Serve readiness and the
     // declared-origin entry boundary are confirmed. A missing, mismatched or
     // unreachable entry keeps the boundary and leaves the Workspace intact.
@@ -2699,7 +2732,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
         runtimeVersionId: String(afterRestartWorkspace.payload?.runtimeVersionId || ""),
       };
       const afterRestartReceipts = typeof query === "function"
-        ? Number(await query("opl_ledger", "select count(*) from public.evidence_receipts"))
+        ? Number(await query("opl_ledger", `select count(*) from public.evidence_receipts where workspace_id=${workspaceSQL}`))
         : beforeRestart.receipts;
       readbacks.restart = {
         performed: true,
@@ -2715,7 +2748,6 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
         receiptStable: afterRestartReceipts === beforeRestart.receipts,
         sessionReestablished: String(restartedAuth.cookie || "").includes("opl_console_session="),
       };
-      auth = restartedAuth;
       auth = restartedAuth;
       const restartStable = readbacks.restart.sessionReestablished && readbacks.restart.operationStable &&
         readbacks.restart.workspaceStable && readbacks.restart.runtimeStable && readbacks.restart.receiptStable;
@@ -2758,11 +2790,11 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       readbacks.deletion.receiptId = String(deletionEvidence.deletionReceipt?.id || "");
       if (typeof query === "function") {
         readbacks.deletion.runtimeAbsent = Number(await query("opl_serve",
-          `select count(*) from serve.agent_runtime_instances where workspace_id='${workspaceId}' and status <> 'terminated'`)) === 0;
+          `select count(*) from serve.agent_runtime_instances where workspace_id=${workspaceSQL} and status <> 'terminated'`)) === 0;
         readbacks.deletion.liveResources = Number(await query("opl_fabric",
-          `select count(*) from fabric.resources r join fabric.resource_sets s on s.id=r.resource_set_id where s.workspace_id='${workspaceId}' and r.deleted_at is null`));
+          `select count(*) from fabric.resources r join fabric.resource_sets s on s.id=r.resource_set_id where s.workspace_id=${workspaceSQL} and r.deleted_at is null`));
         readbacks.deletion.ledgerReceipts = Number(await query("opl_ledger",
-          `select count(*) from public.evidence_receipts where workspace_id='${workspaceId}'`));
+          `select count(*) from public.evidence_receipts where workspace_id=${workspaceSQL}`));
       }
       // The same command is replayed after it succeeded. The owner keys the
       // deletion by the idempotency key this caller chose, so a second send must
@@ -2776,11 +2808,11 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       );
       const replayOperationId = String(replay.payload?.operationId || "");
       const receiptsAfterReplay = typeof query === "function"
-        ? Number(await query("opl_ledger", `select count(*) from public.evidence_receipts where workspace_id='${workspaceId}'`))
+        ? Number(await query("opl_ledger", `select count(*) from public.evidence_receipts where workspace_id=${workspaceSQL}`))
         : readbacks.deletion.ledgerReceipts;
       const resourcesAfterReplay = typeof query === "function"
         ? Number(await query("opl_fabric",
-          `select count(*) from fabric.resources r join fabric.resource_sets s on s.id=r.resource_set_id where s.workspace_id='${workspaceId}' and r.deleted_at is null`))
+          `select count(*) from fabric.resources r join fabric.resource_sets s on s.id=r.resource_set_id where s.workspace_id=${workspaceSQL} and r.deleted_at is null`))
         : readbacks.deletion.liveResources;
       readbacks.deletion.retry = {
         status: replay.response.status,
@@ -2790,9 +2822,10 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       };
       const retryClean = readbacks.deletion.retry.operationIdStable && readbacks.deletion.retry.ledgerReceiptsUnchanged &&
         readbacks.deletion.retry.liveResources === 0;
-      const deleted = retryClean && readbacks.deletion.workspaceAbsent !== false && readbacks.deletion.routeAbsent !== false &&
-        readbacks.deletion.resourceAbsent === true && readbacks.deletion.dataAbsent === true &&
-        readbacks.deletion.refundStatus === "confirmed";
+      // readWorkspaceDeletionEvidence has already bound the refund or its
+      // no-charge not-applicable outcome to this exact deletion.
+      const deleted = retryClean && readbacks.deletion.workspaceAbsent === true && readbacks.deletion.routeAbsent === true &&
+        readbacks.deletion.runtimeAbsent === true && readbacks.deletion.resourceAbsent === true && readbacks.deletion.dataAbsent === true;
       record("workspace_delete", deleted ? "confirmed" : "stopped", readbacks.deletion);
       if (!deleted) {
         boundary = launchBoundary || { code: "local_v2_workspace_absence_unconfirmed", detail: "an owner still retains the deleted Workspace", stage };

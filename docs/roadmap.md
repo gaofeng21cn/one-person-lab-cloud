@@ -269,7 +269,12 @@ replay identity. #1042 remains open for the following acceptance outcomes:
   local quote/order and owner readbacks, while preserving the legacy receipt
   projection. Its result is diagnostic `NOT_READY` evidence rather than a v1
   READY receipt or Release input. A declaration or login/catalog/quote smoke
-  test is not a completed purchase/deletion qualification.
+  test is not a completed purchase/deletion qualification. The driver now gates
+  restart/DELETE on exact declared-origin entry access and owner readiness,
+  binds the zero-price quote and original replay, and accepts the owner-confirmed
+  no-charge refund outcome. Its latest reported real run still stops at the
+  application entry; complete the installed route/readback gate with an exact
+  Candidate before treating that source as full lifecycle evidence.
 - Complete Fabric's Local-Docker execution configuration and gateway identity
   with Serve's actual access routing. Do not label Control Plane as the native
   route owner to bypass provider admission. Qualify quote, create, deployment,

@@ -1828,7 +1828,7 @@ test("the local-v2 application entry must be served by the declared origin", () 
   const unreachable = localV2ApplicationEntryBoundary("https://ws.localhost/w/ws_1/", "https://localhost:8443");
   assert.equal(unreachable.ok, false);
   assert.equal(unreachable.code, "local_v2_application_entry_port_unreachable");
-  assert.equal(localV2ApplicationEntryBoundary("https://ws.localhost/w/ws_1/", "https://localhost:443").ok, true);
+  assert.equal(localV2ApplicationEntryBoundary("https://localhost/w/ws_1/", "https://localhost:443").ok, true);
   assert.equal(localV2ApplicationEntryBoundary("not a url", "https://localhost:443").code, "local_v2_application_entry_invalid");
 });
 
@@ -1851,7 +1851,7 @@ test("local-v2 arguments require the declared installation and refuse a second i
   assert.equal(parsed.project, "opl-local-v2");
 });
 
-function localV2Fixture({ operationResponses = [], replayOrder, workspaceReadback } = {}) {
+function localV2Fixture({ operationResponses = [], replayOrder, workspaceReadback, quoteOverride = {}, routeReply } = {}) {
   const requests = [];
   let workspacePosts = 0;
   let operationReads = 0;
@@ -1880,6 +1880,8 @@ function localV2Fixture({ operationResponses = [], replayOrder, workspaceReadbac
     const clean = path.split("?")[0];
     requests.push(`${method} ${clean}`);
     const ok = (body, status = 200) => ({ response: { status, headers: { get: () => null, getSetCookie: () => [] } }, payload: body, text: JSON.stringify(body) });
+    const overridden = routeReply?.(method, clean, ok);
+    if (overridden) return overridden;
     if (clean === "/api/v2/auth/context") {
       return { response: { status: 200, headers: { getSetCookie: () => ["opl_login_context=ctx; Path=/", "opl_login_csrf=csrf; Path=/"] } }, payload: { csrfToken: "context-csrf" }, text: "" };
     }
@@ -1897,7 +1899,7 @@ function localV2Fixture({ operationResponses = [], replayOrder, workspaceReadbac
     if (clean.startsWith("/api/v2/catalog/runtime-versions")) return ok({ items: [{ id: "runtime_test", name: "local-qualification-app" }] });
     if (clean.startsWith("/api/v2/catalog/compute-plans")) return ok({ items: [{ id: "compute_test", name: "local-v2-compute" }] });
     if (clean.startsWith("/api/v2/catalog/storage-plans")) return ok({ items: [{ id: "storage_test", name: "local-v2-storage" }] });
-    if (clean === "/api/v2/quotes") return ok({ id: "quote_test", status: "accepted", purpose: "deploy", runtimeVersionId: "runtime_test", totalUSDMicros: "0" }, 201);
+    if (clean === "/api/v2/quotes") return ok({ id: "quote_test", status: "accepted", purpose: "deploy", runtimeVersionId: "runtime_test", computePlanId: "compute_test", storagePlanId: "storage_test", periodMonths: 1, totalUSDMicros: "0", ...quoteOverride }, 201);
     if (clean === "/api/v2/workspaces") {
       workspacePosts += 1;
       return ok(workspacePosts > 1 && replayOrder
@@ -2121,4 +2123,94 @@ test("the local-v2 origin and CA come only from the declared installation", () =
   assert.equal(localV2QualificationCA({ OPL_LOCAL_V2_PKI_DIR: "/tmp/pki" }), "/tmp/pki/ca.crt");
   assert.throws(() => localV2QualificationCA({ OPL_LOCAL_V2_PKI_DIR: "relative/pki" }), { code: "local_v2_pki_dir_invalid" });
   assert.throws(() => localV2QualificationCA({}), { code: "local_v2_pki_dir_invalid" });
+});
+
+
+test("local-v2 entry rejects same-port foreign hosts, protocols and credentials", () => {
+  for (const entry of ["https://foreign.invalid:18443/w/one", "http://localhost:18443/w/one", "https://user:pass@localhost:18443/w/one"]) {
+    assert.equal(localV2ApplicationEntryBoundary(entry, "https://localhost:18443").ok, false, entry);
+  }
+});
+
+test("local-v2 quote is bound before an order is submitted", async () => {
+  for (const quoteOverride of [{ runtimeVersionId: "other" }, { computePlanId: "other" }, { storagePlanId: "other" }, { periodMonths: 2 }, { purpose: "renew" }]) {
+    const fixture = localV2Fixture({ quoteOverride });
+    const result = await runLocalV2FixtureQualification(fixture);
+    assert.equal(result.errorCode, "local_v2_quote_invalid");
+    assert.equal(fixture.requests.includes("POST /api/v2/workspaces"), false);
+  }
+});
+
+test("local-v2 operation deadline includes reads and never replays after expiry", async () => {
+  let now = 0;
+  const fixture = localV2Fixture({
+    operationResponses: Array(100).fill({ status: "awaiting_confirmation", stage: "resource_preflight", observationResult: "unknown" })
+  });
+  const json = fixture.client.json;
+  fixture.client.json = async (...args) => {
+    if (args[0] === "/api/v2/operations/workspace/op_test") now += 2500;
+    return json(...args);
+  };
+  const result = await runLocalV2FixtureQualification(fixture, { now: () => now, pollIntervalMs: 1, pollAttempts: 100 });
+  assert.equal(result.boundary.code, "local_v2_operation_poll_budget_exhausted");
+  assert.equal(result.evidence.readbacks.operation.polls, 1);
+  assert.equal(fixture.requests.filter((x) => x === "POST /api/v2/workspaces").length, 1);
+});
+
+test("local-v2 no-charge deletion confirms only after a reachable entry and owner absence", async () => {
+  let deleted = false;
+  let probes = 0;
+  const operation = { owner: "workspace", kind: "create_workspace", operationId: "op_test", resourceId: "workspace_test", status: "awaiting_confirmation", stage: "activation", observationResult: "confirmed" };
+  const deletion = { owner: "workspace", kind: "delete_workspace", operationId: "op_delete", resourceId: "workspace_test", status: "succeeded", stage: "done" };
+  const ready = { id: "workspace_test", status: "provisioning", resourceReadiness: "ready", applicationAvailability: "available", accessUrl: "https://localhost:18443/w/one", runtimeVersionId: "runtime_test" };
+  const fixture = localV2Fixture({ operationResponses: [operation], workspaceReadback: ready,
+    routeReply(method, path, ok) {
+      if (method === "DELETE") { assert.equal(probes, 1); deleted = true; return ok(deletion, 202); }
+      if (path === "/api/v2/operations/workspace/op_delete") return ok(deletion);
+      if (path === "/api/v2/workspaces/workspace_test" && deleted) return ok({ ...ready, status: "deleted", accessUrl: "" });
+      if (path === "/api/v2/workspaces/workspace_test/deletion") return ok({
+        workspaceId: "workspace_test", operationId: "op_delete", resourceDeletionStatus: "confirmed", dataDeletionStatus: "confirmed", refundStatus: "not_applicable",
+        deletionReceipt: { id: "receipt_delete", kind: "provider_action", owner: "workspace", operationId: "op_delete", outcome: "confirmed", createdAt: "2026-10-25T00:00:00Z" }
+      });
+    }
+  });
+  const result = await runLocalV2FixtureQualification(fixture, {
+    fetchEntry: async () => { probes += 1; return { response: { status: 200 }, text: "ready" }; },
+    ownerQuery: async (database, sql) => database === "opl_fabric" && sql.includes("deleted_at") || database === "opl_serve" ? "0" : "4"
+  });
+  assert.equal(result.evidence.stages.find((x) => x.stage === "workspace_delete")?.status, "confirmed");
+  assert.equal(result.evidence.readbacks.deletion.refundStatus, "not_applicable");
+  assert.equal(result.status, "NOT_READY");
+});
+
+test("local-v2 unreachable same-origin entry never authorizes deletion", async () => {
+  const fixture = localV2Fixture({
+    operationResponses: [{ owner: "workspace", kind: "create_workspace", operationId: "op_test", resourceId: "workspace_test", status: "awaiting_confirmation", stage: "activation", observationResult: "confirmed" }],
+    workspaceReadback: { id: "workspace_test", status: "provisioning", resourceReadiness: "ready", applicationAvailability: "available", accessUrl: "https://localhost:18443/w/one", runtimeVersionId: "runtime_test" }
+  });
+  const result = await runLocalV2FixtureQualification(fixture, { fetchEntry: async () => ({ response: { status: 503 }, text: "unavailable" }) });
+  assert.equal(result.boundary.code, "local_v2_application_entry_unreachable");
+  assert.equal(fixture.requests.some((x) => x.startsWith("DELETE ")), false);
+});
+
+
+test("owner HTTP transport sends the DELETE body and preserves caller cancellation", async (t) => {
+  let requests = 0;
+  const server = createServer(async (req, res) => {
+    requests += 1;
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    assert.equal(req.headers["content-length"], String(Buffer.byteLength(body)));
+    assert.deepEqual(JSON.parse(body), { confirmationName: "One", acknowledgeDataDestruction: true });
+    res.writeHead(202, { "content-type": "application/json" });
+    res.end(JSON.stringify({ operationId: "op_delete" }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const http = createHTTP(`http://127.0.0.1:${server.address().port}`);
+  const init = { method: "DELETE", body: { confirmationName: "One", acknowledgeDataDestruction: true } };
+  const result = await http.json("/api/v2/workspaces/one", init, null, [202]);
+  assert.equal(result.payload.operationId, "op_delete");
+  await assert.rejects(http.request("/api/v2/workspaces/one", { ...init, signal: AbortSignal.abort() }));
+  assert.equal(requests, 1);
 });
