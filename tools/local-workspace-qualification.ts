@@ -868,9 +868,6 @@ function caRequest(url, init, headers, body, ca) {
       headers: Object.fromEntries(headers.entries()),
       ca,
       servername: target.hostname,
-      // A deletion command drives the whole retirement chain inside the owner
-      // before it answers, so one transport budget covers one owner command
-      // rather than one read.
       signal: AbortSignal.timeout(requestTimeoutMs())
     }, (response) => {
       const chunks = [];
@@ -1020,7 +1017,7 @@ export async function deleteWorkspaceOnOwnerRoute(http, auth, {
     }
     await wait(1000);
   }
-  throw new Error(`Workspace owner DELETE did not reach a terminal status within ${attempts} seconds`);
+  throw new Error("Workspace owner DELETE did not reach a terminal status within 120 seconds");
 }
 
 // The Gateway transaction is the monetary owner's confirmed refund, bound to
@@ -1934,7 +1931,7 @@ function assertWorkspaceOpenQualification(opened) {
 }
 
 async function fetchApplicationEntry(url) {
-  const response = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(30_000) });
+  const response = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(requestTimeoutMs()) });
   return { response, text: await response.text() };
 }
 
@@ -2181,7 +2178,7 @@ export function localV2QualificationCA(values) {
 // available.
 export function localV2ApplicationEntryBoundary(entryUrl, publicOrigin) {
   const entry = String(entryUrl || "").trim();
-  if (!entry) return { ok: true, code: "", detail: "no application entry published yet" };
+  if (!entry) return { ok: false, code: "local_v2_application_entry_missing", detail: "the Workspace owner has not published an application entry" };
   let parsed;
   try {
     parsed = new URL(entry);
@@ -2273,6 +2270,45 @@ const LOCAL_V2_TERMINAL_OPERATION = new Set(["succeeded", "failed", "cancelled",
 // same saga, so a poll can catch the operation mid-cycle at an earlier stage. The
 // boundary is the state the owner reached, not the state the last poll saw.
 const LOCAL_V2_ACTIVATION_STAGE = "activation";
+const LOCAL_V2_STALLED_POLLS = 40;
+const LOCAL_V2_MAX_POLL_INTERVAL_MS = 60_000;
+const LOCAL_V2_MAX_POLL_ATTEMPTS = 1_000;
+const LOCAL_V2_MAX_RECOVERY_REPLAYS = 10;
+const LOCAL_V2_MAX_POLL_DURATION_MS = 30 * 60 * 1_000;
+
+function localV2Budget(value, { name, code, minimum, maximum }) {
+  const parsed = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN;
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw namedQualificationError(code, `${name} must be an integer between ${minimum} and ${maximum}`);
+  }
+  return parsed;
+}
+
+function localV2ConfiguredBudget(dependencyValue, environmentValue, defaultValue, options) {
+  const value = dependencyValue !== undefined
+    ? dependencyValue
+    : environmentValue === undefined
+      ? defaultValue
+      : environmentValue;
+  return localV2Budget(value, options);
+}
+
+function validateLocalV2Replay(operation, operationId, workspaceId) {
+  if (operation?.owner !== "workspace" || operation?.kind !== "create_workspace" ||
+    operation?.operationId !== operationId || operation?.resourceId !== workspaceId) {
+    throw namedQualificationError("local_v2_replay_identity_mismatch", "the Workspace owner replay did not identify the original order");
+  }
+}
+
+function localV2LaunchReadbackBoundary(workspace, workspaceId, origin) {
+  if (workspace?.id !== workspaceId) {
+    return { ok: false, code: "local_v2_workspace_readback_invalid", detail: "the Workspace owner readback does not identify the accepted Workspace" };
+  }
+  if (workspace.resourceReadiness !== "ready" || workspace.applicationAvailability !== "available") {
+    return { ok: false, code: "local_v2_application_readiness_unconfirmed", detail: "the Workspace resource and Serve application readbacks do not confirm readiness" };
+  }
+  return localV2ApplicationEntryBoundary(workspace.accessUrl, origin);
+}
 
 // The Local v2 qualification: one declared installation, the owner processes it
 // starts, and the owner routes it serves. Every step records the readback it
@@ -2281,6 +2317,18 @@ const LOCAL_V2_ACTIVATION_STAGE = "activation";
 // here: it binds Control Plane identities this installation does not have, so
 // this run publishes collected evidence and names what is still missing.
 export async function runLocalV2Qualification(options, dependencies = {}) {
+  const pollIntervalMs = localV2ConfiguredBudget(dependencies.pollIntervalMs, process.env.OPL_LOCAL_V2_POLL_INTERVAL_MS, 3000, {
+    name: "OPL_LOCAL_V2_POLL_INTERVAL_MS", code: "local_v2_poll_interval_invalid", minimum: 0, maximum: LOCAL_V2_MAX_POLL_INTERVAL_MS
+  });
+  const pollAttempts = localV2ConfiguredBudget(dependencies.pollAttempts, process.env.OPL_LOCAL_V2_POLL_ATTEMPTS, 100, {
+    name: "OPL_LOCAL_V2_POLL_ATTEMPTS", code: "local_v2_poll_attempts_invalid", minimum: 1, maximum: LOCAL_V2_MAX_POLL_ATTEMPTS
+  });
+  const recoveryReplays = localV2ConfiguredBudget(dependencies.recoveryReplays, process.env.OPL_LOCAL_V2_RECOVERY_REPLAYS, 3, {
+    name: "OPL_LOCAL_V2_RECOVERY_REPLAYS", code: "local_v2_recovery_replays_invalid", minimum: 0, maximum: LOCAL_V2_MAX_RECOVERY_REPLAYS
+  });
+  if (pollAttempts * pollIntervalMs > LOCAL_V2_MAX_POLL_DURATION_MS) {
+    throw namedQualificationError("local_v2_poll_budget_invalid", "the combined Workspace polling budget must not exceed 30 minutes");
+  }
   const mode = QUALIFICATION_MODE_LOCAL_V2;
   const binding = qualificationModeBinding(mode);
   const readDeclaration = dependencies.readDeclaration || readLocalV2InstallationDeclaration;
@@ -2289,12 +2337,6 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
   const compose = dependencies.compose || ((args, settings = {}) => runProcess("docker", args, { cwd: root, ...settings, env: composeEnvironment }));
   const ownerQuery = dependencies.ownerQuery || null;
   const wait = dependencies.wait || ((milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds)));
-  // The Local-Docker owner drives a parked order on its own retry cadence: a
-  // real installation confirmed ensure_resources only after several hundred
-  // observations. The default budget stays, and an operator who runs a slower
-  // host can widen it explicitly instead of reading a timeout as a refusal.
-  const pollIntervalMs = Number(dependencies.pollIntervalMs || process.env.OPL_LOCAL_V2_POLL_INTERVAL_MS || 3000);
-  const pollAttempts = Number(dependencies.pollAttempts || process.env.OPL_LOCAL_V2_POLL_ATTEMPTS || 100);
   const startedAt = new Date().toISOString();
   const stages = [];
   const readbacks = {};
@@ -2533,45 +2575,48 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     record("order", "accepted", { operationId, workspaceId });
     stage = "workspace_operation";
     let operation = null;
+    let unchanged = 0;
+    let previousState = "";
+    let polls = 0;
+    let replays = 0;
     let activationReached = null;
-    for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
+    while (polls < pollAttempts) {
       operation = (await http.json(`${binding.endpoints.operations}/${encodeURIComponent(operationId)}`, {}, auth)).payload;
+      polls += 1;
+      // The activation boundary is the state this installation declares for a
+      // Local no-charge order, so it is read as soon as the owner reaches it
+      // instead of being waited out as a stall.
       if (String(operation?.status || "") === "awaiting_confirmation" && String(operation?.stage || "") === LOCAL_V2_ACTIVATION_STAGE) {
         activationReached = operation;
         break;
       }
       if (LOCAL_V2_TERMINAL_OPERATION.has(String(operation?.status || ""))) break;
+      const state = `${String(operation?.status || "")}:${String(operation?.stage || "")}`;
+      unchanged = state === previousState ? unchanged + 1 : 0;
+      previousState = state;
+      if (unchanged >= LOCAL_V2_STALLED_POLLS) {
+        const parked = String(operation?.status || "") === "awaiting_confirmation" && String(operation?.stage || "") !== "activation";
+        if (!parked || replays >= recoveryReplays || polls >= pollAttempts) break;
+        const replay = (await http.json(binding.endpoints.workspaces, {
+          method: "POST", headers: { "idempotency-key": orderKey }, body: orderBody
+        }, auth, [202])).payload;
+        validateLocalV2Replay(replay, operationId, workspaceId);
+        replays += 1;
+        unchanged = 0;
+        previousState = "";
+      }
       await wait(pollIntervalMs);
     }
     if (activationReached) operation = activationReached;
-    // The owner parks a saga at its own boundary, but the order route is
-    // idempotent: replaying the original order is the recovery a client has, and
-    // it is the same path a lost response takes. A bounded number of replays is
-    // attempted before the park is read as the boundary this run hit.
-    const recoveryReplays = Number(dependencies.recoveryReplays || process.env.OPL_LOCAL_V2_RECOVERY_REPLAYS || 3);
-    let replays = 0;
-    for (; replays < recoveryReplays; replays += 1) {
-      const status = String(operation?.status || "");
-      const stageName = String(operation?.stage || "");
-      const parked = status === "awaiting_confirmation" && stageName !== "activation";
-      if (!parked) break;
-      await http.json(binding.endpoints.workspaces, { method: "POST", headers: { "idempotency-key": orderKey }, body: orderBody }, auth, [202]);
-      await wait(pollIntervalMs);
-      operation = (await http.json(`${binding.endpoints.operations}/${encodeURIComponent(operationId)}`, {}, auth)).payload;
-    }
-    // A Local no-charge order deliberately stops at the activation boundary: the
-    // Workspace records the Serve-confirmed READY runtime at stage `activation`
-    // and does not fabricate a paid period from paid evidence. That state is the
-    // launch this installation declares, so the qualification reads it as the
-    // confirmed launch and continues to the entry, deletion and refund readbacks
-    // instead of reporting a parked paid order it will never have.
     const activationBoundary = String(operation?.status || "") === "awaiting_confirmation" && String(operation?.stage || "") === LOCAL_V2_ACTIVATION_STAGE;
-    const launchConfirmed = String(operation?.status || "") === "succeeded" || activationBoundary;
+    const launchCandidate = (String(operation?.status || "") === "succeeded" || activationBoundary) &&
+      String(operation?.observationResult || "") === "confirmed";
     readbacks.operation = {
       status: String(operation?.status || ""), stage: String(operation?.stage || ""),
-      errorCode: String(operation?.errorCode || ""), activationBoundary, recoveryReplays: replays
+      observationResult: String(operation?.observationResult || ""), errorCode: String(operation?.errorCode || ""),
+      activationBoundary, recoveryReplays: replays, polls
     };
-    record("workspace_operation", launchConfirmed ? "confirmed" : "stopped", readbacks.operation);
+    record("workspace_operation", launchCandidate ? "confirmed" : "stopped", readbacks.operation);
     stage = "workspace_readback";
     const workspaceRead = await http.request(`${binding.endpoints.workspaces}/${encodeURIComponent(workspaceId)}`, {}, auth);
     const workspace = workspaceRead.payload || {};
@@ -2590,7 +2635,14 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       };
     }
     record("owner_readback", "confirmed", { workspaceStatus: readbacks.workspace.status, transactions: readbacks.transactions.items });
-    if (!launchConfirmed) {
+    // The activation state is the park this installation declares, so reaching it
+    // is a stop the run can read, not poll budget that ran out.
+    const operationStopped = LOCAL_V2_TERMINAL_OPERATION.has(String(operation?.status || "")) ||
+      activationBoundary || unchanged >= LOCAL_V2_STALLED_POLLS;
+    if (!operationStopped) {
+      boundary = { code: "local_v2_operation_poll_budget_exhausted", detail: `the Workspace operation remained non-terminal after ${polls} polls`, stage: "workspace_operation" };
+      stage = "workspace_operation";
+    } else if (!launchCandidate) {
       boundary = localV2Boundary(operation, workspace);
       stage = "workspace_operation";
       const provider = await localV2ProviderBoundary(compose, composePrefix, startedAt, query);
@@ -2598,7 +2650,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
         boundary = { ...boundary, workspaceCode: boundary.code, code: provider.code, detail: provider.detail, providerLog: provider.line };
       }
     } else {
-      const entryBoundary = localV2ApplicationEntryBoundary(readbacks.workspace.accessUrl, origin);
+      const entryBoundary = localV2LaunchReadbackBoundary(workspace, workspaceId, origin);
       if (!entryBoundary.ok) {
         boundary = entryBoundary;
         stage = "application_entry";
@@ -2608,7 +2660,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     // deletion, absence, ledger and refund obligations do not depend on it. A run
     // that reached a confirmed launch therefore proves the cleanup path even when
     // the entry boundary is the earliest failure, and keeps that boundary.
-    if (launchConfirmed) {
+    if (launchCandidate) {
       // A restart is the other half of recovery: a lost response is replayed against
       // a live owner, and a restarted installation must answer the same identities.
       // The same owner set the live chain restarts is restarted here, and every
@@ -2660,6 +2712,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
         receiptStable: afterRestartReceipts === beforeRestart.receipts,
         sessionReestablished: String(restartedAuth.cookie || "").includes("opl_console_session="),
       };
+      auth = restartedAuth;
       auth = restartedAuth;
       const restartStable = readbacks.restart.sessionReestablished && readbacks.restart.operationStable &&
         readbacks.restart.workspaceStable && readbacks.restart.runtimeStable && readbacks.restart.receiptStable;
