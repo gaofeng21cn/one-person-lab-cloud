@@ -48,6 +48,11 @@ type LocalDockerProviderConfig struct {
 	HostStorageRoot              string
 	RuntimeHost                  string
 	PublishHost                  string
+	// ApplicationEntryHost is the single-label address the installation's access
+	// plane reaches a published application entry on. When it is declared the
+	// provider reports a gateway-published entry instead of a provider URL, so the
+	// installation keeps serving the entry on its own origin.
+	ApplicationEntryHost string
 	ApplicationProbeImage        string
 	AllowUnboundedSwap           bool
 	RuntimeGatewayContainer      string
@@ -99,6 +104,7 @@ type LocalDockerProvider struct {
 	hostStorageRootErr                error
 	runtimeHost                       string
 	publishHost                       string
+	applicationEntryHost              string
 	applicationProbeImage             string
 	allowUnboundedSwap                bool
 	runtimeGatewayContainer           string
@@ -125,6 +131,7 @@ func NewLocalDockerProvider() *LocalDockerProvider {
 		HostStorageRoot:              strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT")),
 		RuntimeHost:                  runtimeHost,
 		PublishHost:                  firstNonEmpty(strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST")), runtimeHost),
+		ApplicationEntryHost:         strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_APPLICATION_ENTRY_HOST")),
 		ApplicationProbeImage:        strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_PROBE_IMAGE")),
 		AllowUnboundedSwap:           os.Getenv("OPL_FABRIC_LOCAL_DOCKER_ALLOW_UNBOUNDED_SWAP") == "1",
 		RuntimeGatewayContainer:      strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER")),
@@ -171,6 +178,7 @@ func newLocalDockerProvider(config LocalDockerProviderConfig, runner dockerRunne
 		workloadOwnership:                 workloadOwnership,
 		runtimeHost:                       runtimeHost,
 		publishHost:                       firstNonEmpty(strings.TrimSpace(config.PublishHost), runtimeHost),
+		applicationEntryHost:              strings.TrimSpace(config.ApplicationEntryHost),
 		applicationProbeImage:             strings.TrimSpace(config.ApplicationProbeImage),
 		allowUnboundedSwap:                config.AllowUnboundedSwap,
 		runtimeGatewayContainer:           strings.TrimSpace(config.RuntimeGatewayContainer),

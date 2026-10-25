@@ -74,7 +74,7 @@ func (p *LocalDockerProvider) EnsureWorkspaceApplicationRuntime(ctx context.Cont
 		}
 		return contracts.WorkspaceApplicationRuntimeObservation{SchemaVersion: 1, WorkspaceID: input.WorkspaceID, RuntimeID: applicationRuntimeID(input), Status: contracts.WorkspaceApplicationRuntimeOverallStatus(observed), Components: observed}
 	}
-	entryURL := ""
+	var entry *contracts.WorkspaceApplicationEntry
 	for _, name := range order {
 		component := declared[name]
 		// Ensure only absent components whose prerequisites have completed health
@@ -100,18 +100,18 @@ func (p *LocalDockerProvider) EnsureWorkspaceApplicationRuntime(ctx context.Cont
 				return observation(), err
 			}
 		}
-		state, url, err := p.readWorkspaceApplicationComponent(ctx, input, component)
+		state, componentEntry, err := p.readWorkspaceApplicationComponent(ctx, input, component)
 		if err != nil {
 			return observation(), err
 		}
 		states[name] = state
 		if component.Role == contracts.WorkspaceApplicationComponentMain {
-			entryURL = url
+			entry = componentEntry
 		}
 	}
 	result := observation()
-	if result.Status == "ready" && entryURL != "" {
-		result.Entry = &contracts.WorkspaceApplicationEntry{URL: entryURL}
+	if result.Status == "ready" && entry != nil {
+		result.Entry = entry
 	}
 	return result, nil
 }
@@ -136,16 +136,52 @@ func localDockerApplicationEntryPort(revision contracts.WorkspaceApplicationRevi
 	return 0
 }
 
-func (p *LocalDockerProvider) localDockerApplicationEntryURL(revision contracts.WorkspaceApplicationRevision, container dockerContainerInspect) (string, error) {
+// applicationEntryBindHost is the host address the entry is published on. A
+// provider that serves the entry through the installation's own access plane
+// publishes on the host's default-bridge address, which every container on the
+// host can reach and the LAN cannot; otherwise the entry stays on the configured
+// publish host.
+func (p *LocalDockerProvider) applicationEntryBindHost(ctx context.Context) (string, error) {
+	if p.applicationEntryHost == "" {
+		return p.publishHost, nil
+	}
+	out, err := p.runner.Run(ctx, nil, "network", "inspect", "bridge", "--format", "{{range .IPAM.Config}}{{.Gateway}} {{end}}")
+	if err != nil {
+		return "", err
+	}
+	for _, field := range strings.Fields(string(out)) {
+		if address := net.ParseIP(strings.TrimSpace(field)); address != nil && address.To4() != nil {
+			return address.String(), nil
+		}
+	}
+	return "", errors.New("local_docker_application_entry_bind_unavailable")
+}
+
+// localDockerApplicationEntry reports how the entry is reached. A provider that
+// is told where the installation's access plane reaches a published port reports
+// that address and port, so the installation serves the entry on its own origin;
+// otherwise the entry is the published provider URL itself.
+func (p *LocalDockerProvider) localDockerApplicationEntry(revision contracts.WorkspaceApplicationRevision, container dockerContainerInspect) (*contracts.WorkspaceApplicationEntry, error) {
 	port := localDockerApplicationEntryPort(revision)
 	if port == 0 {
-		return "", nil
+		return nil, nil
+	}
+	bindHost, err := p.applicationEntryBindHost(context.Background())
+	if err != nil {
+		return nil, err
 	}
 	bindings := container.NetworkSettings.Ports[strconv.Itoa(port)+"/tcp"]
-	if len(bindings) != 1 || bindings[0].HostIP != p.publishHost || bindings[0].HostPort == "" {
-		return "", errors.New("local_docker_application_entry_binding_invalid")
+	if len(bindings) != 1 || bindings[0].HostIP != bindHost || bindings[0].HostPort == "" {
+		return nil, errors.New("local_docker_application_entry_binding_invalid")
 	}
-	return "http://" + net.JoinHostPort(p.publishHost, bindings[0].HostPort) + "/", nil
+	hostPort, err := strconv.Atoi(bindings[0].HostPort)
+	if err != nil || hostPort < 1 || hostPort > 65535 {
+		return nil, errors.New("local_docker_application_entry_binding_invalid")
+	}
+	if p.applicationEntryHost != "" {
+		return &contracts.WorkspaceApplicationEntry{ServiceName: p.applicationEntryHost, Port: hostPort}, nil
+	}
+	return &contracts.WorkspaceApplicationEntry{URL: "http://" + net.JoinHostPort(p.publishHost, bindings[0].HostPort) + "/"}, nil
 }
 
 // ReadWorkspaceApplicationRuntime observes the declared components without
@@ -157,47 +193,47 @@ func (p *LocalDockerProvider) ReadWorkspaceApplicationRuntime(ctx context.Contex
 	runtimeID := applicationRuntimeID(input)
 	components := contracts.WorkspaceApplicationRuntimeComponents(input.Revision)
 	observed := make([]contracts.WorkspaceApplicationRuntimeComponentState, 0, len(components))
-	entryURL := ""
+	var entry *contracts.WorkspaceApplicationEntry
 	for _, component := range components {
-		state, url, err := p.readWorkspaceApplicationComponent(ctx, input, component)
+		state, componentEntry, err := p.readWorkspaceApplicationComponent(ctx, input, component)
 		if err != nil {
 			return contracts.WorkspaceApplicationRuntimeObservation{}, err
 		}
 		observed = append(observed, state)
 		if component.Role == contracts.WorkspaceApplicationComponentMain {
-			entryURL = url
+			entry = componentEntry
 		}
 	}
 
 	status := contracts.WorkspaceApplicationRuntimeOverallStatus(observed)
 	if status != "ready" {
-		entryURL = ""
+		entry = nil
 	}
 	observation := contracts.WorkspaceApplicationRuntimeObservation{
 		SchemaVersion: 1, WorkspaceID: input.WorkspaceID, RuntimeID: runtimeID,
 		Status: status, Components: observed,
 	}
-	if status == "ready" && entryURL != "" {
-		observation.Entry = &contracts.WorkspaceApplicationEntry{URL: entryURL}
+	if status == "ready" && entry != nil {
+		observation.Entry = entry
 	}
 	return observation, nil
 }
 
-func (p *LocalDockerProvider) readWorkspaceApplicationComponent(ctx context.Context, input WorkspaceApplicationRuntimeInput, component contracts.WorkspaceApplicationRuntimeComponentState) (contracts.WorkspaceApplicationRuntimeComponentState, string, error) {
-	entryURL := ""
+func (p *LocalDockerProvider) readWorkspaceApplicationComponent(ctx context.Context, input WorkspaceApplicationRuntimeInput, component contracts.WorkspaceApplicationRuntimeComponentState) (contracts.WorkspaceApplicationRuntimeComponentState, *contracts.WorkspaceApplicationEntry, error) {
+	var entry *contracts.WorkspaceApplicationEntry
 	name, nameErr := localDockerApplicationComponentNameForInput(input, component.Name)
 	if nameErr != nil {
-		return component, "", nameErr
+		return component, nil, nameErr
 	}
 	container, exists, inspectErr := p.inspectContainer(ctx, name)
 	if inspectErr != nil {
-		return component, "", inspectErr
+		return component, nil, inspectErr
 	}
 	if !exists {
-		return contracts.WorkspaceApplicationRuntimeComponentState{Name: component.Name, Role: component.Role, Image: component.Image, State: "absent"}, "", nil
+		return contracts.WorkspaceApplicationRuntimeComponentState{Name: component.Name, Role: component.Role, Image: component.Image, State: "absent"}, nil, nil
 	}
 	if input.AccountID == "" || !exactDockerLabels(container.Config.Labels, localDockerApplicationLabels(input, input.AccountID, component)) || container.Config.Image != component.Image {
-		return component, "", errors.New("local_docker_application_component_conflict")
+		return component, nil, errors.New("local_docker_application_component_conflict")
 	}
 	entryPort := 0
 	if component.Role == contracts.WorkspaceApplicationComponentMain {
@@ -208,37 +244,37 @@ func (p *LocalDockerProvider) readWorkspaceApplicationComponent(ctx context.Cont
 					// The gateway is not attached yet. Report the component as not
 					// ready so the owning runtime operation can still advance it,
 					// instead of failing the whole application runtime read.
-					return contracts.WorkspaceApplicationRuntimeComponentState{Name: component.Name, Role: component.Role, Image: component.Image, State: "pending"}, "", nil
+					return contracts.WorkspaceApplicationRuntimeComponentState{Name: component.Name, Role: component.Role, Image: component.Image, State: "pending"}, nil, nil
 				}
-				return component, "", err
+				return component, nil, err
 			}
 		}
 		if err := p.verifyApplicationConfiguration(input, container); err != nil {
-			return component, "", err
+			return component, nil, err
 		}
 	}
 	for port, bindings := range container.NetworkSettings.Ports {
 		if len(bindings) > 0 && (entryPort == 0 || port != strconv.Itoa(entryPort)+"/tcp") {
-			return component, "", errors.New("local_docker_application_component_conflict")
+			return component, nil, errors.New("local_docker_application_component_conflict")
 		}
 	}
 	if err := p.verifyApplicationConfigMounts(input, component.Name, container); err != nil {
-		return component, "", err
+		return component, nil, err
 	}
 	if err := p.verifyApplicationExecution(input, component.Name, container); err != nil {
-		return component, "", err
+		return component, nil, err
 	}
 	if component.Role == contracts.WorkspaceApplicationComponentMain {
 		if err := verifyApplicationScratchMounts(input.Revision.ScratchMounts, container); err != nil {
-			return component, "", err
+			return component, nil, err
 		}
 	} else {
 		dependency, err := dependencySpecByName(input.Revision, component.Name)
 		if err != nil {
-			return component, "", err
+			return component, nil, err
 		}
 		if err := verifyApplicationScratchMounts(dependency.ScratchMounts, container); err != nil {
-			return component, "", err
+			return component, nil, err
 		}
 	}
 	state := localDockerApplicationComponentState(component, container)
@@ -249,7 +285,7 @@ func (p *LocalDockerProvider) readWorkspaceApplicationComponent(ctx context.Cont
 		if state.State == "ready" && len(input.Revision.HealthChecks) > 0 {
 			ready, probeErr := p.probeLocalDockerApplication(ctx, input, container)
 			if probeErr != nil {
-				return component, "", probeErr
+				return component, nil, probeErr
 			}
 			state.ReadyCheck = "declared_http"
 			if !ready {
@@ -258,25 +294,25 @@ func (p *LocalDockerProvider) readWorkspaceApplicationComponent(ctx context.Cont
 		}
 		if state.State == "ready" {
 			var entryErr error
-			entryURL, entryErr = p.localDockerApplicationEntryURL(input.Revision, container)
+			entry, entryErr = p.localDockerApplicationEntry(input.Revision, container)
 			if entryErr != nil {
-				return component, "", entryErr
+				return component, nil, entryErr
 			}
 		}
 	}
 	if component.Role == contracts.WorkspaceApplicationComponentDependency {
 		dependency, depErr := dependencySpecByName(input.Revision, component.Name)
 		if depErr != nil {
-			return component, "", depErr
+			return component, nil, depErr
 		}
 		if err := p.verifyApplicationDeclaredSecrets(input, container, dependency.SecretInputs); err != nil {
-			return component, "", err
+			return component, nil, err
 		}
 
 		if state.State == "ready" && len(dependency.HealthChecks) > 0 {
 			ready, healthyErr := p.probeLocalDockerDependencyChecks(ctx, input, container, dependency.HealthChecks)
 			if healthyErr != nil {
-				return component, "", healthyErr
+				return component, nil, healthyErr
 			}
 			if ready {
 				state.ReadyCheck = dependency.HealthChecks[0].Type + "_declared"
@@ -285,7 +321,7 @@ func (p *LocalDockerProvider) readWorkspaceApplicationComponent(ctx context.Cont
 			}
 		}
 	}
-	return state, entryURL, nil
+	return state, entry, nil
 }
 
 func (p *LocalDockerProvider) validateLocalDockerApplicationRuntimeIdentity(input WorkspaceApplicationRuntimeInput, compute ComputeAllocation) error {
@@ -364,7 +400,11 @@ func (p *LocalDockerProvider) ensureWorkspaceApplicationComponent(
 		}
 		args = append(args, secretArgs...)
 		if port := localDockerApplicationEntryPort(input.Revision); port != 0 {
-			args = append(args, "-p", p.publishHost+"::"+strconv.Itoa(port)+"/tcp")
+			bindHost, err := p.applicationEntryBindHost(ctx)
+			if err != nil {
+				return localDockerApplicationComponentState(component, dockerContainerInspect{}), err
+			}
+			args = append(args, "-p", bindHost+"::"+strconv.Itoa(port)+"/tcp")
 		}
 		for _, mount := range input.Revision.PersistentMounts {
 			source := localDockerApplicationPersistentSource(input, storagePaths, mount)

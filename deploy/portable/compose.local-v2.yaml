@@ -449,6 +449,15 @@ services:
       OPL_WORKSPACE_APPLICATION_INGRESS_PEERS: ${OPL_WORKSPACE_APPLICATION_INGRESS_PEERS:-}
       OPL_GRPC_CERT_FILE: /pki/serve.crt
       OPL_GRPC_KEY_FILE: /pki/serve.key
+    # The published application entry is reached through this name. The address is
+    # the host's default-bridge address, which is exactly where Fabric publishes an
+    # entry when it is told the installation serves it. It is declared instead of
+    # derived with host-gateway because a daemon that cannot resolve its default
+    # bridge writes an unusable host entry, and a wrong entry is worse than a
+    # declared one: the qualification then fails at the entry instead of silently
+    # reaching nothing.
+    extra_hosts:
+      - "opl-host:${OPL_LOCAL_V2_APPLICATION_ENTRY_IP:-172.17.0.1}"
     volumes: *opl-v2-pki
     depends_on:
       postgres:
@@ -490,6 +499,10 @@ services:
       OPL_RESOURCE_CATALOG_TOKEN: ${OPL_RESOURCE_CATALOG_TOKEN}
       OPL_FABRIC_LOCAL_DOCKER_HOST: ${OPL_FABRIC_LOCAL_DOCKER_HOST:-127.0.0.1}
       OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST: ${OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST:-127.0.0.1}
+      # When the installation serves the entry on its own origin, Serve reaches
+      # the published port through this name and Fabric reports the address and
+      # port instead of a loopback URL. Empty keeps the provider-published URL.
+      OPL_FABRIC_LOCAL_DOCKER_APPLICATION_ENTRY_HOST: ${OPL_FABRIC_LOCAL_DOCKER_APPLICATION_ENTRY_HOST:-}
       OPL_FABRIC_LOCAL_DOCKER_PROBE_IMAGE: ${OPL_CLOUD_IMAGE}
       OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER: ${OPL_LOCAL_V2_GATEWAY_CONTAINER:-opl-cloud-local-v2-control-plane}
       # The provider creates Workspace containers on the host daemon and
