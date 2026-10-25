@@ -9,11 +9,41 @@ Baseline evidence date: 2026-10-01
 This page keeps the dated baseline evidence above and explicitly dated source
 updates below. The baseline SHA does not describe the later changes or qualify
 them: each receipt retains its original source, run and environment. The latest
-source update is 2026-10-24; it answers what the cited source and tests prove
+source update is 2026-10-25; it answers what the cited source and tests prove
 within their declared scope and does not describe an Instance installation or a
 Product Release. The target boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
+
+## Delivery Lane Reconciliation (2026-10-25)
+
+The current Cloud mainline has converged the source-side native v2 path through
+the following bounded slices: #1061 retired the unreachable fresh-create writer;
+#1062 repaired the local-v2 owner peers and provider facts; #1063 moved target
+readers to the canonical contract sources; #1064 established the consumer-based
+evidence archival rule; #1065 repaired the Local-Docker quota capability,
+application bridge and pending-resource replay; and #1067 moved a superseded
+SSOT audit into history. These changes improve the path and its evidence
+provenance; they do not establish Candidate, Instance or production acceptance.
+
+The only current behavior PR in this lane is
+[#1068](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1068). It reads
+the confirmed Local-Docker activation boundary and replays the original
+no-charge order so the diagnostic run can continue to its declared readbacks.
+Its result must remain a local source/fixture observation and must not be
+reported as a paid order, TKE deployment, Gateway settlement, production route
+or business pass. The PR is still open; current-revision CI and review remain
+required before it can change main.
+
+The next acceptance gate is therefore the one described by
+[#1042](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1042): exact
+Candidate identity, protected Instance installation, ready route and
+owner-authoritative runtime/Gateway/recovery readback. Historical original-order
+closeout remains in
+[#1018](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1018).
+The evidence-archival work in #1058, including open documentation PRs #1066 and
+#1067, is maintenance-only and does not move this gate. #1053, #1054 and #1057
+remain secondary proposals without a current launch dependency.
 
 ## Retained CP Purchase Fence (2026-10-24)
 
