@@ -42,7 +42,11 @@ func main() {
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
+		// A command answers after its owner has driven the work the command
+		// starts: a Workspace deletion retires a runtime and releases compute
+		// and storage before it returns. The write budget covers one command,
+		// while reads keep the tighter bound above.
+		WriteTimeout: 3 * time.Minute,
 		IdleTimeout:       2 * time.Minute,
 	}
 
