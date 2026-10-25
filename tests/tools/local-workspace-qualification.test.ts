@@ -1979,9 +1979,9 @@ test("local-v2 replay keeps polling through running and stops activation at an e
     workspaceReadback: { id: "workspace_test", status: "provisioning", resourceReadiness: "ready", applicationAvailability: "available", accessUrl: "", runtimeVersionId: "runtime_test" }
   });
   const result = await runLocalV2FixtureQualification(fixture);
-  // The launch is confirmed, so the cleanup path runs even though the entry is
-  // the earliest failure: the run proves the deletion and keeps that boundary.
-  assert.equal(result.stage, "workspace_delete");
+  // The entry is the earliest failure, and DELETE is authorized only after it is
+  // confirmed, so the run stops there and leaves the Workspace intact.
+  assert.equal(result.stage, "application_entry");
   assert.equal(result.boundary.code, "local_v2_application_entry_missing");
   assert.equal(result.evidence.readbacks.operation.status, "awaiting_confirmation");
   assert.equal(result.evidence.readbacks.operation.stage, "activation");
@@ -1991,7 +1991,7 @@ test("local-v2 replay keeps polling through running and stops activation at an e
   assert.equal(result.evidence.readbacks.operation.polls, 43);
   assert.equal(result.evidence.readbacks.operation.recoveryReplays, 1);
   assert.equal(fixture.requests.filter((request) => request === "POST /api/v2/workspaces").length, 2);
-  assert.equal(fixture.requests.some((request) => request.startsWith("DELETE /api/v2/workspaces/")), true);
+  assert.equal(fixture.requests.some((request) => request.startsWith("DELETE /api/v2/workspaces/")), false);
 });
 
 test("local-v2 replay rejects an operation or resource identity mismatch", async () => {
@@ -2011,9 +2011,9 @@ test("local-v2 activation requires the Workspace and Serve readbacks before dele
     workspaceReadback: { id: "workspace_test", status: "provisioning", resourceReadiness: "unknown", applicationAvailability: "available", accessUrl: "https://workspace.localhost:18443", runtimeVersionId: "runtime_test" }
   });
   const result = await runLocalV2FixtureQualification(fixture);
-  assert.equal(result.stage, "workspace_delete");
+  assert.equal(result.stage, "application_entry");
   assert.equal(result.boundary.code, "local_v2_application_readiness_unconfirmed");
-  assert.equal(fixture.requests.some((request) => request.startsWith("DELETE /api/v2/workspaces/")), true);
+  assert.equal(fixture.requests.some((request) => request.startsWith("DELETE /api/v2/workspaces/")), false);
 });
 
 test("local-v2 polling and replay budgets reject invalid values before dependencies run", async () => {

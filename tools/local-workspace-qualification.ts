@@ -2660,7 +2660,10 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     // deletion, absence, ledger and refund obligations do not depend on it. A run
     // that reached a confirmed launch therefore proves the cleanup path even when
     // the entry boundary is the earliest failure, and keeps that boundary.
-    if (launchCandidate) {
+    // DELETE is authorized only after the Workspace and Serve readiness and the
+    // declared-origin entry boundary are confirmed. A missing, mismatched or
+    // unreachable entry keeps the boundary and leaves the Workspace intact.
+    if (launchCandidate && !boundary) {
       // A restart is the other half of recovery: a lost response is replayed against
       // a live owner, and a restarted installation must answer the same identities.
       // The same owner set the live chain restarts is restarted here, and every
