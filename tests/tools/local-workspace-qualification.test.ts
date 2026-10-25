@@ -1796,7 +1796,9 @@ test("the local-v2 client refuses a retained endpoint before it opens a socket",
 });
 
 test("the local-v2 application entry must be served by the declared origin", () => {
-  assert.deepEqual(localV2ApplicationEntryBoundary("", "https://localhost:8443"), { ok: true, code: "", detail: "no application entry published yet" });
+  assert.deepEqual(localV2ApplicationEntryBoundary("", "https://localhost:8443"), {
+    ok: false, code: "local_v2_application_entry_missing", detail: "the Workspace owner has not published an application entry"
+  });
   const unreachable = localV2ApplicationEntryBoundary("https://ws.localhost/w/ws_1/", "https://localhost:8443");
   assert.equal(unreachable.ok, false);
   assert.equal(unreachable.code, "local_v2_application_entry_port_unreachable");
@@ -1823,8 +1825,10 @@ test("local-v2 arguments require the declared installation and refuse a second i
   assert.equal(parsed.project, "opl-local-v2");
 });
 
-function localV2Fixture() {
+function localV2Fixture({ operationResponses = [], replayOrder, workspaceReadback } = {}) {
   const requests = [];
+  let workspacePosts = 0;
+  let operationReads = 0;
   const workspaceImage = `local/opl-workspace-local-v2@sha256:${"d".repeat(64)}`;
   const values = {
     OPL_LOCAL_V2_PUBLIC_URL: "https://localhost:18443",
@@ -1868,12 +1872,18 @@ function localV2Fixture() {
     if (clean.startsWith("/api/v2/catalog/compute-plans")) return ok({ items: [{ id: "compute_test", name: "local-v2-compute" }] });
     if (clean.startsWith("/api/v2/catalog/storage-plans")) return ok({ items: [{ id: "storage_test", name: "local-v2-storage" }] });
     if (clean === "/api/v2/quotes") return ok({ id: "quote_test", status: "accepted", purpose: "deploy", runtimeVersionId: "runtime_test", totalUSDMicros: "0" }, 201);
-    if (clean === "/api/v2/workspaces") return ok({ operationId: "op_test", resourceId: "workspace_test" }, 202);
+    if (clean === "/api/v2/workspaces") {
+      workspacePosts += 1;
+      return ok(workspacePosts > 1 && replayOrder
+        ? replayOrder
+        : { owner: "workspace", kind: "create_workspace", operationId: "op_test", resourceId: "workspace_test" }, 202);
+    }
     if (clean === "/api/v2/operations/workspace/op_test") {
-      return ok({ status: "needs_attention", stage: "resource_preflight", errorCode: "local_docker_storage_quota_unavailable", error: { message: "storage root must be ext4 or XFS" } });
+      const configured = operationResponses[operationReads++];
+      return ok(configured ?? operationResponses.at(-1) ?? { status: "needs_attention", stage: "resource_preflight", errorCode: "local_docker_storage_quota_unavailable", error: { message: "storage root must be ext4 or XFS" } });
     }
     if (clean === "/api/v2/workspaces/workspace_test") {
-      return ok({ id: "workspace_test", status: "failed", applicationAvailability: "unknown", resourceReadiness: "unknown", accessUrl: "", runtimeVersionId: "runtime_test" });
+      return ok(workspaceReadback || { id: "workspace_test", status: "failed", applicationAvailability: "unknown", resourceReadiness: "unknown", accessUrl: "", runtimeVersionId: "runtime_test" });
     }
     if (clean.endsWith("/transactions")) return ok({ items: [] });
     return ok({}, 404);
@@ -1903,6 +1913,100 @@ function localV2Fixture() {
   };
   return { values, workspaceImage, requests, client, compose };
 }
+
+async function runLocalV2FixtureQualification(fixture, dependencies = {}) {
+  const root = await mkdtemp(join(tmpdir(), "opl-local-v2-regression-"));
+  try {
+    const contractPath = join(root, "contract.json");
+    await writeFile(contractPath, JSON.stringify({
+      schemaVersion: "opl-publisher-contract/v1", publisherNamespaceId: "publisher_test",
+      image: { repository: "local/opl-workspace-local-v2", digest: fixture.workspaceImage.split("@")[1], platform: { os: "linux", architecture: "arm64" } },
+      kind: "runtime", runtimeAbiVersion: "opl-runtime/v1", packageFormatVersions: ["agent-plugins/1.0.0"],
+      applicationAccess: { mode: "anonymous" },
+      applicationRevisionTemplate: {
+        schemaVersion: 1, applicationId: "local-qualification-app", version: "1.0.0", platform: "linux/arm64",
+        image: fixture.workspaceImage, exposurePolicy: "anonymous", ports: [{ name: "webui", port: 3000, protocol: "TCP" }],
+        entryPort: "webui", healthChecks: [{ port: 3000, path: "/" }]
+      }
+    }));
+    return await runLocalV2Qualification({
+      sourceSha: "a".repeat(40), receiptPath: join(root, "receipt.json"), installationEnv: join(root, "installation.env"),
+      applicationContract: contractPath, project: "opl-local-v2", workspaceName: "Local v2 qualification"
+    }, {
+      readDeclaration: async () => ({ envFile: join(root, "installation.env"), values: fixture.values, facts: { entries: [], unresolved: [] } }),
+      createClient: () => fixture.client, compose: fixture.compose, ownerQuery: async () => "3",
+      wait: async () => {}, pollIntervalMs: 0, pollAttempts: 100, ...dependencies
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+test("local-v2 replay keeps polling through running and stops activation at an empty entry", async () => {
+  const parked = { status: "awaiting_confirmation", stage: "resource_preflight", observationResult: "unknown" };
+  const fixture = localV2Fixture({
+    operationResponses: [
+      ...Array(41).fill(parked),
+      { status: "running", stage: "runtime", observationResult: "unknown" },
+      { status: "awaiting_confirmation", stage: "activation", observationResult: "confirmed" }
+    ],
+    workspaceReadback: { id: "workspace_test", status: "provisioning", resourceReadiness: "ready", applicationAvailability: "available", accessUrl: "", runtimeVersionId: "runtime_test" }
+  });
+  const result = await runLocalV2FixtureQualification(fixture);
+  assert.equal(result.stage, "application_entry");
+  assert.equal(result.boundary.code, "local_v2_application_entry_missing");
+  assert.equal(result.evidence.readbacks.operation.status, "awaiting_confirmation");
+  assert.equal(result.evidence.readbacks.operation.stage, "activation");
+  assert.equal(result.evidence.readbacks.operation.polls, 83);
+  assert.equal(result.evidence.readbacks.operation.recoveryReplays, 1);
+  assert.equal(fixture.requests.filter((request) => request === "POST /api/v2/workspaces").length, 2);
+  assert.equal(fixture.requests.some((request) => request.startsWith("DELETE /api/v2/workspaces/")), false);
+});
+
+test("local-v2 replay rejects an operation or resource identity mismatch", async () => {
+  const fixture = localV2Fixture({
+    operationResponses: Array(41).fill({ status: "awaiting_confirmation", stage: "resource_preflight", observationResult: "unknown" }),
+    replayOrder: { owner: "workspace", kind: "create_workspace", operationId: "op_other", resourceId: "workspace_other" }
+  });
+  const result = await runLocalV2FixtureQualification(fixture);
+  assert.equal(result.errorCode, "local_v2_replay_identity_mismatch");
+  assert.equal(fixture.requests.filter((request) => request === "POST /api/v2/workspaces").length, 2);
+  assert.equal(fixture.requests.some((request) => request.startsWith("DELETE /api/v2/workspaces/")), false);
+});
+
+test("local-v2 activation requires the Workspace and Serve readbacks before deletion", async () => {
+  const fixture = localV2Fixture({
+    operationResponses: Array(41).fill({ status: "awaiting_confirmation", stage: "activation", observationResult: "confirmed" }),
+    workspaceReadback: { id: "workspace_test", status: "provisioning", resourceReadiness: "unknown", applicationAvailability: "available", accessUrl: "https://workspace.localhost:18443", runtimeVersionId: "runtime_test" }
+  });
+  const result = await runLocalV2FixtureQualification(fixture);
+  assert.equal(result.stage, "application_entry");
+  assert.equal(result.boundary.code, "local_v2_application_readiness_unconfirmed");
+  assert.equal(fixture.requests.some((request) => request.startsWith("DELETE /api/v2/workspaces/")), false);
+});
+
+test("local-v2 polling and replay budgets reject invalid values before dependencies run", async () => {
+  const invalid = [NaN, Infinity, -1, 1.5, 1_000_001];
+  for (const [name, code] of [
+    ["pollIntervalMs", "local_v2_poll_interval_invalid"],
+    ["pollAttempts", "local_v2_poll_attempts_invalid"],
+    ["recoveryReplays", "local_v2_recovery_replays_invalid"]
+  ]) {
+    for (const value of invalid) {
+      let dependencyCalled = false;
+      await assert.rejects(runLocalV2Qualification({}, {
+        [name]: value,
+        readDeclaration: async () => { dependencyCalled = true; throw new Error("unexpected side effect"); }
+      }), { code });
+      assert.equal(dependencyCalled, false, `${name}=${value} reached a dependency`);
+    }
+  }
+  await assert.rejects(runLocalV2Qualification({}, {
+    pollIntervalMs: 60_000, pollAttempts: 1_000,
+    readDeclaration: async () => { throw new Error("poll budget should be rejected first"); }
+  }), { code: "local_v2_poll_budget_invalid" });
+  assert.doesNotThrow(() => localV2Fixture());
+});
 
 test("local-v2 qualification collects owner readbacks and reports the host boundary instead of READY", async () => {
   const fixture = localV2Fixture();
