@@ -2222,10 +2222,12 @@ function localV2Boundary(operation, workspace) {
   return { code: code || "local_v2_operation_stopped", detail: detail || `the owner stopped the operation at ${String(operation?.stage || "an unnamed stage")}`, stage: String(operation?.stage || "") };
 }
 
-// `awaiting_confirmation` is a parked saga: the owner stopped retrying and is
-// waiting for a human, so a qualification run reads it as the boundary it is
-// instead of polling until the deadline.
-const LOCAL_V2_TERMINAL_OPERATION = new Set(["succeeded", "failed", "cancelled", "needs_attention", "awaiting_confirmation"]);
+// `awaiting_confirmation` is not terminal: the owner parks a saga there while it
+// waits for a dependency it re-drives itself, and a real installation moved from
+// `runtime` to `activation` after several minutes in that state. The run keeps
+// polling and only reads a park as the boundary when the state stops changing.
+const LOCAL_V2_TERMINAL_OPERATION = new Set(["succeeded", "failed", "cancelled", "needs_attention"]);
+const LOCAL_V2_STALLED_POLLS = 40;
 
 // The Local v2 qualification: one declared installation, the owner processes it
 // starts, and the owner routes it serves. Every step records the readback it
@@ -2486,9 +2488,15 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     record("order", "accepted", { operationId, workspaceId });
     stage = "workspace_operation";
     let operation = null;
+    let unchanged = 0;
+    let previousState = "";
     for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
       operation = (await http.json(`${binding.endpoints.operations}/${encodeURIComponent(operationId)}`, {}, auth)).payload;
       if (LOCAL_V2_TERMINAL_OPERATION.has(String(operation?.status || ""))) break;
+      const state = `${String(operation?.status || "")}:${String(operation?.stage || "")}`;
+      unchanged = state === previousState ? unchanged + 1 : 0;
+      previousState = state;
+      if (unchanged >= LOCAL_V2_STALLED_POLLS) break;
       await wait(pollIntervalMs);
     }
     // The owner parks a saga at its own boundary, but the order route is
