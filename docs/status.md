@@ -9,7 +9,7 @@ Baseline evidence date: 2026-10-01
 This page keeps the dated baseline evidence above and explicitly dated source
 updates below. The baseline SHA does not describe the later changes or qualify
 them: each receipt retains its original source, run and environment. The latest
-source update is 2026-10-25; it answers what the cited source and tests prove
+source update is 2026-10-26; it answers what the cited source and tests prove
 within their declared scope and does not describe an Instance installation or a
 Product Release. The target boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
@@ -32,8 +32,14 @@ the confirmed Local-Docker activation boundary and replays the original
 no-charge order so the diagnostic run can continue to its declared readbacks.
 Its result must remain a local source/fixture observation and must not be
 reported as a paid order, TKE deployment, Gateway settlement, production route
-or business pass. The PR is still open; current-revision CI and review remain
-required before it can change main.
+or business pass. The source gate checks quote identity, bounds original-order
+polling/replay by one deadline, and requires the exact declared entry origin and HTTP 200 before
+restart or DELETE. No-charge deletion accepts the owner's `not_applicable`
+refund only with confirmed resource/data/Serve absence and stable replay.
+Focused source tests exercise these boundaries; the contributor's latest
+real-installation report still stops at the mismatched application entry and
+issued no DELETE. That report does not establish the full cleanup path under
+the restored gate.
 
 The next acceptance gate is therefore the one described by
 [#1042](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1042): exact

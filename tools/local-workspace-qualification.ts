@@ -868,7 +868,7 @@ function caRequest(url, init, headers, body, ca) {
       headers: Object.fromEntries(headers.entries()),
       ca,
       servername: target.hostname,
-      signal: AbortSignal.timeout(30_000)
+      signal: ownerRequestSignal(init)
     }, (response) => {
       const chunks = [];
       response.on("data", (chunk) => chunks.push(chunk));
@@ -889,9 +889,22 @@ function caRequest(url, init, headers, body, ca) {
       });
     });
     request.on("error", reject);
-    if (body !== undefined) request.write(body);
-    request.end();
+    // One end() call lets Node set Content-Length for the body. A chunked DELETE
+    // body is legal but the owner's write guard reads it as an empty command.
+    request.end(body);
   });
+}
+
+// requestTimeoutMs is the budget one owner command gets. A read answers at once;
+// a deletion drives the retirement chain inside the owner before it responds.
+function requestTimeoutMs() {
+  const configured = Number(process.env.OPL_LOCAL_V2_REQUEST_TIMEOUT_MS || 0);
+  return configured > 0 ? configured : 120_000;
+}
+
+function ownerRequestSignal(init = {}) {
+  const timeout = AbortSignal.timeout(requestTimeoutMs());
+  return init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
 }
 
 export function createHTTP(origin, { caFile = "", mode = "" } = {}) {
@@ -913,7 +926,12 @@ export function createHTTP(origin, { caFile = "", mode = "" } = {}) {
     // authorities' write guards are satisfied by one transport.
     if (auth?.ownerCsrf) headers.set("x-csrf-token", auth.ownerCsrf);
     const body = init.body === undefined ? undefined : JSON.stringify(init.body);
-    if (body !== undefined) headers.set("content-type", "application/json");
+    if (body !== undefined) {
+      headers.set("content-type", "application/json");
+      // Node does not default a DELETE body to a length, and without it the
+      // request leaves without the body at all. Every command here carries one.
+      headers.set("content-length", String(Buffer.byteLength(body)));
+    }
     const url = `${origin}${path}`;
     const response = ca
       ? await caRequest(url, init, headers, body, ca)
@@ -921,7 +939,7 @@ export function createHTTP(origin, { caFile = "", mode = "" } = {}) {
         ...init,
         headers,
         body,
-        signal: AbortSignal.timeout(30_000)
+        signal: ownerRequestSignal(init)
       });
     const text = await response.text();
     let payload = null;
@@ -954,11 +972,32 @@ export async function deleteWorkspaceOnOwnerRoute(http, auth, {
   wait = waitForWorkspaceDeleteSchedule,
   attempts = 120,
 } = {}) {
-  const accepted = await http.json(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}`, {
+  // A command whose answer is lost is not a refused command. The owner keys the
+  // deletion by the idempotency key this caller chose, so re-sending the identical
+  // command reaches the same operation instead of starting a second deletion. The
+  // transport loss is recorded so a receipt can show which one happened.
+  const command = {
     method: "DELETE",
     headers: { "idempotency-key": idempotencyKey },
     body: { confirmationName, acknowledgeDataDestruction: true },
-  }, auth, [202]);
+  };
+  const path = `/api/v2/workspaces/${encodeURIComponent(workspaceId)}`;
+  let accepted = null;
+  let lostResponses = 0;
+  let lastLoss = "";
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      accepted = await http.json(path, command, auth, [202]);
+      break;
+    } catch (error) {
+      lostResponses += 1;
+      lastLoss = String(error?.message || error);
+      await wait(2000);
+    }
+  }
+  if (!accepted) {
+    throw namedQualificationError("local_v2_workspace_delete_unreachable", `Workspace owner DELETE never answered: ${lastLoss}`);
+  }
   const operation = accepted.payload;
   if (operation?.owner !== "workspace" || operation?.kind !== "delete_workspace" ||
     operation?.resourceId !== workspaceId || !String(operation?.operationId || "").trim()) {
@@ -976,7 +1015,10 @@ export async function deleteWorkspaceOnOwnerRoute(http, auth, {
       throw new Error(`Workspace owner DELETE did not succeed: ${read.status} ${String(read.stage || "")}`.trim());
     }
     if (read.status === "succeeded") {
-      return { operationId: read.operationId, status: read.status, stage: String(read.stage || ""), accepted: operation };
+      return {
+        operationId: read.operationId, status: read.status, stage: String(read.stage || ""),
+        accepted: operation, lostResponses, lastLoss,
+      };
     }
     await wait(1000);
   }
@@ -1013,12 +1055,19 @@ export async function readWorkspaceRefundReceipt(http, auth, {
 // A deleted Workspace remains readable for financial obligations. Its typed
 // deletion readback, rather than a 404 or an empty deployment list, proves the
 // original owners confirmed resource/data absence and Ledger recorded it.
-export async function readWorkspaceDeletionEvidence(http, auth, { workspaceId, operationId } = {}) {
+export async function readWorkspaceDeletionEvidence(http, auth, { workspaceId, operationId, localNoCharge = false } = {}) {
   const deletion = (await http.json(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/deletion`, {}, auth)).payload;
   const receipt = deletion?.deletionReceipt;
+  // A local no-charge order has no money to return, so the owner records the
+  // refund as not applicable rather than confirming one. That is only acceptable
+  // when the run itself is a local no-charge purchase; a charged order must name
+  // the confirmed refund and its operation.
+  const refundSettled = deletion?.refundStatus === "confirmed"
+    ? Boolean(String(deletion?.refundOperationId || "").trim())
+    : localNoCharge && deletion?.refundStatus === "not_applicable";
   if (deletion?.workspaceId !== workspaceId || deletion?.operationId !== operationId ||
     deletion.resourceDeletionStatus !== "confirmed" || deletion.dataDeletionStatus !== "confirmed" ||
-    deletion.refundStatus !== "confirmed" || !String(deletion.refundOperationId || "").trim() ||
+    !refundSettled ||
     !String(receipt?.id || "").trim() || receipt.kind !== "provider_action" || receipt.owner !== "workspace" ||
     receipt.operationId !== operationId || receipt.outcome !== "confirmed" ||
     !Number.isFinite(Date.parse(receipt.createdAt))) {
@@ -1887,7 +1936,7 @@ function assertWorkspaceOpenQualification(opened) {
 }
 
 async function fetchApplicationEntry(url) {
-  const response = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(30_000) });
+  const response = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(requestTimeoutMs()) });
   return { response, text: await response.text() };
 }
 
@@ -2134,7 +2183,7 @@ export function localV2QualificationCA(values) {
 // available.
 export function localV2ApplicationEntryBoundary(entryUrl, publicOrigin) {
   const entry = String(entryUrl || "").trim();
-  if (!entry) return { ok: true, code: "", detail: "no application entry published yet" };
+  if (!entry) return { ok: false, code: "local_v2_application_entry_missing", detail: "the Workspace owner has not published an application entry" };
   let parsed;
   try {
     parsed = new URL(entry);
@@ -2151,7 +2200,8 @@ export function localV2ApplicationEntryBoundary(entryUrl, publicOrigin) {
   const publicPort = origin.port || (origin.protocol === "https:" ? "443" : "80");
   // The published entry carries no port, so the only way it is reachable is the
   // installation serving that host on the port the entry implies.
-  if (entryPort !== publicPort) {
+  if (parsed.protocol !== origin.protocol || parsed.hostname !== origin.hostname ||
+      parsed.username || parsed.password || entryPort !== publicPort) {
     return {
       ok: false,
       code: "local_v2_application_entry_port_unreachable",
@@ -2216,10 +2266,55 @@ function localV2Boundary(operation, workspace) {
   return { code: code || "local_v2_operation_stopped", detail: detail || `the owner stopped the operation at ${String(operation?.stage || "an unnamed stage")}`, stage: String(operation?.stage || "") };
 }
 
-// `awaiting_confirmation` is a parked saga: the owner stopped retrying and is
-// waiting for a human, so a qualification run reads it as the boundary it is
-// instead of polling until the deadline.
-const LOCAL_V2_TERMINAL_OPERATION = new Set(["succeeded", "failed", "cancelled", "needs_attention", "awaiting_confirmation"]);
+// `awaiting_confirmation` is not terminal: the owner parks a saga there while it
+// waits for a dependency it re-drives itself, and a real installation moved from
+// `runtime` to `activation` after several minutes in that state. The run keeps
+// polling and only reads a park as the boundary when the state stops changing.
+const LOCAL_V2_TERMINAL_OPERATION = new Set(["succeeded", "failed", "cancelled", "needs_attention"]);
+// A Local no-charge order has no terminal state of its own: the owner records the
+// Serve-confirmed READY runtime at stage `activation` and keeps re-driving that
+// same saga, so a poll can catch the operation mid-cycle at an earlier stage. The
+// boundary is the state the owner reached, not the state the last poll saw.
+const LOCAL_V2_ACTIVATION_STAGE = "activation";
+const LOCAL_V2_STALLED_POLLS = 40;
+const LOCAL_V2_MAX_POLL_INTERVAL_MS = 60_000;
+const LOCAL_V2_MAX_POLL_ATTEMPTS = 1_000;
+const LOCAL_V2_MAX_RECOVERY_REPLAYS = 10;
+const LOCAL_V2_MAX_POLL_DURATION_MS = 30 * 60 * 1_000;
+
+function localV2Budget(value, { name, code, minimum, maximum }) {
+  const parsed = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN;
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw namedQualificationError(code, `${name} must be an integer between ${minimum} and ${maximum}`);
+  }
+  return parsed;
+}
+
+function localV2ConfiguredBudget(dependencyValue, environmentValue, defaultValue, options) {
+  const value = dependencyValue !== undefined
+    ? dependencyValue
+    : environmentValue === undefined
+      ? defaultValue
+      : environmentValue;
+  return localV2Budget(value, options);
+}
+
+function validateLocalV2Replay(operation, operationId, workspaceId) {
+  if (operation?.owner !== "workspace" || operation?.kind !== "create_workspace" ||
+    operation?.operationId !== operationId || operation?.resourceId !== workspaceId) {
+    throw namedQualificationError("local_v2_replay_identity_mismatch", "the Workspace owner replay did not identify the original order");
+  }
+}
+
+function localV2LaunchReadbackBoundary(workspace, workspaceId, origin) {
+  if (workspace?.id !== workspaceId) {
+    return { ok: false, code: "local_v2_workspace_readback_invalid", detail: "the Workspace owner readback does not identify the accepted Workspace" };
+  }
+  if (workspace.resourceReadiness !== "ready" || workspace.applicationAvailability !== "available") {
+    return { ok: false, code: "local_v2_application_readiness_unconfirmed", detail: "the Workspace resource and Serve application readbacks do not confirm readiness" };
+  }
+  return localV2ApplicationEntryBoundary(workspace.accessUrl, origin);
+}
 
 // The Local v2 qualification: one declared installation, the owner processes it
 // starts, and the owner routes it serves. Every step records the readback it
@@ -2228,6 +2323,18 @@ const LOCAL_V2_TERMINAL_OPERATION = new Set(["succeeded", "failed", "cancelled",
 // here: it binds Control Plane identities this installation does not have, so
 // this run publishes collected evidence and names what is still missing.
 export async function runLocalV2Qualification(options, dependencies = {}) {
+  const pollIntervalMs = localV2ConfiguredBudget(dependencies.pollIntervalMs, process.env.OPL_LOCAL_V2_POLL_INTERVAL_MS, 3000, {
+    name: "OPL_LOCAL_V2_POLL_INTERVAL_MS", code: "local_v2_poll_interval_invalid", minimum: 0, maximum: LOCAL_V2_MAX_POLL_INTERVAL_MS
+  });
+  const pollAttempts = localV2ConfiguredBudget(dependencies.pollAttempts, process.env.OPL_LOCAL_V2_POLL_ATTEMPTS, 100, {
+    name: "OPL_LOCAL_V2_POLL_ATTEMPTS", code: "local_v2_poll_attempts_invalid", minimum: 1, maximum: LOCAL_V2_MAX_POLL_ATTEMPTS
+  });
+  const recoveryReplays = localV2ConfiguredBudget(dependencies.recoveryReplays, process.env.OPL_LOCAL_V2_RECOVERY_REPLAYS, 3, {
+    name: "OPL_LOCAL_V2_RECOVERY_REPLAYS", code: "local_v2_recovery_replays_invalid", minimum: 0, maximum: LOCAL_V2_MAX_RECOVERY_REPLAYS
+  });
+  if (pollAttempts * pollIntervalMs > LOCAL_V2_MAX_POLL_DURATION_MS) {
+    throw namedQualificationError("local_v2_poll_budget_invalid", "the combined Workspace polling budget must not exceed 30 minutes");
+  }
   const mode = QUALIFICATION_MODE_LOCAL_V2;
   const binding = qualificationModeBinding(mode);
   const readDeclaration = dependencies.readDeclaration || readLocalV2InstallationDeclaration;
@@ -2236,12 +2343,10 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
   const compose = dependencies.compose || ((args, settings = {}) => runProcess("docker", args, { cwd: root, ...settings, env: composeEnvironment }));
   const ownerQuery = dependencies.ownerQuery || null;
   const wait = dependencies.wait || ((milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds)));
-  const pollIntervalMs = Number(dependencies.pollIntervalMs || 3000);
-  const pollAttempts = Number(dependencies.pollAttempts || 100);
   const startedAt = new Date().toISOString();
   const stages = [];
   const readbacks = {};
-  const record = (stage, status, detail = {}) => { stages.push({ stage, status, observedAt: new Date().toISOString(), ...detail }); };
+  const record = (stage, status, detail = {}) => { stages.push({ ...detail, stage, status, observedAt: new Date().toISOString() }); };
   let stage = "installation_preflight";
   let boundary = null;
   let failure = null;
@@ -2323,7 +2428,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     const http = createClient(origin, { caFile, mode });
     const session = await cloudIdentityLogin(http, origin, readbacks.installation.qualificationEmail,
       String(values.OPL_QUALIFICATION_USER_PASSWORD || ""), `local-v2-login:${options.sourceSha}`);
-    const auth = { cookie: session.cookie, ownerCsrf: session.ownerCsrf, csrf: "" };
+    let auth = { cookie: session.cookie, ownerCsrf: session.ownerCsrf, csrf: "" };
     readbacks.cloudIdentity = { actorId: session.session.actorId, displayName: session.session.displayName, tenantId: session.session.tenantId, expiresAt: session.session.expiresAt };
     record("cloud_identity", "confirmed", { actorId: session.session.actorId });
     stage = "tenant";
@@ -2457,6 +2562,10 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       body: { purpose: "deploy", computePlanId, storagePlanId, periodMonths: 1, applicationSelection: { kind: "opl_app", runtimeVersionId } }
     }, auth, [200, 201])).payload;
     if (!quote?.id) throw namedQualificationError("local_v2_quote_invalid", "the Workspace owner returned no quote identity");
+    if (quote.purpose !== "deploy" || quote.runtimeVersionId !== runtimeVersionId ||
+        quote.computePlanId !== computePlanId || quote.storagePlanId !== storagePlanId || quote.periodMonths !== 1) {
+      throw namedQualificationError("local_v2_quote_invalid", "the quote does not identify the declared application, plans and period");
+    }
     const totalUSDMicros = String(quote.totalUSDMicros ?? "");
     if (provider !== "local-docker" || billingMode !== "LOCAL_NO_CHARGE" || totalUSDMicros !== "0") {
       throw namedQualificationError("local_v2_non_local_no_charge_quote", "the Workspace quote is not local-docker LOCAL_NO_CHARGE at zero total");
@@ -2464,24 +2573,73 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     readbacks.quote = { id: quote.id, provider, billingMode, totalUSDMicros, status: String(quote.status || ""), purpose: quote.purpose, runtimeVersionId: quote.runtimeVersionId };
     record("quote", "confirmed", { quoteId: quote.id, totalUSDMicros: readbacks.quote.totalUSDMicros });
     stage = "order";
+    const orderKey = `local-v2-order:${options.sourceSha}:${workspaceName}`;
+    const orderBody = { name: workspaceName, quoteId: quote.id, renewalMode: "manual" };
     const order = (await http.json(binding.endpoints.workspaces, {
-      method: "POST", headers: { "idempotency-key": `local-v2-order:${options.sourceSha}:${workspaceName}` },
-      body: { name: workspaceName, quoteId: quote.id, renewalMode: "manual" }
+      method: "POST", headers: { "idempotency-key": orderKey }, body: orderBody
     }, auth, [202])).payload;
     const operationId = String(order?.operationId || "");
     const workspaceId = String(order?.resourceId || "");
     if (!operationId || !workspaceId) throw namedQualificationError("local_v2_order_identity_missing", "the Workspace owner returned no operation identity");
+    validateLocalV2Replay(order, operationId, workspaceId);
+    const workspaceSQL = `'${workspaceId.replace(/'/g, "''")}'`;
     readbacks.order = { operationId, workspaceId };
     record("order", "accepted", { operationId, workspaceId });
     stage = "workspace_operation";
     let operation = null;
-    for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
-      operation = (await http.json(`${binding.endpoints.operations}/${encodeURIComponent(operationId)}`, {}, auth)).payload;
+    let unchanged = 0;
+    let previousState = "";
+    let polls = 0;
+    let replays = 0;
+    let activationReached = null;
+    const now = dependencies.now || Date.now;
+    const pollDeadline = now() + Math.max(1000, pollAttempts * pollIntervalMs);
+    const pollRequest = (path, init = {}, statuses = [200]) => {
+      const remaining = pollDeadline - now();
+      if (remaining <= 0) throw namedQualificationError("local_v2_operation_poll_budget_exhausted", "the Workspace operation polling deadline expired");
+      return http.json(path, { ...init, signal: AbortSignal.timeout(remaining) }, auth, statuses).catch((error) => {
+        if (now() >= pollDeadline) throw namedQualificationError("local_v2_operation_poll_budget_exhausted", "the Workspace operation polling deadline expired");
+        throw error;
+      });
+    };
+    while (polls < pollAttempts && now() < pollDeadline) {
+      operation = (await pollRequest(`${binding.endpoints.operations}/${encodeURIComponent(operationId)}`)).payload;
+      polls += 1;
+      if (now() >= pollDeadline) break;
+      // The activation boundary is the state this installation declares for a
+      // Local no-charge order, so it is read as soon as the owner reaches it
+      // instead of being waited out as a stall.
+      if (String(operation?.status || "") === "awaiting_confirmation" && String(operation?.stage || "") === LOCAL_V2_ACTIVATION_STAGE) {
+        activationReached = operation;
+        break;
+      }
       if (LOCAL_V2_TERMINAL_OPERATION.has(String(operation?.status || ""))) break;
-      await wait(pollIntervalMs);
+      const state = `${String(operation?.status || "")}:${String(operation?.stage || "")}`;
+      unchanged = state === previousState ? unchanged + 1 : 0;
+      previousState = state;
+      if (unchanged >= LOCAL_V2_STALLED_POLLS) {
+        const parked = String(operation?.status || "") === "awaiting_confirmation" && String(operation?.stage || "") !== "activation";
+        if (!parked || replays >= recoveryReplays || polls >= pollAttempts) break;
+        const replay = (await pollRequest(binding.endpoints.workspaces, {
+          method: "POST", headers: { "idempotency-key": orderKey }, body: orderBody
+        }, [202])).payload;
+        validateLocalV2Replay(replay, operationId, workspaceId);
+        replays += 1;
+        unchanged = 0;
+        previousState = "";
+      }
+      await wait(Math.min(pollIntervalMs, Math.max(0, pollDeadline - now())));
     }
-    readbacks.operation = { status: String(operation?.status || ""), stage: String(operation?.stage || ""), errorCode: String(operation?.errorCode || "") };
-    record("workspace_operation", readbacks.operation.status === "succeeded" ? "confirmed" : "stopped", readbacks.operation);
+    if (activationReached) operation = activationReached;
+    const activationBoundary = String(operation?.status || "") === "awaiting_confirmation" && String(operation?.stage || "") === LOCAL_V2_ACTIVATION_STAGE;
+    const launchCandidate = (String(operation?.status || "") === "succeeded" || activationBoundary) &&
+      String(operation?.observationResult || "") === "confirmed";
+    readbacks.operation = {
+      status: String(operation?.status || ""), stage: String(operation?.stage || ""),
+      observationResult: String(operation?.observationResult || ""), errorCode: String(operation?.errorCode || ""),
+      activationBoundary, recoveryReplays: replays, polls
+    };
+    record("workspace_operation", launchCandidate ? "confirmed" : "stopped", readbacks.operation);
     stage = "workspace_readback";
     const workspaceRead = await http.request(`${binding.endpoints.workspaces}/${encodeURIComponent(workspaceId)}`, {}, auth);
     const workspace = workspaceRead.payload || {};
@@ -2493,14 +2651,21 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     const transactions = await http.request(`${binding.endpoints.workspaces}/${encodeURIComponent(workspaceId)}/transactions?limit=100`, {}, auth);
     readbacks.transactions = { status: transactions.response.status, items: Array.isArray(transactions.payload?.items) ? transactions.payload.items.length : 0 };
     if (typeof query === "function") {
-      readbacks.ledger = { receipts: Number(await query("opl_ledger", "select count(*) from public.evidence_receipts")) };
+      readbacks.ledger = { receipts: Number(await query("opl_ledger", `select count(*) from public.evidence_receipts where workspace_id=${workspaceSQL}`)) };
       readbacks.fabric = {
         resourceSets: Number(await query("opl_fabric", "select count(*) from fabric.resource_sets")),
         operations: Number(await query("opl_fabric", "select count(*) from fabric.operations"))
       };
     }
     record("owner_readback", "confirmed", { workspaceStatus: readbacks.workspace.status, transactions: readbacks.transactions.items });
-    if (operation?.status !== "succeeded") {
+    // The activation state is the park this installation declares, so reaching it
+    // is a stop the run can read, not poll budget that ran out.
+    const operationStopped = LOCAL_V2_TERMINAL_OPERATION.has(String(operation?.status || "")) ||
+      activationBoundary || unchanged >= LOCAL_V2_STALLED_POLLS;
+    if (now() >= pollDeadline || !operationStopped) {
+      boundary = { code: "local_v2_operation_poll_budget_exhausted", detail: `the Workspace operation remained non-terminal after ${polls} polls`, stage: "workspace_operation" };
+      stage = "workspace_operation";
+    } else if (!launchCandidate) {
       boundary = localV2Boundary(operation, workspace);
       stage = "workspace_operation";
       const provider = await localV2ProviderBoundary(compose, composePrefix, startedAt, query);
@@ -2508,26 +2673,166 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
         boundary = { ...boundary, workspaceCode: boundary.code, code: provider.code, detail: provider.detail, providerLog: provider.line };
       }
     } else {
-      const entryBoundary = localV2ApplicationEntryBoundary(readbacks.workspace.accessUrl, origin);
+      const entryBoundary = localV2LaunchReadbackBoundary(workspace, workspaceId, origin);
       if (!entryBoundary.ok) {
         boundary = entryBoundary;
         stage = "application_entry";
+      } else {
+        stage = "application_entry";
+        try {
+          const fetchEntry = dependencies.fetchEntry || (async (url) => {
+            const response = await caRequest(url, { method: "GET" }, new Headers(), undefined, readFileSync(caFile));
+            return { response, text: await response.text() };
+          });
+          const opened = await fetchEntry(workspace.accessUrl);
+          readbacks.applicationEntry = { url: workspace.accessUrl, status: opened.response.status };
+          if (opened.response.status !== 200) throw new Error(`the declared application entry returned HTTP ${opened.response.status}`);
+          record("application_entry", "confirmed", readbacks.applicationEntry);
+        } catch (error) {
+          boundary = { code: "local_v2_application_entry_unreachable", detail: String(error?.message || error), stage };
+        }
       }
     }
-    if (!boundary) {
+    // DELETE is authorized only after the Workspace and Serve readiness and the
+    // declared-origin entry boundary are confirmed. A missing, mismatched or
+    // unreachable entry keeps the boundary and leaves the Workspace intact.
+    if (launchCandidate && !boundary) {
+      // A restart is the other half of recovery: a lost response is replayed against
+      // a live owner, and a restarted installation must answer the same identities.
+      // The same owner set the live chain restarts is restarted here, and every
+      // readback is compared with the snapshot taken before it stopped.
+      const beforeRestart = {
+        // The operation's status advances while its owner keeps working, so the
+        // identity that must survive a restart is the one the owner minted.
+        operation: {
+          operationId: String(operation?.operationId || ""), owner: String(operation?.owner || ""),
+          kind: String(operation?.kind || ""), resourceId: String(operation?.resourceId || ""),
+        },
+        workspace: { ...readbacks.workspace },
+        receipts: Number(readbacks.ledger?.receipts || 0),
+      };
+      const restartStarted = Date.now();
+      // This caller's compose wrapper takes the raw docker arguments and the
+      // project prefix travels as its own argument list.
+      const composeProject = (args, settings = {}) => compose([...composePrefix, ...args], settings);
+      await composeProject(["restart", "workspace", "console-bff", "tenant", "serve", "fabric", "ledger"], { capture: false });
+      await waitForCompose(composeProject);
+      // The session belonged to the process that stopped, so the run signs in
+      // again on the same declared customer before it reads anything back. The
+      // owner route answers only the CloudIdentity session the BFF issues.
+      const restartedSession = await cloudIdentityLogin(http, origin, readbacks.installation.qualificationEmail,
+        String(values.OPL_QUALIFICATION_USER_PASSWORD || ""), `local-v2-restart:${options.sourceSha}:${workspaceName}`);
+      const restartedAuth = { cookie: restartedSession.cookie, ownerCsrf: restartedSession.ownerCsrf, csrf: "" };
+      const afterRestartWorkspace = await http.json(`${binding.endpoints.workspaces}/${encodeURIComponent(workspaceId)}`, {}, restartedAuth);
+      const afterRestartOperation = await http.json(`${binding.endpoints.operations}/${encodeURIComponent(operationId)}`, {}, restartedAuth);
+      const afterRestartWorkspaceView = {
+        id: String(afterRestartWorkspace.payload?.id || ""),
+        status: String(afterRestartWorkspace.payload?.status || ""),
+        applicationAvailability: String(afterRestartWorkspace.payload?.applicationAvailability || ""),
+        runtimeVersionId: String(afterRestartWorkspace.payload?.runtimeVersionId || ""),
+      };
+      const afterRestartReceipts = typeof query === "function"
+        ? Number(await query("opl_ledger", `select count(*) from public.evidence_receipts where workspace_id=${workspaceSQL}`))
+        : beforeRestart.receipts;
+      readbacks.restart = {
+        performed: true,
+        seconds: Math.round((Date.now() - restartStarted) / 1000),
+        operationStable: String(afterRestartOperation.payload?.operationId || "") === beforeRestart.operation.operationId &&
+          String(afterRestartOperation.payload?.owner || "") === beforeRestart.operation.owner &&
+          String(afterRestartOperation.payload?.kind || "") === beforeRestart.operation.kind &&
+          String(afterRestartOperation.payload?.resourceId || "") === beforeRestart.operation.resourceId,
+        workspaceStable: afterRestartWorkspaceView.id === beforeRestart.workspace.id &&
+          afterRestartWorkspaceView.status === beforeRestart.workspace.status &&
+          afterRestartWorkspaceView.runtimeVersionId === beforeRestart.workspace.runtimeVersionId,
+        runtimeStable: afterRestartWorkspaceView.applicationAvailability === beforeRestart.workspace.applicationAvailability,
+        receiptStable: afterRestartReceipts === beforeRestart.receipts,
+        sessionReestablished: String(restartedAuth.cookie || "").includes("opl_console_session="),
+      };
+      auth = restartedAuth;
+      const restartStable = readbacks.restart.sessionReestablished && readbacks.restart.operationStable &&
+        readbacks.restart.workspaceStable && readbacks.restart.runtimeStable && readbacks.restart.receiptStable;
+      record("restart_continuity", restartStable ? "confirmed" : "stopped", readbacks.restart);
+      if (!restartStable) {
+        throw namedQualificationError("local_v2_restart_continuity_lost",
+          "the installation answered different identities after its restart");
+      }
+      const launchBoundary = boundary;
       stage = "workspace_delete";
       const deletion = await deleteWorkspaceOnOwnerRoute(http, auth, {
         workspaceId, confirmationName: workspaceName,
         idempotencyKey: `local-v2-delete:${options.sourceSha}:${workspaceName}`, wait
       });
       readbacks.deletion = { operationId: String(deletion?.operationId || ""), status: String(deletion?.status || "") };
-      const absent = await http.request(`${binding.endpoints.workspaces}/${encodeURIComponent(workspaceId)}`, {}, auth);
-      readbacks.deletion.workspaceAbsent = absent.response.status === 404;
-      readbacks.deletion.refund = (await http.request(`${binding.endpoints.workspaces}/${encodeURIComponent(workspaceId)}/transactions?limit=100`, {}, auth)).response.status;
-      record("workspace_delete", readbacks.deletion.workspaceAbsent ? "confirmed" : "stopped", readbacks.deletion);
-      if (!readbacks.deletion.workspaceAbsent) {
-        boundary = { code: "local_v2_workspace_absence_unconfirmed", detail: "the Workspace owner still serves the deleted Workspace", stage };
+      // The owner answers the deleted Workspace with the tombstone it keeps for
+      // financial obligations, so absence is the owner's own deleted state plus
+      // the owners' receipts, never a 404 or an empty list.
+      const tombstone = await http.request(`${binding.endpoints.workspaces}/${encodeURIComponent(workspaceId)}`, {}, auth);
+      readbacks.deletion.workspaceStatus = String(tombstone.payload?.status || "");
+      readbacks.deletion.workspaceAbsent = tombstone.payload?.status === "deleted";
+      readbacks.deletion.routeAbsent = !String(tombstone.payload?.accessUrl || "").trim();
+      // The owner's own deletion readback is recorded before it is judged, so a
+      // refused readback still shows the owner's answer in the receipt.
+      const ownerDeletion = (await http.json(
+        `/api/v2/workspaces/${encodeURIComponent(workspaceId)}/deletion`, {}, auth,
+      )).payload;
+      readbacks.deletion.owner = ownerDeletion;
+      const deletionEvidence = await readWorkspaceDeletionEvidence(http, auth, {
+        workspaceId, operationId: readbacks.deletion.operationId,
+        localNoCharge: String(readbacks.quote?.billingMode || readbacks.catalog?.billingMode || "") === "LOCAL_NO_CHARGE",
+      });
+      readbacks.deletion.resourceAbsent = deletionEvidence.resourceDeletionStatus === "confirmed";
+      readbacks.deletion.dataAbsent = deletionEvidence.dataDeletionStatus === "confirmed";
+      readbacks.deletion.refundStatus = String(deletionEvidence.refundStatus || "");
+      readbacks.deletion.refundEvidence = String(deletionEvidence.refundStatus || "") === "not_applicable"
+        ? "local_no_charge: no money moved, so no refund is owed"
+        : "confirmed refund bound to its own operation";
+      readbacks.deletion.refundOperationId = String(deletionEvidence.refundOperationId || "");
+      readbacks.deletion.receiptId = String(deletionEvidence.deletionReceipt?.id || "");
+      if (typeof query === "function") {
+        readbacks.deletion.runtimeAbsent = Number(await query("opl_serve",
+          `select count(*) from serve.agent_runtime_instances where workspace_id=${workspaceSQL} and status <> 'terminated'`)) === 0;
+        readbacks.deletion.liveResources = Number(await query("opl_fabric",
+          `select count(*) from fabric.resources r join fabric.resource_sets s on s.id=r.resource_set_id where s.workspace_id=${workspaceSQL} and r.deleted_at is null`));
+        readbacks.deletion.ledgerReceipts = Number(await query("opl_ledger",
+          `select count(*) from public.evidence_receipts where workspace_id=${workspaceSQL}`));
       }
+      // The same command is replayed after it succeeded. The owner keys the
+      // deletion by the idempotency key this caller chose, so a second send must
+      // reach the same operation and produce no second effect: no new Ledger
+      // receipt and no revived provider resource.
+      const replay = await http.json(
+        `/api/v2/workspaces/${encodeURIComponent(workspaceId)}`,
+        { method: "DELETE", headers: { "idempotency-key": `local-v2-delete:${options.sourceSha}:${workspaceName}` },
+          body: { confirmationName: workspaceName, acknowledgeDataDestruction: true } },
+        auth, [200, 202, 404, 409],
+      );
+      const replayOperationId = String(replay.payload?.operationId || "");
+      const receiptsAfterReplay = typeof query === "function"
+        ? Number(await query("opl_ledger", `select count(*) from public.evidence_receipts where workspace_id=${workspaceSQL}`))
+        : readbacks.deletion.ledgerReceipts;
+      const resourcesAfterReplay = typeof query === "function"
+        ? Number(await query("opl_fabric",
+          `select count(*) from fabric.resources r join fabric.resource_sets s on s.id=r.resource_set_id where s.workspace_id=${workspaceSQL} and r.deleted_at is null`))
+        : readbacks.deletion.liveResources;
+      readbacks.deletion.retry = {
+        status: replay.response.status,
+        operationIdStable: replayOperationId === readbacks.deletion.operationId,
+        ledgerReceiptsUnchanged: receiptsAfterReplay === readbacks.deletion.ledgerReceipts,
+        liveResources: resourcesAfterReplay,
+      };
+      const retryClean = readbacks.deletion.retry.operationIdStable && readbacks.deletion.retry.ledgerReceiptsUnchanged &&
+        readbacks.deletion.retry.liveResources === 0;
+      // readWorkspaceDeletionEvidence has already bound the refund or its
+      // no-charge not-applicable outcome to this exact deletion.
+      const deleted = retryClean && readbacks.deletion.workspaceAbsent === true && readbacks.deletion.routeAbsent === true &&
+        readbacks.deletion.runtimeAbsent === true && readbacks.deletion.resourceAbsent === true && readbacks.deletion.dataAbsent === true;
+      record("workspace_delete", deleted ? "confirmed" : "stopped", readbacks.deletion);
+      if (!deleted) {
+        boundary = launchBoundary || { code: "local_v2_workspace_absence_unconfirmed", detail: "an owner still retains the deleted Workspace", stage };
+      } else {
+        boundary = launchBoundary;
+      }
+      if (boundary?.stage) stage = boundary.stage;
     }
   } catch (error) {
     failure = error;

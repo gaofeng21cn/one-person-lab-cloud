@@ -854,3 +854,56 @@ func TestServeCredentialOwnerLifecycle(t *testing.T) {
 		}
 	})
 }
+
+// TestFabricApplicationBridgeScopesLifecycleToTheRuntime proves the migration
+// boundary names the object it acts on: the create and readback sign the Workspace
+// whose runtime is being materialised, while the lifecycle and credential calls
+// sign the runtime instance itself, which is the resource Fabric authorises for
+// those routes.
+func TestFabricApplicationBridgeScopesLifecycleToTheRuntime(t *testing.T) {
+	const token, key = "serve-execution-test-token-scope-0001", "serve-execution-signature-scope-000002"
+	for _, test := range []struct {
+		name, action, wantResource string
+		call                       func(*fabricApplicationBridge, contracts.WorkspaceApplicationRuntimeInput) error
+	}{
+		{"lifecycle", "set_workspace_application_runtime_lifecycle", "", func(b *fabricApplicationBridge, input contracts.WorkspaceApplicationRuntimeInput) error {
+			_, err := b.SetWorkspaceApplicationRuntimeLifecycle(context.Background(), input, "absent")
+			return err
+		}},
+		{"lifecycle-readback", "read_workspace_application_runtime_lifecycle", "", func(b *fabricApplicationBridge, input contracts.WorkspaceApplicationRuntimeInput) error {
+			_, err := b.ReadWorkspaceApplicationRuntimeLifecycle(context.Background(), input)
+			return err
+		}},
+		{"credentials", "read_workspace_application_runtime_credentials", "", func(b *fabricApplicationBridge, input contracts.WorkspaceApplicationRuntimeInput) error {
+			_, err := b.ReadWorkspaceApplicationRuntimeCredentials(context.Background(), input)
+			return err
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			input := contracts.WorkspaceApplicationRuntimeInput{AccountID: "account", WorkspaceID: "workspace_scope", RuntimeOperationID: "rti_scope"}
+			var claims map[string]any
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				parts := strings.Split(r.Header.Get("X-OPL-Fabric-Capability"), ".")
+				if len(parts) != 2 {
+					t.Fatal("missing scoped capability")
+				}
+				decoded, err := base64.RawURLEncoding.DecodeString(parts[0])
+				if err != nil || json.Unmarshal(decoded, &claims) != nil {
+					t.Fatal("capability claims are not decodable")
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{})
+			}))
+			defer server.Close()
+			bridge := &fabricApplicationBridge{BaseURL: server.URL, Token: token, CapabilityKey: key, Client: server.Client()}
+			if err := test.call(bridge, input); err != nil {
+				t.Fatal(err)
+			}
+			if claims["action"] != test.action {
+				t.Fatalf("action=%v want %s", claims["action"], test.action)
+			}
+			if claims["resourceId"] != contracts.WorkspaceApplicationRuntimeID(input.RuntimeOperationID) || claims["workspaceId"] != "workspace_scope" {
+				t.Fatalf("the lifecycle capability must name the runtime it acts on: %v", claims)
+			}
+		})
+	}
+}

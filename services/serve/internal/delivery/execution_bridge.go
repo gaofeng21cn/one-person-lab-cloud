@@ -45,7 +45,7 @@ func (b *fabricApplicationBridge) Configured() error {
 
 func (b *fabricApplicationBridge) EnsureWorkspaceApplicationRuntime(ctx context.Context, input contracts.WorkspaceApplicationRuntimeInput, _ tkeapply.Placement) (contracts.WorkspaceApplicationRuntimeObservation, error) {
 	var observation contracts.WorkspaceApplicationRuntimeObservation
-	response, err := b.post(ctx, "/fabric/workspace-application-runtimes", "create_workspace_application_runtime", input, input.RuntimeOperationID, input.AccountID, input.WorkspaceID)
+	response, err := b.post(ctx, "/fabric/workspace-application-runtimes", "create_workspace_application_runtime", input, input.RuntimeOperationID, input.AccountID, input.WorkspaceID, input.WorkspaceID)
 	if err != nil {
 		return observation, err
 	}
@@ -68,7 +68,7 @@ func (b *fabricApplicationBridge) ApplyModelConfiguration(context.Context, contr
 
 func (b *fabricApplicationBridge) ReadWorkspaceApplicationRuntime(ctx context.Context, input contracts.WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
 	var observation contracts.WorkspaceApplicationRuntimeObservation
-	response, err := b.post(ctx, "/fabric/workspace-application-runtimes/"+url.PathEscape(input.WorkspaceID)+"/readback", "read_workspace_application_runtime", input, input.RuntimeOperationID, input.AccountID, input.WorkspaceID)
+	response, err := b.post(ctx, "/fabric/workspace-application-runtimes/"+url.PathEscape(input.WorkspaceID)+"/readback", "read_workspace_application_runtime", input, input.RuntimeOperationID, input.AccountID, input.WorkspaceID, input.WorkspaceID)
 	if err != nil {
 		return observation, err
 	}
@@ -89,7 +89,7 @@ func (b *fabricApplicationBridge) ReadWorkspaceApplicationRuntimeLifecycle(ctx c
 
 func (b *fabricApplicationBridge) ReadWorkspaceApplicationRuntimeCredentials(ctx context.Context, input contracts.WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeCredentials, error) {
 	var credentials contracts.WorkspaceApplicationRuntimeCredentials
-	response, err := b.post(ctx, "/fabric/workspace-application-runtimes/"+url.PathEscape(input.WorkspaceID)+"/credentials", "read_workspace_application_runtime_credentials", lifecycleWire(input, "running"), input.RuntimeOperationID, input.AccountID, input.WorkspaceID)
+	response, err := b.post(ctx, "/fabric/workspace-application-runtimes/"+url.PathEscape(input.WorkspaceID)+"/credentials", "read_workspace_application_runtime_credentials", lifecycleWire(input, "running"), input.RuntimeOperationID, input.AccountID, input.WorkspaceID, contracts.WorkspaceApplicationRuntimeID(input.RuntimeOperationID))
 	if err != nil {
 		return credentials, err
 	}
@@ -102,7 +102,7 @@ func (b *fabricApplicationBridge) ReadWorkspaceApplicationRuntimeCredentials(ctx
 
 func (b *fabricApplicationBridge) lifecycle(ctx context.Context, input contracts.WorkspaceApplicationRuntimeInput, desired, endpoint, action string) (contracts.WorkspaceApplicationRuntimeLifecycleResult, error) {
 	var result contracts.WorkspaceApplicationRuntimeLifecycleResult
-	response, err := b.post(ctx, "/fabric/workspace-application-runtimes/"+url.PathEscape(input.WorkspaceID)+"/"+endpoint, action, lifecycleWire(input, desired), input.RuntimeOperationID, input.AccountID, input.WorkspaceID)
+	response, err := b.post(ctx, "/fabric/workspace-application-runtimes/"+url.PathEscape(input.WorkspaceID)+"/"+endpoint, action, lifecycleWire(input, desired), input.RuntimeOperationID, input.AccountID, input.WorkspaceID, contracts.WorkspaceApplicationRuntimeID(input.RuntimeOperationID))
 	if err != nil {
 		return result, err
 	}
@@ -127,7 +127,7 @@ func lifecycleWire(input contracts.WorkspaceApplicationRuntimeInput, desired str
 // post signs and sends one Fabric capability request for the exact typed input. The
 // account and workspace scope the capability to the exact Workspace, so the bridge
 // cannot address another owner's runtime.
-func (b *fabricApplicationBridge) post(ctx context.Context, path, action string, payload any, operationID, accountID, workspaceID string) (*http.Response, error) {
+func (b *fabricApplicationBridge) post(ctx context.Context, path, action string, payload any, operationID, accountID, workspaceID, resourceID string) (*http.Response, error) {
 	if err := b.Configured(); err != nil {
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func (b *fabricApplicationBridge) post(ctx context.Context, path, action string,
 		OperationID  string `json:"operationId"`
 		ExpiresAt    int64  `json:"expiresAt"`
 		BodySHA256   string `json:"bodySha256"`
-	}{1, "serve", accountID, workspaceID, "workspace_application_runtime", workspaceID, action, operationID, time.Now().Add(time.Minute).Unix(), hex.EncodeToString(sum[:])}
+	}{1, "serve", accountID, workspaceID, "workspace_application_runtime", resourceID, action, operationID, time.Now().Add(time.Minute).Unix(), hex.EncodeToString(sum[:])}
 	payloadBytes, _ := json.Marshal(claims)
 	encoded := base64.RawURLEncoding.EncodeToString(payloadBytes)
 	mac := hmac.New(sha256.New, []byte(b.CapabilityKey))
@@ -172,7 +172,10 @@ func (b *fabricApplicationBridge) post(ctx context.Context, path, action string,
 // decode failure is an error here.
 func decodeBridgeResponse(response *http.Response, target any) error {
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return status.Errorf(codes.Unavailable, "Agent execution boundary returned HTTP %d", response.StatusCode)
+		// Fabric answers a refusal with its own bounded error object, so the cause
+		// travels with the status instead of leaving the operator with a bare code.
+		excerpt, _ := io.ReadAll(io.LimitReader(response.Body, 512))
+		return status.Errorf(codes.Unavailable, "Agent execution boundary returned HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(excerpt)))
 	}
 	if json.NewDecoder(io.LimitReader(response.Body, 2<<20)).Decode(target) != nil {
 		return status.Error(codes.FailedPrecondition, "Agent execution boundary readback is not decodable")

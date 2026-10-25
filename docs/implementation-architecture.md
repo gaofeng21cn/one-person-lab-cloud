@@ -1194,7 +1194,15 @@ silently replace it.
 
 The v2 path is constrained to the declared local-docker, `LOCAL_NO_CHARGE`,
 zero-total flow and must refuse a Tenant or provider binding that the owners do
-not read back. It does not prove Linux project-quota execution, restart and
+not read back. The quote must name the declared RuntimeVersion, compute/storage
+plans, deployment purpose and period. Poll reads, original-command replays and
+waits share one absolute deadline. The activation latch requires confirmed
+Workspace resource/Serve readiness, then the entry's exact protocol, hostname
+and port plus an HTTP 200 under the declared CA before restart or DELETE.
+Deletion uses its original idempotency key, owner tombstone, provider-action
+receipt, separate Serve/Fabric absence and unchanged Workspace-scoped Ledger
+receipts; `not_applicable` refund is valid only for the verified no-charge order.
+These source checks do not prove Linux project-quota execution, restart and
 recovery, provider absence after deletion, Ledger receipt completeness, or the
 exact original-charge fixture refund. Instance's current protected consumer
 also still passes `--package-id`; it must adopt the producer's
