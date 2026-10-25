@@ -62,6 +62,51 @@ source qualification profile. The target is not complete until a user can open
 the confirmed application route and the exact bytes, owner facts and receipts
 can be read back.
 
+## Current Delivery Lane: First TKE Default App Launch (2026-10-25)
+
+The current executable delivery lane is the first Default App launch through
+the managed Tencent/TKE Instance. Native v2 qualification and its protected
+consumer migration are carried by
+[#1042](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1042).
+This lane has one terminal gate: an exact Cloud Candidate is installed by the
+Instance owner, the application route is ready and usable, and the same bytes,
+owner facts, Gateway/runtime readback and recovery receipts are available at
+their authoritative layers.
+
+The work order is deliberately narrow:
+
+1. Finish the current source seam in
+   [PR #1068](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1068),
+   which reads the Local-Docker activation boundary and replays the original
+   no-charge order without turning a diagnostic local result into paid or
+   production acceptance.
+2. Record the resulting local qualification as source/fixture evidence under
+   #1042. A local result remains diagnostic until the exact Candidate and its
+   owner inputs are fixed.
+3. Hand the exact Candidate, topology and required non-secret inputs to the
+   protected Instance workflow. The Instance must return deployment, health,
+   route, image and rollback readback; Cloud must retain the separate Gateway,
+   runtime and business qualification boundaries.
+4. Qualify the Default App on TKE, including restart/response-loss recovery,
+   route access and runtime readback. Only then decide whether the Custom Agent
+   combination is the next product slice.
+
+[#1018](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1018)
+remains a separate historical-order closeout objective. Its original resource,
+route, Key, Ledger and charge obligations must not be used as a shortcut for
+the first-launch gate. Evidence housekeeping in
+[#1058](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1058),
+including its archival policy and bounded receipt moves, may finish as a
+maintenance lane but does not advance this product gate. The modularity,
+test-retirement and generated-output proposals in #1053, #1054 and #1057 are
+not prerequisites for this launch and must not expand the current delivery
+write set without a demonstrated blocker.
+
+Until this gate closes, new feature, architecture and cleanup proposals are
+secondary work. A merged source slice updates the lane only after its current
+status, remaining acceptance and next consumer are recorded here and in
+[status.md](status.md).
+
 ## Custom Agent Local Delivery (2026-10-21)
 
 [PR #1003](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1003)
