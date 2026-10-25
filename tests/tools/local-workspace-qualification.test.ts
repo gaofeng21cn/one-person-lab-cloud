@@ -8,6 +8,7 @@ import test from "node:test";
 
 import {
   continueWorkspaceDelete,
+  openLocalV2ApplicationEntry,
   assertLocalV2ComposeEnvironment,
   assertWorkspaceQualificationTopology,
   deleteWorkspaceOnOwnerRoute,
@@ -2121,4 +2122,39 @@ test("the local-v2 origin and CA come only from the declared installation", () =
   assert.equal(localV2QualificationCA({ OPL_LOCAL_V2_PKI_DIR: "/tmp/pki" }), "/tmp/pki/ca.crt");
   assert.throws(() => localV2QualificationCA({ OPL_LOCAL_V2_PKI_DIR: "relative/pki" }), { code: "local_v2_pki_dir_invalid" });
   assert.throws(() => localV2QualificationCA({}), { code: "local_v2_pki_dir_invalid" });
+});
+
+test("local-v2 opens the declared entry instead of trusting the URL", async () => {
+  const origin = "https://localhost";
+  const entry = "https://localhost/w/workspace_test/";
+  const answers = (status) => ({
+    request: async (path) => {
+      assert.equal(path, "/w/workspace_test/");
+      return { response: { status }, text: "body" };
+    }
+  });
+  const open = await openLocalV2ApplicationEntry(answers(200), entry, origin);
+  assert.equal(open.ok, true);
+  assert.equal(open.evidence.status, 200);
+
+  const failing = await openLocalV2ApplicationEntry(answers(502), entry, origin);
+  assert.equal(failing.ok, false);
+  assert.equal(failing.code, "local_v2_application_entry_unreachable");
+  assert.equal(failing.evidence.status, 502);
+
+  const refused = await openLocalV2ApplicationEntry(answers(403), entry, origin);
+  assert.equal(refused.ok, false);
+  assert.equal(refused.code, "local_v2_application_entry_unauthorized");
+
+  const transport = await openLocalV2ApplicationEntry({
+    request: async () => { throw new Error("ECONNREFUSED"); }
+  }, entry, origin);
+  assert.equal(transport.ok, false);
+  assert.equal(transport.code, "local_v2_application_entry_unreachable");
+
+  // A provider URL on another origin is never opened: the entry a customer is
+  // sent to must be the origin the installation declares.
+  const elsewhere = await openLocalV2ApplicationEntry(answers(200), "http://127.0.0.1:32815/", origin);
+  assert.equal(elsewhere.ok, false);
+  assert.equal(elsewhere.code, "local_v2_application_entry_origin_mismatch");
 });

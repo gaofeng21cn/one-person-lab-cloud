@@ -34,6 +34,13 @@ func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args .
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	switch args[0] {
+	case "network":
+		// The host's default-bridge address: reachable from every container on
+		// the host and from nothing else.
+		if len(args) > 1 && args[1] == "inspect" {
+			return []byte("172.17.0.1"), nil
+		}
+		return nil, fmt.Errorf("unexpected network command: %v", args)
 	case "container":
 		switch args[1] {
 		case "start", "stop", "rm":
@@ -173,7 +180,7 @@ func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args .
 				mounts = append(mounts, mount)
 			case "-p":
 				if parts := strings.Split(args[index+1], "::"); len(parts) == 2 {
-					published[strings.TrimSuffix(parts[1], "/tcp")+"/tcp"] = []map[string]any{{"HostIP": "127.0.0.1", "HostPort": "31080"}}
+					published[strings.TrimSuffix(parts[1], "/tcp")+"/tcp"] = []map[string]any{{"HostIP": parts[0], "HostPort": "31080"}}
 				}
 			}
 			index++
@@ -463,6 +470,33 @@ func TestLocalDockerApplicationRuntimePublishesDeclaredPortsAndEntryURL(t *testi
 	}
 	if localEntryURL(observation) == "" || !strings.HasPrefix(localEntryURL(observation), "http://127.0.0.1:") {
 		t.Fatalf("entry URL=%q, want the published host port", localEntryURL(observation))
+	}
+}
+
+// TestLocalDockerApplicationRuntimeReportsTheDeclaredEntryAddress proves a provider
+// that is told where the installation's access plane reaches a published entry
+// reports that address and port instead of its own loopback URL, and publishes the
+// port on the host's default-bridge address the name resolves to.
+func TestLocalDockerApplicationRuntimeReportsTheDeclaredEntryAddress(t *testing.T) {
+	revision := applicationRevisionForTest()
+	provider, runner, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
+	provider.applicationEntryHost = "opl-host"
+	input := applicationRuntimeInput("app-runtime-entry-host", revision)
+
+	observation, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, ComputeAllocation{
+		ID: "compute-alpha", AccountID: "acct-alpha", WorkspaceID: "workspace-alpha", Status: "running",
+	}, StorageVolume{ID: "storage-alpha", AccountID: "acct-alpha", WorkspaceID: "workspace-alpha", SizeGB: 10, Status: "ready"})
+	if err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+	if !strings.Contains(strings.Join(runner.runArgsForComponent("main"), " "), "-p 172.17.0.1::8080") {
+		t.Fatalf("main run args must publish on the host bridge address: %v", runner.runArgsForComponent("main"))
+	}
+	if observation.Entry == nil || observation.Entry.URL != "" || observation.Entry.ServiceName != "opl-host" || observation.Entry.Port != 31080 {
+		t.Fatalf("entry=%+v want the declared access-plane address", observation.Entry)
+	}
+	if err := contracts.ValidateWorkspaceApplicationEntry(*observation.Entry); err != nil {
+		t.Fatalf("entry must be exactly one publication shape: %v", err)
 	}
 }
 

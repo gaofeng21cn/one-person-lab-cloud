@@ -2300,6 +2300,40 @@ function validateLocalV2Replay(operation, operationId, workspaceId) {
   }
 }
 
+// openLocalV2ApplicationEntry opens the entry the owner published at the origin
+// the installation declares and reads the answer. A transport failure or an
+// origin-side 5xx means the installation did not serve the entry; an app-side
+// status is the application answering, which is what "open" means.
+export async function openLocalV2ApplicationEntry(http, entryUrl, publicOrigin) {
+  const entry = new URL(String(entryUrl));
+  const origin = new URL(String(publicOrigin));
+  if (entry.origin !== origin.origin) {
+    return { ok: false, code: "local_v2_application_entry_origin_mismatch", detail: `the entry ${entry.origin} is not the declared origin ${origin.origin}`, evidence: {} };
+  }
+  const path = `${entry.pathname}${entry.search}`;
+  let status = 0;
+  let answered = "";
+  try {
+    const response = await http.request(path, { method: "GET" });
+    status = Number(response.response.status || 0);
+    answered = String(response.text || "").slice(0, 200);
+  } catch (error) {
+    return {
+      ok: false, code: "local_v2_application_entry_unreachable",
+      detail: `the declared entry ${entryUrl} did not answer: ${error?.message || error}`,
+      evidence: { url: entryUrl, answered: false }
+    };
+  }
+  const evidence = { url: entryUrl, status, answered: true, excerpt: answered.slice(0, 80) };
+  if (status >= 500) {
+    return { ok: false, code: "local_v2_application_entry_unreachable", detail: `the declared entry ${entryUrl} answered ${status}`, evidence };
+  }
+  if (status === 401 || status === 403) {
+    return { ok: false, code: "local_v2_application_entry_unauthorized", detail: `the declared entry ${entryUrl} refused the qualification caller with ${status}`, evidence };
+  }
+  return { ok: true, evidence };
+}
+
 function localV2LaunchReadbackBoundary(workspace, workspaceId, origin) {
   if (workspace?.id !== workspaceId) {
     return { ok: false, code: "local_v2_workspace_readback_invalid", detail: "the Workspace owner readback does not identify the accepted Workspace" };
@@ -2654,6 +2688,15 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       if (!entryBoundary.ok) {
         boundary = entryBoundary;
         stage = "application_entry";
+      } else {
+        // The declared entry is only open if the installation actually serves it:
+        // the origin answering with its own error page is not an open entry.
+        const opened = await openLocalV2ApplicationEntry(http, workspace.accessUrl, origin);
+        readbacks.entry = opened.evidence;
+        if (!opened.ok) {
+          boundary = opened;
+          stage = "application_entry";
+        }
       }
     }
     // The entry is a topology fact this installation may not provide yet, and the
