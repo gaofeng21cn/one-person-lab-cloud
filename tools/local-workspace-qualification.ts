@@ -2133,10 +2133,10 @@ export function localV2QualificationCA(values) {
   return join(directory, "ca.crt");
 }
 
-// The Workspace entry the owner publishes carries no port, so it is only
-// reachable when the installation serves that host on 443. A public origin on
-// another port means the entry URL a customer would be sent to is not served,
-// and that is a boundary this run reports instead of calling the application
+// The Workspace entry the owner publishes must be served by the installation's
+// declared origin. A different host, scheme or port means the entry URL a
+// customer would be sent to is not the origin this installation serves, and
+// that is a boundary this run reports instead of calling the application
 // available.
 export function localV2ApplicationEntryBoundary(entryUrl, publicOrigin) {
   const entry = String(entryUrl || "").trim();
@@ -2155,8 +2155,13 @@ export function localV2ApplicationEntryBoundary(entryUrl, publicOrigin) {
   }
   const entryPort = parsed.port || (parsed.protocol === "https:" ? "443" : "80");
   const publicPort = origin.port || (origin.protocol === "https:" ? "443" : "80");
-  // The published entry carries no port, so the only way it is reachable is the
-  // installation serving that host on the port the entry implies.
+  if (parsed.protocol !== origin.protocol || parsed.hostname !== origin.hostname) {
+    return {
+      ok: false,
+      code: "local_v2_application_entry_origin_mismatch",
+      detail: `the entry ${parsed.origin} is not the declared origin ${origin.origin}`
+    };
+  }
   if (entryPort !== publicPort) {
     return {
       ok: false,
@@ -2514,10 +2519,21 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     }, auth, [200, 201])).payload;
     if (!quote?.id) throw namedQualificationError("local_v2_quote_invalid", "the Workspace owner returned no quote identity");
     const totalUSDMicros = String(quote.totalUSDMicros ?? "");
-    if (provider !== "local-docker" || billingMode !== "LOCAL_NO_CHARGE" || totalUSDMicros !== "0") {
-      throw namedQualificationError("local_v2_non_local_no_charge_quote", "the Workspace quote is not local-docker LOCAL_NO_CHARGE at zero total");
+    const quoteStatus = String(quote.status || "");
+    const quoteMatchesDeclaration = quote.purpose === "deploy" &&
+      quote.runtimeVersionId === runtimeVersionId &&
+      quote.computePlanId === computePlanId &&
+      quote.storagePlanId === storagePlanId &&
+      quote.periodMonths === 1 &&
+      ["offered", "accepted"].includes(quoteStatus);
+    if (provider !== "local-docker" || billingMode !== "LOCAL_NO_CHARGE" || totalUSDMicros !== "0" || !quoteMatchesDeclaration) {
+      throw namedQualificationError("local_v2_non_local_no_charge_quote", "the Workspace quote does not bind the declared local-docker LOCAL_NO_CHARGE purchase");
     }
-    readbacks.quote = { id: quote.id, provider, billingMode, totalUSDMicros, status: String(quote.status || ""), purpose: quote.purpose, runtimeVersionId: quote.runtimeVersionId };
+    readbacks.quote = {
+      id: quote.id, provider, billingMode, totalUSDMicros, status: quoteStatus,
+      purpose: quote.purpose, runtimeVersionId: quote.runtimeVersionId,
+      computePlanId: quote.computePlanId, storagePlanId: quote.storagePlanId, periodMonths: quote.periodMonths
+    };
     record("quote", "confirmed", { quoteId: quote.id, totalUSDMicros: readbacks.quote.totalUSDMicros });
     stage = "order";
     const orderKey = `local-v2-order:${options.sourceSha}:${workspaceName}`;
@@ -2601,12 +2617,11 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
         stage = "application_entry";
       }
     }
-    // The entry is a topology fact this installation may not provide yet, and the
-    // deletion, absence, ledger and refund obligations do not depend on it. A run
-    // that reached a confirmed launch therefore proves the cleanup path even when
-    // the entry boundary is the earliest failure, and keeps that boundary.
-    if (launchCandidate) {
-      const launchBoundary = boundary;
+    // Activation only proves the launch reached its readable boundary. DELETE
+    // is authorized only after the Workspace and Serve readiness and the
+    // declared-origin entry boundary are all confirmed. A missing, mismatched or
+    // unreachable entry keeps the boundary and leaves the Workspace intact.
+    if (launchCandidate && !boundary) {
       stage = "workspace_delete";
       const deletion = await deleteWorkspaceOnOwnerRoute(http, auth, {
         workspaceId, confirmationName: workspaceName,
@@ -2618,9 +2633,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       readbacks.deletion.refund = (await http.request(`${binding.endpoints.workspaces}/${encodeURIComponent(workspaceId)}/transactions?limit=100`, {}, auth)).response.status;
       record("workspace_delete", readbacks.deletion.workspaceAbsent ? "confirmed" : "stopped", readbacks.deletion);
       if (!readbacks.deletion.workspaceAbsent) {
-        boundary = launchBoundary || { code: "local_v2_workspace_absence_unconfirmed", detail: "the Workspace owner still serves the deleted Workspace", stage };
-      } else {
-        boundary = launchBoundary;
+        boundary = { code: "local_v2_workspace_absence_unconfirmed", detail: "the Workspace owner still serves the deleted Workspace", stage };
       }
       if (boundary?.stage) stage = boundary.stage;
     }

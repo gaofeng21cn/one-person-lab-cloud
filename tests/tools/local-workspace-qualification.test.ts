@@ -85,6 +85,34 @@ const cloudDigest = `sha256:${"b".repeat(64)}`;
 const workspaceDigest = `sha256:${"c".repeat(64)}`;
 const workspaceReference = `ghcr.io/example/workspace@${workspaceDigest}`;
 
+test("createHTTP preserves a destructive command body and its content length on the wire", async () => {
+  let requestBody = "";
+  let requestHeaders = {};
+  const server = createServer((request, response) => {
+    request.on("data", (chunk) => { requestBody += chunk.toString("utf8"); });
+    request.on("end", () => {
+      requestHeaders = request.headers;
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ ok: true }));
+    });
+  });
+  await new Promise((resolvePromise, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolvePromise); });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  try {
+    const http = createHTTP(`http://127.0.0.1:${address.port}`);
+    await http.json("/api/v2/workspaces/ws-1", {
+      method: "DELETE", headers: { "idempotency-key": "delete-once" },
+      body: { confirmationName: "Alpha", acknowledgeDataDestruction: true }
+    }, null, [200]);
+    assert.equal(requestHeaders["content-type"], "application/json");
+    assert.equal(Number(requestHeaders["content-length"]), Buffer.byteLength(requestBody));
+    assert.deepEqual(JSON.parse(requestBody), { confirmationName: "Alpha", acknowledgeDataDestruction: true });
+  } finally {
+    await new Promise((resolvePromise) => server.close(() => resolvePromise()));
+  }
+});
+
 test("a restart still establishes the declared customer's CloudIdentity session", async () => {
   const http = {
     origin: "https://qualification.invalid",
@@ -1801,8 +1829,14 @@ test("the local-v2 application entry must be served by the declared origin", () 
   });
   const unreachable = localV2ApplicationEntryBoundary("https://ws.localhost/w/ws_1/", "https://localhost:8443");
   assert.equal(unreachable.ok, false);
-  assert.equal(unreachable.code, "local_v2_application_entry_port_unreachable");
-  assert.equal(localV2ApplicationEntryBoundary("https://ws.localhost/w/ws_1/", "https://localhost:443").ok, true);
+  assert.equal(unreachable.code, "local_v2_application_entry_origin_mismatch");
+  const wrongPort = localV2ApplicationEntryBoundary("https://localhost:443/w/ws_1/", "https://localhost:8443");
+  assert.equal(wrongPort.ok, false);
+  assert.equal(wrongPort.code, "local_v2_application_entry_port_unreachable");
+  const wrongScheme = localV2ApplicationEntryBoundary("http://localhost:8443/w/ws_1/", "https://localhost:8443");
+  assert.equal(wrongScheme.ok, false);
+  assert.equal(wrongScheme.code, "local_v2_application_entry_origin_mismatch");
+  assert.equal(localV2ApplicationEntryBoundary("https://localhost:8443/w/ws_1/", "https://localhost:8443").ok, true);
   assert.equal(localV2ApplicationEntryBoundary("not a url", "https://localhost:443").code, "local_v2_application_entry_invalid");
 });
 
@@ -1825,7 +1859,7 @@ test("local-v2 arguments require the declared installation and refuse a second i
   assert.equal(parsed.project, "opl-local-v2");
 });
 
-function localV2Fixture({ operationResponses = [], replayOrder, workspaceReadback } = {}) {
+function localV2Fixture({ operationResponses = [], replayOrder, workspaceReadback, quoteResponse } = {}) {
   const requests = [];
   let workspacePosts = 0;
   let operationReads = 0;
@@ -1871,7 +1905,7 @@ function localV2Fixture({ operationResponses = [], replayOrder, workspaceReadbac
     if (clean.startsWith("/api/v2/catalog/runtime-versions")) return ok({ items: [{ id: "runtime_test", name: "local-qualification-app" }] });
     if (clean.startsWith("/api/v2/catalog/compute-plans")) return ok({ items: [{ id: "compute_test", name: "local-v2-compute" }] });
     if (clean.startsWith("/api/v2/catalog/storage-plans")) return ok({ items: [{ id: "storage_test", name: "local-v2-storage" }] });
-    if (clean === "/api/v2/quotes") return ok({ id: "quote_test", status: "accepted", purpose: "deploy", runtimeVersionId: "runtime_test", totalUSDMicros: "0" }, 201);
+    if (clean === "/api/v2/quotes") return ok(quoteResponse || { id: "quote_test", status: "accepted", purpose: "deploy", runtimeVersionId: "runtime_test", computePlanId: "compute_test", storagePlanId: "storage_test", periodMonths: 1, totalUSDMicros: "0" }, 201);
     if (clean === "/api/v2/workspaces") {
       workspacePosts += 1;
       return ok(workspacePosts > 1 && replayOrder
@@ -1942,6 +1976,16 @@ async function runLocalV2FixtureQualification(fixture, dependencies = {}) {
   }
 }
 
+test("local-v2 qualification rejects a zero-price quote that changes the declared purchase", async () => {
+  const fixture = localV2Fixture({
+    quoteResponse: { id: "quote_test", status: "accepted", purpose: "deploy", runtimeVersionId: "runtime_other", computePlanId: "compute_test", storagePlanId: "storage_test", periodMonths: 1, totalUSDMicros: "0" },
+    operationResponses: [{ status: "awaiting_confirmation", stage: "resource_preflight", observationResult: "unknown" }]
+  });
+  const result = await runLocalV2FixtureQualification(fixture);
+  assert.equal(result.errorCode, "local_v2_non_local_no_charge_quote");
+  assert.equal(fixture.requests.some((request) => request === "POST /api/v2/workspaces"), false);
+});
+
 test("local-v2 replay keeps polling through running and stops activation at an empty entry", async () => {
   const parked = { status: "awaiting_confirmation", stage: "resource_preflight", observationResult: "unknown" };
   const fixture = localV2Fixture({
@@ -1982,6 +2026,28 @@ test("local-v2 activation requires the Workspace and Serve readbacks before dele
   const result = await runLocalV2FixtureQualification(fixture);
   assert.equal(result.stage, "application_entry");
   assert.equal(result.boundary.code, "local_v2_application_readiness_unconfirmed");
+  assert.equal(fixture.requests.some((request) => request.startsWith("DELETE /api/v2/workspaces/")), false);
+});
+
+test("local-v2 activation does not delete when the entry origin does not match the declaration", async () => {
+  const fixture = localV2Fixture({
+    operationResponses: Array(41).fill({ status: "awaiting_confirmation", stage: "activation", observationResult: "confirmed" }),
+    workspaceReadback: { id: "workspace_test", status: "provisioning", resourceReadiness: "ready", applicationAvailability: "available", accessUrl: "https://other.example.test:18443/", runtimeVersionId: "runtime_test" }
+  });
+  const result = await runLocalV2FixtureQualification(fixture);
+  assert.equal(result.stage, "application_entry");
+  assert.equal(result.boundary.code, "local_v2_application_entry_origin_mismatch");
+  assert.equal(fixture.requests.some((request) => request.startsWith("DELETE /api/v2/workspaces/")), false);
+});
+
+test("local-v2 activation does not delete when the entry port is unreachable", async () => {
+  const fixture = localV2Fixture({
+    operationResponses: Array(41).fill({ status: "awaiting_confirmation", stage: "activation", observationResult: "confirmed" }),
+    workspaceReadback: { id: "workspace_test", status: "provisioning", resourceReadiness: "ready", applicationAvailability: "available", accessUrl: "https://localhost:443/", runtimeVersionId: "runtime_test" }
+  });
+  const result = await runLocalV2FixtureQualification(fixture);
+  assert.equal(result.stage, "application_entry");
+  assert.equal(result.boundary.code, "local_v2_application_entry_port_unreachable");
   assert.equal(fixture.requests.some((request) => request.startsWith("DELETE /api/v2/workspaces/")), false);
 });
 
