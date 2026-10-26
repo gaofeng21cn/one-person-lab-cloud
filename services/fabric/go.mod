@@ -4,10 +4,10 @@ go 1.26.0
 
 require (
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cbs v1.3.179
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.193
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.198
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm v1.3.183
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/tke v1.3.193
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/vpc v1.3.193
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/tke v1.3.198
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/vpc v1.3.198
 	golang.org/x/sys v0.49.0
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
