@@ -742,6 +742,14 @@ func tencentStorageDestroyBindingIdentity(volume StorageVolume) (string, string,
 	name := k8sName(volume.ID)
 	pv, pvc := name+"-pv", name+"-data"
 	expectedTags := oplCostTags(volume.AccountID, volume.WorkspaceID, volume.ID, volume.OperationID)
+	// The resource retains its caller idempotency key; the staged CBS creator
+	// tags the disk with the canonical Fabric create operation derived from it.
+	// Preserve the existing exact operation-id shape for retained resources too.
+	create := newOperation("create_storage_volume", "storage_volume", volume.ID, volume.AccountID, volume.WorkspaceID, volume.OperationID, "", time.Time{})
+	createdTags := oplCostTags(volume.AccountID, volume.WorkspaceID, volume.ID, create.OperationID)
+	if reflect.DeepEqual(volume.CostTags, createdTags) {
+		expectedTags = createdTags
+	}
 	valid := strings.TrimSpace(volume.ID) != "" && strings.TrimSpace(volume.AccountID) != "" && strings.TrimSpace(volume.WorkspaceID) != "" &&
 		strings.TrimSpace(volume.OperationID) != "" && volume.Provider == "tencent-tke" && strings.HasPrefix(volume.ProviderResourceID, "disk-") &&
 		len(volume.ProviderResourceID) > len("disk-") && volume.SizeGB > 0 && strings.TrimSpace(volume.Zone) != "" && strings.TrimSpace(volume.DiskType) != "" &&

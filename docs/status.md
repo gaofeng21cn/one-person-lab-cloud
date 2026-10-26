@@ -56,23 +56,26 @@ recovery-chain execution evidence has been obtained for this Candidate;
 `cloud-business-qualification.yml` has no recorded runs at this observation.
 Protected RuntimeVersion, compute, storage, Tenant and payer variables remain
 unconfigured, and no real dedicated-sandbox J0 READY receipt bound to this same
-Candidate has been obtained. The Instance consumer still has the old package
-parameters and CP-only session; its migration is being repaired separately and
-is not merged or adopted. The caller migration remains open.
+Candidate has been obtained. The Instance consumer migration is now adopted through
+[Instance PR #593](https://github.com/gaofeng21cn/opl-instance-medopl/pull/593),
+merge `510d1479618de03a596bf2dcf06b6a2fa4c4bc3b`. Its post-merge
+[main CI](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40372688679)
+passed both consumer checks. The accepted source uses the explicit native inputs
+and CloudIdentity session; configured business inputs and live qualification
+remain separate outcomes.
 Successful deployment and these read-only checks do not close those outcomes
 or authorize a business pass, formal Release or historical-order closeout.
 
 The subsequent prerequisite audit found a source-level J0 mismatch: the existing
 Cloud producer's `opl-j0-sandbox` operation identity was refused by the Instance
-boundary. The pending [Instance repair #593](https://github.com/gaofeng21cn/opl-instance-medopl/pull/593)
+boundary. The adopted [Instance repair #593](https://github.com/gaofeng21cn/opl-instance-medopl/pull/593)
 at `4668c7c2f5158748d5caabcb7fb141eafaab734d` now accepts the existing dedicated-sandbox
 protocol with strict envelope, Candidate and canonical provider-scope identity
 checks. The real Cloud J0 helper and adapter passed the boundary integration
 suite (45 tests), and the Instance suite passed 1,423 tests with zero failures,
-skips or TODOs. These are source/fixture results. The repair is not yet adopted
-on Instance main, and no authorized live J0 producer invocation or genuine READY
-receipt has been established; the existing business workflow still requires
-that external receipt. This update adds no workflow or production access.
+skips or TODOs. These are source/fixture results; the repair is on Instance main.
+No authorized live J0 producer invocation or genuine READY receipt has been
+established; the existing business workflow still requires that external receipt. This update adds no workflow or production access.
 
 Local v2 remains diagnostic `NOT_READY`; the latest reported local run stopped
 at application entry without DELETE. This update adds no Linux qualification
@@ -159,15 +162,37 @@ fixture refund has been proven. The path is limited to the declared local-docker
 and `LOCAL_NO_CHARGE` boundary and does not create a formal v1 qualification
 receipt or Release admission.
 
-The protected Instance business consumer still passes `--package-id`, has only
-a CP session and lacks the required RuntimeVersion/compute/storage/Tenant/payer
-configuration. Its separate migration is not yet merged or adopted. The
+The protected Instance consumer source has adopted the native declarations and
+CloudIdentity authentication through PR #593, as recorded in the October 26
+delivery-lane evidence above. A fresh October 27 name-only read of the protected
+production Variables still lacks the RuntimeVersion, compute, storage, Tenant
+and billing-subject selections; no credential values were read. The
 [October 26 evidence](#delivery-lane-reconciliation-2026-10-26) establishes exact
 Candidate deployment and read-only installation verification, while protected
 TKE business/live Gateway qualification remains unexecuted. #1042, #1041 and
 #1018 remain open; their distinct acceptance outcomes are in [the roadmap](roadmap.md#native-v2-qualification-and-cp-retirement-1042).
 
 ## Original-order Closeout Scope (2026-10-23)
+
+The October 27 follow-up supersedes the earlier installed-`c4a5587e` and
+missing-input observations: the existing Instance executor adopted the exact
+`5e744601` Candidate, obtained both native original-input readbacks and executed
+B's protected closeout/recovery. Its latest preserved
+[SELECT-only Fabric evidence](https://github.com/gaofeng21cn/opl-instance-medopl/pull/602)
+records `needs_attention/storage_deletion`, 13 pending attempts and
+`storage_volume_destroy_identity_required`; no CBS termination or complete
+route/Ledger/refund/Key closeout is proven. Saved NOT_FOUND observations are
+historical reads, not a new live provider Describe.
+
+The Cloud source repair binds a staged CBS volume's retained idempotency key to
+its canonical Fabric create-operation cost tag at deletion admission. It keeps
+the original tags and all exact provider, PV/PVC, region, live-binding, absence
+and mutation-journal checks; retained equal-ID resources remain admissible.
+Provider fixtures exercise the real create projection through destroy, including
+foreign-key/tag/Workspace refusals before mutation. These source tests do not
+identify B's uniquely failing private predicate, adopt the repair in production
+or authorize another DELETE/resume. The original orders remain under #1018 and
+RenDeHuang's existing protected execution boundary.
 
 Source inspected at `ea999ff044b591cd2ca111a3b08386abb877e89e` confirms that
 Control Plane already exposes retained Workspace DELETE in

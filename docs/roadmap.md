@@ -82,15 +82,15 @@ the Default App business chain remains unqualified, with no recorded
 
 The remaining work order is deliberately narrow:
 
-1. Complete and adopt the Instance-owned protected business consumer migration
-   from old package parameters and CP-only authentication to native
-   RuntimeVersion/compute/storage declarations, CloudIdentity session and the
-   owning APIs. The separate repair is not yet merged or adopted.
-2. Configure the protected RuntimeVersion, compute, storage, Tenant and payer
-   inputs and obtain a real dedicated-sandbox J0 READY receipt bound to the same
-   Candidate. The pending Instance repair covers the demonstrated J0 operation-key
-   mismatch; establish the authorized dedicated-sandbox producer invocation before
-   treating the receipt as only a configuration prerequisite. Keep Candidate/J0,
+1. Configure the protected RuntimeVersion, compute, storage, Tenant and payer
+   inputs. The Instance-owned native consumer and strict J0 boundary repair are
+   adopted through
+   [Instance PR #593](https://github.com/gaofeng21cn/opl-instance-medopl/pull/593);
+   both [post-merge checks](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40372688679)
+   passed. Source adoption does not choose these installation inputs.
+2. Establish the authorized dedicated-sandbox producer invocation and obtain a
+   genuine J0 READY receipt for the same Candidate. The existing business workflow
+   consumes that receipt; it does not provide the invocation. Keep Candidate/J0,
    protected-access and Release admission gates.
 3. Execute the protected Default App business qualification against those exact
    bytes and obtain authoritative application-entry, runtime, Gateway and
@@ -318,6 +318,17 @@ hosting, and a defined historical archive with owner-approved retention and
 readback. No source-only PR closes #1042 or the original orders in #1018.
 
 ### Original-order Workspace closeout (#1018)
+
+The existing Instance executor has now recovered both native closeout inputs,
+adopted Candidate `5e744601`, and executed B's protected closeout/recovery.
+The latest [preserved Fabric facts](https://github.com/gaofeng21cn/opl-instance-medopl/pull/602)
+show a storage identity admission failure before CBS termination. Cloud source
+now accepts the exact canonical create-operation tag derived from the retained
+caller key, with all remaining identity and live-readback gates unchanged.
+Source verification does not identify B's uniquely failing private predicate or
+prove installed adoption, and does not authorize another protected resume.
+Continue the finite original-order outcome through the existing owner, without
+repeating the already successful input reads or creating a source/runtime tail.
 
 Workspace owns native order closeout; Control Plane retains its historical
 Launch, deletion and settlement obligations. Fabric owns resource dispatch and
