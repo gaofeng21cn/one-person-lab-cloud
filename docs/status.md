@@ -6,50 +6,69 @@ State: `current_snapshot`
 Baseline evidence source: `9db27a91bc236cdf294253a352a3e1682fd35235` on `main`
 Baseline evidence date: 2026-10-01
 
-This page keeps the dated baseline evidence above and explicitly dated source
+This page keeps the dated baseline evidence above and explicitly dated evidence
 updates below. The baseline SHA does not describe the later changes or qualify
 them: each receipt retains its original source, run and environment. The latest
-source update is 2026-10-26; it answers what the cited source and tests prove
-within their declared scope and does not describe an Instance installation or a
-Product Release. The target boundary is in [architecture.md](architecture.md),
+evidence update is 2026-10-26. Source/tests, Candidate construction and
+Instance installation verification are recorded at their own layers below;
+none alone establishes business qualification or a Product Release. The target
+boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
-## Delivery Lane Reconciliation (2026-10-25)
+## Delivery Lane Reconciliation (2026-10-26)
 
-The current Cloud mainline has converged the source-side native v2 path through
-the following bounded slices: #1061 retired the unreachable fresh-create writer;
-#1062 repaired the local-v2 owner peers and provider facts; #1063 moved target
-readers to the canonical contract sources; #1064 established the consumer-based
-evidence archival rule; #1065 repaired the Local-Docker quota capability,
-application bridge and pending-resource replay; and #1067 moved a superseded
-SSOT audit into history. These changes improve the path and its evidence
-provenance; they do not establish Candidate, Instance or production acceptance.
+The checked Cloud source is `5e74460122867611b94698b83575dc6e441d1a19`
+with tree `2f2446ad1a2de5f4e0ef38aa410a1c0ba122a7cd`.
+[#1068](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1068)
+is merged into this mainline baseline, not an active PR. Its Local-Docker
+source gate binds the zero-price quote and original-order replay, bounds
+polling/replay by one deadline, and requires the declared application-entry
+origin and HTTP 200 before restart or DELETE. No-charge deletion accepts the
+owner's `not_applicable` refund only with confirmed resource/data/Serve absence
+and stable replay. This source closure does not establish a complete local
+lifecycle or a paid/TKE business pass.
 
-The only current behavior PR in this lane is
-[#1068](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1068). It reads
-the confirmed Local-Docker activation boundary and replays the original
-no-charge order so the diagnostic run can continue to its declared readbacks.
-Its result must remain a local source/fixture observation and must not be
-reported as a paid order, TKE deployment, Gateway settlement, production route
-or business pass. The source gate checks quote identity, bounds original-order
-polling/replay by one deadline, and requires the exact declared entry origin and HTTP 200 before
-restart or DELETE. No-charge deletion accepts the owner's `not_applicable`
-refund only with confirmed resource/data/Serve absence and stable replay.
-Focused source tests exercise these boundaries; the contributor's latest
-real-installation report still stops at the mismatched application entry and
-issued no DELETE. That report does not establish the full cleanup path under
-the restored gate.
+The exact Candidate now has successful Instance deployment and independent
+read-only installation verification evidence:
 
-The next acceptance gate is therefore the one described by
-[#1042](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1042): exact
-Candidate identity, protected Instance installation, ready route and
-owner-authoritative runtime/Gateway/recovery readback. Historical original-order
-closeout remains in
+| Evidence identity | Observed result |
+| --- | --- |
+| [Cloud Candidate build run `40273670329`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/40273670329), attempt `1` | Succeeded for the source/tree above |
+| Candidate manifest canonical digest | `sha256:1f72ba75d751ac07c20129ac6a0b83086d3cc525e273434a19e98ccc697a4098` |
+| Cloud image index digest | `sha256:6c2b49e08dfd8ee43fe57614758a1d8f469abe9a8d839d2e84918fa43ee2d5ad` |
+| [Instance Deploy run `40285877402`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40285877402) | Succeeded; this documentation update did not trigger it |
+| [Instance `deployment-verify` run `40308752877`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40308752877) | Succeeded from Instance `main` `7ed5900881a60ea8a124d28065c01224594bcb8d` |
+| Original `evidence.json`, validated with the Instance's real validator | `status: deployment_verified`, `stage: complete`, `errorCode: none`; same source/tree/Candidate/index as above; all 12 checks true |
+| Verification mutation counts | `kubernetes: 0`, `provider: 0`, `business: 0` |
+| Original deployment-verification receipt SHA256 | `a09508c5bb829df41943d7ca3ffa708729001b1626a6a1bfbb02033b4af5fe31` |
+| Corresponding `installation-verification.json` | Succeeded for the same source/tree/Candidate/index |
+
+The downloaded original deployment evidence passed the Instance validator.
+Instance owns retention of the original bytes at
+`receipts/2026-10-26-native-v2-deployment-verification-40308752877.json`
+and in the corresponding installation receipt. Cloud records the identities
+and validation result here without copying the Instance receipts.
+
+[#1042](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1042)
+remains open. No protected Default App business-entry, runtime, Gateway or
+recovery-chain execution evidence has been obtained for this Candidate;
+`cloud-business-qualification.yml` has no recorded runs at this observation.
+Protected RuntimeVersion, compute, storage, Tenant and payer variables remain
+unconfigured, and no real dedicated-sandbox J0 READY receipt bound to this same
+Candidate has been obtained. The Instance consumer still has the old package
+parameters and CP-only session; its migration is being repaired separately and
+is not merged or adopted. The caller migration remains open.
+Successful deployment and these read-only checks do not close those outcomes
+or authorize a business pass, formal Release or historical-order closeout.
+
+Local v2 remains diagnostic `NOT_READY`; the latest reported local run stopped
+at application entry without DELETE. This update adds no Linux qualification
+or cleanup execution evidence. The three historical original orders remain
+independent obligations under
 [#1018](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1018).
-The evidence-archival work in #1058, including open documentation PRs #1066 and
-#1067, is maintenance-only and does not move this gate. #1053, #1054 and #1057
-remain secondary proposals without a current launch dependency.
+[The roadmap](roadmap.md#native-v2-qualification-and-cp-retirement-1042)
+owns the remaining acceptance outcomes.
 
 ## Retained CP Purchase Fence (2026-10-24)
 
@@ -128,10 +147,13 @@ fixture refund has been proven. The path is limited to the declared local-docker
 and `LOCAL_NO_CHARGE` boundary and does not create a formal v1 qualification
 receipt or Release admission.
 
-The current remote Instance workflow still passes `--package-id` and does not
-export the required Tenant/payer declarations. No protected TKE/live Gateway
-qualification ran for this change. #1042, #1041 and #1018 remain open; their
-distinct acceptance outcomes are in [the roadmap](roadmap.md#native-v2-qualification-and-cp-retirement-1042).
+The protected Instance business consumer still passes `--package-id`, has only
+a CP session and lacks the required RuntimeVersion/compute/storage/Tenant/payer
+configuration. Its separate migration is not yet merged or adopted. The
+[October 26 evidence](#delivery-lane-reconciliation-2026-10-26) establishes exact
+Candidate deployment and read-only installation verification, while protected
+TKE business/live Gateway qualification remains unexecuted. #1042, #1041 and
+#1018 remain open; their distinct acceptance outcomes are in [the roadmap](roadmap.md#native-v2-qualification-and-cp-retirement-1042).
 
 ## Original-order Closeout Scope (2026-10-23)
 
