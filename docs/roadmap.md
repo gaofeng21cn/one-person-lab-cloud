@@ -88,7 +88,10 @@ The remaining work order is deliberately narrow:
    owning APIs. The separate repair is not yet merged or adopted.
 2. Configure the protected RuntimeVersion, compute, storage, Tenant and payer
    inputs and obtain a real dedicated-sandbox J0 READY receipt bound to the same
-   Candidate. Keep Candidate/J0, protected-access and Release admission gates.
+   Candidate. The pending Instance repair covers the demonstrated J0 operation-key
+   mismatch; establish the authorized dedicated-sandbox producer invocation before
+   treating the receipt as only a configuration prerequisite. Keep Candidate/J0,
+   protected-access and Release admission gates.
 3. Execute the protected Default App business qualification against those exact
    bytes and obtain authoritative application-entry, runtime, Gateway and
    restart/response-loss recovery readbacks. Successful installation verification

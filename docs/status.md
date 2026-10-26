@@ -9,7 +9,7 @@ Baseline evidence date: 2026-10-01
 This page keeps the dated baseline evidence above and explicitly dated evidence
 updates below. The baseline SHA does not describe the later changes or qualify
 them: each receipt retains its original source, run and environment. The latest
-evidence update is 2026-10-26. Source/tests, Candidate construction and
+evidence update is 2026-10-27. Source/tests, Candidate construction and
 Instance installation verification are recorded at their own layers below;
 none alone establishes business qualification or a Product Release. The target
 boundary is in [architecture.md](architecture.md),
@@ -61,6 +61,18 @@ parameters and CP-only session; its migration is being repaired separately and
 is not merged or adopted. The caller migration remains open.
 Successful deployment and these read-only checks do not close those outcomes
 or authorize a business pass, formal Release or historical-order closeout.
+
+The subsequent prerequisite audit found a source-level J0 mismatch: the existing
+Cloud producer's `opl-j0-sandbox` operation identity was refused by the Instance
+boundary. The pending [Instance repair #593](https://github.com/gaofeng21cn/opl-instance-medopl/pull/593)
+at `4668c7c2f5158748d5caabcb7fb141eafaab734d` now accepts the existing dedicated-sandbox
+protocol with strict envelope, Candidate and canonical provider-scope identity
+checks. The real Cloud J0 helper and adapter passed the boundary integration
+suite (45 tests), and the Instance suite passed 1,423 tests with zero failures,
+skips or TODOs. These are source/fixture results. The repair is not yet adopted
+on Instance main, and no authorized live J0 producer invocation or genuine READY
+receipt has been established; the existing business workflow still requires
+that external receipt. This update adds no workflow or production access.
 
 Local v2 remains diagnostic `NOT_READY`; the latest reported local run stopped
 at application entry without DELETE. This update adds no Linux qualification
