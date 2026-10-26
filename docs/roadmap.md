@@ -62,7 +62,7 @@ source qualification profile. The target is not complete until a user can open
 the confirmed application route and the exact bytes, owner facts and receipts
 can be read back.
 
-## Current Delivery Lane: First TKE Default App Launch (2026-10-25)
+## Current Delivery Lane: First TKE Default App Launch (2026-10-26)
 
 The current executable delivery lane is the first Default App launch through
 the managed Tencent/TKE Instance. Native v2 qualification and its protected
@@ -73,23 +73,30 @@ Instance owner, the application route is ready and usable, and the same bytes,
 owner facts, Gateway/runtime readback and recovery receipts are available at
 their authoritative layers.
 
-The work order is deliberately narrow:
+The [current evidence](status.md#delivery-lane-reconciliation-2026-10-26)
+records merged #1068 source, successful Candidate construction, Instance Deploy
+and independent read-only deployment/installation verification for the exact
+Cloud source/tree and Candidate/index. These installation outcomes are proven;
+the Default App business chain remains unqualified, with no recorded
+`cloud-business-qualification.yml` run for this Candidate. Local v2 remains diagnostic `NOT_READY`.
 
-1. Finish the current source seam in
-   [PR #1068](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1068),
-   which reads the Local-Docker activation boundary and replays the original
-   no-charge order without turning a diagnostic local result into paid or
-   production acceptance.
-2. Record the resulting local qualification as source/fixture evidence under
-   #1042. A local result remains diagnostic until the exact Candidate and its
-   owner inputs are fixed.
-3. Hand the exact Candidate, topology and required non-secret inputs to the
-   protected Instance workflow. The Instance must return deployment, health,
-   route, image and rollback readback; Cloud must retain the separate Gateway,
-   runtime and business qualification boundaries.
-4. Qualify the Default App on TKE, including restart/response-loss recovery,
-   route access and runtime readback. Only then decide whether the Custom Agent
-   combination is the next product slice.
+The remaining work order is deliberately narrow:
+
+1. Complete and adopt the Instance-owned protected business consumer migration
+   from old package parameters and CP-only authentication to native
+   RuntimeVersion/compute/storage declarations, CloudIdentity session and the
+   owning APIs. The separate repair is not yet merged or adopted.
+2. Configure the protected RuntimeVersion, compute, storage, Tenant and payer
+   inputs and obtain a real dedicated-sandbox J0 READY receipt bound to the same
+   Candidate. The pending Instance repair covers the demonstrated J0 operation-key
+   mismatch; establish the authorized dedicated-sandbox producer invocation before
+   treating the receipt as only a configuration prerequisite. Keep Candidate/J0,
+   protected-access and Release admission gates.
+3. Execute the protected Default App business qualification against those exact
+   bytes and obtain authoritative application-entry, runtime, Gateway and
+   restart/response-loss recovery readbacks. Successful installation verification
+   does not supply these business receipts. Only then decide whether the Custom
+   Agent combination is the next product slice.
 
 [#1018](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1018)
 remains a separate historical-order closeout objective. Its original resource,
@@ -257,11 +264,18 @@ Instance `e8ee04df`; its older local checkout is not a current CP caller.
 counters and an observed zero-new-write window. Legacy customer Launch auto-
 discovery also needs its own caller evidence; operator recovery and server
 read/replay/resume are not proof of that browser capability. The separate
-protected business-qualification workflow input migration remains under #1042.
+protected business-qualification consumer migration remains under #1042; its
+old package parameters and CP-only session are not yet replaced by an adopted
+consumer.
 
 The [source changes](status.md#native-v2-qualification-evidence-2026-10-24) bind
 native charges/deletion/refunds to their original owner operations and preserve
-replay identity. #1042 remains open for the following acceptance outcomes:
+replay identity. The
+[October 26 installation evidence](status.md#delivery-lane-reconciliation-2026-10-26)
+now binds successful Candidate construction, Deploy and read-only
+`deployment_verified`/installation verification to the exact Cloud source/tree,
+Candidate manifest and image index. #1042 remains open for the following
+acceptance outcomes:
 
 - Keep the local qualification source wiring aligned with the complete v2
   installation. `--mode local-v2` now consumes the installation-owned
@@ -274,17 +288,26 @@ replay identity. #1042 remains open for the following acceptance outcomes:
   binds the zero-price quote and original replay, and accepts the owner-confirmed
   no-charge refund outcome. Its latest reported real run still stops at the
   application entry; complete the installed route/readback gate with an exact
-  Candidate before treating that source as full lifecycle evidence.
-- Complete Fabric's Local-Docker execution configuration and gateway identity
-  with Serve's actual access routing. Do not label Control Plane as the native
+  Candidate before treating that source as full lifecycle evidence. The current
+  read-only Instance verification adds no Linux qualification or cleanup result.
+- Prove Fabric's Local-Docker execution and gateway identity together with
+  Serve's actual access routing. Do not label Control Plane as the native
   route owner to bypass provider admission. Qualify quote, create, deployment,
   restart, Workspace DELETE, provider absence, Ledger receipt and exact original-
   charge fixture refund on the same source and images.
-- Migrate the Instance-owned protected workflow from `--package-id` to the
-  RuntimeVersion/compute/storage declarations, export the declared Tenant and
-  billing subject, and verify its authenticated transport against CloudIdentity
-  and the owning APIs. Preserve Candidate/J0, protected-access and Release
-  admission gates. Cloud source checks do not establish this consumer migration.
+- Complete and adopt the Instance-owned protected workflow migration from
+  `--package-id` and a CP-only session to RuntimeVersion/compute/storage
+  declarations, the declared Tenant/payer and CloudIdentity authentication
+  against the owning APIs. The separate consumer repair remains unmerged;
+  neither source adoption nor runtime adoption is proven. Configure the still
+  absent protected variables and obtain the real dedicated-sandbox J0 READY
+  receipt for the same Candidate. Preserve Candidate/J0, protected-access and
+  Release admission gates.
+- Produce the protected Default App business qualification receipt for that
+  Candidate: usable business entry, runtime identity/readback, Gateway facts and
+  restart/response-loss recovery must agree at their owners. There is no recorded
+  `cloud-business-qualification.yml` run at this observation; successful deployment
+  and read-only installation checks do not close this chain.
 - Remove remaining live Control Plane identity/account and historical-duplicate
   lookup dependencies only after their original obligations have a proved owner
   path. Then qualify the same flow on TKE and the separately authorized live
