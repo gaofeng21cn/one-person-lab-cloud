@@ -63,6 +63,15 @@ func (f *d4KubernetesFixture) run(_ context.Context, args []string, _ []byte) ([
 			}
 			key := d4KubernetesKind(parts[0]) + "/" + parts[1]
 			if _, exists := f.items[key]; exists {
+				if parts[0] == "pvc" {
+					pvName := stringValue(nested(f.items[key], "spec", "volumeName"))
+					if pv := f.items["persistentvolume/"+pvName]; pv != nil {
+						if pv["status"] == nil {
+							pv["status"] = map[string]any{}
+						}
+						pv["status"].(map[string]any)["phase"] = "Released"
+					}
+				}
 				delete(f.items, key)
 				f.deletes = append(f.deletes, key)
 			}
@@ -322,6 +331,9 @@ func TestD4TencentStorageDeleteOriginalOwnerAndOldSuccessRepairPartialBindings(t
 				}
 				for _, item := range manifest.Items {
 					if item["kind"] == residual {
+						if residual == "PersistentVolume" {
+							item["status"] = map[string]any{"phase": "Released"}
+						}
 						fixture.items[strings.ToLower(residual)+"/"+stringValue(nested(item, "metadata", "name"))] = item
 					}
 				}

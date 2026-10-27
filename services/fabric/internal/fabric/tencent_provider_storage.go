@@ -461,7 +461,7 @@ func (p *TencentProvider) ReadStorageVolumeStatus(ctx context.Context, volume St
 			if !sameStorageDestroyStableIdentity(owner, volume) {
 				return volume, ErrLaunchStageBindingConflict
 			}
-			remaining, bindingErr := p.readStorageDeleteBindings(ctx, volume)
+			remaining, bindingErr := p.readStorageDeleteBindingsPartial(ctx, volume)
 			if bindingErr != nil {
 				return volume, bindingErr
 			}
@@ -597,8 +597,9 @@ func (p *TencentProvider) DestroyStorageVolume(ctx context.Context, volume Stora
 			return volume, err
 		}
 	} else if ownedDelete {
-		if _, err := p.readStorageDeleteBindings(ctx, volume); err != nil {
-			return volume, err
+		_, bindingErr := p.readStorageDeleteBindingsPartial(ctx, volume)
+		if bindingErr != nil {
+			return volume, bindingErr
 		}
 	} else if _, err := p.ReadStaticStorageBinding(ctx, volume); err != nil {
 		return volume, fmt.Errorf("storage_volume_destroy_binding_unverified: %w", err)
@@ -611,24 +612,15 @@ func (p *TencentProvider) DestroyStorageVolume(ctx context.Context, volume Stora
 		return volume, fmt.Errorf("storage_volume_destroy_readback_mismatch")
 	}
 	volume = readback
-	// Only this phase authorizes another binding delete: no CBS RPC has started.
-	beforeTerminate := func(err error) (StorageVolume, error) {
-		volume = cloneStorageVolume(volume)
-		volume.ProviderData["storageDestroyPhase"], volume.ProviderData["storageDestroyMutationCount"] = storageDestroyPhaseBindingDeletePending, "0"
+	volume, err = p.deleteStaticStorageBinding(ctx, volume, pv, pvc)
+	if err != nil {
 		return volume, err
 	}
-	resources := []string{"pvc/" + pvc, "pv/" + pv}
-	if _, err := p.callKubectl(ctx, append([]string{"delete"}, append(resources, "--ignore-not-found=true", "--wait=true")...), nil, protectedresource.Target{}); err != nil {
-		return beforeTerminate(err)
-	}
-	if _, closeout := ctx.Value(workspaceLaunchStorageCloseoutContextKey{}).(WorkspaceLaunchProviderRequest); closeout || ownedDelete {
-		remaining, err := p.readStorageDeleteBindings(ctx, volume)
-		if err != nil || len(remaining) != 0 {
-			return beforeTerminate(firstNonNil(err, ErrWorkspaceLaunchPending))
-		}
-		if storageDestroyReadbackConfirmsAbsence(volume) {
-			return volume, nil
-		}
+	if volume.ProviderData["storageDestroyPhase"] == storageDestroyPhaseAbsenceConfirmed &&
+		volume.Status == "external_deleted" && volume.CBSStatus == "NOT_FOUND" {
+		// CBS was already proven absent by the provider readback; binding cleanup
+		// is the only remaining mutation and no terminate call is authorized.
+		return volume, nil
 	}
 	expectedProviderResourceID := volume.ProviderResourceID
 	response, err := p.provision(ctx, provisionerRequest{
@@ -676,6 +668,17 @@ func (p *TencentProvider) DestroyStorageVolume(ctx context.Context, volume Stora
 // match the exact original static manifest. ReadStaticStorageBinding continues
 // to require the complete pair for provisioning and attachment readiness.
 func (p *TencentProvider) readStorageDeleteBindings(ctx context.Context, volume StorageVolume) ([]any, error) {
+	items, err := p.readStorageDeleteBindingsPartial(ctx, volume)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) != 2 {
+		return nil, ErrWorkspaceLaunchResourceAbsent
+	}
+	return items, nil
+}
+
+func (p *TencentProvider) readStorageDeleteBindingsPartial(ctx context.Context, volume StorageVolume) ([]any, error) {
 	if err := validateStaticStorageBindingInput(volume); err != nil {
 		return nil, err
 	}
@@ -690,6 +693,9 @@ func (p *TencentProvider) readStorageDeleteBindings(ctx context.Context, volume 
 		if err != nil {
 			return nil, err
 		}
+	}
+	if len(items) == 0 {
+		return items, nil
 	}
 	var manifest struct {
 		Items []map[string]any `json:"items"`
@@ -736,6 +742,67 @@ func (p *TencentProvider) readStorageDeleteBindings(ctx context.Context, volume 
 		}
 	}
 	return items, nil
+}
+
+func (p *TencentProvider) deleteStaticStorageBinding(ctx context.Context, volume StorageVolume, pv, pvc string) (StorageVolume, error) {
+	markPending := func(err error) (StorageVolume, error) {
+		volume = cloneStorageVolume(volume)
+		volume.ProviderData["storageDestroyPhase"], volume.ProviderData["storageDestroyMutationCount"] = storageDestroyPhaseBindingDeletePending, "0"
+		volume.DestroyState = StorageDestroyStatePendingRetry
+		return volume, err
+	}
+	items, err := p.readStorageDeleteBindingsPartial(ctx, volume)
+	if err != nil {
+		return markPending(err)
+	}
+	find := func(kind, name string) map[string]any {
+		for _, item := range items {
+			resource, ok := item.(map[string]any)
+			if ok && stringValue(resource["kind"]) == kind && stringValue(nested(resource, "metadata", "name")) == name {
+				return resource
+			}
+		}
+		return nil
+	}
+	if find("PersistentVolumeClaim", pvc) != nil {
+		if _, err := p.callKubectl(ctx, []string{"delete", "pvc/" + pvc, "--ignore-not-found=true", "--wait=true"}, nil, protectedresource.Target{}); err != nil {
+			return markPending(err)
+		}
+		items, err = p.readStorageDeleteBindingsPartial(ctx, volume)
+		if err != nil || findKind(items, "PersistentVolumeClaim", pvc) != nil {
+			return markPending(firstNonNil(err, ErrWorkspaceLaunchPending))
+		}
+	}
+	persistentVolume := findKind(items, "PersistentVolume", pv)
+	if persistentVolume != nil {
+		phase := strings.TrimSpace(stringValue(nested(persistentVolume, "status", "phase")))
+		if phase != "Released" && phase != "Available" {
+			return markPending(ErrWorkspaceLaunchPending)
+		}
+		if _, err := p.callKubectl(ctx, []string{"delete", "pv/" + pv, "--ignore-not-found=true", "--wait=true"}, nil, protectedresource.Target{}); err != nil {
+			return markPending(err)
+		}
+		items, err = p.readStorageDeleteBindingsPartial(ctx, volume)
+		if err != nil || len(items) != 0 {
+			return markPending(firstNonNil(err, ErrWorkspaceLaunchPending))
+		}
+	}
+	absent := false
+	volume.BindingPresent = &absent
+	if volume.Status == "external_deleted" && volume.CBSStatus == "NOT_FOUND" {
+		volume.ProviderData["storageDestroyPhase"], volume.ProviderData["storageDestroyMutationCount"] = storageDestroyPhaseAbsenceConfirmed, "0"
+	}
+	return volume, nil
+}
+
+func findKind(items []any, kind, name string) map[string]any {
+	for _, item := range items {
+		resource, ok := item.(map[string]any)
+		if ok && stringValue(resource["kind"]) == kind && stringValue(nested(resource, "metadata", "name")) == name {
+			return resource
+		}
+	}
+	return nil
 }
 
 func tencentStorageDestroyBindingIdentity(volume StorageVolume) (string, string, bool) {

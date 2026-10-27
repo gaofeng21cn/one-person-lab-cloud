@@ -5028,18 +5028,49 @@ func canonicalTencentStorageBindingObjects(t *testing.T, volume StorageVolume) m
 func exactTencentStorageBindingKubectl(t *testing.T, volume StorageVolume, deletedArgs *[]string) func(context.Context, []string, []byte) ([]byte, error) {
 	t.Helper()
 	readback := mustJSON(canonicalTencentStorageBindingObjects(t, volume))
-	deleted := false
+	var manifest map[string]any
+	if err := json.Unmarshal(readback, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	deleted := map[string]bool{}
 	return func(_ context.Context, args []string, _ []byte) ([]byte, error) {
 		switch {
 		case len(args) > 0 && args[0] == "get":
-			if deleted {
-				return []byte(`{"kind":"List","items":[]}`), nil
+			items := manifest["items"].([]any)
+			remaining := make([]any, 0, len(items))
+			for _, item := range items {
+				resource := item.(map[string]any)
+				kind := stringValue(resource["kind"])
+				name := stringValue(nested(resource, "metadata", "name"))
+				key := ""
+				switch kind {
+				case "PersistentVolumeClaim":
+					key = "pvc/" + name
+				case "PersistentVolume":
+					key = "pv/" + name
+				}
+				if key == "" || !deleted[key] {
+					remaining = append(remaining, item)
+				}
 			}
-			return readback, nil
+			return mustJSON(map[string]any{"kind": "List", "items": remaining}), nil
 		case len(args) > 0 && args[0] == "delete":
-			deleted = true
 			if deletedArgs != nil {
-				*deletedArgs = append([]string(nil), args...)
+				*deletedArgs = append(*deletedArgs, args...)
+			}
+			for _, arg := range args[1:] {
+				if strings.HasPrefix(arg, "--") {
+					break
+				}
+				deleted[arg] = true
+				if strings.HasPrefix(arg, "pvc/") {
+					for _, item := range manifest["items"].([]any) {
+						resource := item.(map[string]any)
+						if resource["kind"] == "PersistentVolume" {
+							resource["status"] = map[string]any{"phase": "Released"}
+						}
+					}
+				}
 			}
 			return nil, nil
 		default:
