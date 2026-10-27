@@ -117,6 +117,9 @@ func (s *Service) resumeRuntime(ctx context.Context, op ownerstore.Operation, to
 		} else if result.RuntimeDeployAccepted || !runtimeNeedsStart(observed) {
 			return nil
 		}
+		// An unacknowledged initial dispatch may observe no workload as terminated.
+		// Replay only the frozen command: Serve fences accepted retirement/deletion
+		// under its Workspace lock before admitting or executing this same Start.
 	} else {
 		result.RuntimeCommand = wire(command)
 		// Freeze the full command before dispatch. No new deployment or epoch is
@@ -333,7 +336,11 @@ func (s *Service) readRuntime(ctx context.Context, op ownerstore.Operation, toke
 }
 
 func runtimeNeedsStart(observed *api.RuntimeReadback) bool {
-	return observed.GetOutcome() == api.Observation_OBSERVATION_UNKNOWN && observed.GetState() == api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_PENDING
+	if observed.GetFirstFulfilledAt() != nil || observed.GetNeverDeliveredConfirmed() {
+		return false
+	}
+	return (observed.GetOutcome() == api.Observation_OBSERVATION_UNKNOWN && observed.GetState() == api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_PENDING) ||
+		(observed.GetOutcome() == api.Observation_OBSERVATION_CONFIRMED && observed.GetState() == api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_TERMINATED)
 }
 
 func runtimeReadCanRetryStart(err error) bool {
