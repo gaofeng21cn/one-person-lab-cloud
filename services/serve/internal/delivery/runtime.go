@@ -212,7 +212,7 @@ func recordDeploymentObservation(ctx context.Context, tx *sql.Tx, cmd *api.Runti
 	// independently reported, never the version the command requested. A runtime
 	// that has not read the applied version back leaves it 0, so a client can never
 	// read a desired version as an applied fact.
-	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET status=$2,access_url=$3,readiness_evidence_ref=$4,observed_at=$5,applied_model_configuration_version=$6,access_upstream_service=$7,access_upstream_port=$8,updated_at=now() WHERE id=$1`, cmd.GetRuntimeInstanceId(), state, url, ref, observedAt.UTC(), observation.AppliedModelConfigurationVersion, nullable(upstreamService), nullablePort(upstreamPort))
+	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET status=$2,access_url=$3,readiness_evidence_ref=$4,observed_at=$5,applied_model_configuration_version=$6,access_upstream_service=$7,access_upstream_port=$8,error_code=CASE WHEN $2='ready' THEN NULL ELSE error_code END,updated_at=now() WHERE id=$1`, cmd.GetRuntimeInstanceId(), state, url, ref, observedAt.UTC(), observation.AppliedModelConfigurationVersion, nullable(upstreamService), nullablePort(upstreamPort))
 	if err != nil {
 		return nil, dbError(err)
 	}

@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -97,6 +98,25 @@ func (f *fakeExecutor) ReadWorkspaceApplicationRuntimeCredentials(_ context.Cont
 	f.calls++
 	f.input = input
 	return f.credentials, nil
+}
+
+func TestStableDeliveryErrorCode(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "bounded internal token", err: errors.New("workspace_application_credentials_unavailable"), want: "workspace_application_credentials_unavailable"},
+		{name: "human provider message", err: errors.New("provider denied the request"), want: "INTERNAL_ERROR"},
+		{name: "transport unavailable", err: status.Error(codes.Unavailable, "provider unavailable"), want: "DEPENDENCY_UNAVAILABLE"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := stableDeliveryErrorCode(test.err); got != test.want {
+				t.Fatalf("stableDeliveryErrorCode()=%q want %q", got, test.want)
+			}
+		})
+	}
 }
 
 // executionCommand builds the typed command Serve's own Deploy path receives.
