@@ -63,6 +63,13 @@ retirement/start-fence groups pass against isolated PostgreSQL with zero
 failures or skips. This is local source evidence, not an
 installed repair.
 
+Serve now commits bounded start-failure diagnostics after rolling back the
+failed delivery transaction, verifies the reserved and frozen command before
+recording pre-admission failure, and clears stale diagnostics on confirmed
+readiness; isolated PostgreSQL regressions cover these source behaviors, while
+installation and acceptance of the same original order remain with the
+Instance executor.
+
 These observations do not qualify the application entry, an actual App model
 call, restart or response-loss recovery. The J0 and protected business
 qualification obligations remain open for the exact installed Candidate.
