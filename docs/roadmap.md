@@ -73,26 +73,37 @@ Instance owner, the application route is ready and usable, and the same bytes,
 owner facts, Gateway/runtime readback and recovery receipts are available at
 their authoritative layers.
 
-The [current evidence](status.md#delivery-lane-reconciliation-2026-10-26)
-records merged #1068 source, successful Candidate construction, Instance Deploy
-and independent read-only deployment/installation verification for the exact
-Cloud source/tree and Candidate/index. These installation outcomes are proven;
-the Default App business chain remains unqualified, with no recorded
-`cloud-business-qualification.yml` run for this Candidate. Local v2 remains diagnostic `NOT_READY`.
+The [current observation](status.md#authorized-default-app-launch-observation-2026-10-27)
+binds the later installed `f2cffcfafa6d37b26ac991b8553b06aeff3118de`
+Candidate and one owner-authorized Console purchase. Its original Gateway
+charge, resource delivery and managed Gateway Key are confirmed; the Ledger
+WALLET_ACTION receipt remains unknown, and Serve deployment
+has not reached an accessible application. The original operation repeatedly
+reads a confirmed terminated runtime after an unconfirmed deploy attempt.
+Earlier Candidate installation evidence cannot identify this order. The
+Default App business chain remains unqualified; Local v2 remains diagnostic
+`NOT_READY`.
 
 The remaining work order is deliberately narrow:
 
-1. Configure the protected RuntimeVersion, compute, storage, Tenant and payer
-   inputs. The Instance-owned native consumer and strict J0 boundary repair are
+1. Resolve the original runtime deployment and its recovery without buying a
+   second Workspace or replacing the original Key. Obtain the application URL,
+   login, actual model response and original-order reconciliation. The normal
+   customer path is distinct from protected qualification admission.
+2. Complete the protected payer readback and declaration. RuntimeVersion,
+   compute, storage and Tenant selections have been configured; a missing
+   payer field in the Tenant response must not be treated as proof that the
+   successful original charge has no binding. The Instance-owned native
+   consumer and strict J0 boundary repair are
    adopted through
    [Instance PR #593](https://github.com/gaofeng21cn/opl-instance-medopl/pull/593);
    both [post-merge checks](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40372688679)
    passed. Source adoption does not choose these installation inputs.
-2. Establish the authorized dedicated-sandbox producer invocation and obtain a
+3. Establish the authorized dedicated-sandbox producer invocation and obtain a
    genuine J0 READY receipt for the same Candidate. The existing business workflow
    consumes that receipt; it does not provide the invocation. Keep Candidate/J0,
    protected-access and Release admission gates.
-3. Execute the protected Default App business qualification against those exact
+4. Execute the protected Default App business qualification against those exact
    bytes and obtain authoritative application-entry, runtime, Gateway and
    restart/response-loss recovery readbacks. Successful installation verification
    does not supply these business receipts. Only then decide whether the Custom

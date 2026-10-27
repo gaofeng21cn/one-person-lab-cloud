@@ -16,6 +16,58 @@ boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Authorized Default App Launch Observation (2026-10-27)
+
+The installed product changed before this customer purchase. Instance
+[Deploy `40442025030`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40442025030)
+and [verification `40442751192`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40442751192)
+bind Cloud `f2cffcfafa6d37b26ac991b8553b06aeff3118de`, tree
+`ef2cecee7bce5ddd685af1d89aa1563bc0cddd8d`, Candidate
+`sha256:5d9bed18bb93de39fce9e734b71b936a6a48437b82dc3769540c84d32b24f9cc`
+and image index
+`sha256:d0c5fb7b04c7a4e0cbf2401169939045bbd6480cae1e00789945b536460e1b44`.
+The earlier Candidate below remains historical evidence; it cannot identify
+this later order. This investigation dispatched no deployment.
+
+An owner-authorized customer purchase selected the approved default App,
+Basic compute and storage through the normal Console. The original Gateway
+transaction confirms one charge for the accepted quote. The Ledger WALLET_ACTION receipt is still unknown in the same readback,
+so the charge and its append-only receipt are reported separately. The selected
+RuntimeVersion, compute, storage and Tenant declarations were configured and
+read back in the Instance protected environment. The
+Tenant API still omits the billing-subject field required by the qualification
+buyer; that readback gap does not establish an absent payment binding, and it
+did not prevent this normal customer purchase.
+
+[Customer readback `40446698999`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40446698999)
+confirms login, Workspace list/detail and one Serve deployment, but access
+returns `409 APP_ACCESS_UNAVAILABLE`, with application availability `pending`
+and no entry URL. [State observation `40446699278`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40446699278)
+matches the installed source and the new Workspace's ready compute node; its
+legacy runtime inventory is not a substitute for native Serve evidence.
+
+[Original-operation attribution `40447468752`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40447468752)
+confirms resource delivery and the original managed Gateway Key handover. The
+operation remains at `runtime / awaiting_confirmation`: `deploy_runtime` has
+one unknown attempt, `runtimeDeployAccepted` is false, and repeated
+`read_runtime` observations report confirmed `TERMINATED`. The failed phase
+is Serve runtime deployment. This narrows the original-order recovery defect;
+the initial Deploy refusal or transport failure is not yet established.
+
+The local Workspace recovery change replays the frozen initial Deploy when it
+was not acknowledged and Serve confirms a terminated instance that was never
+fulfilled or confirmed retired. Accepted deployments, prior fulfillment and
+retirement evidence retain their existing fences. The new recovery regression
+test passes after the change, and the targeted Workspace recovery and Serve
+retirement/start-fence groups pass against isolated PostgreSQL with zero
+failures or skips. This is local source evidence, not an
+installed repair.
+
+These observations do not qualify the application entry, an actual App model
+call, restart or response-loss recovery. The J0 and protected business
+qualification obligations remain open for the exact installed Candidate.
+No second purchase, replacement Key, restart or deletion was dispatched.
+
 ## Delivery Lane Reconciliation (2026-10-26)
 
 The checked Cloud source is `5e74460122867611b94698b83575dc6e441d1a19`

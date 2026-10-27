@@ -40,6 +40,7 @@ type runtimeServeClient struct {
 	api.ServeAgentCoordinationClient
 	reserveLost, deployLost              bool
 	dispatchLost, observationUnavailable bool
+	dispatchTerminated                   bool
 	reserveCalls, deployCalls, readCalls int
 	reserve                              *api.RuntimeReservationCommand
 	reservation                          *api.RuntimeReservation
@@ -70,7 +71,13 @@ func (s *runtimeServeClient) Deploy(_ context.Context, r *api.RuntimeDeployComma
 	s.command = proto.Clone(r).(*api.RuntimeDeployCommand)
 	if s.dispatchLost {
 		s.dispatchLost = false
-		s.observationUnavailable = true
+		s.observationUnavailable = !s.dispatchTerminated
+		if s.dispatchTerminated {
+			s.readback = readyRuntime(r)
+			s.readback.State = api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_TERMINATED
+			s.readback.ProcessReady, s.readback.ApplicationAvailable = false, false
+			s.readback.ReadinessReceiptId, s.readback.AccessUrl = "", ""
+		}
 		return nil, status.Error(codes.Unavailable, "start committed before adapter dispatch")
 	}
 	s.readback = readyRuntime(r)
@@ -220,12 +227,12 @@ func seedRuntimeOrder(t *testing.T, db *sql.DB) (*Service, ownerstore.Operation,
 }
 
 func TestRuntimeRecoveryUsesDurableOriginalIdentities(t *testing.T) {
-	for _, loss := range []string{"reserve", "deploy", "dispatch"} {
+	for _, loss := range []string{"reserve", "deploy", "dispatch", "dispatch terminated"} {
 		t.Run(loss+" response lost", func(t *testing.T) {
 			db := runtimeDatabase(t)
 			service, op, accepted, resources := seedRuntimeOrder(t, db)
 			capability := &runtimeCapabilityClient{version: runtimeVersion(t, accepted.Quote.GetCapabilityVersionId())}
-			serve := &runtimeServeClient{reserveLost: loss == "reserve", deployLost: loss == "deploy", dispatchLost: loss == "dispatch"}
+			serve := &runtimeServeClient{reserveLost: loss == "reserve", deployLost: loss == "deploy", dispatchLost: loss == "dispatch" || loss == "dispatch terminated", dispatchTerminated: loss == "dispatch terminated"}
 			service.Capability, service.Serve = capability, serve
 			if err := service.Resume(t.Context(), op.ID); status.Code(err) != codes.Unavailable {
 				t.Fatalf("first pass must record response loss: %v", err)
@@ -271,7 +278,7 @@ func TestRuntimeRecoveryUsesDurableOriginalIdentities(t *testing.T) {
 				t.Fatal("runtime readiness incorrectly completed Workspace activation")
 			}
 			wantDeployCalls := 1
-			if loss == "dispatch" {
+			if loss == "dispatch" || loss == "dispatch terminated" {
 				wantDeployCalls = 2
 			}
 			if serve.deployCalls != wantDeployCalls || capability.calls != 1 {
@@ -307,6 +314,119 @@ func TestRuntimeRecoveryUsesDurableOriginalIdentities(t *testing.T) {
 				t.Fatal("drift dispatched another runtime")
 			}
 		})
+	}
+}
+
+func TestRuntimeRecoveryPreservesTerminalOwnerEvidence(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		accepted  bool
+		fulfilled bool
+		retired   bool
+		state     api.AgentRuntimeObservationState
+		outcome   api.Observation
+	}{
+		{"accepted deploy", true, false, false, api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_TERMINATED, api.Observation_OBSERVATION_CONFIRMED},
+		{"previously fulfilled", false, true, false, api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_TERMINATED, api.Observation_OBSERVATION_CONFIRMED},
+		{"confirmed retirement", false, false, true, api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_TERMINATED, api.Observation_OBSERVATION_CONFIRMED},
+		{"rejected termination", false, false, false, api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_TERMINATED, api.Observation_OBSERVATION_REJECTED},
+		{"unknown termination", false, false, false, api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_TERMINATED, api.Observation_OBSERVATION_UNKNOWN},
+		{"failed runtime", false, false, false, api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_FAILED, api.Observation_OBSERVATION_CONFIRMED},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service, op, accepted, _ := seedRuntimeOrder(t, runtimeDatabase(t))
+			serve := &runtimeServeClient{dispatchLost: true, dispatchTerminated: true}
+			service.Serve = serve
+			service.Capability = &runtimeCapabilityClient{version: runtimeVersion(t, accepted.Quote.GetCapabilityVersionId())}
+			if err := service.Resume(t.Context(), op.ID); status.Code(err) != codes.Unavailable {
+				t.Fatalf("first dispatch must remain unanswered: %v", err)
+			}
+			serve.readback.State, serve.readback.Outcome = tc.state, tc.outcome
+			serve.readback.NeverDeliveredConfirmed = tc.retired
+			if tc.fulfilled {
+				serve.readback.FirstFulfilledAt = timestamppb.Now()
+			}
+			if tc.accepted {
+				if _, err := service.Store.DB().ExecContext(t.Context(), `UPDATE workspace.operations SET result=jsonb_set(result,'{runtimeDeployAccepted}','true') WHERE id=$1`, op.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for attempt := 0; attempt < 2; attempt++ {
+				if err := service.Resume(t.Context(), op.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if serve.deployCalls != 1 || serve.reserveCalls != 1 || serve.readCalls != 2 {
+				t.Fatalf("owner evidence restarted original runtime: deploy=%d reserve=%d read=%d", serve.deployCalls, serve.reserveCalls, serve.readCalls)
+			}
+			stored, err := service.Store.ReadOperation(t.Context(), op.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if stored.Stage != "runtime" || stored.Status == "succeeded" {
+				t.Fatalf("terminal evidence was promoted to readiness: %+v", stored)
+			}
+		})
+	}
+}
+
+type runtimeFundingGateway struct {
+	*walletAuthority
+	keys *modelUpdateGateway
+}
+
+func (g *runtimeFundingGateway) CreateManagedKey(ctx context.Context, r *api.ManagedKeyCommand, opts ...grpc.CallOption) (*api.ManagedKeyBinding, error) {
+	return g.keys.CreateManagedKey(ctx, r, opts...)
+}
+
+func TestPaidRuntimeRecoveryReusesChargeKeyAndReservation(t *testing.T) {
+	service, op, accepted, fabric, wallet := fundingService(t, paidOrderDatabase(t))
+	fabric.readback.Outcome = api.Observation_OBSERVATION_CONFIRMED
+	fabric.readback.ExecutionResources = &api.ResourceExecutionBinding{AccountId: "account-original", ComputeAllocationId: "compute-original", StorageVolumeId: "storage-original", DataAttachmentId: "attachment-original", DataAttachmentOperationId: "attachment-operation-original"}
+	version := runtimeVersion(t, accepted.Quote.GetCapabilityVersionId())
+	version.DeploymentDescriptor.ApplicationRevision = modelUpdateRevision(t, true)
+	raw, err := publicjson.Marshal(version.DeploymentDescriptor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(raw)
+	version.DeploymentDescriptorDigest = "sha256:" + hex.EncodeToString(digest[:])
+	service.Capability = &runtimeCapabilityClient{version: version}
+	keys := &modelUpdateGateway{}
+	service.Gateway = &runtimeFundingGateway{walletAuthority: wallet, keys: keys}
+	serve := &runtimeServeClient{dispatchLost: true, dispatchTerminated: true}
+	service.Serve = serve
+	if err = service.Resume(t.Context(), op.ID); status.Code(err) != codes.Unavailable {
+		t.Fatalf("first dispatch must remain unanswered: %v", err)
+	}
+	original := proto.Clone(serve.command).(*api.RuntimeDeployCommand)
+	for attempt := 0; attempt < 2; attempt++ {
+		if err = service.Resume(t.Context(), op.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if serve.deployCalls != 2 || serve.reserveCalls != 1 || !proto.Equal(original, serve.command) {
+		t.Fatalf("recovery changed the original deployment: deploy=%d reserve=%d", serve.deployCalls, serve.reserveCalls)
+	}
+	if wallet.debitCalls != 1 || len(wallet.charges) != 1 || wallet.refundCalls != 0 || keys.mints != 1 || keys.revokes != 0 {
+		t.Fatalf("recovery repeated financial/key effects: debit=%d charges=%d refunds=%d keys=%d revokes=%d", wallet.debitCalls, len(wallet.charges), wallet.refundCalls, keys.mints, keys.revokes)
+	}
+	if original.GetContext().GetIdempotencyKey() != op.ID+":deploy_runtime" || keys.lastMint.GetTargetRuntimeInstanceId() != original.RuntimeInstanceId {
+		t.Fatal("recovery changed the original command or managed-key target")
+	}
+	stored, err := service.Store.ReadOperation(t.Context(), op.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != "succeeded" || stored.Stage != "succeeded" {
+		t.Fatalf("paid original order did not activate from confirmed readiness: %+v", stored)
+	}
+	var subscriptions, periods, deployAttempts int
+	if err = service.Store.DB().QueryRowContext(t.Context(), `SELECT (SELECT count(*) FROM workspace.subscriptions WHERE workspace_id=$1),(SELECT count(*) FROM workspace.subscription_periods),(SELECT attempt_count FROM workspace.saga_steps WHERE operation_id=$2 AND step_key='deploy_runtime')`, op.ResourceID, op.ID).Scan(&subscriptions, &periods, &deployAttempts); err != nil {
+		t.Fatal(err)
+	}
+	if subscriptions != 1 || periods != 1 || deployAttempts != 2 {
+		t.Fatalf("recovery duplicated the obligation or did not retry: subscriptions=%d periods=%d deployAttempts=%d", subscriptions, periods, deployAttempts)
 	}
 }
 
