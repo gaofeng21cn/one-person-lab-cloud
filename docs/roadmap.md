@@ -84,6 +84,11 @@ Earlier Candidate installation evidence cannot identify this order. The
 Default App business chain remains unqualified; Local v2 remains diagnostic
 `NOT_READY`.
 
+The Serve diagnostic persistence and admission-identity repair has
+[isolated PostgreSQL source evidence](status.md#authorized-default-app-launch-observation-2026-10-27);
+adoption by the existing Instance executor and acceptance of the same original
+order remain required.
+
 The remaining work order is deliberately narrow:
 
 1. Resolve the original runtime deployment and its recovery without buying a

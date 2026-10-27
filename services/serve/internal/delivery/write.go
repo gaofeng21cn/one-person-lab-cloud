@@ -140,7 +140,7 @@ func stableDeliveryErrorCode(err error) string {
 		return "IDEMPOTENCY_CONFLICT"
 	case codes.Aborted:
 		return "VERSION_CONFLICT"
-	case codes.Unavailable, codes.DeadlineExceeded:
+	case codes.Unavailable, codes.DeadlineExceeded, codes.Canceled:
 		return "DEPENDENCY_UNAVAILABLE"
 	}
 	raw := strings.TrimSpace(err.Error())
@@ -181,10 +181,24 @@ func recordStartFailure(ctx context.Context, tx *sql.Tx, command *api.RuntimeDep
 	return dbError(dbErr)
 }
 
-func (s *Service) recordPreAdmissionStartFailure(ctx context.Context, command *api.RuntimeDeployCommand, err error) error {
+// runtimeStartFailure distinguishes an execution failure from a refusal or a
+// failed owner transaction. Its diagnostic is persisted only after that
+// transaction has rolled back, never by committing partial delivery state.
+type runtimeStartFailure struct{ error }
+
+func (e runtimeStartFailure) Unwrap() error { return e.error }
+
+func (s *Service) retainStartFailure(ctx context.Context, command *api.RuntimeDeployCommand, err error, preAdmission bool) error {
 	if s == nil || s.DB == nil || command == nil {
 		return nil
 	}
+	if preAdmission && (command.GetManagedKeyBinding().GetSecretBindingId() != "" || command.GetManagedKeyBinding().GetSecretVersion() != "") {
+		return nil
+	}
+	// The provider may have failed because the request expired. Retain only its
+	// local diagnostic under a bounded context; do not retry any external effect.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
 	tx, dbErr := s.DB.BeginTx(ctx, nil)
 	if dbErr != nil {
 		return dbError(dbErr)
@@ -193,10 +207,67 @@ func (s *Service) recordPreAdmissionStartFailure(ctx context.Context, command *a
 	if dbErr = lockWorkspace(ctx, tx, command.GetWorkspaceId()); dbErr != nil {
 		return dbError(dbErr)
 	}
+	// A failed request is not authority over the IDs it supplied. In particular,
+	// the Secret handover may reject before validateDeploy was ever reached.
+	if dbErr = validateReserved(ctx, tx, command); dbErr != nil {
+		return nil
+	}
+	if dbErr = refuseClosedWorkspace(ctx, tx, command.GetWorkspaceId()); dbErr != nil {
+		return nil
+	}
+	if dbErr = refuseRetiredRuntime(ctx, tx, command.GetRuntimeInstanceId()); dbErr != nil {
+		return nil
+	}
+	var activated bool
+	if dbErr = tx.QueryRowContext(ctx, `SELECT activated_at IS NOT NULL FROM serve.agent_deployments WHERE id=$1`, command.GetDeploymentId()).Scan(&activated); dbErr != nil {
+		return dbError(dbErr)
+	}
+	if activated {
+		return nil
+	}
+	var snapshot []byte
+	dbErr = tx.QueryRowContext(ctx, `SELECT input_snapshot FROM serve.agent_runtime_actions WHERE command_id=$1`, stableID("start_", command.GetDeploymentId())).Scan(&snapshot)
+	if dbErr == nil {
+		original, _, decodeErr := decodeRuntimeStartSnapshot(snapshot)
+		if decodeErr != nil {
+			return status.Error(codes.DataLoss, "invalid original runtime command")
+		}
+		// A pre-admission retry carries the Workspace handover, while Serve's
+		// frozen start also contains the Fabric-confirmed fields it added. Only
+		// those owner-derived fields may differ; all caller input stays exact.
+		normalize := func(input *api.RuntimeDeployCommand) *api.RuntimeDeployCommand {
+			out := proto.Clone(input).(*api.RuntimeDeployCommand)
+			out.Context = nil
+			if preAdmission && out.ManagedKeyBinding != nil {
+				out.ManagedKeyBinding.SecretBindingId = ""
+				out.ManagedKeyBinding.SecretVersion = ""
+			}
+			return out
+		}
+		if !proto.Equal(normalize(original), normalize(command)) {
+			return nil
+		}
+	} else if !errors.Is(dbErr, sql.ErrNoRows) {
+		return dbError(dbErr)
+	}
 	if dbErr = recordStartFailure(ctx, tx, command, err); dbErr != nil {
 		return dbErr
 	}
 	return dbError(tx.Commit())
+}
+
+func (s *Service) retainExecutionFailure(ctx context.Context, tx *sql.Tx, command *api.RuntimeDeployCommand, err error) error {
+	var failure runtimeStartFailure
+	if !errors.As(err, &failure) {
+		return err
+	}
+	if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+		return dbError(rollbackErr)
+	}
+	if recordErr := s.retainStartFailure(ctx, command, failure.error, false); recordErr != nil {
+		return recordErr
+	}
+	return failure.error
 }
 
 // Reserve is the first-delivery admission. Serve allocates every delivery
@@ -467,7 +538,7 @@ func (s *Service) Deploy(ctx context.Context, r *api.RuntimeDeployCommand) (*api
 		return nil, status.Error(codes.Unavailable, "runtime adapter, Fabric readback and Capability must be configured")
 	}
 	if err := s.confirmLaunchManagedSecret(ctx, r); err != nil {
-		if recordErr := s.recordPreAdmissionStartFailure(ctx, r, err); recordErr != nil {
+		if recordErr := s.retainStartFailure(ctx, r, err, true); recordErr != nil {
 			return nil, recordErr
 		}
 		return nil, err
@@ -633,7 +704,7 @@ func (s *Service) finishFirstDelivery(ctx context.Context, tx *sql.Tx, r *api.Ru
 	// Pending reads cannot turn a rejected start into mutation authority. An
 	// explicit Deploy or a ready readback establishes its own observed result.
 	preserveRejection := !start && o.State != api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY
-	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_runtime_actions SET observation_result=CASE WHEN $2='rejected' OR ($3 AND observation_result='rejected') THEN 'rejected' ELSE 'confirmed' END,evidence_ref=NULLIF($4,''),updated_at=now() WHERE command_id=$1`, stableID("start_", r.DeploymentId), startResult, preserveRejection, o.ReadinessEvidenceRef)
+	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_runtime_actions SET observation_result=CASE WHEN $2='rejected' OR ($3 AND observation_result='rejected') THEN 'rejected' ELSE 'confirmed' END,evidence_ref=NULLIF($4,''),error_code=CASE WHEN $5 THEN NULL ELSE error_code END,updated_at=now() WHERE command_id=$1`, stableID("start_", r.DeploymentId), startResult, preserveRejection, o.ReadinessEvidenceRef, state == "active")
 	if err != nil {
 		return dbError(err)
 	}
@@ -849,7 +920,7 @@ func (s *Service) reconcileRuntime(ctx context.Context, command *api.RuntimeDepl
 		return nil, err
 	}
 	if err = s.observeAndFinishDeliveryTx(ctx, tx, command, start); err != nil {
-		return nil, err
+		return nil, s.retainExecutionFailure(ctx, tx, command, err)
 	}
 	if err = tx.Commit(); err != nil {
 		return nil, dbError(err)
@@ -874,7 +945,7 @@ func (s *Service) observeAndFinishDelivery(ctx context.Context, command *api.Run
 		return nil, err
 	}
 	if err = s.observeAndFinishDeliveryTx(ctx, tx, command, start); err != nil {
-		return nil, err
+		return nil, s.retainExecutionFailure(ctx, tx, command, err)
 	}
 	if err = tx.Commit(); err != nil {
 		return nil, dbError(err)
@@ -905,10 +976,7 @@ func (s *Service) observeAndFinishDeliveryTx(ctx context.Context, tx *sql.Tx, co
 	// Start's acknowledgement cannot prove readiness; only the separate read does.
 	if start {
 		if _, err = s.Runtime.Start(ctx, command, target); err != nil {
-			if recordErr := recordStartFailure(ctx, tx, command, err); recordErr != nil {
-				return recordErr
-			}
-			return err
+			return runtimeStartFailure{err}
 		}
 	}
 	observation, err := s.Runtime.Observe(ctx, command, target)
@@ -941,10 +1009,7 @@ func (s *Service) observeAndFinishDeliveryTx(ctx context.Context, tx *sql.Tx, co
 		}
 		if progressing {
 			if _, err = s.Runtime.Start(ctx, command, target); err != nil && !isExecutionPending(err) {
-				if recordErr := recordStartFailure(ctx, tx, command, err); recordErr != nil {
-					return recordErr
-				}
-				return err
+				return runtimeStartFailure{err}
 			}
 			// The separate read, including a definite failure, owns the result.
 			if observation, err = s.Runtime.Observe(ctx, command, target); err != nil {
