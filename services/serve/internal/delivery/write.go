@@ -181,6 +181,24 @@ func recordStartFailure(ctx context.Context, tx *sql.Tx, command *api.RuntimeDep
 	return dbError(dbErr)
 }
 
+func (s *Service) recordPreAdmissionStartFailure(ctx context.Context, command *api.RuntimeDeployCommand, err error) error {
+	if s == nil || s.DB == nil || command == nil {
+		return nil
+	}
+	tx, dbErr := s.DB.BeginTx(ctx, nil)
+	if dbErr != nil {
+		return dbError(dbErr)
+	}
+	defer tx.Rollback()
+	if dbErr = lockWorkspace(ctx, tx, command.GetWorkspaceId()); dbErr != nil {
+		return dbError(dbErr)
+	}
+	if dbErr = recordStartFailure(ctx, tx, command, err); dbErr != nil {
+		return dbErr
+	}
+	return dbError(tx.Commit())
+}
+
 // Reserve is the first-delivery admission. Serve allocates every delivery
 // identity; a retry completes the same original claim even if Bind lost its reply.
 func (s *Service) Reserve(ctx context.Context, r *api.RuntimeReservationCommand) (*api.RuntimeReservation, error) {
@@ -449,6 +467,9 @@ func (s *Service) Deploy(ctx context.Context, r *api.RuntimeDeployCommand) (*api
 		return nil, status.Error(codes.Unavailable, "runtime adapter, Fabric readback and Capability must be configured")
 	}
 	if err := s.confirmLaunchManagedSecret(ctx, r); err != nil {
+		if recordErr := s.recordPreAdmissionStartFailure(ctx, r, err); recordErr != nil {
+			return nil, recordErr
+		}
 		return nil, err
 	}
 	if err := s.acceptDeploy(ctx, r); err != nil {
