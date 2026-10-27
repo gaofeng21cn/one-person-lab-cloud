@@ -260,6 +260,35 @@ func TestTencentProviderDestroyStorageWaitsWhenPVCRemains(t *testing.T) {
 	}
 }
 
+func TestTencentProviderDestroyStorageRejectsEmptyBindingReadback(t *testing.T) {
+	resource := canonicalTencentStorageDestroyFixture()
+	provider := NewTencentProvider()
+	provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
+		if len(args) > 0 && args[0] == "get" {
+			return nil, nil
+		}
+		t.Fatalf("unverified binding readback authorized kubectl action: %#v", args)
+		return nil, nil
+	}
+	destroyCalls := 0
+	provider.provision = func(_ context.Context, request provisionerRequest) (provisionerResponse, error) {
+		if request.Action == "destroy_storage_volume" {
+			destroyCalls++
+		}
+		return provisionerResponse{OK: true, StorageVolumeID: resource.ProviderResourceID, ProviderRequestID: "read-request", CBSStatus: "UNATTACHED", Status: "provider_ready", ProviderData: map[string]string{
+			"storageVolumeId": resource.ProviderResourceID, "cbsStatus": "UNATTACHED", "status": "provider_ready", "describeCbsRequestId": "read-request", "region": "ap-guangzhou",
+		}}, nil
+	}
+	ctx := context.WithValue(context.Background(), workspaceStorageDeleteOwnerContextKey{}, resource)
+	result, err := provider.DestroyStorageVolume(ctx, resource)
+	if err == nil || !strings.Contains(err.Error(), "kubernetes_response_invalid") {
+		t.Fatalf("empty binding readback was accepted: result=%#v err=%v", result, err)
+	}
+	if destroyCalls != 0 {
+		t.Fatalf("empty binding readback authorized CBS termination: calls=%d", destroyCalls)
+	}
+}
+
 func TestTencentProviderDestroyStorageResumesPartialBindingThroughService(t *testing.T) {
 	resource := canonicalTencentStorageDestroyFixture()
 	fixture := newStorageDeleteTestFixture(t, resource, true, true)

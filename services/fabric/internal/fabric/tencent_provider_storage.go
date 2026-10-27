@@ -687,12 +687,12 @@ func (p *TencentProvider) readStorageDeleteBindingsPartial(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	var items []any
-	if len(bytes.TrimSpace(raw)) > 0 {
-		items, err = strictKubectlItems(raw)
-		if err != nil {
-			return nil, err
-		}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil, fmt.Errorf("kubernetes_response_invalid")
+	}
+	items, err := strictKubectlItems(raw)
+	if err != nil {
+		return nil, err
 	}
 	if len(items) == 0 {
 		return items, nil
