@@ -116,6 +116,71 @@ func deployBytes(r *api.RuntimeDeployCommand) []byte {
 	return wire(clean)
 }
 
+// stableDeliveryErrorCode keeps the owner-local failure fact useful after a
+// provider call fails. Typed owner codes remain canonical; otherwise only a
+// single bounded lower-case token is retained. Human messages and provider
+// payloads never enter the durable action row.
+func stableDeliveryErrorCode(err error) string {
+	if err == nil {
+		return ""
+	}
+	if code, ok := owneridentity.ErrorCode(err); ok {
+		return strings.TrimPrefix(code.String(), "ERROR_CODE_ENUM_")
+	}
+	switch status.Code(err) {
+	case codes.InvalidArgument:
+		return "VALIDATION_FAILED"
+	case codes.Unauthenticated:
+		return "UNAUTHENTICATED"
+	case codes.PermissionDenied:
+		return "FORBIDDEN"
+	case codes.NotFound:
+		return "NOT_FOUND"
+	case codes.AlreadyExists:
+		return "IDEMPOTENCY_CONFLICT"
+	case codes.Aborted:
+		return "VERSION_CONFLICT"
+	case codes.Unavailable, codes.DeadlineExceeded:
+		return "DEPENDENCY_UNAVAILABLE"
+	}
+	raw := strings.TrimSpace(err.Error())
+	if len(raw) > 128 || raw == "" {
+		return "INTERNAL_ERROR"
+	}
+	for _, r := range raw {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '_' {
+			return "INTERNAL_ERROR"
+		}
+	}
+	return raw
+}
+
+func recordStartFailure(ctx context.Context, tx *sql.Tx, command *api.RuntimeDeployCommand, err error) error {
+	code := stableDeliveryErrorCode(err)
+	if code == "" {
+		return nil
+	}
+	_, dbErr := tx.ExecContext(ctx, `
+		UPDATE serve.agent_runtime_actions
+		SET observation_result='rejected',error_code=$2,updated_at=now()
+		WHERE command_id=$1`, stableID("start_", command.GetDeploymentId()), code)
+	if dbErr != nil {
+		return dbError(dbErr)
+	}
+	_, dbErr = tx.ExecContext(ctx, `
+		UPDATE serve.agent_deployments
+		SET error_code=$2,updated_at=now()
+		WHERE id=$1`, command.GetDeploymentId(), code)
+	if dbErr != nil {
+		return dbError(dbErr)
+	}
+	_, dbErr = tx.ExecContext(ctx, `
+		UPDATE serve.agent_runtime_instances
+		SET error_code=$2,updated_at=now()
+		WHERE id=$1`, command.GetRuntimeInstanceId(), code)
+	return dbError(dbErr)
+}
+
 // Reserve is the first-delivery admission. Serve allocates every delivery
 // identity; a retry completes the same original claim even if Bind lost its reply.
 func (s *Service) Reserve(ctx context.Context, r *api.RuntimeReservationCommand) (*api.RuntimeReservation, error) {
@@ -529,7 +594,7 @@ func (s *Service) finishFirstDelivery(ctx context.Context, tx *sql.Tx, r *api.Ru
 			return dbError(err)
 		}
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_deployments SET status=$2,verification_evidence_ref=NULLIF($3,''),activated_at=CASE WHEN $2='active' THEN COALESCE(activated_at,now()) ELSE activated_at END,updated_at=now() WHERE id=$1`, r.DeploymentId, state, o.ReadinessEvidenceRef)
+	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_deployments SET status=$2,verification_evidence_ref=NULLIF($3,''),error_code=CASE WHEN $2='active' THEN NULL ELSE error_code END,activated_at=CASE WHEN $2='active' THEN COALESCE(activated_at,now()) ELSE activated_at END,updated_at=now() WHERE id=$1`, r.DeploymentId, state, o.ReadinessEvidenceRef)
 	if err != nil {
 		return dbError(err)
 	}
@@ -819,6 +884,9 @@ func (s *Service) observeAndFinishDeliveryTx(ctx context.Context, tx *sql.Tx, co
 	// Start's acknowledgement cannot prove readiness; only the separate read does.
 	if start {
 		if _, err = s.Runtime.Start(ctx, command, target); err != nil {
+			if recordErr := recordStartFailure(ctx, tx, command, err); recordErr != nil {
+				return recordErr
+			}
 			return err
 		}
 	}
@@ -852,6 +920,9 @@ func (s *Service) observeAndFinishDeliveryTx(ctx context.Context, tx *sql.Tx, co
 		}
 		if progressing {
 			if _, err = s.Runtime.Start(ctx, command, target); err != nil && !isExecutionPending(err) {
+				if recordErr := recordStartFailure(ctx, tx, command, err); recordErr != nil {
+					return recordErr
+				}
 				return err
 			}
 			// The separate read, including a definite failure, owns the result.
