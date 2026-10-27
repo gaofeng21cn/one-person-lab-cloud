@@ -272,6 +272,6 @@ func (p *TencentProvider) verifyWorkspaceLaunchPartialStorage(ctx context.Contex
 	if err != nil || plan.Region != volume.ProviderData["region"] || plan.Zone != volume.Zone || plan.Storage.SizeGB != volume.SizeGB || plan.Storage.DiskType != volume.DiskType {
 		return ErrLaunchStageBindingConflict
 	}
-	_, err = p.readStorageDeleteBindings(ctx, volume)
+	_, err = p.readStorageDeleteBindingsPartial(ctx, volume)
 	return err
 }
