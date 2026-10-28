@@ -75,11 +75,19 @@ func (s *Service) PutManagedSecret(ctx context.Context, r *api.ManagedSecretComm
 	if err = refuseDeletedProvision(ctx, tx, workspace, tenant); err != nil {
 		return nil, err
 	}
+	var setID string
+	if err = tx.QueryRowContext(ctx, `SELECT id FROM fabric.resource_sets WHERE workspace_id=$1 AND observation_result='confirmed'`, workspace).Scan(&setID); err != nil {
+		return nil, status.Error(codes.DataLoss, "confirmed resources are required before managed Secret delivery")
+	}
+	resourceResult, resultErr := readResourceResult(ctx, tx, setID)
+	if resultErr != nil || resourceResult == nil || resourceResult.Binding == nil || strings.TrimSpace(resourceResult.Binding.GetAccountId()) == "" {
+		return nil, status.Error(codes.DataLoss, "confirmed resources lack the frozen provider account")
+	}
 	if err = s.authorizeWorkspace(ctx, r.GetContext(), workspace, tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET); err != nil {
 		return nil, err
 	}
 	stored, err := s.Dispatcher.PutManagedSecret(ctx, PutManagedSecretIntent{
-		TenantID: tenant, WorkspaceID: workspace, WorkspaceAPIKeyID: r.GetWorkspaceApiKeyId(),
+		TenantID: tenant, AccountID: resourceResult.Binding.GetAccountId(), WorkspaceID: workspace, WorkspaceAPIKeyID: r.GetWorkspaceApiKeyId(),
 		SecretRef: r.GetSecretDeliveryReference(), Fingerprint: r.GetFingerprint(), GatewayAPIKey: r.GetGatewayApiKey(),
 		IdempotencyKey: idempotencyKey,
 	})
