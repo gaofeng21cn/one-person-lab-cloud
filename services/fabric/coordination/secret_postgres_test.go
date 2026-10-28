@@ -21,8 +21,8 @@ import (
 )
 
 // secretDispatcher is a coordination.ResourceDispatcher fixture that confirms one
-// approved-store Secret per workspace and counts confirmations, so a retry or a
-// second bind can be told apart.
+// approved-store Secret per workspace and counts confirmations, so a replay can
+// prove the provider store is re-read without creating a second binding.
 type secretDispatcher struct {
 	calls    int
 	bySpace  map[string]coordination.SecretBindResult
@@ -96,7 +96,7 @@ func (d *rebindDispatcher) BindSecret(_ context.Context, in coordination.SecretB
 	return coordination.SecretBindResult{SecretRef: in.SecretRef, Version: version[:16], Fingerprint: in.Fingerprint}, nil
 }
 
-func TestBindSecretRecordsProviderConfirmedBindingOnce(t *testing.T) {
+func TestBindSecretReconfirmsProviderStoreOnBindingReplay(t *testing.T) {
 	db := database(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
@@ -174,8 +174,8 @@ func TestBindSecretRecordsProviderConfirmedBindingOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !proto.Equal(first, second) || dispatcher.calls != 1 {
-		t.Fatalf("replay=%+v calls=%d", second, dispatcher.calls)
+	if !proto.Equal(first, second) || dispatcher.calls != 2 {
+		t.Fatalf("replay=%+v calls=%d (want 2)", second, dispatcher.calls)
 	}
 	conflict := command("bind-key-2")
 	conflict.SecretDeliveryReference = "opl-gateway-other"
