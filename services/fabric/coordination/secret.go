@@ -100,6 +100,22 @@ func (s *Service) BindSecret(ctx context.Context, r *api.SecretBindingCommand) (
 		if r.GetFingerprint() != "" && r.GetFingerprint() != existingFingerprint {
 			return nil, status.Error(codes.FailedPrecondition, "the runtime instance already holds a confirmed Secret with a different fingerprint for this slot; a changed Secret requires RebindSecret")
 		}
+		// A replay preserves the durable binding identity, but it still
+		// re-confirms the provider Secret. Older bindings may predate the
+		// frozen provider-account annotation; the provider's existing readback
+		// path repairs that metadata after proving the same Secret bytes and
+		// fingerprint. No second Fabric binding is written.
+		bound, err := s.Dispatcher.BindSecret(ctx, SecretBindIntent{
+			TenantID: tenant, AccountID: resourceResult.Binding.GetAccountId(),
+			WorkspaceID: r.GetWorkspaceId(), RuntimeInstanceID: r.GetRuntimeInstanceId(),
+			SecretRef: r.GetSecretDeliveryReference(), Fingerprint: existingFingerprint, TargetSlot: purpose,
+		})
+		if err != nil {
+			return nil, status.Error(codes.Unavailable, "the approved Secret store could not re-confirm the existing binding")
+		}
+		if bound.SecretRef != existingRef || bound.Version != existingVersion || bound.Fingerprint != existingFingerprint {
+			return nil, status.Error(codes.FailedPrecondition, "the approved Secret store returned a different identity for the existing binding")
+		}
 		if err = tx.Commit(); err != nil {
 			return nil, persistenceError(err)
 		}
