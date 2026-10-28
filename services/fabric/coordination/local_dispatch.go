@@ -32,7 +32,7 @@ func (d *localDispatcher) DeleteResource(ctx context.Context, in ResourceDeletio
 }
 
 func (d *localDispatcher) BindSecret(ctx context.Context, in SecretBindIntent) (SecretBindResult, error) {
-	bound, err := d.provider.BindWorkspaceApplicationSecret(ctx, fabric.SecretBindInput{AccountID: in.TenantID, WorkspaceID: in.WorkspaceID, RuntimeInstanceID: in.RuntimeInstanceID, SecretRef: in.SecretRef, Purpose: in.TargetSlot, Fingerprint: in.Fingerprint, TargetSlot: in.TargetSlot})
+	bound, err := d.provider.BindWorkspaceApplicationSecret(ctx, fabric.SecretBindInput{AccountID: in.AccountID, WorkspaceID: in.WorkspaceID, RuntimeInstanceID: in.RuntimeInstanceID, SecretRef: in.SecretRef, Purpose: in.TargetSlot, Fingerprint: in.Fingerprint, TargetSlot: in.TargetSlot})
 	if err != nil {
 		return SecretBindResult{}, err
 	}
@@ -45,7 +45,7 @@ func (d *localDispatcher) BindSecret(ctx context.Context, in SecretBindIntent) (
 // the same original operation key instead of writing a second one.
 func (d *localDispatcher) PutManagedSecret(ctx context.Context, in PutManagedSecretIntent) (ManagedSecretResult, error) {
 	secret, err := d.service.UpsertGatewaySecret(ctx, fabric.GatewaySecretInput{
-		AccountID: in.TenantID, WorkspaceID: in.WorkspaceID, WorkspaceAPIKeyID: in.WorkspaceAPIKeyID,
+		AccountID: in.AccountID, WorkspaceID: in.WorkspaceID, WorkspaceAPIKeyID: in.WorkspaceAPIKeyID,
 		Fingerprint: in.Fingerprint, GatewayAPIKey: in.GatewayAPIKey,
 		IdempotencyKey: in.IdempotencyKey + ":put_managed_secret",
 	})

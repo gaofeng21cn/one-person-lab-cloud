@@ -67,6 +67,10 @@ func (s *Service) BindSecret(ctx context.Context, r *api.SecretBindingCommand) (
 	if err != nil {
 		return nil, err
 	}
+	resourceResult, err := readResourceResult(ctx, tx, setID)
+	if err != nil || resourceResult == nil || resourceResult.Binding == nil || strings.TrimSpace(resourceResult.Binding.GetAccountId()) == "" {
+		return nil, status.Error(codes.DataLoss, "confirmed resources lack the frozen provider account")
+	}
 	purpose := strings.TrimSpace(r.GetTargetSlot())
 	if purpose == "" {
 		purpose = "workspace_gateway_key"
@@ -105,7 +109,7 @@ func (s *Service) BindSecret(ctx context.Context, r *api.SecretBindingCommand) (
 	}
 	// The provider confirms the exact stored Secret. A binding is never written from
 	// a caller claim alone, and the raw key is never read into Fabric.
-	bound, err := s.Dispatcher.BindSecret(ctx, SecretBindIntent{TenantID: tenant, WorkspaceID: r.GetWorkspaceId(), RuntimeInstanceID: r.GetRuntimeInstanceId(), SecretRef: r.GetSecretDeliveryReference(), Fingerprint: r.GetFingerprint(), TargetSlot: purpose})
+	bound, err := s.Dispatcher.BindSecret(ctx, SecretBindIntent{TenantID: tenant, AccountID: resourceResult.Binding.GetAccountId(), WorkspaceID: r.GetWorkspaceId(), RuntimeInstanceID: r.GetRuntimeInstanceId(), SecretRef: r.GetSecretDeliveryReference(), Fingerprint: r.GetFingerprint(), TargetSlot: purpose})
 	if err != nil {
 		return nil, status.Error(codes.Unavailable, "the approved Secret store could not confirm the binding")
 	}

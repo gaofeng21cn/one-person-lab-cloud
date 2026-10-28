@@ -88,7 +88,11 @@ type ResourceDispatcher interface {
 // for a runtime. It carries only opaque identities, keyed by the Workspace and
 // runtime instance so a retry names the same credential.
 type SecretBindIntent struct {
-	TenantID          string
+	TenantID string
+	// AccountID is the provider account frozen by the confirmed resource set.
+	// TenantID remains the authorization and business scope; the two identities
+	// are deliberately not interchangeable.
+	AccountID         string
 	WorkspaceID       string
 	RuntimeInstanceID string
 	SecretRef         string
@@ -109,7 +113,10 @@ type SecretBindResult struct {
 // duration of this call: the provider stores it in the approved store and every
 // durable record keeps the opaque reference, version and fingerprint.
 type PutManagedSecretIntent struct {
-	TenantID          string
+	TenantID string
+	// AccountID is the provider account frozen by the confirmed resource set.
+	// The Secret store must use this identity for ownership metadata.
+	AccountID         string
 	WorkspaceID       string
 	WorkspaceAPIKeyID int64
 	SecretRef         string
