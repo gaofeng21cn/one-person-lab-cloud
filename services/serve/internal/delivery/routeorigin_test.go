@@ -30,6 +30,25 @@ func TestServeRouteOriginKeepsRetainedBindingHostname(t *testing.T) {
 	}
 }
 
+func TestServeWorkspacePathEntryUsesTheNativeIdentity(t *testing.T) {
+	origin := delivery.RouteOrigin{Scheme: "https", WorkspaceDomain: "workspaces.example", ApplicationDomain: "apps.example"}
+	workspace := "workspace_0123456789abcdef0123456789abcdef"
+	address, ok := origin.WorkspaceEntryURL(workspace)
+	if !ok || address != "https://workspaces.example/w/"+workspace+"/" {
+		t.Fatalf("native Workspace path=%q ok=%v", address, ok)
+	}
+	if _, ok := origin.ApplicationEntryURL(workspace, "knowledge-app"); ok {
+		t.Fatal("a path identity became an invalid DNS hostname")
+	}
+	for _, invalid := range []string{"", "_workspace", "workspace_", "workspace/other", "workspace\\other", "workspace%2fother", "workspace?other", "workspace#other", "..", strings.Repeat("a", 64)} {
+		t.Run(invalid, func(t *testing.T) {
+			if address, ok := origin.WorkspaceEntryURL(invalid); ok {
+				t.Fatalf("unsafe Workspace identity %q published %q", invalid, address)
+			}
+		})
+	}
+}
+
 // TestServeRouteOriginRefusesToGuess covers every shape the installation did not
 // declare: Serve publishes nothing instead of an unroutable or inferred host.
 func TestServeRouteOriginRefusesToGuess(t *testing.T) {

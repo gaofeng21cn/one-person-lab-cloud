@@ -84,7 +84,7 @@ func (o RouteOrigin) Configured() bool {
 // false when the installation declares no workspace domain or scheme.
 func (o RouteOrigin) WorkspaceEntryURL(workspaceID string) (string, bool) {
 	workspaceID = strings.TrimSpace(workspaceID)
-	if o.Scheme == "" || o.WorkspaceDomain == "" || !dnsLabelValid(workspaceID) {
+	if o.Scheme == "" || o.WorkspaceDomain == "" || !workspacePathIDValid(workspaceID) {
 		return "", false
 	}
 	if !hostValid(o.WorkspaceDomain) {
@@ -170,6 +170,24 @@ func gatewayUpstream(serviceName string, port int) (string, error) {
 		return "", errors.New("workspace_application_upstream_invalid")
 	}
 	return "http://" + value + ":" + strconv.Itoa(port), nil
+}
+
+// workspacePathIDValid accepts the bounded Workspace identity in one path
+// segment. Workspace creates IDs with underscores; those are valid here even
+// though they cannot be used as a DNS label. Never rewrite the identity.
+func workspacePathIDValid(value string) bool {
+	if value == "" || len(value) > 63 {
+		return false
+	}
+	for index, char := range value {
+		if char >= 'a' && char <= 'z' || char >= '0' && char <= '9' {
+			continue
+		}
+		if (char != '-' && char != '_') || index == 0 || index == len(value)-1 {
+			return false
+		}
+	}
+	return true
 }
 
 // dnsLabelValid accepts what may appear as one DNS label.

@@ -116,6 +116,44 @@ func TestServeAccessEntryServesConfirmedTarget(t *testing.T) {
 	}
 }
 
+func TestServeAccessPathEntryServesNativeWorkspaceIdentity(t *testing.T) {
+	db, tenant, _ := fixture(t)
+	service, err := delivery.New(db, ownerAuthorizer(&fakeIdentity{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := "workspace_0123456789abcdef0123456789abcdef"
+	seedObservationDeployment(t, db, workspace, tenant, "dep-route", "verifying", "", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
+	var runtimeInstance string
+	if err := db.QueryRowContext(context.Background(), `SELECT runtime_instance_id FROM serve.agent_deployments WHERE id=$1`, "dep-route").Scan(&runtimeInstance); err != nil {
+		t.Fatal(err)
+	}
+	markRouteTargetReady(t, db, runtimeInstance)
+	activateRoute(t, service, tenant, workspace, runtimeInstance)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Seen-Path", r.URL.Path)
+		w.Header().Set("X-Seen-Forwarded-Host", r.Header.Get("X-Forwarded-Host"))
+		_, _ = io.WriteString(w, "native-workspace-response")
+	}))
+	defer upstream.Close()
+	entry, err := delivery.NewAccessEntry(db, accessOrigin())
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry.Entitlement = staticEntitlementGate{verdict: delivery.EntitlementPermitted}
+	entry.Transport = serviceTransport{byService: map[string]*httptest.Server{"app-main": upstream}}
+	server := httptest.NewServer(entry.Handler())
+	defer server.Close()
+	response := accessGet(t, server.URL, "workspace.example", "/w/"+workspace+"/healthz")
+	if response.StatusCode != http.StatusOK || response.Body != "native-workspace-response" || response.SeenPath != "/healthz" || response.ForwardedHost != "workspace.example" {
+		t.Fatalf("native Workspace entry response=%+v", response)
+	}
+	if response := accessGet(t, server.URL, "foreign.example", "/w/"+workspace+"/healthz"); response.StatusCode != http.StatusNotFound {
+		t.Fatalf("native Workspace was served on an undeclared host: %+v", response)
+	}
+}
+
 func TestServeAccessEntryStripsPlatformCredentialsAndConfinesCookies(t *testing.T) {
 	service, tenant, workspace, runtimeInstance, db := routeFixture(t)
 	markRouteTargetReady(t, db, runtimeInstance)
