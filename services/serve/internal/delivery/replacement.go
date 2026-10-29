@@ -660,6 +660,12 @@ func (s *Service) operationByID(ctx context.Context, operationID string) (*api.O
 	if value, ok := api.OperationStatusEnum_value["OPERATION_STATUS_ENUM_"+strings.ToUpper(statusText)]; ok {
 		out.Status = api.OperationStatusEnum(value)
 	}
+	switch out.Status {
+	case api.OperationStatusEnum_OPERATION_STATUS_ENUM_ACCEPTED,
+		api.OperationStatusEnum_OPERATION_STATUS_ENUM_RUNNING,
+		api.OperationStatusEnum_OPERATION_STATUS_ENUM_AWAITING_CONFIRMATION:
+		out.PollAfterSeconds = proto.Int32(5)
+	}
 	if value, ok := api.OperationObservationResultEnum_value["OPERATION_OBSERVATION_RESULT_ENUM_"+strings.ToUpper(result)]; ok {
 		out.ObservationResult = api.OperationObservationResultEnum(value).Enum()
 	}

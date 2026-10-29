@@ -15,6 +15,7 @@ import (
 	contracts "opl-cloud/packages/contracts/go"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/publicjson"
+	"opl-cloud/services/internal/ownerstore"
 )
 
 func replacementSelection(body *api.UpdateWorkspaceVersionRequest) (*api.WorkspaceApplicationSelection, error) {
@@ -271,20 +272,121 @@ type replacementInput struct {
 	ExclusiveWriter  bool            `json:"exclusiveWriter"`
 }
 
-func restoreReplacementState(ctx context.Context, q rowQueryer, operationID string, plan *replacementPlan, current *currentDelivery) error {
+func restoreReplacementState(ctx context.Context, tx *sql.Tx, operationID string, plan *replacementPlan, current *currentDelivery) error {
 	var raw []byte
-	if err := q.QueryRowContext(ctx, `SELECT accepted_input FROM serve.operations WHERE id=$1`, operationID).Scan(&raw); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT accepted_input FROM serve.operations WHERE id=$1 FOR UPDATE`, operationID).Scan(&raw); err != nil {
 		return dbError(err)
 	}
 	var input replacementInput
-	if json.Unmarshal(raw, &input) != nil || len(input.ReplacementState) == 0 {
-		return status.Error(codes.DataLoss, "replacement has no frozen predecessor state")
+	if json.Unmarshal(raw, &input) != nil {
+		return status.Error(codes.DataLoss, "replacement accepted input is invalid")
+	}
+	if len(input.ReplacementState) == 0 {
+		return migrateLegacyReplacementState(ctx, tx, operationID, raw, input, plan, current)
 	}
 	command := &api.RuntimeDeployCommand{}
 	if protojson.Unmarshal(input.ReplacementState, command) != nil || command.GetWorkspaceId() != plan.workspaceID || command.GetDeploymentId() != current.DeploymentID || command.GetRuntimeInstanceId() != current.RuntimeID || command.GetResourceSetId() != current.ResourceSetID || command.GetDataAttachmentId() != current.DataAttachment {
 		return status.Error(codes.DataLoss, "replacement predecessor state does not match its resource identity")
 	}
 	plan.inherited, plan.exclusive = command, input.ExclusiveWriter
+	return nil
+}
+
+// The old Agent admission committed the reservation before binding its claim and
+// recording start. Its reservation is sufficient to resume that delivery, but
+// must not be interpreted as a native admission with a missing predecessor.
+// Both fields absent is the retained format, not proof of a record's age: loss
+// of both fields from a new Agent is indistinguishable. Require independently
+// matching owner evidence and an unmodified predecessor, so reconstruction is
+// deterministic in either case; never guess a later model or credential state.
+func migrateLegacyReplacementState(ctx context.Context, tx *sql.Tx, operationID string, raw []byte, input replacementInput, plan *replacementPlan, current *currentDelivery) error {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil || plan.capabilityVersionID == "" || plan.runtimeVersionID != "" {
+		return status.Error(codes.DataLoss, "replacement has no frozen predecessor state")
+	}
+	for key := range fields {
+		switch key {
+		case "request", "actor", "scope", "authorizationContextId", "digest":
+		default:
+			return status.Error(codes.DataLoss, "replacement is not a retained Agent admission")
+		}
+	}
+	request, scope := &api.RuntimeReservationCommand{}, &api.AuthorizationScope{}
+	if protojson.Unmarshal(input.Request, request) != nil || protojson.Unmarshal(input.Scope, scope) != nil || input.Actor != plan.call.GetActorId() || !proto.Equal(scope, plan.call.GetScope()) || input.Digest != "sha256:"+ownerstore.HashRequestBody(reservationBytes(request)) {
+		return status.Error(codes.DataLoss, "legacy replacement admission evidence is invalid")
+	}
+	var deploymentID string
+	if err := tx.QueryRowContext(ctx, `SELECT resource_id FROM serve.operations WHERE id=$1 AND kind=$2 AND actor_id=$3`, operationID, plan.kind, input.Actor).Scan(&deploymentID); err != nil {
+		return dbError(err)
+	}
+	selection := request.GetApplicationSelection()
+	if request.GetWorkspaceId() != plan.workspaceID || request.GetDeploymentId() != deploymentID || request.GetCapabilityVersionId() != plan.capabilityVersionID || request.GetResourceSetId() != current.ResourceSetID || request.GetDataAttachmentId() != current.DataAttachment || request.GetDeploymentDescriptorDigest() != plan.descriptorDigest || request.GetDeploymentDescriptorObjectRef() != plan.descriptorRef || !proto.Equal(request.GetDeploymentDescriptor(), plan.descriptor) || !proto.Equal(request.GetArtifact(), plan.descriptor.GetArtifact()) || selection.GetKind() != api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_AGENT || selection.GetCapabilityVersionId() != plan.capabilityVersionID || selection.GetRuntimeVersionId() != "" {
+		return status.Error(codes.DataLoss, "legacy replacement reservation differs from its admitted delivery")
+	}
+	var start []byte
+	var applied int64
+	var reloaded bool
+	if err := tx.QueryRowContext(ctx, `SELECT a.input_snapshot,r.applied_model_configuration_version,
+ EXISTS(SELECT 1 FROM serve.agent_runtime_actions x WHERE x.runtime_instance_id=r.id AND x.action='reload')
+ FROM serve.agent_runtime_actions a JOIN serve.agent_runtime_instances r ON r.id=a.runtime_instance_id
+ WHERE a.command_id=$1 AND a.action='start' AND a.runtime_instance_id=$2 AND a.expected_deployment_id=$3 AND r.deployment_id=$3 AND r.workspace_id=$4 AND r.execution_epoch=$5`, stableID("start_", current.DeploymentID), current.RuntimeID, current.DeploymentID, plan.workspaceID, current.ExecutionEpoch).Scan(&start, &applied, &reloaded); err != nil {
+		return dbError(err)
+	}
+	command, _, err := decodeRuntimeStartSnapshot(start)
+	if err != nil {
+		return err
+	}
+	predecessor := &api.DeploymentDescriptor{}
+	if publicjson.Unmarshal(current.Descriptor, predecessor) != nil || !proto.Equal(predecessor, command.GetDeploymentDescriptor()) || command.GetWorkspaceId() != plan.workspaceID || command.GetDeploymentId() != current.DeploymentID || command.GetRuntimeInstanceId() != current.RuntimeID || command.GetResourceSetId() != current.ResourceSetID || command.GetDataAttachmentId() != current.DataAttachment || command.GetExecutionEpoch() != current.ExecutionEpoch {
+		return status.Error(codes.DataLoss, "legacy predecessor start differs from its admitted delivery")
+	}
+	if reloaded || applied != command.GetModelConfigurationVersion() {
+		return status.Error(codes.DataLoss, "legacy replacement predecessor has no unambiguous frozen model state")
+	}
+	credential, declared, err := declaredGatewayCredential(&api.RuntimeDeployCommand{DeploymentDescriptor: plan.descriptor})
+	if err != nil {
+		return err
+	}
+	if !declared {
+		command.ManagedKeyBinding = nil
+	} else {
+		binding := command.GetManagedKeyBinding()
+		if binding.GetKeyBindingId() == "" || binding.GetSecretBindingId() == "" || binding.GetSecretVersion() == "" || binding.GetFingerprint() == "" || binding.GetSecretDeliveryReference() != contracts.WorkspaceGatewaySecretRef(plan.workspaceID) || binding.GetTargetSlot() != credential.Name {
+			return status.Error(codes.DataLoss, "legacy predecessor has no matching committed Gateway binding")
+		}
+	}
+	command.Context = nil
+	exclusive, err := exclusiveDataWriter(current.Descriptor, plan.descriptor)
+	if err != nil {
+		return err
+	}
+	var action, runtimeID, previous, observation string
+	var stop []byte
+	err = tx.QueryRowContext(ctx, `SELECT action,runtime_instance_id,expected_deployment_id,observation_result,input_snapshot FROM serve.agent_runtime_actions WHERE command_id=$1`, stableID("stop_", deploymentID)).Scan(&action, &runtimeID, &previous, &observation, &stop)
+	if err == nil {
+		var intent map[string]string
+		if json.Unmarshal(stop, &intent) != nil || action != "stop" || runtimeID != current.RuntimeID || previous != current.DeploymentID || observation == "rejected" || len(intent) != 4 || intent["action"] != "stop" || intent["runtimeInstanceId"] != runtimeID || intent["deploymentId"] != previous || intent["replacementDeploymentId"] != deploymentID {
+			return status.Error(codes.DataLoss, "legacy replacement stop differs from its predecessor")
+		}
+		exclusive = true
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return dbError(err)
+	}
+	// Preserve the original reservation bytes, digest and reference evidence. The
+	// migrated predecessor is committed before any bind, stop or start is retried.
+	fields["replacementState"] = deployBytes(command)
+	fields["exclusiveWriter"], err = json.Marshal(exclusive)
+	if err != nil {
+		return err
+	}
+	migrated, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE serve.operations SET accepted_input=$2 WHERE id=$1`, operationID, migrated); err != nil {
+		return dbError(err)
+	}
+	plan.inherited, plan.exclusive = command, exclusive
 	return nil
 }
 

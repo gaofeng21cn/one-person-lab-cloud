@@ -208,6 +208,9 @@ func TestNativeDefaultAppUpgradeRequiresStoppedWriterAndReadySuccessor(t *testin
 	if result.GetStatus() == api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
 		t.Fatal("pending runtime reported success")
 	}
+	if result.PollAfterSeconds == nil || result.GetPollAfterSeconds() != 5 {
+		t.Fatalf("pending upgrade must provide the owner's polling cadence: %v", result)
+	}
 	_, target := routeBinding(t, s, request.WorkspaceId)
 	if target != original.DeploymentId {
 		t.Fatal("route moved before successor readiness")
@@ -220,6 +223,9 @@ func TestNativeDefaultAppUpgradeRequiresStoppedWriterAndReadySuccessor(t *testin
 	result, err = s.UpdateWorkspaceVersion(serveContext(), request)
 	if err != nil || result.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
 		t.Fatalf("resumed=%v %v", result, err)
+	}
+	if result.PollAfterSeconds != nil {
+		t.Fatalf("completed upgrade must stop polling: %v", result)
 	}
 }
 
