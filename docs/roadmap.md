@@ -73,24 +73,30 @@ Instance owner, the application route is ready and usable, and the same bytes,
 owner facts, Gateway/runtime readback and recovery receipts are available at
 their authoritative layers.
 
-The [October 29 native-entry observation](status.md#native-workspace-entry-boundary-2026-10-29)
-confirms adoption of the CMD repair and the protected retry of the original
-command. Its Pod is now Running and Ready with two image-CMD arguments and zero
-restarts; Serve still reports starting without an access binding. A reproduced
-publication defect rejects Workspace's own underscore-containing IDs as DNS
-labels even in the existing path entry. Repair that path-identity validation
-in Serve, adopt the exact Candidate and verify usable access, application login,
-a real model response and restart/response-loss recovery. Preserve the original
-Workspace, application image, Key, reservation, charge and resources. The Default
-App business chain remains unqualified; Local v2 remains diagnostic `NOT_READY`.
+The [October 29 native-entry evidence](status.md#native-workspace-entry-boundary-2026-10-29)
+confirms Cloud #1087's Candidate is installed through Instance #641, with all
+installation checks passing and zero verification mutations. The original
+operation is succeeded/confirmed, Serve is active, runtime is ready and access
+activation is confirmed. The worker continued automatically without a second
+retry or purchase; Console shows activated / application available and the real
+page renders. Entry activation has passed. The current blocker is the App's
+root `/api/...` fetch/EventSource requests reaching an old route: the browser
+receives HTTP 410 with `workspace_storage_destroyed`, while the current
+Workspace-prefixed state, auth, threads and events APIs return 200 and host/ready
+is available. This does not prove current CBS deletion. The Default App business
+chain remains unqualified; Local v2 remains diagnostic `NOT_READY`.
 
 The remaining work order is deliberately narrow:
 
-1. Resolve the original runtime deployment and its recovery without buying a
-   second Workspace or replacing the original Key. Obtain the application URL,
-   login, actual model response and original-order reconciliation. The normal
-   customer path is distinct from protected qualification admission.
-2. Complete the protected payer readback and declaration. RuntimeVersion,
+1. Verify the actual App's supported path-deployment capability and identify
+   the owning API-path contract before choosing a repair. Then prove complete
+   application login, a real model response and restart/response-loss recovery
+   through the original entry. Preserve the original Workspace, application
+   image, Key, reservation, charge and resources; reconcile the original order
+   without another purchase. No routing, password or SSO change is selected, and
+   an older probe cannot replace actual App acceptance. The normal customer
+   path remains distinct from protected qualification admission.
+2. Complete the protected payer readback and explicit declaration. RuntimeVersion,
    compute, storage and Tenant selections have been configured; a missing
    payer field in the Tenant response must not be treated as proof that the
    successful original charge has no binding. The Instance-owned native

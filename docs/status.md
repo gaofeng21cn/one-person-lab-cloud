@@ -18,48 +18,74 @@ durable decisions are in [decisions.md](decisions.md), and open work is in
 
 ## Native Workspace Entry Boundary (2026-10-29)
 
-Cloud [PR #1086](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1086)
-merged the image-CMD repair and bounded original-operation retry. Candidate
-`3a74cf8e9a8e7a3eec2be74e74fbe7cc4939230c`, receipt
-`sha256:2b87a90b38c123498a576484ead4402eb02bd24151ec908eab73c0f24b2ab2d7`,
-and Cloud image
-`sha256:017e62ba167432ecac6842813469dcf0ba40447cfd9f7f911dacf985d550b32f`
-were adopted through Instance [PR #640](https://github.com/gaofeng21cn/opl-instance-medopl/pull/640).
-Protected [Deploy `40832222365`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40832222365)
-and [verification `40833112754`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40833112754)
-passed for the same Candidate and unchanged application image. Verification
-confirmed every declared check with zero Kubernetes, provider and business
-mutations.
+Cloud [PR #1087](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1087)
+merged the native Workspace path-identity repair. All six
+[CI checks `40845215504`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/40845215504)
+passed, and [Candidate build `40847570721`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/40847570721)
+succeeded. The installed evidence binds:
 
-The [protected original-command retry `40834136118`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40834136118)
-was accepted. [Readback `40834676775`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40834676775)
-now shows the original Pod Running and Ready with zero restarts, the exact
-frozen entrypoint and two image-CMD arguments. Serve still reports starting,
-and no access binding exists. This is startup recovery evidence, not business
-acceptance.
+- Product source: `9b4720ba1e6b3c3d4dd93a10065720315d845a0a`;
+  tree: `5f5c1fafed52d21ff61689333f73a75f6fb45bdf`.
+- Candidate: `sha256:17408061f0d6a77e079c6ae093a59a720538afd37e9ccc7065e3ac9bf5f8a76d`;
+  Cloud image: `sha256:1262f5b270055b4aaa557d4cbfa64797aca6f1b105a5f8e51ca67877261010ee`.
+- Instance [PR #641](https://github.com/gaofeng21cn/opl-instance-medopl/pull/641)
+  merged at `58c3799f3d60b80c800d14edf19a1824423de7b1`. Protected
+  [Deploy `40850031564`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40850031564)
+  succeeded; [verification `40850367417`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40850367417)
+  returned `deployment_verified`, all checks true and zero verification mutations.
+  The original application image remains
+  `sha256:f6ce30fe1b0cdf8e1c6722a4c96d893ff8286e6af718940dab5a1d778ba70b71`.
 
-A deterministic Serve-consumer reproduction identifies another publication
-failure: Workspace creates `workspace_<hex>` identities, but both the retained
-path URL builder and path reader validate them as DNS labels. A confirmed ready
-executor observation consequently remains starting without an access URL.
-The existing [origin decision](decisions.md#2026-09-17-one-origin-per-workspace-application-binding-derived-not-allocated)
-already retains path entries for identities that cannot compose into hostnames.
-The bounded repair accepts the unchanged native identity as a safe path segment
-in those two existing consumers. DNS host rules and published binding hostnames
-remain the same. The original route, application login, real model response and
-restart/lost-response acceptance remain open; #1042 is not closed.
+The read-only [original-order attribution `40850371760`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40850371760)
+confirms the operation `succeeded`/`confirmed`, Serve `active`, runtime `ready`
+and the access binding's target and last `activate` switch confirmed. The
+original Pod is Ready with zero restarts and two image-CMD arguments. The worker
+resumed automatically after adoption, without a second retry or purchase. The
+original Console now shows activated / application available, and the real
+application page renders. Native entry activation is proven; complete application
+login, a real model response and restart/lost-response recovery remain unproven.
+
+The current browser failure is Codex App Server HTTP 410. The actual renderer's
+`webTransport` uses root `/api/...` paths for every fetch and EventSource instead
+of `/w/<workspace>/api/...`. In the current browser session,
+`https://workspace.medopl.com/api/opl/state?profile=fast` returns
+`{"error":"workspace_storage_destroyed"}`; a public request without Cookies to
+the same root path returns 404. The same state API under the current Workspace
+prefix returns 200, as do `auth/user`, `threads/list` and `opl-events`, with
+`host/ready` reporting `available: true`. These observations locate the failure
+at the App's root API requests reaching an old route; they do not establish
+that the current CBS was deleted. The served transport has no API-base input in these calls. The App/Shell owner
+must establish a supported path deployment before a repair is selected; changing
+application bytes requires an admitted immutable application revision, not a live
+Pod patch. No routing repair, password change or SSO design is selected, and an
+older probe cannot supply the missing business pass.
+
+The five original Instance-owned receipts are in
+[Instance PR #642](https://github.com/gaofeng21cn/opl-instance-medopl/pull/642),
+whose two exact-head CI checks passed in
+[run `40852382634`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40852382634):
+
+- `receipts/2026-10-29-native-entry-deployment-40850031564.json`
+- `receipts/2026-10-29-native-entry-verification-40850367417.json`
+- `receipts/2026-10-29-native-entry-attribution-40850371760.json`
+- `receipts/2026-10-29-native-entry-serve-40850371760.json`
+- `receipts/2026-10-29-native-entry-startup-40850371760.json`
+
+Explicit protected payer declaration and a genuine dedicated-sandbox J0 READY
+receipt for this same Candidate remain open, alongside full login/model/recovery
+acceptance. #1042 and the separate original-order closeout in #1018 remain open;
+installation verification and entry activation do not close those outcomes.
 
 ## Default App Startup Command Boundary (2026-10-29)
 
-The original paid order still has no accepted business pass. Instance's
-[protected startup readback `40811660008`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40811660008)
-uses Instance source `ba8f905bc94b52c74eb563251aab9764bd4826bc` and
-confirms the frozen main entrypoint matches the Pod command, while the Pod has
-zero arguments. The container repeatedly exits successfully without application
-logs. This readback records zero database writes, Kubernetes writes and provider
-calls. The customer financial-receipt read separately confirms the original
-charge and Ledger receipt; an uncheckpointed `wallet_action_receipt` step is
-not an authoritative failed Ledger read.
+The installed CMD repair and recovered original operation are confirmed by the
+[current native-entry readbacks](#native-workspace-entry-boundary-2026-10-29):
+the original Pod is Ready with two image-CMD arguments and zero restarts, Serve
+is active and access activation is confirmed. The earlier zero-argument exit is
+no longer the current startup state. The original paid order still has no
+accepted full business pass. The customer financial-receipt read separately
+confirms the original charge and Ledger receipt; an uncheckpointed
+`wallet_action_receipt` step is not an authoritative failed Ledger read.
 
 The owning application contract already requires main entrypoint overrides to
 retain the approved image's default CMD. The execution adapters previously
@@ -80,12 +106,12 @@ starting, so replay cannot restart an already fulfilled delivery. The protected
 installation caller and its receipts remain Instance-owned; no new RPC or
 browser route is introduced.
 
-Adapter source tests do not establish adoption by the installed Candidate.
-The same original deployment still needs an authorized retry through its owner,
-then ready application access, login, a real model response and restart/lost-
-response recovery. The existing order, charge, Key, resource binding and
-application image remain the identities to verify. Instance deployment and
-business receipts remain Instance-owned; #1042 stays open.
+Installed adoption and automatic worker continuation are now evidenced above;
+no second retry was needed. Remaining acceptance concerns the actual App API
+path, complete login, a real model response and restart/lost-response recovery.
+The existing order, charge, Key, resource binding and application image remain
+the identities to verify. Instance deployment and business receipts remain
+Instance-owned; #1042 stays open.
 
 ## Authorized Default App Launch Observation (2026-10-27)
 
