@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -261,7 +262,12 @@ func (s *Service) retainExecutionFailure(ctx context.Context, tx *sql.Tx, comman
 	if !errors.As(err, &failure) {
 		return err
 	}
-	if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+	rollbackErr := tx.Rollback()
+	// Cancellation may discard the driver connection before this explicit
+	// rollback wins against database/sql's automatic rollback. The diagnostic
+	// transaction reacquires the Workspace lock after the old transaction ends.
+	canceledBadConn := ctx.Err() != nil && errors.Is(rollbackErr, driver.ErrBadConn)
+	if rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) && !canceledBadConn {
 		return dbError(rollbackErr)
 	}
 	if recordErr := s.retainStartFailure(ctx, command, failure.error, false); recordErr != nil {
@@ -655,9 +661,9 @@ func recordStartActionTx(ctx context.Context, tx *sql.Tx, r *api.RuntimeDeployCo
 			return dbError(err)
 		}
 	}
-	// A delivery that is already the current application keeps its status; every
-	// other admitted delivery is executing and is recorded as deploying.
-	if _, err = tx.ExecContext(ctx, `UPDATE serve.agent_deployments SET status=CASE WHEN status='active' THEN status ELSE 'deploying' END,updated_at=now() WHERE id=$1`, r.DeploymentId); err != nil {
+	// A fulfilled delivery keeps its current health/history on replay. Only an
+	// unfulfilled delivery is recorded as executing again.
+	if _, err = tx.ExecContext(ctx, `UPDATE serve.agent_deployments SET status=CASE WHEN activated_at IS NOT NULL OR status='active' THEN status ELSE 'deploying' END,updated_at=now() WHERE id=$1`, r.DeploymentId); err != nil {
 		return dbError(err)
 	}
 	return nil
@@ -918,6 +924,21 @@ func (s *Service) reconcileRuntime(ctx context.Context, command *api.RuntimeDepl
 	}
 	if err = s.authorize(ctx, command.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME, command.WorkspaceId); err != nil {
 		return nil, err
+	}
+	// A replay acknowledges the original delivery after its first fulfillment.
+	// Check under the same Workspace lock as activation, including deliveries
+	// whose current health has degraded since activated_at was recorded.
+	if start {
+		var fulfilled bool
+		if err = tx.QueryRowContext(ctx, `SELECT activated_at IS NOT NULL OR status='active' FROM serve.agent_deployments WHERE id=$1`, command.DeploymentId).Scan(&fulfilled); err != nil {
+			return nil, dbError(err)
+		}
+		if fulfilled {
+			if err = tx.Rollback(); err != nil {
+				return nil, dbError(err)
+			}
+			return s.runtimeReadback(ctx, command.RuntimeInstanceId, command.DeploymentId)
+		}
 	}
 	if err = s.observeAndFinishDeliveryTx(ctx, tx, command, start); err != nil {
 		return nil, s.retainExecutionFailure(ctx, tx, command, err)

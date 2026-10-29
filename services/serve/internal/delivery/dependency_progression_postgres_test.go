@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/services/serve/internal/delivery"
 )
@@ -490,6 +492,64 @@ func TestPollRetainsATerminalFactAlreadyRecordedByTheOwner(t *testing.T) {
 			}
 			if runtime.starts != 0 {
 				t.Fatalf("terminal owner fact caused %d starts", runtime.starts)
+			}
+		})
+	}
+}
+
+func TestDeployReplayDoesNotStartPreviouslyFulfilledRuntime(t *testing.T) {
+	for _, degraded := range []bool{false, true} {
+		name := "active"
+		if degraded {
+			name = "degraded after activation"
+		}
+		t.Run(name, func(t *testing.T) {
+			s, r, _ := reservationFixture(t)
+			ctx := workspaceContext()
+			reservation, err := s.Reserve(ctx, r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.Resources = &resourcesForServe{confirmed: true}
+			s.Runtime = &runtimeForServe{}
+			command := deployReserved(r, reservation)
+			original, err := s.Deploy(ctx, command)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if original.GetFirstFulfilledAt() == nil {
+				t.Fatal("first delivery not fulfilled")
+			}
+			runtime := &progressionBoundaryRuntime{runtimeForServe: runtimeForServe{state: api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_STARTING}, startErr: errors.New("must not start a fulfilled delivery")}
+			s.Runtime = runtime
+			prior := original
+			if degraded {
+				prior, err = s.ReadRuntime(ctx, &api.RuntimeReadbackRequest{Context: r.Context, RuntimeInstanceId: reservation.RuntimeInstanceId, DeploymentId: reservation.DeploymentId})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			var stateBefore string
+			if err = s.DB.QueryRowContext(ctx, `SELECT status FROM serve.agent_deployments WHERE id=$1`, command.DeploymentId).Scan(&stateBefore); err != nil {
+				t.Fatal(err)
+			}
+			observesBefore := runtime.observes
+			replayed, err := s.Deploy(ctx, command)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !proto.Equal(replayed, prior) {
+				t.Fatalf("replay changed original readback: before=%v after=%v", prior, replayed)
+			}
+			if runtime.starts != 0 || runtime.observes != observesBefore {
+				t.Fatalf("fulfilled replay touched runtime: starts=%d observes=%d->%d", runtime.starts, observesBefore, runtime.observes)
+			}
+			var stateAfter string
+			if err = s.DB.QueryRowContext(ctx, `SELECT status FROM serve.agent_deployments WHERE id=$1`, command.DeploymentId).Scan(&stateAfter); err != nil {
+				t.Fatal(err)
+			}
+			if stateAfter != stateBefore {
+				t.Fatalf("fulfilled deployment status changed: %s -> %s", stateBefore, stateAfter)
 			}
 		})
 	}

@@ -103,7 +103,11 @@ func (f *fundingFabricClient) EnsureResources(_ context.Context, r *api.EnsureRe
 	if r.WorkspaceId != "workspace-original" || r.ObligationId != "operation-original" || r.Context.GetIdempotencyKey() != "operation-original:ensure_resources" {
 		return nil, status.Error(codes.InvalidArgument, "different original resource intent")
 	}
-	f.receiptIDs = append(f.receiptIDs, r.GetConfirmedChargeReceiptId())
+	// An empty receipt registers the original Fabric intent; it cannot release
+	// procurement. Count only calls carrying the confirmed funding evidence.
+	if receipt := r.GetConfirmedChargeReceiptId(); receipt != "" {
+		f.receiptIDs = append(f.receiptIDs, receipt)
+	}
 	return &api.Operation{OperationId: "fabric-operation-original", ResourceId: "resource-set-original", Owner: api.OperationOwnerEnum_OPERATION_OWNER_ENUM_FABRIC, Kind: api.OperationKindEnum_OPERATION_KIND_ENUM_RESOURCE_PROVISION}, nil
 }
 
@@ -337,8 +341,8 @@ func TestRefusedChargeStopsTheDownstream(t *testing.T) {
 	if stored.Status != "needs_attention" || stored.Observation != "rejected" || stored.ErrorCode != "INSUFFICIENT_BALANCE" {
 		t.Fatalf("the refusal reads as %s/%s/%s", stored.Status, stored.Observation, stored.ErrorCode)
 	}
-	if fabric.ensureCalls != 0 || len(fabric.receiptIDs) != 0 {
-		t.Fatal("a refused charge released resources")
+	if fabric.ensureCalls != 1 || len(fabric.receiptIDs) != 0 {
+		t.Fatal("a refused charge must retain only its unfunded resource intent")
 	}
 	// The refusal is the original answer for this code, so a later pass neither
 	// charges again nor invents a refund.

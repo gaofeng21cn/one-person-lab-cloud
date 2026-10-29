@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -201,6 +202,9 @@ func (p *LocalDockerProvider) readWorkspaceApplicationComponent(ctx context.Cont
 	}
 	entryPort := 0
 	if component.Role == contracts.WorkspaceApplicationComponentMain {
+		if err := p.verifyLocalDockerApplicationMainCommand(ctx, input, container); err != nil {
+			return component, "", err
+		}
 		entryPort = localDockerApplicationEntryPort(input.Revision)
 		if input.SchemaVersion == 2 && contracts.WorkspaceApplicationCredentialKind(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey) {
 			if err := p.verifyRuntimeGatewayNetwork(ctx, container); err != nil {
@@ -403,8 +407,18 @@ func (p *LocalDockerProvider) ensureWorkspaceApplicationComponent(
 		}
 		args = append(args, dependency.Command.Args...)
 	}
-	if component.Role == contracts.WorkspaceApplicationComponentMain && len(input.Revision.Entrypoint) > 1 {
+	if component.Role == contracts.WorkspaceApplicationComponentMain && len(input.Revision.Entrypoint) > 0 {
+		// Docker's --entrypoint clears the image CMD. Pull the admitted platform
+		// before reading its defaults, then preserve CMD after the entrypoint tail.
+		if _, err := p.runner.Run(ctx, nil, "pull", "--platform", input.Revision.Platform, component.Image); err != nil {
+			return component, err
+		}
+		cmd, err := p.localDockerApplicationImageCommand(ctx, component.Image, input.Revision.Platform)
+		if err != nil {
+			return component, err
+		}
 		args = append(args, input.Revision.Entrypoint[1:]...)
+		args = append(args, cmd...)
 	}
 	if _, err := p.runner.Run(ctx, nil, args...); err != nil {
 		return localDockerApplicationComponentState(component, dockerContainerInspect{}), err
@@ -414,6 +428,60 @@ func (p *LocalDockerProvider) ensureWorkspaceApplicationComponent(
 		return localDockerApplicationComponentState(component, dockerContainerInspect{}), firstNonNil(inspectErr, fmt.Errorf("local_docker_application_component_readback_missing"))
 	}
 	return localDockerApplicationComponentState(component, created), nil
+}
+
+// localDockerApplicationImageCommand reads only the exact admitted image and
+// platform. Missing or malformed readback is not evidence of an empty CMD.
+func (p *LocalDockerProvider) localDockerApplicationImageCommand(ctx context.Context, image, platform string) ([]string, error) {
+	raw, err := p.runner.Run(ctx, nil, "image", "inspect", "--platform", platform, image)
+	if err != nil {
+		return nil, fmt.Errorf("local_docker_application_image_command_read_failed: %w", err)
+	}
+	var images []struct {
+		ID           string   `json:"Id"`
+		RepoDigests  []string `json:"RepoDigests"`
+		OS           string   `json:"Os"`
+		Architecture string   `json:"Architecture"`
+		Variant      string   `json:"Variant"`
+		Config       *struct {
+			Cmd []*string `json:"Cmd"`
+		} `json:"Config"`
+	}
+	if err := json.Unmarshal(raw, &images); err != nil || len(images) != 1 || images[0].ID == "" || images[0].Config == nil {
+		return nil, errors.New("local_docker_application_image_command_invalid")
+	}
+	observed := images[0]
+	observedPlatform := observed.OS + "/" + observed.Architecture
+	if observed.Variant != "" {
+		observedPlatform += "/" + observed.Variant
+	}
+	if !slices.Contains(observed.RepoDigests, image) || observedPlatform != platform {
+		return nil, errors.New("local_docker_application_image_identity_mismatch")
+	}
+	cmd := make([]string, 0, len(observed.Config.Cmd))
+	for _, value := range observed.Config.Cmd {
+		if value == nil {
+			return nil, errors.New("local_docker_application_image_command_invalid")
+		}
+		cmd = append(cmd, *value)
+	}
+	return cmd, nil
+}
+
+func (p *LocalDockerProvider) verifyLocalDockerApplicationMainCommand(ctx context.Context, input WorkspaceApplicationRuntimeInput, container dockerContainerInspect) error {
+	if len(input.Revision.Entrypoint) == 0 {
+		return nil
+	}
+	cmd, err := p.localDockerApplicationImageCommand(ctx, input.Revision.Image, input.Revision.Platform)
+	if err != nil {
+		return err
+	}
+	expected := append(append([]string{}, input.Revision.Entrypoint...), cmd...)
+	actual := append([]string{container.Path}, container.Args...)
+	if !slices.Equal(actual, expected) {
+		return errors.New("local_docker_application_component_conflict")
+	}
+	return nil
 }
 
 // dependencySpecByName resolves one dependency's full spec from the admitted

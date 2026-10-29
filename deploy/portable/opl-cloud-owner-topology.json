@@ -164,7 +164,8 @@
     "OPL_LEDGER_ADDR",
     "OPL_RESOURCE_CATALOG_ADDR",
     "OPL_RUNTIME_CONTROL_ADDR",
-    "OPL_SERVE_ADDR"
+    "OPL_SERVE_ADDR",
+    "OPL_SERVE_TOKEN"
    ],
    "optionalEnv": [],
    "externalEnv": [],

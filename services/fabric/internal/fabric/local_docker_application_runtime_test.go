@@ -19,21 +19,43 @@ import (
 // applicationRuntimeDockerRunner is a scripted docker CLI: `run` materialises
 // a running container from the command args, `container ls`/`inspect` read it
 // back, and everything else fails loudly.
+type applicationRuntimeImageConfig struct {
+	Entrypoint []string
+	Cmd        []string
+}
+
 type applicationRuntimeDockerRunner struct {
-	mu            sync.Mutex
-	containers    map[string][]byte
-	runs          [][]string
-	probes        [][]string
-	probeReady    bool
-	probeErr      error
-	images        map[string]bool
-	removedImages []string
+	mu                 sync.Mutex
+	containers         map[string][]byte
+	runs               [][]string
+	probes             [][]string
+	probeReady         bool
+	probeErr           error
+	images             map[string]bool
+	removedImages      []string
+	calls              [][]string
+	imageConfigs       map[string]applicationRuntimeImageConfig
+	imagePlatforms     map[string]string
+	imageInspectOutput []byte
+	imageInspectErr    error
 }
 
 func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args ...string) ([]byte, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.calls = append(r.calls, append([]string(nil), args...))
 	switch args[0] {
+	case "pull":
+		image := args[len(args)-1]
+		if r.images == nil {
+			r.images = map[string]bool{}
+		}
+		if r.imagePlatforms == nil {
+			r.imagePlatforms = map[string]string{}
+		}
+		r.images[image] = true
+		r.imagePlatforms[image] = args[2]
+		return nil, nil
 	case "container":
 		switch args[1] {
 		case "start", "stop", "rm":
@@ -100,8 +122,19 @@ func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args .
 	case "image":
 		image := args[len(args)-1]
 		if args[1] == "inspect" {
+			if r.imageInspectErr != nil || r.imageInspectOutput != nil {
+				return r.imageInspectOutput, r.imageInspectErr
+			}
 			if r.images[image] {
-				return mustJSON([]dockerApplicationImageInspect{{ID: "sha256:" + strings.Repeat("a", 64), RepoDigests: []string{image}}}), nil
+				platform := strings.Split(r.imagePlatforms[image], "/")
+				if len(platform) < 2 {
+					platform = []string{"linux", "amd64"}
+				}
+				variant := ""
+				if len(platform) == 3 {
+					variant = platform[2]
+				}
+				return mustJSON([]any{map[string]any{"Id": "sha256:" + strings.Repeat("a", 64), "RepoDigests": []string{image}, "Os": platform[0], "Architecture": platform[1], "Variant": variant, "Config": r.imageConfigs[image]}}), nil
 			}
 			return []byte("Error response from daemon: No such image: " + image), fmt.Errorf("image absent")
 		}
@@ -134,6 +167,8 @@ func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args .
 		published := map[string]any{}
 		env := []string{}
 		user := ""
+		entrypointOverride := ""
+		var commandArgs []string
 		mounts := []map[string]any{}
 		for index := 1; index < len(args); index++ {
 			if args[index] == "-d" {
@@ -141,6 +176,7 @@ func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args .
 			}
 			if !strings.HasPrefix(args[index], "-") {
 				image = args[index]
+				commandArgs = args[index+1:]
 				break
 			}
 			switch args[index] {
@@ -154,6 +190,8 @@ func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args .
 				env = append(env, args[index+1])
 			case "--user":
 				user = args[index+1]
+			case "--entrypoint":
+				entrypointOverride = args[index+1]
 			case "--mount":
 				mount := map[string]any{"RW": true}
 				for _, part := range strings.Split(args[index+1], ",") {
@@ -181,9 +219,23 @@ func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args .
 		if name == "" {
 			return nil, fmt.Errorf("run requires --name")
 		}
+		imageConfig := r.imageConfigs[image]
+		entrypoint, cmd := imageConfig.Entrypoint, imageConfig.Cmd
+		if entrypointOverride != "" {
+			entrypoint, cmd = []string{entrypointOverride}, nil
+		}
+		if len(commandArgs) > 0 {
+			cmd = commandArgs
+		}
+		argv := append(append([]string(nil), entrypoint...), cmd...)
+		path := ""
+		var processArgs []string
+		if len(argv) > 0 {
+			path, processArgs = argv[0], argv[1:]
+		}
 		inspect := []map[string]any{{
-			"Id": "cid-" + name, "Name": "/" + name,
-			"Config":          map[string]any{"Image": image, "Labels": labels, "Env": env, "User": user},
+			"Id": "cid-" + name, "Name": "/" + name, "Path": path, "Args": processArgs,
+			"Config":          map[string]any{"Image": image, "Labels": labels, "Env": env, "User": user, "Entrypoint": entrypoint, "Cmd": cmd},
 			"Mounts":          mounts,
 			"State":           map[string]any{"Status": "running", "Running": true, "StartedAt": time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano)},
 			"NetworkSettings": map[string]any{"Ports": published},
@@ -723,4 +775,241 @@ func localEntryURL(observation contracts.WorkspaceApplicationRuntimeObservation)
 		return ""
 	}
 	return observation.Entry.URL
+}
+
+func ensureApplicationCommandRuntime(p *LocalDockerProvider, input WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
+	return p.EnsureWorkspaceApplicationRuntime(context.Background(), input,
+		ComputeAllocation{ID: "compute-alpha", AccountID: "acct-alpha", WorkspaceID: "workspace-alpha", Status: "running"},
+		StorageVolume{ID: "storage-alpha", AccountID: "acct-alpha", WorkspaceID: "workspace-alpha", SizeGB: 10, Status: "ready"})
+}
+
+func TestLocalDockerApplicationMainCommandPreservesImageCMD(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		entrypoint []string
+		cmd        []string
+		platform   string
+	}{
+		{name: "image defaults", cmd: []string{"serve", "--http=8080"}},
+		{name: "single override", entrypoint: []string{"/wrapper"}, cmd: []string{"serve", "--http=8080"}},
+		{name: "entrypoint tail precedes CMD", entrypoint: []string{"/wrapper", "--wrapper-flag", "two words", ""}, cmd: []string{"serve", "--literal=$HOME", ""}},
+		{name: "empty CMD", entrypoint: []string{"/wrapper", "--tail"}, cmd: []string{}},
+		{name: "null CMD", entrypoint: []string{"/wrapper"}},
+		{name: "platform variant", entrypoint: []string{"/wrapper"}, cmd: []string{"serve"}, platform: "linux/arm/v7"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			p, runner, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
+			revision := applicationRevisionForTest()
+			revision.Entrypoint, revision.Dependencies = test.entrypoint, nil
+			if test.platform != "" {
+				revision.Platform = test.platform
+			}
+			runner.imageConfigs = map[string]applicationRuntimeImageConfig{revision.Image: {Entrypoint: []string{"/image-entrypoint"}, Cmd: test.cmd}}
+			input := applicationRuntimeInput("main-command", revision)
+			observation, err := ensureApplicationCommandRuntime(p, input)
+			if err != nil || observation.Status != "ready" {
+				t.Fatalf("observation=%+v err=%v", observation, err)
+			}
+			runArgs := runner.runArgsForComponent("main")
+			var tail []string
+			for i, arg := range runArgs {
+				if arg == revision.Image {
+					tail = runArgs[i+1:]
+				}
+			}
+			wantEntrypoint := revision.Entrypoint
+			var wantTail []string
+			if len(wantEntrypoint) == 0 {
+				wantEntrypoint = []string{"/image-entrypoint"}
+			} else {
+				wantTail = append(append([]string{}, wantEntrypoint[1:]...), test.cmd...)
+			}
+			if !reflect.DeepEqual(tail, wantTail) && !(len(tail) == 0 && len(wantTail) == 0) {
+				t.Fatalf("docker command tail=%q want=%q", tail, wantTail)
+			}
+			name, _ := localDockerApplicationComponentNameForInput(input, "main")
+			var actual []struct {
+				Path string
+				Args []string
+			}
+			if err := json.Unmarshal(runner.containers[name], &actual); err != nil {
+				t.Fatal(err)
+			}
+			wantArgv := append(append([]string{}, wantEntrypoint...), test.cmd...)
+			if got := append([]string{actual[0].Path}, actual[0].Args...); !reflect.DeepEqual(got, wantArgv) {
+				t.Fatalf("actual argv=%q want=%q", got, wantArgv)
+			}
+			pull, inspect, run := -1, -1, -1
+			for i, call := range runner.calls {
+				if call[0] == "pull" {
+					pull = i
+					if !reflect.DeepEqual(call, []string{"pull", "--platform", revision.Platform, revision.Image}) {
+						t.Fatalf("pull=%q", call)
+					}
+				}
+				if call[0] == "image" && call[1] == "inspect" {
+					if inspect == -1 {
+						inspect = i
+					}
+					if !reflect.DeepEqual(call, []string{"image", "inspect", "--platform", revision.Platform, revision.Image}) {
+						t.Fatalf("image inspect=%q", call)
+					}
+				}
+				if call[0] == "run" && reflect.DeepEqual(call, runArgs) {
+					run = i
+				}
+			}
+			if len(revision.Entrypoint) == 0 {
+				if pull != -1 || inspect != -1 || strings.Contains(strings.Join(runArgs, " "), "--entrypoint") {
+					t.Fatalf("image defaults overridden: pull=%d inspect=%d args=%q", pull, inspect, runArgs)
+				}
+			} else if pull < 0 || inspect <= pull || run <= inspect {
+				t.Fatalf("expected pull -> inspect -> run: pull=%d inspect=%d run=%d", pull, inspect, run)
+			}
+			if _, err := ensureApplicationCommandRuntime(p, input); err != nil || runner.runCount() != 1 {
+				t.Fatalf("replay err=%v runs=%d", err, runner.runCount())
+			}
+		})
+	}
+}
+
+func TestLocalDockerApplicationMainCommandKeepsDependencyArgs(t *testing.T) {
+	p, runner, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
+	revision := applicationRevisionForTest()
+	revision.Entrypoint = []string{"/wrapper", "--main-tail"}
+	revision.Dependencies[0].Command = contracts.WorkspaceApplicationDependencyCommand{
+		Entrypoint: []string{"/dependency", "--dependency-tail"}, Args: []string{"worker", "--port=9200"},
+	}
+	runner.imageConfigs = map[string]applicationRuntimeImageConfig{
+		revision.Image: {Cmd: []string{"main-default"}}, revision.Dependencies[0].Image: {Cmd: []string{"dependency-default"}},
+	}
+	if _, err := ensureApplicationCommandRuntime(p, applicationRuntimeInput("dependency-command", revision)); err != nil {
+		t.Fatal(err)
+	}
+	args := runner.runArgsForComponent("retrieval")
+	wantTail := []string{revision.Dependencies[0].Image, "--dependency-tail", "worker", "--port=9200"}
+	if !reflect.DeepEqual(args[len(args)-len(wantTail):], wantTail) {
+		t.Fatalf("dependency command changed: %q", args)
+	}
+	for _, call := range runner.calls {
+		if (call[0] == "image" || call[0] == "pull") && call[len(call)-1] == revision.Dependencies[0].Image {
+			t.Fatalf("dependency unexpectedly resolved image CMD: %q", call)
+		}
+	}
+}
+
+func TestLocalDockerApplicationMainCommandRejectsImageReadFailure(t *testing.T) {
+	readFailure := errors.New("image inspect unavailable")
+	for _, test := range []struct {
+		name, raw string
+		err       error
+	}{
+		{name: "inspect error", err: readFailure},
+		{name: "invalid JSON", raw: "["},
+		{name: "empty inventory", raw: "[]"},
+		{name: "null inventory", raw: "null"},
+		{name: "missing config", raw: `[{"Id":"sha256:a","RepoDigests":[],"Os":"linux","Architecture":"amd64"}]`},
+		{name: "wrong digest"}, {name: "wrong platform"}, {name: "wrong variant"},
+		{name: "string CMD"}, {name: "invalid CMD element"}, {name: "null CMD element"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			p, runner, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
+			revision := applicationRevisionForTest()
+			revision.Entrypoint, revision.Dependencies = []string{"/wrapper"}, nil
+			config := map[string]any{"Cmd": []string{"serve"}}
+			image := map[string]any{"Id": "sha256:" + strings.Repeat("a", 64), "RepoDigests": []string{revision.Image}, "Os": "linux", "Architecture": "amd64", "Config": config}
+			switch test.name {
+			case "wrong digest":
+				image["RepoDigests"] = []string{"other@sha256:" + strings.Repeat("a", 64)}
+			case "wrong platform":
+				image["Architecture"] = "arm64"
+			case "wrong variant":
+				image["Variant"] = "v8"
+			case "string CMD":
+				config["Cmd"] = "serve"
+			case "invalid CMD element":
+				config["Cmd"] = []any{"serve", 42}
+			case "null CMD element":
+				config["Cmd"] = []any{"serve", nil}
+			}
+			runner.imageInspectOutput = mustJSON([]any{image})
+			if test.raw != "" {
+				runner.imageInspectOutput = []byte(test.raw)
+			}
+			runner.imageInspectErr = test.err
+			observation, err := ensureApplicationCommandRuntime(p, applicationRuntimeInput("image-command-failure", revision))
+			if err == nil || observation.Status == "ready" || runner.runCount() != 0 {
+				t.Fatalf("observation=%+v err=%v runs=%d", observation, err, runner.runCount())
+			}
+			if test.err != nil && !errors.Is(err, test.err) {
+				t.Fatalf("lost inspect failure: %v", err)
+			}
+		})
+	}
+}
+
+func TestLocalDockerApplicationMainCommandRejectsExistingArgvDrift(t *testing.T) {
+	for _, operation := range []string{"ensure", "read"} {
+		for _, drift := range []string{"legacy missing CMD", "reordered args", "different executable", "extra arg", "image inspect failure"} {
+			t.Run(operation+"/"+drift, func(t *testing.T) {
+				p, runner, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
+				revision := applicationRevisionForTest()
+				revision.Entrypoint, revision.Dependencies = []string{"/wrapper", "--tail"}, nil
+				runner.imageConfigs = map[string]applicationRuntimeImageConfig{revision.Image: {Cmd: []string{"serve", "--http"}}}
+				input := applicationRuntimeInput("existing-command", revision)
+				if _, err := ensureApplicationCommandRuntime(p, input); err != nil {
+					t.Fatal(err)
+				}
+				name, _ := localDockerApplicationComponentNameForInput(input, "main")
+				var containers []map[string]any
+				if err := json.Unmarshal(runner.containers[name], &containers); err != nil {
+					t.Fatal(err)
+				}
+				switch drift {
+				case "legacy missing CMD":
+					containers[0]["Args"] = []string{"--tail"}
+					containers[0]["Config"].(map[string]any)["Cmd"] = []string{"--tail"}
+				case "reordered args":
+					containers[0]["Args"] = []string{"serve", "--tail", "--http"}
+				case "different executable":
+					containers[0]["Path"] = "/different"
+				case "extra arg":
+					containers[0]["Args"] = []string{"--tail", "serve", "--http", "extra"}
+				case "image inspect failure":
+					runner.imageInspectErr = errors.New("image read unavailable")
+				}
+				runner.containers[name] = mustJSON(containers)
+				callCount := len(runner.calls)
+				var observation contracts.WorkspaceApplicationRuntimeObservation
+				var err error
+				if operation == "ensure" {
+					observation, err = ensureApplicationCommandRuntime(p, input)
+				} else {
+					observation, err = p.ReadWorkspaceApplicationRuntime(context.Background(), input)
+				}
+				if err == nil || observation.Status == "ready" || runner.runCount() != 1 {
+					t.Fatalf("drift accepted: observation=%+v err=%v runs=%d", observation, err, runner.runCount())
+				}
+				if drift != "image inspect failure" && err.Error() != "local_docker_application_component_conflict" {
+					t.Fatalf("expected command conflict: %v", err)
+				}
+				for _, call := range runner.calls[callCount:] {
+					if call[0] != "image" && call[0] != "container" || call[0] == "container" && call[1] != "ls" && call[1] != "inspect" {
+						t.Fatalf("existing container was mutated: %q", call)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestLocalDockerApplicationMainCommandAcceptsOmittedImageCMD(t *testing.T) {
+	p, runner, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
+	revision := applicationRevisionForTest()
+	raw := mustJSON([]any{map[string]any{"Id": "sha256:" + strings.Repeat("a", 64), "RepoDigests": []string{revision.Image}, "Os": "linux", "Architecture": "amd64", "Config": map[string]any{}}})
+	runner.imageInspectOutput = raw
+	args, err := p.localDockerApplicationImageCommand(context.Background(), revision.Image, "linux/amd64")
+	if err != nil || len(args) != 0 {
+		t.Fatalf("args=%v err=%v", args, err)
+	}
 }

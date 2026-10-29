@@ -50,6 +50,12 @@ func (p *Executor) EnsureWorkspaceApplicationRuntime(ctx context.Context, input 
 	if err != nil {
 		return contracts.WorkspaceApplicationRuntimeObservation{}, err
 	}
+	if existing.deployments[ComponentResourceName(input, "main")] == nil {
+		existing.imageArgs, err = p.mainImageArgs(ctx, input)
+		if err != nil {
+			return contracts.WorkspaceApplicationRuntimeObservation{}, err
+		}
+	}
 	for _, component := range contracts.WorkspaceApplicationRuntimeComponents(input.Revision) {
 		if deployment, ok := existing.deployments[ComponentResourceName(input, component.Name)]; ok &&
 			DeploymentImage(deployment) != component.Image {
@@ -67,7 +73,7 @@ func (p *Executor) EnsureWorkspaceApplicationRuntime(ctx context.Context, input 
 		_, exists := existing.deployments[ComponentResourceName(input, component.Name)]
 		admitted[component.Name] = exists || workspaceApplicationDependenciesReady(input, component.Name, existing)
 	}
-	if _, err := p.callKubectl(ctx, []string{"apply", "-f", "-"}, ComponentManifest(input, placement, p.Installation, admitted), protectedresource.Target{
+	if _, err := p.callKubectl(ctx, []string{"apply", "-f", "-"}, ComponentManifest(input, placement, p.Installation, admitted, existing.imageArgs), protectedresource.Target{
 		PackageID: placement.ComputePackageID, NodePoolID: placement.ComputeNodePoolID, MachineID: placement.ComputeMachineName, NodeName: placement.ComputeNodeName,
 		CVMID: placement.ComputeInstanceID,
 	}); err != nil {
@@ -104,6 +110,7 @@ type workspaceApplicationKubernetesResources struct {
 	pods        []map[string]any
 	auxiliary   map[string]map[string]any
 	storagePVC  string
+	imageArgs   []string
 }
 
 func (p *Executor) readWorkspaceApplicationResources(ctx context.Context, input WorkspaceApplicationRuntimeInput) (workspaceApplicationKubernetesResources, error) {
@@ -145,6 +152,12 @@ func (p *Executor) readWorkspaceApplicationResources(ctx context.Context, input 
 			resources.auxiliary[stringValue(object["kind"])+":"+name] = object
 		default:
 			return resources, fmt.Errorf("tencent_application_runtime_readback_invalid")
+		}
+	}
+	if resources.deployments[ComponentResourceName(input, "main")] != nil {
+		resources.imageArgs, err = p.mainImageArgs(ctx, input)
+		if err != nil {
+			return resources, err
 		}
 	}
 	if len(input.Configuration.Files) > 0 {
@@ -237,7 +250,7 @@ func workspaceApplicationComponentStatus(input WorkspaceApplicationRuntimeInput,
 	if component.Role == contracts.WorkspaceApplicationComponentMain && len(input.Revision.HealthChecks) > 1 {
 		return "failed", "tencent_application_health_checks_unsupported"
 	}
-	if !VerifyConfiguration(input, component, deployment, resources.storagePVC) {
+	if !VerifyConfiguration(input, component, deployment, resources.storagePVC, resources.imageArgs) {
 		return "failed", "tencent_application_configuration_mismatch"
 	}
 	if DeploymentImage(deployment) != component.Image ||
@@ -339,7 +352,7 @@ func Manifest(input WorkspaceApplicationRuntimeInput, placement Placement, insta
 
 // A replay admits only components whose declared predecessors are ready. The
 // existing runtime readback is the only progress state; Read never creates work.
-func ComponentManifest(input WorkspaceApplicationRuntimeInput, placement Placement, installation Installation, admitted map[string]bool) []byte {
+func ComponentManifest(input WorkspaceApplicationRuntimeInput, placement Placement, installation Installation, admitted map[string]bool, imageArgs ...[]string) []byte {
 	components := contracts.WorkspaceApplicationRuntimeComponents(input.Revision)
 	tags := oplCostTags(placement.AccountID, input.WorkspaceID, applicationRuntimeID(input), input.RuntimeOperationID)
 	pvcName := placement.StoragePVCName
@@ -350,7 +363,7 @@ func ComponentManifest(input WorkspaceApplicationRuntimeInput, placement Placeme
 		}
 		items = append(items,
 			workspaceApplicationComponentService(input, placement, component, tags),
-			ComponentDeployment(input, placement, installation, component, tags, pvcName),
+			ComponentDeployment(input, placement, installation, component, tags, pvcName, imageArgs...),
 		)
 	}
 	items = append(items, NetworkPolicy(input, installation, tags))
@@ -405,6 +418,7 @@ func ComponentDeployment(
 	component contracts.WorkspaceApplicationRuntimeComponentState,
 	tags map[string]string,
 	pvcName string,
+	imageArgs ...[]string,
 ) map[string]any {
 	labels := workspaceApplicationIdentityLabels(input, placement, component, tags)
 	selector := workspaceApplicationComponentSelector(input, component.Name)
@@ -446,6 +460,9 @@ func ComponentDeployment(
 	}
 	if component.Role == contracts.WorkspaceApplicationComponentMain && len(input.Revision.Entrypoint) > 0 {
 		container["command"] = input.Revision.Entrypoint
+		if len(imageArgs) > 0 && len(imageArgs[0]) > 0 {
+			container["args"] = imageArgs[0]
+		}
 	}
 	if component.Role == contracts.WorkspaceApplicationComponentDependency {
 		dependency, depErr := dependencySpecByName(input.Revision, component.Name)

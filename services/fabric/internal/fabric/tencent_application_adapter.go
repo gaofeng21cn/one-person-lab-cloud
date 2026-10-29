@@ -12,7 +12,7 @@ import (
 // placement policy. Kubernetes apply/readback/config/lifecycle are shared with
 // Serve; this adapter adds no execution algorithm or cross-owner state.
 func (p *TencentProvider) applicationExecutor() *tkeapply.Executor {
-	return &tkeapply.Executor{Kubectl: p.kubectl, RunKubectl: p.callKubectl, Guard: p.guard,
+	return &tkeapply.Executor{ImageCommand: p.imageCommand, Kubectl: p.kubectl, RunKubectl: p.callKubectl, Guard: p.guard,
 		CredentialToken: tencentApplicationCredentialToken, Installation: retainedApplicationInstallation(p.namespace)}
 }
 func retainedApplicationInstallation(namespace string) tkeapply.Installation {

@@ -9,12 +9,50 @@ Baseline evidence date: 2026-10-01
 This page keeps the dated baseline evidence above and explicitly dated evidence
 updates below. The baseline SHA does not describe the later changes or qualify
 them: each receipt retains its original source, run and environment. The latest
-evidence update is 2026-10-27. Source/tests, Candidate construction and
+evidence update is 2026-10-29. Source/tests, Candidate construction and
 Instance installation verification are recorded at their own layers below;
 none alone establishes business qualification or a Product Release. The target
 boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
+
+## Default App Startup Command Boundary (2026-10-29)
+
+The original paid order still has no accepted business pass. Instance's
+[protected startup readback `40811660008`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40811660008)
+uses Instance source `ba8f905bc94b52c74eb563251aab9764bd4826bc` and
+confirms the frozen main entrypoint matches the Pod command, while the Pod has
+zero arguments. The container repeatedly exits successfully without application
+logs. This readback records zero database writes, Kubernetes writes and provider
+calls. The customer financial-receipt read separately confirms the original
+charge and Ledger receipt; an uncheckpointed `wallet_action_receipt` step is
+not an authoritative failed Ledger read.
+
+The owning application contract already requires main entrypoint overrides to
+retain the approved image's default CMD. The execution adapters previously
+lost that CMD. The bounded source repair reads CMD from the same immutable
+image and exact platform, supplies it with the main override, and verifies the
+observed arguments. TKE uses the installation's existing image-pull Secret and
+bundled Buildx; Local-Docker uses the pulled platform's image configuration.
+Explicit dependency arguments retain their declared semantics. Missing or
+failed image readback remains an error rather than an empty-command fallback.
+No new publisher field, registry authority or customer selection is introduced.
+
+The bounded recovery entry is Workspace's local `retry-initial-runtime` command.
+It validates a live platform administrator's existing `reconcileOperation`
+authority, leases the original unfulfilled order and replays its own frozen
+Serve Deploy under the original accepted grant. It accepts no application or
+resource input. Serve checks prior activation under its Workspace lock before
+starting, so replay cannot restart an already fulfilled delivery. The protected
+installation caller and its receipts remain Instance-owned; no new RPC or
+browser route is introduced.
+
+Adapter source tests do not establish adoption by the installed Candidate.
+The same original deployment still needs an authorized retry through its owner,
+then ready application access, login, a real model response and restart/lost-
+response recovery. The existing order, charge, Key, resource binding and
+application image remain the identities to verify. Instance deployment and
+business receipts remain Instance-owned; #1042 stays open.
 
 ## Authorized Default App Launch Observation (2026-10-27)
 

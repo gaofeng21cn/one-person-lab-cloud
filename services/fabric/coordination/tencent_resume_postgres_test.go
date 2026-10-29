@@ -64,13 +64,15 @@ func (d *tencentFixture) EnsureResources(_ context.Context, in coordination.Reso
 	if in.ComputeID == "" || in.StorageID == "" || in.Plan.GetProvider() != "tencent-tke" || in.Plan.GetBillingMode() != "PREPAID_MONTHLY" {
 		return nil, os.ErrInvalid
 	}
+	observedAt := time.Now().UTC()
+	deadline := observedAt.AddDate(0, int(in.Plan.GetPrepaidMonths()), 0).Format(time.RFC3339)
 	return &coordination.ResourceResult{
 		Binding:    &api.ResourceExecutionBinding{ComputeAllocationId: in.ComputeID, StorageVolumeId: in.StorageID, DataAttachmentId: "att-" + in.ComputeID, DataAttachmentOperationId: in.OperationID + ":attachment", AccountId: "acct-a"},
-		Compute:    fabric.ComputeAllocation{ID: in.ComputeID, AccountID: "acct-a", WorkspaceID: in.WorkspaceID, Status: "running", Provider: "tencent-tke", ProviderResourceID: "ins-" + in.ComputeID, InstanceID: "ins-" + in.ComputeID, CVMInstanceID: "ins-" + in.ComputeID, ProviderRequestID: "req-cvm-" + in.ComputeID, PackageID: "pkg-basic", NodePoolID: "np-basic", MachineName: "machine-" + in.ComputeID, NodeName: "10.66.0.10", PrivateIP: "10.66.0.10", Zone: "ap-guangzhou-3", ChargeType: "PREPAID", RenewFlag: "NOTIFY_AND_MANUAL_RENEW", Deadline: "2026-10-29T00:00:00Z"},
-		Storage:    fabric.StorageVolume{ID: in.StorageID, AccountID: "acct-a", WorkspaceID: in.WorkspaceID, Status: "ready", Provider: "tencent-tke", ProviderResourceID: "disk-" + in.StorageID, ProviderRequestID: "req-cbs-" + in.StorageID, SizeGB: 10, Zone: "ap-guangzhou-3", DiskType: "CLOUD_BSSD", Deadline: "2026-10-29T00:00:00Z"},
+		Compute:    fabric.ComputeAllocation{ID: in.ComputeID, AccountID: "acct-a", WorkspaceID: in.WorkspaceID, Status: "running", Provider: "tencent-tke", ProviderResourceID: "ins-" + in.ComputeID, InstanceID: "ins-" + in.ComputeID, CVMInstanceID: "ins-" + in.ComputeID, ProviderRequestID: "req-cvm-" + in.ComputeID, PackageID: "pkg-basic", NodePoolID: "np-basic", MachineName: "machine-" + in.ComputeID, NodeName: "10.66.0.10", PrivateIP: "10.66.0.10", Zone: "ap-guangzhou-3", ChargeType: "PREPAID", RenewFlag: "NOTIFY_AND_MANUAL_RENEW", Deadline: deadline},
+		Storage:    fabric.StorageVolume{ID: in.StorageID, AccountID: "acct-a", WorkspaceID: in.WorkspaceID, Status: "ready", Provider: "tencent-tke", ProviderResourceID: "disk-" + in.StorageID, ProviderRequestID: "req-cbs-" + in.StorageID, SizeGB: 10, Zone: "ap-guangzhou-3", DiskType: "CLOUD_BSSD", Deadline: deadline},
 		Attachment: fabric.StorageAttachment{ID: "att-" + in.ComputeID, OperationID: in.OperationID + ":attachment", WorkspaceID: in.WorkspaceID, ComputeID: in.ComputeID, VolumeID: in.StorageID, Status: "attached", Provider: "tencent-tke", ProviderAttachmentID: "pv/pv-x:pvc/pvc-x", ProviderRequestID: "req-att-" + in.ComputeID},
 		Network:    &coordination.NetworkFact{ProviderReference: "tke-node-pool/np-basic", Zone: "ap-guangzhou-3", Region: "ap-guangzhou"},
-		ObservedAt: time.Now().UTC(),
+		ObservedAt: observedAt,
 	}, nil
 }
 

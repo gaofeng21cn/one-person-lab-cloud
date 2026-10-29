@@ -91,6 +91,9 @@ func TestDeletionRejectsLateSecretBinding(t *testing.T) {
 	if _, err = db.ExecContext(ctx, `UPDATE fabric.resource_sets SET observation_result='confirmed',observed_at=now() WHERE id=$1`, original.ResourceId); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = db.ExecContext(ctx, `UPDATE fabric.operations SET status='succeeded',stage='actual_resource_evidence',observation_result='confirmed',result=$2,completed_at=now() WHERE id=$1`, original.OperationId, confirmedProvisionResult(t)); err != nil {
+		t.Fatal(err)
+	}
 	service.Dispatcher = &secretDispatcher{}
 	binding := &api.SecretBindingCommand{Context: request.Context, WorkspaceId: request.WorkspaceId, RuntimeInstanceId: "original-runtime", KeyBindingId: "original-key", Fingerprint: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SecretDeliveryReference: contracts.WorkspaceGatewaySecretRef(request.WorkspaceId)}
 	if _, err = service.BindSecret(ctx, binding); err != nil {

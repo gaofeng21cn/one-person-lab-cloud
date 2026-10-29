@@ -75,9 +75,12 @@ func managedSecretFingerprintOf(value string) string {
 // managedSecretSystem serves Fabric coordination over a real gRPC server with a
 // distinct tenant transport token, so the caller peer rule is exercised as the
 // deployment enforces it.
-func managedSecretSystem(t *testing.T, dispatcher coordination.ResourceDispatcher) (api.FabricCoordinationClient, api.FabricCoordinationClient, *identity) {
+func managedSecretSystem(t *testing.T, dispatcher coordination.ResourceDispatcher, workspaces ...string) (api.FabricCoordinationClient, api.FabricCoordinationClient, *identity) {
 	t.Helper()
 	db := database(t)
+	for _, workspace := range workspaces {
+		seedConfirmedExecutionResource(t, t.Context(), db, "rset_"+workspace, workspace, "tenant")
+	}
 	catalogOwner := &catalog{acceptances: map[string]*api.QuoteAcceptance{}}
 	catalogServer := grpc.NewServer()
 	api.RegisterCatalogCoordinationServer(catalogServer, catalogOwner)
@@ -151,7 +154,7 @@ func managedSecretCommand(workspace, key, idempotencyKey string) *api.ManagedSec
 func TestPutManagedSecretWritesOnceAndReplaysTheStoredIdentity(t *testing.T) {
 	const workspace, key = "workspace-managed-secret", "raw-managed-key-value"
 	dispatcher := &managedSecretDispatcher{}
-	tenant, _, _ := managedSecretSystem(t, dispatcher)
+	tenant, _, _ := managedSecretSystem(t, dispatcher, workspace)
 	first, err := tenant.PutManagedSecret(t.Context(), managedSecretCommand(workspace, key, "op-1:create_managed_key:put_managed_secret"))
 	if err != nil {
 		t.Fatal(err)
@@ -177,7 +180,7 @@ func TestPutManagedSecretWritesOnceAndReplaysTheStoredIdentity(t *testing.T) {
 func TestPutManagedSecretRefusesInvalidInputAndWrongCallers(t *testing.T) {
 	const workspace, key = "workspace-managed-secret-2", "raw-managed-key-value-2"
 	dispatcher := &managedSecretDispatcher{}
-	tenant, workspaceClient, authority := managedSecretSystem(t, dispatcher)
+	tenant, workspaceClient, authority := managedSecretSystem(t, dispatcher, workspace)
 	valid := func() *api.ManagedSecretCommand {
 		return managedSecretCommand(workspace, key, "op-2:create_managed_key:put_managed_secret")
 	}
@@ -216,9 +219,9 @@ func TestPutManagedSecretRefusesInvalidInputAndWrongCallers(t *testing.T) {
 // conflict, while a successful write is never reported before provider
 // confirmation.
 func TestPutManagedSecretMapsProviderOutcomes(t *testing.T) {
-	dispatcher := &managedSecretDispatcher{fail: true}
-	tenant, _, _ := managedSecretSystem(t, dispatcher)
 	const workspace, key = "workspace-managed-secret-3", "raw-managed-key-value-3"
+	dispatcher := &managedSecretDispatcher{fail: true}
+	tenant, _, _ := managedSecretSystem(t, dispatcher, workspace)
 	if _, err := tenant.PutManagedSecret(t.Context(), managedSecretCommand(workspace, key, "op-3:create_managed_key:put_managed_secret")); status.Code(err) != codes.Unavailable {
 		t.Fatalf("pending err=%v want unavailable", err)
 	}

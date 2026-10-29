@@ -44,15 +44,15 @@ func TestBindSecretRefusesChangedFingerprintButReplaysExactOriginal(t *testing.T
 	if err != nil || first.GetFingerprint() != original || dispatcher.calls != 1 {
 		t.Fatalf("initial bind=%+v err=%v calls=%d", first, err, dispatcher.calls)
 	}
-	// Exact original retry: same readback, no second provider confirmation.
+	// The exact original retry preserves the binding and re-confirms its provider identity.
 	replayed, err := bind("bind-exact", original)
-	if err != nil || !proto.Equal(first, replayed) || dispatcher.calls != 1 {
+	if err != nil || !proto.Equal(first, replayed) || dispatcher.calls != 2 {
 		t.Fatalf("exact replay=%+v err=%v calls=%d", replayed, err, dispatcher.calls)
 	}
 	// Omitted fingerprint: the optional field replays the owner-authoritative
 	// confirmed readback instead of asserting a new identity.
 	omitted, err := bind("bind-omitted", "")
-	if err != nil || !proto.Equal(first, omitted) || dispatcher.calls != 1 {
+	if err != nil || !proto.Equal(first, omitted) || dispatcher.calls != 3 {
 		t.Fatalf("omitted fingerprint replay=%+v err=%v calls=%d", omitted, err, dispatcher.calls)
 	}
 	// A supplied fingerprint that differs from the confirmed binding is a
@@ -60,7 +60,7 @@ func TestBindSecretRefusesChangedFingerprintButReplaysExactOriginal(t *testing.T
 	if _, err = bind("bind-changed", changed); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("changed fingerprint err=%v want failed precondition", err)
 	}
-	if dispatcher.calls != 1 {
+	if dispatcher.calls != 3 {
 		t.Fatalf("changed fingerprint reached the provider: calls=%d", dispatcher.calls)
 	}
 	count, active := activeSecretBindingCount(t, ctx, db, setID, "gateway")
