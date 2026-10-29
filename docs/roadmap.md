@@ -73,16 +73,16 @@ Instance owner, the application route is ready and usable, and the same bytes,
 owner facts, Gateway/runtime readback and recovery receipts are available at
 their authoritative layers.
 
-The [current observation](status.md#authorized-default-app-launch-observation-2026-10-27)
-binds the later installed `f2cffcfafa6d37b26ac991b8553b06aeff3118de`
-Candidate and one owner-authorized Console purchase. Its original Gateway
-charge, resource delivery and managed Gateway Key are confirmed; the Ledger
-WALLET_ACTION receipt remains unknown, and Serve deployment
-has not reached an accessible application. The original operation repeatedly
-reads a confirmed terminated runtime after an unconfirmed deploy attempt.
-Earlier Candidate installation evidence cannot identify this order. The
-Default App business chain remains unqualified; Local v2 remains diagnostic
-`NOT_READY`.
+The [October 29 startup observation](status.md#default-app-startup-command-boundary-2026-10-29)
+confirms the original order's resources and Gateway handover, and separately
+confirms its charge and Ledger receipt. Its main container receives the frozen
+entrypoint with no arguments and repeatedly exits without starting the server.
+The current bounded repair is to preserve the approved image CMD at the existing
+execution adapter, adopt the exact repaired Candidate through Instance, and
+retry the same original deployment through its owner. Then verify usable access,
+application login, a real model response and restart/response-loss recovery.
+Do not repurchase or replace the original identities. The Default App business
+chain remains unqualified; Local v2 remains diagnostic `NOT_READY`.
 
 The Serve diagnostic persistence and admission-identity repair has
 [isolated PostgreSQL source evidence](status.md#authorized-default-app-launch-observation-2026-10-27);

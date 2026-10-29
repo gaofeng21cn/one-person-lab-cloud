@@ -25,7 +25,11 @@ type managedSecretOutcomeCase struct {
 func runManagedSecretOutcomes(t *testing.T, cases map[string]managedSecretOutcomeCase) map[string]codes.Code {
 	t.Helper()
 	dispatcher := &managedSecretDispatcher{}
-	tenant, _, _ := managedSecretSystem(t, dispatcher)
+	workspaces := make([]string, 0, len(cases))
+	for _, tc := range cases {
+		workspaces = append(workspaces, tc.workspace)
+	}
+	tenant, _, _ := managedSecretSystem(t, dispatcher, workspaces...)
 	observed := map[string]codes.Code{}
 	for name, tc := range cases {
 		dispatcher.providerErr = tc.providerErr

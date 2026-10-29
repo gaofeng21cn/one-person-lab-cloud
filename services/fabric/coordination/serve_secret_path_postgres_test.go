@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	api "opl-cloud/packages/contracts/go/api"
@@ -88,13 +89,41 @@ func (f *fabricSurface) client(t *testing.T, peer owneridentity.Service) api.Fab
 }
 
 // seedConfirmedExecutionResource provisions the confirmed resource set and the
-// execution resource Serve binds a Secret into.
+// execution resource Serve binds a Secret into, including the original provision
+// operation that owns the frozen provider account.
 func seedConfirmedExecutionResource(t *testing.T, ctx context.Context, db *sql.DB, setID, workspace, tenant string) {
 	t.Helper()
 	if _, err := db.ExecContext(ctx, `INSERT INTO fabric.resource_sets (id,tenant_id,workspace_id,provider,provider_profile_ref,region,compute_plan_id,storage_plan_id,accepted_quote_id,approved_specification,observation_result,observed_at) VALUES ($1,$2,$3,'local-docker','profile','local','cp','sp','quote','{"billingMode":"LOCAL_NO_CHARGE"}'::jsonb,'confirmed',now())`, setID, tenant, workspace); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.ExecContext(ctx, `INSERT INTO fabric.resources (id,resource_set_id,kind,provider_purchase_key,billing_mode,requested_specification,observation_result) VALUES ($1,$2,'execution','execution:'||$1,'LOCAL_NO_CHARGE','{}'::jsonb,'confirmed')`, "res_exec_"+setID, setID); err != nil {
+		t.Fatal(err)
+	}
+	seedConfirmedProvisionOperation(t, ctx, db, setID, workspace, tenant)
+}
+
+// confirmedProvisionResult supplies the provider-account fact required by Secret
+// delivery and binding. It is fixture evidence for an already confirmed resource
+// set, encoded through the same typed result the production owner persists.
+func confirmedProvisionResult(t *testing.T) []byte {
+	t.Helper()
+	result, err := json.Marshal(coordination.ResourceResult{
+		Binding:    &api.ResourceExecutionBinding{AccountId: "explicit-legacy-account"},
+		ObservedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+func seedConfirmedProvisionOperation(t *testing.T, ctx context.Context, db *sql.DB, setID, workspace, tenant string) {
+	t.Helper()
+	acceptedInput, err := protojson.Marshal(&api.EnsureResourcesCommand{WorkspaceId: workspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO fabric.operations (id,tenant_id,actor_id,kind,resource_id,status,stage,observation_result,request_id,accepted_input,result,completed_at) VALUES ($1,$2,'actor','resource_provision',$3,'succeeded','actual_resource_evidence','confirmed',$1,$4,$5,now())`, "op_provision_"+setID, tenant, setID, acceptedInput, confirmedProvisionResult(t)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -151,7 +180,7 @@ func TestServeSecretBindingRejectsDifferentRuntimeKeyOrSlot(t *testing.T) {
 	}
 	predecessor := first.GetSecretBindingId()
 	replayed, err := bind("bind-first", "rt-a", "key-1", "gateway", firstFingerprint)
-	if err != nil || !proto.Equal(first, replayed) || dispatcher.calls != 1 {
+	if err != nil || !proto.Equal(first, replayed) || dispatcher.calls != 2 {
 		t.Fatalf("exact replay=%+v err=%v calls=%d", replayed, err, dispatcher.calls)
 	}
 	// A different runtime instance, key binding or slot is a different original:
@@ -165,7 +194,7 @@ func TestServeSecretBindingRejectsDifferentRuntimeKeyOrSlot(t *testing.T) {
 	if count, active := activeSecretBindingCount(t, ctx, db, setID, "gateway"); count != 1 || active != predecessor {
 		t.Fatalf("active=%q count=%d want the single original %q", active, count, predecessor)
 	}
-	if dispatcher.calls != 1 {
+	if dispatcher.calls != 2 {
 		t.Fatalf("refused identities reached the provider: calls=%d", dispatcher.calls)
 	}
 
@@ -182,14 +211,14 @@ func TestServeSecretBindingRejectsDifferentRuntimeKeyOrSlot(t *testing.T) {
 	}
 
 	replacement, err := rebind("rebind-replace", "rt-a", predecessor, "key-2", "gateway", secondFingerprint)
-	if err != nil || replacement.GetPreviousSecretBindingId() != predecessor || replacement.GetSecretBindingId() == predecessor || replacement.GetVersion() == "" || dispatcher.calls != 2 {
+	if err != nil || replacement.GetPreviousSecretBindingId() != predecessor || replacement.GetSecretBindingId() == predecessor || replacement.GetVersion() == "" || dispatcher.calls != 3 {
 		t.Fatalf("replacement=%+v err=%v calls=%d", replacement, err, dispatcher.calls)
 	}
 	if count, active := activeSecretBindingCount(t, ctx, db, setID, "gateway"); count != 1 || active != replacement.GetSecretBindingId() {
 		t.Fatalf("active=%q count=%d want replacement %q", active, count, replacement.GetSecretBindingId())
 	}
 	replacementReplay, err := rebind("rebind-replace", "rt-a", predecessor, "key-2", "gateway", secondFingerprint)
-	if err != nil || !proto.Equal(replacement, replacementReplay) || dispatcher.calls != 2 {
+	if err != nil || !proto.Equal(replacement, replacementReplay) || dispatcher.calls != 3 {
 		t.Fatalf("replacement replay=%+v err=%v calls=%d", replacementReplay, err, dispatcher.calls)
 	}
 	// The retired predecessor is no longer the CAS identity, and the superseded
@@ -227,7 +256,7 @@ func TestServeSecretBindingRejectsDifferentRuntimeKeyOrSlot(t *testing.T) {
 	if _, err = buildPeer.RebindSecret(ctx, &api.SecretBindingRebindCommand{Context: buildCall("rebind"), WorkspaceId: workspace, RuntimeInstanceId: "rt-a", ExpectedCurrentSecretBindingId: replacement.GetSecretBindingId(), KeyBindingId: "key-9", SecretDeliveryReference: "opl-gateway-" + workspace, TargetSlot: "gateway", Fingerprint: secondFingerprint}); status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("unauthorised peer rebind err=%v want permission denied", err)
 	}
-	if count, active := activeSecretBindingCount(t, ctx, db, setID, "gateway"); count != 1 || active != replacement.GetSecretBindingId() || dispatcher.calls != 2 {
+	if count, active := activeSecretBindingCount(t, ctx, db, setID, "gateway"); count != 1 || active != replacement.GetSecretBindingId() || dispatcher.calls != 3 {
 		t.Fatalf("refused peers changed the active binding: active=%q count=%d provider confirmations=%d", active, count, dispatcher.calls)
 	}
 }

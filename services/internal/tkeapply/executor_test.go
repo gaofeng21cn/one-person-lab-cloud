@@ -1,6 +1,7 @@
 package tkeapply
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -304,7 +305,9 @@ func testGuard() protectedresource.Config {
 }
 
 func testExecutor(cluster *fakeCluster, installation Installation) *Executor {
-	return &Executor{Kubectl: cluster.kubectl, Guard: testGuard(), Installation: installation}
+	return &Executor{Kubectl: cluster.kubectl, Guard: testGuard(), Installation: installation,
+		ImageCommand: func(context.Context, string, string) ([]string, error) { return nil, nil },
+	}
 }
 
 func pvcObject() map[string]any {
@@ -389,8 +392,10 @@ func TestExecutorProgressesTheOriginalDependencyChainOnlyOnEnsure(t *testing.T) 
 	cluster.store(pvcObject())
 	executor := testExecutor(cluster, testInstallation(map[string]string{"app.kubernetes.io/component": "serve"}))
 	input := testInput(t)
+	input.Revision.Entrypoint = []string{"/main-entry"}
+	executor.ImageCommand = func(context.Context, string, string) ([]string, error) { return []string{"main-default"}, nil }
 	input.Revision.Dependencies = []contracts.WorkspaceApplicationDependency{
-		{Name: "database", Image: input.Revision.Image},
+		{Name: "database", Image: input.Revision.Image, Command: contracts.WorkspaceApplicationDependencyCommand{Entrypoint: []string{"/database"}, Args: []string{"database-arg"}}},
 		{Name: "service", Image: input.Revision.Image, DependsOn: []string{"database"}},
 	}
 	for attempt := 0; attempt < 3; attempt++ {
@@ -398,6 +403,13 @@ func TestExecutorProgressesTheOriginalDependencyChainOnlyOnEnsure(t *testing.T) 
 		if attempt == 2 {
 			if err != nil || observation.Status != "ready" {
 				t.Fatalf("final observation=%+v err=%v", observation, err)
+			}
+			for _, component := range observation.Components {
+				deployment := cluster.objects["Deployment/"+ComponentResourceName(input, component.Name)]
+				expected := map[string][]string{"main": {"main-default"}, "database": {"database-arg"}}[component.Name]
+				if !bytes.Equal(mustJSON(firstContainerField(deployment, "args")), mustJSON(expected)) {
+					t.Fatalf("component %s args=%v", component.Name, firstContainerField(deployment, "args"))
+				}
 			}
 			continue
 		}

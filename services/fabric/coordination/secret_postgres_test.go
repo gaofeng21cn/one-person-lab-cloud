@@ -157,6 +157,7 @@ func TestBindSecretReconfirmsProviderStoreOnBindingReplay(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `INSERT INTO fabric.resources (id,resource_set_id,kind,provider_purchase_key,billing_mode,requested_specification,observation_result) VALUES ('res_exec_seed',$1,'execution','execution:seed','LOCAL_NO_CHARGE','{}'::jsonb,'confirmed')`, setID); err != nil {
 		t.Fatal(err)
 	}
+	seedConfirmedProvisionOperation(t, ctx, db, setID, workspace, tenant)
 	command := func(key string) *api.SecretBindingCommand {
 		return &api.SecretBindingCommand{Context: &api.CallContext{ActorId: "actor", RequestId: "request-" + key, IdempotencyKey: key, SessionId: proto.String("session"), Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: tenant}}}}, WorkspaceId: workspace, RuntimeInstanceId: "rt_secret", KeyBindingId: "key-1", SecretDeliveryReference: "opl-gateway-" + workspace, TargetSlot: "gateway", Fingerprint: fingerprint}
 	}
@@ -245,6 +246,7 @@ func TestRebindSecretReplacesOnlyTheExpectedPredecessor(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `INSERT INTO fabric.resources (id,resource_set_id,kind,provider_purchase_key,billing_mode,requested_specification,observation_result) VALUES ('res_exec_rebind',$1,'execution','execution:rebind','LOCAL_NO_CHARGE','{}'::jsonb,'confirmed')`, setID); err != nil {
 		t.Fatal(err)
 	}
+	seedConfirmedProvisionOperation(t, ctx, db, setID, workspace, tenant)
 	call := func(key string) *api.CallContext {
 		return &api.CallContext{ActorId: "actor", RequestId: "request-" + key, IdempotencyKey: key, SessionId: proto.String("session"), Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: tenant}}}}
 	}

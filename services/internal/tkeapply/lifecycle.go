@@ -25,7 +25,7 @@ func (p *Executor) ReadWorkspaceApplicationRuntimeLifecycle(ctx context.Context,
 		if DeploymentImage(deployment) != component.Image || stringValue(nested(deployment, "metadata", "labels", "oplcloud.cn/runtime-operation-id")) != k8sCostLabelValue(input.RuntimeOperationID) {
 			return WorkspaceApplicationRuntimeLifecycleResult{}, ErrLaunchStageBindingConflict
 		}
-		if !VerifyConfiguration(input, component, deployment, resources.storagePVC) {
+		if !VerifyConfiguration(input, component, deployment, resources.storagePVC, resources.imageArgs) {
 			return WorkspaceApplicationRuntimeLifecycleResult{}, ErrLaunchStageBindingConflict
 		}
 		if number(nested(deployment, "spec", "replicas")) == 0 && number(nested(deployment, "status", "replicas")) == 0 && number(nested(deployment, "status", "observedGeneration")) >= number(nested(deployment, "metadata", "generation")) {

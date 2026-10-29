@@ -191,9 +191,11 @@ func (p *LocalDockerProvider) RemoveGatewaySecret(ctx context.Context, workspace
 }
 
 type dockerContainerInspect struct {
-	ID     string `json:"Id"`
-	Name   string `json:"Name"`
-	Image  string `json:"Image"`
+	Path   string   `json:"Path"`
+	Args   []string `json:"Args"`
+	ID     string   `json:"Id"`
+	Name   string   `json:"Name"`
+	Image  string   `json:"Image"`
 	Config struct {
 		User        string            `json:"User"`
 		Image       string            `json:"Image"`

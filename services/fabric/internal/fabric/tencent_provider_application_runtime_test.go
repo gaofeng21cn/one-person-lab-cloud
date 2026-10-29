@@ -331,6 +331,7 @@ func tencentApplicationRuntimeFixture(t *testing.T) (*TencentProvider, *fakeTenc
 	provider := NewTencentProvider()
 	fake := &fakeTencentKubectl{deployments: map[string]map[string]any{}, resources: map[string]map[string]any{}}
 	provider.kubectl = fake.call
+	provider.imageCommand = func(context.Context, string, string) ([]string, error) { return nil, nil }
 	revision := applicationRevisionForTest()
 	input := applicationRuntimeInput("app-runtime-tencent", revision)
 	input.WorkspaceID = "ws-alpha"

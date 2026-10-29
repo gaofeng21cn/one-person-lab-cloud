@@ -94,6 +94,7 @@ type tencentWorkspacePlan struct {
 }
 
 type TencentProvider struct {
+	imageCommand    func(context.Context, string, string) ([]string, error)
 	provision       func(context.Context, provisionerRequest) (provisionerResponse, error)
 	kubectl         func(context.Context, []string, []byte) ([]byte, error)
 	convergenceWait func(context.Context, int) error

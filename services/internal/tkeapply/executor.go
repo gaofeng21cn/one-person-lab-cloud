@@ -45,6 +45,10 @@ type Installation struct {
 // installation's single cluster-access boundary and refuses any mutation that
 // targets the installation's own protected compute.
 type Executor struct {
+	// ImageCommand reads OCI CMD for the exact approved image/platform. Tests may
+	// inject the registry transport; production uses the installation pull Secret.
+	ImageCommand func(context.Context, string, string) ([]string, error)
+
 	// RunKubectl retains an owner adapter's journal and capability boundary. When
 	// absent the injected Kubectl transport is used after the same resource guard.
 	RunKubectl func(context.Context, []string, []byte, protectedresource.Target) ([]byte, error)

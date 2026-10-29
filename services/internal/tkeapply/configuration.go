@@ -280,7 +280,7 @@ func tencentApplicationCredentialToken(ctx context.Context, input WorkspaceAppli
 	}
 	return version, nil
 }
-func VerifyConfiguration(input WorkspaceApplicationRuntimeInput, component contracts.WorkspaceApplicationRuntimeComponentState, deployment map[string]any, storagePVC string) bool {
+func VerifyConfiguration(input WorkspaceApplicationRuntimeInput, component contracts.WorkspaceApplicationRuntimeComponentState, deployment map[string]any, storagePVC string, imageArgs ...[]string) bool {
 	if input.SchemaVersion == 0 {
 		return true
 	}
@@ -289,6 +289,9 @@ func VerifyConfiguration(input WorkspaceApplicationRuntimeInput, component contr
 	}
 	persistentMounts, scratchMounts := input.Revision.PersistentMounts, input.Revision.ScratchMounts
 	command, arguments := input.Revision.Entrypoint, []string(nil)
+	if len(command) > 0 && len(imageArgs) > 0 {
+		arguments = imageArgs[0]
+	}
 	scratchPrefix := "scratch-"
 	if component.Role == contracts.WorkspaceApplicationComponentDependency {
 		dependency, err := dependencySpecByName(input.Revision, component.Name)
