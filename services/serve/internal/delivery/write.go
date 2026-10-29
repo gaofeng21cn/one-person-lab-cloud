@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -261,7 +262,12 @@ func (s *Service) retainExecutionFailure(ctx context.Context, tx *sql.Tx, comman
 	if !errors.As(err, &failure) {
 		return err
 	}
-	if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+	rollbackErr := tx.Rollback()
+	// Cancellation may discard the driver connection before this explicit
+	// rollback wins against database/sql's automatic rollback. The diagnostic
+	// transaction reacquires the Workspace lock after the old transaction ends.
+	canceledBadConn := ctx.Err() != nil && errors.Is(rollbackErr, driver.ErrBadConn)
+	if rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) && !canceledBadConn {
 		return dbError(rollbackErr)
 	}
 	if recordErr := s.retainStartFailure(ctx, command, failure.error, false); recordErr != nil {
