@@ -271,7 +271,7 @@ func retainedWorkspaceIDFromPath(requestPath string) (string, bool) {
 	if index := strings.Index(rest, "/"); index >= 0 {
 		rest = rest[:index]
 	}
-	if !dnsLabelValid(rest) {
+	if !workspacePathIDValid(rest) {
 		return "", false
 	}
 	return rest, true

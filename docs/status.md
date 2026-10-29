@@ -16,6 +16,39 @@ boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Native Workspace Entry Boundary (2026-10-29)
+
+Cloud [PR #1086](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1086)
+merged the image-CMD repair and bounded original-operation retry. Candidate
+`3a74cf8e9a8e7a3eec2be74e74fbe7cc4939230c`, receipt
+`sha256:2b87a90b38c123498a576484ead4402eb02bd24151ec908eab73c0f24b2ab2d7`,
+and Cloud image
+`sha256:017e62ba167432ecac6842813469dcf0ba40447cfd9f7f911dacf985d550b32f`
+were adopted through Instance [PR #640](https://github.com/gaofeng21cn/opl-instance-medopl/pull/640).
+Protected [Deploy `40832222365`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40832222365)
+and [verification `40833112754`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40833112754)
+passed for the same Candidate and unchanged application image. Verification
+confirmed every declared check with zero Kubernetes, provider and business
+mutations.
+
+The [protected original-command retry `40834136118`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40834136118)
+was accepted. [Readback `40834676775`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40834676775)
+now shows the original Pod Running and Ready with zero restarts, the exact
+frozen entrypoint and two image-CMD arguments. Serve still reports starting,
+and no access binding exists. This is startup recovery evidence, not business
+acceptance.
+
+A deterministic Serve-consumer reproduction identifies another publication
+failure: Workspace creates `workspace_<hex>` identities, but both the retained
+path URL builder and path reader validate them as DNS labels. A confirmed ready
+executor observation consequently remains starting without an access URL.
+The existing [origin decision](decisions.md#2026-09-17-one-origin-per-workspace-application-binding-derived-not-allocated)
+already retains path entries for identities that cannot compose into hostnames.
+The bounded repair accepts the unchanged native identity as a safe path segment
+in those two existing consumers. DNS host rules and published binding hostnames
+remain the same. The original route, application login, real model response and
+restart/lost-response acceptance remain open; #1042 is not closed.
+
 ## Default App Startup Command Boundary (2026-10-29)
 
 The original paid order still has no accepted business pass. Instance's

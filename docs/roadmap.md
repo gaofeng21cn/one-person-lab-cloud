@@ -73,21 +73,16 @@ Instance owner, the application route is ready and usable, and the same bytes,
 owner facts, Gateway/runtime readback and recovery receipts are available at
 their authoritative layers.
 
-The [October 29 startup observation](status.md#default-app-startup-command-boundary-2026-10-29)
-confirms the original order's resources and Gateway handover, and separately
-confirms its charge and Ledger receipt. Its main container receives the frozen
-entrypoint with no arguments and repeatedly exits without starting the server.
-The current bounded repair is to preserve the approved image CMD at the existing
-execution adapter, adopt the exact repaired Candidate through Instance, and
-retry the same original deployment through its owner. Then verify usable access,
-application login, a real model response and restart/response-loss recovery.
-Do not repurchase or replace the original identities. The Default App business
-chain remains unqualified; Local v2 remains diagnostic `NOT_READY`.
-
-The Serve diagnostic persistence and admission-identity repair has
-[isolated PostgreSQL source evidence](status.md#authorized-default-app-launch-observation-2026-10-27);
-adoption by the existing Instance executor and acceptance of the same original
-order remain required.
+The [October 29 native-entry observation](status.md#native-workspace-entry-boundary-2026-10-29)
+confirms adoption of the CMD repair and the protected retry of the original
+command. Its Pod is now Running and Ready with two image-CMD arguments and zero
+restarts; Serve still reports starting without an access binding. A reproduced
+publication defect rejects Workspace's own underscore-containing IDs as DNS
+labels even in the existing path entry. Repair that path-identity validation
+in Serve, adopt the exact Candidate and verify usable access, application login,
+a real model response and restart/response-loss recovery. Preserve the original
+Workspace, application image, Key, reservation, charge and resources. The Default
+App business chain remains unqualified; Local v2 remains diagnostic `NOT_READY`.
 
 The remaining work order is deliberately narrow:
 
