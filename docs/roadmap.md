@@ -88,14 +88,17 @@ chain remains unqualified; Local v2 remains diagnostic `NOT_READY`.
 
 The remaining work order is deliberately narrow:
 
-1. Verify the actual App's supported path-deployment capability and identify
-   the owning API-path contract before choosing a repair. Then prove complete
-   application login, a real model response and restart/response-loss recovery
-   through the original entry. Preserve the original Workspace, application
-   image, Key, reservation, charge and resources; reconcile the original order
-   without another purchase. No routing, password or SSO change is selected, and
-   an older probe cannot replace actual App acceptance. The normal customer
-   path remains distinct from protected qualification admission.
+1. Complete the authorized App-owned path repair and explicit upgrade of the
+   original Workspace to its exact immutable repaired image. The existing
+   Serve entry supplies a trusted prefix; App owns URL/login/Cookie semantics
+   and declares cloud/password configuration through its existing publisher
+   entrypoint. Use the native Serve update and Workspace credential-reveal
+   routes, preserving the original order, Key, reservation, charge, resources
+   and existing password/session identity. Register a separate Runtime version;
+   do not move installation defaults or purchase again. Then prove actual App
+   login, a real model response and restart/response-loss recovery. An older
+   probe or source pass cannot replace that acceptance; protected qualification
+   admission remains distinct from the normal customer path.
 2. Complete the protected payer readback and explicit declaration. RuntimeVersion,
    compute, storage and Tenant selections have been configured; a missing
    payer field in the Tenant response must not be treated as proof that the

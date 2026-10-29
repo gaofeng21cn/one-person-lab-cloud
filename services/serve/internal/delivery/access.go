@@ -147,6 +147,12 @@ func (e *AccessEntry) serve(w http.ResponseWriter, r *http.Request) {
 			request.Out.Host = request.In.Host
 			request.Out.Header.Set("X-Forwarded-Host", request.In.Host)
 			request.Out.Header.Set("X-Forwarded-Proto", externalScheme(request.In))
+			// Only the confirmed route determines the application base. Never
+			// forward a client-supplied prefix to a root or sibling deployment.
+			request.Out.Header.Del("X-Forwarded-Prefix")
+			if route.pathBased {
+				request.Out.Header.Set("X-Forwarded-Prefix", "/w/"+route.WorkspaceID)
+			}
 			sanitizeAccessRequest(request.Out, route.pathBased)
 			request.Out.Header.Del("X-Opl-Workspace-Id")
 			request.Out.Header.Del("X-Opl-Route-Generation")

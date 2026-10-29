@@ -23,8 +23,10 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	contracts "opl-cloud/packages/contracts/go"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/services/internal/ownerservice"
 )
 
 // ReasonRuntimeAdapterCapabilityUnavailable names an execution-adapter capability
@@ -309,6 +311,11 @@ func modelConfigurationEvidence(actionID string, appliedVersion int64) string {
 // exact persisted runtime through the installation's credential boundary. The
 // value is never persisted, logged or written to an event.
 func (s *Service) ReadApplicationCredentials(ctx context.Context, request *api.ReadApplicationCredentialsRequest) (*api.WorkspaceApplicationCredentials, error) {
+	// Workspace alone may perform the customer reveal. Serve retains its own
+	// existing internal adapter call; no other adapter or route admits Workspace.
+	if peer, ok := ownerservice.PeerOwner(ctx); ok && peer == owneridentity.Workspace.Service() {
+		return s.readCurrentApplicationCredentials(ctx, request)
+	}
 	if err := requireServePeer(ctx); err != nil {
 		return nil, err
 	}
@@ -337,6 +344,94 @@ func (s *Service) ReadApplicationCredentials(ctx context.Context, request *api.R
 		return nil, status.Error(codes.FailedPrecondition, "runtime credentials do not match the exact runtime")
 	}
 	return credentials, nil
+}
+
+// readCurrentApplicationCredentials fences replacement/retirement while reading
+// the current ready runtime. Only the declared administrator password crosses
+// this boundary; the provider Secret remains the single credential authority.
+func (s *Service) readCurrentApplicationCredentials(ctx context.Context, request *api.ReadApplicationCredentialsRequest) (*api.WorkspaceApplicationCredentials, error) {
+	c := request.GetContext()
+	if err := ownerservice.ValidateCallContext(ctx, c); err != nil {
+		return nil, err
+	}
+	if c.GetSessionId() == "" || c.GetAcceptedOperationGrantId() != "" {
+		return nil, status.Error(codes.Unauthenticated, "a live customer session is required")
+	}
+	wid, runtimeID, deploymentID := request.GetWorkspaceId(), request.GetRuntimeInstanceId(), request.GetDeploymentId()
+	if strings.TrimSpace(wid) == "" || strings.TrimSpace(runtimeID) == "" || strings.TrimSpace(deploymentID) == "" {
+		return nil, status.Error(codes.InvalidArgument, "workspace, deployment and runtime identities are required")
+	}
+	if s.DB == nil || s.Runtime == nil {
+		return nil, status.Error(codes.Unavailable, "runtime credential readback is unavailable")
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, dbError(err)
+	}
+	defer tx.Rollback()
+	if err = lockWorkspace(ctx, tx, wid); err != nil {
+		return nil, dbError(err)
+	}
+	if err = refuseClosedWorkspace(ctx, tx, wid); err != nil {
+		return nil, err
+	}
+	if err = refuseRetiredRuntime(ctx, tx, runtimeID); err != nil {
+		return nil, err
+	}
+	var ready bool
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM serve.agent_deployments d
+  JOIN serve.agent_runtime_instances r ON r.deployment_id=d.id AND r.id=d.runtime_instance_id
+  JOIN serve.operations o ON o.id=d.operation_id
+  WHERE d.id=$1 AND d.workspace_id=$2 AND d.status='active' AND r.id=$3
+  AND r.workspace_id=d.workspace_id AND r.status='ready' AND r.execution_epoch=d.execution_epoch
+  AND o.tenant_id=$4)`, deploymentID, wid, runtimeID, c.GetScope().GetTenant().GetTenantId()).Scan(&ready)
+	if err != nil {
+		return nil, dbError(err)
+	}
+	if !ready {
+		return nil, status.Error(codes.FailedPrecondition, "current application runtime is not ready for this Workspace")
+	}
+	deploy, err := s.persistedRuntimeCommand(ctx, runtimeID, deploymentID)
+	if err != nil {
+		return nil, err
+	}
+	if deploy.command.GetWorkspaceId() != wid {
+		return nil, status.Error(codes.FailedPrecondition, "runtime command does not match the Workspace")
+	}
+	var username string
+	for _, credential := range deploy.command.GetDeploymentDescriptor().GetApplicationRevision().GetCredentials() {
+		if credential.GetKind() == api.WorkspaceApplicationCredentialKindEnum_WORKSPACE_APPLICATION_CREDENTIAL_KIND_ENUM_WORKSPACE_ADMIN_PASSWORD {
+			if username != "" {
+				return nil, status.Error(codes.FailedPrecondition, "application administrator credential is ambiguous")
+			}
+			username = credential.GetUsername()
+		}
+	}
+	if strings.TrimSpace(username) == "" {
+		return nil, status.Error(codes.FailedPrecondition, "application administrator credential is not declared")
+	}
+	deploy.command.Context = nextOwnerCall(c)
+	target, err := s.confirmedRuntimeTarget(ctx, deploy.command)
+	if err != nil {
+		return nil, err
+	}
+	observed, err := s.Runtime.Observe(ctx, deploy.command, target)
+	if err != nil {
+		return nil, err
+	}
+	if observed.State != api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY || observed.ObservedAt.IsZero() {
+		return nil, status.Error(codes.FailedPrecondition, "application runtime is not actually ready")
+	}
+	credentials, err := s.Runtime.Credentials(ctx, deploy.command, target)
+	if err != nil {
+		return nil, err
+	}
+	// The executor returns its provider runtime identity, derived by the same
+	// contract as runtimeInput. The public RPC names Serve's instance identity.
+	if credentials.GetWorkspaceId() != wid || credentials.GetRuntimeInstanceId() != contracts.WorkspaceApplicationRuntimeID(runtimeID) || credentials.GetUsername() != username || credentials.GetPassword() == "" {
+		return nil, status.Error(codes.FailedPrecondition, "application credentials do not match the declared runtime login")
+	}
+	return &api.WorkspaceApplicationCredentials{WorkspaceId: wid, RuntimeInstanceId: runtimeID, Username: username, Password: credentials.GetPassword()}, nil
 }
 
 // executeRuntimeStep resolves the exact executable resource binding through the

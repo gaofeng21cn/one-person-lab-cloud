@@ -98,6 +98,8 @@ func main() {
 				return err
 			}
 			service.Serve = api.NewServeAgentCoordinationClient(conn)
+			service.ServeProduct = api.NewServeProductServiceClient(conn)
+			service.ServeCredentials = api.NewServeRuntimeAdapterClient(conn)
 		}
 		// The Gateway wallet authority is the only owner that may move customer
 		// money. Without a configured address a paid order stays awaiting its

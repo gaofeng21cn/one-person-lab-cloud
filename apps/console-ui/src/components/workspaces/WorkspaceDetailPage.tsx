@@ -13,6 +13,8 @@ import type { WorkspaceDTO, WorkspaceGatewayBudgetDTO, WorkspaceGatewayBudgetUpd
 import { Alert, Button, Checkbox, Field } from "../ui/index.ts";
 import { AgentDeliveryPanel } from "./AgentDeliveryPanel.tsx";
 import { WorkspaceTransactionsPanel } from "./WorkspaceTransactionsPanel.tsx";
+import { WorkspaceApplicationCredentialsPanel } from "./WorkspaceApplicationCredentialsPanel.tsx";
+import { NativeDefaultAppUpgrade } from "./NativeDefaultAppUpgrade.tsx";
 import { cloudIdentity } from "../../app/console-identity.ts";
 import { formatDate, formatUsdMicros } from "../../console-model.ts";
 import { sourceData } from "./workspace-shared.tsx";
@@ -222,6 +224,8 @@ function WorkspaceOwnerDetailPage({ controller }: { controller: WorkspaceDetailC
       <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />工作空间列表</Button>
       <div className="workspace-detail-content">
         <section className="panel workspace-identity-panel"><div className="workspace-heading"><div><h2>{detail.name || "未命名工作空间"}</h2><div className={`workspace-availability workspace-availability--${lifecycle.known ? lifecycle.kind : "pending"}`}><strong>{lifecycle.label}</strong><span>{accessUrl ? "该工作空间已发布访问入口，可直接打开。" : "访问入口尚未就绪，稍后刷新查看。"}</span></div></div><div className="workspace-entry-actions"><Button color="primary" disabled={!accessUrl} onClick={() => accessUrl && window.open(accessUrl, "_blank", "noopener,noreferrer")}>打开工作空间<ExternalLink aria-hidden size={16} /></Button><Button onClick={() => controller.navigate(`/console/workspaces/${encodeURIComponent(detail.id)}/models`)} variant="outline">模型配置</Button><Button onClick={() => void controller.refreshCurrentPage()} variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div></div><dl className="workspace-primary-facts"><div><dt>交付模式</dt><dd>{presentWorkspaceDeliveryModel(detail.deliveryModel)}</dd></div><div><dt>资源就绪</dt><dd>{detail.resourceReadiness || "暂不可用"}</dd></div><div><dt>应用可用</dt><dd>{detail.applicationAvailability || "暂不可用"}</dd></div><div><dt>权益截止</dt><dd>{formatDate(detail.paidThrough)}</dd></div></dl></section>
+        <WorkspaceApplicationCredentialsPanel session={controller.session} workspaceId={detail.id} />
+        {controller.session && detail.state === "active" ? <NativeDefaultAppUpgrade actorId={controller.session.user.id} csrfToken={controller.session.csrfToken} onUpgraded={controller.refreshCurrentPage} workspaceId={detail.id} /> : null}
         <WorkspaceTransactionsPanel session={controller.session} workspaceId={detail.id} />
         <WorkspaceDeletePanel controller={controller} />
         <section className="panel workspace-technical-panel"><details className="workspace-technical-details"><summary><span>技术详情</span><ChevronDown aria-hidden size={16} /></summary><div className="workspace-technical-details__body">

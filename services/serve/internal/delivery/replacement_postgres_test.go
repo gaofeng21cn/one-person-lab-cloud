@@ -126,7 +126,7 @@ func TestServeVersionSwitchReplacesTheCurrentApplication(t *testing.T) {
 	before := runtime.starts
 	_, err = s.UpdateWorkspaceVersion(serveContext(), &api.UpdateWorkspaceVersionRpcRequest{
 		Context: conflict, WorkspaceId: "ws-first",
-		Body: &api.UpdateWorkspaceVersionRequest{CapabilityVersionId: second.GetId(), ExpectedCurrentAgentDeploymentId: "dep-not-current"},
+		Body: &api.UpdateWorkspaceVersionRequest{CapabilityVersionId: proto.String(second.GetId()), ExpectedCurrentAgentDeploymentId: "dep-not-current"},
 	})
 	if status.Code(err) != codes.FailedPrecondition || !strings.Contains(status.Convert(err).Message(), delivery.ReasonCurrentDeploymentConflict) {
 		t.Fatalf("stale expected current=%v", err)
@@ -140,7 +140,7 @@ func TestServeVersionSwitchReplacesTheCurrentApplication(t *testing.T) {
 	empty.IdempotencyKey = "switch-empty"
 	_, err = s.UpdateWorkspaceVersion(serveContext(), &api.UpdateWorkspaceVersionRpcRequest{
 		Context: empty, WorkspaceId: "ws-empty",
-		Body: &api.UpdateWorkspaceVersionRequest{CapabilityVersionId: second.GetId(), ExpectedCurrentAgentDeploymentId: first.DeploymentId},
+		Body: &api.UpdateWorkspaceVersionRequest{CapabilityVersionId: proto.String(second.GetId()), ExpectedCurrentAgentDeploymentId: first.DeploymentId},
 	})
 	if status.Code(err) != codes.FailedPrecondition || !strings.Contains(status.Convert(err).Message(), delivery.ReasonReplacementUnavailable) {
 		t.Fatalf("no current application=%v", err)
@@ -166,7 +166,7 @@ func TestServeVersionSwitchReplacesTheCurrentApplication(t *testing.T) {
 	switchCall.IdempotencyKey = "switch-version-2"
 	operation, err := s.UpdateWorkspaceVersion(serveContext(), &api.UpdateWorkspaceVersionRpcRequest{
 		Context: switchCall, WorkspaceId: "ws-first",
-		Body: &api.UpdateWorkspaceVersionRequest{CapabilityVersionId: second.GetId(), ExpectedCurrentAgentDeploymentId: first.DeploymentId},
+		Body: &api.UpdateWorkspaceVersionRequest{CapabilityVersionId: proto.String(second.GetId()), ExpectedCurrentAgentDeploymentId: first.DeploymentId},
 	})
 	if err != nil {
 		t.Fatalf("version switch: %v", err)
@@ -232,7 +232,7 @@ func TestServeVersionSwitchReplacesTheCurrentApplication(t *testing.T) {
 	failing.IdempotencyKey = "switch-fails"
 	if _, err = s.UpdateWorkspaceVersion(serveContext(), &api.UpdateWorkspaceVersionRpcRequest{
 		Context: failing, WorkspaceId: "ws-first",
-		Body: &api.UpdateWorkspaceVersionRequest{CapabilityVersionId: second.GetId(), ExpectedCurrentAgentDeploymentId: rolledID},
+		Body: &api.UpdateWorkspaceVersionRequest{CapabilityVersionId: proto.String(second.GetId()), ExpectedCurrentAgentDeploymentId: rolledID},
 	}); err == nil {
 		t.Fatal("unobserved replacement reported success")
 	}
@@ -289,7 +289,7 @@ func TestServeReplacementRefusesUnprovenDataCompatibility(t *testing.T) {
 		call.IdempotencyKey = key
 		return s.UpdateWorkspaceVersion(serveContext(), &api.UpdateWorkspaceVersionRpcRequest{
 			Context: call, WorkspaceId: "ws-first",
-			Body: &api.UpdateWorkspaceVersionRequest{CapabilityVersionId: versionID, ExpectedCurrentAgentDeploymentId: expectedCurrent},
+			Body: &api.UpdateWorkspaceVersionRequest{CapabilityVersionId: proto.String(versionID), ExpectedCurrentAgentDeploymentId: expectedCurrent},
 		})
 	}
 	// The target does not declare compatibility with the schema the Workspace
@@ -447,7 +447,7 @@ func switchVersion(t *testing.T, s *delivery.Service, key, versionID, expectedCu
 	call.IdempotencyKey = key
 	return s.UpdateWorkspaceVersion(serveContext(), &api.UpdateWorkspaceVersionRpcRequest{
 		Context: call, WorkspaceId: "ws-first",
-		Body: &api.UpdateWorkspaceVersionRequest{CapabilityVersionId: versionID, ExpectedCurrentAgentDeploymentId: expectedCurrent},
+		Body: &api.UpdateWorkspaceVersionRequest{CapabilityVersionId: proto.String(versionID), ExpectedCurrentAgentDeploymentId: expectedCurrent},
 	})
 }
 

@@ -32,6 +32,7 @@ func NewServeDeliveryHandler(reader ServeDeliveryReader, identity IdentityReader
 // error handling to the existing BFF boundary. The bodyless POST access route
 // also receives its contract-required CSRF, same-origin and idempotency guards.
 func RegisterServeDeliveryRoutes(mux *http.ServeMux, reader ServeDeliveryReader, identity IdentityReader) {
+	registerServeUpdateRoute(mux, reader, identity)
 	s := &Server{identity: identity}
 	const workspaceKind = api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE
 	require := func() error {

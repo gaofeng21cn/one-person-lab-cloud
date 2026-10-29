@@ -76,6 +76,26 @@ receipt for this same Candidate remain open, alongside full login/model/recovery
 acceptance. #1042 and the separate original-order closeout in #1018 remain open;
 installation verification and entry activation do not close those outcomes.
 
+## Authorized App Path Repair And Native Upgrade (2026-10-29)
+
+The customer authorized the demonstrated App path repair and an explicit image
+upgrade of the original Workspace. Source work binds the retained Serve entry's
+trusted prefix to the App-owned HTML base, API/SSE/download URLs, login redirects
+and session Cookie path. Cloud does not rewrite application HTML. The App
+publisher uses the existing entrypoint contract to select cloud/password mode
+and the existing password/session files; the generic image retains its local
+mode. The original credential names and mounted targets are preserved.
+
+The native update consumer now accepts an approved Runtime Release directly,
+without manufacturing an Agent build, and resumes its frozen replacement under
+the original update identity. The original compute, data attachment, managed
+Key and installed credentials are inherited. The existing Workspace credential
+reveal contract is connected through the BFF and Console to Serve's live,
+current ready runtime. Source verification does not establish deployment,
+upgrade, application login, model response or recovery acceptance. The current
+installed observation above and the open payer/J0 obligations remain unchanged
+until fresh protected readbacks and actual customer use establish them.
+
 ## Default App Startup Command Boundary (2026-10-29)
 
 The installed CMD repair and recovered original operation are confirmed by the

@@ -108,7 +108,25 @@ commit evidence rather than from the privacy-mutable receipt provenance block.
 The Workspace order carries one explicit application selection: an approved
 Runtime Release for default `opl_app`, or a built CapabilityVersion for `agent`.
 Default App uses the Runtime Release's artifact and descriptor without creating
-a Package, BuildJob or CapabilityVersion. On confirmed Local resources,
+a Package, BuildJob or CapabilityVersion. Explicit application updates use the
+same source selection on `POST /api/v2/workspaces/{workspaceId}/update`: the
+existing capability selector and the typed application selector are mutually
+exclusive. Serve reads the approved source, preserves the accepted descriptor
+for replay, checks data compatibility, reuses the original resource/attachment
+and installed credentials, stops an exclusive old writer, then switches the
+current deployment only after actual readiness. No replacement purchases or
+Gateway Keys are created. Console reads approved releases and the current
+Serve deployment and retries an uncertain command with the same identity.
+
+The native credentials reveal route calls Workspace for each explicit customer
+request. Workspace authorizes ownership and an active lifecycle; Serve fences
+the current ready deployment, observes the actual runtime and reads its declared
+administrator credential through the existing executor. The BFF returns only
+that username/password with `private, no-store`; Console keeps the value only
+until hide, scope change or leaving the page. Neither an owner snapshot nor an
+idempotency response cache stores credential material.
+
+On confirmed Local resources,
 Workspace calls Serve Reserve, Deploy and ReadRuntime with that original order.
 Provider readiness and Serve readiness remain independent facts; this slice
 does not create paid periods, fabricate subscriptions or activate Workspace

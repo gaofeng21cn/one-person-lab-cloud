@@ -50,50 +50,41 @@ const (
 	ReasonDataRollbackUnsafe = "data_rollback_not_safe"
 )
 
-// UpdateWorkspaceVersion replaces the Workspace's current application with the
-// named ready CapabilityVersion. The caller must present the exact current
-// deployment it read, so two switches can never both believe they replaced the
-// same application.
+// UpdateWorkspaceVersion explicitly replaces the current application with an
+// approved Default App Runtime Release or a ready built Agent version.
 func (s *Service) UpdateWorkspaceVersion(ctx context.Context, r *api.UpdateWorkspaceVersionRpcRequest) (*api.Operation, error) {
 	workspaceID := strings.TrimSpace(r.GetWorkspaceId())
 	if err := s.authorize(ctx, r.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATEWORKSPACEVERSION, workspaceID); err != nil {
 		return nil, err
 	}
 	body := r.GetBody()
-	if body == nil {
-		return nil, status.Error(codes.InvalidArgument, "an update version body is required")
-	}
-	capabilityVersionID := strings.TrimSpace(body.GetCapabilityVersionId())
-	expectedCurrent := strings.TrimSpace(body.GetExpectedCurrentAgentDeploymentId())
-	if workspaceID == "" || capabilityVersionID == "" || expectedCurrent == "" {
-		return nil, status.Error(codes.InvalidArgument, "workspace, capability version and the expected current deployment are required")
-	}
-	if s.Runtime == nil || s.Resources == nil || s.References == nil || s.Capability == nil {
-		return nil, status.Error(codes.Unavailable, "runtime adapter, Fabric readback, Capability and reference coordination must be configured")
-	}
-	call := r.GetContext()
-	version, err := s.Capability.GetCapabilityVersion(ctx, &api.GetCapabilityVersionRpcRequest{Context: nextOwnerCall(call), CapabilityVersionId: capabilityVersionID})
+	selection, err := replacementSelection(body)
 	if err != nil {
 		return nil, err
 	}
-	if version.GetId() != capabilityVersionID || version.GetStatus() != api.CapabilityVersionStatusEnum_CAPABILITY_VERSION_STATUS_ENUM_READY || version.GetDeploymentDescriptor() == nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "%s: Capability did not confirm the requested version as deployable", ReasonReplacementUnavailable)
+	expectedCurrent := strings.TrimSpace(body.GetExpectedCurrentAgentDeploymentId())
+	if workspaceID == "" || expectedCurrent == "" || strings.TrimSpace(r.GetContext().GetIdempotencyKey()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "workspace, expected current deployment and idempotency key are required")
 	}
-	compatibility, err := compatibilityJSON(version.GetDataCompatibility())
+	if s.Runtime == nil || s.Resources == nil || s.References == nil {
+		return nil, status.Error(codes.Unavailable, "runtime adapter, Fabric readback and reference coordination must be configured")
+	}
+	// Accepted commands resolve their own frozen source before consulting a live
+	// catalog again: later deprecation/revocation cannot turn a replay into a new
+	// admission or change its already accepted descriptor.
+	plan := replacementPlan{kind: "update_workspace", call: r.GetContext(), workspaceID: workspaceID, expectedCurrent: expectedCurrent,
+		capabilityVersionID: selection.GetCapabilityVersionId(), runtimeVersionID: selection.GetRuntimeVersionId()}
+	if found, replayErr := s.restoreReplacementSource(ctx, &plan); replayErr != nil {
+		return nil, replayErr
+	} else if found {
+		return s.runReplacement(ctx, plan)
+	}
+	plan, err = s.replacementSource(ctx, r.GetContext(), selection)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "cannot record the admitted data contract: %v", err)
+		return nil, err
 	}
-	return s.runReplacement(ctx, replacementPlan{
-		kind:                "update_workspace",
-		call:                call,
-		workspaceID:         workspaceID,
-		expectedCurrent:     expectedCurrent,
-		capabilityVersionID: capabilityVersionID,
-		descriptor:          version.GetDeploymentDescriptor(),
-		descriptorDigest:    version.GetDeploymentDescriptorDigest(),
-		descriptorRef:       version.GetDeploymentDescriptorObjectRef(),
-		compatibility:       compatibility,
-	})
+	plan.kind, plan.call, plan.workspaceID, plan.expectedCurrent = "update_workspace", r.GetContext(), workspaceID, expectedCurrent
+	return s.runReplacement(ctx, plan)
 }
 
 // compatibilityJSON is the recorded data contract of one admitted delivery. A
@@ -198,7 +189,9 @@ type replacementPlan struct {
 	compatibility []byte
 	// kind is the owning product operation this replacement records:
 	// update_workspace for a version switch, rollback_workspace for a restore.
-	kind string
+	kind      string
+	inherited *api.RuntimeDeployCommand
+	exclusive bool
 }
 
 // runReplacement admits, executes and commits one replacement. The current route
@@ -228,8 +221,73 @@ func (s *Service) runReplacement(ctx context.Context, plan replacementPlan) (*ap
 		// A retry of the same logical switch converges on the delivery it already
 		// owns, whatever the Workspace's current application has since become: the
 		// caller is asking for the result of its own accepted command, not for a
-		// second freshness check. Nothing is admitted or stopped again.
-		command = replacementCommand(plan, replay.DeploymentID, replay.RuntimeID, replay.ResourceSetID, replay.DataAttachment, replay.ExecutionEpoch)
+		// second freshness check. An unconfirmed original stop is resumed below.
+		if err = s.validateReplacementReplay(ctx, tx, plan, replay); err != nil {
+			return nil, err
+		}
+		var operationStatus string
+		var acceptedInput []byte
+		if err = tx.QueryRowContext(ctx, `SELECT status,accepted_input FROM serve.operations WHERE id=$1`, operationID).Scan(&operationStatus, &acceptedInput); err != nil {
+			return nil, dbError(err)
+		}
+		if operationStatus == "succeeded" {
+			if err = tx.Commit(); err != nil {
+				return nil, dbError(err)
+			}
+			return s.deliveryOperation(ctx, operationID)
+		}
+		current, err = replacementPredecessor(ctx, tx, replay.DeploymentID, plan.workspaceID)
+		if err != nil {
+			return nil, err
+		}
+		var raw []byte
+		var runtimeID, deploymentID, action string
+		readErr := tx.QueryRowContext(ctx, `SELECT input_snapshot,runtime_instance_id,expected_deployment_id,action FROM serve.agent_runtime_actions WHERE command_id=$1`, stableID("start_", replay.DeploymentID)).Scan(&raw, &runtimeID, &deploymentID, &action)
+		if readErr == nil {
+			// A committed start is the exact execution input, including retained
+			// Agent updates/rollbacks accepted before replacementState existed.
+			// Never rebuild it from a newer predecessor binding or catalog.
+			frozen, _, decodeErr := decodeRuntimeStartSnapshot(raw)
+			if decodeErr != nil {
+				return nil, decodeErr
+			}
+			if action != "start" || runtimeID != replay.RuntimeID || deploymentID != replay.DeploymentID || frozen.GetWorkspaceId() != plan.workspaceID || frozen.GetDeploymentId() != replay.DeploymentID || frozen.GetRuntimeInstanceId() != replay.RuntimeID || frozen.GetExecutionEpoch() != replay.ExecutionEpoch || frozen.GetResourceSetId() != replay.ResourceSetID || frozen.GetDataAttachmentId() != replay.DataAttachment || frozen.GetCapabilityVersionId() != plan.capabilityVersionID || frozen.GetDeploymentDescriptorDigest() != plan.descriptorDigest || frozen.GetDeploymentDescriptorObjectRef() != plan.descriptorRef || !proto.Equal(frozen.GetDeploymentDescriptor(), plan.descriptor) {
+				return nil, status.Error(codes.DataLoss, "committed replacement start differs from its admitted delivery")
+			}
+			frozen.Context = plan.call
+			command = frozen
+			var input struct {
+				ExclusiveWriter *bool `json:"exclusiveWriter"`
+			}
+			if json.Unmarshal(acceptedInput, &input) != nil {
+				return nil, status.Error(codes.DataLoss, "replacement accepted input is invalid")
+			}
+			if input.ExclusiveWriter != nil {
+				exclusive = *input.ExclusiveWriter
+			} else if exclusive, err = exclusiveDataWriter(current.Descriptor, frozen.GetDeploymentDescriptor()); err != nil {
+				return nil, err
+			}
+			// Old operations had no accepted exclusiveWriter field. Their original
+			// stop intent is also a durable decision, even if its ACK was lost.
+			var recordedStop bool
+			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM serve.agent_runtime_actions WHERE command_id=$1 AND action='stop' AND runtime_instance_id=$2 AND expected_deployment_id=$3)`, stableID("stop_", replay.DeploymentID), current.RuntimeID, current.DeploymentID).Scan(&recordedStop); err != nil {
+				return nil, dbError(err)
+			}
+			exclusive = exclusive || recordedStop
+		} else if errors.Is(readErr, sql.ErrNoRows) {
+			// Before start is committed, only the accepted predecessor snapshot
+			// can supply credentials and the writer decision for a new native App.
+			if err = restoreReplacementState(ctx, tx, operationID, &plan, current); err != nil {
+				return nil, err
+			}
+			exclusive = plan.exclusive
+			command, err = replacementCommand(plan, replay.DeploymentID, replay.RuntimeID, replay.ResourceSetID, replay.DataAttachment, replay.ExecutionEpoch)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, dbError(readErr)
+		}
 	} else {
 		if current, err = currentDeliveryTx(ctx, tx, plan.workspaceID); err != nil {
 			return nil, err
@@ -239,6 +297,16 @@ func (s *Service) runReplacement(ctx context.Context, plan replacementPlan) (*ap
 		}
 		if current.DeploymentID != plan.expectedCurrent {
 			return nil, status.Errorf(codes.FailedPrecondition, "%s: workspace %s current deployment is %s, not the expected %s", ReasonCurrentDeploymentConflict, plan.workspaceID, current.DeploymentID, plan.expectedCurrent)
+		}
+		var pending bool
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM serve.agent_deployments d JOIN serve.agent_runtime_instances i ON i.deployment_id=d.id WHERE d.workspace_id=$1 AND d.previous_deployment_id IS NOT NULL AND d.status IN ('queued','deploying','verifying','rolling_back','needs_attention','failed') AND i.status <> 'terminated')`, plan.workspaceID).Scan(&pending); err != nil {
+			return nil, dbError(err)
+		}
+		if pending {
+			return nil, status.Errorf(codes.FailedPrecondition, "%s: resume the original replacement before admitting another writer", ReasonCurrentDeploymentConflict)
+		}
+		if err = s.prepareReplacementState(ctx, tx, &plan, current); err != nil {
+			return nil, err
 		}
 		if err = replacementCompatibilityRefusal(current.Compatibility, plan.compatibility, plan.kind == "rollback_workspace"); err != nil {
 			return nil, err
@@ -263,6 +331,7 @@ func (s *Service) runReplacement(ctx context.Context, plan replacementPlan) (*ap
 		if exclusive, err = exclusiveDataWriter(current.Descriptor, plan.descriptor); err != nil {
 			return nil, err
 		}
+		plan.exclusive = exclusive
 		if command, err = s.admitReplacementTx(ctx, tx, plan, current, operationID); err != nil {
 			return nil, err
 		}
@@ -282,7 +351,7 @@ func (s *Service) runReplacement(ctx context.Context, plan replacementPlan) (*ap
 	if err = s.acceptReplacementStart(ctx, command); err != nil {
 		return nil, err
 	}
-	if replay == nil && exclusive {
+	if exclusive {
 		// The old writer is stopped only after its replacement is admitted, so the
 		// Workspace always has a recorded reason for the gap, and the stop is
 		// recorded before the provider call so a replay never issues it twice.
@@ -427,8 +496,7 @@ func (s *Service) admitReplacementTx(ctx context.Context, tx *sql.Tx, plan repla
 		runtimeID, plan.workspaceID, deploymentID, plan.descriptor.GetArtifact().GetDigest(), current.ResourceSetID, attachment, current.ExecutionEpoch+1, descriptor, plan.descriptorDigest, plan.descriptorRef); err != nil {
 		return nil, dbError(err)
 	}
-	command := replacementCommand(plan, deploymentID, runtimeID, current.ResourceSetID, current.DataAttachment, current.ExecutionEpoch+1)
-	return command, nil
+	return replacementCommand(plan, deploymentID, runtimeID, current.ResourceSetID, current.DataAttachment, current.ExecutionEpoch+1)
 }
 
 // replacementOperationID is the owning operation of one logical switch. It keys
@@ -473,19 +541,32 @@ func existingReplacementTx(ctx context.Context, q rowQueryer, deploymentID, work
 
 // replacementCommand is the single builder of a replacement's execution command,
 // so an admitted delivery and its replayed form are the same command.
-func replacementCommand(plan replacementPlan, deploymentID, runtimeID, resourceSetID, dataAttachmentID string, epoch int64) *api.RuntimeDeployCommand {
+func replacementCommand(plan replacementPlan, deploymentID, runtimeID, resourceSetID, dataAttachmentID string, epoch int64) (*api.RuntimeDeployCommand, error) {
+	compatibility := &api.DataCompatibility{}
+	if err := publicjson.Unmarshal(plan.compatibility, compatibility); err != nil {
+		return nil, status.Error(codes.DataLoss, "replacement data compatibility is invalid")
+	}
 	command := &api.RuntimeDeployCommand{
 		Context: plan.call, WorkspaceId: plan.workspaceID, DeploymentId: deploymentID,
 		CapabilityVersionId: plan.capabilityVersionID, DeploymentDescriptor: plan.descriptor,
 		ResourceSetId: resourceSetID, DataAttachmentId: dataAttachmentID, RuntimeInstanceId: runtimeID,
 		DeploymentDescriptorDigest: plan.descriptorDigest, ExecutionEpoch: epoch, DeploymentDescriptorObjectRef: plan.descriptorRef,
+		DataCompatibility: compatibility,
+	}
+	if plan.inherited != nil {
+		command.SecretBindingId = plan.inherited.GetSecretBindingId()
+		command.ModelConfigurationVersion = plan.inherited.GetModelConfigurationVersion()
+		command.ModelSelections = plan.inherited.GetModelSelections()
+		if plan.inherited.GetManagedKeyBinding() != nil {
+			command.ManagedKeyBinding = proto.Clone(plan.inherited.ManagedKeyBinding).(*api.RuntimeManagedKeyBinding)
+		}
 	}
 	if plan.capabilityVersionID != "" {
 		command.ApplicationSelection = &api.WorkspaceApplicationSelection{Kind: api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_AGENT, CapabilityVersionId: proto.String(plan.capabilityVersionID)}
 	} else {
 		command.ApplicationSelection = &api.WorkspaceApplicationSelection{Kind: api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP, RuntimeVersionId: proto.String(plan.runtimeVersionID)}
 	}
-	return command
+	return command, nil
 }
 
 // replacementAcceptedInput stores the replacement in the same accepted-input
@@ -505,7 +586,10 @@ func replacementAcceptedInput(plan replacementPlan, deploymentID, resourceSetID,
 	}
 	request := wire(reservation)
 	scope := wire(plan.call.GetScope())
-	return json.Marshal(reservationInput{Request: request, Actor: plan.call.GetActorId(), Scope: scope, AuthorizationContextID: plan.call.GetAuthorizationContextId(), Digest: "sha256:" + ownerstore.HashRequestBody(reservationBytes(reservation))})
+	return json.Marshal(replacementInput{
+		reservationInput: reservationInput{Request: request, Actor: plan.call.GetActorId(), Scope: scope, AuthorizationContextID: plan.call.GetAuthorizationContextId(), Digest: "sha256:" + ownerstore.HashRequestBody(reservationBytes(reservation))},
+		ReplacementState: deployBytes(plan.inherited), ExclusiveWriter: plan.exclusive,
+	})
 }
 
 // rowQueryer is the read surface both an owner transaction and a plain owner

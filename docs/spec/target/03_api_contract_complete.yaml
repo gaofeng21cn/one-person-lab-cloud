@@ -9307,12 +9307,18 @@ components:
       properties:
         capabilityVersionId:
           $ref: '#/components/schemas/OpaqueId'
+        applicationSelection:
+          $ref: '#/components/schemas/WorkspaceApplicationSelection'
         expectedCurrentDeploymentId:
           $ref: '#/components/schemas/OpaqueId'
       required:
-      - capabilityVersionId
       - expectedCurrentDeploymentId
-      description: Runtime重建先createBuild同PackageVersion+WebUI，以管理员当前Runtime产新CapabilityVersion，再显式update。不变购买历史，不自动resize。
+      oneOf:
+      - required:
+        - capabilityVersionId
+      - required:
+        - applicationSelection
+      description: 显式applicationSelection选择获批RuntimeVersion的默认App或ready CapabilityVersion的Agent；与保留的capabilityVersionId严格互斥。默认App不生成Package/Build/CapabilityVersion。Agent Runtime重建先createBuild同PackageVersion+WebUI产新CapabilityVersion，再显式update。Serve复用原资源和数据挂载、已确认managed Key及密码/session身份，验证数据兼容，独占旧writer确认停止后启动新版本，ready后CAS当前部署。不变购买历史，不自动resize。
     RollbackWorkspaceRequest:
       type: object
       additionalProperties: false
