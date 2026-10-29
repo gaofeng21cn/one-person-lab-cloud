@@ -245,7 +245,7 @@ var required = map[protoreflect.Name]map[string]bool{
 	"ModelConfiguration":                        {"workspaceId": true, "version": true, "selections": true, "status": true, "updatedAt": true},
 	"UpdateWorkspaceModelsRequest":              {"expectedVersion": true, "selections": true},
 	"Deployment":                                {"id": true, "workspaceId": true, "capabilityVersionId": true, "status": true, "dataCompatibility": true, "createdAt": true, "updatedAt": true},
-	"UpdateWorkspaceVersionRequest":             {"capabilityVersionId": true, "expectedCurrentDeploymentId": true},
+	"UpdateWorkspaceVersionRequest":             {"expectedCurrentDeploymentId": true},
 	"RollbackWorkspaceRequest":                  {"targetDeploymentId": true, "expectedCurrentDeploymentId": true},
 	"ApplyQuoteRequest":                         {"quoteId": true},
 	"DeleteWorkspaceRequest":                    {"confirmationName": true, "acknowledgeDataDestruction": true},

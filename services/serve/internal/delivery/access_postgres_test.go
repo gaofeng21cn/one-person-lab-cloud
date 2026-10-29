@@ -159,14 +159,16 @@ func TestServeAccessEntryStripsPlatformCredentialsAndConfinesCookies(t *testing.
 	markRouteTargetReady(t, db, runtimeInstance)
 	activateRoute(t, service, tenant, workspace, runtimeInstance)
 
-	var seenAuthorization, seenCSRF, seenCookie string
-	var seenPathAuthorization, seenPathCSRF, seenPathCookie string
+	var seenAuthorization, seenCSRF, seenCookie, seenPrefix string
+	var seenPathAuthorization, seenPathCSRF, seenPathCookie, seenPathPrefix string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Forwarded-Host") == "workspace.example" {
+			seenPathPrefix = r.Header.Get("X-Forwarded-Prefix")
 			seenPathAuthorization = r.Header.Get("Authorization")
 			seenPathCSRF = r.Header.Get("X-OPL-CSRF")
 			seenPathCookie = r.Header.Get("Cookie")
 		} else {
+			seenPrefix = r.Header.Get("X-Forwarded-Prefix")
 			seenAuthorization = r.Header.Get("Authorization")
 			seenCSRF = r.Header.Get("X-OPL-CSRF")
 			seenCookie = r.Header.Get("Cookie")
@@ -190,6 +192,7 @@ func TestServeAccessEntryStripsPlatformCredentialsAndConfinesCookies(t *testing.
 		t.Fatal(err)
 	}
 	request.Host = applicationHost(t, workspace)
+	request.Header.Set("X-Forwarded-Prefix", "/w/forged")
 	request.Header.Set("Authorization", "Bearer application-token")
 	request.Header.Set("X-OPL-CSRF", "platform-csrf")
 	request.AddCookie(&http.Cookie{Name: "opl_session", Value: "platform-session"})
@@ -205,6 +208,9 @@ func TestServeAccessEntryStripsPlatformCredentialsAndConfinesCookies(t *testing.
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("status=%d", response.StatusCode)
 	}
+	if seenPrefix != "" {
+		t.Fatalf("dedicated origin forwarded an untrusted prefix: %q", seenPrefix)
+	}
 	if seenAuthorization != "Bearer application-token" || seenCSRF != "" || !strings.Contains(seenCookie, "app_session=application-session") || strings.Contains(seenCookie, "opl_session") || strings.Contains(seenCookie, "opl_console_session") || strings.Contains(seenCookie, "opl_ws_") {
 		t.Fatalf("forwarded credentials authorization=%q csrf=%q cookie=%q", seenAuthorization, seenCSRF, seenCookie)
 	}
@@ -217,6 +223,7 @@ func TestServeAccessEntryStripsPlatformCredentialsAndConfinesCookies(t *testing.
 		t.Fatal(err)
 	}
 	pathRequest.Host = "workspace.example"
+	pathRequest.Header.Set("X-Forwarded-Prefix", "/w/forged")
 	pathRequest.Header.Set("Authorization", "Bearer platform-token")
 	pathRequest.Header.Set("X-OPL-CSRF", "platform-csrf")
 	pathRequest.AddCookie(&http.Cookie{Name: "opl_session", Value: "platform-session"})
@@ -231,6 +238,9 @@ func TestServeAccessEntryStripsPlatformCredentialsAndConfinesCookies(t *testing.
 	defer pathResponse.Body.Close()
 	if pathResponse.StatusCode != http.StatusOK {
 		t.Fatalf("path status=%d", pathResponse.StatusCode)
+	}
+	if seenPathPrefix != "/w/"+workspace {
+		t.Fatalf("path prefix=%q, want the resolved Workspace", seenPathPrefix)
 	}
 	if seenPathAuthorization != "" || seenPathCSRF != "" || !strings.Contains(seenPathCookie, "app_session=application-session") || strings.Contains(seenPathCookie, "opl_session") || strings.Contains(seenPathCookie, "opl_console_session") || strings.Contains(seenPathCookie, "opl_ws_") {
 		t.Fatalf("path forwarded credentials authorization=%q csrf=%q cookie=%q", seenPathAuthorization, seenPathCSRF, seenPathCookie)

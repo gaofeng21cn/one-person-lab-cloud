@@ -660,6 +660,11 @@ an application component that changes when the Workspace's application changes.
 The Workspace is the unit that can appear in the name: an application identity
 that cannot compose into a hostname, or an installation with no Workspace
 domain, gets the retained path-based entry instead of an unresolvable address.
+For that retained entry, Serve replaces `X-Forwarded-Prefix` with the resolved
+`/w/<workspaceId>` path and strips it on dedicated origins. The application owns
+its path compatibility: its HTML base, API/SSE URLs, login redirects and session
+cookie Path must consume that trusted deployment prefix. Serve does not rewrite
+application HTML or infer a route from application cookies.
 
 An application declares configuration and Secret inputs using its own formats.
 Its publisher or authorized configuration owner supplies the exact contents;

@@ -19,6 +19,7 @@ func NewWorkspaceHandler(workspace api.WorkspaceProductServiceClient, identity I
 }
 
 func (s *Server) registerWorkspaceRoutes(mux *http.ServeMux, workspace api.WorkspaceProductServiceClient) {
+	s.registerWorkspaceCredentialRoutes(mux, workspace)
 	const kind = api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE
 	require := func() error {
 		if workspace == nil {

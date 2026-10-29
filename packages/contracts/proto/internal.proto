@@ -636,8 +636,9 @@ message Deployment {
 }
 
 message UpdateWorkspaceVersionRequest {
- string capability_version_id = 1;
+ optional string capability_version_id = 1;
  string expected_current_agent_deployment_id = 2;
+ WorkspaceApplicationSelection application_selection = 3;
 }
 
 message RollbackWorkspaceRequest {

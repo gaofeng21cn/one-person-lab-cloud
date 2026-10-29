@@ -38,8 +38,10 @@ type Service struct {
 	// RuntimeReleases is the Runtime Control read surface. A default OPL App order
 	// resolves its immutable artifact from the approved Runtime Release instead of
 	// a CapabilityVersion.
-	RuntimeReleases api.RuntimeControlProductServiceClient
-	Serve           api.ServeAgentCoordinationClient
+	RuntimeReleases  api.RuntimeControlProductServiceClient
+	Serve            api.ServeAgentCoordinationClient
+	ServeProduct     api.ServeProductServiceClient
+	ServeCredentials api.ServeRuntimeAdapterClient
 	// Gateway is the wallet authority the original order is charged from. A Local
 	// no-charge order funds itself through the Ledger receipt, so an unset Gateway
 	// leaves a paid order awaiting its funding owner instead of inventing a charge.
