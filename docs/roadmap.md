@@ -73,33 +73,41 @@ Instance owner, the application route is ready and usable, and the same bytes,
 owner facts, Gateway/runtime readback and recovery receipts are available at
 their authoritative layers.
 
-The [October 29 native-entry evidence](status.md#native-workspace-entry-boundary-2026-10-29)
-confirms Cloud #1087's Candidate is installed through Instance #641, with all
-installation checks passing and zero verification mutations. The original
-operation is succeeded/confirmed, Serve is active, runtime is ready and access
-activation is confirmed. The worker continued automatically without a second
-retry or purchase; Console shows activated / application available and the real
-page renders. Entry activation has passed. The current blocker is the App's
-root `/api/...` fetch/EventSource requests reaching an old route: the browser
-receives HTTP 410 with `workspace_storage_destroyed`, while the current
-Workspace-prefixed state, auth, threads and events APIs return 200 and host/ready
-is available. This does not prove current CBS deletion. The Default App business
-chain remains unqualified; Local v2 remains diagnostic `NOT_READY`.
+The [October 31 origin-adaptation evidence](status.md#native-isolated-application-origin-adaptation-2026-10-31)
+records Cloud #1090 merged, all six source CI checks passed, Instance #644's
+consumers merged with both CI checks passed, and Candidate `41187850988` built.
+The canonical-digest correction in Instance #646 preserved existing policy;
+protected Deploy `41190999879` succeeded and independent verification
+`41191374677` was validated as `deployment_verified`, with all 12 checks true
+and zero verification mutations. The original Workspace still uses its prior
+origin and startup recipe. The [October 29 entry activation](status.md#native-workspace-entry-boundary-2026-10-29)
+proved the original operation and route active; its subpath API failure remains
+the motivation for root-path delivery. Installation verification has passed,
+while the Default App business chain remains unqualified and Local v2 remains
+diagnostic `NOT_READY`.
 
 The remaining work order is deliberately narrow:
 
-1. Complete the customer-selected isolated-origin root-path delivery for the
-   original Workspace. Adopt the shared native DNS codec, qualify Instance's
-   existing origin/readback consumers (including the official
-   `/api/auth/login` and `/api/auth/user` protocol), and refresh the original URL
-   through the Serve owner flow. Verify the exact image's cloud/password recipe and
-   original credential mounts. Preserve the original order, Key, reservation,
-   charge and resources; do not change the Workspace ID or purchase again.
-   Root deployment removes the demonstrated subpath requirement but does not
-   prove application login, a real model turn or restart/response-loss recovery.
-   The accepted App/Studio subpath fixes still require their own immutable
-   WebUI publication for retained path consumers. Source tests and a public
-   wildcard TLS probe do not qualify the original installed application.
+1. Complete isolated-origin root-path delivery through the Serve owner for the
+   original Workspace. The native DNS codec and Instance's official auth/readback
+   consumers are installed. Keep the original 26.10.8 image at
+   `sha256:f6ce30fe1b0cdf8e1c6722a4c96d893ff8286e6af718940dab5a1d778ba70b71`:
+   its exact-image isolated root cloud/password smoke passed anonymous and
+   wrong-password HTTP 401 and login/user/state/models HTTP 200 with seven models,
+   without customer data, a Gateway Key or a real model turn. Prepare only an
+   immutable cloud/password startup-recipe variant, still unregistered and
+   unapplied, then complete owner adoption of the recipe and origin. Preserve
+   `/data`, `/projects`, the original Workspace ID, order, Key, credentials,
+   reservation, charge and resources. Accept the actual owner-published entry,
+   real login, one real model turn and restart/lost-response recovery. A generated
+   candidate hostname's public HTTP 404 is not a failure of an owner-published
+   new entry. Console customer Workspace readback `41192510414` still reports
+   `retained_path_entry`; its acceptance consumer has not confirmed the served
+   entry because the shell marker did not match despite HTTP 200 (see
+   [current evidence](status.md#native-isolated-application-origin-adaptation-2026-10-31)).
+   Origin and startup recipe remain unchanged. Local smoke and Cloud installation
+   do not supply this original-Workspace acceptance; the App/Studio subpath fixes
+   retain their separate immutable-publication obligation for retained path consumers.
 
 2. Complete the protected payer readback and explicit declaration. RuntimeVersion,
    compute, storage and Tenant selections have been configured; a missing
