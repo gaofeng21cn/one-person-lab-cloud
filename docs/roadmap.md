@@ -95,8 +95,15 @@ The remaining work order is deliberately narrow:
    its exact-image isolated root cloud/password smoke passed anonymous and
    wrong-password HTTP 401 and login/user/state/models HTTP 200 with seven models,
    without customer data, a Gateway Key or a real model turn. Prepare only an
-   immutable cloud/password startup-recipe variant, still unregistered and
-   unapplied, then complete owner adoption of the recipe and origin. Preserve
+   immutable cloud/password startup-recipe variant using the existing
+   `/usr/bin/env` entrypoint contract. Catalog append remains blocked: the
+   corrected declaration passes decoding/schema checks but protected run
+   `41222421738` returned HTTP 502, and customer readback still has only the old
+   release. Repair the locally reproduced Runtime Control empty Package-format
+   persistence path, preserve immutable historical contract bytes and digests,
+   install the fix through Instance, and retry the exact declaration before
+   ordinary Console upgrade. Then complete owner adoption of the recipe and
+   origin. Preserve
    `/data`, `/projects`, the original Workspace ID, order, Key, credentials,
    reservation, charge and resources. Accept the actual owner-published entry,
    real login, one real model turn and restart/lost-response recovery. A generated

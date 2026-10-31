@@ -202,7 +202,13 @@ func (s *Service) RegisterRuntimeVersion(ctx context.Context, r *api.RegisterRun
 		out.PublisherContractDigest = digest(raw)
 		out.PublisherContractObjectRef = "runtime-contract:" + out.Id + "@" + out.PublisherContractDigest
 		out.CreatedAt = timestamppb.Now()
-		_, e := tx.ExecContext(ctx, `INSERT INTO runtime_control.runtime_releases(id,name,version_label,artifact_repository,artifact_digest,approved_by,runtime_abi_version,package_format_versions,admission_receipt_id,publisher_namespace_id,publisher_contract_digest,publisher_contract,publisher_contract_object_ref,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, out.Id, out.Name, out.VersionLabel, b.PublisherContract.Image.Repository, out.ArtifactDigest, r.Context.ActorId, out.RuntimeAbiVersion, pq.Array(out.PackageFormatVersions), out.AdmissionReceiptId, out.PublisherNamespaceId, out.PublisherContractDigest, raw, out.PublisherContractObjectRef, out.CreatedAt.AsTime())
+		// Only the SQL projection needs a non-NULL array. The publisher contract
+		// and its canonical bytes/digest retain the absence of this capability.
+		packageFormats := out.PackageFormatVersions
+		if len(packageFormats) == 0 {
+			packageFormats = []string{}
+		}
+		_, e := tx.ExecContext(ctx, `INSERT INTO runtime_control.runtime_releases(id,name,version_label,artifact_repository,artifact_digest,approved_by,runtime_abi_version,package_format_versions,admission_receipt_id,publisher_namespace_id,publisher_contract_digest,publisher_contract,publisher_contract_object_ref,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, out.Id, out.Name, out.VersionLabel, b.PublisherContract.Image.Repository, out.ArtifactDigest, r.Context.ActorId, out.RuntimeAbiVersion, pq.Array(packageFormats), out.AdmissionReceiptId, out.PublisherNamespaceId, out.PublisherContractDigest, raw, out.PublisherContractObjectRef, out.CreatedAt.AsTime())
 		return dbError(e)
 	})
 	return out, e

@@ -9,7 +9,7 @@ Baseline evidence date: 2026-10-01
 This page keeps the dated baseline evidence above and explicitly dated evidence
 updates below. The baseline SHA does not describe the later changes or qualify
 them: each receipt retains its original source, run and environment. The latest
-evidence update is 2026-10-31. Source/tests, Candidate construction and
+evidence update is 2026-11-01. Source/tests, Candidate construction and
 Instance installation verification are recorded at their own layers below;
 none alone establishes business qualification or a Product Release. The target
 boundary is in [architecture.md](architecture.md),
@@ -71,6 +71,28 @@ model execution.
 
 The selected minimal path keeps the original image and prepares only an
 immutable cloud/password startup-recipe variant, not yet registered or applied.
+The authenticated customer catalog still contains only the original approved
+release. Protected catalog append
+[`41221727546`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41221727546)
+rejected an unsupported `applicationRevisionTemplate.environment` field with
+HTTP 400. The corrected declaration uses the existing `entrypoint` contract and
+`/usr/bin/env`; its real public JSON decoder and publisher schema checks pass.
+The corrected append
+[`41222421738`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41222421738)
+returned HTTP 502. Subsequent customer catalog readback still shows only the
+old release, and no Workspace upgrade was submitted. Local reproduction through
+the real decoder and PostgreSQL schema identifies a Runtime Control persistence
+defect: an omitted or explicitly empty `packageFormatVersions` becomes a nil Go
+slice and SQL NULL; binding an empty SQL array alone still violates the stored
+contract comparison. The approved schema permits omission for an App without
+Package formats. This reproduces a failing owner path, not the live SQL error;
+the protected retry after owner repair must establish the production outcome.
+The owner source repair binds only the SQL projection to an empty array and adds
+a forward constraint migration; it does not rewrite contracts or their digests.
+Focused verification against `b67150706a00c7201f9e59f753944e10ff316e04`
+passed 25 PostgreSQL tests/subtests with zero failures or skips, including
+registration, idempotency, catalog readback, retained-row preservation and
+recovery after an unjournaled migration commit. This fix is not installed yet.
 It preserves `/data`, `/projects`, the original Key, credentials, resources and
 orders. Real login/model/restart/lost-response acceptance and protected payer/J0
 qualification remain open. A public probe of a candidate hostname generated from
