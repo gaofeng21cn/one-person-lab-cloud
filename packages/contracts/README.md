@@ -95,3 +95,12 @@ JSON file and repeats its fields does not justify the contract.
 ### Canonical schema and spec sources
 
 Edit `proto/internal.proto` and `proto/events.json` only. Go bindings, event identities, public JSON and target-spec readers read these canonical files directly. `npm run verify:generated-contracts` regenerates the covered outputs in an empty tree and rejects drift; normal generation never recreates retired target snapshot paths. Serve owns the route fence/CAS and selected deployment; Workspace owns authorization and the business goal.
+
+## Application Origin Identity
+
+`go/workspace_application_origin.go` is the pure DNS identity codec consumed by
+Serve and retained Control Plane entry callers. Native `workspace_<32hex>` IDs
+use `w-<32hex>-n<12hex binding digest>`; retained DNS-safe IDs keep their exact
+`<workspace ID>-<12hex binding digest>` hostname. Decode restores the original
+Workspace identity. The codec does not authorize access, select a runtime or
+allocate a second route mapping; Serve confirms the decoded binding separately.

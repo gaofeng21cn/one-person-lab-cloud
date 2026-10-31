@@ -205,6 +205,10 @@ implementation and remaining gaps are reported separately in status/roadmap.
   from the binding identity rather than allocated. A compatible update keeps it;
   an unrelated application does not inherit it, and a superseded origin is
   refused instead of served.
+- Native Workspace DNS encoding is reversible and preserves the original owner
+  identity. Native and retained hostname formats cannot collide; previously
+  published retained origins remain byte-compatible. Origin changes require
+  fresh owner URL evidence and never imply browser-session migration.
 - An application origin belongs entirely to its application. Platform
   credentials, platform routes and platform cookies never appear on it, and an
   application cookie cannot widen beyond its own binding.

@@ -9,12 +9,50 @@ Baseline evidence date: 2026-10-01
 This page keeps the dated baseline evidence above and explicitly dated evidence
 updates below. The baseline SHA does not describe the later changes or qualify
 them: each receipt retains its original source, run and environment. The latest
-evidence update is 2026-10-29. Source/tests, Candidate construction and
+evidence update is 2026-10-31. Source/tests, Candidate construction and
 Instance installation verification are recorded at their own layers below;
 none alone establishes business qualification or a Product Release. The target
 boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
+
+## Native Isolated Application Origin Adaptation (2026-10-31)
+
+The customer selected isolated application origins and root-path WebUI delivery
+for the original Workspace. Source now shares one reversible native DNS codec
+between Serve and retained Control Plane consumers. It preserves the original
+Workspace ID and existing DNS-safe hostnames; the native format uses a separate
+`n` binding-label marker. No application HTML rewrite or new route registry is
+introduced. The original resource, order, Key and credential identities remain
+required throughout adoption.
+
+This source slice is not installed. The original Workspace has not been moved
+to a new origin, and real login/model/restart/recovery acceptance remains open.
+Instance's public wildcard DNS/TLS probe passed for an unbound test hostname;
+its subsequent HTTP request received edge HTTP 403 / code 1010, so that probe
+establishes neither a Serve route nor application availability. Existing owner
+runtime re-observation can persist a refreshed access URL; the authorized
+consumer for an already-completed original Workspace still needs verification.
+The App's merged subpath repair remains separate from an OCI publication.
+
+Local verification passed 343 affected Go tests/subtests with zero failures or
+skips, including Serve's PostgreSQL route and URL-observation consumers. The
+full local gate passed its source/browser checks but failed
+`TestD4ExpiredWorkspaceRequiresExplicitOriginalRenewalAfterTopUp`; that same
+failure reproduced against the unmodified change base. The full gate is not
+green, and no current-revision CI or installed-source claim follows from it.
+
+An isolated root-path smoke of the official WebUI 26.10.26 image at
+`sha256:d350632922b1af0b38a532db6e45f16c19e4c4b14020c03c6c1606b91a0cbe2f`
+passed password login, authenticated user/state/model-list reads, and anonymous
+and wrong-password rejection. It used disposable data, credentials and a
+CA-verified local HTTPS fixture; it neither used the original installed image
+nor sent a real Gateway/model request. The official login protocol is
+`POST /api/auth/login` with `authenticated`, `username` and `csrfToken`, followed
+by `GET /api/auth/user`. Instance's existing acceptance consumer must adopt
+that protocol before its result can qualify this image; the old `POST /login`
+and `success/user` response assumptions are incompatible.
+
 
 ## Native Workspace Entry Boundary (2026-10-29)
 

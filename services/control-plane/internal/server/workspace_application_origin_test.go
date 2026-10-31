@@ -586,3 +586,19 @@ func TestWorkspaceLaunchAccessProjectionStillBindsTheKeyForAFullLaunch(t *testin
 		t.Fatalf("a full Launch lost its key-identity check: %v", got)
 	}
 }
+
+// Retained consumers and Serve use the same canonical origin contract.
+func TestWorkspaceApplicationOriginSupportsNativeWorkspaceIdentity(t *testing.T) {
+	t.Setenv("OPL_PUBLIC_URL", "https://console.example")
+	t.Setenv("OPL_WORKSPACE_APPLICATION_DOMAIN", "apps.example")
+	workspace := "workspace_0123456789abcdef0123456789abcdef"
+	host, ok := workspaceApplicationOriginHost(workspace, "knowledge-app")
+	if !ok || host != "w-0123456789abcdef0123456789abcdef-n960d2f23588c.apps.example" {
+		t.Fatalf("native origin=%q ok=%v", host, ok)
+	}
+	decoded, label, ok := parseWorkspaceApplicationOriginHost(host)
+	expected, _ := workspaceApplicationOriginLabel(workspace, "knowledge-app")
+	if !ok || decoded != workspace || label != expected {
+		t.Fatalf("decoded=%q label=%q ok=%v", decoded, label, ok)
+	}
+}

@@ -236,22 +236,28 @@ func TestAgentExecutionResolvesTheGatewayEntryToTheDeclaredOrigin(t *testing.T) 
 	}
 }
 
-func TestAgentExecutionPublishesNativeWorkspaceAtDeclaredPathEntry(t *testing.T) {
-	origin := RouteOrigin{Scheme: "https", WorkspaceDomain: "workspaces.example", ApplicationDomain: "apps.example"}
+func TestAgentExecutionPublishesNativeWorkspaceAtDeclaredOrigin(t *testing.T) {
 	command := executionCommand(t)
 	command.WorkspaceId = "workspace_0123456789abcdef0123456789abcdef"
 	entry := &contracts.WorkspaceApplicationEntry{ServiceName: "app-runtime-http-main", Port: 8080}
-	fake := &fakeExecutor{observation: readyObservation(t, command, entry)}
-	observed, err := executionAdapter(fake, origin).Observe(context.Background(), command, executionTargetFixture(command))
-	want := "https://workspaces.example/w/" + command.WorkspaceId + "/"
-	if err != nil || observed.State != api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY || observed.AccessURL != want {
-		t.Fatalf("native Workspace observed=%+v err=%v want ready at %s", observed, err, want)
-	}
-	if observed.AccessUpstreamService != entry.ServiceName || observed.AccessUpstreamPort != entry.Port || observed.ReadinessEvidenceRef == "" {
-		t.Fatalf("native Workspace lost the confirmed Service or readiness evidence: %+v", observed)
-	}
-	if _, ok := origin.ApplicationEntryHost(command.WorkspaceId, "knowledge-app"); ok {
-		t.Fatal("a path identity must not be published as an invalid DNS label")
+	for _, tc := range []struct {
+		name   string
+		origin RouteOrigin
+		want   string
+	}{
+		{"application origin", RouteOrigin{Scheme: "https", WorkspaceDomain: "workspaces.example", ApplicationDomain: "apps.example"}, "https://w-0123456789abcdef0123456789abcdef-n960d2f23588c.apps.example/"},
+		{"retained declared path", RouteOrigin{Scheme: "https", WorkspaceDomain: "workspaces.example"}, "https://workspaces.example/w/" + command.WorkspaceId + "/"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeExecutor{observation: readyObservation(t, command, entry)}
+			observed, err := executionAdapter(fake, tc.origin).Observe(context.Background(), command, executionTargetFixture(command))
+			if err != nil || observed.State != api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY || observed.AccessURL != tc.want {
+				t.Fatalf("native Workspace observed=%+v err=%v want ready at %s", observed, err, tc.want)
+			}
+			if observed.AccessUpstreamService != entry.ServiceName || observed.AccessUpstreamPort != entry.Port || observed.ReadinessEvidenceRef == "" {
+				t.Fatalf("native Workspace lost the confirmed Service or readiness evidence: %+v", observed)
+			}
+		})
 	}
 }
 
