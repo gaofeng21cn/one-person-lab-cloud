@@ -18,52 +18,77 @@ durable decisions are in [decisions.md](decisions.md), and open work is in
 
 ## Native Runtime Admission And Serve Upgrade Authorization (2026-11-01)
 
-Cloud #1092 merged the Runtime Control optional Package-format persistence fix.
-Candidate `41224559087` was installed through Instance #648 and protected Deploy
-`41226056822`. Independent verification `41226376769` is `deployment_verified`,
-with all 12 checks true and zero verification mutations. The original App image,
-Workspace, purchase, resources, Key and credentials remain unchanged.
+Cloud [#1093](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1093)
+merged the Serve accepted-operation continuation repair from exact source
+`77362407d2b458edd6e2764ced360c2fc2c1ffae`, tree
+`a17c7a0b56e662dccbfd8aa2a77b19337d4d40b2`. Its six current-head CI checks
+passed. [Candidate `41233551723`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/41233551723)
+binds canonical receipt digest
+`sha256:34032d11d999e540064e84ba0e0b91cc1ce38a3b5402a5f4273418e1ba614e82`
+and Cloud image index
+`sha256:4028e33de67e270439e87e6edae54abb9b61ff89d0ad6481e7cbdbe9eef9ccb2`.
 
-Protected registration `41226644418` returned HTTP 201 and appended
-`26.10.8-cloud-password` as RuntimeVersion
-`runtime_31d71cc8b2abf78b2d4a3887f0d928b8`, with owner contract digest
-`sha256:4b9637f352ae4b4b6477de33f7d00d30af419a0e97b4e89c5fece7c0954da2c2`.
-Its final strict echo/readback predicate failed; retain that blocked attempt.
-Idempotent verification `41226990230` subsequently confirmed `already_effective`,
-all checks true and zero Runtime/provider/business writes. Customer catalog
-comparison retained every original release/default and confirmed the exact
-new declaration. These results supersede the earlier unregistered/uninstalled
-observations below; they do not prove application adoption.
+Instance [#651](https://github.com/gaofeng21cn/opl-instance-medopl/pull/651)
+completed the production Tenant-to-Serve client address, existing token reference
+and TCP 8185 ingress peer. The existing protected material workflow
+[`41237278711`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41237278711)
+then restated the installation network and derived peer maps, retaining primary
+credentials. [Deploy `41237442516`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41237442516)
+installed that same Candidate. Independent
+[verification `41237652456`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41237652456)
+returned `deployment_verified`, all 12 checks true and zero verification
+mutations; installation admission accepted 50 communication edges. Instance
+[#652](https://github.com/gaofeng21cn/opl-instance-medopl/pull/652) preserves
+these native receipts alongside both earlier rejected installation attempts.
+This supersedes the older installed Cloud Candidate observations below.
 
-The customer's native Console upgrade to that release returned HTTP 403 before
-creating a replacement deployment or stopping the original writer. The session
-has `updateWorkspaceVersion` permission. Source tracing identifies the missing
-Serve accepted-operation continuation: AcquireReference forwarded the customer's
-session, while that internal action requires the existing operation grant.
-The SSOT already defines `update_workspace`; this is an incomplete consumer chain.
+The original Workspace's native Console update to the already-admitted
+`26.10.8-cloud-password` Runtime Release now returns `succeeded`. Serve readback
+shows one active replacement and the original deployment as `superseded`, with
+an owner-published independent root origin. The App remains the original
+immutable `26.10.8` image; no new purchase or Key creation was invoked. One
+successful HTTP 202 response was deliberately discarded in the customer browser;
+repeating the same request and idempotency key retained the same operation and
+deployment identities and converged to success. The browser fetch hook was then
+removed. This is an observed customer upgrade/replay result, not the complete
+protected business qualification receipt.
 
-The owner repair commits the exact update acceptance before grant issuance and
-reference acquisition, exposes that commitment through Serve readback, and uses
-the same restricted grant for reference binding, resource reads and predecessor
-stop/recovery. Retries preserve the frozen descriptor, predecessor, credentials,
-input digest and acceptance timestamp, including the operation-only stage.
-Identity admits only the existing update actions and exact original Workspace
-and target version, with no financial, procurement or new-Key authority.
-Reload and replacement share the Workspace fence; an unresolved predecessor
-reload must converge before acceptance, and a frozen predecessor cannot reload.
-Runtime catalog approval is still enforced. A definitive reference refusal
-marks the original operation `needs_attention` and retains unknown occupancy.
-Serve's grant is not Runtime Control's per-use admission/revocation ordering;
-the separate W01 capability remains unqualified and is not bypassed here.
-Focused checks against `51a013ece1ffdd1370417310c6cb188302bb14db`
-passed 424 Node and 573 Go tests/subtests with zero failures, skips or TODOs.
-The real Identity/Capability native-upgrade test also passed lost grant/acquire/
-bind responses, process reconstruction, source-conflict and reload fencing,
-and explicit Runtime-retirement refusal without bypassing catalog approval.
-Source verification and Instance installation of this repair remain separate
-from the original Workspace's still-open root-entry/login/model/restart and
-lost-response business acceptance. Protected payer/J0 qualification and #1018's
-historical original-order obligations remain open.
+The original HTTP 403 was the missing accepted-operation continuation:
+AcquireReference forwarded a customer session to an internal grant-only action.
+The repaired owner first commits the frozen update acceptance, then issues the
+existing restricted grant for reference claims/binding, resource reads and
+predecessor stop/recovery. It grants no financial, procurement or new-Key action.
+Reload and replacement retain the same Workspace fence. Runtime catalog
+approval remains enforced; a definitive authority refusal retains unknown
+occupancy and marks the original operation `needs_attention`. This does not
+implement or bypass W01's separate per-use admission/revocation ordering.
+Focused source checks passed 424 Node and 573 Go tests/subtests with zero
+failures, skips or TODOs. The live Identity/Capability test covered lost
+grant/acquire/bind responses and process recovery. The exhaustive local gate
+still has the independently reproduced baseline D4 original-renewal failure;
+no unrelated billing change or full-gate success is claimed.
+
+**The current public-entry blocker is HTTPS routing.** At the actual published
+application hostname, HTTP returns `302 /login`, while HTTPS returns plain
+`404 page not found`. The current wildcard Ingress rule is bound only to its
+HTTP listener. [Protected Preflight `41241395160`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41241395160)
+completed its existing checks, but the separate public-certificate observation
+received `AuthFailure.UnauthorizedOperation` from both exact Tencent
+`DescribeCertificate` reads. Certificate coverage therefore remains unknown;
+that Preflight success does not establish a usable HTTPS application origin.
+The observation follows Bootstrap's `qcloud_cert_id` references and never calls
+the private-key-bearing `DescribeCertificateDetail` API. Instance
+[#653](https://github.com/gaofeng21cn/opl-instance-medopl/pull/653) corrected the
+initial PEM-storage assumption and retains that original blocked observation.
+An authorized SSL certificate read is required before selecting the HTTPS repair.
+
+Real application login, a Gateway-backed model request and application restart
+have not passed. The original image also does not automatically initialize Codex
+from its mounted Gateway Key: its official `configure-codex --api-key-stdin`
+command is a distinct deployment initialization step. No raw Key was exported
+or replacement Key created to hide that integration requirement. Explicit payer,
+genuine same-Candidate dedicated-sandbox J0 and complete protected qualification
+remain open, as do #1018's separate historical original-order obligations.
 
 ## Native Isolated Application Origin Adaptation (2026-10-31)
 

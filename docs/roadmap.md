@@ -303,9 +303,10 @@ Instance `e8ee04df`; its older local checkout is not a current CP caller.
 counters and an observed zero-new-write window. Legacy customer Launch auto-
 discovery also needs its own caller evidence; operator recovery and server
 read/replay/resume are not proof of that browser capability. The separate
-protected business-qualification consumer migration remains under #1042; its
-old package parameters and CP-only session are not yet replaced by an adopted
-consumer.
+protected business-qualification consumer source migration was adopted by
+Instance #593 and Cloud #1072. Its installed declarations, genuine same-Candidate
+J0 and complete business execution remain under #1042; source adoption alone
+does not qualify the consumer.
 
 The [source changes](status.md#native-v2-qualification-evidence-2026-10-24) bind
 native charges/deletion/refunds to their original owner operations and preserve
@@ -334,14 +335,15 @@ acceptance outcomes:
   route owner to bypass provider admission. Qualify quote, create, deployment,
   restart, Workspace DELETE, provider absence, Ledger receipt and exact original-
   charge fixture refund on the same source and images.
-- Complete and adopt the Instance-owned protected workflow migration from
-  `--package-id` and a CP-only session to RuntimeVersion/compute/storage
-  declarations, the declared Tenant/payer and CloudIdentity authentication
-  against the owning APIs. The separate consumer repair remains unmerged;
-  neither source adoption nor runtime adoption is proven. Configure the still
-  absent protected variables and obtain the real dedicated-sandbox J0 READY
-  receipt for the same Candidate. Preserve Candidate/J0, protected-access and
-  Release admission gates.
+- Complete the installed use of the adopted Instance protected consumer:
+  RuntimeVersion/compute/storage, authenticated Tenant/payer and a genuine
+  dedicated-sandbox J0 READY receipt must be explicitly bound to the same
+  Candidate. The original customer Workspace now has successful native App
+  update and same-operation response-loss replay evidence, distinct from that
+  qualification. Resolve its observed HTTP-login/HTTPS-404 entry mismatch after
+  authorized certificate coverage readback, then verify real application login,
+  Gateway-backed model use and restart. Preserve Candidate/J0, protected-access
+  and Release admission gates; see the [current installed evidence](status.md#native-runtime-admission-and-serve-upgrade-authorization-2026-11-01).
 - Produce the protected Default App business qualification receipt for that
   Candidate: usable business entry, runtime identity/readback, Gateway facts and
   restart/response-loss recovery must agree at their owners. There is no recorded
