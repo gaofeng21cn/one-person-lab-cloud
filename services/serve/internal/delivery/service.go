@@ -55,6 +55,7 @@ type Service struct {
 	DB         *sql.DB
 	Store      *ownerstore.Store
 	Authorize  AuthorizeFunc
+	Identity   api.CloudIdentityAuthorizationClient
 	Capability api.CapabilityProductServiceClient
 	References api.CapabilityCoordinationClient
 	// RuntimeReleases is the Runtime Control read surface Serve uses to confirm the
@@ -132,6 +133,9 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 	service, err := New(database.DB(), authorizer.Authorize)
 	if err != nil {
 		return err
+	}
+	if conn != nil {
+		service.Identity = api.NewCloudIdentityAuthorizationClient(conn)
 	}
 	if address := os.Getenv("OPL_CAPABILITY_ADDR"); address != "" {
 		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Capability), os.Getenv("OPL_CAPABILITY_TOKEN"))

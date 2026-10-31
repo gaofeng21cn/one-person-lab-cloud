@@ -200,6 +200,8 @@ services:
       OPL_BUILD_TOKEN: ${OPL_BUILD_TOKEN}
       OPL_WORKSPACE_ADDR: workspace:8184
       OPL_WORKSPACE_TOKEN: ${OPL_WORKSPACE_TOKEN}
+      OPL_SERVE_ADDR: serve:8185
+      OPL_SERVE_TOKEN: ${OPL_SERVE_TOKEN}
       OPL_GRPC_CERT_FILE: /pki/tenant.crt
       OPL_GRPC_KEY_FILE: /pki/tenant.key
     volumes: *opl-v2-pki

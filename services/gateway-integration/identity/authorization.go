@@ -366,6 +366,10 @@ func (s *Service) grantOwner(owner api.OwnerEnum, accepted api.AuthorizationActi
 			return nil, 0, nil
 		}
 		return s.BuildCommit, accepted, buildActions
+	case api.OwnerEnum_OWNER_ENUM_SERVE:
+		if accepted == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATEWORKSPACEVERSION {
+			return s.ServeCommit, accepted, serveUpdateActions
+		}
 	case api.OwnerEnum_OWNER_ENUM_WORKSPACE:
 		switch accepted {
 		case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEWORKSPACE:
@@ -386,7 +390,37 @@ func validOwnerCommit(actual *api.OwnerCommitEvidence, d *api.AuthorizationDecis
 		d.ActorId == actual.ActorId && proto.Equal(d.Scope, actual.Scope) && proto.Equal(d.Resource, actual.AuthorizationResource) &&
 		actual.AcceptedAction == action && actual.AcceptedAt.IsValid() && !actual.AcceptedAt.AsTime().Before(d.IssuedAt.AsTime()) &&
 		!actual.AcceptedAt.AsTime().After(d.ExpiresAt.AsTime()) && actual.AcceptedInputDigest != "" && actual.CommittedVersion >= 1 &&
+		(owner != api.OwnerEnum_OWNER_ENUM_SERVE || validServeUpdateCommit(actual)) &&
 		(owner != api.OwnerEnum_OWNER_ENUM_WORKSPACE || (d.Resource.GetKind() == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE && (d.Resource.GetId() == "" || d.Resource.GetId() == actual.ResourceId)))
+}
+
+// A Serve update owns a new deployment, while the interactive authorization
+// names the original Workspace. Its continuation is exactly that Workspace and
+// the one accepted application version, never the deployment ID as a Workspace.
+func validServeUpdateCommit(e *api.OwnerCommitEvidence) bool {
+	if e.GetAcceptedAction() != api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATEWORKSPACEVERSION ||
+		e.GetAuthorizationResource().GetKind() != api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE ||
+		e.GetAuthorizationResource().GetId() == "" || len(e.GetContinuationResources()) != 2 {
+		return false
+	}
+	version, workspace := false, false
+	for _, resource := range e.ContinuationResources {
+		switch resource.GetKind() {
+		case api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION:
+			if version || resource.GetId() == "" {
+				return false
+			}
+			version = true
+		case api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE:
+			if workspace || !proto.Equal(resource, e.AuthorizationResource) {
+				return false
+			}
+			workspace = true
+		default:
+			return false
+		}
+	}
+	return version && workspace
 }
 
 func (s *Service) IssueAcceptedOperationGrant(ctx context.Context, r *api.AcceptedOperationGrantRequest) (*api.AcceptedOperationGrant, error) {
@@ -538,6 +572,10 @@ func (s *Service) authorizeGrant(ctx context.Context, r *api.AuthorizationReques
 	if !active || g.Mode == api.AcceptedGrantMode_ACCEPTED_GRANT_MODE_CLOSEOUT_ONLY {
 		closeout := r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION
 		switch {
+		case g.AcceptedOperationOwner == api.OwnerEnum_OWNER_ENUM_SERVE:
+			// Resolve and close only the accepted delivery. Acquiring or binding a
+			// new reference remains a mutation and ends with the authority.
+			closeout = closeout || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES
 		case g.AcceptedOperationOwner == api.OwnerEnum_OWNER_ENUM_WORKSPACE && g.AcceptedAction == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEWORKSPACE:
 			// A deletion is itself the closeout of its Workspace: retiring the
 			// delivered runtime, releasing the frozen resources, recording the
@@ -567,7 +605,26 @@ func (s *Service) authorizeGrant(ctx context.Context, r *api.AuthorizationReques
 		return nil, denied()
 	}
 	matched := false
-	if g.AcceptedOperationOwner == api.OwnerEnum_OWNER_ENUM_WORKSPACE {
+	if g.AcceptedOperationOwner == api.OwnerEnum_OWNER_ENUM_SERVE {
+		switch r.AudienceOwner {
+		case api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL:
+			matched = r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS &&
+				r.Resource.Kind == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG && r.Resource.GetId() == ""
+		case api.OwnerEnum_OWNER_ENUM_CAPABILITY:
+			if r.Resource.Kind == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION &&
+				(r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION ||
+					r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACQUIREREFERENCE ||
+					r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDREFERENCE ||
+					r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE) {
+				for _, resource := range evidence.ContinuationResources {
+					matched = matched || proto.Equal(resource, r.Resource)
+				}
+			}
+		case api.OwnerEnum_OWNER_ENUM_FABRIC:
+			matched = r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES &&
+				proto.Equal(r.Resource, evidence.AuthorizationResource)
+		}
+	} else if g.AcceptedOperationOwner == api.OwnerEnum_OWNER_ENUM_WORKSPACE {
 		// The frozen Runtime Release read is a catalog read, not a Workspace-resource
 		// action: it names the Runtime Control catalog with no resource id, so it is
 		// matched as its own bounded clause rather than under the Workspace resource.

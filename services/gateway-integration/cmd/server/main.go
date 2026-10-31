@@ -128,7 +128,7 @@ func main() {
 		// deployment that has not placed that owner yet, and grpc.NewClient accepts
 		// an empty target without error, so dialing it would install a client whose
 		// failure surfaces much later as an unrelated transport error. Build and
-		// Workspace are treated identically: no address, no client, and the grant
+		// Workspace and Serve are treated identically: no address, no client, and the grant
 		// path refuses. This owner is deployed before Build in the unit, so Build
 		// absence is a normal configuration rather than a startup defect.
 		for _, peer := range []struct {
@@ -139,6 +139,7 @@ func main() {
 		}{
 			{owneridentity.Build, "OPL_BUILD_ADDR", "OPL_BUILD_TOKEN", func(c api.OwnerCommitReadbackClient) { s.BuildCommit = c }},
 			{owneridentity.Workspace, "OPL_WORKSPACE_ADDR", "OPL_WORKSPACE_TOKEN", func(c api.OwnerCommitReadbackClient) { s.WorkspaceCommit = c }},
+			{owneridentity.Serve, "OPL_SERVE_ADDR", "OPL_SERVE_TOKEN", func(c api.OwnerCommitReadbackClient) { s.ServeCommit = c }},
 		} {
 			address := strings.TrimSpace(os.Getenv(peer.address))
 			if address == "" {

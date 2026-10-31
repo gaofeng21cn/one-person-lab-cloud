@@ -14080,6 +14080,8 @@ x-accepted-operation-actions:
   - releaseReference
   - appendReceipt
   update_workspace:
+  - listRuntimeVersions
+  - observeResources
   - getCapabilityVersion
   - reserveRuntime
   - bindManagedSecret

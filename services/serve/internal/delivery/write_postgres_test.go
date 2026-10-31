@@ -160,6 +160,7 @@ func reservationFixture(t *testing.T) (*delivery.Service, *api.RuntimeReservatio
 	if err != nil {
 		t.Fatal(err)
 	}
+	service.Identity = &fakeIdentity{}
 	d := deployCommand(t, "ws-first", "unused", 1)
 	c := call(tenant, false)
 	c.IdempotencyKey = "first-delivery"

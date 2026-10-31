@@ -844,6 +844,14 @@
     "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
+    "caller": "tenant",
+    "target": "serve",
+    "addressEnv": "OPL_SERVE_ADDR",
+    "tokenEnv": "OPL_SERVE_TOKEN",
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
+   },
+   {
     "caller": "fabric",
     "target": "resource_catalog",
     "addressEnv": "OPL_RESOURCE_CATALOG_ADDR",

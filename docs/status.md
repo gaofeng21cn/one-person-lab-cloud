@@ -16,6 +16,55 @@ boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Native Runtime Admission And Serve Upgrade Authorization (2026-11-01)
+
+Cloud #1092 merged the Runtime Control optional Package-format persistence fix.
+Candidate `41224559087` was installed through Instance #648 and protected Deploy
+`41226056822`. Independent verification `41226376769` is `deployment_verified`,
+with all 12 checks true and zero verification mutations. The original App image,
+Workspace, purchase, resources, Key and credentials remain unchanged.
+
+Protected registration `41226644418` returned HTTP 201 and appended
+`26.10.8-cloud-password` as RuntimeVersion
+`runtime_31d71cc8b2abf78b2d4a3887f0d928b8`, with owner contract digest
+`sha256:4b9637f352ae4b4b6477de33f7d00d30af419a0e97b4e89c5fece7c0954da2c2`.
+Its final strict echo/readback predicate failed; retain that blocked attempt.
+Idempotent verification `41226990230` subsequently confirmed `already_effective`,
+all checks true and zero Runtime/provider/business writes. Customer catalog
+comparison retained every original release/default and confirmed the exact
+new declaration. These results supersede the earlier unregistered/uninstalled
+observations below; they do not prove application adoption.
+
+The customer's native Console upgrade to that release returned HTTP 403 before
+creating a replacement deployment or stopping the original writer. The session
+has `updateWorkspaceVersion` permission. Source tracing identifies the missing
+Serve accepted-operation continuation: AcquireReference forwarded the customer's
+session, while that internal action requires the existing operation grant.
+The SSOT already defines `update_workspace`; this is an incomplete consumer chain.
+
+The owner repair commits the exact update acceptance before grant issuance and
+reference acquisition, exposes that commitment through Serve readback, and uses
+the same restricted grant for reference binding, resource reads and predecessor
+stop/recovery. Retries preserve the frozen descriptor, predecessor, credentials,
+input digest and acceptance timestamp, including the operation-only stage.
+Identity admits only the existing update actions and exact original Workspace
+and target version, with no financial, procurement or new-Key authority.
+Reload and replacement share the Workspace fence; an unresolved predecessor
+reload must converge before acceptance, and a frozen predecessor cannot reload.
+Runtime catalog approval is still enforced. A definitive reference refusal
+marks the original operation `needs_attention` and retains unknown occupancy.
+Serve's grant is not Runtime Control's per-use admission/revocation ordering;
+the separate W01 capability remains unqualified and is not bypassed here.
+Focused checks against `51a013ece1ffdd1370417310c6cb188302bb14db`
+passed 424 Node and 573 Go tests/subtests with zero failures, skips or TODOs.
+The real Identity/Capability native-upgrade test also passed lost grant/acquire/
+bind responses, process reconstruction, source-conflict and reload fencing,
+and explicit Runtime-retirement refusal without bypassing catalog approval.
+Source verification and Instance installation of this repair remain separate
+from the original Workspace's still-open root-entry/login/model/restart and
+lost-response business acceptance. Protected payer/J0 qualification and #1018's
+historical original-order obligations remain open.
+
 ## Native Isolated Application Origin Adaptation (2026-10-31)
 
 The customer selected isolated application origins and root-path WebUI delivery

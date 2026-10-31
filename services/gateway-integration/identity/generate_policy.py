@@ -68,6 +68,23 @@ for methods in api['paths'].values():
   roles=','.join('"'+v+'"' for v in x['x-permission'])
   lines.append(f'api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_{action.upper()}:{{api.OwnerEnum_OWNER_ENUM_{owner.upper()},[]string{{{roles}}}}},')
 lines+=['}']
+# Project only the continuation methods consumed by the current Serve update
+# chain. The canonical workflow may describe later capabilities; they do not
+# become issuable runtime grants until there is an admitted consumer.
+serve_update_supported = {
+ 'listRuntimeVersions', 'getCapabilityVersion', 'acquireReference',
+ 'bindReference', 'releaseReference', 'observeResources',
+}
+serve_update = api['x-accepted-operation-actions']['update_workspace']
+missing = serve_update_supported - set(serve_update)
+if missing:
+ raise ValueError(f'Serve update continuations missing from canonical workflow: {sorted(missing)}')
+lines += ['', '// serveUpdateActions is the implemented subset of update_workspace.',
+          'var serveUpdateActions = []api.AuthorizationActionEnum{']
+for action in serve_update:
+ if action in serve_update_supported:
+  lines.append(f'api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_{action.upper()},')
+lines += ['}']
 out=Path(__file__).with_name('policy_generated.go')
 out.write_text('\n'.join(lines)+'\n')
 # The generated tables are committed source, so emit them already formatted;

@@ -32,6 +32,12 @@ test("installation CLI returns executable Serve and BFF RPC edges from a worked 
     tokenRef: { name: "serve-auth", key: "OPL_WORKSPACE_TOKEN" }, peerRef: { name: "workspace-admission", key: "peers" },
     serviceRef: { name: "workspace-rpc", namespace: "installation" }, ingressPolicies: ["workspace-rpc"], egressPolicies: []
   });
+  assert.deepEqual(result.report.communication.edges.find(edge => edge.caller === "tenant" && edge.target === "serve"), {
+    caller: "tenant", target: "serve", addressEnv: "OPL_SERVE_ADDR", tokenEnv: "OPL_SERVE_TOKEN",
+    callerDeployment: "unit-gateway-integration", targetDeployment: "unit-serve", port: 8185,
+    tokenRef: { name: "gateway-integration-auth", key: "OPL_SERVE_TOKEN" }, peerRef: { name: "serve-admission", key: "peers" },
+    serviceRef: { name: "serve-rpc", namespace: "installation" }, ingressPolicies: ["serve-rpc"], egressPolicies: []
+  });
   assert.ok(result.report.communication.edges.some(edge => edge.caller === "console_bff" && edge.target === "workspace" && edge.addressEnv === "OPL_WORKSPACE_URL"));
   assert.ok(result.report.communication.edges.some(edge => edge.caller === "console_bff" && edge.target === "runtime_control"));
 });
@@ -452,7 +458,7 @@ test("installation CLI admits a Service that publishes no address", async t => {
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.equal(result.report.ok, true);
     assert.deepEqual(result.report.errors, []);
-    assert.equal(result.report.communication.edges.length, 46);
+    assert.equal(result.report.communication.edges.length, 47);
   });
 
   await t.test("Service that selects no live Pod", async () => {
@@ -461,7 +467,7 @@ test("installation CLI admits a Service that publishes no address", async t => {
     const result = await invoke(list);
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.equal(result.report.ok, true);
-    assert.equal(result.report.communication.edges.length, 46);
+    assert.equal(result.report.communication.edges.length, 47);
   });
 
   await t.test("not-ready addresses the Service publishes keep their proof", async () => {
@@ -471,7 +477,7 @@ test("installation CLI admits a Service that publishes no address", async t => {
     delete live.endpoints.subsets[0].addresses;
     const result = await invoke(live.list);
     assert.equal(result.status, 0, result.stdout + result.stderr);
-    assert.equal(result.report.communication.edges.length, 46);
+    assert.equal(result.report.communication.edges.length, 47);
   });
 });
 
@@ -598,7 +604,7 @@ test("installation CLI ignores standard non-workload resources in a complete nam
     live.list.items.push({ apiVersion, kind, metadata: { name: `unrelated-${kind.toLowerCase()}`, namespace: "installation" } });
     const result = await invoke(live.list);
     assert.equal(result.status, 0, result.stdout + result.stderr);
-    assert.equal(result.report.communication.edges.length, 46);
+    assert.equal(result.report.communication.edges.length, 47);
   });
 });
 
@@ -692,7 +698,7 @@ test("installation CLI proves Kubernetes ingress and egress semantics without gu
       assert.ok(result.report.errors.some(error => error.code === code), JSON.stringify(result.report.errors));
       assert.deepEqual(result.report.communication.edges, []);
     } else {
-      assert.equal(result.report.communication.edges.length, 46);
+      assert.equal(result.report.communication.edges.length, 47);
     }
     assert.doesNotMatch(result.stdout + result.stderr, /10\.27\.0\.0/);
   }
@@ -730,7 +736,7 @@ test("installation CLI consumes the whole explicit RPC graph and preserves optio
   full.items.push(control);
   const result = await invoke(full);
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.equal(result.report.communication.edges.length, 46);
+  assert.equal(result.report.communication.edges.length, 47);
   const signatures = result.report.communication.edges.map(edge => `${edge.caller}:${edge.target}:${edge.addressEnv}:${edge.tokenEnv}`).sort();
   const expected = [
     "capability:runtime_control:OPL_RUNTIME_CONTROL_ADDR:OPL_RUNTIME_CONTROL_TOKEN", "capability:build:OPL_BUILD_ADDR:OPL_BUILD_TOKEN", "capability:ledger:OPL_LEDGER_ADDR:OPL_LEDGER_TOKEN", "capability:serve:OPL_SERVE_ADDR:OPL_SERVE_TOKEN",
@@ -739,7 +745,7 @@ test("installation CLI consumes the whole explicit RPC graph and preserves optio
     "workspace:resource_catalog:OPL_RESOURCE_CATALOG_ADDR:OPL_RESOURCE_CATALOG_TOKEN", "workspace:fabric:OPL_FABRIC_ADDR:OPL_FABRIC_TOKEN", "workspace:ledger:OPL_LEDGER_ADDR:OPL_LEDGER_TOKEN", "workspace:capability:OPL_CAPABILITY_ADDR:OPL_CAPABILITY_TOKEN", "workspace:runtime_control:OPL_RUNTIME_CONTROL_ADDR:OPL_RUNTIME_CONTROL_TOKEN", "workspace:serve:OPL_SERVE_ADDR:OPL_SERVE_TOKEN", "workspace:tenant:OPL_GATEWAY_ADDR:OPL_GATEWAY_TOKEN",
     "serve:capability:OPL_CAPABILITY_ADDR:OPL_CAPABILITY_TOKEN", "serve:runtime_control:OPL_RUNTIME_CONTROL_ADDR:OPL_RUNTIME_CONTROL_TOKEN", "serve:fabric:OPL_FABRIC_COORDINATION_ADDR:OPL_FABRIC_COORDINATION_TOKEN", "serve:tenant:OPL_GATEWAY_ADDR:OPL_GATEWAY_TOKEN", "serve:ledger:OPL_LEDGER_ADDR:OPL_LEDGER_TOKEN", "serve:workspace:OPL_WORKSPACE_ADDR:OPL_WORKSPACE_TOKEN",
     "resource_catalog:ledger:OPL_LEDGER_ADDR:OPL_LEDGER_TOKEN",
-    "tenant:fabric:OPL_FABRIC_ADDR:OPL_FABRIC_TOKEN", "tenant:build:OPL_BUILD_ADDR:OPL_BUILD_TOKEN", "tenant:workspace:OPL_WORKSPACE_ADDR:OPL_WORKSPACE_TOKEN",
+    "tenant:fabric:OPL_FABRIC_ADDR:OPL_FABRIC_TOKEN", "tenant:build:OPL_BUILD_ADDR:OPL_BUILD_TOKEN", "tenant:workspace:OPL_WORKSPACE_ADDR:OPL_WORKSPACE_TOKEN", "tenant:serve:OPL_SERVE_ADDR:OPL_SERVE_TOKEN",
     "fabric:resource_catalog:OPL_RESOURCE_CATALOG_ADDR:OPL_RESOURCE_CATALOG_TOKEN", "fabric:ledger:OPL_LEDGER_ADDR:OPL_LEDGER_TOKEN",
     "ledger:resource_catalog:OPL_RESOURCE_CATALOG_ADDR:OPL_RESOURCE_CATALOG_TOKEN", "ledger:workspace:OPL_WORKSPACE_ADDR:OPL_WORKSPACE_TOKEN", "ledger:tenant:OPL_GATEWAY_ADDR:OPL_GATEWAY_TOKEN",
     "console_bff:capability:OPL_CAPABILITY_URL:OPL_CAPABILITY_TOKEN", "console_bff:runtime_control:OPL_RUNTIME_CONTROL_URL:OPL_RUNTIME_CONTROL_TOKEN", "console_bff:build:OPL_BUILD_URL:OPL_BUILD_TOKEN", "console_bff:workspace:OPL_WORKSPACE_URL:OPL_WORKSPACE_TOKEN", "console_bff:serve:OPL_SERVE_URL:OPL_SERVE_TOKEN", "console_bff:resource_catalog:OPL_RESOURCE_CATALOG_URL:OPL_RESOURCE_CATALOG_TOKEN", "console_bff:tenant:OPL_GATEWAY_URL:OPL_GATEWAY_TOKEN",
@@ -817,7 +823,7 @@ test("installation CLI executes through a symlink and emits JSON through the pub
     const tmpPath = cli.replace(/^\/private\/tmp\//, "/tmp/");
     const direct = await invoke(workedInstallation(), tmpPath);
     assert.equal(direct.status, 0, direct.stderr);
-    assert.equal(direct.report?.communication.edges.length, 46);
+    assert.equal(direct.report?.communication.edges.length, 47);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -836,7 +842,7 @@ test("installation CLI resolves declared ConfigMap envFrom with Kubernetes overr
   container(list, "serve").env = container(list, "serve").env.filter(entry => entry.name !== "OPL_CLOUD_IDENTITY_URL");
   const result = await invoke(list);
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.equal(result.report.communication.edges.length, 46);
+  assert.equal(result.report.communication.edges.length, 47);
   assert.doesNotMatch(result.stdout + result.stderr, /__PROVIDER|__CATALOG|__DO_NOT|__SHADOWED/);
   container(list, "serve").envFrom.push({ secretRef: { name: "opaque-secret" } });
   const opaque = await invoke(list);
@@ -860,7 +866,7 @@ test("installation CLI recognizes the Product image default Control Plane comman
   list.items.push(control);
   const result = await invoke(list);
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.equal(result.report.communication.edges.length, 46);
+  assert.equal(result.report.communication.edges.length, 47);
   assert.ok(!result.report.communication.edges.some(edge => edge.callerDeployment === "retained-control-plane"));
   control.spec.template.spec.containers[0].args = ["/bin/unknown"];
   const opaque = await invoke(list);
@@ -878,7 +884,7 @@ test("installation CLI still proves policy for a Service call back into the same
   policy(list, "gateway-integration").spec.ingress[0].from.push({ podSelector: { matchLabels: { unit: "gateway-integration" } } });
   const allowed = await invoke(list);
   assert.equal(allowed.status, 0, allowed.stdout + allowed.stderr);
-  assert.equal(allowed.report.communication.edges.length, 47);
+  assert.equal(allowed.report.communication.edges.length, 48);
   assert.deepEqual(allowed.report.communication.edges.find(edge => edge.caller === "tenant" && edge.target === "tenant").ingressPolicies, ["gateway-integration-rpc"]);
 });
 
@@ -889,7 +895,7 @@ test("installation CLI resolves Product listener defaults only when the target e
   }
   const defaults = await invoke(list);
   assert.equal(defaults.status, 0, defaults.stdout + defaults.stderr);
-  assert.equal(defaults.report.communication.edges.length, 46);
+  assert.equal(defaults.report.communication.edges.length, 47);
   for (const [service, listen] of [["capability", "OPL_CAPABILITY_ADDR"], ["build", "OPL_BUILD_ADDR"], ["runtime-control", "OPL_RUNTIME_CONTROL_ADDR"]]) {
     container(list, service).env.push({ name: listen, value: " " });
   }
@@ -1029,7 +1035,7 @@ test("installation CLI follows Ledger raw activation and Fabric trimmed activati
     container(list, "ledger").ports[0].containerPort = 8186;
     const result = await invoke(list);
     assert.equal(result.status, 0, result.stdout + result.stderr);
-    assert.equal(result.report.communication.edges.length, 46);
+    assert.equal(result.report.communication.edges.length, 47);
     assert.ok(result.report.communication.edges.filter(edge => edge.target === "ledger").every(edge => edge.port === 8186));
   });
 });
@@ -1077,7 +1083,7 @@ test("installation CLI refuses shared Pod wildcard listener collisions for numer
     for (const item of list.items.filter(item => item.kind === "NetworkPolicy")) item.spec = { podSelector: {}, policyTypes: ["Ingress"], ingress: [{}] };
     const result = await invoke(list);
     assert.equal(result.status, 0, result.stdout + result.stderr);
-    assert.equal(result.report.communication.edges.length, 46);
+    assert.equal(result.report.communication.edges.length, 47);
   });
 });
 
@@ -1135,7 +1141,7 @@ test("installation CLI proves Serve access entry listener separately from its ow
     if (collides) {
       assert.ok(result.report.errors.some(error => error.code === "installation_listener_conflict"), result.stdout);
       assert.deepEqual(result.report.communication.edges, []);
-    } else assert.equal(result.report.communication.edges.length, 46);
+    } else assert.equal(result.report.communication.edges.length, 47);
   });
 });
 
@@ -1165,7 +1171,7 @@ test("installation CLI proves Service uniqueness across declared Pods and every 
       if (rejected) {
         assert.ok(result.report.errors.some(error => ["rpc_service_backend_ambiguous", "rpc_service_backend_unproven", "installation_manifest_shape_invalid"].includes(error.code)), result.stdout);
         assert.deepEqual(result.report.communication.edges, []);
-      } else assert.equal(result.report.communication.edges.length, 46);
+      } else assert.equal(result.report.communication.edges.length, 47);
     });
   }
   await t.test("Pod ownership metadata does not prove a declared second backend", async () => {
@@ -1288,6 +1294,6 @@ test("installation CLI does not infer unknown sidecar listeners from environment
     else pod.containers.push(sidecar);
     const result = await invoke(list);
     assert.equal(result.status, 0, result.stdout + result.stderr);
-    assert.equal(result.report.communication.edges.length, 46);
+    assert.equal(result.report.communication.edges.length, 47);
   });
 });

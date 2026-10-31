@@ -43,6 +43,7 @@ func TestServeRetainedAgentReplacementReplaysCommittedStart(t *testing.T) {
 				if err = s.DB.QueryRow(`SELECT resource_id FROM serve.operations WHERE id=$1`, pending.OperationId).Scan(&replacement); err != nil {
 					t.Fatal(err)
 				}
+				retainReplacementInput(t, s, pending.OperationId)
 				if _, err = s.DB.Exec(`UPDATE serve.operations SET accepted_input=accepted_input-'replacementState'-'exclusiveWriter' WHERE id=$1`, pending.OperationId); err != nil {
 					t.Fatal(err)
 				}

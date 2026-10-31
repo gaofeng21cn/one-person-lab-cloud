@@ -211,7 +211,7 @@ func newLiveIdentityChain(t *testing.T, ctx context.Context, dsn string) *liveId
 		t.Fatal(err)
 	}
 	config := ownerservice.Config{Owner: owneridentity.Tenant, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: map[owneridentity.Service]string{}}
-	for _, peer := range []owneridentity.Service{owneridentity.ConsoleBFF, owneridentity.Serve.Service(), owneridentity.Capability.Service(), owneridentity.Workspace.Service()} {
+	for _, peer := range []owneridentity.Service{owneridentity.ConsoleBFF, owneridentity.Serve.Service(), owneridentity.Capability.Service(), owneridentity.Workspace.Service(), owneridentity.RuntimeControl.Service(), owneridentity.Fabric.Service()} {
 		config.Peers[peer] = liveIdentityToken
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
