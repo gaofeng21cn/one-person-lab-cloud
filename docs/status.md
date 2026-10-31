@@ -26,32 +26,76 @@ Workspace ID and existing DNS-safe hostnames; the native format uses a separate
 introduced. The original resource, order, Key and credential identities remain
 required throughout adoption.
 
-This source slice is not installed. The original Workspace has not been moved
-to a new origin, and real login/model/restart/recovery acceptance remains open.
-Instance's public wildcard DNS/TLS probe passed for an unbound test hostname;
-its subsequent HTTP request received edge HTTP 403 / code 1010, so that probe
-establishes neither a Serve route nor application availability. Existing owner
-runtime re-observation can persist a refreshed access URL; the authorized
-consumer for an already-completed original Workspace still needs verification.
-The App's merged subpath repair remains separate from an OCI publication.
+Cloud [PR #1090](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1090)
+merged at `62815477881c4a75bf4335d963230a042768c5f5`. Its product source
+`4ebc987ecb4c2fc4bec0b1b47a791db575e7dea4`, tree
+`d5b05ba5e3056de017fec98bd56f8cde7609fee9`, passed all six
+[CI checks `41187378713`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/41187378713).
+[Candidate build `41187850988`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/41187850988)
+succeeded with:
+
+- Canonical receipt digest from Cloud `export-env`:
+  `sha256:f3f4f7cb31861e26bd0fd28ece003388cb5a003d3fa84d73a350700632bc1583`.
+  This is the canonical digest, not a hash of the JSON file bytes.
+- Cloud image index:
+  `sha256:66ea4a730fea4b29b5d657bfa92283d9a703d5827e7afc897651c36562b65be9`.
+
+Instance's consumer adaptation merged in
+[PR #644](https://github.com/gaofeng21cn/opl-instance-medopl/pull/644)
+at `c5c85fa`; both [CI checks `41187769645`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41187769645)
+passed. The initial registration in
+[PR #645](https://github.com/gaofeng21cn/opl-instance-medopl/pull/645)
+was rejected by [Deploy `41189702675`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41189702675)
+before any write; its native blocked receipt with zero writes is retained by
+Instance. [PR #646](https://github.com/gaofeng21cn/opl-instance-medopl/pull/646)
+merged the canonical-digest correction without changing existing policy.
+Protected [Deploy `41190999879`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41190999879)
+succeeded. Independent [Deployment Verification `41191374677`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41191374677)
+passed the native validator as `deployment_verified`, with all 12 checks true
+and zero verification mutations. This proves Cloud installation; the original
+Workspace has not switched its origin or startup recipe.
+
+The original application remains official WebUI 26.10.8 at
+`sha256:f6ce30fe1b0cdf8e1c6722a4c96d893ff8286e6af718940dab5a1d778ba70b71`,
+which already supports root-path cloud/password startup. An isolated local smoke
+of that exact image returned anonymous HTTP 401, wrong-password HTTP 401, and
+HTTP 200 for correct login, user, state and model-list reads, with seven models.
+The earlier isolated root-path smoke of official WebUI 26.10.26 at
+`sha256:d350632922b1af0b38a532db6e45f16c19e4c4b14020c03c6c1606b91a0cbe2f`
+also passed password login, authenticated reads and rejection checks. These
+smokes used no customer data or Gateway Key and sent no real model turn. The
+official protocol is `POST /api/auth/login` with `authenticated`, `username` and
+`csrfToken`, followed by `GET /api/auth/user`; Instance #644 adopts this consumer
+protocol. Local smoke does not qualify the original Workspace's real login or
+model execution.
+
+The selected minimal path keeps the original image and prepares only an
+immutable cloud/password startup-recipe variant, not yet registered or applied.
+It preserves `/data`, `/projects`, the original Key, credentials, resources and
+orders. Real login/model/restart/lost-response acceptance and protected payer/J0
+qualification remain open. A public probe of a candidate hostname generated from
+the declaration returned HTTP 404; that hostname is not a new entry published by
+the owner, so the probe does not establish a failure of an actual new entry.
+Read-only [Console customer Workspace readback `41192510414`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41192510414)
+returned `blocked` / `customer_workspace_access_entry_failed`. Customer login,
+list, detail, deployments, access and entry all returned HTTP 200;
+application availability `available`, one Serve deployment,
+`accessUrlClass=retained_path_entry` and `accessAuthenticationMode=unknown` were
+observed. Only `accessEntryServed=false`: the consumer predicate at
+`tools/console-customer-workspace-readback.mjs:328` requires HTTP 200 and
+`html.includes(APPLICATION_SHELL_MARKER)`, and the marker did not match. The
+consumer has not confirmed the served entry; this does not establish application
+unavailability or a password error. The original Workspace still uses its prior
+path, with neither origin nor startup recipe changed. #1042 and #1018 remain open.
 
 Local verification passed 343 affected Go tests/subtests with zero failures or
 skips, including Serve's PostgreSQL route and URL-observation consumers. The
 full local gate passed its source/browser checks but failed
 `TestD4ExpiredWorkspaceRequiresExplicitOriginalRenewalAfterTopUp`; that same
-failure reproduced against the unmodified change base. The full gate is not
-green, and no current-revision CI or installed-source claim follows from it.
-
-An isolated root-path smoke of the official WebUI 26.10.26 image at
-`sha256:d350632922b1af0b38a532db6e45f16c19e4c4b14020c03c6c1606b91a0cbe2f`
-passed password login, authenticated user/state/model-list reads, and anonymous
-and wrong-password rejection. It used disposable data, credentials and a
-CA-verified local HTTPS fixture; it neither used the original installed image
-nor sent a real Gateway/model request. The official login protocol is
-`POST /api/auth/login` with `authenticated`, `username` and `csrfToken`, followed
-by `GET /api/auth/user`. Instance's existing acceptance consumer must adopt
-that protocol before its result can qualify this image; the old `POST /login`
-and `success/user` response assumptions are incompatible.
+failure reproduced against the unmodified change base. The full local gate
+remains failed; the separate CI and installation evidence above does not change
+that result. The App's merged subpath repair remains separate from an OCI
+publication.
 
 
 ## Native Workspace Entry Boundary (2026-10-29)
