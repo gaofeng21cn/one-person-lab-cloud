@@ -49,8 +49,9 @@ func (*fakeIdentity) GetAuthorizationContext(context.Context, *api.GetAuthorizat
 	return nil, status.Error(codes.Unimplemented, "not used")
 }
 
-func (*fakeIdentity) IssueAcceptedOperationGrant(context.Context, *api.AcceptedOperationGrantRequest, ...grpc.CallOption) (*api.AcceptedOperationGrant, error) {
-	return nil, status.Error(codes.Unimplemented, "not used")
+func (*fakeIdentity) IssueAcceptedOperationGrant(_ context.Context, r *api.AcceptedOperationGrantRequest, _ ...grpc.CallOption) (*api.AcceptedOperationGrant, error) {
+	e := r.GetOwnerCommitEvidence()
+	return &api.AcceptedOperationGrant{Id: "grant-" + e.GetOperationId(), Scope: e.GetScope(), ActorId: e.GetActorId(), AcceptedOperationOwner: e.GetOwner(), AcceptedOperationId: e.GetOperationId(), AcceptedAction: e.GetAcceptedAction(), ResourceId: e.GetResourceId(), AllowedActions: r.GetAllowedActions()}, nil
 }
 
 // ownerAuthorizer is the real Serve authorizer bound to the fake CloudIdentity.

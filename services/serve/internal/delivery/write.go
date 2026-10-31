@@ -478,10 +478,10 @@ func (s *Service) bindReservation(ctx context.Context, call *api.CallContext, ou
 }
 
 func (s *Service) ownerEvidence(ctx context.Context, deployment string) (*api.OwnerCommitEvidence, string, error) {
-	var op, claim string
+	var op, claim, kind string
 	var accepted []byte
 	var created time.Time
-	err := s.DB.QueryRowContext(ctx, `SELECT d.operation_id,d.reference_claim_id,o.accepted_input,o.created_at FROM serve.agent_deployments d JOIN serve.operations o ON o.id=d.operation_id WHERE d.id=$1`, deployment).Scan(&op, &claim, &accepted, &created)
+	err := s.DB.QueryRowContext(ctx, `SELECT o.id,COALESCE(d.reference_claim_id,''),o.kind,o.accepted_input,o.created_at FROM serve.operations o LEFT JOIN serve.agent_deployments d ON d.id=o.resource_id AND d.operation_id=o.id WHERE o.resource_id=$1 AND o.kind IN ('runtime_deploy','update_workspace','rollback_workspace')`, deployment).Scan(&op, &claim, &kind, &accepted, &created)
 	if err != nil {
 		return nil, "", dbError(err)
 	}
@@ -492,6 +492,32 @@ func (s *Service) ownerEvidence(ctx context.Context, deployment string) (*api.Ow
 		return nil, "", status.Error(codes.DataLoss, "invalid persisted reservation evidence")
 	}
 	e := &api.OwnerCommitEvidence{Owner: api.OwnerEnum_OWNER_ENUM_SERVE, OperationId: op, ResourceId: deployment, AcceptedInputDigest: in.Digest, CommittedVersion: 1, AcceptedAt: timestamppb.New(created), ActorId: in.Actor, Scope: &scope, AcceptedAction: api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME, AuthorizationResource: &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, Id: proto.String(req.WorkspaceId)}, ContinuationResources: []*api.AuthorizationResource{{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, Id: proto.String(req.CapabilityVersionId)}}}
+	if kind == "update_workspace" {
+		var input replacementInput
+		if json.Unmarshal(accepted, &input) != nil {
+			return nil, "", status.Error(codes.DataLoss, "invalid persisted replacement evidence")
+		}
+		if input.AcceptanceVersion != 0 {
+			if req.GetDeploymentId() != deployment {
+				return nil, "", status.Error(codes.DataLoss, "accepted replacement deployment identity mismatch")
+			}
+			plan := replacementPlan{kind: kind, call: &api.CallContext{ActorId: in.Actor, Scope: &scope}, workspaceID: req.GetWorkspaceId(), expectedCurrent: input.ExpectedCurrent, capabilityVersionID: req.GetApplicationSelection().GetCapabilityVersionId(), runtimeVersionID: req.GetApplicationSelection().GetRuntimeVersionId()}
+			if err := restoreAcceptedReplacement(input, &plan); err != nil {
+				return nil, "", err
+			}
+		} else if input.ExpectedCurrent != "" || len(input.Compatibility) != 0 {
+			return nil, "", status.Error(codes.DataLoss, "replacement acceptance version is missing")
+		}
+		version := req.GetApplicationSelection().GetRuntimeVersionId()
+		if version == "" {
+			version = req.GetCapabilityVersionId()
+		}
+		e.AcceptedAction = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATEWORKSPACEVERSION
+		e.ContinuationResources = []*api.AuthorizationResource{
+			{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, Id: proto.String(version)},
+			{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, Id: proto.String(req.GetWorkspaceId())},
+		}
+	}
 	if in.AuthorizationContextID != "" {
 		e.AuthorizationContextId = in.AuthorizationContextID
 	}

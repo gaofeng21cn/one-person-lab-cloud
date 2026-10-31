@@ -273,6 +273,35 @@ func TestNativeDefaultAppUpgradeUsesConfirmedPredecessorReload(t *testing.T) {
 	}
 }
 
+func TestNativeUpgradeWaitsForUnconfirmedPredecessorReload(t *testing.T) {
+	s, original, _, runtime, resources, _ := nativeUpgradeFixture(t)
+	runtime.reloadErr = errors.New("reload response lost")
+	runtime.reloadVersion = 7
+	c := call("tenant-alpha", false)
+	c.IdempotencyKey = "predecessor-reload"
+	reload := &api.RuntimeReloadCommand{Context: c, RuntimeInstanceId: original.RuntimeInstanceId, TargetVersion: 7, ManagedKeyBinding: confirmedReloadBindingReadback("ws_1042", "same-models-new-binding")}
+	if _, err := s.ReloadModels(workspaceContext(), reload); err == nil {
+		t.Fatal("unknown reload reported success")
+	}
+	active, rebinds := resources.active, resources.rebinds
+	request := nativeUpgradeRequest(original.DeploymentId, "upgrade-after-unknown-reload")
+	if _, err := s.UpdateWorkspaceVersion(serveContext(), request); status.Code(err) != codes.FailedPrecondition || runtime.starts != 1 {
+		t.Fatalf("unknown predecessor reload admitted replacement: %v", err)
+	}
+	runtime.reloadErr = nil
+	if _, err := s.ReloadModels(workspaceContext(), reload); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UpdateWorkspaceVersion(serveContext(), request); err != nil {
+		t.Fatal(err)
+	}
+	id, _, _, _ := currentDeploymentFacts(t, s, "ws_1042")
+	command, _ := frozenUpgradeCommand(t, s, id)
+	if command.GetModelConfigurationVersion() != 7 || command.GetManagedKeyBinding().GetSecretBindingId() != active || resources.rebinds != rebinds {
+		t.Fatal("replacement changed the resumed reload's confirmed state")
+	}
+}
+
 func TestNativeDefaultAppUpgradeRejectsInvalidSourcesBeforeMutation(t *testing.T) {
 	s, original, catalog, runtime, _, _ := nativeUpgradeFixture(t)
 	for _, test := range []struct {

@@ -2,6 +2,8 @@ package delivery_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"reflect"
 	"testing"
@@ -9,9 +11,40 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/services/serve/internal/delivery"
 )
+
+// Materialize the actual retained reservation format, including its original
+// reservation-only digest. Removing new fields alone would corrupt a current
+// acceptance rather than model a historical accepted command.
+func retainReplacementInput(t *testing.T, s *delivery.Service, operation string) {
+	t.Helper()
+	var raw []byte
+	if err := s.DB.QueryRow(`SELECT accepted_input FROM serve.operations WHERE id=$1`, operation).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var input map[string]json.RawMessage
+	request := &api.RuntimeReservationCommand{}
+	if json.Unmarshal(raw, &input) != nil || protojson.Unmarshal(input["request"], request) != nil {
+		t.Fatal("invalid retained fixture")
+	}
+	for _, name := range []string{"acceptanceVersion", "expectedCurrent", "compatibility"} {
+		delete(input, name)
+	}
+	request.Context = nil
+	body, err := (protojson.MarshalOptions{UseProtoNames: true}).Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(body)
+	input["digest"], _ = json.Marshal("sha256:" + hex.EncodeToString(sum[:]))
+	raw, _ = json.Marshal(input)
+	if _, err = s.DB.Exec(`UPDATE serve.operations SET accepted_input=$2 WHERE id=$1`, operation, raw); err != nil {
+		t.Fatal(err)
+	}
+}
 
 type legacyRecoveryNoCatalog struct {
 	api.CapabilityProductServiceClient
@@ -40,6 +73,7 @@ func legacyPreStartFailure(t *testing.T, s *delivery.Service, invoke func() (*ap
 		t.Fatalf("replacement already executed: actions=%d err=%v", actions, err)
 	}
 	var accepted []byte
+	retainReplacementInput(t, s, operation)
 	if err := s.DB.QueryRow(`UPDATE serve.operations SET accepted_input=accepted_input-'replacementState'-'exclusiveWriter' WHERE id=$1 RETURNING accepted_input`, operation).Scan(&accepted); err != nil {
 		t.Fatal(err)
 	}

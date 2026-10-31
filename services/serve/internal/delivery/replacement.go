@@ -192,12 +192,29 @@ type replacementPlan struct {
 	kind      string
 	inherited *api.RuntimeDeployCommand
 	exclusive bool
+	// accepted marks the committed update admission, before its reference claim.
+	accepted bool
 }
 
 // runReplacement admits, executes and commits one replacement. The current route
 // is untouched until the replacement instance is proven ready, so a failure
 // leaves the Workspace serving its previous application.
 func (s *Service) runReplacement(ctx context.Context, plan replacementPlan) (*api.Operation, error) {
+	operationID := replacementOperationID(plan)
+	if plan.accepted {
+		var operationStatus string
+		if err := s.DB.QueryRowContext(ctx, `SELECT status FROM serve.operations WHERE id=$1`, replacementOperationID(plan)).Scan(&operationStatus); err != nil {
+			return nil, dbError(err)
+		}
+		if operationStatus == "succeeded" {
+			return s.deliveryOperation(ctx, replacementOperationID(plan))
+		}
+		var err error
+		plan.call, err = s.replacementContinuation(ctx, plan)
+		if err != nil {
+			return nil, s.replacementRefusal(ctx, operationID, err)
+		}
+	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, dbError(err)
@@ -209,7 +226,30 @@ func (s *Service) runReplacement(ctx context.Context, plan replacementPlan) (*ap
 	if err = refuseClosedWorkspace(ctx, tx, plan.workspaceID); err != nil {
 		return nil, err
 	}
-	operationID := replacementOperationID(plan)
+	if plan.kind == "update_workspace" && !plan.accepted {
+		// Another identical request may have committed acceptance after this
+		// request read the catalog but before it acquired the Workspace lock.
+		var accepted []byte
+		readErr := tx.QueryRowContext(ctx, `SELECT accepted_input FROM serve.operations WHERE id=$1`, operationID).Scan(&accepted)
+		if readErr != nil && !errors.Is(readErr, sql.ErrNoRows) {
+			return nil, dbError(readErr)
+		}
+		if readErr == nil {
+			var input replacementInput
+			if json.Unmarshal(accepted, &input) != nil {
+				return nil, status.Error(codes.DataLoss, "replacement accepted input is invalid")
+			}
+			if input.AcceptanceVersion != 0 {
+				if err = restoreAcceptedReplacement(input, &plan); err != nil {
+					return nil, err
+				}
+				if err = tx.Commit(); err != nil {
+					return nil, dbError(err)
+				}
+				return s.runReplacement(ctx, plan)
+			}
+		}
+	}
 	replay, err := s.replacementReplay(ctx, operationID, plan.workspaceID)
 	if err != nil {
 		return nil, err
@@ -298,18 +338,21 @@ func (s *Service) runReplacement(ctx context.Context, plan replacementPlan) (*ap
 		if current.DeploymentID != plan.expectedCurrent {
 			return nil, status.Errorf(codes.FailedPrecondition, "%s: workspace %s current deployment is %s, not the expected %s", ReasonCurrentDeploymentConflict, plan.workspaceID, current.DeploymentID, plan.expectedCurrent)
 		}
-		var pending bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM serve.agent_deployments d JOIN serve.agent_runtime_instances i ON i.deployment_id=d.id WHERE d.workspace_id=$1 AND d.previous_deployment_id IS NOT NULL AND d.status IN ('queued','deploying','verifying','rolling_back','needs_attention','failed') AND i.status <> 'terminated')`, plan.workspaceID).Scan(&pending); err != nil {
-			return nil, dbError(err)
-		}
-		if pending {
-			return nil, status.Errorf(codes.FailedPrecondition, "%s: resume the original replacement before admitting another writer", ReasonCurrentDeploymentConflict)
-		}
-		if err = s.prepareReplacementState(ctx, tx, &plan, current); err != nil {
+		if err = refusePendingReplacement(ctx, tx, plan.workspaceID, operationID); err != nil {
 			return nil, err
 		}
-		if err = replacementCompatibilityRefusal(current.Compatibility, plan.compatibility, plan.kind == "rollback_workspace"); err != nil {
-			return nil, err
+		if plan.accepted {
+			frozen := plan.inherited
+			if frozen.GetDeploymentId() != current.DeploymentID || frozen.GetRuntimeInstanceId() != current.RuntimeID || frozen.GetExecutionEpoch() != current.ExecutionEpoch || frozen.GetResourceSetId() != current.ResourceSetID || frozen.GetDataAttachmentId() != current.DataAttachment {
+				return nil, status.Error(codes.DataLoss, "accepted replacement predecessor identity mismatch")
+			}
+		} else {
+			if err = s.prepareReplacementState(ctx, tx, &plan, current); err != nil {
+				return nil, err
+			}
+			if err = replacementCompatibilityRefusal(current.Compatibility, plan.compatibility, plan.kind == "rollback_workspace"); err != nil {
+				return nil, err
+			}
 		}
 		if plan.capabilityVersionID == "" && plan.runtimeVersionID == "" {
 			return nil, status.Errorf(codes.FailedPrecondition, "%s: the replacement names no admitted application source", ReasonReplacementUnavailable)
@@ -328,11 +371,30 @@ func (s *Service) runReplacement(ctx context.Context, plan replacementPlan) (*ap
 		// revisions apart: the running writer must stop before the replacement
 		// mounts the same retained data. Both sides are compared, because either
 		// revision may be the one that states the limit.
-		if exclusive, err = exclusiveDataWriter(current.Descriptor, plan.descriptor); err != nil {
-			return nil, err
+		if plan.accepted {
+			exclusive = plan.exclusive
+		} else {
+			if exclusive, err = exclusiveDataWriter(current.Descriptor, plan.descriptor); err != nil {
+				return nil, err
+			}
 		}
 		plan.exclusive = exclusive
+		if plan.kind == "update_workspace" && !plan.accepted {
+			if err = s.acceptReplacementTx(ctx, tx, &plan, current, operationID); err != nil {
+				return nil, err
+			}
+			if err = tx.Commit(); err != nil {
+				return nil, dbError(err)
+			}
+			// Identity must read the committed acceptance before any claim or
+			// provider call. A retry resumes this same operation-only stage.
+			return s.runReplacement(ctx, plan)
+		}
 		if command, err = s.admitReplacementTx(ctx, tx, plan, current, operationID); err != nil {
+			if plan.accepted {
+				_ = tx.Rollback()
+				return nil, s.replacementRefusal(ctx, operationID, err)
+			}
 			return nil, err
 		}
 	}
@@ -342,6 +404,9 @@ func (s *Service) runReplacement(ctx context.Context, plan replacementPlan) (*ap
 	// The reference claim binds the replacement to the exact admitted version
 	// before any provider call, exactly as the first delivery does.
 	if _, err = s.bindReservation(ctx, plan.call, &api.RuntimeReservation{DeploymentId: command.GetDeploymentId()}); err != nil {
+		if plan.accepted {
+			return nil, s.replacementRefusal(ctx, operationID, err)
+		}
 		return nil, err
 	}
 	// The frozen start command is persisted before the provider call, so this
@@ -386,7 +451,7 @@ func (s *Service) runReplacement(ctx context.Context, plan replacementPlan) (*ap
 	if err = s.retireFailedReplacement(ctx, command); err != nil {
 		return nil, err
 	}
-	if err = s.restoreWriterStoppedByReplacement(ctx, command.GetDeploymentId()); err != nil {
+	if err = s.restoreWriterStoppedByReplacement(ctx, command.GetDeploymentId(), plan.call); err != nil {
 		return nil, err
 	}
 	return s.deliveryOperation(ctx, operationID)
@@ -398,7 +463,7 @@ func (s *Service) runReplacement(ctx context.Context, plan replacementPlan) (*ap
 // not a value re-derived from whichever application the Workspace serves now. A
 // replayed switch therefore restores exactly the writer it stopped, and a switch
 // that stopped nothing issues no recovery call.
-func (s *Service) restoreWriterStoppedByReplacement(ctx context.Context, replacementDeploymentID string) error {
+func (s *Service) restoreWriterStoppedByReplacement(ctx context.Context, replacementDeploymentID string, call *api.CallContext) error {
 	var stopped bool
 	if err := s.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM serve.agent_runtime_actions WHERE command_id=$1 AND action='stop' AND observation_result='confirmed')`, stableID("stop_", replacementDeploymentID)).Scan(&stopped); err != nil {
 		return dbError(err)
@@ -416,7 +481,7 @@ func (s *Service) restoreWriterStoppedByReplacement(ctx context.Context, replace
 		WHERE d.id=$1`, replacementDeploymentID).Scan(&replacedDeploymentID, &replacedRuntimeID); err != nil {
 		return dbError(err)
 	}
-	return s.resumeCurrentWriter(ctx, &currentDelivery{DeploymentID: replacedDeploymentID, RuntimeID: replacedRuntimeID}, replacementDeploymentID)
+	return s.resumeCurrentWriter(ctx, &currentDelivery{DeploymentID: replacedDeploymentID, RuntimeID: replacedRuntimeID}, replacementDeploymentID, call)
 }
 
 // acceptReplacementStart persists the frozen start command of one replacement
@@ -475,12 +540,14 @@ func (s *Service) admitReplacementTx(ctx context.Context, tx *sql.Tx, plan repla
 	if applicationKind == "opl_app" && claim.GetTarget().GetRuntimeVersionId() != plan.runtimeVersionID {
 		return nil, status.Error(codes.FailedPrecondition, "Runtime Release claim identity mismatch")
 	}
-	accepted, err := replacementAcceptedInput(plan, deploymentID, current.ResourceSetID, current.DataAttachment)
-	if err != nil {
-		return nil, err
-	}
-	if _, err = s.Store.CreateOperation(ctx, tx, ownerstore.OperationInput{ID: operationID, TenantID: tenantID, ActorID: plan.call.GetActorId(), Kind: plan.kind, ResourceID: deploymentID, Stage: "runtime", RequestID: plan.call.GetRequestId(), AcceptedInput: accepted}); err != nil {
-		return nil, dbError(err)
+	if !plan.accepted {
+		accepted, err := replacementAcceptedInput(plan, deploymentID, current.ResourceSetID, current.DataAttachment)
+		if err != nil {
+			return nil, err
+		}
+		if _, err = s.Store.CreateOperation(ctx, tx, ownerstore.OperationInput{ID: operationID, TenantID: tenantID, ActorID: plan.call.GetActorId(), Kind: plan.kind, ResourceID: deploymentID, Stage: "runtime", RequestID: plan.call.GetRequestId(), AcceptedInput: accepted}); err != nil {
+			return nil, dbError(err)
+		}
 	}
 	compatibility := plan.compatibility
 	descriptor, err := publicjson.Marshal(plan.descriptor)
@@ -585,11 +652,23 @@ func replacementAcceptedInput(plan replacementPlan, deploymentID, resourceSetID,
 		reservation.ApplicationSelection = &api.WorkspaceApplicationSelection{Kind: api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_AGENT, CapabilityVersionId: proto.String(plan.capabilityVersionID)}
 	}
 	request := wire(reservation)
+	if plan.accepted {
+		request = reservationBytes(reservation)
+	}
 	scope := wire(plan.call.GetScope())
-	return json.Marshal(replacementInput{
+	input := replacementInput{
 		reservationInput: reservationInput{Request: request, Actor: plan.call.GetActorId(), Scope: scope, AuthorizationContextID: plan.call.GetAuthorizationContextId(), Digest: "sha256:" + ownerstore.HashRequestBody(reservationBytes(reservation))},
 		ReplacementState: deployBytes(plan.inherited), ExclusiveWriter: plan.exclusive,
-	})
+	}
+	if plan.accepted {
+		input.AcceptanceVersion, input.ExpectedCurrent, input.Compatibility = 1, plan.expectedCurrent, plan.compatibility
+		var err error
+		input.Digest, err = replacementAdmissionDigest(input)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return json.Marshal(input)
 }
 
 // rowQueryer is the read surface both an owner transaction and a plain owner
@@ -833,6 +912,7 @@ func (s *Service) quiesceCurrentWriter(ctx context.Context, plan replacementPlan
 	if err != nil {
 		return err
 	}
+	deploy.command.Context = plan.call
 	target, err := s.confirmedRuntimeTarget(ctx, deploy.command)
 	if err != nil {
 		return err
@@ -862,11 +942,12 @@ func (s *Service) quiesceCurrentWriter(ctx context.Context, plan replacementPlan
 // replacement failed definitively. It is the inverse of quiesceCurrentWriter
 // under its own recorded identity, and it restores the same runtime instance the
 // Workspace was already serving rather than admitting a new delivery.
-func (s *Service) resumeCurrentWriter(ctx context.Context, current *currentDelivery, replacementDeploymentID string) error {
+func (s *Service) resumeCurrentWriter(ctx context.Context, current *currentDelivery, replacementDeploymentID string, call *api.CallContext) error {
 	deploy, err := s.persistedRuntimeCommand(ctx, current.RuntimeID, current.DeploymentID)
 	if err != nil {
 		return err
 	}
+	deploy.command.Context = call
 	target, err := s.confirmedRuntimeTarget(ctx, deploy.command)
 	if err != nil {
 		return err

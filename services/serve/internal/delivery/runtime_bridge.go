@@ -195,6 +195,24 @@ func (s *Service) reloadRuntime(ctx context.Context, command *api.RuntimeReloadC
 	if err != nil {
 		return nil, err
 	}
+	// A reload changes the predecessor's model/Secret state. Serialize it with
+	// replacement admission through its entire handover and readback, and reject
+	// it before external effects once an update has frozen that predecessor.
+	guard, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, dbError(err)
+	}
+	defer guard.Rollback()
+	if err = lockWorkspace(ctx, guard, deploy.command.GetWorkspaceId()); err != nil {
+		return nil, dbError(err)
+	}
+	if err = refusePendingReplacement(ctx, guard, deploy.command.GetWorkspaceId(), ""); err != nil {
+		return nil, err
+	}
+	deploy, err = s.persistedRuntimeCommand(ctx, runtimeID, "")
+	if err != nil {
+		return nil, err
+	}
 	if current := deploy.appliedModelVersion; current != command.GetExpectedAppliedVersion() {
 		return nil, status.Errorf(codes.FailedPrecondition, "runtime applied model configuration is %d, not the expected version", current)
 	}

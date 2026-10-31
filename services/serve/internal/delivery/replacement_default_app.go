@@ -174,6 +174,13 @@ func (s *Service) replacementCurrentData(ctx context.Context, plan *replacementP
 // prepareReplacementState uses only the exact predecessor's frozen execution and
 // confirmed reload record. It neither creates a Key nor binds a new Secret.
 func (s *Service) prepareReplacementState(ctx context.Context, q rowQueryer, plan *replacementPlan, current *currentDelivery) error {
+	var pendingReload bool
+	if err := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM serve.agent_runtime_actions WHERE runtime_instance_id=$1 AND expected_deployment_id=$2 AND action='reload' AND observation_result<>'confirmed')`, current.RuntimeID, current.DeploymentID).Scan(&pendingReload); err != nil {
+		return dbError(err)
+	}
+	if pendingReload {
+		return status.Error(codes.FailedPrecondition, "resume the original model reload before replacing its writer")
+	}
 	if err := s.replacementCurrentData(ctx, plan, current); err != nil {
 		return err
 	}
@@ -268,8 +275,11 @@ func (s *Service) validateReplacementReplay(ctx context.Context, q rowQueryer, p
 // calls. Recovery never reselects credentials from a later predecessor reload.
 type replacementInput struct {
 	reservationInput
-	ReplacementState json.RawMessage `json:"replacementState"`
-	ExclusiveWriter  bool            `json:"exclusiveWriter"`
+	ReplacementState  json.RawMessage `json:"replacementState"`
+	ExclusiveWriter   bool            `json:"exclusiveWriter"`
+	AcceptanceVersion int             `json:"acceptanceVersion,omitempty"`
+	ExpectedCurrent   string          `json:"expectedCurrent,omitempty"`
+	Compatibility     json.RawMessage `json:"compatibility,omitempty"`
 }
 
 func restoreReplacementState(ctx context.Context, tx *sql.Tx, operationID string, plan *replacementPlan, current *currentDelivery) error {
@@ -391,9 +401,26 @@ func migrateLegacyReplacementState(ctx context.Context, tx *sql.Tx, operationID 
 }
 
 func (s *Service) restoreReplacementSource(ctx context.Context, plan *replacementPlan) (bool, error) {
+	var accepted []byte
+	err := s.DB.QueryRowContext(ctx, `SELECT accepted_input FROM serve.operations WHERE id=$1 AND kind='update_workspace'`, replacementOperationID(*plan)).Scan(&accepted)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return false, dbError(err)
+	}
+	if err == nil {
+		var input replacementInput
+		if json.Unmarshal(accepted, &input) != nil {
+			return true, status.Error(codes.DataLoss, "replacement accepted input is invalid")
+		}
+		if input.AcceptanceVersion != 0 {
+			return true, restoreAcceptedReplacement(input, plan)
+		}
+		if input.ExpectedCurrent != "" || len(input.Compatibility) != 0 {
+			return true, status.Error(codes.DataLoss, "replacement acceptance version is missing")
+		}
+	}
 	var capability, runtime, previous string
 	var raw []byte
-	err := s.DB.QueryRowContext(ctx, `SELECT d.capability_version_id,COALESCE(d.runtime_version_id,''),d.previous_deployment_id,i.deployment_descriptor,i.deployment_descriptor_digest,i.deployment_descriptor_object_ref,d.data_compatibility
+	err = s.DB.QueryRowContext(ctx, `SELECT d.capability_version_id,COALESCE(d.runtime_version_id,''),d.previous_deployment_id,i.deployment_descriptor,i.deployment_descriptor_digest,i.deployment_descriptor_object_ref,d.data_compatibility
  FROM serve.operations o JOIN serve.agent_deployments d ON d.id=o.resource_id JOIN serve.agent_runtime_instances i ON i.deployment_id=d.id
  WHERE o.id=$1 AND d.workspace_id=$2`, replacementOperationID(*plan), plan.workspaceID).Scan(&capability, &runtime, &previous, &raw, &plan.descriptorDigest, &plan.descriptorRef, &plan.compatibility)
 	if errors.Is(err, sql.ErrNoRows) {

@@ -37,6 +37,7 @@ type Service struct {
 	Gateway         *Gateway
 	BuildCommit     api.OwnerCommitReadbackClient
 	WorkspaceCommit api.OwnerCommitReadbackClient
+	ServeCommit     api.OwnerCommitReadbackClient
 	// InvitationTTL is how long a pending invitation may be accepted. The
 	// canonical contract fixes Invitation.expiresAt but names no window, so the
 	// deployment supplies it explicitly here rather than this owner baking a

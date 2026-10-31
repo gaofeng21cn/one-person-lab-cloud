@@ -113,3 +113,13 @@ var actions = map[api.AuthorizationActionEnum]actionPolicy{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPLANCHANGE:                         {api.OwnerEnum_OWNER_ENUM_WORKSPACE, []string{"member"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CANCELPLANCHANGE:                      {api.OwnerEnum_OWNER_ENUM_WORKSPACE, []string{"admin", "owner"}},
 }
+
+// serveUpdateActions is the implemented subset of update_workspace.
+var serveUpdateActions = []api.AuthorizationActionEnum{
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACQUIREREFERENCE,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDREFERENCE,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE,
+}
