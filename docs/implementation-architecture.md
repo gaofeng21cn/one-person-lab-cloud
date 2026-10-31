@@ -7,6 +7,15 @@ App Shells consume Cloud-facing projections through
 App/Framework contracts. Cloud service and database authority stays in the
 owning Cloud service.
 
+## Application Origin Identity
+
+Serve's `delivery/routeorigin.go` and the retained Control Plane origin entry
+both consume `packages/contracts/go/workspace_application_origin.go`. The
+shared codec keeps old DNS-safe origins byte-compatible and reversibly encodes
+canonical native Workspace IDs into one DNS label. Serve still resolves only
+its confirmed, entitled and ready target. Runtime observation persists the
+published URL; a different DNS spelling alone does not refresh Console access.
+
 ## Target And Current Evidence
 
 This document describes the implementation that exists, not completed target architecture

@@ -4,6 +4,30 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-10-31: Encode Native Workspace Identities In Isolated Application Origins
+
+Native `workspace_<32 lowercase hex>` identities keep their original IDs and
+publish a single-label binding origin as
+`w-<32hex>-n<12hex binding digest>.<application domain>`. The `n` marker versions
+the native encoding: retained DNS-safe IDs still publish
+`<workspace ID>-<12hex binding digest>.<application domain>` byte-for-byte.
+The digest remains the first 12 hex characters of SHA-1 over the NUL-separated
+original Workspace and application binding identity, including the existing
+`workspace-application-origin` discriminator and trailing NULs.
+
+Parsing the two disjoint formats recovers the exact original Workspace ID;
+Serve then verifies the label against its confirmed application target. This
+refines the September 17 unencodable-identity exception for canonical native
+IDs. Other unsupported identities remain unpublished rather than guessed.
+The pure encoding lives in the shared Go contract used by Serve and retained
+Control Plane callers; it allocates no mapping table or second route authority.
+
+The original Workspace's resources, purchase, Key and mounted credentials remain
+unchanged. A path-to-origin migration must re-observe and publish the URL through
+the existing owner flow before Console reports it. An origin change does not
+copy browser cookies or local storage. Instance still owns DNS, TLS and Ingress;
+source acceptance does not prove an installed migration or business acceptance.
+
 ## 2026-10-18: Gateway External Truth, Cloud Mapping And Workspace Key Rotation
 
 This decision supersedes the conflicting managed-key identity and same-key

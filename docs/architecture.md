@@ -654,11 +654,15 @@ caller migration and retirement, not HTML or cookie-name rewriting for each
 application.
 
 The binding origin is derived from the binding identity rather than allocated,
-so it needs no distribution table and no second writer. Its name carries the
+so it needs no distribution table and no second writer. Retained DNS-safe
+Workspace IDs keep their exact hostname. Canonical native `workspace_<32hex>`
+IDs use `w-<32hex>-n<12hex binding digest>` as one DNS label; the native marker
+makes decoding unambiguous without changing the original identity. Both Serve
+and retained Control Plane consumers use the shared Go origin contract. Its name carries the
 Workspace identity, which lets routing resolve a request without a lookup, and
 an application component that changes when the Workspace's application changes.
-The Workspace is the unit that can appear in the name: an application identity
-that cannot compose into a hostname, or an installation with no Workspace
+The Workspace is the unit that can appear in the name: a Workspace identity
+with no supported DNS encoding, or an installation with no application-origin
 domain, gets the retained path-based entry instead of an unresolvable address.
 For that retained entry, Serve replaces `X-Forwarded-Prefix` with the resolved
 `/w/<workspaceId>` path and strips it on dedicated origins. The application owns

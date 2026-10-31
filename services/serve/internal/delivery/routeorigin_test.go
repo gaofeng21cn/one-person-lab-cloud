@@ -37,8 +37,14 @@ func TestServeWorkspacePathEntryUsesTheNativeIdentity(t *testing.T) {
 	if !ok || address != "https://workspaces.example/w/"+workspace+"/" {
 		t.Fatalf("native Workspace path=%q ok=%v", address, ok)
 	}
-	if _, ok := origin.ApplicationEntryURL(workspace, "knowledge-app"); ok {
-		t.Fatal("a path identity became an invalid DNS hostname")
+	applicationURL, ok := origin.ApplicationEntryURL(workspace, "knowledge-app")
+	if !ok || applicationURL != "https://w-0123456789abcdef0123456789abcdef-n960d2f23588c.apps.example/" {
+		t.Fatalf("native application origin=%q ok=%v", applicationURL, ok)
+	}
+	decoded, label, ok := origin.ParseApplicationEntryHost(strings.TrimSuffix(strings.TrimPrefix(applicationURL, "https://"), "/"))
+	expected, _ := contracts.WorkspaceApplicationOriginLabel(workspace, "knowledge-app")
+	if !ok || decoded != workspace || label != expected {
+		t.Fatalf("native origin decoded=%q label=%q ok=%v", decoded, label, ok)
 	}
 	for _, invalid := range []string{"", "_workspace", "workspace_", "workspace/other", "workspace\\other", "workspace%2fother", "workspace?other", "workspace#other", "..", strings.Repeat("a", 64)} {
 		t.Run(invalid, func(t *testing.T) {

@@ -20,8 +20,6 @@ package delivery
 // browser storage.
 
 import (
-	"crypto/sha1"
-	"encoding/hex"
 	"errors"
 	"net"
 	"net/url"
@@ -38,11 +36,6 @@ import (
 // data plane that answers it are both served by Serve, so which domain and scheme
 // they use is an installation fact the instance owner declares, never an inference
 // Serve makes.
-
-// applicationOriginLabelLength keeps the derived application part short while
-// making an accidental collision between two applications of the same Workspace
-// practically impossible. It is part of the retained entry contract.
-const applicationOriginLabelLength = 12
 
 // RouteOrigin is the installation's declared route origin for Agent delivery. An
 // empty field means the installation declared no such fact, and the corresponding
@@ -109,7 +102,7 @@ func (o RouteOrigin) WorkspaceEntryHostMatches(host string) bool {
 // ApplicationEntryURL is the address one (Workspace, application) binding is
 // served at: scheme://<workspaceId>-<label>.<application domain>/. It reports
 // false when the installation declares no application-origin domain, or when the
-// identity cannot compose directly into a hostname; the caller then keeps the
+// identity has no supported DNS encoding; the caller then keeps the
 // retained Workspace entry.
 func (o RouteOrigin) ApplicationEntryURL(workspaceID, applicationID string) (string, bool) {
 	host, ok := o.ApplicationEntryHost(workspaceID, applicationID)
@@ -122,35 +115,13 @@ func (o RouteOrigin) ApplicationEntryURL(workspaceID, applicationID string) (str
 // ApplicationEntryHost composes the binding's external hostname from the
 // installation's application-origin domain.
 func (o RouteOrigin) ApplicationEntryHost(workspaceID, applicationID string) (string, bool) {
-	workspaceID = strings.TrimSpace(workspaceID)
-	if o.ApplicationDomain == "" || !dnsLabelValid(workspaceID) {
-		return "", false
-	}
-	label, ok := applicationOriginLabel(workspaceID, strings.TrimSpace(applicationID))
-	if !ok {
-		return "", false
-	}
-	host := workspaceID + "-" + label + "." + strings.ToLower(o.ApplicationDomain)
-	if !hostValid(host) {
-		return "", false
-	}
-	return host, true
+	return contracts.WorkspaceApplicationOriginHost(workspaceID, applicationID, o.ApplicationDomain)
 }
 
-// applicationOriginLabel derives the application half of the hostname from the
-// binding identity only, never from a tag, a digest or a deployment attempt. The
-// digest is SHA-1 over the null-separated parts to stay byte-compatible with the
-// retained entry that already published these bindings.
+// applicationOriginLabel is the shared binding identity used to verify requests
+// against Serve's currently confirmed target.
 func applicationOriginLabel(workspaceID, applicationID string) (string, bool) {
-	if !dnsLabelValid(workspaceID) || !dnsLabelValid(applicationID) {
-		return "", false
-	}
-	hash := sha1.New()
-	for _, part := range []string{"workspace-application-origin", workspaceID, applicationID} {
-		_, _ = hash.Write([]byte(part))
-		_, _ = hash.Write([]byte{0})
-	}
-	return hex.EncodeToString(hash.Sum(nil))[:applicationOriginLabelLength], true
+	return contracts.WorkspaceApplicationOriginLabel(workspaceID, applicationID)
 }
 
 // gatewayUpstream validates the single in-cluster destination a provider asked
@@ -286,38 +257,5 @@ func resolveApplicationEntry(origin RouteOrigin, workspaceID, applicationID stri
 // confirms the label against the binding's current target, because a name that
 // no longer matches belongs to a superseded application rather than to this one.
 func (o RouteOrigin) ParseApplicationEntryHost(host string) (workspaceID, applicationLabel string, ok bool) {
-	host = strings.TrimSpace(strings.ToLower(host))
-	if parsed, _, err := net.SplitHostPort(host); err == nil {
-		host = parsed
-	} else if strings.Contains(host, ":") {
-		return "", "", false
-	}
-	host = strings.TrimSuffix(host, ".")
-	domain := strings.ToLower(strings.TrimSpace(o.ApplicationDomain))
-	if domain == "" || !strings.HasSuffix(host, "."+domain) {
-		return "", "", false
-	}
-	prefix := strings.TrimSuffix(host, "."+domain)
-	index := strings.LastIndex(prefix, "-")
-	if index <= 0 {
-		return "", "", false
-	}
-	workspaceID, applicationLabel = prefix[:index], prefix[index+1:]
-	if !dnsLabelValid(workspaceID) || len(applicationLabel) != applicationOriginLabelLength || !hexLabelValid(applicationLabel) {
-		return "", "", false
-	}
-	return workspaceID, applicationLabel, true
-}
-
-// hexLabelValid accepts the lowercase hex the origin label is composed of.
-func hexLabelValid(value string) bool {
-	if value == "" {
-		return false
-	}
-	for _, char := range value {
-		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
-			return false
-		}
-	}
-	return true
+	return contracts.ParseWorkspaceApplicationOriginHost(host, o.ApplicationDomain)
 }

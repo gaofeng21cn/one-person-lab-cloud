@@ -116,7 +116,7 @@ func TestServeAccessEntryServesConfirmedTarget(t *testing.T) {
 	}
 }
 
-func TestServeAccessPathEntryServesNativeWorkspaceIdentity(t *testing.T) {
+func TestServeAccessEntryServesNativeWorkspaceIdentity(t *testing.T) {
 	db, tenant, _ := fixture(t)
 	service, err := delivery.New(db, ownerAuthorizer(&fakeIdentity{}))
 	if err != nil {
@@ -134,6 +134,12 @@ func TestServeAccessPathEntryServesNativeWorkspaceIdentity(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Seen-Path", r.URL.Path)
 		w.Header().Set("X-Seen-Forwarded-Host", r.Header.Get("X-Forwarded-Host"))
+		if r.Host != r.Header.Get("X-Forwarded-Host") {
+			t.Errorf("external host changed: %q", r.Host)
+		}
+		if r.Host != "workspace.example" && r.Header.Get("X-Forwarded-Prefix") != "" {
+			t.Error("dedicated origin received a path prefix")
+		}
 		_, _ = io.WriteString(w, "native-workspace-response")
 	}))
 	defer upstream.Close()
@@ -151,6 +157,42 @@ func TestServeAccessPathEntryServesNativeWorkspaceIdentity(t *testing.T) {
 	}
 	if response := accessGet(t, server.URL, "foreign.example", "/w/"+workspace+"/healthz"); response.StatusCode != http.StatusNotFound {
 		t.Fatalf("native Workspace was served on an undeclared host: %+v", response)
+	}
+
+	// The same original binding serves the application's root API on its own host.
+	host := applicationHost(t, workspace)
+	rootResponse := accessGet(t, server.URL, host, "/api/codex/models")
+	if rootResponse.StatusCode != http.StatusOK || rootResponse.SeenPath != "/api/codex/models" || rootResponse.ForwardedHost != host || rootResponse.Body != "native-workspace-response" {
+		t.Fatalf("native application origin response=%+v", rootResponse)
+	}
+	// A different application suffix and a neighbour Workspace cannot select this target.
+	// Keep the new format valid while selecting a different application binding.
+	dot := strings.Index(host, ".")
+	superseded := host[:dot-12] + "000000000000" + host[dot:]
+	if response := accessGet(t, server.URL, superseded, "/"); response.StatusCode != http.StatusGone {
+		t.Fatalf("superseded native application response=%+v", response)
+	}
+	neighbour := strings.Replace(host, "0123456789abcdef0123456789abcdef", "1123456789abcdef0123456789abcdef", 1)
+	if response := accessGet(t, server.URL, neighbour, "/"); response.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("neighbour origin selected current Workspace: %+v", response)
+	}
+	// Re-observation updates only the original runtime's persisted URL through its owner.
+	command := deployCommand(t, workspace, "dep-route", 1)
+	address, err := delivery.ResolveApplicationEntry(accessOrigin(), workspace, "knowledge-app", contracts.WorkspaceApplicationEntry{ServiceName: "app-main", Port: 8080})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := service.RecordDeploymentObservation(context.Background(), command, delivery.RuntimeObservation{
+		State:            api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY,
+		ApplicationEntry: &contracts.WorkspaceApplicationEntry{ServiceName: "app-main", Port: 8080},
+		AccessURL:        address, AccessUpstreamService: "app-main", AccessUpstreamPort: 8080,
+		ReadinessEvidenceRef: "readiness://dep-route", ObservedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.ID != runtimeInstance || record.AccessURL != address {
+		t.Fatalf("re-observation changed identity or retained URL: %+v", record)
 	}
 }
 

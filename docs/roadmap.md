@@ -88,17 +88,19 @@ chain remains unqualified; Local v2 remains diagnostic `NOT_READY`.
 
 The remaining work order is deliberately narrow:
 
-1. Complete the authorized App-owned path repair and explicit upgrade of the
-   original Workspace to its exact immutable repaired image. The existing
-   Serve entry supplies a trusted prefix; App owns URL/login/Cookie semantics
-   and declares cloud/password configuration through its existing publisher
-   entrypoint. Use the native Serve update and Workspace credential-reveal
-   routes, preserving the original order, Key, reservation, charge, resources
-   and existing password/session identity. Register a separate Runtime version;
-   do not move installation defaults or purchase again. Then prove actual App
-   login, a real model response and restart/response-loss recovery. An older
-   probe or source pass cannot replace that acceptance; protected qualification
-   admission remains distinct from the normal customer path.
+1. Complete the customer-selected isolated-origin root-path delivery for the
+   original Workspace. Adopt the shared native DNS codec, qualify Instance's
+   existing origin/readback consumers (including the official
+   `/api/auth/login` and `/api/auth/user` protocol), and refresh the original URL
+   through the Serve owner flow. Verify the exact image's cloud/password recipe and
+   original credential mounts. Preserve the original order, Key, reservation,
+   charge and resources; do not change the Workspace ID or purchase again.
+   Root deployment removes the demonstrated subpath requirement but does not
+   prove application login, a real model turn or restart/response-loss recovery.
+   The accepted App/Studio subpath fixes still require their own immutable
+   WebUI publication for retained path consumers. Source tests and a public
+   wildcard TLS probe do not qualify the original installed application.
+
 2. Complete the protected payer readback and explicit declaration. RuntimeVersion,
    compute, storage and Tenant selections have been configured; a missing
    payer field in the Tenant response must not be treated as proof that the
