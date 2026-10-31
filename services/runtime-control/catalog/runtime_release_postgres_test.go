@@ -1,12 +1,14 @@
 package catalog
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/lib/pq"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -187,5 +189,102 @@ func TestRuntimeReleaseRejectsForeignNamespaceContract(t *testing.T) {
 	contract, _ := runtimeExample(t)
 	if _, err := service.RegisterRuntimeVersion(ctx, &api.RegisterRuntimeVersionRpcRequest{Context: adminCall("runtime-6"), Body: &api.RegisterRuntimeVersionRequest{Name: "runtime", VersionLabel: "1", PublisherNamespaceId: "pub_acme", PublisherContract: contract, AdmissionReceiptId: "receipt"}}); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("contract from another publisher=%v", err)
+	}
+}
+
+// Exercise the HTTP decoder's actual request shape, the owner write and readback,
+// and idempotency with a pre-existing release of the same image.
+func TestRuntimeReleaseRegistersOptionalPackageFormats(t *testing.T) {
+	service := runtimeService(t)
+	ctx := ownerservice.WithPeerOwner(context.Background(), owneridentity.ConsoleBFF)
+	_, example := runtimeExample(t)
+	for _, mode := range []string{"nonempty", "omitted", "empty"} {
+		t.Run(mode, func(t *testing.T) {
+			var declaration map[string]json.RawMessage
+			if err := json.Unmarshal(example, &declaration); err != nil {
+				t.Fatal(err)
+			}
+			if mode != "nonempty" {
+				for _, key := range []string{"modelConfiguration", "buildRecipe", "packageFormatVersions", "packageFormatContracts"} {
+					delete(declaration, key)
+				}
+				if mode == "empty" {
+					declaration["packageFormatVersions"] = json.RawMessage(`[]`)
+				}
+			}
+			raw, err := json.Marshal(map[string]any{"name": "runtime", "versionLabel": mode, "publisherNamespaceId": "pub_official", "publisherContract": declaration, "admissionReceiptId": "receipt"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			body := &api.RegisterRuntimeVersionRequest{}
+			if err := publicjson.Unmarshal(raw, body); err != nil {
+				t.Fatal(err)
+			}
+			before := proto.Clone(body)
+			canonical, err := publicjson.Marshal(body.PublisherContract)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode != "nonempty" && body.PublisherContract.PackageFormatVersions != nil {
+				t.Fatal("expected the public decoder to produce a nil optional list")
+			}
+			request := &api.RegisterRuntimeVersionRpcRequest{Context: adminCall("formats-" + mode), Body: body}
+			admitted, err := service.RegisterRuntimeVersion(ctx, request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !proto.Equal(before, body) || admitted.PublisherContractDigest != digest(canonical) {
+				t.Fatal("registration changed the publisher contract identity")
+			}
+			var stored []byte
+			var formats []string
+			var storedDigest string
+			if err := service.DB.QueryRowContext(ctx, `SELECT publisher_contract,package_format_versions,publisher_contract_digest FROM runtime_control.runtime_releases WHERE id=$1`, admitted.Id).Scan(&stored, pq.Array(&formats), &storedDigest); err != nil {
+				t.Fatal(err)
+			}
+			if formats == nil || len(formats) != len(body.PublisherContract.PackageFormatVersions) || storedDigest != digest(canonical) {
+				t.Fatalf("stored projection: formats=%v digest=%s", formats, storedDigest)
+			}
+			var storedDeclaration map[string]json.RawMessage
+			if err := json.Unmarshal(stored, &storedDeclaration); err != nil {
+				t.Fatal(err)
+			}
+			if _, present := storedDeclaration["packageFormatVersions"]; present != (mode == "nonempty") {
+				t.Fatal("SQL normalization changed the stored publisher declaration")
+			}
+			replay, err := service.RegisterRuntimeVersion(ctx, request)
+			if err != nil || !proto.Equal(admitted, replay) {
+				t.Fatalf("idempotent replay changed the release: %v", err)
+			}
+			conflict := proto.Clone(request).(*api.RegisterRuntimeVersionRpcRequest)
+			conflict.Body.VersionLabel += "-conflict"
+			if _, err := service.RegisterRuntimeVersion(ctx, conflict); status.Code(err) != codes.AlreadyExists {
+				t.Fatalf("idempotency conflict=%v", err)
+			}
+			page, err := service.ListRuntimeVersions(ctx, &api.ListRuntimeVersionsRpcRequest{Context: adminCall("read-" + mode)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var readback *api.RuntimeVersion
+			for _, item := range page.Items {
+				if item.Id == admitted.Id {
+					readback = item
+				}
+			}
+			if readback == nil {
+				t.Fatal("registered release missing from catalog readback")
+			}
+			readbackBytes, err := publicjson.Marshal(readback.PublisherContract)
+			if err != nil || !bytes.Equal(readbackBytes, canonical) || readback.PublisherContractDigest != digest(canonical) || readback.PublisherContractObjectRef != admitted.PublisherContractObjectRef {
+				t.Fatalf("readback changed publisher contract identity: %v", err)
+			}
+		})
+	}
+	var releases, records int
+	if err := service.DB.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM runtime_control.runtime_releases),(SELECT count(*) FROM runtime_control.idempotency_records)`).Scan(&releases, &records); err != nil {
+		t.Fatal(err)
+	}
+	if releases != 3 || records != 3 {
+		t.Fatalf("releases=%d idempotency records=%d, want 3 each", releases, records)
 	}
 }
