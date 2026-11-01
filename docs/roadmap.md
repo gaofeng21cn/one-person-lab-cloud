@@ -73,50 +73,33 @@ Instance owner, the application route is ready and usable, and the same bytes,
 owner facts, Gateway/runtime readback and recovery receipts are available at
 their authoritative layers.
 
-The [October 31 origin-adaptation evidence](status.md#native-isolated-application-origin-adaptation-2026-10-31)
-records Cloud #1090 merged, all six source CI checks passed, Instance #644's
-consumers merged with both CI checks passed, and Candidate `41187850988` built.
-The canonical-digest correction in Instance #646 preserved existing policy;
-protected Deploy `41190999879` succeeded and independent verification
-`41191374677` was validated as `deployment_verified`, with all 12 checks true
-and zero verification mutations. The original Workspace still uses its prior
-origin and startup recipe. The [October 29 entry activation](status.md#native-workspace-entry-boundary-2026-10-29)
-proved the original operation and route active; its subpath API failure remains
-the motivation for root-path delivery. Installation verification has passed,
-while the Default App business chain remains unqualified and Local v2 remains
-diagnostic `NOT_READY`.
+The [November 1 installed evidence](status.md#native-runtime-admission-and-serve-upgrade-authorization-2026-11-01)
+records successful installation verification, the original Workspace's native
+Serve upgrade and same-operation response-loss replay, and the resolved public
+HTTPS entry. The Default App business chain remains unqualified and Local v2
+remains diagnostic `NOT_READY`.
 
 The remaining work order is deliberately narrow:
 
-1. Complete isolated-origin root-path delivery through the Serve owner for the
-   original Workspace. The native DNS codec and Instance's official auth/readback
-   consumers are installed. Keep the original 26.10.8 image at
-   `sha256:f6ce30fe1b0cdf8e1c6722a4c96d893ff8286e6af718940dab5a1d778ba70b71`:
-   its exact-image isolated root cloud/password smoke passed anonymous and
-   wrong-password HTTP 401 and login/user/state/models HTTP 200 with seven models,
-   without customer data, a Gateway Key or a real model turn. Prepare only an
-   immutable cloud/password startup-recipe variant using the existing
-   `/usr/bin/env` entrypoint contract. Runtime Control's empty Package-format
-   repair is installed through Instance #648. Registration `41226644418`
-   appended the exact release but retained its failed final echo predicate;
-   idempotent verification `41226990230` confirms `already_effective` with zero
-   writes. Ordinary Console upgrade now reaches a separate HTTP 403 at Serve's
-   internal reference authorization, before replacement deployment or writer
-   stop. Complete and install the existing `update_workspace` accepted-operation
-   grant chain, then resume the same upgrade intent and owner adoption of the
-   recipe and origin. See the [November 1 evidence](status.md#native-runtime-admission-and-serve-upgrade-authorization-2026-11-01).
-   Preserve
-   `/data`, `/projects`, the original Workspace ID, order, Key, credentials,
-   reservation, charge and resources. Accept the actual owner-published entry,
-   real login, one real model turn and restart/lost-response recovery. A generated
-   candidate hostname's public HTTP 404 is not a failure of an owner-published
-   new entry. Console customer Workspace readback `41192510414` still reports
-   `retained_path_entry`; its acceptance consumer has not confirmed the served
-   entry because the shell marker did not match despite HTTP 200 (see
-   [current evidence](status.md#native-isolated-application-origin-adaptation-2026-10-31)).
-   Origin and startup recipe remain unchanged. Local smoke and Cloud installation
-   do not supply this original-Workspace acceptance; the App/Studio subpath fixes
-   retain their separate immutable-publication obligation for retained path consumers.
+1. Install and verify the native application-credential reveal authorization
+   repair, then resume
+   original-Workspace business acceptance. The customer Console session is
+   authenticated with HTTP 200. Real Identity/PostgreSQL reproduction confirms
+   the missing live reveal-to-Fabric resource-read continuation; source tests
+   pass, while the original customer reveal remains unverified for the repair.
+   Serve has adopted the admitted
+   `26.10.8-cloud-password` recipe and independent root origin while retaining
+   the original immutable App image. Instance #655 and protected ingress run
+   `41293557438` resolve the HTTPS 404; their evidence and Instance-owned receipt
+   archival boundary are recorded in [status](status.md#native-runtime-admission-and-serve-upgrade-authorization-2026-11-01).
+   The public HTTPS redirect and real Chrome login form do not prove App login.
+   Verify real application login, one Gateway-backed model turn and application
+   restart/lost-response recovery. Preserve `/data`, `/projects`, the original
+   Workspace ID, order, Key, credentials, reservation, charge and resources.
+   The already-observed upgrade/replay result does not supply complete protected
+   business qualification; W01's separate per-use admission/revocation ordering
+   remains open. The App/Studio subpath fixes retain their separate
+   immutable-publication obligation for retained path consumers.
 
 2. Complete the protected payer readback and explicit declaration. RuntimeVersion,
    compute, storage and Tenant selections have been configured; a missing
@@ -340,10 +323,11 @@ acceptance outcomes:
   dedicated-sandbox J0 READY receipt must be explicitly bound to the same
   Candidate. The original customer Workspace now has successful native App
   update and same-operation response-loss replay evidence, distinct from that
-  qualification. Resolve its observed HTTP-login/HTTPS-404 entry mismatch after
-  authorized certificate coverage readback, then verify real application login,
-  Gateway-backed model use and restart. Preserve Candidate/J0, protected-access
-  and Release admission gates; see the [current installed evidence](status.md#native-runtime-admission-and-serve-upgrade-authorization-2026-11-01).
+  qualification. Its public HTTPS entry now redirects to the official login
+  form; Console reauthentication, real App login, Gateway-backed model use and
+  application restart remain pending. Public login-page rendering does not
+  satisfy those outcomes or W01's separate per-use admission/revocation ordering.
+  Preserve Candidate/J0, protected-access and Release admission gates; see the [current installed evidence](status.md#native-runtime-admission-and-serve-upgrade-authorization-2026-11-01).
 - Produce the protected Default App business qualification receipt for that
   Candidate: usable business entry, runtime identity/readback, Gateway facts and
   restart/response-loss recovery must agree at their owners. There is no recorded

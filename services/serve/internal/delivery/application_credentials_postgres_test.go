@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -20,10 +21,12 @@ type credentialRuntime struct {
 	reads    int
 	response *api.WorkspaceApplicationCredentials
 	readErr  error
+	context  *api.CallContext
 }
 
 func (r *credentialRuntime) Credentials(_ context.Context, c *api.RuntimeDeployCommand, _ delivery.ExecutionTarget) (*api.WorkspaceApplicationCredentials, error) {
 	r.reads++
+	r.context = proto.Clone(c.GetContext()).(*api.CallContext)
 	if r.readErr != nil {
 		return nil, r.readErr
 	}
@@ -31,6 +34,20 @@ func (r *credentialRuntime) Credentials(_ context.Context, c *api.RuntimeDeployC
 		return r.response, nil
 	}
 	return &api.WorkspaceApplicationCredentials{WorkspaceId: c.GetWorkspaceId(), RuntimeInstanceId: contracts.WorkspaceApplicationRuntimeID(c.GetRuntimeInstanceId()), Username: "declared-admin", Password: "provider-password"}, nil
+}
+
+type credentialResources struct {
+	resourcesForServe
+	call *api.CallContext
+	err  error
+}
+
+func (r *credentialResources) ReadResources(ctx context.Context, request *api.ResourceReadbackRequest, options ...grpc.CallOption) (*api.ResourceReadback, error) {
+	r.call = proto.Clone(request.GetContext()).(*api.CallContext)
+	if r.err != nil {
+		return nil, r.err
+	}
+	return r.resourcesForServe.ReadResources(ctx, request, options...)
 }
 func credentialsFixture(t *testing.T, declared bool) (*delivery.Service, *api.ReadApplicationCredentialsRequest, *credentialRuntime) {
 	t.Helper()
@@ -74,6 +91,9 @@ func TestApplicationCredentialsAdmitOnlyWorkspaceAndServeSelf(t *testing.T) {
 }
 func TestApplicationCredentialsReadsExactCurrentReadyRuntime(t *testing.T) {
 	s, r, runtime := credentialsFixture(t, true)
+	r.Context.AuthorizationContextId = "explicit-workspace-reveal"
+	resources := &credentialResources{resourcesForServe: *s.Resources.(*resourcesForServe)}
+	s.Resources = resources
 	for i := 0; i < 2; i++ {
 		value, err := s.ReadApplicationCredentials(workspaceContext(), r)
 		if err != nil {
@@ -85,6 +105,13 @@ func TestApplicationCredentialsReadsExactCurrentReadyRuntime(t *testing.T) {
 	}
 	if runtime.reads != 2 {
 		t.Fatal("credential response was cached")
+	}
+	if !proto.Equal(resources.call, r.Context) || runtime.context.GetAuthorizationContextId() != "" || runtime.context.GetSessionId() != r.Context.GetSessionId() {
+		t.Fatal("reveal decision must reach only Fabric's resource check while the runtime retains the live session")
+	}
+	resources.err = status.Error(codes.PermissionDenied, "resource read refused")
+	if value, err := s.ReadApplicationCredentials(workspaceContext(), r); value != nil || status.Code(err) != codes.PermissionDenied || runtime.reads != 2 {
+		t.Fatal("refused Fabric authorization reached the credential provider")
 	}
 	var stored bool
 	if err := s.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM serve.agent_runtime_actions WHERE input_snapshot::text LIKE '%provider-password%')`).Scan(&stored); err != nil {

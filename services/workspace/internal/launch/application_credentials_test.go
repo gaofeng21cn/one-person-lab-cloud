@@ -88,6 +88,9 @@ func TestRevealApplicationCredentialsUsesCurrentServeAndNoPersistence(t *testing
 	if upstream.reads != 2 || upstream.last.GetDeploymentId() != "deployment-current" || upstream.last.GetRuntimeInstanceId() != "runtime-current" || upstream.last.GetContext().GetSessionId() != c.GetSessionId() {
 		t.Fatal("current runtime or live session not forwarded")
 	}
+	if upstream.last.GetContext().GetAuthorizationContextId() != "workspace-proof" || c.GetAuthorizationContextId() != "workspace-proof" {
+		t.Fatal("explicit reveal decision was lost or mutated before its resource-read continuation")
+	}
 	var after string
 	if err := db.QueryRow(`SELECT result::text FROM workspace.operations WHERE id='operation-original'`).Scan(&after); err != nil {
 		t.Fatal(err)

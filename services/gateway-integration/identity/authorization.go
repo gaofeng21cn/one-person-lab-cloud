@@ -71,7 +71,7 @@ func (s *Service) AuthorizeAction(ctx context.Context, r *api.AuthorizationReque
 		return nil, denied()
 	}
 	// Only the BFF may originate an interactive authorization. Owners revalidate
-	// their own action or a narrowly specified publisher continuation.
+	// their own action or a narrowly specified owner continuation.
 	audience := owneridentity.Service(ownerName(r.GetAudienceOwner()))
 	if caller != owneridentity.ConsoleBFF && caller != audience {
 		return nil, denied()
@@ -145,11 +145,20 @@ func (s *Service) AuthorizeAction(ctx context.Context, r *api.AuthorizationReque
 	}
 	p, exists := actions[r.Action]
 	if !exists {
-		// ResolveBuildInput is the pre-admission owner call made by CreateBuild.
-		if r.Action != api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESOLVEBUILDINPUT || caller != owneridentity.Capability.Service() {
+		switch {
+		case r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESOLVEBUILDINPUT && caller == owneridentity.Capability.Service():
+			// ResolveBuildInput is the pre-admission owner call made by CreateBuild.
+			p = actionPolicy{api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"admin", "owner"}}
+		case r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES && caller == owneridentity.Fabric.Service() &&
+			r.GetAuthorizationContextId() != "" && tid != "" && r.Resource.GetKind() == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE && strings.TrimSpace(r.Resource.GetId()) != "":
+			// This is only the resource check needed for explicit credential reveal,
+			// not a standalone interactive Fabric permission. Inherit the canonical
+			// reveal roles; the original decision is checked below before allowing it.
+			p = actions[api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVEALWORKSPACEAPPLICATIONCREDENTIALS]
+			p.owner = api.OwnerEnum_OWNER_ENUM_FABRIC
+		default:
 			return nil, denied()
 		}
-		p = actionPolicy{api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"admin", "owner"}}
 	}
 	if p.owner != r.AudienceOwner || !permitted(p, strings.ToLower(strings.TrimPrefix(session.GetRole().String(), "TENANT_ROLE_ENUM_")), admin) {
 		return nil, denied()
@@ -204,6 +213,10 @@ func sameAction(d *api.AuthorizationDecision, r *api.AuthorizationRequest) bool 
 	return d.Action == r.Action && d.AudienceOwner == r.AudienceOwner && proto.Equal(d.Resource, r.Resource)
 }
 func publisherContinuation(d *api.AuthorizationDecision, r *api.AuthorizationRequest, caller owneridentity.Service) bool {
+	if d.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVEALWORKSPACEAPPLICATIONCREDENTIALS {
+		return d.AudienceOwner == api.OwnerEnum_OWNER_ENUM_WORKSPACE && caller == owneridentity.Fabric.Service() &&
+			r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_FABRIC && r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES && proto.Equal(d.Resource, r.Resource)
+	}
 	if d.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEBUILD {
 		return (caller == owneridentity.Capability.Service() && r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESOLVEBUILDINPUT && proto.Equal(d.Resource, r.Resource)) || (caller == owneridentity.RuntimeControl.Service() && r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS && r.Resource.GetId() == "")
 	}

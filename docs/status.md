@@ -68,22 +68,43 @@ grant/acquire/bind responses and process recovery. The exhaustive local gate
 still has the independently reproduced baseline D4 original-renewal failure;
 no unrelated billing change or full-gate success is claimed.
 
-**The current public-entry blocker is HTTPS routing.** At the actual published
-application hostname, HTTP returns `302 /login`, while HTTPS returns plain
-`404 page not found`. The current wildcard Ingress rule is bound only to its
-HTTP listener. [Protected Preflight `41241395160`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41241395160)
-completed its existing checks, but the separate public-certificate observation
-received `AuthFailure.UnauthorizedOperation` from both exact Tencent
-`DescribeCertificate` reads. Certificate coverage therefore remains unknown;
-that Preflight success does not establish a usable HTTPS application origin.
-The observation follows Bootstrap's `qcloud_cert_id` references and never calls
-the private-key-bearing `DescribeCertificateDetail` API. Instance
-[#653](https://github.com/gaofeng21cn/opl-instance-medopl/pull/653) corrected the
-initial PEM-storage assumption and retains that original blocked observation.
-An authorized SSL certificate read is required before selecting the HTTPS repair.
+**The public HTTPS entry is now reachable.** Instance
+[#655](https://github.com/gaofeng21cn/opl-instance-medopl/pull/655)
+merged source `dfdac82` at main merge
+`bd231387689a8d3690652a54d861d34d28a7ac45`. The user supplied the compliant
+source certificate; Tencent SSL public metadata confirms valid coverage for the
+wildcard and historical Workspace hostname. The approved reference is held in
+an Instance production Secret. Protected main `owner-lane-provision` ingress
+run [`41293557438`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41293557438)
+completed successfully with the approved certificate-reference and Ingress
+readback. No resource procurement or financial operations were performed;
+unrelated material readbacks remain false.
+Instance [#656](https://github.com/gaofeng21cn/opl-instance-medopl/pull/656)
+preserves the native installation receipt at its owning boundary.
+This resolves the previously observed HTTPS 404. An independent public HTTPS
+probe now returns `302 /login`, and independent real Chrome renders the official
+One Person Lab username/password login form.
 
-Real application login, a Gateway-backed model request and application restart
-have not passed. The original image also does not automatically initialize Codex
+The customer Console session has been reauthenticated and its native session
+read returns HTTP 200. The current earliest acceptance failure is native
+`application-credentials/reveal`: HTTP 403 `FORBIDDEN` with the generic message
+`publisher request could not be completed`, reproduced by the actual Console
+button. A real Identity/PostgreSQL reproduction with the production Fabric
+authorizer confirms the source defect: the resource read during reveal requests
+interactive `observeResources`, which has no independent interactive permission.
+The bounded source repair carries the original explicit reveal context through
+Workspace and Serve to Fabric's resource check, and permits only the same live
+owner session, Tenant and Workspace. It creates no standalone resource-read
+permission and borrows no historical deployment grant. Explicit-base focused verification passes 873 Go tests/subtests across the
+affected Identity, Workspace and Serve packages, with zero failures, skips or
+TODOs, including 39 new real-policy checks. The first freshness attempt lacked
+the pinned generators on PATH; adding their existing directory resolved that
+environment failure without changing the gate. Installation and the original
+customer reveal remain unverified for this repair.
+Public login-page rendering does not establish App login.
+Real application login, a Gateway-backed model
+request and application restart have not passed. The original image also does
+not automatically initialize Codex
 from its mounted Gateway Key: its official `configure-codex --api-key-stdin`
 command is a distinct deployment initialization step. No raw Key was exported
 or replacement Key created to hide that integration requirement. Explicit payer,

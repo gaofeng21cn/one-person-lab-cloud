@@ -124,6 +124,14 @@ HTTP 202 means the operation is pending, not that a new password is already in
 use. Console drops revealed credentials when the selection changes and keeps
 passwords only in component memory.
 
+Native credential reveal carries its existing short-lived Workspace authorization
+context through Serve only to Fabric's resource read. CloudIdentity permits that
+continuation only for the Fabric audience, the same Workspace and the same live
+owner session, scope and permission version. Fabric independently checks its
+persisted resource-set ownership. A standalone interactive `observeResources`
+request is refused; a historical deployment grant cannot authorize a reveal.
+The execution adapter receives the live session without the reveal context.
+
 ## Retained Full Launch Access
 
 The following compatibility path applies only to retained full Launch runtimes.
