@@ -379,7 +379,7 @@ func (s *Service) readCurrentApplicationCredentials(ctx context.Context, request
 	if strings.TrimSpace(wid) == "" || strings.TrimSpace(runtimeID) == "" || strings.TrimSpace(deploymentID) == "" {
 		return nil, status.Error(codes.InvalidArgument, "workspace, deployment and runtime identities are required")
 	}
-	if s.DB == nil || s.Runtime == nil {
+	if s.DB == nil || s.Runtime == nil || s.Resources == nil {
 		return nil, status.Error(codes.Unavailable, "runtime credential readback is unavailable")
 	}
 	tx, err := s.DB.BeginTx(ctx, nil)
@@ -429,7 +429,14 @@ func (s *Service) readCurrentApplicationCredentials(ctx context.Context, request
 		return nil, status.Error(codes.FailedPrecondition, "application administrator credential is not declared")
 	}
 	deploy.command.Context = nextOwnerCall(c)
-	target, err := s.confirmedRuntimeTarget(ctx, deploy.command)
+	// Fabric revalidates the explicit reveal decision against the resource set's
+	// own Workspace and Tenant. It cannot use a historical deployment grant, and
+	// the reveal context is not forwarded to the execution adapter below.
+	resources, err := s.Resources.ReadResources(ctx, &api.ResourceReadbackRequest{Context: proto.Clone(c).(*api.CallContext), ResourceSetId: deploy.command.GetResourceSetId()})
+	if err != nil {
+		return nil, err
+	}
+	target, err := confirmedExecutionTarget(ctx, s.DB, deploy.command, resources)
 	if err != nil {
 		return nil, err
 	}

@@ -85,8 +85,23 @@ This resolves the previously observed HTTPS 404. An independent public HTTPS
 probe now returns `302 /login`, and independent real Chrome renders the official
 One Person Lab username/password login form.
 
-Authenticated customer acceptance is pending following Console session expiry
-with HTTP 401. Public login-page rendering does not establish App login.
+The customer Console session has been reauthenticated and its native session
+read returns HTTP 200. The current earliest acceptance failure is native
+`application-credentials/reveal`: HTTP 403 `FORBIDDEN` with the generic message
+`publisher request could not be completed`, reproduced by the actual Console
+button. A real Identity/PostgreSQL reproduction with the production Fabric
+authorizer confirms the source defect: the resource read during reveal requests
+interactive `observeResources`, which has no independent interactive permission.
+The bounded source repair carries the original explicit reveal context through
+Workspace and Serve to Fabric's resource check, and permits only the same live
+owner session, Tenant and Workspace. It creates no standalone resource-read
+permission and borrows no historical deployment grant. Explicit-base focused verification passes 873 Go tests/subtests across the
+affected Identity, Workspace and Serve packages, with zero failures, skips or
+TODOs, including 39 new real-policy checks. The first freshness attempt lacked
+the pinned generators on PATH; adding their existing directory resolved that
+environment failure without changing the gate. Installation and the original
+customer reveal remain unverified for this repair.
+Public login-page rendering does not establish App login.
 Real application login, a Gateway-backed model
 request and application restart have not passed. The original image also does
 not automatically initialize Codex

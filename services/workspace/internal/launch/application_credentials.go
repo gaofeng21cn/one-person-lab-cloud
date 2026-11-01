@@ -92,7 +92,10 @@ func (s *Service) RevealWorkspaceApplicationCredentials(ctx context.Context, r *
 	if current.GetId() == "" || current.GetRuntimeInstanceId() == "" {
 		return nil, status.Error(codes.FailedPrecondition, "Workspace has no current application runtime")
 	}
-	credentials, err := s.ServeCredentials.ReadApplicationCredentials(ctx, &api.ReadApplicationCredentialsRequest{Context: call, WorkspaceId: wid, DeploymentId: current.GetId(), RuntimeInstanceId: current.GetRuntimeInstanceId()})
+	// The explicit reveal decision also binds Fabric's read-only resource check
+	// to this same live session and Workspace. Ordinary Serve reads above obtain
+	// their own decisions; only the credential read carries this continuation.
+	credentials, err := s.ServeCredentials.ReadApplicationCredentials(ctx, &api.ReadApplicationCredentialsRequest{Context: proto.Clone(c).(*api.CallContext), WorkspaceId: wid, DeploymentId: current.GetId(), RuntimeInstanceId: current.GetRuntimeInstanceId()})
 	if err != nil {
 		return nil, err
 	}

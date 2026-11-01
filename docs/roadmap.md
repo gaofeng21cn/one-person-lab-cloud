@@ -81,8 +81,13 @@ remains diagnostic `NOT_READY`.
 
 The remaining work order is deliberately narrow:
 
-1. Resume original-Workspace business acceptance after user reauthentication of
-   the expired Console session. Serve has adopted the admitted
+1. Install and verify the native application-credential reveal authorization
+   repair, then resume
+   original-Workspace business acceptance. The customer Console session is
+   authenticated with HTTP 200. Real Identity/PostgreSQL reproduction confirms
+   the missing live reveal-to-Fabric resource-read continuation; source tests
+   pass, while the original customer reveal remains unverified for the repair.
+   Serve has adopted the admitted
    `26.10.8-cloud-password` recipe and independent root origin while retaining
    the original immutable App image. Instance #655 and protected ingress run
    `41293557438` resolve the HTTPS 404; their evidence and Instance-owned receipt
