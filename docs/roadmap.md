@@ -81,24 +81,16 @@ remains diagnostic `NOT_READY`.
 
 The remaining work order is deliberately narrow:
 
-1. Install and verify the native application-credential reveal authorization
-   repair, then resume
-   original-Workspace business acceptance. The customer Console session is
-   authenticated with HTTP 200. Real Identity/PostgreSQL reproduction confirms
-   the missing live reveal-to-Fabric resource-read continuation; source tests
-   pass, while the original customer reveal remains unverified for the repair.
-   Serve has adopted the admitted
-   `26.10.8-cloud-password` recipe and independent root origin while retaining
-   the original immutable App image. Instance #655 and protected ingress run
-   `41293557438` resolve the HTTPS 404; their evidence and Instance-owned receipt
-   archival boundary are recorded in [status](status.md#native-runtime-admission-and-serve-upgrade-authorization-2026-11-01).
-   The public HTTPS redirect and real Chrome login form do not prove App login.
-   Verify real application login, one Gateway-backed model turn and application
-   restart/lost-response recovery. Preserve `/data`, `/projects`, the original
-   Workspace ID, order, Key, credentials, reservation, charge and resources.
-   The already-observed upgrade/replay result does not supply complete protected
-   business qualification; W01's separate per-use admission/revocation ordering
-   remains open. The App/Studio subpath fixes retain their separate
+1. The original-Workspace business observations now pass through the existing
+   owner path: HTTPS entry, native credential reveal, official App login,
+   Gateway-backed model response, and restart/session/model recovery. The same
+   Workspace has one confirmed `$52.58` charge, no new transaction, one active
+   replacement deployment, and no new Key operation. The evidence and
+   Instance-owned receipt archival boundary are recorded in
+   [status](status.md#native-runtime-admission-and-serve-upgrade-authorization-2026-11-01).
+   This does not close the protected payer declaration, dedicated same-Candidate
+   J0, W01 per-use admission/revocation ordering, or complete protected
+   qualification receipt. The App/Studio subpath fixes retain their separate
    immutable-publication obligation for retained path consumers.
 
 2. Complete the protected payer readback and explicit declaration. RuntimeVersion,
