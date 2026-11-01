@@ -102,14 +102,36 @@ the pinned generators on PATH; adding their existing directory resolved that
 environment failure without changing the gate. Installation and the original
 customer reveal remain unverified for this repair.
 Public login-page rendering does not establish App login.
-Real application login, a Gateway-backed model
-request and application restart have not passed. The original image also does
-not automatically initialize Codex
-from its mounted Gateway Key: its official `configure-codex --api-key-stdin`
-command is a distinct deployment initialization step. No raw Key was exported
-or replacement Key created to hide that integration requirement. Explicit payer,
-genuine same-Candidate dedicated-sandbox J0 and complete protected qualification
-remain open, as do #1018's separate historical original-order obligations.
+The bounded repair was installed in Cloud Candidate `d9ba0096220c8fcb756dfd18b14d41ffe0233554`.
+Protected Deploy `41304662708` succeeded, and independent Deployment
+Verification `41305027268` returned `deployment_verified` with all 12 checks true
+and zero verification mutations. The actual Console reveal button then returned
+HTTP 200 for the current Runtime with `private, no-store`; the official App
+login returned `/api/auth/user` HTTP 200 and an authenticated `opl` session.
+
+The original image does not automatically initialize Codex from its mounted
+Gateway Key. The existing official `configure-codex --api-key-stdin` command was
+carried by an immutable same-image startup recipe and admitted through the
+existing catalog path. The first admission attempt preserved its blocked receipt
+after the create response's timestamp precision made the immediate full echo
+comparison fail; the exact same declaration was then read back as
+`already_effective` with three catalog rows before and after and zero duplicate
+release mutations. No raw Key was exported and no replacement Key was created.
+
+The original Workspace's native update to that recipe succeeded through the same
+Serve operation after response-loss replay. The real App readback now reports
+`api_key_present=true`, `opl_gateway_configured=true`, `model_access_ready=true`
+and source `opl_gateway`. A real browser model turn using `gpt-6-sol` rendered
+`OPL1042_GATEWAY_OK`. A second native update/replay restarted the application;
+after reload, the same session and prior assistant reply remained, model access
+remained ready, and a new request rendered `OPL1042_RESTART_OK`.
+
+The customer readback shows one confirmed `$52.58` Workspace charge, no new
+transaction, one active replacement deployment and no new purchase or Key
+operation. These are actual original-Workspace business observations, while the
+protected payer declaration, dedicated same-Candidate J0 and complete protected
+qualification receipt remain open, as do #1018's separate historical
+original-order obligations.
 
 ## Native Isolated Application Origin Adaptation (2026-10-31)
 
