@@ -1,11 +1,11 @@
 module opl-cloud/services/ledger
 
-go 1.25.0
+go 1.26.0
 
 require (
 	entgo.io/ent v0.14.6
 	github.com/lib/pq v1.12.3
-	google.golang.org/grpc v1.84.0
+	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
 	opl-cloud/packages/contracts/go v0.0.0
 	opl-cloud/services/internal/ownerservice v0.0.0-00010101000000-000000000000
@@ -29,11 +29,11 @@ require (
 	github.com/rogpeppe/go-internal v1.16.0 // indirect
 	github.com/zclconf/go-cty v1.14.4 // indirect
 	github.com/zclconf/go-cty-yaml v1.1.0 // indirect
-	golang.org/x/mod v0.38.0 // indirect
-	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260817212433-ac3dfec99bb1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	opl-cloud/services/internal/ownerstore v0.0.0-00010101000000-000000000000 // indirect
 )
