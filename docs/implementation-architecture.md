@@ -1342,6 +1342,10 @@ resolves a lost resource-set response. Only Fabric can confirm that no original
 intent reached its owner; an existing set under an unresolved command or partial
 provider evidence remains unconfirmed. Provider-specific cleanup stays behind
 the existing Fabric adapter and does not become Workspace orchestration.
+Tencent storage deletion preserves the accepted top-level deadline while treating
+a valid shortened CBS deadline as live provider observation. Readbacks clone the
+provider map, and persisted recovery retains the original identities and mutation
+journal before requiring fresh disk and static-binding absence.
 
 Gateway's existing command journal fences Workspace Key creation, Key enablement
 and charges during unfinished closeout. Disable resolves the original Key command

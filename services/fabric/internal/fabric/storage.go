@@ -338,12 +338,19 @@ func sameStorageDestroyStableIdentity(previous, current StorageVolume) bool {
 		previous.Provider == current.Provider && previous.ProviderResourceID == current.ProviderResourceID && previous.SizeGB == current.SizeGB &&
 		previous.StorageClass == current.StorageClass && previous.DiskType == current.DiskType && sameStorageDestroyManualRenewFlag(previous.RenewFlag, current.RenewFlag) &&
 		previous.Deadline == current.Deadline && previous.Zone == current.Zone && previous.CreatedAt.Equal(current.CreatedAt) &&
-		reflect.DeepEqual(previous.CostTags, current.CostTags) && sameStorageDestroyProviderData(previous.ProviderData, current.ProviderData)
+		reflect.DeepEqual(previous.CostTags, current.CostTags) && sameStorageDestroyProviderData(previous.ProviderData, current.ProviderData, previous.Deadline)
 }
 
-func sameStorageDestroyProviderData(previous, current map[string]string) bool {
+func sameStorageDestroyProviderData(previous, current map[string]string, frozenDeadline string) bool {
 	for key, previousValue := range previous {
 		currentValue, exists := current[key]
+		// CBS can shorten its live deadline when a prepaid disk is returned.
+		// Keep the original order deadline frozen, including when comparing a
+		// failed pre-fix operation with its original resource after restart.
+		if exists && key == "deadline" && previousValue != currentValue &&
+			storageDestroyDeadlineWithinOriginal(frozenDeadline, previousValue) && storageDestroyDeadlineWithinOriginal(frozenDeadline, currentValue) {
+			continue
+		}
 		if !exists || previousValue != currentValue && !isStorageDestroyEvidenceKey(key) && !(key == "renewFlag" && sameStorageDestroyManualRenewFlag(previousValue, currentValue)) {
 			return false
 		}
@@ -354,6 +361,12 @@ func sameStorageDestroyProviderData(previous, current map[string]string) bool {
 		}
 	}
 	return true
+}
+
+func storageDestroyDeadlineWithinOriginal(original, observed string) bool {
+	originalTime, originalErr := time.Parse(time.RFC3339Nano, original)
+	observedTime, observedErr := time.Parse(time.RFC3339Nano, observed)
+	return originalErr == nil && observedErr == nil && !observedTime.After(originalTime)
 }
 
 func sameStorageDestroyManualRenewFlag(previous, current string) bool {

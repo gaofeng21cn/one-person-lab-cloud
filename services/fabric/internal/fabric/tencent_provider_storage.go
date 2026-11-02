@@ -497,6 +497,9 @@ func (p *TencentProvider) ReadStorageVolumeStatus(ctx context.Context, volume St
 }
 
 func (p *TencentProvider) ReadStorageVolume(ctx context.Context, volume StorageVolume) (StorageVolume, error) {
+	// ProviderData is mutable observation state; a failed read must not rewrite
+	// the caller's frozen resource or the deletion owner's comparison baseline.
+	volume = cloneStorageVolume(volume)
 	if volume.ID == "" || !strings.HasPrefix(volume.ProviderResourceID, "disk-") {
 		return StorageVolume{}, fmt.Errorf("storage_volume_cbs_identity_required")
 	}
@@ -528,10 +531,20 @@ func (p *TencentProvider) ReadStorageVolume(ctx context.Context, volume StorageV
 	if response.OK && (response.StorageVolumeID != volume.ProviderResourceID || !exactStorageRegionReadback(response, region)) {
 		return volume, fmt.Errorf("storage_cbs_region_readback_mismatch")
 	}
+	frozenDeadline := volume.Deadline
+	if action == "read_storage_for_delete" && response.OK {
+		if deadline, present := response.ProviderData["deadline"]; present && deadline != frozenDeadline && !storageDestroyDeadlineWithinOriginal(frozenDeadline, deadline) {
+			return volume, fmt.Errorf("storage_volume_destroy_readback_mismatch")
+		}
+	}
 	if strings.HasPrefix(response.StorageVolumeID, "disk-") {
 		volume.ProviderResourceID = response.StorageVolumeID
 	}
 	applyStorageReadback(&volume, response)
+	if action == "read_storage_for_delete" {
+		// Preserve the accepted term; ProviderData retains the current CBS fact.
+		volume.Deadline = frozenDeadline
+	}
 	if !response.OK {
 		return volume, provisionerError(response)
 	}
@@ -638,7 +651,7 @@ func (p *TencentProvider) DestroyStorageVolume(ctx context.Context, volume Stora
 	if response.Status != "" {
 		result.Status = response.Status
 	}
-	if !validStorageDestroyResponseProviderData(volume.ProviderData, response.ProviderData) {
+	if !validStorageDestroyResponseProviderData(volume, response.ProviderData) {
 		return result, fmt.Errorf("storage_volume_destroy_readback_mismatch")
 	}
 	if !response.OK {
@@ -845,12 +858,15 @@ func validStorageDestroyMutationEvidence(response provisionerResponse) bool {
 	}
 }
 
-func validStorageDestroyResponseProviderData(previous, response map[string]string) bool {
+func validStorageDestroyResponseProviderData(previous StorageVolume, response map[string]string) bool {
 	for key, value := range response {
 		if isStorageDestroyEvidenceKey(key) {
 			continue
 		}
-		if previousValue, exists := previous[key]; !exists || previousValue != value {
+		if key == "deadline" && storageDestroyDeadlineWithinOriginal(previous.Deadline, value) {
+			continue
+		}
+		if previousValue, exists := previous.ProviderData[key]; !exists || previousValue != value {
 			return false
 		}
 	}
