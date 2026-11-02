@@ -629,13 +629,17 @@ route-retirement evidence:
 | `workspace_298869134c959a28727aec8d5b4c3c44` | [40488525215](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40488525215) | [40567327722](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40567327722) |
 | `workspace_d08634cf6b6d62f9b6d5277f5430fabf` | [40486429325](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40486429325) | [40567470540](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40567470540) |
 
-Fresh owner reads on November 2 reconfirm native A
+Fresh owner reads on November 2 reconfirmed native A
 ([41411236579](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41411236579)) and B
 ([41410972313](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41410972313)):
-resource absence, deletion receipt and original-charge refund are confirmed. Both original
-operations retain `needs_attention / OWNER_CAPABILITY_UNAVAILABLE` at `disable_managed_key`, with
-Key closeout `rejected`. These are separate outstanding Key obligations. The older attribution
-receipts remain provenance for their original create and Key commands.
+resource absence, deletion receipt and original-charge refund were confirmed. After the
+protected Instance resume delivery in [#668](https://github.com/gaofeng21cn/opl-instance-medopl/pull/668),
+A resumed at [41493681011](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41493681011)
+and B resumed at [41494038753](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41494038753).
+The final readbacks [A 41494327849](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41494327849)
+and [B 41494333326](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41494333326) both show
+`succeeded / confirmed`, no pending step, confirmed original refund, and `keyCloseoutOutcome=confirmed`.
+Both resumes used the existing deletion operation and produced no new purchase or refund.
 
 The retained order `ws-75e18d83e13db76332` has now completed the storage stage of its original CP
 Delete. Three reproduced Fabric defects were repaired and adopted through the standard protected
@@ -678,6 +682,14 @@ deletion/Ledger/settlement and the separate Key outcomes remain the [open accept
 work](roadmap.md#original-order-workspace-closeout-1018). Instance
 [#666](https://github.com/gaofeng21cn/opl-instance-medopl/pull/666) preserves the current
 deployment, verification and owner receipts unchanged.
+
+A fresh read-only state observation [41494802539](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41494802539)
+performed no business, provider or Kubernetes writes. For retained `ws-75e18d83e13db76332`,
+TKE/Machine remains `NOT_FOUND` while the exact CVM remains `SHUTDOWN` with source `MANMADE`;
+Fabric reports `pending_deletion` and `compute_absent` remains retrying. The retained order is
+therefore still not settled: its deletion receipt and original-charge settlement remain unconfirmed.
+The observation's Fabric transport also returned `source_unavailable`, so it is retained as partial
+readback evidence rather than completion.
 
 The original CP owner remains responsible until a verified handover. #1052 owns
 the separate retained-owner migration decision; this repair changes neither
