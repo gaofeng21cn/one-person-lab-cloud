@@ -260,12 +260,12 @@ func TestTencentProviderDestroyStorageWaitsWhenPVCRemains(t *testing.T) {
 	}
 }
 
-func TestTencentProviderDestroyStorageRejectsEmptyBindingReadback(t *testing.T) {
+func TestTencentProviderDestroyStorageRejectsMalformedBindingReadback(t *testing.T) {
 	resource := canonicalTencentStorageDestroyFixture()
 	provider := NewTencentProvider()
 	provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
 		if len(args) > 0 && args[0] == "get" {
-			return nil, nil
+			return []byte(`{}`), nil
 		}
 		t.Fatalf("unverified binding readback authorized kubectl action: %#v", args)
 		return nil, nil
@@ -286,6 +286,31 @@ func TestTencentProviderDestroyStorageRejectsEmptyBindingReadback(t *testing.T) 
 	}
 	if destroyCalls != 0 {
 		t.Fatalf("empty binding readback authorized CBS termination: calls=%d", destroyCalls)
+	}
+}
+
+func TestTencentProviderDestroyStorageAcceptsEmptyBindingReadback(t *testing.T) {
+	resource := canonicalTencentStorageDestroyFixture()
+	provider := NewTencentProvider()
+	provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
+		if len(args) > 0 && args[0] == "get" {
+			return []byte{}, nil
+		}
+		t.Fatalf("empty binding readback authorized kubectl action: %#v", args)
+		return nil, nil
+	}
+	provider.provision = func(_ context.Context, request provisionerRequest) (provisionerResponse, error) {
+		if request.Action == "destroy_storage_volume" {
+			t.Fatal("already absent CBS must not be terminated")
+		}
+		return provisionerResponse{OK: true, StorageVolumeID: resource.ProviderResourceID, ProviderRequestID: "read-request", CBSStatus: "NOT_FOUND", Status: "external_deleted", ProviderData: map[string]string{
+			"storageVolumeId": resource.ProviderResourceID, "cbsStatus": "NOT_FOUND", "status": "external_deleted", "storageDestroyPhase": "absence_confirmed", "storageDestroyMutationCount": "0", "describeCbsRequestId": "read-request", "region": "ap-guangzhou",
+		}}, nil
+	}
+	ctx := context.WithValue(context.Background(), workspaceStorageDeleteOwnerContextKey{}, resource)
+	result, err := provider.DestroyStorageVolume(ctx, resource)
+	if err != nil || !storageDestroyReadbackConfirmsAbsence(result) || result.BindingPresent == nil || *result.BindingPresent {
+		t.Fatalf("empty binding readback was not accepted as absence: result=%#v err=%v", result, err)
 	}
 }
 

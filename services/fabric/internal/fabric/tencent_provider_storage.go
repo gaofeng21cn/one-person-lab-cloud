@@ -701,7 +701,10 @@ func (p *TencentProvider) readStorageDeleteBindingsPartial(ctx context.Context, 
 		return nil, err
 	}
 	if len(bytes.TrimSpace(raw)) == 0 {
-		return nil, fmt.Errorf("kubernetes_response_invalid")
+		// `kubectl get ... --ignore-not-found -o json` returns no document when
+		// every requested object is already absent. That is an authoritative
+		// empty binding set, not a malformed response.
+		return []any{}, nil
 	}
 	items, err := strictKubectlItems(raw)
 	if err != nil {
