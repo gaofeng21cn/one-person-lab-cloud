@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS fabric-build
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS fabric-build
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -21,7 +21,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/opl-tencent
   && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/opl-fabric ./cmd/fabric \
   && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/opl-node-image-retire ./cmd/opl-node-image-retire
 
-FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS control-plane-build
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS control-plane-build
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -35,7 +35,7 @@ RUN GOPROXY="$GOPROXY" go mod download
 COPY services/control-plane ./
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/opl-control-plane ./cmd/control-plane
 
-FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS ledger-build
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS ledger-build
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -53,7 +53,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/opl-ledger 
 
 # The publisher lane is shipped as independent owner executables in the same
 # portable product image. Instance chooses which processes to run.
-FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS publisher-build
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS publisher-build
 ARG TARGETOS
 ARG TARGETARCH
 ARG GOPROXY=https://proxy.golang.org,direct
