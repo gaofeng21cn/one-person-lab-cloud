@@ -1345,7 +1345,10 @@ the existing Fabric adapter and does not become Workspace orchestration.
 Tencent storage deletion preserves the accepted top-level deadline while treating
 a valid shortened CBS deadline as live provider observation. Readbacks clone the
 provider map, and persisted recovery retains the original identities and mutation
-journal before requiring fresh disk and static-binding absence.
+journal before requiring fresh disk and static-binding absence. Successful empty output from the
+exact named kubectl ignore-not-found query is an empty binding set. Only verified terminal absence
+clears the previous retry classification; a successful recovered journal entry clears its old error
+while preserving earlier attempts.
 
 Gateway's existing command journal fences Workspace Key creation, Key enablement
 and charges during unfinished closeout. Disable resolves the original Key command
