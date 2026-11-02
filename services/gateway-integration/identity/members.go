@@ -298,6 +298,20 @@ func (s *Service) GetTenant(ctx context.Context, r *api.GetTenantRpcRequest) (*a
 	}
 	out.CreatedAt = timestamppb.New(created)
 	out.UpdatedAt = timestamppb.New(updated)
+	// The Tenant owner exposes the active payer binding as an owner readback.
+	// An unbound Tenant remains readable, but a binding-store failure must not be
+	// hidden as an empty payer because the native purchase path treats that fact
+	// as authoritative.
+	if s.GatewayStore == nil {
+		return nil, status.Error(codes.Unavailable, "tenant billing binding is unavailable")
+	}
+	binding, bindingErr := s.GatewayStore.ReadActiveWalletBinding(ctx, tid)
+	if bindingErr != nil && !errors.Is(bindingErr, ErrWalletBindingAbsent) {
+		return nil, status.Error(codes.Unavailable, "tenant billing binding is unavailable")
+	}
+	if bindingErr == nil {
+		out.BillingSub2ApiUserId = &binding.BillingSub2APIUserID
+	}
 	return out, nil
 }
 

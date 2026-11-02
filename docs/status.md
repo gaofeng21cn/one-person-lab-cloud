@@ -16,6 +16,34 @@ boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Protected Tenant Payer Readback Repair (2026-11-02)
+
+A local source change against `eb96132e9c8be48b12f0ea36010e5e7431b25caa`
+repairs `GetTenant`: the existing optional `billingSub2apiUserId` field was never
+populated, although the protected buyer requires it. The Tenant response now
+projects the Gateway owner's active wallet binding through its existing store
+read. It does not infer the payer from the logged-in User. Confirmed absence
+leaves the optional field absent; an unavailable binding store returns an error.
+The Tenant database does not acquire Gateway tables or a second binding writer.
+
+Explicit-base focused verification passed the affected Identity package with
+isolated PostgreSQL and all 25 protected-business-qualification tests, with zero
+failures, skips or TODOs. The new real-gRPC test checks the public JSON field,
+an independently selected payer, revoked/absent bindings, cross-Tenant refusal
+and unavailable readback. The first verification attempt lacked the pinned Go
+protobuf generator on PATH; the retry used the existing pinned tools and also
+passed generated-contract freshness. The temporary test database was stopped
+after verification. This is local source evidence, not CI or installed evidence.
+
+Protected configuration readback still lacks
+`OPL_QUALIFICATION_BILLING_SUBJECT_ID`; the native Instance consumer migration
+is already adopted. No business-qualification workflow run exists at this
+observation. A genuine dedicated-sandbox J0 invocation and W01 Runtime per-use
+admission/revocation ordering remain open. The existing purchase receipt does
+not cover model usage, restart or deletion/refund; those retain their separate
+owner evidence. No production deployment, purchase, refund, deletion or Issue
+closure was performed by this change.
+
 ## Native Runtime Admission And Serve Upgrade Authorization (2026-11-01)
 
 Cloud [#1093](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1093)

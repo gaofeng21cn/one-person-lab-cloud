@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
@@ -206,6 +208,55 @@ func TestGatewayProductReadsUseTheRealOwnerAndSerializeTheContractSpelling(t *te
 		if strings.Contains(string(pageJSON), forbidden) {
 			t.Fatalf("model wire leaked %s: %s", forbidden, pageJSON)
 		}
+	}
+}
+
+func TestTenantReadIncludesTheActiveBillingSubject(t *testing.T) {
+	_, tenantClient, service := gatewayProductSystem(t)
+	raw, session := login(t, tenantClient)
+	request := &api.GetTenantRpcRequest{Context: memberCall(session, raw, "tenant-billing-read")}
+	read := func(want string) {
+		t.Helper()
+		tenant, err := tenantClient.GetTenant(t.Context(), request)
+		if err != nil {
+			t.Fatalf("GetTenant: %v", err)
+		}
+		if tenant.GetId() != "tenant-test" || tenant.GetBillingSub2ApiUserId() != want || (tenant.BillingSub2ApiUserId != nil) != (want != "") {
+			t.Fatalf("tenant=%v, want active billing subject %q", tenant, want)
+		}
+		wire, err := publicjson.Marshal(tenant)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want != "" && !strings.Contains(string(wire), `"billingSub2apiUserId":"`+want+`"`) {
+			t.Fatalf("payer missing from public Tenant encoding: %s", wire)
+		}
+	}
+	// A personal Gateway identity exists, but cannot stand in for a Tenant payer.
+	read("")
+	if _, err := service.GatewayStore.DB().ExecContext(t.Context(), `
+		INSERT INTO gateway.tenant_wallet_bindings
+			(id, tenant_id, billing_sub2api_user_id, delegation_ref, verification_evidence_ref, bound_at, revoked_at)
+		VALUES ('old-binding', 'tenant-test', '303', 'delegation-test', 'evidence-test', now(), now()),
+		       ('other-binding', 'tenant-other', '404', 'delegation-test', 'evidence-test', now(), NULL),
+		       ('binding-tenant-read', 'tenant-test', '202', 'delegation-test', 'evidence-test', now(), NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	read("202")
+	forged := proto.Clone(request).(*api.GetTenantRpcRequest)
+	forged.Context.Scope.GetTenant().TenantId = "tenant-other"
+	if _, err := tenantClient.GetTenant(t.Context(), forged); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("cross-Tenant billing read: %v", err)
+	}
+	if _, err := service.GatewayStore.DB().ExecContext(t.Context(), `UPDATE gateway.tenant_wallet_bindings SET revoked_at=now() WHERE id='binding-tenant-read'`); err != nil {
+		t.Fatal(err)
+	}
+	read("")
+	if err := service.GatewayStore.DB().Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tenantClient.GetTenant(t.Context(), request); status.Code(err) != codes.Unavailable {
+		t.Fatalf("unreadable payer was reported as an unbound Tenant: %v", err)
 	}
 }
 
