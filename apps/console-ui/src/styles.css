@@ -3096,8 +3096,13 @@ tbody tr:last-child td {
 
   .workspace-launch-back,
   .workspace-detail-page > .ui-button,
-  .workspace-budget-panel input {
+  .workspace-budget-panel input,
+  .workspace-maintenance-panel .ui-button {
     min-height: 44px;
+  }
+
+  .workspace-maintenance-panel .ui-button {
+    min-height: 45px;
   }
 
   .workspace-budget-panel,
