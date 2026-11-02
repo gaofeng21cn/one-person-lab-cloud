@@ -336,14 +336,16 @@ readback. No source-only PR closes #1042 or the original orders in #1018.
 
 ### Original-order Workspace closeout (#1018)
 
-The two native orders have protected resource-absence, deletion-receipt, original-charge-refund and
-Serve route-retirement evidence. November 2 owner reads reconfirm those outcomes and separately
-retain `OWNER_CAPABILITY_UNAVAILABLE / disable_managed_key`. The reversible Gateway user-API
-adapter is implemented in source PR #1102; those Key obligations remain open pending its adoption,
-deployment and protected original-Key readback. The retained order has passed storage after three
-Fabric repairs were merged and deployed. Its original CP Delete now waits at `compute_absent`: the
-TKE/Machine are absent, but the original CVM remains `SHUTDOWN / MANMADE`. The retained deletion
-receipt and original-charge settlement are still unconfirmed. See [the exact dated evidence](status.md#original-order-closeout-scope-2026-10-23).
+The two native orders now have protected resource-absence, deletion-receipt, original-charge-refund,
+Serve route-retirement and Key closeout evidence. The existing parked deletion operations were resumed
+through the protected Instance path in [#668](https://github.com/gaofeng21cn/opl-instance-medopl/pull/668),
+without creating a second operation or refund. Final owner readbacks [A 41494327849](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41494327849)
+and [B 41494333326](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41494333326) show
+`succeeded / confirmed`, no pending step, confirmed original refund and `keyCloseoutOutcome=confirmed`.
+The retained order has passed storage after three Fabric repairs were merged and deployed. Its original
+CP Delete still waits at `compute_absent`: TKE/Machine is `NOT_FOUND`, but the exact CVM remains
+`SHUTDOWN / MANMADE` and Fabric reports `pending_deletion`. The retained deletion receipt and
+original-charge settlement are still unconfirmed. See [the exact dated evidence](status.md#original-order-closeout-scope-2026-10-23).
 
 Continue the same original Delete from these actual owner facts:
 
