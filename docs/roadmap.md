@@ -336,16 +336,19 @@ readback. No source-only PR closes #1042 or the original orders in #1018.
 
 ### Original-order Workspace closeout (#1018)
 
-The existing Instance executor has now recovered both native closeout inputs,
-adopted Candidate `5e744601`, and executed B's protected closeout/recovery.
-The latest [preserved Fabric facts](https://github.com/gaofeng21cn/opl-instance-medopl/pull/602)
-show a storage identity admission failure before CBS termination. Cloud source
-now accepts the exact canonical create-operation tag derived from the retained
-caller key, with all remaining identity and live-readback gates unchanged.
-Source verification does not identify B's uniquely failing private predicate or
-prove installed adoption, and does not authorize another protected resume.
-Continue the finite original-order outcome through the existing owner, without
-repeating the already successful input reads or creating a source/runtime tail.
+The two native orders now have protected resource-absence, deletion-receipt,
+original-charge-refund and Serve route-retirement evidence. Their separate Key
+obligations remain outstanding. The retained order is still blocked in its
+original CP Delete storage stage. The November 2 protected read confirms the
+original CBS disk is absent; binding cleanup, deletion receipt and settlement
+remain unconfirmed. See [the exact dated observations](status.md#original-order-closeout-scope-2026-10-23).
+
+Adopt and verify the bounded Fabric repair for the shortened live CBS deadline
+that poisoned the old identity comparison and persisted replay. Continue the
+same original Delete through the existing owner, then obtain fresh exact
+resource/binding and route absence, deletion/Ledger and original-charge
+settlement readback. Preserve the existing mutation journal; another unchanged
+plan, a new Delete identity or a SQL state rewrite is not a recovery result.
 
 Workspace owns native order closeout; Control Plane retains its historical
 Launch, deletion and settlement obligations. Fabric owns resource dispatch and
@@ -371,15 +374,12 @@ not the implementation to adopt for this work.
 | Unfinished native order | Source now uses Workspace DELETE and existing typed owners for create cancellation, downstream fences, original-command resolution and independent resource/Key/settlement readbacks. Complete current-revision verification and native peer/provider qualification; preserve explicit unknown outcomes for partial provider evidence. | The existing authorized DELETE caller and deletion/operation readbacks can complete the affected order. An empty local result or saga-step list never substitutes for owner fencing, provider absence or financial evidence. |
 | Recovery and reuse | Exercise cancellation/deletion through the same owner entry after response loss, restart, partial dispatch and externally removed resources. Reuse existing settlement and receipt writers. | Original operation identity survives; delayed work cannot recreate closed resources; no duplicate purchase, deploy, refund or receipt occurs; independent resource, route, Key and settlement outcomes remain truthful. |
 
-The first two exact native original operations have now been identified through
-protected Instance readback: both contain dispatched resource/runtime identities
-and a confirmed managed-Key command, and both are stalled in Serve runtime
-deployment with a stored terminated-runtime observation. The original saga's
-confirmed charge step still needs independent Gateway/Ledger settlement evidence.
-Both original operations are now readable through the pre-existing digest-only
-diagnostic entry; Instance PR #579 retired the temporary Workspace selector. It is not a lifecycle capability or a prerequisite for #1043.
-See [the dated evidence](status.md#original-order-closeout-scope-2026-10-23).
-This is partial original-record evidence, not provider absence or closeout.
+The original native attribution receipts remain provenance for the original
+create, charge and managed-Key commands. Use the later deletion/refund and Serve
+retirement receipts for their completed outcomes, and obtain a separate explicit
+Key disposition before claiming all obligations closed. Until #1052 establishes
+a verified handover, the retained original owner remains responsible for its
+existing operation; this repair does not select a new production writer.
 
 The reusable native implementation belongs to #1043; #1018 owns acceptance of
 the three original orders. A reproduced retained-order repair needs its own
