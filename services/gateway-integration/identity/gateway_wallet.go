@@ -283,14 +283,21 @@ func (g *Gateway) adminRequest(ctx context.Context, path string, body any, token
 }
 
 func (g *Gateway) requestWithHeaders(ctx context.Context, path string, body any, token string, headers map[string]string) ([]byte, error) {
-	var raw []byte
 	method := http.MethodGet
+	if body != nil {
+		method = http.MethodPost
+	}
+	return g.requestWithMethod(ctx, method, path, body, token, headers)
+}
+
+func (g *Gateway) requestWithMethod(ctx context.Context, method, path string, body any, token string, headers map[string]string) ([]byte, error) {
+	var raw []byte
 	if body != nil {
 		encoded, err := json.Marshal(body)
 		if err != nil {
 			return nil, status.Error(codes.Internal, "encode Gateway request")
 		}
-		raw, method = encoded, http.MethodPost
+		raw = encoded
 	}
 	r, err := http.NewRequestWithContext(ctx, method, g.base+path, bytes.NewReader(raw))
 	if err != nil {
