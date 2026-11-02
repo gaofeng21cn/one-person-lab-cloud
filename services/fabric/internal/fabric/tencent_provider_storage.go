@@ -472,6 +472,11 @@ func (p *TencentProvider) ReadStorageVolumeStatus(ctx context.Context, volume St
 			if volume.Status == "external_deleted" && bindingPresent {
 				return volume, ErrWorkspaceLaunchPending
 			}
+			if !bindingPresent && storageDestroyReadbackConfirmsAbsence(volume) {
+				// A fresh terminal observation replaces the previous attempt's
+				// retry classification, including after a process restart.
+				volume.DestroyState = ""
+			}
 			return volume, nil
 		}
 	}
@@ -633,6 +638,7 @@ func (p *TencentProvider) DestroyStorageVolume(ctx context.Context, volume Stora
 		volume.Status == "external_deleted" && volume.CBSStatus == "NOT_FOUND" {
 		// CBS was already proven absent by the provider readback; binding cleanup
 		// is the only remaining mutation and no terminate call is authorized.
+		volume.DestroyState = ""
 		return volume, nil
 	}
 	expectedProviderResourceID := volume.ProviderResourceID
@@ -674,6 +680,7 @@ func (p *TencentProvider) DestroyStorageVolume(ctx context.Context, volume Stora
 	if response.StorageVolumeID != expectedProviderResourceID || !storageDestroyReadbackConfirmsAbsence(result) {
 		return result, fmt.Errorf("storage_volume_destroy_readback_mismatch")
 	}
+	result.DestroyState = ""
 	return result, nil
 }
 

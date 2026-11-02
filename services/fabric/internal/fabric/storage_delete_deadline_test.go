@@ -52,8 +52,12 @@ func TestTencentStorageDeleteReadbackKeepsFrozenDeadline(t *testing.T) {
 }
 
 func TestTencentStorageDeleteRecoversPersistedShortenedDeadline(t *testing.T) {
-	store := NewMemoryOperationStore()
-	testTencentStorageDeleteRecoversShortenedDeadline(t, store, func(previous OperationStore) OperationStore { return previous })
+	for _, state := range []string{StorageDestroyStatePendingRetry, StorageDestroyStateUnconfirmedSend} {
+		t.Run(state, func(t *testing.T) {
+			store := NewMemoryOperationStore()
+			testTencentStorageDeleteRecoversShortenedDeadline(t, store, func(previous OperationStore) OperationStore { return previous }, state)
+		})
+	}
 }
 
 func TestPostgresTencentStorageDeleteRecoversPersistedShortenedDeadline(t *testing.T) {
@@ -71,10 +75,10 @@ func TestPostgresTencentStorageDeleteRecoversPersistedShortenedDeadline(t *testi
 		t.Cleanup(func() { _ = store.client.Close() })
 		return store
 	}
-	testTencentStorageDeleteRecoversShortenedDeadline(t, reopen(nil), reopen)
+	testTencentStorageDeleteRecoversShortenedDeadline(t, reopen(nil), reopen, StorageDestroyStatePendingRetry)
 }
 
-func testTencentStorageDeleteRecoversShortenedDeadline(t *testing.T, store OperationStore, reopen func(OperationStore) OperationStore) {
+func testTencentStorageDeleteRecoversShortenedDeadline(t *testing.T, store OperationStore, reopen func(OperationStore) OperationStore, retryState string) {
 	t.Helper()
 	ctx := context.Background()
 	volume := canonicalTencentStorageDestroyFixture()
@@ -83,6 +87,7 @@ func testTencentStorageDeleteRecoversShortenedDeadline(t *testing.T, store Opera
 	appendSucceededStorageCreate(t, store, volume)
 	failed := storageDestroyPhaseResult(volume, storageDestroyPhaseDispatchAuthorized, "0", "destroying", "UNATTACHED")
 	failed.ProviderData["deadline"] = "2026-10-23T00:00:00Z"
+	failed.DestroyState = retryState
 	appendStartedStorageDestroy(t, store, storageDestroyPhaseResult(volume, storageDestroyPhaseDispatchAuthorized, "0", "destroying", "UNATTACHED"))
 	appendFailedStorageDestroy(t, store, failed)
 	reads := 0
@@ -107,7 +112,7 @@ func testTencentStorageDeleteRecoversShortenedDeadline(t *testing.T, store Opera
 		store = reopen(store)
 		service := NewServiceWithOperationStore(provider, store)
 		result, err := service.DestroyStorageVolume(ctx, volume.ID)
-		if err != nil || !storageDestroyReadbackConfirmsAbsence(result) || result.BindingPresent == nil || *result.BindingPresent || result.Deadline != volume.Deadline {
+		if err != nil || !storageDestroyReadbackConfirmsAbsence(result) || result.BindingPresent == nil || *result.BindingPresent || result.Deadline != volume.Deadline || result.DestroyState != "" {
 			t.Fatalf("restarted recovery=%#v err=%v", result, err)
 		}
 	}
@@ -116,8 +121,8 @@ func testTencentStorageDeleteRecoversShortenedDeadline(t *testing.T, store Opera
 	}
 	latest, found, err := store.LatestResourceOperation(ctx, "storage_volume", volume.ID)
 	var persisted StorageVolume
-	if err != nil || !found || latest.Status != "succeeded" || !decodeOperationResource(latest, &persisted) ||
-		persisted.Deadline != volume.Deadline || !storageDestroyReadbackConfirmsAbsence(persisted) {
+	if err != nil || !found || latest.Status != "succeeded" || latest.ErrorCode != "" || !decodeOperationResource(latest, &persisted) ||
+		persisted.Deadline != volume.Deadline || persisted.DestroyState != "" || !storageDestroyReadbackConfirmsAbsence(persisted) {
 		t.Fatalf("recovered operation=%#v persisted=%#v found=%v err=%v", latest, persisted, found, err)
 	}
 }
@@ -155,6 +160,7 @@ func TestTencentStorageDeleteRejectsPersistedIdentityDrift(t *testing.T) {
 
 func TestTencentStorageDestroyAcceptsShortenedDeadlineObservation(t *testing.T) {
 	volume := canonicalTencentStorageDestroyFixture()
+	volume.DestroyState = StorageDestroyStatePendingRetry
 	volume.Deadline = "2026-11-01T00:00:00Z"
 	volume.ProviderData["deadline"] = volume.Deadline
 	store := NewMemoryOperationStore()
@@ -181,7 +187,7 @@ func TestTencentStorageDestroyAcceptsShortenedDeadlineObservation(t *testing.T) 
 	}
 	service := NewServiceWithOperationStore(provider, store)
 	result, err := service.DestroyStorageVolume(context.Background(), volume.ID)
-	if err != nil || !storageDestroyReadbackConfirmsAbsence(result) || result.Deadline != volume.Deadline || destroys != 1 {
+	if err != nil || !storageDestroyReadbackConfirmsAbsence(result) || result.Deadline != volume.Deadline || result.DestroyState != "" || destroys != 1 {
 		t.Fatalf("destroy result=%#v err=%v calls=%d", result, err, destroys)
 	}
 }
