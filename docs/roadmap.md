@@ -336,20 +336,34 @@ readback. No source-only PR closes #1042 or the original orders in #1018.
 
 ### Original-order Workspace closeout (#1018)
 
-The two native orders have protected resource-absence, deletion-receipt,
-original-charge-refund and Serve route-retirement evidence. Their separate Key
-obligations remain outstanding pending adoption and protected execution of the
-new reversible lifecycle adapter. The retained order has passed storage and
-waits at `compute_absent`: the original Machine is absent but its CVM is still
-`SHUTDOWN / MANMADE`, so provider absence, deletion receipt and settlement remain
-unconfirmed. See [the exact dated observations](status.md#original-order-closeout-scope-2026-10-23).
+The two native orders have protected resource-absence, deletion-receipt, original-charge-refund and
+Serve route-retirement evidence. November 2 owner reads reconfirm those outcomes and separately
+retain `OWNER_CAPABILITY_UNAVAILABLE / disable_managed_key`. The reversible Gateway user-API
+adapter is implemented in source PR #1102; those Key obligations remain open pending its adoption,
+deployment and protected original-Key readback. The retained order has passed storage after three
+Fabric repairs were merged and deployed. Its original CP Delete now waits at `compute_absent`: the
+TKE/Machine are absent, but the original CVM remains `SHUTDOWN / MANMADE`. The retained deletion
+receipt and original-charge settlement are still unconfirmed. See [the exact dated evidence](status.md#original-order-closeout-scope-2026-10-23).
 
-The bounded Fabric repair for the shortened live CBS deadline is now adopted
-and verified. Continue the
-same original Delete through the existing owner, then obtain fresh exact
-resource/binding and route absence, deletion/Ledger and original-charge
-settlement readback. Preserve the existing mutation journal; another unchanged
-plan, a new Delete identity or a SQL state rewrite is not a recovery result.
+Continue the same original Delete from these actual owner facts:
+
+- Obtain fresh `NOT_FOUND` for the exact CVM as well as Machine/TKE absence, then let the existing
+  worker complete deletion/Ledger and original-charge settlement. Tencent documents up to fifteen
+  days of prepaid recycle retention; an immediate second `TerminateInstances` is irreversible final
+  release and is a separate provider operation, not a read retry. The current Fabric path only
+  deletes the TKE Machine and reads CVM absence; it has no approved direct recycle-release entry. Do
+  not weaken the absence predicate or reset the uncertain dispatch journal to force another
+  mutation. Provider guidance: [recycle
+  policy](https://cloud.tencent.com/document/product/213/4931),
+  [TerminateInstances](https://cloud.tencent.com/document/api/213/15723).
+- Adopt and qualify #1102 through its existing PR/Instance route. It uses the mapped user's valid
+  delegated credential, exact external-Key identity and readback; it adds no service-key route or
+  permanent revoke. After adoption, resume only the original Key closeout with that user's current
+  valid delegation. Preserve reauthentication and lost-response behavior; removing a Secret is not
+  proof of deactivation.
+
+Preserve the original identities and mutation journal. A new Delete, duplicate refund, direct
+database rewrite or another unchanged plan does not advance these acceptance conditions.
 
 Workspace owns native order closeout; Control Plane retains its historical
 Launch, deletion and settlement obligations. Fabric owns resource dispatch and

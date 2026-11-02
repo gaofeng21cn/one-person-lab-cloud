@@ -629,46 +629,55 @@ route-retirement evidence:
 | `workspace_298869134c959a28727aec8d5b4c3c44` | [40488525215](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40488525215) | [40567327722](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40567327722) |
 | `workspace_d08634cf6b6d62f9b6d5277f5430fabf` | [40486429325](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40486429325) | [40567470540](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40567470540) |
 
-Their Key obligations remain separately outstanding. The October 23 operation
-attribution receipts preserved by [Instance PR #579](https://github.com/gaofeng21cn/opl-instance-medopl/pull/579)
-remain original-record provenance; their stalled create projections are not the
-current deletion or settlement result.
+Fresh owner reads on November 2 reconfirm native A
+([41411236579](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41411236579)) and B
+([41410972313](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41410972313)):
+resource absence, deletion receipt and original-charge refund are confirmed. Both original
+operations retain `needs_attention / OWNER_CAPABILITY_UNAVAILABLE` at `disable_managed_key`, with
+Key closeout `rejected`. These are separate outstanding Key obligations. The older attribution
+receipts remain provenance for their original create and Key commands.
 
-The retained order `ws-75e18d83e13db76332` remains in the same CP Delete operation,
-`manual_review / attachment_absent`, waiting at `storage_absent` with
-`fabric_storage_unconfirmed`. [Original apply 40636805608](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40636805608)
-sent one DELETE and received HTTP 502. CP can return that response after executing
-the owner chain. [Plan 41399036753](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41399036753)
-only observed the existing operation and sent no DELETE.
+The retained order `ws-75e18d83e13db76332` has now completed the storage stage of its original CP
+Delete. Three reproduced Fabric defects were repaired and adopted through the standard protected
+Instance deployment path:
 
-[Historical storage observation 40805603306](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/40805603306)
-records `storage_destroy_provider_identity_mismatch`. The frozen resource and
-failed destroy retain the same disk, account, Workspace, operation, tags and
-original top-level deadline; only the live `ProviderData.deadline` moved earlier.
-The old readback mutated a shared map, and the exact comparison then rejected
-that observation and its persisted recovery. The destroy journal records
-`dispatch_authorized_uncertain`, mutation count zero and no terminate request.
+| Repair | Source | Installed evidence |
+| --- | --- | --- |
+| Clone readback data and preserve the frozen original term when CBS shortens its live deadline | [#1098](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1098) | [41405516276](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41405516276) |
+| Accept successful empty output from the exact named `kubectl get --ignore-not-found -o json` when both PV/PVC objects are absent | [#1099](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1099) | [41409241109](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41409241109) |
+| Clear the prior retry classification and error from a successful storage recovery | [#1100](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1100) | [41411868286](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41411868286) |
 
-[Fresh protected observation 41401022950](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41401022950)
-at 2026-11-02T06:37:21Z binds installed Cloud `d9ba0096220c8fcb756dfd18b14d41ffe0233554`
-and Instance `33d000be459f2e2f05c3bbf8033802b35689fc6c`. The exact storage read
-succeeded with HTTP 200, matching identity checks and current
-`external_deleted / NOT_FOUND / absence_confirmed`, with zero provider mutations.
-Its `bindingPresent=null` does not prove binding cleanup. The overall receipt is
-`partial / source_unavailable` because two runtime-health sources failed; it is
-not an overall successful acceptance. All recorded business, provider and
-Kubernetes mutation counters are zero.
+The last deployment binds Cloud source `566872e108845bed0010818b3ba24e32c701d490`, product tree
+`86632a8bb3eb75a68e79586f6cbad5e318d4aa5c`, and image
+`sha256:6c6dff00018820e16c570a1dd3dcc00d0f81d398e2f8e78db9c4bfda8b16d994`. Independent [verification
+41412182290](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41412182290) passes all
+twelve installation checks. The focused Fabric suite passes 1,649 tests/subtests with zero
+failures/skips, including real PostgreSQL reopen and Docker integration. The complete local gate
+also passes on the exact deployed source with PostgreSQL and Docker integration. The regressions
+reproduce the earlier failure and retain original resource identities, mutation journals and fresh
+absence requirements.
 
-The Fabric repair clones readback data, preserves the accepted top-level term,
-and permits a valid live deadline no later than that original term during
-Tencent deletion and persisted recovery. Original resource identities, tags,
-region, static-binding checks and fresh absence evidence remain required.
-Recovery uses the existing journal and cannot re-send an uncertain CBS terminate.
-The source regression exercises shortened, extended, invalid and missing
-observations, foreign identity refusal, and recovery after reopening PostgreSQL.
-Production adoption and completion of the retained Delete, binding cleanup,
-receipt and original-charge settlement remain open in
-[the roadmap](roadmap.md#original-order-workspace-closeout-1018).
+[Owner observation
+41412189688](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41412189688), at
+2026-11-02T08:20Z, binds the same original Delete digest
+`sha256:a3d709c944d2ba008f5529c1e2a47c834a2b53584dc738536b21c63a85b38635`. Its immutable
+`storage_absent` stage evidence confirms the original CBS disk is `NOT_FOUND` and
+`bindingPresent=false`; the recovered Fabric record has no stale retry classification or error and
+records zero CBS termination mutations. CP is now `running / storage_absent`, waiting for
+`compute_absent`. The exact compute identity passes its owner and provider checks, but Tencent still
+reports CVM `SHUTDOWN / MANMADE` while the Machine is absent and TKE is `NOT_FOUND`. Fabric retains
+`destroying / unconfirmed_send`; this is not compute absence. The overall observation remains
+`partial / source_unavailable` and all of its observation mutation counters are zero.
+
+[Read-only closeout
+41412409471](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41412409471)
+independently binds the original account, purchase and Workspace. It reports
+`special_chain_deletion_incomplete`, current stage `compute_absent`, original charge 52,580,000 USD
+micros, and no confirmed refund or deletion receipt. Exact resource release, retained
+deletion/Ledger/settlement and the separate Key outcomes remain the [open acceptance
+work](roadmap.md#original-order-workspace-closeout-1018). Instance
+[#666](https://github.com/gaofeng21cn/opl-instance-medopl/pull/666) preserves the current
+deployment, verification and owner receipts unchanged.
 
 The original CP owner remains responsible until a verified handover. #1052 owns
 the separate retained-owner migration decision; this repair changes neither
