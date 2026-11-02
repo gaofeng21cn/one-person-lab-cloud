@@ -313,6 +313,7 @@ func (s *Service) dispatchStorageDestroy(ctx context.Context, operation FabricOp
 		}
 		return providerErr
 	}
+	operation.ErrorCode = ""
 	if err := s.recordOperation(ctx, operation, "succeeded", volume, nil); err != nil {
 		return err
 	}
@@ -406,6 +407,7 @@ func (s *Service) recoverStorageDestroyByReadback(ctx context.Context, operation
 		return fmt.Errorf("%w: %v", errStorageDestroyRecoveryUnconfirmed, readErr)
 	}
 	if storageDestroyReadbackConfirmsAbsence(readback) && !residualBinding {
+		operation.ErrorCode = ""
 		if err := s.recordOperation(ctx, operation, "succeeded", readback, nil); err != nil {
 			return err
 		}

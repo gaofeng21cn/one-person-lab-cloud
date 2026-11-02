@@ -291,6 +291,7 @@ func TestTencentProviderDestroyStorageRejectsMalformedBindingReadback(t *testing
 
 func TestTencentProviderDestroyStorageAcceptsEmptyBindingReadback(t *testing.T) {
 	resource := canonicalTencentStorageDestroyFixture()
+	resource.DestroyState = StorageDestroyStatePendingRetry
 	provider := NewTencentProvider()
 	provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
 		if len(args) > 0 && args[0] == "get" {
@@ -309,7 +310,7 @@ func TestTencentProviderDestroyStorageAcceptsEmptyBindingReadback(t *testing.T) 
 	}
 	ctx := context.WithValue(context.Background(), workspaceStorageDeleteOwnerContextKey{}, resource)
 	result, err := provider.DestroyStorageVolume(ctx, resource)
-	if err != nil || !storageDestroyReadbackConfirmsAbsence(result) || result.BindingPresent == nil || *result.BindingPresent {
+	if err != nil || !storageDestroyReadbackConfirmsAbsence(result) || result.BindingPresent == nil || *result.BindingPresent || result.DestroyState != "" {
 		t.Fatalf("empty binding readback was not accepted as absence: result=%#v err=%v", result, err)
 	}
 }
