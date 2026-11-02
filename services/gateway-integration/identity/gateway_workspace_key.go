@@ -169,17 +169,97 @@ func mapGatewayUserWriteError(err error) error {
 	return status.Error(codes.Unavailable, "Gateway key creation outcome is unknown")
 }
 
-// RevokeWorkspaceKey remains unavailable because the existing user API has no
-// Cloud-approved reversible Workspace lifecycle command. Key rotation creates a
-// new mapped Key; it does not invent a Gateway disable/delete route here.
+// RevokeWorkspaceKey remains unavailable because this closeout only needs the
+// existing reversible user-key lifecycle. Permanent key revocation remains a
+// separate owner decision and must not be inferred from Workspace deletion.
 func (*GatewayWorkspaceKeyIssuer) RevokeWorkspaceKey(context.Context, string, string) error {
 	return status.Error(codes.Unimplemented, "no approved Gateway user-key revocation operation is configured")
 }
 
-func (*GatewayWorkspaceKeyIssuer) SetWorkspaceKeyState(context.Context, string, string, ManagedKeyExternalState) error {
-	return status.Error(codes.Unimplemented, "no approved Gateway user-key lifecycle operation is configured")
+func (i *GatewayWorkspaceKeyIssuer) SetWorkspaceKeyState(ctx context.Context, subject, externalKeyID string, state ManagedKeyExternalState) error {
+	keyID, delegation, err := i.lifecycleRequest(ctx, subject, externalKeyID)
+	if err != nil {
+		return err
+	}
+	statusValue := "inactive"
+	if state == ManagedKeyExternalActive {
+		statusValue = "active"
+	} else if state != ManagedKeyExternalDisabled {
+		return status.Error(codes.InvalidArgument, "unsupported Gateway key lifecycle state")
+	}
+	_, err = i.gateway.requestWithMethod(ctx, http.MethodPut, "/api/v1/keys/"+keyID, map[string]string{"status": statusValue}, delegation.Bearer, nil)
+	if err != nil {
+		return mapGatewayUserWriteError(err)
+	}
+	return nil
 }
 
-func (*GatewayWorkspaceKeyIssuer) ReadWorkspaceKeyState(context.Context, string, string) (ManagedKeyExternalState, error) {
-	return "", status.Error(codes.Unimplemented, "no approved Gateway user-key lifecycle readback is configured")
+func (i *GatewayWorkspaceKeyIssuer) ReadWorkspaceKeyState(ctx context.Context, subject, externalKeyID string) (ManagedKeyExternalState, error) {
+	keyID, delegation, err := i.lifecycleRequest(ctx, subject, externalKeyID)
+	if err != nil {
+		return "", err
+	}
+	key, err := i.readWorkspaceKey(ctx, delegation, subject, keyID)
+	if status.Code(err) == codes.NotFound {
+		return ManagedKeyExternalRevoked, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	switch key.Status {
+	case "active":
+		return ManagedKeyExternalActive, nil
+	case "disabled", "inactive":
+		return ManagedKeyExternalDisabled, nil
+	default:
+		return "", status.Error(codes.Unavailable, "Gateway returned an unsupported Workspace key state")
+	}
+}
+
+func (i *GatewayWorkspaceKeyIssuer) lifecycleRequest(ctx context.Context, subject, externalKeyID string) (string, *ManagedKeyDelegation, error) {
+	if i == nil || i.gateway == nil {
+		return "", nil, status.Error(codes.FailedPrecondition, "no Gateway user key issuer is configured")
+	}
+	keyID, err := strconv.ParseInt(strings.TrimSpace(externalKeyID), 10, 64)
+	if err != nil || keyID <= 0 || strconv.FormatInt(keyID, 10) != externalKeyID {
+		return "", nil, status.Error(codes.InvalidArgument, "a positive Gateway key id is required")
+	}
+	if _, err = parseGatewaySubject(subject); err != nil {
+		return "", nil, err
+	}
+	delegation, err := managedKeyDelegationFromContext(ctx, subject)
+	if err != nil {
+		return "", nil, err
+	}
+	return strconv.FormatInt(keyID, 10), delegation, nil
+}
+
+func (i *GatewayWorkspaceKeyIssuer) readWorkspaceKey(ctx context.Context, delegation *ManagedKeyDelegation, subject, keyID string) (struct {
+	ID     int64  `json:"id"`
+	UserID int64  `json:"user_id"`
+	Status string `json:"status"`
+}, error) {
+	var key struct {
+		ID     int64  `json:"id"`
+		UserID int64  `json:"user_id"`
+		Status string `json:"status"`
+	}
+	payload, err := i.gateway.requestWithMethod(ctx, http.MethodGet, "/api/v1/keys/"+keyID, nil, delegation.Bearer, nil)
+	if err != nil {
+		var upstream *gatewayHTTPError
+		if errors.As(err, &upstream) && upstream.StatusCode == http.StatusNotFound {
+			return key, status.Error(codes.NotFound, "Gateway Workspace key not found")
+		}
+		return key, mapGatewayUserReadError(err)
+	}
+	var envelope struct {
+		Code *int            `json:"code"`
+		Data json.RawMessage `json:"data"`
+	}
+	subjectID, _ := parseGatewaySubject(subject)
+	if json.Unmarshal(payload, &envelope) != nil || envelope.Code == nil || *envelope.Code != 0 || len(envelope.Data) == 0 ||
+		json.Unmarshal(envelope.Data, &key) != nil || key.ID <= 0 || strconv.FormatInt(key.ID, 10) != keyID || key.UserID != subjectID {
+		return key, status.Error(codes.Unavailable, "Gateway returned an invalid Workspace key identity")
+	}
+	return key, nil
 }

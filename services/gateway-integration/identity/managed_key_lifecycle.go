@@ -68,6 +68,10 @@ func (s *Service) ReadManagedKeyLifecycle(ctx context.Context, r *api.ManagedKey
 	if s.KeyIssuer == nil {
 		return nil, status.Error(codes.FailedPrecondition, "no approved Gateway key issuer is configured")
 	}
+	ctx, err = s.contextForManagedKeyIssuer(ctx, subject)
+	if err != nil {
+		return nil, err
+	}
 	state, err := s.KeyIssuer.ReadWorkspaceKeyState(ctx, subject, key.ExternalKeyID)
 	if err != nil {
 		return nil, err
@@ -96,6 +100,10 @@ func (s *Service) setManagedKeyLifecycle(ctx context.Context, r *api.ManagedKeyL
 	}
 	if s.KeyIssuer == nil {
 		return nil, status.Error(codes.FailedPrecondition, "no approved Gateway key issuer is configured")
+	}
+	ctx, err = s.contextForManagedKeyIssuer(ctx, subject)
+	if err != nil {
+		return nil, err
 	}
 	externalDesired, err := externalManagedKeyState(desired)
 	if err != nil {
@@ -138,6 +146,17 @@ func (s *Service) setManagedKeyLifecycle(ctx context.Context, r *api.ManagedKeyL
 		return nil, status.Error(codes.Unavailable, "the Gateway key lifecycle change was confirmed but could not be recorded")
 	}
 	return managedKeyLifecycleReadback(updated, observed)
+}
+
+func (s *Service) contextForManagedKeyIssuer(ctx context.Context, subject string) (context.Context, error) {
+	if requires, ok := s.KeyIssuer.(interface{ requiresDelegatedCredential() bool }); ok && requires.requiresDelegatedCredential() {
+		delegation, err := s.delegatedCredentialForSubject(ctx, subject)
+		if err != nil {
+			return nil, err
+		}
+		ctx = withManagedKeyDelegation(ctx, delegation)
+	}
+	return ctx, nil
 }
 
 // managedKeyLifecycleBinding validates one lifecycle command and resolves the

@@ -107,6 +107,23 @@ the existing user-scoped Gateway route. Response loss and retries use the Cloud
 operation identity and Gateway readback; they never mint a second Key merely
 because the first response was lost.
 
+## 2026-11-02: Workspace Key Closeout Uses The Existing User API
+
+For the original-order closeout in #1018, Gateway Integration uses the exact
+Workspace Key id and the mapped user's currently valid, freshly verified
+delegated bearer with the existing `/api/v1/keys/{id}` read and update APIs.
+Reversible disable/enable uses the existing `active`/`inactive` state and only
+the external readback may update Cloud's lifecycle record. No service token,
+administrative endpoint, new Gateway route, or direct database write is added.
+If a valid user delegation is unavailable after restart, closeout remains
+unconfirmed until that user has a fresh Cloud login; no other credential is
+substituted.
+
+This scoped owner path resolves the earlier service-endpoint prerequisite for
+reversible lifecycle read/write only. It does not authorize permanent
+`RevokeManagedKey`, bulk key actions, or a different Workspace's Key. Permanent
+revocation remains unavailable unless its separate owner contract is adopted.
+
 ## 2026-10-15: Workspace Key Lifecycle And Cloud Customer Reads
 
 This decision records product intent. It does not establish that the required

@@ -16,6 +16,25 @@ boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Workspace Managed-Key Closeout Adapter Source (2026-11-02)
+
+The Cloud source Gateway Workspace-Key adapter now implements the already-owned
+reversible lifecycle through the existing user-scoped `/api/v1/keys/{id}` API.
+The owner obtains a live delegated credential for the exact mapped Gateway
+subject, verifies the exact key id and user id on read, applies only `active` or
+`inactive`, and confirms the external state before writing the local lifecycle
+version. A missing, expired, or wrong-subject delegation fails closed. Permanent
+key revocation remains unavailable and was not added.
+
+The Gateway Integration module test suite passes. The repository focused gate
+passed product-boundary and generated-contract freshness checks, but its Go test
+step rejects the package's existing PostgreSQL-gated skips because no isolated
+`OPL_OWNER_MIGRATION_TEST_ADMIN_DSN` is configured. No Candidate, Instance
+deployment, production key action, or A/B key closeout was executed. This source
+repair does not close #1018; the original retained order still needs compute
+absence, deletion/Ledger receipt and original-charge settlement, and the native
+orders need protected key closeout evidence.
+
 ## Protected Tenant Payer Readback Repair (2026-11-02)
 
 A local source change against `eb96132e9c8be48b12f0ea36010e5e7431b25caa`

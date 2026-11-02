@@ -191,7 +191,7 @@ a deployed Candidate or final business PASS.
 | Priority | Outcome | Cloud owner | Current state | Completion evidence |
 | --- | --- | --- | --- | --- |
 | P0 | Move live model-configuration callers to Workspace/Gateway/Fabric/Serve | Workspace, Console BFF/UI, Control Plane migration | Owner-separated source path is implemented; the BFF/UI model-configuration routes already read and write through the Workspace owner, so the first completion clause is met and this row stays open only for the old writer's remaining callers and owner/browser acceptance | BFF/UI uses the Workspace owner for read/write, old writer has no configured caller, owner and browser tests pass |
-| P0 | Complete live Gateway mapping, Group management and Workspace Key rotation | Gateway Integration plus external Gateway | Cloud now routes Workspace Key creation through the logged-in Gateway user's existing `/api/v1/groups/available` and `/api/v1/keys` APIs, carries the operation idempotency key, stores only external Key identity/fingerprint/Secret reference, and leaves effective routing to the external Group. Group administration, key rotation/lifecycle closeout and deployed external readback remain open. Cloud local tests cover the adapter contract; they do not establish production Gateway state | Prove the deployed Cloud login-to-Gateway mapping, existing `Codex` Group readback, one Workspace Key creation and Secret/config handover, retry replay without a second Key, rotation/old-Key closeout and no raw Key in persistence or receipts |
+| P0 | Complete live Gateway mapping, Group management and Workspace Key rotation | Gateway Integration plus external Gateway | Cloud now routes Workspace Key creation and reversible lifecycle read/write through the logged-in Gateway user's existing APIs, with exact user/key identity checks and authoritative external readback. Group administration, key rotation and deployed external acceptance remain open. Permanent revocation remains separate and unavailable. | Prove the deployed Cloud login-to-Gateway mapping, existing `Codex` Group readback, one Workspace Key creation and Secret/config handover, retry replay without a second Key, rotation/old-Key closeout and no raw Key in persistence or receipts |
 | P0 | Finish Serve typed application execution and route activation | Serve; Instance owns ingress/DNS/TLS | Source route owner and model apply/readback exist; initial dependency progression and Workspace retirement intent have owner and executor boundary tests; owner-local conditional route CAS is implemented; typed Fabric application RPC and installation-level Ingress/route-object CAS remain | Typed execution contract, conditional route CAS, real TKE Service/readiness/access request and lost-response recovery |
 | P0 | Close the Workspace deletion through the Ledger receipt to the refund | Workspace and Ledger | Ledger now admits the confirmed-deletion provider-action receipt into its own non-financial writer and resolves it back through `ReadReceiptByReference`, so the structural refusal that blocked the closure is gone at source over real gRPC and PostgreSQL. Workspace now limits consecutive unconfirmed automatic passes of one deletion step to twelve, then leaves the operation at needs_attention with its original unknown/rejected observation; a newly authorized acknowledged delete replay resumes that same operation. After a pending Fabric read it replays the frozen original DeleteResources command, because ReadResources alone cannot advance Fabric. Isolated PostgreSQL tests cover the actual Workspace worker/caller with synthetic owner clients, and the Cloud detail page now reaches the deletion owner. A Local-Docker host run on `251713ad` carries the owner-authorized deletion through the real Ledger receipt to the fixture-authority refund with the recorded absence, and a second run repeats it; live Sub2API/Gateway refund, provider/Serve/identity/wallet production readback and TKE provider adoption remain unproven | One owner-authoritative end-to-end deletion that reaches the confirmed refund against the recorded absence receipt, met on Local-Docker with fixture authority per [status](status.md#verified-clean-host-qualification); source retry/recovery bounds are delivered, not production absence or refund acceptance |
 | P0 | Repair the Resource Catalog refund policy list encoding defect | Resource Catalog | `scanRefundPolicy` normalized neither separator when it mapped the stored hyphenated algorithm, so the required `algorithm` property silently became the unspecified member and the public encoder refused the administrator list page once a row existed; the source is repaired and the focused list-read test over a stored hyphenated algorithm passes, while the repaired source has reached the verified `78dbe9b4` Instance Candidate but the administrator list page still needs a fresh owner-authoritative readback | [defect source check](evidence/source-checks/2026-10-08-refund-policy-list-enum-encoding-defect.json); [repair source check](evidence/source-checks/2026-10-09-refund-policy-algorithm-enum-encoding.json); the administrator refund policy list reads back at 200 on a Candidate built from the repaired source |
@@ -338,11 +338,12 @@ readback. No source-only PR closes #1042 or the original orders in #1018.
 
 The two native orders have protected resource-absence, deletion-receipt, original-charge-refund and
 Serve route-retirement evidence. November 2 owner reads reconfirm those outcomes and separately
-retain `OWNER_CAPABILITY_UNAVAILABLE / disable_managed_key`. The retained order has passed the
-previously blocked storage stage after three Fabric repairs were merged and deployed. Its original
-CP Delete now waits for exact compute absence: TKE/Machine are absent, but the original CVM remains
-`SHUTDOWN / MANMADE`. The retained deletion receipt and original-charge settlement are still
-unconfirmed. See [the exact dated evidence](status.md#original-order-closeout-scope-2026-10-23).
+retain `OWNER_CAPABILITY_UNAVAILABLE / disable_managed_key`. The reversible Gateway user-API
+adapter is implemented in source PR #1102; those Key obligations remain open pending its adoption,
+deployment and protected original-Key readback. The retained order has passed storage after three
+Fabric repairs were merged and deployed. Its original CP Delete now waits at `compute_absent`: the
+TKE/Machine are absent, but the original CVM remains `SHUTDOWN / MANMADE`. The retained deletion
+receipt and original-charge settlement are still unconfirmed. See [the exact dated evidence](status.md#original-order-closeout-scope-2026-10-23).
 
 Continue the same original Delete from these actual owner facts:
 
@@ -355,12 +356,11 @@ Continue the same original Delete from these actual owner facts:
   mutation. Provider guidance: [recycle
   policy](https://cloud.tencent.com/document/product/213/4931),
   [TerminateInstances](https://cloud.tencent.com/document/api/213/15723).
-- Resolve each original native managed-Key binding through Gateway Integration's existing
-  user-credential boundary. The installed user-Key adapter still refuses lifecycle read/write;
-  implement and qualify exact external-Key ownership, disable and state readback through existing
-  Gateway user APIs before resuming the original Key closeout. Preserve reauthentication and
-  lost-response behavior. The retired service-Key route is not the selected solution, and removal of
-  a Secret is not proof of deactivation.
+- Adopt and qualify #1102 through its existing PR/Instance route. It uses the mapped user's valid
+  delegated credential, exact external-Key identity and readback; it adds no service-key route or
+  permanent revoke. After adoption, resume only the original Key closeout with that user's current
+  valid delegation. Preserve reauthentication and lost-response behavior; removing a Secret is not
+  proof of deactivation.
 
 Preserve the original identities and mutation journal. A new Delete, duplicate refund, direct
 database rewrite or another unchanged plan does not advance these acceptance conditions.

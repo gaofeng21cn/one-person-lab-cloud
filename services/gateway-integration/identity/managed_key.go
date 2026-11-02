@@ -350,6 +350,20 @@ type ManagedKeyDelegation struct {
 	ExpiresAt time.Time
 }
 
+type managedKeyDelegationContextKey struct{}
+
+func withManagedKeyDelegation(ctx context.Context, delegation *ManagedKeyDelegation) context.Context {
+	return context.WithValue(ctx, managedKeyDelegationContextKey{}, delegation)
+}
+
+func managedKeyDelegationFromContext(ctx context.Context, subject string) (*ManagedKeyDelegation, error) {
+	delegation, ok := ctx.Value(managedKeyDelegationContextKey{}).(*ManagedKeyDelegation)
+	if !ok || delegation == nil || delegation.Subject != subject || strings.TrimSpace(delegation.Bearer) == "" || !delegation.ExpiresAt.After(time.Now()) {
+		return nil, reauthenticationRequired()
+	}
+	return delegation, nil
+}
+
 // ManagedKeyIssueResult is the issuer-confirmed identity of one issued key. The
 // raw value is handed straight to the approved Secret store and never persisted
 // in a Gateway table. ModelIDs is an optional Cloud projection; an empty list
