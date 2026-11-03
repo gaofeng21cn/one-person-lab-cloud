@@ -469,6 +469,7 @@ func TestFabricProviderMutationsRequireCapabilityBeforeStateChange(t *testing.T)
 		body string
 	}{
 		{name: "attachment create", path: "/fabric/storage-attachments", body: `{"accountId":"acct-alpha","workspaceId":"ws-alpha","computeId":"compute-alpha","volumeId":"volume-alpha"}`},
+		{name: "irreversible compute release", path: "/fabric/compute-allocations/compute-alpha/release-recycled", body: `{"accountId":"acct-alpha","workspaceId":"ws-alpha","destroyOperationId":"original-destroy","confirmation":"RELEASE_ORIGINAL_RECYCLED_CVM"}`},
 		{name: "runtime credential reveal", path: "/fabric/workspace-runtimes/ws-alpha/credentials/reveal", body: `{"accountId":"acct-alpha","workspaceId":"ws-alpha"}`},
 		{name: "compute pool head terminalization", path: "/fabric/compute-pool-head/terminalization", body: `{"nodePoolId":"np-basic","approvalId":"operation-alpha","approvalDigest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`},
 	} {
@@ -2043,6 +2044,41 @@ func TestRuntimeObservationsRequireControlPlaneReadIdentity(t *testing.T) {
 			}
 			if tc.token == "internal-secret" && !strings.Contains(response.Body.String(), "runtime_observations_unavailable") {
 				t.Fatal("authenticated route did not reach observation owner")
+			}
+		})
+	}
+}
+
+func TestFinalReleaseCapabilityAndDecoder(t *testing.T) {
+	valid := `{"accountId":"acct-alpha","workspaceId":"ws-alpha","destroyOperationId":"original-destroy","confirmation":"RELEASE_ORIGINAL_RECYCLED_CVM"}`
+	for _, tc := range []struct {
+		name, body, caller, action string
+		want                       int
+	}{
+		{"ordinary destroy signature", valid, "control-plane", "destroy_compute_allocation", http.StatusForbidden},
+		{"control plane caller", valid, "control-plane", "release_recycled_compute_allocation", http.StatusForbidden},
+		{"malformed body", valid + `{}`, "operator", "release_recycled_compute_allocation", http.StatusForbidden},
+		{"wrong field type", `{"accountId":"acct-alpha","workspaceId":"ws-alpha","destroyOperationId":42}`, "operator", "release_recycled_compute_allocation", http.StatusBadRequest},
+		{"exact capability reaches owner validation", valid, "operator", "release_recycled_compute_allocation", http.StatusInternalServerError},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := fabric.NewMemoryOperationStore()
+			server := NewServerWithAuth(fabric.NewServiceWithOperationStore(testProvider{}, store), ServerAuthConfig{ControlPlaneToken: "internal-secret", CapabilityKey: testFabricCapabilityKey})
+			body := []byte(tc.body)
+			req := httptest.NewRequest(http.MethodPost, "/fabric/compute-allocations/compute-alpha/release-recycled", bytes.NewReader(body))
+			req.Header.Set("Authorization", "Bearer internal-secret")
+			req.Header.Set("Idempotency-Key", "final-release")
+			req.Header.Set(fabricCapabilityHeader, fabricCapabilityForTest(t, fabricCapabilityClaimsForTest{
+				Version: 1, Caller: tc.caller, AccountID: "acct-alpha", WorkspaceID: "ws-alpha", ResourceKind: "compute_allocation", ResourceID: "compute-alpha", Action: tc.action, OperationID: "final-release", ExpiresAt: time.Now().Add(time.Minute).Unix(),
+			}, body))
+			rec := httptest.NewRecorder()
+			server.ServeHTTP(rec, req)
+			if rec.Code != tc.want {
+				t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+			}
+			operations, err := store.List(t.Context())
+			if err != nil || len(operations) != 0 {
+				t.Fatalf("rejected request wrote operations: %v %v", operations, err)
 			}
 		})
 	}

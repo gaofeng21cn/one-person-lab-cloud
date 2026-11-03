@@ -1229,6 +1229,7 @@ func (p *TencentProvider) ReadComputeDestroyStatus(ctx context.Context, allocati
 	}
 	confirmed := cloneComputeAllocation(allocation)
 	confirmed.Status = "external_deleted"
+	confirmed.DestroyState = ""
 	confirmed.ProviderRequestID = response.ProviderRequestID
 	confirmed.CVMStatus = response.CVMStatus
 	// Typed absence facts for the caller: the machine is gone and TKE no longer

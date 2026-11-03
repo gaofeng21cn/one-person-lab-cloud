@@ -1071,6 +1071,16 @@ It remains readable after the Workspace projection is removed so a pending
 Ledger Receipt is not displayed as completion. Compute absence reads remain
 scheduled until the owner confirms absence, without repeating destroy.
 
+Fabric's explicit `POST /fabric/compute-allocations/{id}/release-recycled` entry accepts an
+operator capability, original account/Workspace/destroy operation and fixed irreversible-release
+confirmation. `compute_final_release.go` persists a separate resource-scoped dispatch fence in
+its existing operation store under the destroy/pool locks. The Tencent adapter requires the exact
+Machine to be absent and the original CVM to be prepaid, `SHUTDOWN / MANMADE`, with matching
+zone, instance type, private IP and ownership tags before one `TerminateInstances` call. Replays
+only read exact absence. It does not rewrite the original destroy, settle a charge or generate a
+Workspace deletion receipt; the existing owners continue those obligations. Instance owns the
+protected invocation, installation admission and redacted execution receipt.
+
 Each Workspace operation owns renewal intent and one combined monthly debit.
 Compute and storage rows are provider facts, not independent customer renewal
 controls. The existing monthly worker wakes at the next known renewal/expiry

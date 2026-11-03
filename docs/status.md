@@ -691,6 +691,16 @@ therefore still not settled: its deletion receipt and original-charge settlement
 The observation's Fabric transport also returned `source_unavailable`, so it is retained as partial
 readback evidence rather than completion.
 
+On 2026-11-03, the owner authorized irreversible final release of this exact retained CVM.
+[Observation 41558773536](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41558773536)
+still confirms `SHUTDOWN / MANMADE`, Machine/TKE absence and matching original identities, with
+zero observation mutations. The overall receipt remains partial because service-health sources
+were unavailable. The new Fabric operator entry persists an exact-resource dispatch fence,
+checks recycled prepaid state and original ownership before `TerminateInstances`, and reconciles
+uncertain responses by reads only. Successful compute absence also clears stale retry state.
+This is source behavior pending Candidate adoption and protected Instance execution; the retained
+order's final resource absence, deletion receipt and original-charge settlement remain open.
+
 The original CP owner remains responsible until a verified handover. #1052 owns
 the separate retained-owner migration decision; this repair changes neither
 write ownership nor protected execution authority. Native unfinished-order
