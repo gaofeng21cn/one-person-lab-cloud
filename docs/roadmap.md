@@ -342,27 +342,19 @@ through the protected Instance path in [#668](https://github.com/gaofeng21cn/opl
 without creating a second operation or refund. Final owner readbacks [A 41494327849](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41494327849)
 and [B 41494333326](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41494333326) show
 `succeeded / confirmed`, no pending step, confirmed original refund and `keyCloseoutOutcome=confirmed`.
-The retained order has passed storage after three Fabric repairs were merged and deployed. Its original
-CP Delete still waits at `compute_absent`: TKE/Machine is `NOT_FOUND`, but the exact CVM remains
-`SHUTDOWN / MANMADE` and Fabric reports `pending_deletion`. The retained deletion receipt and
-original-charge settlement are still unconfirmed. See [the exact dated evidence](status.md#original-order-closeout-scope-2026-10-23).
+The retained original order is also complete. The explicitly authorized final release was
+confirmed by read-only reconciliation [41564327626](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41564327626),
+with exact original-resource absence and a durable dispatch fence. Independent original-order
+closeout [41564472462](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41564472462)
+confirms completed deletion, readable Ledger/deletion and refund receipts, and settlement of the
+original 52,580,000 USD-micro charge with a 25,559,722 USD-micro refund. Its checks confirm the refund
+was dispatched once and remained within the original charge. The verification itself made no
+business or provider writes. [Dated evidence](status.md#original-order-closeout-scope-2026-10-23)
+preserves the blocked preflight and initially unknown release attempt as well as their successful
+read-only reconciliation. #1018 is closed; no further order closeout is planned for these selectors.
 
-Continue the same original Delete from these actual owner facts:
-
-- The owner authorized immediate irreversible final release of the retained original CVM on
-  2026-11-03. Fabric now has a separate operator-capability entry, bound to the original destroy
-  operation and exact recycled prepaid CVM. Its durable dispatch fence permits at most one
-  provider call; subsequent attempts only read absence. Adopt this source through Candidate and
-  the protected Instance consumer, then obtain fresh Machine/TKE/CVM `NOT_FOUND` and let the
-  existing Delete complete deletion/Ledger and original-charge settlement. The ordinary destroy
-  path and its uncertain dispatch journal remain unchanged. Provider guidance: [recycle
-  policy](https://cloud.tencent.com/document/product/213/4931),
-  [TerminateInstances](https://cloud.tencent.com/document/api/213/15723).
-- Native A/B adoption and Key closeout are complete as recorded above. Preserve those original
-  operation and refund receipts; the remaining acceptance target is the retained order.
-
-Preserve the original identities and mutation journal. A new Delete, duplicate refund, direct
-database rewrite or another unchanged plan does not advance these acceptance conditions.
+Preserve the original operation and settlement evidence. This completed acceptance does not
+retire the retained Control Plane writer or satisfy #1052's separate migration obligations.
 
 Workspace owns native order closeout; Control Plane retains its historical
 Launch, deletion and settlement obligations. Fabric owns resource dispatch and
@@ -370,7 +362,7 @@ provider absence, Serve owns native deployment and route retirement, Gateway
 owns wallet/Key results, and Ledger owns receipts. Keep the existing owner
 boundaries and original identities. The [current implementation](implementation-architecture.md#original-order-closeout-boundaries)
 and [source evidence](status.md#original-order-closeout-scope-2026-10-23) distinguish
-existing capabilities from the remaining work.
+completed original-order acceptance from the separate migration work.
 
 The confirmed disposition on 2026-10-23 is to terminate all three original
 orders and clean up their residual resources. This is the intended outcome,
