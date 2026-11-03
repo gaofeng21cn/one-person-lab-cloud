@@ -440,6 +440,15 @@ func newFabricMux(service *fabric.Service) http.Handler {
 		allocation, err := service.DestroyComputeAllocation(r.Context(), strings.TrimSpace(r.PathValue("id")))
 		writeResult(w, allocation, err)
 	})
+	mux.HandleFunc("POST /fabric/compute-allocations/{id}/release-recycled", func(w http.ResponseWriter, r *http.Request) {
+		var input fabric.ComputeFinalReleaseInput
+		var key string
+		if !decodeWrite(w, r, &key, &input) {
+			return
+		}
+		result, err := service.ReleaseRecycledComputeAllocation(r.Context(), strings.TrimSpace(r.PathValue("id")), input)
+		writeResult(w, result, err)
+	})
 	mux.HandleFunc("POST /fabric/compute-allocations/{id}/renew", func(w http.ResponseWriter, r *http.Request) {
 		key := r.Header.Get("Idempotency-Key")
 		if key == "" {
@@ -901,7 +910,7 @@ func isFabricMutation(r *http.Request) bool {
 		return false
 	}
 	switch parts[1] + "/" + parts[3] {
-	case "compute-allocations/renew", "compute-allocations/destroy", "storage-volumes/renew", "storage-volumes/destroy", "storage-attachments/detach", "workspace-runtimes/repair", "workspace-runtimes/destroy", "workspace-runtimes/gateway-secret", "workspace-runtimes/image-replacements", "workspace-application-runtimes/readback", "workspace-application-runtimes/lifecycle", "workspace-application-runtimes/lifecycle-readback", "workspace-application-runtimes/credentials", "workspace-application-runtimes/preflight", "workspace-application-runtimes/gateway-secret-cleanup":
+	case "compute-allocations/release-recycled", "compute-allocations/renew", "compute-allocations/destroy", "storage-volumes/renew", "storage-volumes/destroy", "storage-attachments/detach", "workspace-runtimes/repair", "workspace-runtimes/destroy", "workspace-runtimes/gateway-secret", "workspace-runtimes/image-replacements", "workspace-application-runtimes/readback", "workspace-application-runtimes/lifecycle", "workspace-application-runtimes/lifecycle-readback", "workspace-application-runtimes/credentials", "workspace-application-runtimes/preflight", "workspace-application-runtimes/gateway-secret-cleanup":
 		return true
 	default:
 		return false
@@ -1005,6 +1014,9 @@ func fabricMutationScopeForRequest(ctx context.Context, resolver fabricMutationS
 			scope.Action = "renew_compute_allocation"
 		case "destroy":
 			scope.Action = "destroy_compute_allocation"
+		case "release-recycled":
+			scope.Caller = "operator"
+			scope.Action = "release_recycled_compute_allocation"
 		}
 	case len(parts) == 4 && parts[0] == "fabric" && parts[1] == "storage-volumes" && parts[2] != "":
 		scope.ResourceKind, scope.ResourceID = "storage_volume", parts[2]

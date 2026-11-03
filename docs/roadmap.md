@@ -349,20 +349,17 @@ original-charge settlement are still unconfirmed. See [the exact dated evidence]
 
 Continue the same original Delete from these actual owner facts:
 
-- Obtain fresh `NOT_FOUND` for the exact CVM as well as Machine/TKE absence, then let the existing
-  worker complete deletion/Ledger and original-charge settlement. Tencent documents up to fifteen
-  days of prepaid recycle retention; an immediate second `TerminateInstances` is irreversible final
-  release and is a separate provider operation, not a read retry. The current Fabric path only
-  deletes the TKE Machine and reads CVM absence; it has no approved direct recycle-release entry. Do
-  not weaken the absence predicate or reset the uncertain dispatch journal to force another
-  mutation. Provider guidance: [recycle
+- The owner authorized immediate irreversible final release of the retained original CVM on
+  2026-11-03. Fabric now has a separate operator-capability entry, bound to the original destroy
+  operation and exact recycled prepaid CVM. Its durable dispatch fence permits at most one
+  provider call; subsequent attempts only read absence. Adopt this source through Candidate and
+  the protected Instance consumer, then obtain fresh Machine/TKE/CVM `NOT_FOUND` and let the
+  existing Delete complete deletion/Ledger and original-charge settlement. The ordinary destroy
+  path and its uncertain dispatch journal remain unchanged. Provider guidance: [recycle
   policy](https://cloud.tencent.com/document/product/213/4931),
   [TerminateInstances](https://cloud.tencent.com/document/api/213/15723).
-- Adopt and qualify #1102 through its existing PR/Instance route. It uses the mapped user's valid
-  delegated credential, exact external-Key identity and readback; it adds no service-key route or
-  permanent revoke. After adoption, resume only the original Key closeout with that user's current
-  valid delegation. Preserve reauthentication and lost-response behavior; removing a Secret is not
-  proof of deactivation.
+- Native A/B adoption and Key closeout are complete as recorded above. Preserve those original
+  operation and refund receipts; the remaining acceptance target is the retained order.
 
 Preserve the original identities and mutation journal. A new Delete, duplicate refund, direct
 database rewrite or another unchanged plan does not advance these acceptance conditions.
