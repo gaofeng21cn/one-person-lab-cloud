@@ -538,15 +538,15 @@ Gateway Secret and deletion-residue observations retain their separate owners.
 ### Workspace Application Deployment
 
 This section describes retained CP operations, not the native purchase path.
-Their resource-only Launch may carry a separate durable
-`workspace.application.default-install` request from its original claim transaction.
-The HTTP request returns before the resource worker dispatches a charge. The
-application request freezes the installed default image policy and its OPL App
-runtime description; its Key is handed transiently to Fabric, retaining only
-Key identity and immutable Secret references. Resource activation and the
-purchase receipt do not depend on application readiness. Explicit resource-only
-purchases omit the installation request. Retained full Launch commands keep
-their original stages and immutable receipts.
+Historical resource-only Launches can retain a separate durable
+`workspace.application.default-install` request from their original claim
+transaction. Its frozen revision, Gateway Key identity and immutable Secret
+references remain readable for original-order matching, credential lineage and
+cleanup. The old default installer, customer installation-resume command and
+Launch-replay installation effects have been removed. Replaying an original
+order reads its accepted identity without preparing another Key or starting an
+installation. Retained full Launch commands keep their own original stages and
+immutable receipts; native purchases use Workspace and Serve.
 
 The application worker consumes admitted immutable revisions and existing
 Workspace resources. CP owns the selected and reserved deployment IDs on the
@@ -561,19 +561,23 @@ original purchase facts. Workspace/operation transactions and result CAS prevent
 a competing command or a delayed worker response from overwriting selection or
 completed progress. A successor does not create resources or charge the wallet.
 
-`OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED=1` enables both default
-installation and deployment recovery. The base Compose forwards this setting;
-the local Workspace overlay enables it. With the switch off, accepted requests
-remain durable without application execution. Operator revision/data admission and
-new deployment HTTP commands have been removed with their Console controller.
-Historical GET routes remain in `workspace_application_history_routes.go`.
-The existing operator `POST /api/operator/application-deployments/{id}/retry`
-remains for frozen failed operations, including retained credential/Key rotation
-children; the original reservation, selection/version, entitlement and
-rotation-parent fences still apply. It admits no new deployment. Customers
-continue a default installation with
-`POST /api/workspaces/{id}/application-installation/resume`; this reuses the
-original request, Key and deployment instead of making another purchase.
+`OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED=1` enables deployment
+recovery for retained credential and Workspace-Key rotation callers. It no longer
+scans or advances default-install requests. The base Compose forwards this
+setting; the local Workspace overlay enables it. Operator revision/data admission,
+new deployment commands and customer `application-installation/resume` have been
+removed with their Console mutation controls. Revision admission storage has no
+remaining production writer; historical revision/data/deployment GETs remain in
+`workspace_application_history_routes.go`. Default-install progress is not
+accepted by the deployment operation persistence port. Its historical preparation
+records remain a read barrier for deletion and Key rotation when unresolved.
+The operator `POST /api/operator/application-deployments/{id}/retry` remains for
+frozen failed deployments, including retained credential/Key rotation children;
+the original reservation, selection/version, entitlement and rotation-parent
+fences still apply. It admits no new deployment. The existing Console Workspace
+read flow retains scoped owner/runtime refresh while a selected application's
+credential deployment is pending; retiring installation commands does not
+remove asynchronous rotation readback.
 
 Application generation IDs own Runtime components and Secret mounts. OPL
 credential identity is frozen separately in the runtime configuration: ordinary
@@ -1389,27 +1393,25 @@ controls and exclusive DTOs/tests. Historical GETs remain behind
 material/revision records remain readable. The Instance installer command is withdrawn separately
 in the Instance repository; adopt its caller removal before the Cloud withdrawal.
 
-R1a does not retire the shared deployment engine: `workspace_application_access.go`
-still creates/drives intents for password and Workspace-Key rotation, and
-`workspace_default_application.go` plus installation resume still continue original
-accepted installation requests. Those real callers require the worker, activation
-store, existing operator retry and current/reserved selection writers; their retirement stays coupled to
-R2/R3 and the remaining original-install obligations. The snapshot above is not
-updated into a claim that all CP deployment writes disappeared. Next remove the writer/driver portions of `workspace_application_deployment_driver.go`,
-`application_revision_store.go`, `workspace_default_application.go` and
-`workspace_application_recovery.go`. Remove deployment-worker startup in
-`server.go`, its `OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED` configuration,
-and corresponding topology/Compose/example declarations. Retire the old
-`use-workspace-application-deployment-controller.ts` and installation controller,
-their mounts and mutation exports in shared UI API files. Writer-only cases in
-`workspace_application_deployment_test.go`, `workspace_application_deployment_replay_test.go`,
-`workspace_application_operation_store_test.go`, `workspace_application_admission_test.go`,
-`workspace_application_data_admission_test.go`, `workspace_default_application_test.go`
-and `tests/ui/workspace-application-deployment-controller-model.test.ts` leave
-with those writers; mixed recovery/history cases stay with their real reader.
-Remove current/reserved **writers** and preserve the original binding/generation
-and revision decoders while history or cleanup still reads them. Do not drop
-persisted columns or rewrite old schema migrations merely to remove writers.
+The next bounded slice, **R1b**, removes default-install execution, its
+Launch-replay side effects, customer resume route, worker scan and Console
+controller. Its last production revision-admission caller and store mutation
+leave together. `workspace_default_application_history.go` retains the accepted
+request decoder for original-order replay, historical installation display,
+credential lineage and Secret cleanup; `workspace_application_configuration.go`
+retains configuration reads for the surviving credential/Key callers. Original
+records and schema stay unchanged. The fresh protected evidence and its limits
+are in [status](status.md#retained-operator-application-deployment-withdrawal-2026-11-03).
+
+The shared deployment engine is still required by password and Workspace-Key
+rotation in `workspace_application_access.go`. Its worker, activation store,
+operator retry, configuration and current/reserved writers remain until R2/R3
+withdrawal or caller migration. Their future removal includes the writer/driver
+parts of `workspace_application_deployment_driver.go`, deployment-worker startup
+in `server.go`, `OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED` and its
+portable/local declarations. Preserve binding/generation and revision decoders
+while historical reads or cleanup consume them; do not drop persisted columns
+or rewrite schema history merely to remove writers.
 
 **R2 — retained runtime/image/credential maintenance.**
 Remove the selected command/worker symbols in `workspace_runtime_image_replacement.go`,
@@ -1426,9 +1428,9 @@ withdrawal/migration decision: do not build every legacy command in Serve solely
 to make the old code removable.
 
 **R3 — retained Workspace Key creation and rotation.**
-Remove the Key-stage writer in `workspace_launch_account_stages.go`, its
-`workspace_launch_service.go` dispatch, the default-install Key preparation in
-`workspace_default_application.go` and the rotation route in `routes_workspace.go`
+The default-install Key preparation has been removed in R1b. Remove the remaining
+Key-stage writer in `workspace_launch_account_stages.go`, its
+`workspace_launch_service.go` dispatch and the rotation route in `routes_workspace.go`
 with its writer in `workspace_gateway.go`. Remove rotation claims/CAS from
 `ent_state_store_workspace.go` and command-only Sub2API client wrappers only when
 R1/R5 no longer call them. Preserve current-Secret resolution, rotation lineage,

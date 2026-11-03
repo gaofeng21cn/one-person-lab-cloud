@@ -14,7 +14,6 @@ import (
 func applicationBindingFixture(t *testing.T) (*controlPlaneHTTPHandler, *applicationReplacementFabric, workspaceApplicationDeploymentIntent) {
 	t.Helper()
 	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
-	ctx := context.Background()
 	store := newMemoryTableStore()
 	fabric := &applicationReplacementFabric{}
 	service := newTestService(&fakeLedgerClient{}, fabric)
@@ -25,19 +24,7 @@ func applicationBindingFixture(t *testing.T) (*controlPlaneHTTPHandler, *applica
 	handler := server.(*controlPlaneHTTPHandler)
 	seedResourceOnlyActivatedWorkspace(t, store, "workspace-launch-alpha", "ws-alpha")
 	installation := workspaceDefaultApplicationRequest{SchemaVersion: 1, OperationID: workspaceDefaultApplicationOperationID("workspace-launch-alpha"), LaunchOperationID: "workspace-launch-alpha", AccountID: "acct-alpha", WorkspaceID: "ws-alpha", OwnerUserID: "owner-alpha", Sub2APIUserID: 41, WorkspaceKeyGroupID: 5, Revision: defaultOPLApplicationRevision("repo.example/opl-app@sha256:" + strings.Repeat("b", 64)), Phase: "waiting_resources", WorkspaceAPIKeyID: 19, GatewaySecret: &clients.GatewaySecretWriteResult{SecretRef: "gateway-original", Version: "v1"}}
-	row, err := workspaceDefaultApplicationRow(installation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	mustStore(t, store.SaveRuntimeOperation(ctx, row))
-	for range 6 {
-		mustStore(t, handler.app.runWorkspaceDefaultApplicationsOnce(ctx, service))
-	}
-	workspace, _, _ := store.GetWorkspace(ctx, "ws-alpha")
-	current, found, err := handler.app.currentWorkspaceApplicationDeployment(ctx, workspace)
-	if err != nil || !found || current.Phase != workspaceApplicationDeploymentActivePhase {
-		t.Fatalf("default installation not active: %+v found=%v err=%v", current, found, err)
-	}
+	current := seedHistoricalDefaultApplicationForTest(t, handler.app, service, fabric, installation)
 	return handler, fabric, current
 }
 
@@ -66,7 +53,7 @@ func applicationBindingInputs() (contracts.WorkspaceApplicationRuntimeConfigurat
 
 func admitBindingRevisionForTest(t *testing.T, handler *controlPlaneHTTPHandler, revision contracts.WorkspaceApplicationRevision) {
 	t.Helper()
-	admitApplicationForReplacement(t, handler.app.tables, revision)
+	seedAdmittedApplicationRevisionForTest(t, handler.app.tables, revision)
 	row, found, err := handler.app.tables.AdmittedApplicationRevision(context.Background(), revision.ApplicationID, revision.Version)
 	if err != nil || !found {
 		t.Fatalf("admitted revision missing: found=%v err=%v", found, err)

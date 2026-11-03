@@ -7,8 +7,6 @@ import (
 	"sort"
 	"sync"
 	"time"
-
-	"opl-cloud/services/control-plane/internal/domain/application"
 )
 
 type memoryTableStore struct {
@@ -907,28 +905,6 @@ func (s *memoryTableStore) AdmittedApplicationRevision(_ context.Context, applic
 	return cloneMap(row), true, nil
 }
 
-func (s *memoryTableStore) ApplyApplicationRevisionAdmission(_ context.Context, mutation applicationRevisionMutation) (map[string]any, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	key := mutation.ApplicationID + "@" + mutation.Version
-	if existing := s.applicationRevisions[key]; existing != nil {
-		if stringValue(existing["digest"]) != mutation.Digest {
-			return nil, application.ErrRevisionConflict
-		}
-		return cloneMap(existing), nil
-	}
-	row := map[string]any{
-		"id":               applicationRevisionRowID(mutation.ApplicationID, mutation.Version),
-		"applicationId":    mutation.ApplicationID,
-		"version":          mutation.Version,
-		"digest":           mutation.Digest,
-		"payload":          mutation.Payload,
-		"admittedByUserId": mutation.AdmittedByUserID,
-	}
-	s.applicationRevisions[key] = row
-	return cloneMap(row), nil
-}
-
 func (s *memoryTableStore) ListAnnouncementReads(_ context.Context, userID string) ([]map[string]any, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1066,18 +1042,6 @@ func (s *memoryTableStore) PersistWorkspaceApplicationOperation(_ context.Contex
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	current := findRecord(s.runtimeOps, stringValue(desiredRow["id"]))
-	if stringValue(desiredRow["action"]) == workspaceDefaultApplicationAction {
-		workspaceID := stringValue(desiredRow["workspaceId"])
-		operations := make([]map[string]any, 0)
-		for _, row := range s.runtimeOps {
-			if stringValue(row["workspaceId"]) == workspaceID {
-				operations = append(operations, row)
-			}
-		}
-		if err := validateWorkspaceDefaultApplicationPreparation(s.workspaces[workspaceID], desiredRow, operations); err != nil {
-			return err
-		}
-	}
 	if err := validateWorkspaceApplicationOperationPersistence(current, expectedResult, desiredRow); err != nil {
 		return err
 	}

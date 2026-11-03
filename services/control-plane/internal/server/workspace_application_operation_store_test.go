@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -111,80 +112,50 @@ func testWorkspaceApplicationOperationCAS(t *testing.T, store controlPlaneTableS
 			t.Fatalf("changed row identity %s error=%v", field, err)
 		}
 	}
-	testWorkspaceDefaultApplicationLatePersistence(t, store, first.app, second, ctx)
 }
 
-func testWorkspaceDefaultApplicationLatePersistence(t *testing.T, store controlPlaneTableStore, first, second *controlPlaneServer, ctx context.Context) {
+func TestWorkspaceApplicationProgressRejectsRetiredActionsMemory(t *testing.T) {
+	testWorkspaceApplicationProgressRejectsRetiredActions(t, newMemoryTableStore())
+}
+
+func TestWorkspaceApplicationProgressRejectsRetiredActionsPostgres(t *testing.T) {
+	store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)
+	testWorkspaceApplicationProgressRejectsRetiredActions(t, store)
+}
+
+func testWorkspaceApplicationProgressRejectsRetiredActions(t *testing.T, store controlPlaneTableStore) {
 	t.Helper()
-	request := workspaceDefaultApplicationRequest{SchemaVersion: 1, OperationID: workspaceDefaultApplicationOperationID("workspace-launch-alpha"),
-		LaunchOperationID: "workspace-launch-alpha", AccountID: "acct-alpha", WorkspaceID: "ws-alpha", OwnerUserID: "owner-alpha",
-		Sub2APIUserID: 41, WorkspaceKeyGroupID: 5, Revision: defaultOPLApplicationRevision("repo.example/opl-app@sha256:" + strings.Repeat("b", 64)), Phase: "credentials_required"}
-	row, err := workspaceDefaultApplicationRow(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	mustStore(t, store.SaveRuntimeOperation(ctx, row))
-	entered, release := make(chan struct{}), make(chan struct{})
-	late := make(chan error, 1)
-	go func() {
-		snapshot, found, err := store.GetRuntimeOperation(ctx, request.OperationID)
-		close(entered)
-		if err != nil || !found {
-			late <- errors.New("default request snapshot unavailable")
-			return
-		}
-		select {
-		case <-release:
-		case <-ctx.Done():
-			late <- ctx.Err()
-			return
-		}
-		stale := request
-		stale.LastError = "credentials_unconfirmed"
-		before := stringValue(snapshot["result"])
-		err = first.persistWorkspaceDefaultApplication(ctx, snapshot, stale)
-		if stringValue(snapshot["result"]) != before {
-			late <- errors.New("rejected default persistence mutated caller snapshot")
-			return
-		}
-		late <- err
-	}()
-	select {
-	case <-entered:
-	case <-ctx.Done():
-		t.Fatal("default request snapshot timed out")
-	}
-	current, _, _ := store.GetRuntimeOperation(ctx, request.OperationID)
-	next := request
-	next.GatewaySecret = &clients.GatewaySecretWriteResult{SecretRef: "secret-ws-alpha", Version: "v1"}
-	next.WorkspaceAPIKeyID, next.Phase = 19, "waiting_resources"
-	mustStore(t, second.persistWorkspaceDefaultApplication(ctx, current, next))
-	next.DeploymentID, next.Phase = "default-deployment", "installing"
-	mustStore(t, second.persistWorkspaceDefaultApplication(ctx, current, next))
-	next.Phase = "deployed"
-	mustStore(t, second.persistWorkspaceDefaultApplication(ctx, current, next))
-	completed := stringValue(current["result"])
-	close(release)
-	select {
-	case err := <-late:
-		if !errors.Is(err, errWorkspaceApplicationOperationCASConflict) {
-			t.Fatalf("late default result error=%v", err)
-		}
-	case <-ctx.Done():
-		t.Fatal("late default writer timed out")
-	}
-	retained, _, _ := store.GetRuntimeOperation(ctx, request.OperationID)
-	if retained["result"] != completed || retained["status"] != "succeeded" {
-		t.Fatal("late credentials result replaced successful default installation")
-	}
-	changed := next
-	changed.WorkspaceKeyGroupID++
-	if err := second.persistWorkspaceDefaultApplication(ctx, retained, changed); !errors.Is(err, errWorkspaceApplicationOperationCASConflict) {
-		t.Fatalf("changed default installation command error=%v", err)
-	}
-	var unchanged workspaceDefaultApplicationRequest
-	if err := json.Unmarshal([]byte(stringValue(retained["result"])), &unchanged); err != nil || unchanged.WorkspaceKeyGroupID != request.WorkspaceKeyGroupID {
-		t.Fatal("rejected default command changed caller snapshot")
+	ctx := context.Background()
+	request := workspaceDefaultApplicationRequest{SchemaVersion: 1, OperationID: workspaceDefaultApplicationOperationID("workspace-launch-alpha"), LaunchOperationID: "workspace-launch-alpha", AccountID: "acct-alpha", WorkspaceID: "ws-alpha", OwnerUserID: "owner-alpha", Sub2APIUserID: 41, WorkspaceKeyGroupID: 5, Revision: defaultOPLApplicationRevision("repo.example/opl-app@sha256:" + strings.Repeat("b", 64)), Phase: "credentials_required"}
+	for _, phase := range []string{"credentials_required", "preparing_credentials", "waiting_resources", "installing", "deployed", "failed"} {
+		t.Run(phase, func(t *testing.T) {
+			request.Phase = phase
+			row, err := workspaceDefaultApplicationRow(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mustStore(t, store.SaveRuntimeOperation(ctx, row))
+			before, found, err := store.GetRuntimeOperation(ctx, request.OperationID)
+			if err != nil || !found {
+				t.Fatal("history missing", err)
+			}
+			desired := cloneMap(before)
+			desired["status"] = "succeeded"
+			next := request
+			next.Phase, next.LastError = "deployed", "retired-writer"
+			payload, err := json.Marshal(next)
+			if err != nil {
+				t.Fatal(err)
+			}
+			desired["result"] = string(payload)
+			if err := store.PersistWorkspaceApplicationOperation(ctx, stringValue(before["result"]), desired); !errors.Is(err, errWorkspaceApplicationOperationCASConflict) {
+				t.Fatalf("retired progress write error=%v", err)
+			}
+			retained, found, err := store.GetRuntimeOperation(ctx, request.OperationID)
+			if err != nil || !found || !reflect.DeepEqual(retained, before) {
+				t.Fatalf("retired progress changed history: retained=%+v err=%v", retained, err)
+			}
+		})
 	}
 	other := map[string]any{"id": "unrelated-application-cas-test", "operationId": "unrelated-application-cas-test", "action": "workspace.gateway_key.rotate", "result": "{}", "status": "started"}
 	mustStore(t, store.SaveRuntimeOperation(ctx, other))

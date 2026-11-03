@@ -7,11 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	contracts "opl-cloud/packages/contracts/go"
 	controlplaneent "opl-cloud/services/control-plane/ent"
 	"opl-cloud/services/control-plane/ent/runtimeoperation"
 	"opl-cloud/services/control-plane/ent/workspace"
-	"opl-cloud/services/control-plane/internal/controlplane"
 )
 
 var errWorkspaceApplicationRecoveryConflict = errors.New("workspace_application_recovery_conflict")
@@ -143,7 +141,7 @@ func (s *postgresEntStateStore) ResumeWorkspaceApplicationDeployment(ctx context
 	return next, nil
 }
 
-func registerWorkspaceApplicationRecoveryRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
+func registerWorkspaceApplicationRecoveryRoutes(mux *http.ServeMux, app *controlPlaneServer) {
 	// Retained credential/Key rotations and historical deployments still need
 	// explicit recovery of their frozen operation under the original store fences.
 	mux.HandleFunc("POST /api/operator/application-deployments/{operationID}/retry", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
@@ -161,81 +159,5 @@ func registerWorkspaceApplicationRecoveryRoutes(mux *http.ServeMux, app *control
 			return
 		}
 		writeJSON(w, http.StatusAccepted, map[string]any{"intent": intent})
-	}))
-	mux.HandleFunc("POST /api/workspaces/{workspaceID}/application-installation/resume", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := requiredMutationKey(w, r); !ok {
-			return
-		}
-		accountID, ok := app.scopedAccountID(w, r, nil)
-		if !ok {
-			return
-		}
-		workspaceID := r.PathValue("workspaceID")
-		current, found, err := app.tables.GetWorkspace(r.Context(), workspaceID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "state_read_failed")
-			return
-		}
-		if !found || firstNonEmpty(stringValue(current["accountId"]), stringValue(current["ownerAccountId"])) != accountID {
-			writeError(w, http.StatusNotFound, "workspace_not_found")
-			return
-		}
-		rows, err := queryRuntimeOperations(r.Context(), app.tables, runtimeOperationQuery{WorkspaceID: workspaceID, Action: workspaceDefaultApplicationAction})
-		if err != nil || len(rows) != 1 {
-			writeError(w, http.StatusConflict, "workspace_default_application_unavailable")
-			return
-		}
-		row := rows[0]
-		request, err := decodeWorkspaceDefaultApplication(row)
-		user, authenticated := app.sessionUserContext(r)
-		if err != nil || !authenticated || request.AccountID != accountID || request.WorkspaceID != workspaceID || request.OwnerUserID != stringValue(user["id"]) {
-			writeError(w, http.StatusForbidden, "account_scope_forbidden")
-			return
-		}
-		if request.Phase != "deployed" {
-			launchRow, found, err := app.tables.GetRuntimeOperation(r.Context(), request.LaunchOperationID)
-			launch, decodeErr := decodeWorkspaceLaunchReconcileOperation(launchRow)
-			if err != nil || !found || decodeErr != nil || launch.Status != contracts.StatusSucceeded || launch.stringFact("workspaceId") != workspaceID || launch.stringFact("accountId") != accountID || !workspaceApplicationEntitlementOpen(current, time.Now()) {
-				writeError(w, http.StatusConflict, "workspace_application_recovery_conflict")
-				return
-			}
-			if request.DeploymentID != "" {
-				if _, err := app.tables.ResumeWorkspaceApplicationDeployment(r.Context(), request.DeploymentID); err != nil {
-					writeError(w, http.StatusConflict, "workspace_application_recovery_conflict")
-					return
-				}
-				request.Phase, request.LastError = "installing", ""
-			} else {
-				request.LastError = ""
-				if request.Phase != "preparing_credentials" {
-					request.Phase = "credentials_required"
-				}
-				if request.GatewaySecret != nil {
-					request.Phase = "waiting_resources"
-				}
-			}
-			if err := app.persistWorkspaceDefaultApplication(r.Context(), row, request); err != nil {
-				writeError(w, http.StatusConflict, "workspace_application_recovery_conflict")
-				return
-			}
-			if request.GatewaySecret == nil {
-				_, userID, credential, ok := app.gatewayUserContext(w, r)
-				if !ok {
-					return
-				}
-				if err := app.prepareDefaultWorkspaceApplication(r.Context(), service, request.LaunchOperationID, credential, userID); err != nil {
-					writeError(w, http.StatusConflict, "workspace_default_application_credentials_unconfirmed")
-					return
-				}
-			}
-			_ = app.runWorkspaceDefaultApplication(r.Context(), service, request.OperationID)
-		}
-		current, found, err = app.tables.GetWorkspace(r.Context(), workspaceID)
-		projection := map[string]any{"workspaceId": workspaceID, "applicationInstallation": nil}
-		if err != nil || !found || app.projectWorkspaceApplicationInstallation(r.Context(), current, projection) != nil {
-			writeError(w, http.StatusInternalServerError, "state_read_failed")
-			return
-		}
-		writeJSON(w, http.StatusAccepted, projection)
 	}))
 }

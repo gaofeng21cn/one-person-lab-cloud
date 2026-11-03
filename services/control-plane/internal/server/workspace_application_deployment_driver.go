@@ -69,7 +69,6 @@ func (app *controlPlaneServer) startWorkspaceApplicationDeploymentWorker(ctx con
 }
 
 func (app *controlPlaneServer) runWorkspaceApplicationDeploymentsOnce(ctx context.Context, service *controlplane.Service) error {
-	defaultErr := app.runWorkspaceDefaultApplicationsOnce(ctx, service)
 	operations, err := queryRuntimeOperations(ctx, app.tables, runtimeOperationQuery{
 		Action: workspaceApplicationDeploymentAction, Statuses: []string{"pending", "running"},
 	})
@@ -77,9 +76,6 @@ func (app *controlPlaneServer) runWorkspaceApplicationDeploymentsOnce(ctx contex
 		return err
 	}
 	var errs []error
-	if defaultErr != nil {
-		errs = append(errs, defaultErr)
-	}
 	for _, row := range operations {
 		if err := app.runWorkspaceApplicationDeployment(ctx, service, stringValue(row["id"])); err != nil {
 			errs = append(errs, err)

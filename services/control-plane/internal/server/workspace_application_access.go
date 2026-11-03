@@ -30,7 +30,6 @@ type workspaceApplicationInstallationProjection struct {
 	ApplicationID string `json:"applicationId"`
 	Revision      string `json:"revision"`
 	Status        string `json:"status"`
-	CanResume     bool   `json:"canResume"`
 	CanRetry      bool   `json:"canRetry"`
 }
 
@@ -51,18 +50,7 @@ func (app *controlPlaneServer) projectWorkspaceApplicationInstallation(ctx conte
 		if status != "pending" && status != "running" && status != "manual_review" {
 			return errors.New("workspace_application_installation_unavailable")
 		}
-		canResume := false
-		if status == "manual_review" && workspaceApplicationEntitlementOpen(workspace, time.Now()) {
-			requests, err := queryRuntimeOperations(ctx, app.tables, runtimeOperationQuery{WorkspaceID: intent.WorkspaceID, Action: workspaceDefaultApplicationAction})
-			if err != nil {
-				return err
-			}
-			if len(requests) == 1 {
-				request, err := decodeWorkspaceDefaultApplication(requests[0])
-				canResume = err == nil && request.AccountID == intent.AccountID && request.WorkspaceID == intent.WorkspaceID && request.DeploymentID == intent.OperationID
-			}
-		}
-		projection["applicationInstallation"] = workspaceApplicationInstallationProjection{OperationID: intent.OperationID, ApplicationID: intent.ApplicationID, Revision: intent.TargetRevision, Status: status, CanResume: canResume, CanRetry: status == "manual_review" && intent.FailurePhase != "" && workspaceApplicationEntitlementOpen(workspace, time.Now())}
+		projection["applicationInstallation"] = workspaceApplicationInstallationProjection{OperationID: intent.OperationID, ApplicationID: intent.ApplicationID, Revision: intent.TargetRevision, Status: status, CanRetry: status == "manual_review" && intent.FailurePhase != "" && workspaceApplicationEntitlementOpen(workspace, time.Now())}
 		return nil
 	}
 	rows, err := queryRuntimeOperations(ctx, app.tables, runtimeOperationQuery{WorkspaceID: stringValue(workspace["id"]), Action: workspaceDefaultApplicationAction})
@@ -86,7 +74,7 @@ func (app *controlPlaneServer) projectWorkspaceApplicationInstallation(ctx conte
 	if request.Phase == "failed" || request.Phase == "credentials_required" {
 		status = "manual_review"
 	}
-	projection["applicationInstallation"] = workspaceApplicationInstallationProjection{OperationID: request.OperationID, ApplicationID: request.Revision.ApplicationID, Revision: request.Revision.Version, Status: status, CanResume: (status == "manual_review" || request.Phase == "preparing_credentials") && workspaceApplicationEntitlementOpen(workspace, time.Now())}
+	projection["applicationInstallation"] = workspaceApplicationInstallationProjection{OperationID: request.OperationID, ApplicationID: request.Revision.ApplicationID, Revision: request.Revision.Version, Status: status}
 	return nil
 }
 
@@ -169,7 +157,7 @@ func workspaceCurrentApplicationRuntimeResponse(current *workspaceCurrentApplica
 	}
 	return map[string]any{
 		"workspaceId": observation.WorkspaceID, "runtimeId": observation.RuntimeID,
-		"entry": observation.Entry,
+		"entry":  observation.Entry,
 		"status": status, "ready": current.Status == "ready", "url": current.EntryURL,
 		"checks": checks, "currentApplication": current,
 	}

@@ -3,10 +3,8 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"reflect"
-	"strings"
 	"testing"
 
 	"opl-cloud/services/control-plane/internal/domain/application"
@@ -29,37 +27,14 @@ func testApplicationRevisionStoreAndHistory(t *testing.T, store controlPlaneTabl
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload, err := json.Marshal(revision)
-	if err != nil {
-		t.Fatal(err)
-	}
-	mutation := applicationRevisionMutation{ApplicationID: revision.ApplicationID, Version: revision.Version, Digest: digest, Payload: string(payload), AdmittedByUserID: "operator-test"}
-	first, err := store.ApplyApplicationRevisionAdmission(ctx, mutation)
-	if err != nil || stringValue(first["id"]) == "" || stringValue(first["digest"]) != digest {
-		t.Fatalf("revision store first=%+v err=%v", first, err)
-	}
-	replay, err := store.ApplyApplicationRevisionAdmission(ctx, mutation)
-	if err != nil || !reflect.DeepEqual(first, replay) {
-		t.Fatalf("revision replay=%+v err=%v", replay, err)
-	}
-	changed := revision
-	changed.Image = "repo.example/apps/knowledge@sha256:" + strings.Repeat("b", 64)
-	conflict := mutation
-	conflict.Digest, err = application.RevisionDigest(changed)
-	if err != nil {
-		t.Fatal(err)
-	}
-	changedPayload, err := json.Marshal(changed)
-	if err != nil {
-		t.Fatal(err)
-	}
-	conflict.Payload = string(changedPayload)
-	if _, err := store.ApplyApplicationRevisionAdmission(ctx, conflict); !errors.Is(err, application.ErrRevisionConflict) {
-		t.Fatalf("conflicting revision error=%v", err)
+	seedAdmittedApplicationRevisionForTest(t, store, revision)
+	first, found, err := store.AdmittedApplicationRevision(ctx, revision.ApplicationID, revision.Version)
+	if err != nil || !found || stringValue(first["id"]) == "" || stringValue(first["digest"]) != digest {
+		t.Fatalf("historical revision=%+v found=%v err=%v", first, found, err)
 	}
 	retained, found, err := store.AdmittedApplicationRevision(ctx, revision.ApplicationID, revision.Version)
 	if err != nil || !found || !reflect.DeepEqual(first, retained) {
-		t.Fatalf("conflict changed history=%+v found=%v err=%v", retained, found, err)
+		t.Fatalf("repeated history read=%+v found=%v err=%v", retained, found, err)
 	}
 	decoded, valid := decodeApplicationRevisionPayload(stringValue(retained["payload"]))
 	if !valid || !reflect.DeepEqual(decoded, revision) {

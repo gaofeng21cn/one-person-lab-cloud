@@ -446,16 +446,18 @@ test("Current applications use their own entry and an absent web entry is a vali
   assert.equal(presentWorkspaceApplicationBinding("opl_app", currentApplication).label, "knowledge-app · 1.2.3");
 });
 
-test("Application installation results stay separate from resource purchase success", () => {
-  for (const status of ["pending", "running", "manual_review"] as const) {
+test("Historical installation remains a read-only projection separate from resource purchase success", () => {
+  for (const [status, title] of [["pending", "应用等待安装"], ["running", "应用安装中"], ["manual_review", "应用安装需要处理"]] as const) {
     const installation = { operationId: "install-default", applicationId: "opl-app", revision: "1.2.3", status };
     const purchase = presentWorkspaceLaunch(launch({ status: "succeeded", workspaceId: "ws-default", applicationInstallation: installation }));
     assert.equal(purchase.kind, "succeeded");
     assert.equal(purchase.title, "工作空间资源已开通");
     assert.equal(purchase.canOpenWorkspace, true);
     const presentation = presentWorkspaceApplicationInstallation(installation);
+    assert.equal(presentation.title, title);
     assert.match(presentation.description, /opl-app · 1.2.3/);
     assert.equal(presentation.tone, status === "manual_review" ? "warning" : "info");
+    assert.deepEqual(presentWorkspaceApplicationInstallation({ ...installation, canRetry: true }), presentation);
   }
 });
 

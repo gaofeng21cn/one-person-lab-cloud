@@ -9,7 +9,7 @@ Baseline evidence date: 2026-10-01
 This page keeps the dated baseline evidence above and explicitly dated evidence
 updates below. The baseline SHA does not describe the later changes or qualify
 them: each receipt retains its original source, run and environment. The latest
-evidence update is 2026-11-03. Source/tests, Candidate construction and
+evidence update is 2026-11-04. Source/tests, Candidate construction and
 Instance installation verification are recorded at their own layers below;
 none alone establishes business qualification or a Product Release. The target
 boundary is in [architecture.md](architecture.md),
@@ -25,17 +25,33 @@ The unused data-material admission store mutation is removed with its last calle
 Existing historical GETs, persisted revisions/materials and deployment records stay
 readable. No refusal stub, alternate writer, new feature or schema deletion is added.
 
-This slice does not claim retirement of the shared deployment engine. Original
-installation resume, password rotation and Workspace-Key rotation still call it;
-their worker, configuration, activation writers and existing operator retry remain
-until those capabilities are withdrawn or migrated with their actual callers.
-The retry resumes only an existing frozen operation under the original
-reservation, selection/version, entitlement and rotation-parent checks; it cannot
-admit a revision or create another deployment. Removing it now would strand
-rotation children in `manual_review`, potentially after the old Key was disabled. Native Runtime Release,
-Workspace and Serve selection/update paths are unchanged. The matching Instance
-installer caller is a separate source withdrawal, with adoption ordered before
-this Cloud change. No Candidate or Instance deployment is part of this source PR.
+The R1b source withdrawal based on `b758b8f1ab1b634e27989d8a9ace78224230baaa`
+removes the default installer, customer installation-resume route/controller,
+Launch-replay installation side effects, worker scan and final revision-admission
+store mutation. Original request/revision records remain readable for history,
+original-order matching, credential lineage and Secret cleanup. This does not
+retire the shared deployment engine: password and Workspace-Key rotation still
+need its worker, configuration, activation writers and operator retry. The retry
+continues an existing frozen operation under reservation, selection/version,
+entitlement and rotation-parent checks. Native Runtime Release, Workspace and
+Serve selection/update paths remain unchanged. Source verification and actual
+CI belong to the PR; no Candidate or Instance deployment is included.
+
+Protected Instance [observation 41665805194](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41665805194)
+at `2026-11-03T15:37:40.560Z` used Instance main
+`4a54e6cbbd0daee2bf61b17b4afa800748aa001f` and read installed Cloud
+`4f131caa41324f027c1fee48d6ae5e5356e7e3c4`. The available current CP API
+projection contains 44 operations, unchanged from `41598975341`: three
+`default-install` records (two succeeded, one failed) and five deployments
+(four succeeded, one manual-review). Each of those eight records joins by
+Workspace identity to a later succeeded deletion; R1b does not restart their
+applications or rewrite their status. The complete current result contains no
+`workspace.gateway_key.rotate` record. It cannot distinguish password rotations
+inside ordinary deployment intents or prove archived financial/Key obligations
+absent. The overall readback remains `partial` because two legacy runtime-health
+summary reads returned HTTP 503; CP provenance itself was available. All three
+mutation counters are zero. This is a scoped historical disposition basis,
+not deployment evidence for the source withdrawals or a global zero-traffic claim.
 
 The current protected observation's old deployment `manual_review` and two refund
 `blocked` records do not belong to #1018's three closed original orders. They are

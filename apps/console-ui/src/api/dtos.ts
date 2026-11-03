@@ -494,7 +494,6 @@ export interface WorkspaceApplicationInstallationDTO {
   applicationId: string;
   revision: string;
   status: "pending" | "running" | "manual_review";
-  canResume?: boolean;
   canRetry?: boolean;
 }
 
