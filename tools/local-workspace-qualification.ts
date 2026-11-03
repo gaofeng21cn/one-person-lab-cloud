@@ -589,7 +589,7 @@ export function validateLocalQualificationReceipt(value) {
     throw new Error("qualification authority write counts are invalid");
   }
   const expectedMutationCounts = live
-    ? { accountProvisionPosts: 1, workspaceQuotePosts: 1, workspaceOrderPosts: 1, workspaceDeleteRequests: 0, refundPosts: 0 }
+    ? { accountProvisionPosts: 0, workspaceQuotePosts: 1, workspaceOrderPosts: 1, workspaceDeleteRequests: 0, refundPosts: 0 }
     : { workspaceQuotePosts: 1, workspaceOrderPosts: 1, workspaceDeleteRequests: 1, refundPosts: 0 };
   if (Object.entries(expectedMutationCounts).some(([key, count]) => value.mutationCounts?.[key] !== count)) {
     throw new Error("qualification mutation counts are invalid");
@@ -1561,36 +1561,36 @@ export function validateLocalJ1AccountingReadback(input) {
   return { walletExactDeltaObserved: /^\d+$/.test(beforeMicros) && BigInt(beforeMicros) - BigInt(amountUsdMicros) === BigInt(afterMicros) };
 }
 
-export async function provisionLocalQualificationAccount(http, adminAuth, { email, password, idempotencyKey }) {
+// The existing Cloud activation flow must have created this account, its Tenant
+// and billing binding before qualification. This step only reads the mapping.
+export async function readLocalQualificationAccount(http, adminAuth, email) {
   const normalizedEmail = String(email || "").trim().toLowerCase();
-  const accountId = `acct-${stableID("account", normalizedEmail).slice(0, 18)}`;
-  const operationId = `account-provision-${stableID(idempotencyKey, normalizedEmail).slice(0, 18)}`;
-  const provision = await http.json("/api/operator/accounts", {
-    method: "POST", headers: { "idempotency-key": idempotencyKey },
-    body: { email: normalizedEmail, password, name: "Local qualification" }
-  }, adminAuth, [201]);
-  if (provision.payload?.status !== "succeeded" || provision.payload?.accountId !== accountId || provision.payload?.operationId !== operationId) {
-    throw new Error("local qualification account provision response is invalid");
-  }
   const matches = [];
-  for (let pageNumber = 1; pageNumber <= 100; pageNumber += 1) {
+  let expectedTotal = null;
+  let observedCount = 0;
+  for (let pageNumber = 1; ; pageNumber += 1) {
     const page = sourceData((await http.json(`/api/operator/accounts?page=${pageNumber}&pageSize=50`, {}, adminAuth)).payload, "control-plane+sub2api");
-    if (!Array.isArray(page?.items) || !Number.isSafeInteger(page?.total) || page.total < 0 || page.page !== pageNumber || page.pageSize !== 50) {
+    if (!Array.isArray(page?.items) || !Number.isSafeInteger(page?.total) || page.total < 0 || page.page !== pageNumber || page.pageSize !== 50 ||
+      expectedTotal !== null && page.total !== expectedTotal ||
+      page.items.length !== Math.min(50, Math.max(0, page.total - observedCount))) {
       throw new Error("local qualification account mapping readback is invalid");
     }
-    matches.push(...page.items.filter((candidate) => candidate?.accountId === accountId && candidate?.email === normalizedEmail));
-    if (pageNumber >= Math.max(1, Math.ceil(page.total / page.pageSize))) break;
-    if (pageNumber === 100) throw new Error("local qualification account mapping readback is invalid");
+    expectedTotal ??= page.total;
+    observedCount += page.items.length;
+    matches.push(...page.items.filter((candidate) => candidate?.email === normalizedEmail));
+    if (observedCount === expectedTotal) break;
   }
-  if (matches.length !== 1 || matches[0]?.status !== "active" || !/^[1-9][0-9]*$/.test(String(matches[0]?.sub2apiUserId || ""))) {
-    throw new Error("local qualification account mapping readback is invalid");
+  if (matches.length !== 1 || typeof matches[0]?.accountId !== "string" || !matches[0].accountId.trim() ||
+    matches[0].accountId !== matches[0].accountId.trim() || matches[0]?.status !== "active" ||
+    !/^[1-9][0-9]*$/.test(String(matches[0]?.sub2apiUserId || ""))) {
+    throw new Error("local qualification requires an existing active account created through POST /api/v2/operator/accounts with its Tenant and billing binding");
   }
-  return { accountId, operationId, mapping: matches[0] };
+  return { accountId: matches[0].accountId, mapping: matches[0] };
 }
 
 export async function runLocalWorkspaceJ1HTTPQualification(input) {
   const {
-    http, adminEmail, adminPassword, qualificationEmail, qualificationPassword, accountProvisionKey,
+    http, adminEmail, adminPassword, qualificationEmail, qualificationPassword,
     launchKey, workspaceName, receiptBase, readDebit, readRuntime, cleanup, wait,
     onStage = () => {}
   } = input;
@@ -1608,17 +1608,15 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
     await consoleReadback(http);
     onStage("admin_login");
     const adminAuth = await login(http, adminEmail, adminPassword);
-    onStage("account_provision");
-    const provision = await provisionLocalQualificationAccount(http, adminAuth, {
-      email: qualificationEmail, password: qualificationPassword, idempotencyKey: accountProvisionKey
-    });
-    cleanupScope = { accountId: provision.accountId };
+    onStage("account_mapping_readback");
+    const account = await readLocalQualificationAccount(http, adminAuth, qualificationEmail);
+    cleanupScope = { accountId: account.accountId };
     onStage("qualification_login");
-    auth = await openQualificationSessions(http, qualificationEmail, qualificationPassword, provision.accountId, `local-qualification-owner:${accountProvisionKey}`);
+    auth = await openQualificationSessions(http, qualificationEmail, qualificationPassword, account.accountId, `local-qualification-owner:${launchKey}`);
     const me = sourceData((await http.json("/api/auth/me", {}, auth)).payload, "sub2api");
     const sub2apiUserId = String(me?.sub2apiUserId || "");
-    if (me?.accountId !== provision.accountId || me?.email !== qualificationEmail.toLowerCase() || me?.role !== "owner" || me?.status !== "active" ||
-      sub2apiUserId !== String(provision.mapping.sub2apiUserId)) {
+    if (me?.accountId !== account.accountId || me?.email !== qualificationEmail.toLowerCase() || me?.role !== "owner" || me?.status !== "active" ||
+      sub2apiUserId !== String(account.mapping.sub2apiUserId)) {
       throw new Error("qualification authority identity binding is invalid");
     }
     onStage("wallet_usage_baseline");
@@ -1635,9 +1633,8 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
     cleanupScope = { ...cleanupScope, idempotencyKey: launchKey, workspaceName, declaration };
     orderSubmitted = true;
     // The purchase sequence and the quote policy are shared invariants. What
-    // differs across authority profiles is the evidence below this point, and
-    // the cleanup scope, which is recorded here because only this profile owns an
-    // account it has to tear down.
+    // differs across authority profiles is the evidence below this point and
+    // the qualification resource scope recorded for cleanup.
     let purchase;
     try {
       purchase = await buyLocalWorkspace({
@@ -1670,7 +1667,7 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
     const receiptId = await readLocalPurchaseReceiptId(http, auth, workspaceId);
     const evidence = await readWorkspaceEvidence(http, auth, operationId, workspaceId, receiptId);
     if (localApplicationEntryPort(evidence.current.entryUrl) === 0) throw new Error("Workspace application entry is invalid");
-    const runtimeImage = await readRuntime({ accountId: provision.accountId, workspaceId, runtimeId: evidence.runtime.runtimeId });
+    const runtimeImage = await readRuntime({ accountId: account.accountId, workspaceId, runtimeId: evidence.runtime.runtimeId });
     onStage("workspace_open");
     const opened = await fetchApplicationEntry(evidence.current.entryUrl);
     assertWorkspaceOpenQualification(opened);
@@ -1682,7 +1679,7 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
       readAllGatewayKeys(http, auth),
       http.json("/api/gateway/balance-history?page=1&pageSize=20", {}, auth).then((result) => sourceData(result.payload, "sub2api")),
       readWorkspacePurchaseReceipts(http, auth, workspaceId),
-      readDebit({ accountId: provision.accountId, sub2apiUserId, code: evidence.receipt.chargeReference, amountUsdMicros })
+      readDebit({ accountId: account.accountId, sub2apiUserId, code: evidence.receipt.chargeReference, amountUsdMicros })
     ]);
     const keyId = workspaceKey.id;
     const key = sourceData((await http.json(`/api/gateway/keys/${encodeURIComponent(keyId)}`, {}, auth)).payload, "sub2api");
@@ -1701,15 +1698,15 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
         workspace: { ...receiptBase.images.workspace, runningDigest: runtimeImage.runningDigest }
       },
       identities: {
-        accountId: provision.accountId, sub2apiUserId, operationId, workspaceId,
+        accountId: account.accountId, sub2apiUserId, operationId, workspaceId,
         runtimeId: evidence.runtime.runtimeId, keyId, debitCode: debit.code, purchaseReceiptId: receiptId,
         runtimeVersionId: declaration.applicationSelection.runtimeVersionId,
         computePlanId: declaration.computePlanId, storagePlanId: declaration.storagePlanId
       },
-      debit: { count: 1, accountId: provision.accountId, operationId, workspaceId, code: debit.code, userId: sub2apiUserId, amountUsdMicros },
+      debit: { count: 1, accountId: account.accountId, operationId, workspaceId, code: debit.code, userId: sub2apiUserId, amountUsdMicros },
       wallet: { beforeUsdMicros: beforeMicros, afterUsdMicros: afterMicros, exactDeltaObserved: accounting.walletExactDeltaObserved },
       receipt: {
-        count: 1, id: receiptId, accountId: provision.accountId, operationId, workspaceId, quoteId: String(purchase.quote?.id || ""),
+        count: 1, id: receiptId, accountId: account.accountId, operationId, workspaceId, quoteId: String(purchase.quote?.id || ""),
         computeAllocationId: String(evidence.receipt.fulfillment?.computeAllocationId || ""),
         storageId: String(evidence.receipt.fulfillment?.storageId || ""), attachmentId: String(evidence.receipt.fulfillment?.attachmentId || ""),
         chargeReference: evidence.receipt.chargeReference, amountUsdMicros: String(evidence.receipt.totalUsdMicros)
@@ -1724,16 +1721,16 @@ export async function runLocalWorkspaceJ1HTTPQualification(input) {
       deletionReceipt: { count: 0 },
       residuals: cleanupEvidence,
       authorityWriteCounts: { keyCreates: 1, keyDeletes: 0, debits: 1, refunds: 0 },
-      mutationCounts: { accountProvisionPosts: 1, workspaceQuotePosts: 1, workspaceOrderPosts: 1, workspaceDeleteRequests: 0, refundPosts: 0 },
+      mutationCounts: { accountProvisionPosts: 0, workspaceQuotePosts: 1, workspaceOrderPosts: 1, workspaceDeleteRequests: 0, refundPosts: 0 },
       refund: { count: 0 },
       usage: { source: "sub2api", status: "available", totalRequests: usage.totalRequests }
     };
     onStage("receipt_validation");
     validateLocalQualificationReceipt({ ...receiptCandidate, residuals: { containers: 0, volumes: 0, networks: 0 } });
     onStage("qualification_cleanup");
-    cleanupEvidence = await cleanup({ accountId: provision.accountId, workspaceId });
+    cleanupEvidence = await cleanup({ accountId: account.accountId, workspaceId });
     const receipt = validateLocalQualificationReceipt({ ...receiptCandidate, residuals: cleanupEvidence });
-    return { receipt, auth, provision, operation, evidence, cleanupEvidence };
+    return { receipt, auth, account, operation, evidence, cleanupEvidence };
   } catch (error) {
     qualificationFailure = error;
     throw error;
@@ -3104,7 +3101,6 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
         adminPassword: liveAuthority.adminPassword,
         qualificationEmail: adminEmail,
         qualificationPassword: adminPassword,
-        accountProvisionKey: `local-qualification-account:${stableID(adminEmail.toLowerCase()).slice(0, 24)}`,
         launchKey,
         workspaceName: `Local qualification ${suffix}`,
         wait: (milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds)),

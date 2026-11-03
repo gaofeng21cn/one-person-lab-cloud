@@ -425,13 +425,6 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 	mux.HandleFunc("GET /api/operator/health", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		writeSourceEnvelope(w, http.StatusOK, "control-plane", "available", app.operatorHealth(r.Context(), service))
 	}))
-	// The retained activation route is retired (#1007). It used to create the
-	// account and Gateway user without the Tenant every tenant-scoped console read
-	// needs, so a stale caller silently produced a broken customer. It now refuses
-	// before any write and names the composed route the Console BFF serves.
-	mux.HandleFunc("POST /api/operator/accounts", app.protected(true, func(w http.ResponseWriter, _ *http.Request) {
-		writeActivationMoved(w)
-	}))
 	mux.HandleFunc("POST /api/operator/accounts/{accountId}/workspace-purchase-eligibility", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		key, ok := requiredMutationKey(w, r)
 		if !ok {
@@ -654,19 +647,8 @@ func (app *controlPlaneServer) writeOperatorWorkspaceDetail(w http.ResponseWrite
 	writeSourceEnvelope(w, http.StatusOK, "control-plane+fabric+ledger", "available", data)
 }
 
-// writeActivationMoved is the one refusal for the retired retained activation
-// route. The error code is stable for callers; the message names the route that
-// composes the account, Tenant and billing binding.
-func writeActivationMoved(w http.ResponseWriter) {
-	writeJSON(w, http.StatusConflict, map[string]string{
-		"error":   "activation_moved",
-		"message": "POST /api/operator/accounts has moved; use POST /api/v2/operator/accounts, which creates the account, tenant and billing binding.",
-	})
-}
-
 // provisionOperatorAccount is the one activation writer. The Console BFF's
-// internal route runs it; the retained browser route is retired and refuses
-// before any write (#1007). It creates the account and the Gateway user exactly
+// internal route runs it. It creates the account and the Gateway user exactly
 // once by one implementation. The receipt reads back the Gateway subject the
 // account was bound to: the BFF needs that subject to create the Tenant whose
 // owner it already is.
