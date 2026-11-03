@@ -319,7 +319,6 @@ export function createConsoleFixtureState({ faultInjection = true, seedDemoData 
     ],
     nextKeyId: 12,
     gatewayWriteResults: new Map(),
-    operatorProvisionWriteResults: new Map(),
     announcementCreateWriteResults: new Map(),
     announcementPublishWriteResults: new Map(),
     announcementWithdrawWriteResults: new Map(),
@@ -332,13 +331,13 @@ export function createConsoleFixtureState({ faultInjection = true, seedDemoData 
     faultInjection,
     operatorAccounts: [operatorAccount("acct-1", "active"), operatorAccount("acct-2", "disabled")],
     gatewayWrites: new Set(), walletWrites: new Set(), lostGatewayResponses: new Set(), lostWalletResponses: new Set(),
-    operatorProvisionWrites: new Set(), announcementCreateWrites: new Set(),
+    announcementCreateWrites: new Set(),
     announcementPublishWrites: new Set(), announcementWithdrawWrites: new Set(),
-    operatorProvisionAttempts: new Map(), announcementCreateAttempts: new Map(),
+    announcementCreateAttempts: new Map(),
     announcementPublishAttempts: new Map(), announcementWithdrawAttempts: new Map(),
-    lostOperatorProvisionResponses: new Set(), lostAnnouncementCreateResponses: new Set(),
+    lostAnnouncementCreateResponses: new Set(),
     lostAnnouncementPublishResponses: new Set(), lostAnnouncementWithdrawResponses: new Set(),
-    operatorProvisionReadbacks: new Set(), announcementReadbackStatuses: new Map(),
+    announcementReadbackStatuses: new Map(),
     operatorDisableWrites: new Set(),
     gatewayMutationWrites: new Set(), gatewayActions: [], revealCalls: new Map(), emptyGatewayReadbacks: 0,
     runtimeReads: new Map(), workspaceSecretReads: new Map(), workspacePageReads: [],
@@ -784,47 +783,9 @@ export async function apiFixture(route, state, session = state) {
     const pageSize = Number(url.searchParams.get("pageSize") || 20);
     const start = (page - 1) * pageSize;
     const items = state.operatorAccounts.slice(start, start + pageSize);
-    for (const operation of state.operatorProvisionWriteResults.values()) {
-      if (items.some((account) => account.accountId === operation.accountId)) state.operatorProvisionReadbacks.add(operation.accountId);
-    }
     return fulfillJson(route, source({
       items, total: state.operatorAccounts.length, page, pageSize
     }));
-  }
-  if (path === "/api/operator/accounts" && method === "POST") {
-    const idempotencyKey = request.headers()["idempotency-key"] || "";
-    if (!idempotencyKey) return fulfillJson(route, { error: "idempotency_key_required" }, 400);
-    const input = request.postDataJSON();
-    const writeIdentity = `${session.accountId}:${idempotencyKey}`;
-    recordWriteAttempt(state.operatorProvisionWrites, state.operatorProvisionAttempts, writeIdentity);
-    let operation = state.operatorProvisionWriteResults.get(writeIdentity);
-    if (!operation) {
-      const accountId = `acct-${state.operatorAccounts.length + 1}`;
-      const userId = String(20 + state.operatorAccounts.length);
-      const workspacePurchaseEnabled = input.admission !== "gateway_only";
-      const account = operatorAccount(accountId, "active", {
-        email: String(input.email || "").trim().toLowerCase(),
-        consoleUserId: `user-${state.operatorAccounts.length + 1}`,
-        sub2apiUserId: userId,
-        workspacePurchaseEnabled
-      });
-      state.operatorAccounts.push(account);
-      operation = {
-        operationId: `account-provision-${accountId}`,
-        accountId,
-        status: "succeeded",
-        phase: "completed",
-        workspacePurchaseEnabled,
-        createdAt: NOW,
-        updatedAt: NOW
-      };
-      state.operatorProvisionWriteResults.set(writeIdentity, operation);
-    }
-    if (state.faultInjection && !state.lostOperatorProvisionResponses.has(writeIdentity)) {
-      state.lostOperatorProvisionResponses.add(writeIdentity);
-      return route.abort("failed");
-    }
-    return fulfillJson(route, operation);
   }
   if (path === "/api/operator/workspaces") {
     if (state.sourceState === "error") return fulfillJson(route, { error: "upstream_unavailable" }, 503);
@@ -1366,7 +1327,8 @@ function highRiskWriteEvidence(state) {
   if (state.consoleErrors.length) throw new Error(`console_browser_high_risk_console_error:${state.consoleErrors.join(",")}`);
   if (state.externalRequests !== 0) throw new Error(`console_browser_high_risk_external_request:${state.externalRequests}`);
 
-  assert.equal(state.operatorProvisionWrites.size, 0);
+  const operatorProvisionRequests = state.unexpectedApi.filter((request) => request === "POST /api/operator/accounts").length;
+  assert.equal(operatorProvisionRequests, 0);
   const announcementId = [...state.announcementCreateWriteResults.values()][0];
   const announcementStatuses = state.announcementReadbackStatuses.get(announcementId) || new Set();
   const historicalLaunchReadback = state.launches.length === 1 && state.launches[0].workspaceId === "ws-1"
@@ -1379,7 +1341,7 @@ function highRiskWriteEvidence(state) {
 
   return {
     highRiskWrites: {
-      operatorProvision: state.operatorProvisionWrites.size,
+      operatorProvision: operatorProvisionRequests,
       announcementCreate: state.announcementCreateWrites.size,
       announcementPublish: state.announcementPublishWrites.size,
       announcementWithdraw: state.announcementWithdrawWrites.size

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -18,6 +19,10 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc"
+	contracts "opl-cloud/packages/contracts/go"
+	"opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -227,7 +232,29 @@ type localE2EProcess struct {
 	server  *httptest.Server
 	handler *controlPlaneHTTPHandler
 	store   StateStore
+	gateway *announcementGatewayFixture
 	close   sync.Once
+}
+
+// Reuse the existing Gateway session-proof fixture; activation itself runs
+// through the real internal HTTP route and its sole provisioning writer.
+func newLocalE2EActivationGateway(t *testing.T) *announcementGatewayFixture {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gateway := &announcementGatewayFixture{bindings: map[string]*api.UserIdentityReadback{}}
+	server := grpc.NewServer()
+	api.RegisterGatewayCoordinationServer(server, gateway)
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(server.Stop)
+	t.Setenv("OPL_CONTROL_PLANE_BFF_TOKEN", cloudAnnouncementFixtureToken)
+	t.Setenv("OPL_CLOUD_IDENTITY_URL", listener.Addr().String())
+	t.Setenv("OPL_CLOUD_IDENTITY_TOKEN", cloudAnnouncementFixtureIdentityToken)
+	t.Setenv("OPL_GRPC_INSECURE_LOCAL", "1")
+	t.Setenv("NODE_ENV", "test")
+	return gateway
 }
 
 func startLocalE2EProcess(t *testing.T, databaseURL string, service *controlplane.Service) *localE2EProcess {
@@ -236,6 +263,7 @@ func startLocalE2EProcess(t *testing.T, databaseURL string, service *controlplan
 	if err != nil {
 		t.Fatalf("start local E2E PostgreSQL store: %v", err)
 	}
+	gateway := newLocalE2EActivationGateway(t)
 	handler, err := NewPersistentServer(service, store)
 	if err != nil {
 		_ = store.(*postgresEntStateStore).client.Close()
@@ -245,7 +273,7 @@ func startLocalE2EProcess(t *testing.T, databaseURL string, service *controlplan
 	if !ok {
 		t.Fatal("local E2E Control Plane handler type mismatch")
 	}
-	process := &localE2EProcess{server: httptest.NewTLSServer(handler), handler: typed, store: store}
+	process := &localE2EProcess{server: httptest.NewTLSServer(handler), handler: typed, store: store, gateway: gateway}
 	t.Cleanup(process.Close)
 	return process
 }
@@ -253,6 +281,7 @@ func startLocalE2EProcess(t *testing.T, databaseURL string, service *controlplan
 func (p *localE2EProcess) Close() {
 	p.close.Do(func() {
 		p.server.Close()
+		_ = p.handler.Close()
 		_ = p.store.(*postgresEntStateStore).client.Close()
 	})
 }
@@ -261,6 +290,8 @@ type localE2EAPI struct {
 	baseURL string
 	client  *http.Client
 	csrf    string
+	headers http.Header
+	gateway *announcementGatewayFixture
 }
 
 type localE2EResponse struct {
@@ -278,7 +309,7 @@ func (p *localE2EProcess) newAPI(t *testing.T) *localE2EAPI {
 	client := *p.server.Client()
 	client.Jar = jar
 	client.Timeout = 15 * time.Second
-	return &localE2EAPI{baseURL: p.server.URL, client: &client}
+	return &localE2EAPI{baseURL: p.server.URL, client: &client, gateway: p.gateway}
 }
 
 func (a *localE2EAPI) request(ctx context.Context, method, path string, input any, idempotencyKey string) (localE2EResponse, error) {
@@ -296,6 +327,9 @@ func (a *localE2EAPI) request(ctx context.Context, method, path string, input an
 	}
 	if input != nil {
 		request.Header.Set("Content-Type", "application/json")
+	}
+	for name, values := range a.headers {
+		request.Header[name] = append([]string(nil), values...)
 	}
 	if a.csrf != "" && method != http.MethodGet && method != http.MethodHead && path != "/api/auth/login" {
 		request.Header.Set("x-opl-csrf", a.csrf)
@@ -441,16 +475,68 @@ func localE2EUserIdentity(prefix string) (string, string) {
 
 func provisionLocalE2EUser(t *testing.T, admin *localE2EAPI, prefix string) localE2EUser {
 	t.Helper()
+	operator := localE2EData(t, localE2EMustRequest(t, admin, http.MethodGet, "/api/auth/me", nil, "", http.StatusOK), "activation operator")
+	subject := stringValue(operator["sub2apiUserId"])
+	if id, err := strconv.ParseInt(subject, 10, 64); err != nil || id <= 0 || stringValue(operator["consoleUserId"]) == "" ||
+		operator["role"] != "admin" || operator["status"] != "active" || admin.gateway == nil {
+		t.Fatal("local E2E activation requires an authenticated operator and Gateway session-proof fixture")
+	}
 	email, password := localE2EUserIdentity(prefix)
-	response := localE2EMustRequest(t, admin, http.MethodPost, "/api/operator/accounts", map[string]any{
+	key := "account-provision-" + prefix + "-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	ref := admin.gateway.bind(key, stringValue(operator["consoleUserId"]), subject)
+	// The internal owner call uses its own peer/token/session proof. Retained
+	// browser cookies and CSRF are only used for the operator readback above.
+	client := *admin.client
+	client.Jar = nil
+	activation := &localE2EAPI{baseURL: admin.baseURL, client: &client, headers: http.Header{}}
+	activation.headers.Set(owneridentity.PeerHeader, owneridentity.ConsoleBFF.String())
+	activation.headers.Set(owneridentity.TokenHeader, cloudAnnouncementFixtureToken)
+	activation.headers.Set(contracts.CloudSessionHeader, ref)
+	response := localE2EMustRequest(t, activation, http.MethodPost, "/internal/cloud/operator/accounts", map[string]any{
 		"email": email, "password": password, "name": "Local E2E",
-	}, "account-provision-"+prefix+"-"+strconv.FormatInt(time.Now().UnixNano(), 10), http.StatusCreated)
+	}, key, http.StatusCreated)
 	body := localE2EMap(t, response.body, "account provision")
 	accountID := stringValue(body["accountId"])
 	if accountID == "" || stringValue(body["status"]) != "succeeded" {
 		t.Fatal("local E2E account provisioning did not return a mapped account")
 	}
 	return localE2EUser{accountID: accountID, email: email, password: password}
+}
+
+func TestLocalE2EUserActivationAndLoginSurviveRestart(t *testing.T) {
+	const adminEmail = "admin@opl.local"
+	const adminPassword = "CorrectHorseBatteryStaple!"
+	gateway := &testSub2APIClient{
+		balance: 1_000_000, charges: map[string]int64{},
+		identities: map[string]clients.Sub2APIIdentity{adminEmail: {ID: 1, Email: adminEmail, Status: "active"}},
+		passwords:  map[string]string{adminEmail: adminPassword},
+	}
+	service := controlplane.NewService(newLocalE2ELedger(), &fakeFabricClient{}, gateway)
+	databaseURL := localE2EDatabase(t)
+	process := startLocalE2EProcess(t, databaseURL, service)
+	admin := process.newAPI(t)
+	admin.login(t, adminEmail, adminPassword)
+	user := provisionLocalE2EUser(t, admin, "activation")
+	_ = loginLocalE2EUser(t, process, &user)
+	subject := user.sub2APIUser
+	account, found, err := process.store.GetAccount(t.Context(), user.accountID)
+	if err != nil || !found || numberField(account, "sub2apiUserId", 0) != float64(subject) || account["workspacePurchaseEnabled"] != true {
+		t.Fatalf("local E2E activation mapping found=%v account=%v err=%v", found, account, err)
+	}
+	events, err := process.store.ListAuditEvents(t.Context(), user.accountID)
+	if err != nil || len(events) != 1 || events[0]["action"] != "account.provision" {
+		t.Fatalf("local E2E activation audit events=%v err=%v", events, err)
+	}
+	process.Close()
+	restarted := startLocalE2EProcess(t, databaseURL, service)
+	_ = loginLocalE2EUser(t, restarted, &user)
+	if user.sub2APIUser != subject {
+		t.Fatalf("local E2E restart changed Gateway identity: %d -> %d", subject, user.sub2APIUser)
+	}
+	accounts, err := restarted.store.ListAccounts(t.Context(), "")
+	if err != nil || customerAccounts(accounts) != 1 || gateway.identityCount() != 2 {
+		t.Fatalf("local E2E restart changed provisioned identities: accounts=%v Gateway users=%d err=%v", accounts, gateway.identityCount(), err)
+	}
 }
 
 func loginLocalE2EUser(t *testing.T, process *localE2EProcess, user *localE2EUser) *localE2EAPI {

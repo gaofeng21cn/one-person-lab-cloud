@@ -6,9 +6,9 @@ import test from "node:test";
 
 import type {
   OperatorAccountPageDTO,
-  OperatorProvisionAccountCommandDTO,
-  ProvisionAccountRequest,
-  SourceEnvelope
+  SourceEnvelope,
+  WorkspaceLaunchRequest,
+  WorkspaceLaunchResponse
 } from "../../apps/console-ui/src/api/dtos.ts";
 import {
   CONSOLE_DEMO_CREDENTIALS,
@@ -46,6 +46,61 @@ class DemoClient {
   postCommandJson(path: string, body: unknown, idempotencyKey: string) {
     return this.postJson(path, body, { "idempotency-key": idempotencyKey });
   }
+}
+
+type DemoState = Awaited<ReturnType<typeof startConsoleDemoServer>>["state"];
+type HistoricalLaunch = DemoState["launches"][number];
+
+function seedOwnerScopedWorkspaceHistory(state: DemoState) {
+  const customerWorkspace = state.workspaces.find((item) => item.id === "ws-1");
+  const adminWorkspace = state.workspaces.find((item) => item.id === "ws-2");
+  assert.ok(customerWorkspace);
+  assert.ok(adminWorkspace);
+  adminWorkspace.ownerAccountId = "acct-operator";
+  adminWorkspace.ownerUserId = "user-operator";
+  const adminKey = state.workspaceKeys.find((item) => item.id === adminWorkspace.workspaceApiKeyId);
+  assert.ok(adminKey);
+  adminKey.ownerAccountId = adminWorkspace.ownerAccountId;
+
+  // These Workspaces, Keys and credentials already exist. Seed their original
+  // orders so the retained endpoint can replay them without creating resources.
+  const historicalLaunch = (workspace: typeof customerWorkspace): HistoricalLaunch => {
+    assert.ok(workspace.packageId === "basic" || workspace.packageId === "pro");
+    return {
+      operationId: `launch-historical-${workspace.id}`,
+      idempotencyKey: `historical-${workspace.id}`,
+      ownerUserId: workspace.ownerUserId,
+      accountId: workspace.ownerAccountId,
+      workspaceId: workspace.id,
+      name: workspace.name,
+      packageId: workspace.packageId,
+      sizeGb: workspace.storageGb,
+      autoRenew: workspace.autoRenew,
+      provisioningMode: "full",
+      status: "succeeded",
+      phase: "completed",
+      priceVersion: workspace.priceVersion,
+      currency: "USD",
+      totalChargeUsdMicros: workspace.totalUsdMicros
+    };
+  };
+  const customer = historicalLaunch(customerWorkspace);
+  const admin = historicalLaunch(adminWorkspace);
+  state.launches = [customer, admin];
+  return { customer, admin };
+}
+
+async function replayHistoricalLaunch(client: DemoClient, launch: HistoricalLaunch) {
+  const input: WorkspaceLaunchRequest = {
+    name: launch.name, packageId: launch.packageId,
+    autoRenew: launch.autoRenew, provisioningMode: launch.provisioningMode
+  };
+  const response = await client.postCommandJson("/api/workspace-launches", input, launch.idempotencyKey);
+  assert.equal(response.status, 202);
+  const readback = await response.json() as WorkspaceLaunchResponse;
+  assert.deepEqual(readback, launch);
+  assert.ok(readback.workspaceId);
+  return readback;
 }
 
 async function listen(server: ReturnType<typeof createHttpServer>) {
@@ -124,36 +179,27 @@ test("Console demo rotates a caller-supplied Session ID during login", async () 
   }
 });
 
-test("Console demo projects gateway-only admission exactly as returned by provision", async () => {
+test("Console demo projects an existing active gateway-only account without granting Workspace purchases", async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   try {
+    const activatedAccount = demo.state.operatorAccounts.find((item) => item.accountId === "acct-1");
+    assert.ok(activatedAccount);
+    activatedAccount.workspacePurchaseEnabled = false;
+    const expectedAccount = structuredClone(activatedAccount);
     const adminClient = new DemoClient(demo.origin);
     assert.equal((await adminClient.postJson("/api/auth/login", CONSOLE_DEMO_CREDENTIALS.admin)).status, 200);
-    const input: ProvisionAccountRequest = {
-      email: "gateway-only@example.com",
-      password: "CorrectHorseBatteryStaple!",
-      admission: "gateway_only"
-    };
-
-    const provisionResponse = await adminClient.postCommandJson(
-      "/api/operator/accounts",
-      input,
-      "gateway-only-account-provision"
-    );
-    assert.equal(provisionResponse.status, 200);
-    const command = await provisionResponse.json() as OperatorProvisionAccountCommandDTO;
-    assert.equal(command.status, "succeeded");
-    assert.equal(command.workspacePurchaseEnabled, false);
-
     const projectionResponse = await adminClient.request("/api/operator/accounts?page=1&pageSize=20");
     assert.equal(projectionResponse.status, 200);
     const projection = await projectionResponse.json() as SourceEnvelope<OperatorAccountPageDTO>;
     assert.equal(projection.available, true);
     if (!projection.available) assert.fail("operator account projection unavailable");
-    const account = projection.data.items.find((item) => item.accountId === command.accountId);
+    const account = projection.data.items.find((item) => item.accountId === expectedAccount.accountId);
     assert.ok(account);
-    assert.equal(account.email, input.email);
-    assert.equal(account.workspacePurchaseEnabled, command.workspacePurchaseEnabled);
+    assert.equal(account.status, "active");
+    assert.equal(account.role, "owner");
+    assert.equal(account.email, expectedAccount.email);
+    assert.equal(account.workspacePurchaseEnabled, false);
+    assert.deepEqual(account, expectedAccount);
   } finally {
     await demo.close();
   }
@@ -202,28 +248,21 @@ test("Console demo assigns unique owner-scoped general API Keys", async () => {
   }
 });
 
-test("Console demo assigns unique owner-scoped Workspace Keys", async () => {
+test("Console demo retains unique owner-scoped Workspace Keys for historical Workspaces", async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   try {
+    const history = seedOwnerScopedWorkspaceHistory(demo.state);
     const customerClient = new DemoClient(demo.origin);
     const adminClient = new DemoClient(demo.origin);
     assert.equal((await customerClient.postJson("/api/auth/login", CONSOLE_DEMO_CREDENTIALS.customer)).status, 200);
     assert.equal((await adminClient.postJson("/api/auth/login", CONSOLE_DEMO_CREDENTIALS.admin)).status, 200);
 
-    const customerLaunch = await customerClient.postCommandJson(
-      "/api/workspace-launches",
-      { name: "Customer Workspace", packageId: "basic" },
-      "customer-workspace-key-launch"
-    );
-    const adminLaunch = await adminClient.postCommandJson(
-      "/api/workspace-launches",
-      { name: "Admin Workspace", packageId: "basic" },
-      "admin-workspace-key-launch"
-    );
-    assert.equal(customerLaunch.status, 200);
-    assert.equal(adminLaunch.status, 200);
-    const customerWorkspaceId = (await customerLaunch.json()).workspaceId;
-    const adminWorkspaceId = (await adminLaunch.json()).workspaceId;
+    const beforeReplay = structuredClone(demo.state);
+    const customerLaunch = await replayHistoricalLaunch(customerClient, history.customer);
+    const adminLaunch = await replayHistoricalLaunch(adminClient, history.admin);
+    assert.deepEqual(demo.state, beforeReplay);
+    const customerWorkspaceId = customerLaunch.workspaceId;
+    const adminWorkspaceId = adminLaunch.workspaceId;
     const customerWorkspaces = (await (await customerClient.request("/api/workspaces?page=1&pageSize=20")).json()).data.items;
     const adminWorkspaces = (await (await adminClient.request("/api/workspaces?page=1&pageSize=20")).json()).data.items;
     const customerKeyId = customerWorkspaces.find((item) => item.id === customerWorkspaceId).workspaceApiKeyId;
@@ -243,21 +282,16 @@ test("Console demo assigns unique owner-scoped Workspace Keys", async () => {
 test("Console demo keeps a unique persistent Runtime credential per Workspace", async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   try {
+    const history = seedOwnerScopedWorkspaceHistory(demo.state);
     const customerClient = new DemoClient(demo.origin);
     const adminClient = new DemoClient(demo.origin);
     assert.equal((await customerClient.postJson("/api/auth/login", CONSOLE_DEMO_CREDENTIALS.customer)).status, 200);
     assert.equal((await adminClient.postJson("/api/auth/login", CONSOLE_DEMO_CREDENTIALS.admin)).status, 200);
 
-    const customerWorkspaceId = (await (await customerClient.postCommandJson(
-      "/api/workspace-launches",
-      { name: "Customer Runtime", packageId: "basic" },
-      "customer-runtime-launch"
-    )).json()).workspaceId;
-    const adminWorkspaceId = (await (await adminClient.postCommandJson(
-      "/api/workspace-launches",
-      { name: "Admin Runtime", packageId: "basic" },
-      "admin-runtime-launch"
-    )).json()).workspaceId;
+    const beforeReplay = structuredClone(demo.state);
+    const customerWorkspaceId = (await replayHistoricalLaunch(customerClient, history.customer)).workspaceId;
+    const adminWorkspaceId = (await replayHistoricalLaunch(adminClient, history.admin)).workspaceId;
+    assert.deepEqual(demo.state, beforeReplay);
 
     assert.equal((await customerClient.postJson(`/api/workspaces/${adminWorkspaceId}/runtime-credentials/reveal`, {})).status, 404);
     assert.equal((await adminClient.postJson(`/api/workspaces/${customerWorkspaceId}/runtime-credentials/reveal`, {})).status, 404);
@@ -285,21 +319,16 @@ test("Console demo keeps a unique persistent Runtime credential per Workspace", 
 test("Console demo preserves owner-scoped launch records across accounts", async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   try {
+    const history = seedOwnerScopedWorkspaceHistory(demo.state);
     const customerClient = new DemoClient(demo.origin);
     const adminClient = new DemoClient(demo.origin);
     assert.equal((await customerClient.postJson("/api/auth/login", CONSOLE_DEMO_CREDENTIALS.customer)).status, 200);
     assert.equal((await adminClient.postJson("/api/auth/login", CONSOLE_DEMO_CREDENTIALS.admin)).status, 200);
 
-    const customerLaunch = await (await customerClient.postCommandJson(
-      "/api/workspace-launches",
-      { name: "Customer Launch", packageId: "basic" },
-      "customer-record-launch"
-    )).json();
-    const adminLaunch = await (await adminClient.postCommandJson(
-      "/api/workspace-launches",
-      { name: "Admin Launch", packageId: "pro" },
-      "admin-record-launch"
-    )).json();
+    const beforeReplay = structuredClone(demo.state);
+    const customerLaunch = await replayHistoricalLaunch(customerClient, history.customer);
+    const adminLaunch = await replayHistoricalLaunch(adminClient, history.admin);
+    assert.deepEqual(demo.state, beforeReplay);
     const customerLaunches = await (await customerClient.request("/api/workspace-launches")).json();
     const adminLaunches = await (await adminClient.request("/api/workspace-launches")).json();
     assert.deepEqual(customerLaunches.map((item) => item.operationId), [customerLaunch.operationId]);
@@ -381,6 +410,58 @@ test("Console demo closes within a bounded time when a client leaves a request b
   } finally {
     socket.destroy();
     await closing;
+  }
+});
+
+test("Console wallet form keeps user input focus when opening frames are delayed", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await launchBrowser({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1024 } });
+    await page.goto(`${demo.origin}/login`, { waitUntil: "networkidle" });
+    await page.getByLabel("邮箱").fill(CONSOLE_DEMO_CREDENTIALS.admin.email);
+    await page.getByLabel("密码").fill(CONSOLE_DEMO_CREDENTIALS.admin.password);
+    await page.getByRole("button", { name: "登录", exact: true }).click();
+    await page.waitForURL(/\/console\/overview$/);
+    await page.goto(`${demo.origin}/admin/accounts`, { waitUntil: "networkidle" });
+    const open = page.locator(".operator-account-table tbody tr").filter({ hasText: "pilot@example.com" }).getByRole("button", { name: "余额操作", exact: true });
+    await open.focus();
+    // Hold the opening frame so a user can focus the field before it runs.
+    // No sleeps or timing thresholds are needed to expose delayed autofocus.
+    const flushOpeningFrames = await page.evaluateHandle(() => {
+      const requestFrame = window.requestAnimationFrame.bind(window);
+      const cancelFrame = window.cancelAnimationFrame.bind(window);
+      const pending = new Map<number, FrameRequestCallback>();
+      let nextId = 0;
+      window.requestAnimationFrame = (callback) => {
+        pending.set(--nextId, callback);
+        return nextId;
+      };
+      window.cancelAnimationFrame = (id) => {
+        if (!pending.delete(id)) cancelFrame(id);
+      };
+      return () => {
+        window.requestAnimationFrame = requestFrame;
+        window.cancelAnimationFrame = cancelFrame;
+        for (const callback of pending.values()) callback(performance.now());
+        pending.clear();
+      };
+    });
+    await open.evaluate((button) => (button as HTMLButtonElement).click());
+    const dialog = page.getByRole("dialog", { name: "余额操作", exact: true });
+    await dialog.waitFor({ state: "visible" });
+    const amount = dialog.getByLabel("金额（USD）");
+    await amount.focus();
+    await flushOpeningFrames.evaluate((flush) => flush());
+    await page.keyboard.type("5");
+    assert.equal(await amount.inputValue(), "5", "opening autofocus must not steal an input's focus");
+    await dialog.getByLabel("业务原因").pressSequentially("browser retry");
+    assert.equal(await dialog.getByRole("button", { name: "确认操作", exact: true }).isEnabled(), true);
+    await dialog.getByRole("button", { name: "关闭", exact: true }).last().click();
+    assert.equal(await open.evaluate((button) => document.activeElement === button), true);
+  } finally {
+    await browser.close();
+    await demo.close();
   }
 });
 

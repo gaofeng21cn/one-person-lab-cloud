@@ -42,6 +42,7 @@ import {
   LOCAL_V2_OWNER_STORES,
   redactedError,
   runLocalWorkspaceJ1HTTPQualification,
+  readLocalQualificationAccount,
   sourceData,
   stableID,
   validateQualificationSourceIdentity,
@@ -1061,7 +1062,6 @@ test("qualification source identity requires one clean unchanged HEAD and tree",
 
 test("sourceData and createHTTP/login preserve account mapping scope without Workspace mutation", async () => {
   const requests = [];
-  let mappingPosts = 0;
   let workspacePosts = 0;
   const server = createServer(async (request, response) => {
     const url = new URL(request.url || "/", "http://qualification.test");
@@ -1072,14 +1072,6 @@ test("sourceData and createHTTP/login preserve account mapping scope without Wor
       response.setHeader("set-cookie", ["opl_session=admin-session; Path=/; HttpOnly"]);
       response.setHeader("x-opl-csrf-token", "csrf-admin");
       response.end(JSON.stringify({ user: { accountId: "acct-admin", role: "admin" } }));
-      return;
-    }
-    if (request.method === "POST" && url.pathname === "/api/operator/accounts") {
-      assert.equal(request.headers.cookie, "opl_session=admin-session");
-      assert.equal(request.headers["x-opl-csrf"], "csrf-admin");
-      mappingPosts += 1;
-      response.statusCode = 201;
-      response.end(JSON.stringify({ status: "succeeded", accountId: "acct-mapped", operationId: "account-provision-mapped" }));
       return;
     }
     if (request.method === "GET" && url.pathname === "/api/operator/accounts") {
@@ -1105,11 +1097,6 @@ test("sourceData and createHTTP/login preserve account mapping scope without Wor
   try {
     const admin = await login(http, "admin@example.test", "admin-password");
     assert.deepEqual(admin, { cookie: "opl_session=admin-session", csrf: "csrf-admin" });
-    const mapping = await http.json("/api/operator/accounts", {
-      method: "POST", headers: { "idempotency-key": "account-provision-mapped" },
-      body: { email: "customer@example.test", password: "customer-password" }
-    }, admin, [201]);
-    assert.equal(mapping.payload.accountId, "acct-mapped");
     const readback = await http.json("/api/operator/accounts?page=1&pageSize=50", {}, admin);
     const accountPage = sourceData(readback.payload, "control-plane+sub2api");
     assert.equal(accountPage.items[0].accountId, "acct-mapped");
@@ -1117,15 +1104,81 @@ test("sourceData and createHTTP/login preserve account mapping scope without Wor
     assert.throws(() => sourceData({ source: "control-plane+sub2api", available: false, status: "unavailable", data: accountPage }, "control-plane+sub2api"), /unavailable/);
     const qualification = await login(http, "customer@example.test", "customer-password");
     assert.deepEqual(qualification, { cookie: "opl_session=admin-session", csrf: "csrf-admin" });
-    assert.equal(mappingPosts, 1);
     assert.equal(workspacePosts, 0);
     assert.deepEqual(requests.map(({ method, path }) => `${method}:${path}`), [
-      "POST:/api/auth/login", "POST:/api/operator/accounts", "GET:/api/operator/accounts", "POST:/api/auth/login"
+      "POST:/api/auth/login", "GET:/api/operator/accounts", "POST:/api/auth/login"
     ]);
   } finally {
     await new Promise((resolvePromise) => server.close(() => resolvePromise()));
   }
 });
+
+test("qualification reads the preactivated account mapping across pages without issuing commands", async () => {
+  const email = "customer@example.test";
+  const accountId = "acct-qualification-owner-minted";
+  const mapping = { accountId, email, status: "active", sub2apiUserId: "41" };
+  const admin = { cookie: "admin=session", csrf: "csrf-admin" };
+  const requests = [];
+  const http = {
+    json: async (path, init, auth) => {
+      requests.push(path);
+      assert.deepEqual(init, {});
+      assert.equal(auth, admin);
+      const page = Number(new URL(path, "http://qualification.test").searchParams.get("page"));
+      return { payload: { source: "control-plane+sub2api", available: true, status: "available", data: {
+        items: page === 1 ? Array.from({ length: 50 }, (_, index) => ({ accountId: `acct-other-${index}`, email: `other-${index}@example.test` })) : [mapping],
+        total: 51, page, pageSize: 50
+      } } };
+    }
+  };
+  assert.deepEqual(await readLocalQualificationAccount(http, admin, " Customer@Example.Test "), { accountId, mapping });
+  assert.deepEqual(requests, ["/api/operator/accounts?page=1&pageSize=50", "/api/operator/accounts?page=2&pageSize=50"]);
+});
+
+for (const scenario of ["missing", "duplicate", "inactive", "unmapped", "missing account", "wrong email", "unavailable"]) {
+  test(`qualification refuses a ${scenario} preactivated account mapping`, async () => {
+    const email = "customer@example.test";
+    const accountId = `acct-${stableID("account", email).slice(0, 18)}`;
+    const mapping = { accountId, email, status: "active", sub2apiUserId: "41" };
+    const items = scenario === "missing" ? [] : scenario === "duplicate" ? [mapping, { ...mapping, accountId: "acct-second" }] : [{
+      ...mapping,
+      ...(scenario === "inactive" ? { status: "disabled" } : {}),
+      ...(scenario === "unmapped" ? { sub2apiUserId: "" } : {}),
+      ...(scenario === "missing account" ? { accountId: "" } : {}),
+      ...(scenario === "wrong email" ? { email: "other@example.test" } : {})
+    }];
+    const http = {
+      json: async (path, init) => {
+        assert.equal(path, "/api/operator/accounts?page=1&pageSize=50");
+        assert.deepEqual(init, {});
+        return { payload: { source: "control-plane+sub2api", available: scenario !== "unavailable", status: scenario === "unavailable" ? "unavailable" : "available", data: {
+          items, total: items.length, page: 1, pageSize: 50
+        } } };
+      }
+    };
+    await assert.rejects(() => readLocalQualificationAccount(http, {}, email), scenario === "unavailable" ? /unavailable/ : /requires an existing active account/);
+  });
+}
+
+for (const scenario of ["truncated page", "changed total", "wrong page"]) {
+  test(`qualification refuses a ${scenario} account inventory instead of accepting a partial mapping`, async () => {
+    const email = "customer@example.test";
+    const accountId = `acct-${stableID("account", email).slice(0, 18)}`;
+    const mapping = { accountId, email, status: "active", sub2apiUserId: "41" };
+    const http = {
+      json: async (path) => {
+        const pageNumber = Number(new URL(path, "http://qualification.test").searchParams.get("page"));
+        const items = pageNumber === 1 ? [mapping, ...Array.from({ length: 49 }, (_, index) => ({ accountId: `acct-other-${index}` }))] : [{ accountId: "acct-last" }];
+        return { payload: { source: "control-plane+sub2api", available: true, status: "available", data: {
+          items: scenario === "truncated page" ? [mapping] : items,
+          total: scenario === "changed total" && pageNumber === 2 ? 52 : 51,
+          page: scenario === "wrong page" ? 2 : pageNumber, pageSize: 50
+        } } };
+      }
+    };
+    await assert.rejects(() => readLocalQualificationAccount(http, {}, email), /account mapping readback is invalid/);
+  });
+}
 
 for (const scenario of [
   { name: "covers every live stage and validates exact local cleanup", status: 200, marker: true },
@@ -1137,9 +1190,7 @@ for (const scenario of [
 test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
   const accountEmail = "customer@example.test";
   const accountPassword = "customer-password";
-  const accountProvisionKey = "account-provision-j1";
   const accountId = `acct-${stableID("account", accountEmail).slice(0, 18)}`;
-  const accountOperationId = `account-provision-${stableID(accountProvisionKey, accountEmail).slice(0, 18)}`;
   const launchKey = "local-qualification:j1";
   // The owner mints the operation identity and the Workspace identity of a new
   // purchase, so the fixture never derives them.
@@ -1165,7 +1216,7 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
   };
   const requests = [];
   const ownerCommands = [];
-  const counts = { mappingPosts: 0, quotePosts: 0, workspacePosts: 0, keyCreates: 0, debits: 0, refunds: 0, deletes: 0, restarts: 0 };
+  const counts = { quotePosts: 0, workspacePosts: 0, keyCreates: 0, debits: 0, refunds: 0, deletes: 0, restarts: 0 };
   let ownerReads = 0;
   let server;
   const envelope = (source, data, status = "available") => ({ source, available: true, status, data });
@@ -1198,10 +1249,6 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
       const customer = body.email === accountEmail;
       if (!admin && !customer) return send(response, 401, { error: "invalid_credentials" });
       return send(response, 200, { user: { accountId: admin ? "acct-admin" : accountId, role: admin ? "admin" : "owner" } }, { "set-cookie": `${admin ? "admin" : "customer"}=session; Path=/`, "x-opl-csrf-token": admin ? "csrf-admin" : "csrf-customer" });
-    }
-    if (method === "POST" && url.pathname === "/api/operator/accounts") {
-      counts.mappingPosts += 1;
-      return send(response, 201, { status: "succeeded", accountId, operationId: accountOperationId });
     }
     if (method === "GET" && url.pathname === "/api/operator/accounts") {
       return send(response, 200, envelope("control-plane+sub2api", { items: [{ accountId, email: accountEmail, status: "active", sub2apiUserId: "41" }], total: 1, page: 1, pageSize: 50 }));
@@ -1362,7 +1409,7 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
       readSourceIdentity: async () => ({ sha, tree: "d".repeat(40), clean: true }),
       runLiveJ1: async ({ j0Ready }) => runLocalWorkspaceJ1HTTPQualification({
         http, adminEmail: "admin@example.test", adminPassword: "admin-password", qualificationEmail: accountEmail, qualificationPassword: accountPassword,
-        accountProvisionKey, launchKey, workspaceName: "J1", wait: async () => {},
+        launchKey, workspaceName: "J1", wait: async () => {},
         onStage: (stage) => stages.push(stage),
         readRuntime: async ({ runtimeId: observedRuntimeId }) => {
           runtimeReadbacks += 1;
@@ -1392,7 +1439,7 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
         assert.equal(redactedError(error), scenario.error);
         return true;
       });
-      assert.deepEqual(stages, ["bootstrap_ready", "admin_login", "account_provision", "qualification_login", "wallet_usage_baseline", "catalog_resolution", "workspace_order", "application_installation", "terminal_readback", "workspace_open"]);
+      assert.deepEqual(stages, ["bootstrap_ready", "admin_login", "account_mapping_readback", "qualification_login", "wallet_usage_baseline", "catalog_resolution", "workspace_order", "application_installation", "terminal_readback", "workspace_open"]);
       assert.equal(runtimeReadbacks, 1);
       assert.equal(debitReadbacks, 0);
       assert.equal(cleanupCalls.length, 1);
@@ -1432,13 +1479,15 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
       assert.equal(writtenReceipt.identities.storagePlanId, storagePlanId);
       assert.equal(writtenReceipt.receipt.operationId, operationId);
       assert.equal(writtenReceipt.debit.operationId, operationId);
-      assert.deepEqual(stages, ["bootstrap_ready", "admin_login", "account_provision", "qualification_login", "wallet_usage_baseline", "catalog_resolution", "workspace_order", "application_installation", "terminal_readback", "workspace_open", "accounting_readback", "receipt_validation", "qualification_cleanup"]);
+      assert.equal(writtenReceipt.mutationCounts.accountProvisionPosts, 0);
+      assert.deepEqual(stages, ["bootstrap_ready", "admin_login", "account_mapping_readback", "qualification_login", "wallet_usage_baseline", "catalog_resolution", "workspace_order", "application_installation", "terminal_readback", "workspace_open", "accounting_readback", "receipt_validation", "qualification_cleanup"]);
       assert.deepEqual(cleanupCalls, [{ accountId, workspaceId }]);
       assert.equal(runtimeReadbacks, 1);
       assert.equal(debitReadbacks, 1);
     }
     assert.equal(entryRequests, 1);
-    assert.deepEqual(counts, { mappingPosts: 1, quotePosts: 1, workspacePosts: 1, keyCreates: 1, debits: 1, refunds: 0, deletes: 0, restarts: 0 });
+    assert.deepEqual(counts, { quotePosts: 1, workspacePosts: 1, keyCreates: 1, debits: 1, refunds: 0, deletes: 0, restarts: 0 });
+    assert.equal(requests.some(({ method, path }) => method === "POST" && path === "/api/operator/accounts"), false);
     // The buyer declares the application and the plan pair it buys, and the
     // owner prices and admits exactly that declaration.
     assert.deepEqual(ownerCommands.map((command) => command.path), ["/api/v2/quotes", "/api/v2/workspaces"]);
@@ -1470,7 +1519,7 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
 });
 }
 
-test("canonical J1 HTTP preview cleans a failure before the owner Workspace order", async () => {
+test("canonical J1 HTTP preview requires an activated account before the owner Workspace order", async () => {
   const cleanupCalls = [];
   const http = {
     json: async (path) => {
@@ -1483,21 +1532,20 @@ test("canonical J1 HTTP preview cleans a failure before the owner Workspace orde
   http.json = async (path) => {
     if (path === "/api/healthz") return { payload: { status: "ok" } };
     if (path === "/api/auth/login") return { response: { headers: new Headers({ "set-cookie": "admin=session", "x-opl-csrf-token": "csrf" }) }, payload: { user: { accountId: "acct-admin" } } };
-    if (path === "/api/operator/accounts") return { response: { status: 201 }, payload: { status: "succeeded", accountId: "acct-wrong", operationId: "account-provision-wrong" } };
+    if (path.startsWith("/api/operator/accounts?")) return { payload: { source: "control-plane+sub2api", available: true, status: "available", data: { items: [], total: 0, page: 1, pageSize: 50 } } };
     throw new Error("unexpected request after conflict");
   };
   await assert.rejects(() => runLocalWorkspaceJ1HTTPQualification({
     http, adminEmail: "admin@example.test", adminPassword: "password", qualificationEmail: "customer@example.test", qualificationPassword: "password",
-    accountProvisionKey: "mapping", launchKey: "launch", workspaceName: "J1",
+    launchKey: "launch", workspaceName: "J1",
     readRuntime: async () => ({}), readDebit: async () => ({}), cleanup: async (scope) => { cleanupCalls.push(scope); return { containers: 0, volumes: 0, networks: 0 }; }, receiptBase: {}
-  }), /provision response/);
+  }), /requires an existing active account created through POST \/api\/v2\/operator\/accounts/);
   assert.deepEqual(cleanupCalls, [{ failed: true, launchSubmitted: false, recoveryAuthority: null }]);
   assert.throws(() => sourceData({ source: "control-plane+sub2api", available: true, status: "conflict", data: {} }, "control-plane+sub2api"), /unavailable/);
 });
 
 test("canonical J1 HTTP preview preserves the recovery scope after an owner Workspace order submission", async () => {
   const accountId = `acct-${stableID("account", "customer@example.test").slice(0, 18)}`;
-  const provisionOperationId = `account-provision-${stableID("mapping", "customer@example.test").slice(0, 18)}`;
   const cleanupCalls = [];
   // The owner mints the operation identity and the Workspace identity, so the
   // fixture states them instead of deriving them.
@@ -1524,7 +1572,6 @@ test("canonical J1 HTTP preview preserves the recovery scope after an owner Work
       if (path === "/api/v2/wallet") {
         return { payload: ownerWalletPayload };
       }
-      if (path === "/api/operator/accounts" && init.method === "POST") return { payload: { status: "succeeded", accountId, operationId: provisionOperationId } };
       if (path.startsWith("/api/operator/accounts?")) return { payload: { source: "control-plane+sub2api", available: true, status: "available", data: { items: [{ accountId, email: "customer@example.test", status: "active", sub2apiUserId: "41" }], total: 1, page: 1, pageSize: 50 } } };
       if (path === "/api/auth/me") return { payload: { source: "sub2api", available: true, status: "available", data: { accountId, email: "customer@example.test", role: "owner", status: "active", sub2apiUserId: "41" } } };
       if (path === "/api/gateway/wallet") return { payload: { source: "sub2api", available: true, status: "available", data: { usdMicros: "100000000" } } };
@@ -1553,7 +1600,7 @@ test("canonical J1 HTTP preview preserves the recovery scope after an owner Work
   };
   await assert.rejects(() => runLocalWorkspaceJ1HTTPQualification({
     http, adminEmail: "admin@example.test", adminPassword: "password", qualificationEmail: "customer@example.test", qualificationPassword: "password",
-    accountProvisionKey: "mapping", launchKey: "launch", workspaceName: "J1",
+    launchKey: "launch", workspaceName: "J1",
     wait: async () => {}, readRuntime: async () => ({}), readDebit: async () => ({}),
     cleanup: async (scope) => { cleanupCalls.push(scope); return null; }, receiptBase: {}
   }), /Workspace owner readback is invalid/);
@@ -1596,7 +1643,6 @@ test("canonical J1 HTTP preview still forbids cleanup when the post-Create owner
       if (path === "/api/v2/wallet") {
         return { payload: ownerWalletPayload };
       }
-      if (path === "/api/operator/accounts" && init.method === "POST") return { payload: { status: "succeeded", accountId, operationId: `account-provision-${stableID("mapping", "customer@example.test").slice(0, 18)}` } };
       if (path.startsWith("/api/operator/accounts?")) return { payload: { source: "control-plane+sub2api", available: true, status: "available", data: { items: [{ accountId, email: "customer@example.test", status: "active", sub2apiUserId: "41" }], total: 1, page: 1, pageSize: 50 } } };
       if (path === "/api/auth/me") return { payload: { source: "sub2api", available: true, status: "available", data: { accountId, email: "customer@example.test", role: "owner", status: "active", sub2apiUserId: "41" } } };
       if (path === "/api/gateway/wallet") return { payload: { source: "sub2api", available: true, status: "available", data: { usdMicros: "100000000" } } };
@@ -1621,7 +1667,7 @@ test("canonical J1 HTTP preview still forbids cleanup when the post-Create owner
   };
   await assert.rejects(() => runLocalWorkspaceJ1HTTPQualification({
     http, adminEmail: "admin@example.test", adminPassword: "password", qualificationEmail: "customer@example.test", qualificationPassword: "password",
-    accountProvisionKey: "mapping", launchKey: "launch", workspaceName: "J1",
+    launchKey: "launch", workspaceName: "J1",
     wait: async () => {}, readRuntime: async () => ({}), readDebit: async () => ({}),
     cleanup: async (scope) => { cleanupCalls.push(scope); return null; }, receiptBase: {}
   }), /response unavailable/);
