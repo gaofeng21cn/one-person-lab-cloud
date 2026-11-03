@@ -113,9 +113,9 @@ The remaining work order is deliberately narrow:
    Agent combination is the next product slice.
 
 [#1018](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1018)
-remains a separate historical-order closeout objective. Its original resource,
-route, Key, Ledger and charge obligations must not be used as a shortcut for
-the first-launch gate. Evidence housekeeping in
+records completed historical-order closeout, with [protected owner evidence](status.md#original-order-closeout-scope-2026-10-23)
+for the original resource, route, Key, Ledger and charge obligations. That
+acceptance does not substitute for the first-launch gate. Evidence housekeeping in
 [#1058](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1058),
 including its archival policy and bounded receipt moves, may finish as a
 maintenance lane but does not advance this product gate. The modularity,
@@ -251,12 +251,12 @@ provider or formal Release acceptance. New exact failures are assessed against
 the current owner and caller instead of automatically restoring a historical
 acceptance duty.
 
-Current Workspace create/delete convergence is tracked by
-[#1018](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1018) for original-owner
-acceptance, [#1043](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1043)
-for reusable native unfinished-order closeout, and
+Workspace create/delete convergence includes completed original-owner acceptance
+under [#1018](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1018)
+and reusable native unfinished-order closeout delivered through
+[#1043](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1043).
 [#1028](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1028)
-for new-purchase caller cutover. The untouched and partially dispatched order
+owns new-purchase caller cutover. The untouched and partially dispatched order
 tracking in #1025 and #1027 was consolidated into #1018; their closure and the
 unmerged #1026 proposal do not establish cancellation or absence. Activation
 and operator command routing follow the remaining callers in #1028; #1031 and
@@ -364,37 +364,17 @@ boundaries and original identities. The [current implementation](implementation-
 and [source evidence](status.md#original-order-closeout-scope-2026-10-23) distinguish
 completed original-order acceptance from the separate migration work.
 
-The confirmed disposition on 2026-10-23 is to terminate all three original
-orders and clean up their residual resources. This is the intended outcome,
-not evidence that resources, routes or financial obligations are already closed.
-Reusable native cancellation/deletion belongs in Workspace and its existing
-owner integrations. The current decision is to qualify the new owner path first and then retire its
-old callers and writer. Retained orders require an explicit migration of their
-original obligations and evidence; the retained Control Plane deletion path is
-not the implementation to adopt for this work.
+The termination decision of 2026-10-23 has been fulfilled for all three original
+orders. Their create/Launch, resource, charge, refund and receipt identities stay
+with their original owners. Native A/B have explicit confirmed Key dispositions;
+the retained order completed through its existing CP deletion and settlement
+operation. No responsibility was transferred to a new production writer.
 
-| Order boundary | Next work | Completion evidence |
-| --- | --- | --- |
-| Original records and disposition | Bind each affected order to its producing revision, authenticated scope, original create/Launch, accepted quote, resource/deployment dispatches, charge and existing receipts. Use the confirmed termination goal. Read each fact through its owning protected boundary. | Owner-confirmed original identities and current observations; missing or unknown facts remain explicit. |
-| Delivered retained Launch | Migrate the exact original Launch, resource, payment and receipt obligations to the new lifecycle owner before retiring its old writer. Preserve historical readback and prohibit a second current writer. | The new owner closes the exact original resources and entry, Ledger records the deletion, original-charge settlement is confirmed or explicitly not applicable, and the migrated old caller/writer is retired. |
-| Unfinished native order | Source now uses Workspace DELETE and existing typed owners for create cancellation, downstream fences, original-command resolution and independent resource/Key/settlement readbacks. Complete current-revision verification and native peer/provider qualification; preserve explicit unknown outcomes for partial provider evidence. | The existing authorized DELETE caller and deletion/operation readbacks can complete the affected order. An empty local result or saga-step list never substitutes for owner fencing, provider absence or financial evidence. |
-| Recovery and reuse | Exercise cancellation/deletion through the same owner entry after response loss, restart, partial dispatch and externally removed resources. Reuse existing settlement and receipt writers. | Original operation identity survives; delayed work cannot recreate closed resources; no duplicate purchase, deploy, refund or receipt occurs; independent resource, route, Key and settlement outcomes remain truthful. |
-
-The original native attribution receipts remain provenance for the original
-create, charge and managed-Key commands. Use the later deletion/refund and Serve
-retirement receipts for their completed outcomes, and obtain a separate explicit
-Key disposition before claiming all obligations closed. Until #1052 establishes
-a verified handover, the retained original owner remains responsible for its
-existing operation; this repair does not select a new production writer.
-
-The reusable native implementation belongs to #1043; #1018 owns acceptance of
-the three original orders. A reproduced retained-order repair needs its own
-implementation scope. Source tests prove their declared boundary. Closing
-#1018 additionally requires
-protected owner readback for its actual original orders. Manual provider-console
-deletion, a fixture PASS, or a successful Actions run with a blocked receipt is
-not that evidence. New-purchase caller migration remains separately owned by
-#1028; it must preserve historical recovery.
+The reusable native capability was delivered through #1043/#1047. Further
+retained-owner migration and retirement belong to #1052, new native qualification
+to #1042, and new-purchase caller migration to #1028. Those scopes must preserve
+historical recovery and financial evidence, but they do not reopen acceptance of
+these three completed orders.
 
 ## Development Governance Migration (2026-10-13)
 
