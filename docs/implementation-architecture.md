@@ -1492,6 +1492,8 @@ with retained purchase, not with Account readers. Resource Catalog quotes cover
 new resources; they do not prove arbitrary legacy package-pricing UI parity.
 
 **R8 — fixed-slot provider procurement source withdrawal.**
+Merged source: `8913c7f0ba090c3eb0a83e41f6ad65aefe389fb2`, following current-head
+CI and final review. Installation remains separate.
 [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) removes the route/executor, dedicated writer tests and
 registration, token declarations and the obsolete production-manifest assertion.
 Its only production caller also leaves, so `ClaimWorkspaceCreate`, its

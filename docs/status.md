@@ -43,8 +43,9 @@ status, separate from installation evidence, is:
   from the owner status field; a missing status remains unknown. This source
   change is merged as `7bcc80bc8f550255e756d3c36e593fa824b77585` and supplied
   the fresh protected observation below.
-- [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) can proceed with fixed-slot executor source withdrawal after
-  protected [observation 41598975341](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41598975341)
+- [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) merged as `8913c7f0ba090c3eb0a83e41f6ad65aefe389fb2`
+  after exact-head CI and final review. Its fixed-slot executor source withdrawal
+  is supported by protected [observation 41598975341](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41598975341)
   at `2026-11-03T07:50:36.736Z`. Available CP provenance projects 44 distinct
   current operations, below the exact installed Product's unfiltered 100-row
   limit, excluding the two fixed-slot and historical single-slot operation
