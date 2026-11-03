@@ -564,10 +564,14 @@ completed progress. A successor does not create resources or charge the wallet.
 `OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED=1` enables both default
 installation and deployment recovery. The base Compose forwards this setting;
 the local Workspace overlay enables it. With the switch off, accepted requests
-remain durable without application execution. Operator revision/data admission,
-new deployment and operator retry HTTP commands have been removed with their
-Console controller. Historical GET routes remain in
-`workspace_application_history_routes.go`. Customers continue a default installation with
+remain durable without application execution. Operator revision/data admission and
+new deployment HTTP commands have been removed with their Console controller.
+Historical GET routes remain in `workspace_application_history_routes.go`.
+The existing operator `POST /api/operator/application-deployments/{id}/retry`
+remains for frozen failed operations, including retained credential/Key rotation
+children; the original reservation, selection/version, entitlement and
+rotation-parent fences still apply. It admits no new deployment. Customers
+continue a default installation with
 `POST /api/workspaces/{id}/application-installation/resume`; this reuses the
 original request, Key and deployment instead of making another purchase.
 
@@ -1378,7 +1382,7 @@ absent. There is no automatic switch from a failed native operation to CP.
 
 **R1 — legacy application admission, deployment and default installation.**
 The first bounded slice, **R1a**, removes operator revision/data admission, new
-deployment and operator retry handlers, their exclusive admission functions and
+deployment handlers, their exclusive admission functions and
 data-material mutation store method, and the Console deployment controller,
 controls and exclusive DTOs/tests. Historical GETs remain behind
 `workspace_application_history_routes.go`; the revision decoder and persisted
@@ -1389,7 +1393,7 @@ R1a does not retire the shared deployment engine: `workspace_application_access.
 still creates/drives intents for password and Workspace-Key rotation, and
 `workspace_default_application.go` plus installation resume still continue original
 accepted installation requests. Those real callers require the worker, activation
-store and current/reserved selection writers; their retirement stays coupled to
+store, existing operator retry and current/reserved selection writers; their retirement stays coupled to
 R2/R3 and the remaining original-install obligations. The snapshot above is not
 updated into a claim that all CP deployment writes disappeared. Next remove the writer/driver portions of `workspace_application_deployment_driver.go`,
 `application_revision_store.go`, `workspace_default_application.go` and

@@ -91,7 +91,6 @@ func TestRetiredOperatorApplicationWritesPreserveHistoryAndHaveNoSideEffects(t *
 		{"revision", "/api/operator/application-revisions", encode(revision)},
 		{"data_material", "/api/operator/application-data-materials", encode(material)},
 		{"deployment", "/api/operator/application-deployments", encode(deployment)},
-		{"retry", "/api/operator/application-deployments/" + operationID + "/retry", "{}"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			response := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, test.path, test.body, "retired-"+test.name)

@@ -273,7 +273,6 @@ test("Operator Resource Read loads list and policy and rejects a late page 1 res
     assert.equal(pageOneReads, 1);
     assert.equal(policyReads, 1);
     assert.equal(await page.getByRole("heading", { name: "应用版本登记", exact: true }).count(), 0);
-    assert.equal(await page.getByRole("heading", { name: "应用部署", exact: true }).count(), 0);
 
     await page.getByRole("button", { name: "刷新", exact: true }).click();
     await stalePageHeld.promise;
@@ -343,6 +342,7 @@ test("Operator Resource Read rejects late detail and preview after selecting ano
     await selectWorkspace(page, "workspace-beta");
     await page.getByText("receipt-workspace-beta-current", { exact: true }).first().waitFor({ state: "visible" });
     await page.getByText(imageDigest("workspace-beta", "current"), { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.getByRole("heading", { name: "应用部署", exact: true }).count(), 0);
 
     releaseAlpha.resolve();
     await Promise.all([alphaDetailSettled.promise, alphaPreviewSettled.promise]);

@@ -19,16 +19,20 @@ durable decisions are in [decisions.md](decisions.md), and open work is in
 ## Retained Operator Application Deployment Withdrawal (2026-11-03)
 
 The R1a source change based on `ae293ec8c2ba6c562ae5c5206d4c0be2b3171c7d`
-removes CP operator revision/data admission, deployment creation and operator retry
-commands, along with their Console controller, controls and exclusive API types.
+removes CP operator revision/data admission and deployment creation commands,
+along with their Console controller, controls and exclusive API types.
 The unused data-material admission store mutation is removed with its last caller.
 Existing historical GETs, persisted revisions/materials and deployment records stay
 readable. No refusal stub, alternate writer, new feature or schema deletion is added.
 
 This slice does not claim retirement of the shared deployment engine. Original
 installation resume, password rotation and Workspace-Key rotation still call it;
-their worker, configuration and activation writers remain until those capabilities
-are withdrawn or migrated with their actual callers. Native Runtime Release,
+their worker, configuration, activation writers and existing operator retry remain
+until those capabilities are withdrawn or migrated with their actual callers.
+The retry resumes only an existing frozen operation under the original
+reservation, selection/version, entitlement and rotation-parent checks; it cannot
+admit a revision or create another deployment. Removing it now would strand
+rotation children in `manual_review`, potentially after the old Key was disabled. Native Runtime Release,
 Workspace and Serve selection/update paths are unchanged. The matching Instance
 installer caller is a separate source withdrawal, with adoption ordered before
 this Cloud change. No Candidate or Instance deployment is part of this source PR.
