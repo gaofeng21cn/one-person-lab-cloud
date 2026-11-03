@@ -5,14 +5,12 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
 	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
 
 	"opl-cloud/services/control-plane/internal/clients"
-	"opl-cloud/services/control-plane/internal/domain"
 )
 
 type Service struct {
@@ -24,24 +22,6 @@ type Service struct {
 var (
 	ErrWorkspaceRuntimeIdentityMismatch = errors.New("workspace_runtime_identity_mismatch")
 )
-
-type CreateWorkspaceInput struct {
-	WorkspaceID           string `json:"workspaceId"`
-	AccountID             string `json:"accountId"`
-	Sub2APIUserID         int64  `json:"-"`
-	WorkspaceAPIKeyID     int64  `json:"workspaceApiKeyId"`
-	WorkspaceAPIKeyName   string `json:"-"`
-	OwnerID               string `json:"ownerId"`
-	Name                  string `json:"name"`
-	PackageID             string `json:"packageId"`
-	AttachmentID          string `json:"attachmentId"`
-	AttachmentOperationID string `json:"attachmentOperationId"`
-	RuntimeOperationID    string `json:"runtimeOperationId"`
-	ComputeID             string `json:"computeAllocationId"`
-	VolumeID              string `json:"storageId"`
-	GatewaySecretRef      string `json:"-"`
-	WorkspaceImageID      string `json:"-"`
-}
 
 type RotateWorkspaceCredentialInput struct {
 	WorkspaceID           string
@@ -60,27 +40,12 @@ type ReconciliationInput struct {
 	Report map[string]any `json:"report"`
 }
 
-type StorageAttachmentInput struct {
-	AccountID   string `json:"accountId"`
-	WorkspaceID string `json:"workspaceId"`
-	ComputeID   string `json:"computeId"`
-	VolumeID    string `json:"volumeId"`
-}
-
 func NewService(ledger clients.LedgerClient, fabric clients.FabricClient, sub2API ...clients.Sub2APIClient) *Service {
 	service := &Service{ledger: ledger, fabric: fabric}
 	if len(sub2API) > 0 {
 		service.sub2API = sub2API[0]
 	}
 	return service
-}
-
-func (s *Service) Sub2APIWorkspaceKey(ctx context.Context, userID int64) (clients.Sub2APIWorkspaceKey, error) {
-	client, ok := s.sub2API.(clients.Sub2APIWorkspaceKeyClient)
-	if !ok {
-		return clients.Sub2APIWorkspaceKey{}, errors.New("sub2api_workspace_key_unavailable")
-	}
-	return client.WorkspaceKey(ctx, userID)
 }
 
 func (s *Service) WorkspaceKeysForConvergence(ctx context.Context, userID int64, name string) ([]clients.Sub2APIWorkspaceKey, error) {
@@ -439,28 +404,6 @@ func (s *Service) FabricCatalog(ctx context.Context) (clients.FabricCatalog, err
 	return s.fabric.Catalog(ctx)
 }
 
-func (s *Service) CreateStorageAttachment(ctx context.Context, input StorageAttachmentInput, idempotencyKey string) (clients.StorageAttachment, error) {
-	return s.fabric.CreateStorageAttachment(ctx, clients.StorageAttachmentInput{AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, ComputeID: input.ComputeID, VolumeID: input.VolumeID}, idempotencyKey)
-}
-
-func (s *Service) RecordProviderAcceptanceReceipt(ctx context.Context, workspace domain.WorkspaceProjection, idempotencyKey string) (domain.WorkspaceProjection, error) {
-	input := clients.ReceiptInput{Type: "execution.receipt.v1", Status: "completed", Surface: "workspace", AccountID: workspace.AccountID, WorkspaceID: workspace.ID, JobID: workspace.RuntimeID, Execution: map[string]any{"providerRequestId": workspace.RuntimeID}, OutputRefs: map[string]any{"redactedUrl": workspace.URL}}
-	receipt, err := s.ledger.RecordReceipt(ctx, input, idempotencyKey+":receipt")
-	if err != nil {
-		return workspace, err
-	}
-	if receipt.ReceiptID == "" || !reflect.DeepEqual(receipt.ReceiptInput, input) {
-		return workspace, errors.New("provider_acceptance_receipt_response_invalid")
-	}
-	workspace.ReceiptID = receipt.ReceiptID
-	return workspace, nil
-}
-
-func (s *Service) gatewaySecretRef(ctx context.Context, accountID, workspaceID string, userID int64, idempotencyKey string) (string, error) {
-	secret, err := s.SyncWorkspaceGatewaySecret(ctx, accountID, workspaceID, userID, idempotencyKey)
-	return secret.SecretRef, err
-}
-
 func (s *Service) SyncWorkspaceGatewaySecretByID(ctx context.Context, accountID, workspaceID string, userID, keyID int64, keyName, idempotencyKey string) (clients.GatewaySecretWriteResult, error) {
 	key, err := s.WorkspaceKeyByIDForConvergence(ctx, userID, keyID, keyName)
 	if err != nil {
@@ -478,24 +421,6 @@ func (s *Service) SyncWorkspaceGatewayReplacementSecret(ctx context.Context, cre
 		return clients.GatewaySecretWriteResult{}, err
 	}
 	if replacementName == "" || key.Name != replacementName || !strings.HasPrefix(replacementName, "opl-workspace-") || replacementName == "opl-workspace" {
-		return clients.GatewaySecretWriteResult{}, errors.New("invalid_sub2api_workspace_key")
-	}
-	return s.writeGatewaySecretValue(ctx, accountID, workspaceID, userID, key, idempotencyKey)
-}
-
-func (s *Service) SyncWorkspaceGatewaySecret(ctx context.Context, accountID, workspaceID string, userID int64, idempotencyKey string) (clients.GatewaySecretWriteResult, error) {
-	if accountID == "" || workspaceID == "" || userID <= 0 || idempotencyKey == "" {
-		return clients.GatewaySecretWriteResult{}, errors.New("gateway_secret_write_failed")
-	}
-	key, err := s.Sub2APIWorkspaceKey(ctx, userID)
-	if err != nil {
-		return clients.GatewaySecretWriteResult{}, err
-	}
-	return s.writeWorkspaceGatewaySecret(ctx, accountID, workspaceID, userID, key, idempotencyKey)
-}
-
-func (s *Service) writeWorkspaceGatewaySecret(ctx context.Context, accountID, workspaceID string, userID int64, key clients.Sub2APIWorkspaceKey, idempotencyKey string) (clients.GatewaySecretWriteResult, error) {
-	if key.Name != "opl-workspace" {
 		return clients.GatewaySecretWriteResult{}, errors.New("invalid_sub2api_workspace_key")
 	}
 	return s.writeGatewaySecretValue(ctx, accountID, workspaceID, userID, key, idempotencyKey)

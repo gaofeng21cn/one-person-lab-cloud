@@ -281,7 +281,7 @@ historical operations and financial records while retiring their execution paths
 
 | Review scope | Proposed decision | Evidence needed before implementation withdrawal |
 | --- | --- | --- |
-| R8 fixed-slot provider procurement | HOLD: [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) proposes removing route/executor, dedicated config, unused create-claim machinery and exclusive tests | Prove all accepted slot-operation obligation dispositions through authoritative owner evidence before executor source removal or withdrawal PR merge; CI or leaving Draft is not evidence, and original unknown operations remain unknown. Preserve historical identity/billing readers |
+| R8 fixed-slot provider procurement | [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) removes route/executor, dedicated config, unused create-claim machinery and exclusive tests; the source HOLD is resolved by fresh owner evidence | Observation `41598975341` excludes current accepted fixed-slot and historical single-slot operations through complete current-table identity comparison; no recovery owner migration is needed for absent operations. Preserve historical identity/billing readers. Installation and later accepted operations remain separate |
 | R9 test-only Key lifecycle prototype; retired browser activation alias | [Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112) is merged source only, not installed; [Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114) remains unmerged pending caller alignment and re-review | Review verification on 2026-11-03 found fresh runner state lacks the existing-account prerequisite; caller migration and qualification remain incomplete. The baseline alias already refused activation; these observations do not establish a customer-facing regression. Native lifecycle, internal provisioning and Tenant/wallet binding remain; this does not remove the CP process |
 | R1 application admission/default install/deployment | Review retiring the legacy capability with UI and Instance command callers | Resolve accepted deployment/default-install/reservation obligations; decide whether identified legacy-only functionality is withdrawn or genuinely needed by a new owner |
 | R2 runtime/image/password maintenance; R3 Workspace Key rotation | Review withdrawal versus necessary caller migration | Resolve existing runtime/Secret/Key identity and unsettled replacements/rotations; preserve shared lifecycle/history and do not treat reveal/disable as full rotation parity |
@@ -312,9 +312,15 @@ qualification gate, metrics service or authority.
 Instance proposal [Instance #673](https://github.com/gaofeng21cn/opl-instance-medopl/pull/673) extends the existing observation producer to
 project every runtime operation in its current owner API result, taking status
 only from the owner status field and preserving missing status as unknown.
-Collect fresh evidence through the protected Instance entry before evaluating
-operation-dependent removals. No new protected evidence has been collected with
-this extension. It preserves the old Workspace scope and adds
+Protected observation `41598975341` now supplies fresh evidence from this merged
+extension. Its successful CP projection has 44 distinct operations below the
+installed owner's unfiltered 100-row page limit, with no current fixed-slot or
+historical single-slot identity or acceptance action digest. The executor saves
+operations before provider execution and retention does not remove them; this
+resolves R8's current-operation HOLD without restoring procurement or adding a
+new capability. The global observation remains partial and does not prove a
+financial archive, zero traffic or future absence. It preserves the old
+Workspace scope and adds
 current/reserved deployment identity digests with explicit unknown/empty
 semantics. Fresh installed binding readback, independent wallet/rotation state
 and Account enumeration remain unverified.
