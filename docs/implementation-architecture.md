@@ -419,12 +419,17 @@ source facts; current exact-Candidate installation and authenticated customer
 acceptance remain in the [roadmap](roadmap.md#workspace-key-and-customer-read-boundaries).
 
 The cloud detail exposes the owner's lifecycle, resource readiness, application
-availability, period end and access URL. Workspace-owner renewal, deletion,
-credentials and application-installation BFF routes remain unimplemented, so
-their legacy controls receive no cloud Workspace. The
+availability, period end and access URL. Native deletion and its readback use
+`DELETE /api/v2/workspaces/{workspaceId}` and `GET .../deletion` in
+`apps/console-bff/internal/httpapi/workspace.go`; application credential reveal
+uses `POST .../application-credentials/reveal` in `workspace_credentials.go`.
+The Cloud UI selects these owners explicitly and never retries those commands
+against a retained Workspace API. Legacy renewal, application-installation and
+credential-rotation controls still receive no cloud Workspace; native credential
+reveal is not a password-rotation implementation. The
 [browser reference](implementation/console.md) owns query and command state;
-[roadmap](roadmap.md#cloud-identity-customer-workspace-read-2026-09-30) owns the
-missing maintenance outcomes.
+[the retirement inventory](#retained-writer-and-caller-inventory-2026-11-03)
+separates these current callers from removal candidates.
 
 The following source map applies to the retained Control Plane API:
 
@@ -1323,6 +1328,262 @@ through its authenticated peer connection. Workspace grants only active
 Workspaces inside their confirmed subscription period; Serve refuses missing,
 unverified or unreadable verdicts before reading a route. This source change
 does not activate Local no-charge terms or certify production peer wiring.
+
+### Retained writer and caller inventory (2026-11-03)
+
+This is the writer/caller inventory at Cloud baseline
+`a7e793f80ffb764d80b63179b05d32e9bdf64c15` and Instance baseline
+`0a38b429c785f0e1c345f5910b3731f2f49e1f57`. This PR changes documentation
+only. R8 and R9 describe separately proposed source withdrawals, linked below;
+they do not assert that this branch removes code or that production adopted them.
+The local Instance source inspected at `709d18530f7e5b54f48d30bae8ca8e45a90cce95`
+differed from the Instance baseline only in final-release pagination/tool tests
+and archived receipts; the listed caller files were unchanged. Cloud paths are
+relative to this repository; Instance paths belong to that external owner.
+
+A registered route or mounted caller is source reachability, not proof of
+production traffic. A guard or disabled worker is not removal. A retirement
+change removes the old command, implementation, worker registration, exclusive
+configuration, caller adapters and exclusive tests together. Shared readers,
+decoders and historical records remain only with a named consumer or retention
+obligation; preserving records does not require preserving a mutation engine.
+The approved removal scope does not authorize discarding accepted customer
+operations, data or financial evidence.
+
+#### Facts and actual caller boundaries
+
+| Fact/capability | Current owner and new caller | Retained writer/caller and object boundary | Review disposition |
+| --- | --- | --- | --- |
+| Fresh purchase | Resource Catalog creates the quote; Workspace accepts the order through BFF `/api/v2/quotes` and `/api/v2/workspaces`; UI `createWorkspaceQuote` and Instance `cloud-workspace-launch-readback.mjs` use those routes | CP `POST /api/workspace-launches` only replays an existing account/key-bound operation, otherwise refuses before pricing/payment/provider/persistence. PR #1061 already removed `createWorkspaceLaunch` and fresh-create claim machinery | Already removed; do not implement another fence or preserve a creator for tests |
+| Application revision, deployment and current selection | Runtime Control supplies approved default-App releases; Capability/Build supplies Agent descriptors; Workspace calls Serve Reserve/Deploy. BFF `serve_update.go` delegates version updates to Serve | CP operator revision/data admission, application-deployments and retry, default installer and deployment worker. Claim/activation requires a CP Workspace row and binding/predecessor checks. Legacy UI and Instance installer remain callers | R1: retire the legacy deployment capability after caller/accepted-operation disposition; no proof of a duplicate native writer follows from old columns |
+| Application credentials, runtime maintenance and image policy | Workspace/Serve reveal the exact current ready runtime's credentials; Serve owns approved version replacement/readiness/access | CP credential rotation/reveal, installation resume, repair, image replacement and release-policy mutation. Legacy controllers and Instance rollout/rollback still use them | R2: review withdrawal or necessary caller migration; native reveal/update does not establish password-rotation or arbitrary operator-deploy parity |
+| Workspace managed Key | Workspace coordinates intent through Gateway Integration; external Gateway owns effective Key/Group state | CP Workspace Key rotation/default-install handover still touches external Gateway, guarded by CP Workspace/account/old-Key binding. This is distinct from personal user Key CRUD | R3: remove the old Workspace-Key writer with its deployment/default-install callers and original operations, not the personal-Key readers |
+| Personal Gateway Keys, account activation and wallet administration | Gateway Integration owns Cloud mappings; Sub2API remains Key/wallet truth. Cloud activation still has an original-owner BFF bridge | CP user-Key routes, delegated user identity, activation/admin commands and recovery remain separate capabilities; Cloud browser guards do not remove backend entrypoints | R4: identify which public/admin capabilities are still required before choosing withdrawal or migration; no blanket Gateway or Account file deletion |
+| Retained purchase recovery, expiry/renewal, deletion and settlement | Workspace owns native lifecycle; native BFF deletion/readback and Instance `workspace-native-delete.mjs` use its API; Gateway/Fabric/Ledger own their effects/readbacks | CP original Launch replay/resume, renewal/expiry and delete/refund workers remain registered. Original operations/charges must not be replaced by native re-purchase/refund | R5: finish the all-object/operation census, then remove the retained execution slice and its external callers; the three #1018 selectors are already closed |
+| Legacy package pricing | Resource Catalog owns new compute/storage prices and quotes | Legacy UI and Instance `fresh-workspace-admission.mjs` still read `/api/pricing/catalog` and POST preview; preview is computation/read, not a purchase | R6: remove old pricing callers/adapters with their exclusive model, while preserving accepted historical quote/terms decoding |
+| History, announcements and shared identity/read transport | BFF still calls original-owner billing, personal Gateway history/endpoint, announcements and ACK/activation adapters | `apps/console-bff/internal/clients/legacy_billing.go`, `personal_gateway_reads.go`, `announcements.go`, `operator.go` and the CP proof/Account/receipt readers are live source callers. ACK and activation are real remaining writes | R7: retain in this retirement scope; removing Workspace execution does not retire the CP process, shared transport or these independent capabilities |
+| Fixed-slot provider acceptance | Native business uses Catalog/Workspace and bounded protected execution | [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) proposes removing the route/executor, dedicated token/configuration, unused create-claim machinery and exclusive tests; a named history-only identity helper preserves billing/access readers | R8: independent source proposal; all-slot obligation disposition is required before installation |
+| Test-only Key lifecycle prototype and retired activation alias | Native managed-Key lifecycle lives in Gateway Integration; native BFF activation still invokes the original provisioning writer | [Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112) removes the test-only prototype; [Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114) separately removes the public refusal alias and stale callers, and makes qualification read an existing activated account | R9: independent proposals; internal activation, Tenant/wallet binding and native Key lifecycle remain |
+
+Cloud/legacy browser routing is a build-time choice (`VITE_CONSOLE_IDENTITY`).
+`operatorWriteRoute(cloud=true)` refuses before fetch, and cloud Workspace
+maintenance uses native routes or is unavailable. The legacy bundle still mounts
+its retained controllers. A CP deployment claim requires its own persisted
+Workspace; a native-only row cannot pass that claim. Same-ID rows across both
+owners, live route usage and all deployed legacy bundles have not been proved
+absent. There is no automatic switch from a failed native operation to CP.
+
+#### Code-removal packages for review
+
+**R1 — legacy application admission, deployment and default installation.**
+Remove mutation/retry registrations in `workspace_application_deployment.go`,
+`workspace_application_admission.go` and `workspace_application_data_admission.go`;
+remove the writer/driver portions of `workspace_application_deployment_driver.go`,
+`application_revision_store.go`, `workspace_default_application.go` and
+`workspace_application_recovery.go`. Remove deployment-worker startup in
+`server.go`, its `OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED` configuration,
+and corresponding topology/Compose/example declarations. Retire the old
+`use-workspace-application-deployment-controller.ts` and installation controller,
+their mounts and mutation exports in shared UI API files. Writer-only cases in
+`workspace_application_deployment_test.go`, `workspace_application_deployment_replay_test.go`,
+`workspace_application_operation_store_test.go`, `workspace_application_admission_test.go`,
+`workspace_application_data_admission_test.go`, `workspace_default_application_test.go`
+and `tests/ui/workspace-application-deployment-controller-model.test.ts` leave
+with those writers; mixed recovery/history cases stay with their real reader.
+Remove current/reserved **writers** and preserve the original binding/generation
+and revision decoders while history or cleanup still reads them. Do not drop
+persisted columns or rewrite old schema migrations merely to remove writers.
+
+**R2 — retained runtime/image/credential maintenance.**
+Remove the selected command/worker symbols in `workspace_runtime_image_replacement.go`,
+`workspace_image_release_policy.go`, `workspace_launch_repair.go`,
+`workspace_runtime_gateway_network_recovery.go` and credential rotation branches in
+`routes_workspace.go` / `workspace_application_access.go`. Remove legacy image and
+secret-controller command branches, runtime-image worker startup, its
+`OPL_WORKSPACE_RUNTIME_IMAGE_REPLACEMENT_WORKER_ENABLED` setting and exclusive
+policy/configuration consumers together. Image replacement/policy, runtime repair,
+network recovery and UI controller tests retire with those commands. Keep shared
+lifecycle/absence, credential lineage, origin codec and history readers until
+R5 and the relevant read consumers no longer use them. This is a capability
+withdrawal/migration decision: do not build every legacy command in Serve solely
+to make the old code removable.
+
+**R3 — retained Workspace Key creation and rotation.**
+Remove the Key-stage writer in `workspace_launch_account_stages.go`, its
+`workspace_launch_service.go` dispatch, the default-install Key preparation in
+`workspace_default_application.go` and the rotation route in `routes_workspace.go`
+with its writer in `workspace_gateway.go`. Remove rotation claims/CAS from
+`ent_state_store_workspace.go` and command-only Sub2API client wrappers only when
+R1/R5 no longer call them. Preserve current-Secret resolution, rotation lineage,
+original external IDs and overlap guards used by deletion/budget/history.
+`source_truth_gateway_test.go` rotation cases and the corresponding command
+fixtures leave with the removed implementation. Native CreateManagedKey and
+reversible read/disable/enable are implemented; full replacement-Key rotation
+and permanent revoke are not equivalent existing native commands. Review
+whether the obsolete rotation capability is withdrawn or still needed, rather
+than automatically implementing parity.
+
+**R4 — personal user-Key and wallet/account administration.**
+The create/update/delete/reveal command branches in `routes_gateway.go`, the
+legacy `KeysPanel.tsx` write branches, command-only DTO/hash/persistence helpers,
+`gateway_key_commands_test.go` command cases and
+`tests/ui/gateway-request-lifecycle.test.ts` write cases form a separate removal
+slice. Keep list/detail/usage/Group and personal wallet readers. Native personal
+Key mutation/reveal RPC declarations currently have no handwritten implementation;
+managed Workspace-Key APIs do not replace them. Account activation is independently
+live: UI/BFF `operator_activation.go` → `apps/console-bff/internal/clients/operator.go` → CP
+`cloud_operator.go` / `provisionOperatorAccount` / `auth_accounts.go`, followed
+by native Tenant creation and wallet binding. Keep that single provisioning
+writer unless this capability is explicitly withdrawn or moved with its caller.
+Generic `wallet_adjustment.go` create/recover, its routes and wallet store also
+serve admin money operations; they cannot be removed as incidental cleanup of
+R5's refund caller. Preserve the mixed identity/client/store files, shared
+`OPL_SUB2API_*` configuration and native Gateway DB/Secret/group wiring.
+
+**R5 — retained Launch, renewal/expiry, deletion and original-charge settlement.**
+Remove the retained create/replay/resume/recovery/repair command registrations in
+`routes_workspace_launch.go` and `routes_admin.go` only after their accepted
+operations and historical GET consumers have an explicit disposition. Remove
+execution functions in `workspace_launch_{service,reconciler,account_stages,fabric_stages,activation,closeout}.go`,
+associated canonical-repair/disposable-reset/diagnostic dispatch, and their
+exclusive service/Fabric client wrappers. Extract required history decoders
+from these mixed files rather than keeping the reconciler solely to read them.
+Renewal/delete execution in `workspace_renewal.go`, `workspace_delete.go` and
+`workspace_delete_refund.go`, related store claim/CAS/refund-reservation methods,
+and embedded `workspace_launch_worker.go`, `workspace_delete_worker.go`,
+`renewal_worker.go` scheduling leave with those capabilities. The delete worker
+also resumes refunds after deletion has succeeded; a terminal deletion alone
+does not make this worker unused. Provider reconciliation can suspend a Workspace
+and must be reviewed as a lifecycle writer, not merely a resource reader.
+
+Remove their startup calls in `server.go`, worker enable/interval/lead settings
+and exclusive topology/Compose/example configuration, legacy UI launch/renewal/
+delete command branches and old tool branches in `deployed-workspace-purchase.ts`,
+`workspace-qualification-orchestrator.ts` and `local-workspace-recovery.ts`.
+Keep the native v2 purchase core and native delete. Native Workspace expiry
+handling exists, but the inspected create path accepts manual renewal only;
+no native automatic billing/renewal implementation was established.
+Resolve whether any other paid renewal commitments remain before withdrawal;
+do not build auto-renew merely to reproduce an unused old command.
+
+Retire writer-only cases in `workspace_launch_*_test.go`,
+`workspace_delete*_test.go`, `workspace_renewal_test.go`, financial recovery/
+scheduler `d1_*`/`d3_*`/`d4_*` cases, mixed wallet/CP-client/Fabric legacy-stage
+suites and affected UI/tool/portable-config suites with the source they cover.
+These patterns identify **review sets**, not blanket file-deletion commands.
+Keep `d2_historical_settlement_test.go`, billing trend/BFF historical-authorization
+coverage and native owner behavior tests. `pricing.go`, `workspace_launch.go`,
+renewal/delete/wallet files currently contain strict historical decoders and
+receipt builders used by billing; those pure readers must remain independently
+of the retired mutation functions. Preserve original records, attempts and
+Ledger/Gateway receipt validation. Fabric legacy-stage/closeout HTTP adapters
+and tests may leave only after their CP consumers retire; native resource
+dispatch, deletion, provider mutation journals and application Secret cleanup
+still use shared Fabric code.
+
+**R6 — retained pricing preview and purchase eligibility.**
+Remove the catalog/preview route blocks in `routes_state.go`, only the live
+preview/current-price portions of `pricing.go`, legacy UI pricing branches,
+old Instance admission/read consumers and exclusive pricing tests. Retain
+versioned historical quote/price decoding, accepted terms and receipt readers.
+The purchase-eligibility command in `routes_admin.go` /
+`workspace_purchase_eligibility.go`, its UI command and exclusive tests retire
+with retained purchase, not with Account readers. Resource Catalog quotes cover
+new resources; they do not prove arbitrary legacy package-pricing UI parity.
+
+**R8 — fixed-slot provider procurement withdrawal proposal.**
+[Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) removes the route/executor, dedicated writer tests and
+registration, token declarations and the obsolete production-manifest assertion.
+Its only production caller is also removed, so `ClaimWorkspaceCreate`, its
+PostgreSQL/memory implementations, request/lease helpers and exclusive tests
+leave in the same PR. Original Workspace/operation records and schema remain.
+
+The proposed `provider_acceptance_history.go` keeps only the original identity
+tuples and exact resource-ID derivation used by Workspace access, Gateway proxy
+and runtime-observation billing classification. The existing narrow billing
+exception and history tests remain. Complete slot-operation disposition must
+precede installing this withdrawal; opening or merging a source PR is not that
+readback.
+
+**R9 — separate prototype and activation-alias proposals.**
+[Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112) removes the unused Key lifecycle tool, its exclusive tests and
+registration. [Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114) removes the public activation refusal/stub,
+updates obsolete tool/test callers, and reads the already activated account's
+owner-returned identity. Native managed-Key lifecycle and the BFF-to-internal-CP
+provisioning writer, Tenant creation and wallet binding stay with their real
+owners. This is not withdrawal of account activation or personal-Key capability.
+
+**R7 — explicit retained shared surface.**
+Keep `apps/console-bff/internal/clients/{legacy_billing,personal_gateway_reads,announcements,operator}.go`
+and the CP reader/proof/storage symbols they actually use. Keep
+`OPL_CONTROL_PLANE_URL` / `OPL_CONTROL_PLANE_TOKEN`, the CP process/static hosting,
+original Account identity, receipt readers and announcement ACK storage while
+those consumers remain. Native Workspace models use BFF GET/PUT models to the
+Workspace owner and Serve applied-version readback; frozen CP deployment
+configuration is not proof of a second model-configuration command. Preserve
+the native model, deletion, credentials, Serve, Fabric and Ledger implementations
+and their behavior tests.
+
+#### Instance callers that must leave with a retired capability
+
+| Capability | Configured external caller | Coupled cleanup and retained consumers |
+| --- | --- | --- |
+| R1 deployment | `.github/workflows/workspace-application-install.yml` → `tools/workspace-application-install.mjs:244` submits old application-deployments; legacy UI submits/retries the same owner | Remove the workflow/tool and `tests/workspace-application-install.test.mjs` if the capability is withdrawn, or switch a still-required caller to the actual owner. Update operator docs and `tools/validate-workflow-boundary.mjs` registrations; retain archived receipts |
+| R2 image maintenance | `workspace-image-rollout.yml` → `workspace-image-rollout.mjs` / `workspace-runtime-image-client.mjs`; `workspace-runtime-image-rollback.yml` → `workspace-runtime-image-rollback.mjs:356` | Remove old CP command branches and their workflow/tool tests. The client also has image-retention and node-image-retirement callers; do not delete it or those separate registry/install capabilities until their actual readers/writers are separated |
+| R2 legacy application reads | `workspace-application-login-readback.mjs`, `project-explorer-persistence-acceptance.mjs` reveal CP credentials; `workspace-application-preflight.yml` invokes `workspace-application-delivery.mjs` | Move necessary reads to native credential/deployment/access readback, or retire their callers/tests. Preserve real persistence acceptance and shared origin/receipt decoders when still consumed |
+| R5 original recovery/delete | `resume-original-workspace-launch.yml` / matching tool; `workspace-delete-refund.yml` → `workspace-delete-refund.mjs:566` sends the retained DELETE | Remove exclusive workflows/tools and matching `*-workflow.test.mjs` / command tests when their responsibilities end. `workspace-retained-launch-recovery-readback.mjs` imports delete-tool helpers; preserve/move the still-needed historical decoder. Keep native delete and its tests |
+| R5/R6 old qualification reads | `verify.yml` invokes `fresh-workspace-admission.mjs`; `fresh-workspace-readback.mjs` and `workspace-special-chain-acceptance.mjs` consume old Launch/runtime/deletion projections; `qualification-decision.mjs` and tests consume their receipts | Remove or migrate the specific old read/receipt consumers before removing the API; do not delete an entire qualification/Release consumer, change a receipt schema or discard original closeout evidence as incidental cleanup |
+
+These are current **source** consumers, not proof that each workflow ran in a
+production interval. Instance owns its workflow/configuration removal. No local
+private-network access or workflow mutation was used to construct this table.
+
+#### Installed evidence and limits
+
+Protected observation `41564384194`, observed at `2026-11-03T02:10:08.055Z`,
+reports successful paginated CP Workspace enumeration: two records, both
+`data_deleted`. Its scoped CP runtime-operation projection has twelve records
+(eight `succeeded`, two `failed`, two `expired_unpaid`). This narrows the observed
+legacy Workspace population; it is not a full operation/financial audit. The
+producer labels the projection `owner_api_projection_not_audit_archive` and
+its Account observation `first_page_sample`. It does not establish absence of
+pending wallet adjustment, Key rotation, deployment reservation or every worker
+obligation. The three original orders have their independent completed #1018
+readbacks and must not be purchased, deleted or refunded again.
+
+That receipt reports 44 source runtime operations but projects only the twelve
+linked to the observed Workspace/resource identities. Instance proposal [Instance #673](https://github.com/gaofeng21cn/opl-instance-medopl/pull/673)
+adds `allRuntimeOperations` to `workspace-state-observation.mjs`, preserving
+the original scoped field and projecting every operation in the current owner
+API result through the existing redacted field whitelist. Unknown actions retain
+only their identity digest; an unknown status remains unknown. Its
+`complete_current_owner_api_result` coverage neither includes an audit archive
+nor proves settled obligations. Scoped Workspace rows also project the existing
+`currentApplicationDeploymentId` and `reservedApplicationDeploymentId` through
+`applicationDeploymentBindings`: an observed empty string has no identity digest;
+a missing or non-string field is explicitly unobserved; a nonempty ID is hashed.
+The management API returns these persisted fields directly, so this adds no
+request or business mutation. Account pagination and independent wallet/
+rotation state remain outside this extension. The producer has local tests only;
+fresh protected readbacks are still needed, and the existing receipt was not
+regenerated or relabeled.
+
+The same receipt is overall `partial / source_unavailable`: runtime health reads
+failed. The successful owner projections above retain their scope; the overall
+failure neither erases them nor establishes complete installation health.
+Runtime observations include four `unregistered` / `runtime_unmatched_workspace`
+items. A CP matching failure does not establish that these native or historical
+runtime objects are garbage. Resolve their actual Serve/Fabric identity before
+any resource disposition; none is authorized by this code-removal review.
+
+No route/caller zero-new-business acceptance interval or complete obligation
+census was collected. The receipt's zero business/provider/Kubernetes mutation
+counters describe **that read-only observation**, not all CP traffic. Retirement
+needs each affected caller and accepted operation resolved; it does not require
+an arbitrary number of days of zero total CP writes. Closed #1028/#1042/#1052
+are historical scope/provenance, not current proof that all writers disappeared.
+The [roadmap review scope](roadmap.md#retained-code-removal-review-2026-11-03)
+owns the remaining decisions and acceptance.
 
 ### Original-order closeout boundaries
 
