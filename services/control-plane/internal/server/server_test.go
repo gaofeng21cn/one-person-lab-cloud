@@ -122,26 +122,6 @@ func TestProductionOperatorRoutesDoNotRequireClientNetworkConfiguration(t *testi
 	}
 }
 
-func TestProviderAcceptanceTokenDoesNotDependOnOperatorNetworkConfiguration(t *testing.T) {
-	t.Setenv("NODE_ENV", "production")
-	t.Setenv("OPL_OPERATOR_CIDRS", "invalid")
-	t.Setenv("OPL_TRUSTED_PROXY_CIDRS", "invalid")
-	t.Setenv("OPL_PROVIDER_ACCEPTANCE_TOKEN", testProviderAcceptanceToken)
-	called := false
-	protected := newControlPlaneApp().providerAcceptanceProtected(func(w http.ResponseWriter, _ *http.Request) {
-		called = true
-		w.WriteHeader(http.StatusNoContent)
-	})
-	acceptance := httptest.NewRequest(http.MethodPost, "/api/operator/provider-acceptance", bytes.NewBufferString(`{}`))
-	acceptance.RemoteAddr = "198.51.100.9:1234"
-	acceptance.Header.Set("x-opl-provider-acceptance-token", testProviderAcceptanceToken)
-	acceptanceRec := httptest.NewRecorder()
-	protected(acceptanceRec, acceptance)
-	if acceptanceRec.Code != http.StatusNoContent || !called {
-		t.Fatalf("Provider Acceptance token route = %d called=%v", acceptanceRec.Code, called)
-	}
-}
-
 func storedWorkspace(t *testing.T, app *controlPlaneServer, id string) map[string]any {
 	t.Helper()
 	workspace, ok := app.getWorkspace(id)

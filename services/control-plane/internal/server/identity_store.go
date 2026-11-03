@@ -13,7 +13,6 @@ import "context"
 // - services/control-plane/internal/server/monthly_billing.go
 // - services/control-plane/internal/server/provisioned_account_test.go
 // - services/control-plane/internal/server/routes_admin.go
-// - services/control-plane/internal/server/routes_provider_acceptance.go
 // - services/control-plane/internal/server/routes_workspace_launch.go
 // - services/control-plane/internal/server/server_test.go
 // - services/control-plane/internal/server/session_credential_vault_test.go
