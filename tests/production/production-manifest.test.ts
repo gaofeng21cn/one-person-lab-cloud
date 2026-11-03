@@ -106,7 +106,6 @@ test("production manifest fails closed on missing env and inline secret values",
   assert.equal(report.ok, false);
   assert.ok(report.missingEnv.includes("OPL_CLOUD_IMAGE"));
   assert.ok(report.missingEnv.includes("OPL_INTERNAL_SERVICE_TOKEN"));
-  assert.equal(report.missingEnv.includes("OPL_PROVIDER_ACCEPTANCE_TOKEN"), false);
   assert.ok(report.missingEnv.includes("OPL_WORKSPACE_STORAGE_CLASS"));
   assert.ok(report.missingEnv.includes("OPL_TENCENT_ZONE"));
   assert.deepEqual(report.inlineSecretEnv.sort(), ["DATABASE_URL"]);

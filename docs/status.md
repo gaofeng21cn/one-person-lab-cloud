@@ -41,12 +41,17 @@ status, separate from installation evidence, is:
 - [Instance #673](https://github.com/gaofeng21cn/opl-instance-medopl/pull/673) extends the existing observation producer's redacted
   operation/deployment-binding projection. Runtime-operation status comes only
   from the owner status field; a missing status remains unknown. This source
-  change has not supplied new protected evidence.
-- [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) is on HOLD: authoritative owner evidence of all accepted
-  slot-operation obligation dispositions is required before removing the fixed-slot
-  executor source or merging the withdrawal PR. CI success or leaving Draft is
-  not disposition evidence. Historical identity/billing/access readers remain;
-  original unknown operations remain unknown.
+  change is merged as `7bcc80bc8f550255e756d3c36e593fa824b77585` and supplied
+  the fresh protected observation below.
+- [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) can proceed with fixed-slot executor source withdrawal after
+  protected [observation 41598975341](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41598975341)
+  at `2026-11-03T07:50:36.736Z`. Available CP provenance projects 44 distinct
+  current operations, below the exact installed Product's unfiltered 100-row
+  limit, excluding the two fixed-slot and historical single-slot operation
+  identities and the acceptance action digest. The executor persists operations
+  before provider execution; retention does not remove them. No current accepted
+  slot operation needs its recovery path. Historical identity/billing/access
+  readers remain. This is source withdrawal, with installation still separate.
 
 Verification belongs to each source revision. Earlier CI or a combined local
 pass does not resolve the reported failures or qualify pending revisions. #1112's
@@ -70,9 +75,16 @@ or renewal obligation is settled.
 The Instance proposal preserves the existing scoped projection and adds all
 operations returned by the current owner API, plus current/reserved deployment
 identity digests that distinguish unknown from owner-confirmed empty values.
-No new protected observation has run with that source; the original receipt is
-not regenerated or relabeled. No Candidate, deployment, resource or financial
-action is part of these PRs.
+The new protected observation above ran with Instance #673's merged source and
+installed Product `4f131caa41324f027c1fee48d6ae5e5356e7e3c4`. Its original receipt
+SHA256 is `5aec3b831f032efeb085dc0ea06347ba43dd8384173326e68fc1f00cb66ba49b`;
+the earlier receipt is unchanged. The new overall result remains
+`partial / source_unavailable`; only successful CP provenance supports the
+bounded slot-operation finding. Empty resource lists alone are not absence
+proof. Zero business/provider/Kubernetes mutations were recorded. This does not
+establish a financial archive, traffic window, complete runtime health or
+absence of operations accepted later. No Candidate build, deployment, resource
+or financial action was performed.
 
 #1042's accepted customer outcome and #1018's three original-order closeouts
 remain complete. Closed #1028/#1052 remain historical scope references; their

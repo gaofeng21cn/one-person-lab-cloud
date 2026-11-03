@@ -13,7 +13,6 @@ import "context"
 // - services/control-plane/internal/server/resource_facts.go
 // - services/control-plane/internal/server/routes_admin.go
 // - services/control-plane/internal/server/routes_gateway.go
-// - services/control-plane/internal/server/routes_provider_acceptance.go
 // - services/control-plane/internal/server/routes_workspace.go
 // - services/control-plane/internal/server/routes_workspace_launch.go
 // - services/control-plane/internal/server/server_test.go
@@ -57,7 +56,6 @@ type WorkspaceStore interface {
 	ClaimWorkspaceRenewal(ctx context.Context, claim workspaceRenewalClaimCAS) error
 	PersistWorkspaceRenewal(ctx context.Context, update workspaceRenewalPersistCAS) error
 	ActivateWorkspaceLaunchProjection(ctx context.Context, row map[string]any) (map[string]any, error)
-	ClaimWorkspaceCreate(ctx context.Context, workspace map[string]any, operation map[string]any) error
 	ApplyWorkspaceDelete(ctx context.Context, mutation workspaceDeleteStoreMutation) error
 	DeleteWorkspace(ctx context.Context, id string) error
 	ListRuntimeOperations(ctx context.Context) ([]map[string]any, error)
