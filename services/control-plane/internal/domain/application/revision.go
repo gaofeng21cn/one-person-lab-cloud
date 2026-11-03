@@ -6,7 +6,6 @@
 package application
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -24,9 +23,6 @@ var (
 	// ErrRevisionNotAdmitted reports a deployment that targets a revision
 	// identity without an admitted revision behind it.
 	ErrRevisionNotAdmitted = errors.New("workspace_application_revision_not_admitted")
-	// ErrDataMaterialConflict reports two different data material contents
-	// admitted under the same application identity.
-	ErrDataMaterialConflict = errors.New("workspace_application_data_material_conflict")
 	// ErrDeploymentTransitionInvalid reports a deployment intent whose
 	// previous-application facts do not match the Workspace's current binding.
 	ErrDeploymentTransitionInvalid = errors.New("workspace_application_deployment_transition_invalid")
@@ -76,44 +72,6 @@ func RevisionDigest(revision contracts.WorkspaceApplicationRevision) (string, er
 	return fmt.Sprintf("%x", sum), nil
 }
 
-// AdmissionDecision is the outcome of admitting one revision against the
-// already-admitted revision with the same identity, if any.
-type AdmissionDecision string
-
-const (
-	// AdmissionNew reports an application identity admitted for the first time.
-	AdmissionNew AdmissionDecision = "new"
-	// AdmissionIdentical reports an exact replay of an admitted revision:
-	// the store keeps the original and no new identity is created.
-	AdmissionIdentical AdmissionDecision = "identical"
-)
-
-// DecideRevisionAdmission compares one candidate against the stored revision
-// with the same identity. A nil admitted revision means the identity is new.
-func DecideRevisionAdmission(admitted *contracts.WorkspaceApplicationRevision, candidate contracts.WorkspaceApplicationRevision) (AdmissionDecision, error) {
-	if err := contracts.ValidateWorkspaceApplicationRevision(candidate); err != nil {
-		return "", err
-	}
-	if admitted == nil {
-		return AdmissionNew, nil
-	}
-	if RevisionRefOf(*admitted) != RevisionRefOf(candidate) {
-		return "", errors.New("workspace_application_admission_identity_mismatch")
-	}
-	admittedDigest, err := RevisionDigest(*admitted)
-	if err != nil {
-		return "", err
-	}
-	candidateDigest, err := RevisionDigest(candidate)
-	if err != nil {
-		return "", err
-	}
-	if admittedDigest == candidateDigest {
-		return AdmissionIdentical, nil
-	}
-	return "", ErrRevisionConflict
-}
-
 // ValidateDeploymentTransition checks one deployment intent against the
 // admitted revision it targets and the Workspace's current application
 // binding. The binding is the projection's application binding value: the
@@ -146,11 +104,4 @@ func ValidateDeploymentTransition(deployment contracts.WorkspaceApplicationDeplo
 		}
 	}
 	return nil
-}
-
-// RevisionStore is the read-side port over admitted revisions. The owning
-// persistence keeps revisions immutable; implementations return the stored
-// revision, its canonical digest and whether the identity was admitted.
-type RevisionStore interface {
-	AdmittedRevision(ctx context.Context, applicationID, version string) (revision contracts.WorkspaceApplicationRevision, digest string, found bool, err error)
 }

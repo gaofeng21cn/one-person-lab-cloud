@@ -1363,28 +1363,6 @@ func (s *memoryTableStore) AdmittedApplicationDataMaterial(_ context.Context, ap
 	return cloneMap(row), true, nil
 }
 
-func (s *memoryTableStore) ApplyApplicationDataMaterialAdmission(_ context.Context, mutation applicationDataMaterialMutation) (map[string]any, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	key := mutation.ApplicationID + "@" + mutation.Version
-	if existing := s.applicationDataMaterials[key]; existing != nil {
-		if stringValue(existing["digest"]) != mutation.Digest {
-			return nil, application.ErrDataMaterialConflict
-		}
-		return cloneMap(existing), nil
-	}
-	row := map[string]any{
-		"id":               applicationDataMaterialRowID(mutation.ApplicationID, mutation.Version),
-		"applicationId":    mutation.ApplicationID,
-		"version":          mutation.Version,
-		"digest":           mutation.Digest,
-		"payload":          mutation.Payload,
-		"admittedByUserId": mutation.AdmittedByUserID,
-	}
-	s.applicationDataMaterials[key] = row
-	return cloneMap(row), nil
-}
-
 func (s *memoryTableStore) ClaimWorkspaceApplicationDeploymentIntent(_ context.Context, row map[string]any) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

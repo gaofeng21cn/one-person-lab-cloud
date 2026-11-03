@@ -16,7 +16,6 @@ import type {
   SourceEnvelope,
   WorkspaceBillingReceiptDTO,
   WorkspaceDTO,
-  WorkspaceApplicationIntentDTO,
   WorkspaceRuntimeImageReplacementDTO
 } from "../../apps/console-ui/src/api/dtos.ts";
 import {
@@ -231,89 +230,6 @@ async function settle(page: Page) {
   }));
 }
 
-test("Application deployment retries its accepted operation and ignores another Workspace's late completion", { timeout: 60_000 }, async () => {
-  const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await launchBrowser({ headless: true });
-  const alphaReadStarted = deferred();
-  const releaseAlphaRead = deferred();
-  const alphaReadFinished = deferred();
-  const detailReads: Record<string, number> = {};
-  const deploymentWrites: unknown[] = [];
-  let retryWrites = 0;
-  const alpha = operatorWorkspace("workspace-alpha", "Alpha");
-  const beta = operatorWorkspace("workspace-beta", "Beta");
-  const intent = (workspaceId: string, phase: string): WorkspaceApplicationIntentDTO => ({
-    operationId: `deployment-${workspaceId}`, workspaceId, phase, failurePhase: phase === "manual_review" ? "runtime" : undefined,
-    applicationId: "knowledge-app", targetRevision: "1.2.3", currentBinding: "opl_app",
-    expectedWorkspaceVersion: 0, createdAt: fetchedAt, receiptId: phase === "active" ? `receipt-deployment-${workspaceId}` : undefined
-  });
-  try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    await page.route("**/api/operator/workspaces?*", (route) => fulfill(route, workspacePage([alpha, beta], 1)));
-    await page.route("**/api/operator/workspace-runtime-image-policy", (route) => fulfill(route, policy()));
-    await page.route("**/api/operator/workspaces/**", async (route) => {
-      const path = new URL(route.request().url()).pathname;
-      const workspaceId = path.split("/")[4];
-      if (path.endsWith("/preview")) return fulfill(route, source(preview(workspaceId)));
-      detailReads[workspaceId] = (detailReads[workspaceId] || 0) + 1;
-      return fulfill(route, source(operatorWorkspace(workspaceId, workspaceId, `read-${detailReads[workspaceId]}`)));
-    });
-    await page.route("**/api/operator/application-deployments", async (route) => {
-      const body = route.request().postDataJSON();
-      deploymentWrites.push(body);
-      await fulfill(route, { intent: intent(body.workspaceId, "runtime") }, 202);
-    });
-    await page.route("**/api/operator/application-deployments/*", async (route) => {
-      const workspaceId = new URL(route.request().url()).pathname.endsWith("workspace-alpha") ? "workspace-alpha" : "workspace-beta";
-      if (workspaceId === "workspace-alpha") {
-        alphaReadStarted.resolve();
-        await releaseAlphaRead.promise;
-      }
-      const phase = workspaceId === "workspace-beta" && retryWrites === 0 ? "manual_review" : "active";
-      await fulfill(route, source({ status: phase === "active" ? "succeeded" : "manual_review", intent: intent(workspaceId, phase) }));
-      if (workspaceId === "workspace-alpha") alphaReadFinished.resolve();
-    });
-    await page.route("**/api/operator/application-deployments/*/retry", async (route) => {
-      assert.equal(route.request().method(), "POST");
-      assert.equal(new URL(route.request().url()).pathname, "/api/operator/application-deployments/deployment-workspace-beta/retry");
-      assert.deepEqual(route.request().postDataJSON(), {});
-      retryWrites += 1;
-      await fulfill(route, { intent: intent("workspace-beta", "runtime") }, 202);
-    });
-    await login(page, demo.origin);
-    await openResources(page, demo.origin);
-    await selectWorkspace(page, "workspace-alpha");
-    const deployment = page.locator("section.panel").filter({ has: page.getByRole("heading", { name: "应用部署", exact: true }) }).last();
-    await deployment.getByLabel("应用 ID").fill("knowledge-app");
-    await deployment.getByLabel("目标版本").fill("1.2.3");
-    assert.equal(await deployment.getByLabel("配置摘要").count(), 0);
-    await deployment.getByRole("button", { name: "部署到 workspace-alpha 工作区", exact: true }).click();
-    await alphaReadStarted.promise;
-    await deployment.getByLabel("运行配置 JSON").fill(JSON.stringify({ files: { settings: "alpha-only" } }));
-    await deployment.getByLabel("Secret 引用 JSON").fill(JSON.stringify([{ name: "alpha", secretRef: "alpha", version: "1", key: "token" }]));
-    await selectWorkspace(page, "workspace-beta");
-    assert.deepEqual(JSON.parse(await deployment.getByLabel("运行配置 JSON").inputValue()), { environment: {} });
-    assert.equal(await deployment.getByLabel("Secret 引用 JSON").inputValue(), "[]");
-    await deployment.getByRole("button", { name: "部署到 workspace-beta 工作区", exact: true }).click();
-    await deployment.getByRole("button", { name: "重试此部署", exact: true }).click();
-    await deployment.getByText("receipt-deployment-workspace-beta", { exact: true }).waitFor({ state: "visible" });
-    await page.getByText("receipt-workspace-beta-read-2", { exact: true }).first().waitFor({ state: "visible" });
-    releaseAlphaRead.resolve();
-    await alphaReadFinished.promise;
-    await settle(page);
-    assert.equal(await deployment.getByText("receipt-deployment-workspace-alpha", { exact: true }).count(), 0);
-    assert.deepEqual(detailReads, { "workspace-alpha": 1, "workspace-beta": 2 });
-    assert.equal(retryWrites, 1);
-    assert.deepEqual(deploymentWrites, ["workspace-alpha", "workspace-beta"].map((workspaceId) => ({
-      workspaceId, applicationId: "knowledge-app", targetRevision: "1.2.3", configuration: { environment: {} }
-    })));
-  } finally {
-    releaseAlphaRead.resolve();
-    await browser.close();
-    await demo.close();
-  }
-});
-
 test("Operator Resource Read loads list and policy and rejects a late page 1 response", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await launchBrowser({ headless: true });
@@ -356,6 +272,7 @@ test("Operator Resource Read loads list and policy and rejects a late page 1 res
     await initialPolicyLoaded.promise;
     assert.equal(pageOneReads, 1);
     assert.equal(policyReads, 1);
+    assert.equal(await page.getByRole("heading", { name: "应用版本登记", exact: true }).count(), 0);
 
     await page.getByRole("button", { name: "刷新", exact: true }).click();
     await stalePageHeld.promise;
@@ -425,6 +342,7 @@ test("Operator Resource Read rejects late detail and preview after selecting ano
     await selectWorkspace(page, "workspace-beta");
     await page.getByText("receipt-workspace-beta-current", { exact: true }).first().waitFor({ state: "visible" });
     await page.getByText(imageDigest("workspace-beta", "current"), { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.getByRole("heading", { name: "应用部署", exact: true }).count(), 0);
 
     releaseAlpha.resolve();
     await Promise.all([alphaDetailSettled.promise, alphaPreviewSettled.promise]);
@@ -1046,110 +964,6 @@ test("Gateway overview displays real zero OPL account totals separately from una
     assert.match(await balance.innerText(), /sub2api_wallet_unavailable/);
     assert.equal(await page.locator(".metric-row article").filter({ hasText: "Key 总数" }).locator("strong").innerText(), "0");
   } finally {
-    await browser.close();
-    await demo.close();
-  }
-});
-
-test("Registry selection admits a complete publisher revision and deploys its files and Secret references", { timeout: 60_000 }, async () => {
-  const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await launchBrowser({ headless: true });
-  const id = "workspace-publisher";
-  // Control Plane owns the registry identity: a catalog item is one repository
-  // name inside the cataloged namespace, and a resolved reference is
-  // host/namespace/repository@digest.
-  const registryHost = "registry.example";
-  const repository = "knowledge";
-  const otherRepository = "database";
-  const resolvedImage = `${registryHost}/oplcloud/${repository}@${targetDigest}`;
-  const configuration = { environment: { APP_MODE: "stable" }, files: { settings: "line 1\nline 2" } };
-  const secretBindings = [{ name: "database", secretRef: "secret-db", version: "v1", key: "password" }];
-  const revision = { schemaVersion: 1, applicationId: "knowledge-app", version: "1.0.0", platform: "linux/amd64", image: targetImage,
-    execution: { userId: 1000, init: true }, configInputs: [{ name: "settings", target: "/etc/app/settings" }],
-    dependencies: [{ name: "database", image: rollbackImage, command: { argv: ["database"] }, execution: { userId: 1001 },
-      secretInputs: [{ name: "database", env: "DB_PASSWORD" }], persistentMounts: [{ name: "db", mountPath: "/var/lib/db" }] }], exposurePolicy: "application" };
-  const admitted: unknown[] = [];
-  const writes: unknown[] = [];
-  const resolutionStarted = deferred();
-  const releaseResolution = deferred();
-  let resolutions = 0;
-  const intent: WorkspaceApplicationIntentDTO = { operationId: "deployment-publisher", workspaceId: id, phase: "active", applicationId: revision.applicationId,
-    targetRevision: revision.version, currentBinding: "opl_app", expectedWorkspaceVersion: 0, createdAt: fetchedAt, receiptId: "receipt-publisher" };
-  try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    await page.route("**/api/operator/workspaces?*", (route) => fulfill(route, workspacePage([operatorWorkspace(id, "Publisher")], 1)));
-    await page.route("**/api/operator/workspace-runtime-image-policy", (route) => fulfill(route, policy()));
-    await page.route("**/api/operator/workspaces/**", (route) => fulfill(route, source(new URL(route.request().url()).pathname.endsWith("/preview") ? preview(id) : operatorWorkspace(id, "Publisher"))));
-    await page.route("**/api/operator/registry/repositories?*", (route) => fulfill(route, { host: "registry.example", namespaces: ["oplcloud"], items: [repository, otherRepository].map((value) => ({ namespace: "oplcloud", repository: value })) }));
-    await page.route("**/api/operator/registry/tags/**", (route) => fulfill(route, { namespace: "oplcloud", repository: decodeURIComponent(new URL(route.request().url()).pathname.split("/").at(-1)!), tags: [{ tag: "verified" }] }));
-    await page.route("**/api/operator/registry/resolve", async (route) => {
-      assert.deepEqual(route.request().postDataJSON(), { namespace: "oplcloud", repository, tag: "verified" });
-      if (resolutions++ === 0) { resolutionStarted.resolve(); await releaseResolution.promise; }
-      return fulfill(route, { host: registryHost, namespace: "oplcloud", repository, tag: "verified", digest: targetDigest, reference: resolvedImage });
-    });
-    await page.route("**/api/operator/application-revisions", (route) => {
-      admitted.push(route.request().postDataJSON());
-      return fulfill(route, { decision: "new", revision: { id: "revision-publisher", applicationId: revision.applicationId, version: revision.version, digest: targetDigest } });
-    });
-    await page.route("**/api/operator/application-deployments", (route) => { writes.push(route.request().postDataJSON()); return fulfill(route, { intent }, 202); });
-    await page.route("**/api/operator/application-deployments/*", (route) => fulfill(route, source({ status: "succeeded", intent })));
-    await login(page, demo.origin);
-    await openResources(page, demo.origin);
-    await selectWorkspace(page, id);
-    const registration = page.locator("section.panel").filter({ has: page.getByRole("heading", { name: "应用版本登记", exact: true }) }).last();
-    const choose = async (label: string, value: string) => {
-      await registration.locator(".console-field").filter({ has: page.locator("label", { hasText: new RegExp(`^${label}$`) }) }).getByRole("button").click();
-      await page.getByRole("option", { name: value, exact: true }).click();
-    };
-    await choose("登记方式", "发布者完整描述 JSON");
-    await registration.getByLabel("完整应用描述 JSON").fill("{");
-    assert.equal(await registration.getByRole("button", { name: "登记应用版本", exact: true }).isDisabled(), true);
-    assert.equal(admitted.length, 0);
-    await registration.getByLabel("完整应用描述 JSON").fill(JSON.stringify(revision));
-    await registration.getByRole("button", { name: "列出仓库", exact: true }).click();
-    await choose("repository", repository);
-    await registration.getByRole("button", { name: "列出 tag", exact: true }).click();
-    await choose("tag/版本", "verified");
-    await choose("repository", otherRepository);
-    assert.equal(await registration.getByRole("button", { name: "解析 digest", exact: true }).isDisabled(), true);
-    await choose("repository", repository);
-    await registration.getByRole("button", { name: "列出 tag", exact: true }).click();
-    await choose("tag/版本", "verified");
-    await registration.getByRole("button", { name: "解析 digest", exact: true }).click();
-    await resolutionStarted.promise;
-    assert.equal(await registration.getByLabel("完整应用描述 JSON").isDisabled(), true);
-    releaseResolution.resolve();
-    await registration.getByText("已解析", { exact: false }).waitFor();
-    await choose("repository", otherRepository);
-    const cleared = JSON.parse(await registration.getByLabel("完整应用描述 JSON").inputValue());
-    assert.equal("image" in cleared, false);
-    assert.deepEqual(cleared.dependencies, revision.dependencies);
-    await choose("repository", repository);
-    await registration.getByRole("button", { name: "列出 tag", exact: true }).click();
-    await choose("tag/版本", "verified");
-    await registration.getByRole("button", { name: "解析 digest", exact: true }).click();
-    await registration.getByText("已解析", { exact: false }).waitFor();
-    await registration.getByRole("button", { name: "登记应用版本", exact: true }).click();
-    await page.getByText("应用版本已准入", { exact: false }).waitFor();
-    assert.deepEqual(admitted, [{ ...revision, image: resolvedImage }]);
-    const deployment = page.locator("section.panel").filter({ has: page.getByRole("heading", { name: "应用部署", exact: true }) }).last();
-    assert.equal(await deployment.getByLabel("应用 ID").inputValue(), revision.applicationId);
-    assert.equal(await deployment.getByLabel("目标版本").inputValue(), revision.version);
-    await deployment.getByLabel("运行配置 JSON").fill(JSON.stringify(configuration));
-    await deployment.getByLabel("Secret 引用 JSON").fill(JSON.stringify([{ ...secretBindings[0], value: "forbidden" }]));
-    assert.equal(await deployment.getByRole("button", { name: `部署到 ${id} 工作区`, exact: true }).isDisabled(), true);
-    assert.equal(writes.length, 0);
-    await deployment.getByLabel("Secret 引用 JSON").fill(JSON.stringify(secretBindings));
-    await deployment.getByRole("button", { name: `部署到 ${id} 工作区`, exact: true }).click();
-    await deployment.getByText("receipt-publisher", { exact: true }).waitFor();
-    // One deployment command carries the image description, so the operator
-    // does not have to register the version as a separate preceding step.
-    assert.deepEqual(writes, [{
-      workspaceId: id, applicationId: revision.applicationId, targetRevision: revision.version,
-      configuration, secretBindings, revision: { ...revision, image: resolvedImage }
-    }]);
-  } finally {
-    releaseResolution.resolve();
     await browser.close();
     await demo.close();
   }

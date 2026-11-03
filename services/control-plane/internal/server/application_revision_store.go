@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
@@ -12,6 +13,8 @@ import (
 	"opl-cloud/services/control-plane/ent/workspace"
 	"opl-cloud/services/control-plane/internal/domain/application"
 )
+
+var errApplicationRevisionPayloadInvalid = errors.New("workspace_application_revision_payload_invalid")
 
 // applicationRevisionMutation is one idempotent revision admission. The row
 // identity is derived from the application identity; the payload is the

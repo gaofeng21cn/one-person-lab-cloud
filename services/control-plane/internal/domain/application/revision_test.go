@@ -53,33 +53,6 @@ func TestRevisionDigestIsStableAndContentSensitive(t *testing.T) {
 	}
 }
 
-func TestDecideRevisionAdmission(t *testing.T) {
-	candidate := validRevision()
-	decision, err := DecideRevisionAdmission(nil, candidate)
-	if err != nil || decision != AdmissionNew {
-		t.Fatalf("first admission = %q/%v, want new", decision, err)
-	}
-	identical, err := DecideRevisionAdmission(&candidate, validRevision())
-	if err != nil || identical != AdmissionIdentical {
-		t.Fatalf("replay admission = %q/%v, want identical", identical, err)
-	}
-	changed := candidate
-	changed.Image = "repo.example/apps/knowledge@sha256:" + repeat('b', 64)
-	if _, err := DecideRevisionAdmission(&candidate, changed); !errors.Is(err, ErrRevisionConflict) {
-		t.Fatalf("changed content under the same identity error = %v, want %v", err, ErrRevisionConflict)
-	}
-	otherIdentity := candidate
-	otherIdentity.ApplicationID = "other-app"
-	if _, err := DecideRevisionAdmission(&candidate, otherIdentity); err == nil {
-		t.Fatal("a caller-supplied prior with a different identity must be rejected")
-	}
-	invalid := candidate
-	invalid.ExposurePolicy = "public"
-	if _, err := DecideRevisionAdmission(nil, invalid); err == nil {
-		t.Fatal("an invalid candidate must not be admitted")
-	}
-}
-
 func TestParseRevisionRef(t *testing.T) {
 	ref, err := ParseRevisionRef("knowledge-app@1.0.0")
 	if err != nil || ref.ApplicationID != "knowledge-app" || ref.Version != "1.0.0" {

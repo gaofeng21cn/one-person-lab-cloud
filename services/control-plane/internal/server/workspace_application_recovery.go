@@ -144,6 +144,8 @@ func (s *postgresEntStateStore) ResumeWorkspaceApplicationDeployment(ctx context
 }
 
 func registerWorkspaceApplicationRecoveryRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
+	// Retained credential/Key rotations and historical deployments still need
+	// explicit recovery of their frozen operation under the original store fences.
 	mux.HandleFunc("POST /api/operator/application-deployments/{operationID}/retry", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := requiredMutationKey(w, r); !ok {
 			return

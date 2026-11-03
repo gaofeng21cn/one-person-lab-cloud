@@ -103,30 +103,56 @@ func testWorkspaceApplicationRecovery(t *testing.T, store controlPlaneTableStore
 	runDeploymentWorkerToCompletion(t, app, service, id)
 }
 
+// Recovery continues the same accepted deployment through the retained operator
+// route; store-only tests cannot detect that this HTTP entry was withdrawn.
 func TestWorkspaceApplicationRecoveryHTTP(t *testing.T) {
 	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
 	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
 	ctx := context.Background()
-	app := fixture.server.(*controlPlaneHTTPHandler).app
+	handler := fixture.server.(*controlPlaneHTTPHandler)
+	app := handler.app
 	operator := operatorSessionForTest(t, fixture.server)
-	admitKnowledgeRevisionForTest(t, fixture.server, operator)
-	created := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, "/api/operator/application-deployments", deployIntentBody("recovery"), "recover-http")
+	intent := createKnowledgeDeploymentForTest(t, app, "recover-http")
+	row, _, _ := fixture.store.GetRuntimeOperation(ctx, intent.OperationID)
+	mustStore(t, app.markWorkspaceApplicationManualReview(ctx, row, intent, "test_preflight_unavailable"))
+	failed, _, _ := fixture.store.GetRuntimeOperation(ctx, intent.OperationID)
+	path := "/api/operator/application-deployments/" + intent.OperationID + "/retry"
+	denied := requestWithMutationKeyForTest(t, fixture.server, fixture.session, http.MethodPost, path, "{}", "retry-owner")
+	if denied.Code != http.StatusForbidden {
+		t.Errorf("customer invoked operator retry: status=%d, want 403", denied.Code)
+	}
+	retained, _, _ := fixture.store.GetRuntimeOperation(ctx, intent.OperationID)
+	if retained["result"] != failed["result"] || retained["status"] != failed["status"] {
+		t.Fatal("denied retry changed the failed deployment")
+	}
+	retry := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, path, "{}", "retry-operator")
 	var response struct {
 		Intent workspaceApplicationDeploymentIntent `json:"intent"`
 	}
-	if created.Code != http.StatusAccepted || json.Unmarshal(created.Body.Bytes(), &response) != nil {
-		t.Fatalf("deployment create=%d %s", created.Code, created.Body.String())
+	if retry.Code != http.StatusAccepted || json.Unmarshal(retry.Body.Bytes(), &response) != nil {
+		t.Fatalf("operator retry status=%d body=%s, want 202", retry.Code, retry.Body.String())
 	}
-	row, _, _ := fixture.store.GetRuntimeOperation(ctx, response.Intent.OperationID)
-	mustStore(t, app.markWorkspaceApplicationManualReview(ctx, row, response.Intent, "test_preflight_unavailable"))
-	path := "/api/operator/application-deployments/" + response.Intent.OperationID + "/retry"
-	denied := requestWithMutationKeyForTest(t, fixture.server, fixture.session, http.MethodPost, path, "{}", "retry-owner")
-	if denied.Code != http.StatusForbidden {
-		t.Fatalf("customer invoked operator retry: %d", denied.Code)
+	if response.Intent.OperationID != intent.OperationID || response.Intent.RequestHash != intent.RequestHash || response.Intent.Phase != intent.Phase {
+		t.Fatal("operator retry changed the accepted deployment identity or command")
 	}
-	retry := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, path, "{}", "retry-operator")
-	if retry.Code != http.StatusAccepted || json.Unmarshal(retry.Body.Bytes(), &response) != nil || response.Intent.Phase != workspaceApplicationDeploymentIntentPhase {
-		t.Fatalf("operator retry=%d %s", retry.Code, retry.Body.String())
+	runDeploymentWorkerToCompletion(t, app, handler.service, intent.OperationID)
+	completed, _, _ := fixture.store.GetRuntimeOperation(ctx, intent.OperationID)
+	active, err := decodeWorkspaceApplicationDeploymentIntent(completed)
+	if err != nil || active.Phase != workspaceApplicationDeploymentActivePhase || active.RequestHash != intent.RequestHash || active.OperationID != intent.OperationID || stringValue(completed["status"]) != "succeeded" {
+		t.Fatalf("recovered original deployment did not complete: phase=%s err=%v", active.Phase, err)
+	}
+	operations, err := fixture.store.ListRuntimeOperations(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deployments := 0
+	for _, operation := range operations {
+		if stringValue(operation["action"]) == workspaceApplicationDeploymentAction {
+			deployments++
+		}
+	}
+	if deployments != 1 {
+		t.Fatalf("recovery created another deployment: count=%d", deployments)
 	}
 }
 
