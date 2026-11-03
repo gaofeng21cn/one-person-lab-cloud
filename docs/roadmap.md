@@ -198,7 +198,7 @@ a deployed Candidate or final business PASS.
 | P0 | Complete runtime SecretInput delivery | Serve, Fabric and contract owners | Gateway-managed input is covered; other declared runtime inputs are refused | Approved opaque binding/version delivery through RuntimeDeployCommand, application authorization and readback tests |
 | P0 | Build one exact Candidate and install the complete owner topology | Cloud release owner; Instance deployment owner | The `78dbe9b4` Candidate has a verified ten-owner deployment and twelve passing checks; newer `d430825c` has local fixture READY evidence but no Instance adoption evidence in this snapshot | Exact SHA/tree/index/digest manifest, complete owner deployment, protected health/readiness and route readback |
 | P0 | Qualify Default App and Custom Agent on the same Candidate | Serve, Workspace, Instance | Local owner journeys exist; no protected TKE user acceptance | One confirmation reaches a ready application in each mode, restart and response-loss recovery, exact image and route evidence |
-| P1 | Retire retained Control Plane application route and duplicate DTOs | Control Plane migration owner and Serve | Retained route/proxy remains for un-migrated callers | Caller inventory is empty or explicitly historical, old route writer and current-selection projection are removed |
+| P1 | Retire retained Control Plane application execution and its callers | Control Plane migration owner and Serve; Instance owns its caller removal | [R1/R2 inventory](implementation-architecture.md#retained-writer-and-caller-inventory-2026-11-03) identifies registered old writers, legacy UI and Instance callers; review pending | Resolve accepted obligations and withdraw or migrate callers, then delete old commands, worker registrations, exclusive config/DTOs/tests and current-selection writers; preserve named historical readers and verify surviving native consumers |
 | P1 | Public registration, administrator top-up and controlled purchase | Control Plane, CloudIdentity, Console | Existing operator/admin path exists; public self-service chain is incomplete | Concurrent registration, zero initial balance, one audited top-up, quote/purchase idempotency and protected browser readback |
 | P1 | Backup, restore, alert and data-exit contracts | Cloud owners; Instance operates them | Owner boundaries are described; production schedules and receivers are external | Isolated restore identity/readback, stable active/recovered signals, stop-purchase boundary and export/delete receipts |
 | P1 | MAP domain contracts and evaluation gate | MAP medical domain owner/Instance | Cloud logical Connect boundary is documented; no clinical domain or qualified MAP adapter/backend combination is claimed | MAP task/adapter contract, selected OPL Connect backend, approved data classes, source/evidence model, human review states, evaluation set, release gate and institution acceptance; no medical-specific Cloud adapter is required |
@@ -262,6 +262,68 @@ unmerged #1026 proposal do not establish cancellation or absence. Activation
 and operator command routing follow the remaining callers in #1028; #1031 and
 #1032 retain their historical source changes and closure reasons.
 
+### Retained code-removal review (2026-11-03)
+
+The user approved actual code deletion, capability by capability. Independent
+proposals cover the unused Key prototype ([Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112)), refused activation alias
+([Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114)), existing Instance observation projection ([Instance #673](https://github.com/gaofeng21cn/opl-instance-medopl/pull/673))
+and fixed-slot procurement ([Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113)) at the inventoried baselines. Since then,
+#1112 merged at `2026-11-03T06:57:24Z` as
+`0064c770d87eb25daeaf1f0dc55aeef1c4d99c60`, at source only and not installed.
+This inventory PR changes no runtime code. Verification belongs to each source
+revision; neither this snapshot nor a source merge establishes installed state
+or completed Control Plane retirement.
+
+The [writer/caller inventory](implementation-architecture.md#retained-writer-and-caller-inventory-2026-11-03)
+binds the exact Cloud/Instance baselines, includes external source callers and
+separates source reachability from the protected observation. Preserve accepted
+historical operations and financial records while retiring their execution paths.
+
+| Review scope | Proposed decision | Evidence needed before implementation withdrawal |
+| --- | --- | --- |
+| R8 fixed-slot provider procurement | HOLD: [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) proposes removing route/executor, dedicated config, unused create-claim machinery and exclusive tests | Prove all accepted slot-operation obligation dispositions through authoritative owner evidence before executor source removal or withdrawal PR merge; CI or leaving Draft is not evidence, and original unknown operations remain unknown. Preserve historical identity/billing readers |
+| R9 test-only Key lifecycle prototype; retired browser activation alias | [Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112) is merged source only, not installed; [Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114) remains unmerged pending caller alignment and re-review | Review verification on 2026-11-03 found fresh runner state lacks the existing-account prerequisite; caller migration and qualification remain incomplete. The baseline alias already refused activation; these observations do not establish a customer-facing regression. Native lifecycle, internal provisioning and Tenant/wallet binding remain; this does not remove the CP process |
+| R1 application admission/default install/deployment | Review retiring the legacy capability with UI and Instance command callers | Resolve accepted deployment/default-install/reservation obligations; decide whether identified legacy-only functionality is withdrawn or genuinely needed by a new owner |
+| R2 runtime/image/password maintenance; R3 Workspace Key rotation | Review withdrawal versus necessary caller migration | Resolve existing runtime/Secret/Key identity and unsettled replacements/rotations; preserve shared lifecycle/history and do not treat reveal/disable as full rotation parity |
+| R5 retained lifecycle/renewal/delete/refund; R6 pricing/eligibility | Review full execution-engine removal with its worker, store/client and external-tool slice | Establish other accepted operations/renewal/financial obligations, independently settle original refunds, remove or migrate history consumers, preserve the native path; the three #1018 orders need no further mutations |
+| R4 personal-Key/admin-wallet/Account provisioning | Keep while product requirement or actual BFF caller remains; decide separately | Existing native readers/managed-Key commands do not supply personal-Key writes, arbitrary wallet adjustment or external-user/Account provisioning parity |
+| R7 history, announcements/ACK, identity proof and shared CP transport | Retain under their current owners in this scope | Separate capability migration is needed before removing their writers, readers, proof/configuration or the CP process; Workspace cleanup alone supplies no such evidence |
+
+A selected retirement is complete only when its command/implementation, scheduler
+or worker registration, exclusive configuration, caller adapters and dedicated
+obsolete tests are removed together, and the real surviving consumers pass
+owner/history/replay checks. A hidden button, `enabled=false`, refusal route or
+permanent compatibility branch is not the requested delivery. Necessary shared
+read/decoding code can remain with its named history consumer; source removal
+does not authorize dropping financial records, receipts, customer data or schema
+history. Do not build legacy feature parity unless the review establishes a
+current product requirement.
+
+Protected observation `41564384194` confirms two enumerated CP records were
+`data_deleted`, but its projection is not an audit archive, Accounts are a
+first-page sample and runtime health was unavailable. It does not establish a
+complete pending-Key/wallet/deployment-operation census or route-specific
+zero-new-business interval. Its own zero mutation counters prove that the
+observation was read-only. Four unmatched runtime observations require native
+Serve/Fabric attribution; they are not a resource cleanup list. Use existing
+protected owner readbacks for remaining evidence; this review creates no new
+qualification gate, metrics service or authority.
+
+Instance proposal [Instance #673](https://github.com/gaofeng21cn/opl-instance-medopl/pull/673) extends the existing observation producer to
+project every runtime operation in its current owner API result, taking status
+only from the owner status field and preserving missing status as unknown.
+Collect fresh evidence through the protected Instance entry before evaluating
+operation-dependent removals. No new protected evidence has been collected with
+this extension. It preserves the old Workspace scope and adds
+current/reserved deployment identity digests with explicit unknown/empty
+semantics. Fresh installed binding readback, independent wallet/rotation state
+and Account enumeration remain unverified.
+
+Closed #1028/#1042/#1052 remain historical references. #1042's customer outcome
+and #1018's three-order closeout stay complete. The scopes in this section are
+the current review boundary; they neither reopen those Issues nor imply their
+closure physically removed every retained writer.
+
 ### Native v2 qualification and CP retirement (#1042)
 
 Workspace owns purchase and deletion orchestration; CloudIdentity owns the live
@@ -274,11 +336,12 @@ writes and removes the legacy new/repurchase affordances; historical resume and
 the retained DELETE path remain. It does not authorize blanket route removal.
 The current Instance launch readback tool already calls native v2 routes at
 Instance `e8ee04df`; its older local checkout is not a current CP caller.
-#1041 stays open for a complete route/caller inventory, route/caller write
-counters and an observed zero-new-write window. Legacy customer Launch auto-
-discovery also needs its own caller evidence; operator recovery and server
-read/replay/resume are not proof of that browser capability. The separate
-protected business-qualification consumer source migration was adopted by
+The closed #1041/#1052 tracking does not establish complete caller or writer
+retirement. The current [code-removal review](#retained-code-removal-review-2026-11-03)
+records source callers, bounded installed evidence and missing operation/traffic
+coverage. Legacy customer Launch auto-discovery needs its actual caller evidence;
+operator recovery and server read/replay/resume do not prove that browser
+capability. The separate protected business-qualification consumer source migration was adopted by
 Instance #593 and Cloud #1072. Its installed declarations, genuine same-Candidate
 J0 and complete business execution remain under #1042; source adoption alone
 does not qualify the consumer.
@@ -330,9 +393,12 @@ acceptance outcomes:
   path. Then qualify the same flow on TKE and the separately authorized live
   Gateway/Sub2API refund boundary before claiming those acceptance layers.
 
-CP retirement requires zero new writes, migrated live callers and static Console
-hosting, and a defined historical archive with owner-approved retention and
-readback. No source-only PR closes #1042 or the original orders in #1018.
+CP process retirement additionally requires disposition of its live identity,
+announcement, historical financial and static-hosting consumers. Per-capability
+removal uses the [current review scope](#retained-code-removal-review-2026-11-03)
+and preserves owner-approved historical retention/readback. #1042's customer
+acceptance and #1018's original-order closeouts are complete; this separate
+source-removal review does not reopen them.
 
 ### Original-order Workspace closeout (#1018)
 
@@ -370,10 +436,11 @@ with their original owners. Native A/B have explicit confirmed Key dispositions;
 the retained order completed through its existing CP deletion and settlement
 operation. No responsibility was transferred to a new production writer.
 
-The reusable native capability was delivered through #1043/#1047. Further
-retained-owner migration and retirement belong to #1052, new native qualification
-to #1042, and new-purchase caller migration to #1028. Those scopes must preserve
-historical recovery and financial evidence, but they do not reopen acceptance of
+The reusable native capability was delivered through #1043/#1047. Closed
+#1052/#1028 retain migration/caller provenance and #1042 records the accepted
+customer outcome. Further retained-code withdrawal is reviewed in the
+[current removal scope](#retained-code-removal-review-2026-11-03). Preserve
+historical recovery and financial evidence without reopening acceptance of
 these three completed orders.
 
 ## Development Governance Migration (2026-10-13)

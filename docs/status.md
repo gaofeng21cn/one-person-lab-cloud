@@ -16,6 +16,64 @@ boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Retained Writer Inventory And Split Withdrawal Proposals (2026-11-03)
+
+The inventory reviews Cloud `a7e793f80ffb764d80b63179b05d32e9bdf64c15`
+and Instance `0a38b429c785f0e1c345f5910b3731f2f49e1f57`. This update changes
+documentation only. Those exact baselines remain the inventory snapshot. The
+user approved capability-by-capability source removal; current source and review
+status, separate from installation evidence, is:
+
+- [Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112) merged as `0064c770d87eb25daeaf1f0dc55aeef1c4d99c60`
+  at `2026-11-03T06:57:24Z`, removing the unused, test-only Key lifecycle
+  prototype at source only. It has not been installed.
+- [Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114) remains unmerged pending caller alignment and re-review.
+  Review verification on 2026-11-03 found the qualification runner's fresh
+  Compose state lacks the existing activated account required by the new read.
+  The baseline alias already refused activation; caller migration remains
+  incomplete. Browser verification did not pass; these observations neither
+  establish a customer-facing regression nor complete qualification. The
+  BFF-to-internal-CP writer and native Tenant/wallet binding remain.
+- [Instance #673](https://github.com/gaofeng21cn/opl-instance-medopl/pull/673) extends the existing observation producer's redacted
+  operation/deployment-binding projection. Runtime-operation status comes only
+  from the owner status field; a missing status remains unknown. This source
+  change has not supplied new protected evidence.
+- [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) is on HOLD: authoritative owner evidence of all accepted
+  slot-operation obligation dispositions is required before removing the fixed-slot
+  executor source or merging the withdrawal PR. CI success or leaving Draft is
+  not disposition evidence. Historical identity/billing/access readers remain;
+  original unknown operations remain unknown.
+
+Verification belongs to each source revision. Earlier CI or a combined local
+pass does not resolve the reported failures or qualify pending revisions. #1112's
+source merge does not establish installation or alter the exact-base inventory;
+the other entries retain their review conditions above.
+The [implementation inventory](implementation-architecture.md#retained-writer-and-caller-inventory-2026-11-03)
+owns the actual writer/caller sets; the
+[roadmap](roadmap.md#retained-code-removal-review-2026-11-03) owns remaining outcomes.
+
+Protected observation [41564384194](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41564384194),
+observed at `2026-11-03T02:10:08.055Z`, enumerated two CP Workspace records,
+both `data_deleted`. Its scoped operation projection contains twelve records
+(eight succeeded, two failed, two expired-unpaid), while the source API result
+contains 44. Its Account projection is a first-page sample; the overall result
+is `partial / source_unavailable` because runtime-health reads failed. Four
+unmatched runtime observations require Serve/Fabric attribution, not deletion.
+Its zero mutation counters describe that observation, not a CP-wide traffic
+window. These limits do not prove that every wallet, Key, deployment reservation
+or renewal obligation is settled.
+
+The Instance proposal preserves the existing scoped projection and adds all
+operations returned by the current owner API, plus current/reserved deployment
+identity digests that distinguish unknown from owner-confirmed empty values.
+No new protected observation has run with that source; the original receipt is
+not regenerated or relabeled. No Candidate, deployment, resource or financial
+action is part of these PRs.
+
+#1042's accepted customer outcome and #1018's three original-order closeouts
+remain complete. Closed #1028/#1052 remain historical scope references; their
+closure does not prove all retained writers have been physically removed.
+
 ## Workspace Managed-Key Closeout Adapter Source (2026-11-02)
 
 The Cloud source Gateway Workspace-Key adapter now implements the already-owned
@@ -685,11 +743,13 @@ installation health by the independent twelve-check deployment verification.
 #1018 is closed; historical attempts and the separate retained-owner migration
 obligations remain intact. This Candidate deployment is not a formal Release.
 
-The original CP owner remains responsible until a verified handover. #1052 owns
-the separate retained-owner migration decision; this repair changes neither
-write ownership nor protected execution authority. Native unfinished-order
-closeout source was delivered through #1043/#1047; its implementation boundaries
-are described in [the source map](implementation-architecture.md#original-order-closeout-boundaries).
+No handover occurred for these completed orders: their original owners and
+identifiers remain the historical authority. Closed #1052 retains migration
+provenance; further code withdrawal is evaluated through the
+[current retirement inventory](implementation-architecture.md#retained-writer-and-caller-inventory-2026-11-03),
+without creating a new writer or another obligation for the three closed orders.
+Native unfinished-order closeout source was delivered through #1043/#1047; its
+implementation boundaries remain in [the source map](implementation-architecture.md#original-order-closeout-boundaries).
 
 ## Account Activation Cutover (2026-10-21; read back 2026-10-23)
 
