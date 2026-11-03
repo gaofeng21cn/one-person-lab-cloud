@@ -20,20 +20,34 @@ durable decisions are in [decisions.md](decisions.md), and open work is in
 
 The inventory reviews Cloud `a7e793f80ffb764d80b63179b05d32e9bdf64c15`
 and Instance `0a38b429c785f0e1c345f5910b3731f2f49e1f57`. This update changes
-documentation only. The user approved capability-by-capability source removal;
-implementation is proposed in independent PRs:
+documentation only. Those exact baselines remain the inventory snapshot. The
+user approved capability-by-capability source removal; current source and review
+status, separate from installation evidence, is:
 
-- [Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112) removes the unused, test-only Key lifecycle prototype.
-- [Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114) removes the refused activation alias and obsolete callers,
-  preserving the BFF-to-internal-CP writer and native Tenant/wallet binding.
-- [Instance #673](https://github.com/gaofeng21cn/opl-instance-medopl/pull/673) extends the existing protected observation producer's redacted
-  operation and deployment-binding projection without adding business writes.
-- [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) removes fixed-slot procurement and unused create-claim
-  machinery, preserving the historical identity/billing/access readers.
+- [Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112) merged as `0064c770d87eb25daeaf1f0dc55aeef1c4d99c60`
+  at `2026-11-03T06:57:24Z`, removing the unused, test-only Key lifecycle
+  prototype at source only. It has not been installed.
+- [Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114) remains unmerged pending caller alignment and re-review.
+  Review verification on 2026-11-03 found the qualification runner's fresh
+  Compose state lacks the existing activated account required by the new read.
+  The baseline alias already refused activation; caller migration remains
+  incomplete. Browser verification did not pass; these observations neither
+  establish a customer-facing regression nor complete qualification. The
+  BFF-to-internal-CP writer and native Tenant/wallet binding remain.
+- [Instance #673](https://github.com/gaofeng21cn/opl-instance-medopl/pull/673) extends the existing observation producer's redacted
+  operation/deployment-binding projection. Runtime-operation status comes only
+  from the owner status field; a missing status remains unknown. This source
+  change has not supplied new protected evidence.
+- [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) is on HOLD: authoritative owner evidence of all accepted
+  slot-operation obligation dispositions is required before removing the fixed-slot
+  executor source or merging the withdrawal PR. CI success or leaving Draft is
+  not disposition evidence. Historical identity/billing/access readers remain;
+  original unknown operations remain unknown.
 
-Each sibling PR records verification for its own source revision. A combined
-local-worktree pass does not qualify these independent branches, and no sibling
-proposal is described as merged or installed by this documentation change.
+Verification belongs to each source revision. Earlier CI or a combined local
+pass does not resolve the reported failures or qualify pending revisions. #1112's
+source merge does not establish installation or alter the exact-base inventory;
+the other entries retain their review conditions above.
 The [implementation inventory](implementation-architecture.md#retained-writer-and-caller-inventory-2026-11-03)
 owns the actual writer/caller sets; the
 [roadmap](roadmap.md#retained-code-removal-review-2026-11-03) owns remaining outcomes.

@@ -267,9 +267,12 @@ and operator command routing follow the remaining callers in #1028; #1031 and
 The user approved actual code deletion, capability by capability. Independent
 proposals cover the unused Key prototype ([Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112)), refused activation alias
 ([Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114)), existing Instance observation projection ([Instance #673](https://github.com/gaofeng21cn/opl-instance-medopl/pull/673))
-and fixed-slot procurement ([Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113)). This inventory PR changes no
-runtime code. Each implementation PR carries its own verification; none is an
-installed-state or completed Control Plane retirement claim.
+and fixed-slot procurement ([Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113)) at the inventoried baselines. Since then,
+#1112 merged at `2026-11-03T06:57:24Z` as
+`0064c770d87eb25daeaf1f0dc55aeef1c4d99c60`, at source only and not installed.
+This inventory PR changes no runtime code. Verification belongs to each source
+revision; neither this snapshot nor a source merge establishes installed state
+or completed Control Plane retirement.
 
 The [writer/caller inventory](implementation-architecture.md#retained-writer-and-caller-inventory-2026-11-03)
 binds the exact Cloud/Instance baselines, includes external source callers and
@@ -278,8 +281,8 @@ historical operations and financial records while retiring their execution paths
 
 | Review scope | Proposed decision | Evidence needed before implementation withdrawal |
 | --- | --- | --- |
-| R8 fixed-slot provider procurement | Independent proposal [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) removes route/executor, dedicated config, unused create-claim machinery and exclusive tests | Resolve any accepted slot obligations before deploying the withdrawal; only historical identity/billing readers remain |
-| R9 test-only Key lifecycle prototype; retired browser activation alias | Independent proposals [Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112) and [Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114) remove the prototype and alias together with their exclusive registrations/callers/tests | Native lifecycle, internal provisioning and Tenant/wallet binding remain; this does not remove the CP process |
+| R8 fixed-slot provider procurement | HOLD: [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) proposes removing route/executor, dedicated config, unused create-claim machinery and exclusive tests | Prove all accepted slot-operation obligation dispositions through authoritative owner evidence before executor source removal or withdrawal PR merge; CI or leaving Draft is not evidence, and original unknown operations remain unknown. Preserve historical identity/billing readers |
+| R9 test-only Key lifecycle prototype; retired browser activation alias | [Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112) is merged source only, not installed; [Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114) remains unmerged pending caller alignment and re-review | Review verification on 2026-11-03 found fresh runner state lacks the existing-account prerequisite; caller migration and qualification remain incomplete. The baseline alias already refused activation; these observations do not establish a customer-facing regression. Native lifecycle, internal provisioning and Tenant/wallet binding remain; this does not remove the CP process |
 | R1 application admission/default install/deployment | Review retiring the legacy capability with UI and Instance command callers | Resolve accepted deployment/default-install/reservation obligations; decide whether identified legacy-only functionality is withdrawn or genuinely needed by a new owner |
 | R2 runtime/image/password maintenance; R3 Workspace Key rotation | Review withdrawal versus necessary caller migration | Resolve existing runtime/Secret/Key identity and unsettled replacements/rotations; preserve shared lifecycle/history and do not treat reveal/disable as full rotation parity |
 | R5 retained lifecycle/renewal/delete/refund; R6 pricing/eligibility | Review full execution-engine removal with its worker, store/client and external-tool slice | Establish other accepted operations/renewal/financial obligations, independently settle original refunds, remove or migrate history consumers, preserve the native path; the three #1018 orders need no further mutations |
@@ -307,9 +310,11 @@ protected owner readbacks for remaining evidence; this review creates no new
 qualification gate, metrics service or authority.
 
 Instance proposal [Instance #673](https://github.com/gaofeng21cn/opl-instance-medopl/pull/673) extends the existing observation producer to
-project every runtime operation in its current owner API result. Adopt and run
-that producer through the protected Instance entry before evaluating the next
-operation-dependent removals. It preserves the old Workspace scope and adds
+project every runtime operation in its current owner API result, taking status
+only from the owner status field and preserving missing status as unknown.
+Collect fresh evidence through the protected Instance entry before evaluating
+operation-dependent removals. No new protected evidence has been collected with
+this extension. It preserves the old Workspace scope and adds
 current/reserved deployment identity digests with explicit unknown/empty
 semantics. Fresh installed binding readback, independent wallet/rotation state
 and Account enumeration remain unverified.

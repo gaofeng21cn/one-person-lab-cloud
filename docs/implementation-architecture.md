@@ -1334,8 +1334,9 @@ does not activate Local no-charge terms or certify production peer wiring.
 This is the writer/caller inventory at Cloud baseline
 `a7e793f80ffb764d80b63179b05d32e9bdf64c15` and Instance baseline
 `0a38b429c785f0e1c345f5910b3731f2f49e1f57`. This PR changes documentation
-only. R8 and R9 describe separately proposed source withdrawals, linked below;
-they do not assert that this branch removes code or that production adopted them.
+only. The table below is a snapshot at those exact baselines; later source and
+review status is recorded in R8/R9 and the linked [status](status.md#retained-writer-inventory-and-split-withdrawal-proposals-2026-11-03).
+Neither the snapshot nor a source merge establishes installed adoption.
 The local Instance source inspected at `709d18530f7e5b54f48d30bae8ca8e45a90cce95`
 differed from the Instance baseline only in final-release pagination/tool tests
 and archived receipts; the listed caller files were unchanged. Cloud paths are
@@ -1362,7 +1363,7 @@ operations, data or financial evidence.
 | Retained purchase recovery, expiry/renewal, deletion and settlement | Workspace owns native lifecycle; native BFF deletion/readback and Instance `workspace-native-delete.mjs` use its API; Gateway/Fabric/Ledger own their effects/readbacks | CP original Launch replay/resume, renewal/expiry and delete/refund workers remain registered. Original operations/charges must not be replaced by native re-purchase/refund | R5: finish the all-object/operation census, then remove the retained execution slice and its external callers; the three #1018 selectors are already closed |
 | Legacy package pricing | Resource Catalog owns new compute/storage prices and quotes | Legacy UI and Instance `fresh-workspace-admission.mjs` still read `/api/pricing/catalog` and POST preview; preview is computation/read, not a purchase | R6: remove old pricing callers/adapters with their exclusive model, while preserving accepted historical quote/terms decoding |
 | History, announcements and shared identity/read transport | BFF still calls original-owner billing, personal Gateway history/endpoint, announcements and ACK/activation adapters | `apps/console-bff/internal/clients/legacy_billing.go`, `personal_gateway_reads.go`, `announcements.go`, `operator.go` and the CP proof/Account/receipt readers are live source callers. ACK and activation are real remaining writes | R7: retain in this retirement scope; removing Workspace execution does not retire the CP process, shared transport or these independent capabilities |
-| Fixed-slot provider acceptance | Native business uses Catalog/Workspace and bounded protected execution | [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) proposes removing the route/executor, dedicated token/configuration, unused create-claim machinery and exclusive tests; a named history-only identity helper preserves billing/access readers | R8: independent source proposal; all-slot obligation disposition is required before installation |
+| Fixed-slot provider acceptance | Native business uses Catalog/Workspace and bounded protected execution | [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) proposes removing the route/executor, dedicated token/configuration, unused create-claim machinery and exclusive tests; a named history-only identity helper preserves billing/access readers | R8: HOLD; authoritative all-slot obligation disposition is required before executor source removal or withdrawal PR merge |
 | Test-only Key lifecycle prototype and retired activation alias | Native managed-Key lifecycle lives in Gateway Integration; native BFF activation still invokes the original provisioning writer | [Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112) removes the test-only prototype; [Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114) separately removes the public refusal alias and stale callers, and makes qualification read an existing activated account | R9: independent proposals; internal activation, Tenant/wallet binding and native Key lifecycle remain |
 
 Cloud/legacy browser routing is a build-time choice (`VITE_CONSOLE_IDENTITY`).
@@ -1491,8 +1492,8 @@ The purchase-eligibility command in `routes_admin.go` /
 with retained purchase, not with Account readers. Resource Catalog quotes cover
 new resources; they do not prove arbitrary legacy package-pricing UI parity.
 
-**R8 — fixed-slot provider procurement withdrawal proposal.**
-[Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) removes the route/executor, dedicated writer tests and
+**R8 — fixed-slot provider procurement withdrawal proposal (HOLD).**
+[Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) proposes removing the route/executor, dedicated writer tests and
 registration, token declarations and the obsolete production-manifest assertion.
 Its only production caller is also removed, so `ClaimWorkspaceCreate`, its
 PostgreSQL/memory implementations, request/lease helpers and exclusive tests
@@ -1501,17 +1502,29 @@ leave in the same PR. Original Workspace/operation records and schema remain.
 The proposed `provider_acceptance_history.go` keeps only the original identity
 tuples and exact resource-ID derivation used by Workspace access, Gateway proxy
 and runtime-observation billing classification. The existing narrow billing
-exception and history tests remain. Complete slot-operation disposition must
-precede installing this withdrawal; opening or merging a source PR is not that
-readback.
+exception and history tests remain. Authoritative owner evidence must prove
+complete disposition of all accepted slot-operation obligations before removing
+executor source or merging the withdrawal PR. #1113 is on HOLD pending that
+evidence. Original unknown operations remain unknown; retaining their records or
+history readers does not resolve their obligations. Passing CI or leaving Draft
+does not supply disposition evidence.
 
-**R9 — separate prototype and activation-alias proposals.**
-[Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112) removes the unused Key lifecycle tool, its exclusive tests and
-registration. [Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114) removes the public activation refusal/stub,
-updates obsolete tool/test callers, and reads the already activated account's
-owner-returned identity. Native managed-Key lifecycle and the BFF-to-internal-CP
-provisioning writer, Tenant creation and wallet binding stay with their real
-owners. This is not withdrawal of account activation or personal-Key capability.
+**R9 — prototype source withdrawal and activation-alias proposal.**
+[Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112) merged as `0064c770d87eb25daeaf1f0dc55aeef1c4d99c60`
+at `2026-11-03T06:57:24Z`, removing the unused Key lifecycle tool, its exclusive
+tests and registration at source only; it has not been installed. This later
+merge does not change the inventory baseline.
+
+[Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114) remains unmerged. It proposes removing the public activation
+refusal/stub and obsolete callers, with qualification reading an already activated
+account's owner-returned identity. Review verification on 2026-11-03 found that
+the qualification runner's fresh Compose state lacks this prerequisite; caller
+migration remains incomplete. The baseline alias already refused activation.
+Browser verification did not pass; these observations neither establish a
+customer-facing regression nor complete qualification. Native managed-Key
+lifecycle and the BFF-to-internal-CP provisioning writer, Tenant creation and
+wallet binding stay with their real owners. This is not withdrawal of account
+activation or personal-Key capability.
 
 **R7 — explicit retained shared surface.**
 Keep `apps/console-bff/internal/clients/{legacy_billing,personal_gateway_reads,announcements,operator}.go`
@@ -1564,9 +1577,10 @@ nor proves settled obligations. Scoped Workspace rows also project the existing
 a missing or non-string field is explicitly unobserved; a nonempty ID is hashed.
 The management API returns these persisted fields directly, so this adds no
 request or business mutation. Account pagination and independent wallet/
-rotation state remain outside this extension. The producer has local tests only;
-fresh protected readbacks are still needed, and the existing receipt was not
-regenerated or relabeled.
+rotation state remain outside this extension. Runtime-operation status comes
+only from the owner status field; raw result payloads never establish status.
+No fresh protected readback has been collected with this extension; the existing
+receipt was not regenerated or relabeled.
 
 The same receipt is overall `partial / source_unavailable`: runtime health reads
 failed. The successful owner projections above retain their scope; the overall
