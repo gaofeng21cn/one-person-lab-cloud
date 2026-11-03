@@ -41,7 +41,6 @@ type WorkspaceDetailController = Pick<ConsoleController,
   | "workspaceRenewalRead"
   | "workspaceRenewalLoading"
   | "workspaceSecrets"
-  | "workspaceApplicationInstallation"
 >;
 type WorkspaceBudgetViewController = Pick<WorkspaceDetailController, "refreshCurrentPage" | "sources" | "updateWorkspaceBudget" | "workspaceBudgetBusy">;
 type WorkspaceMaintenanceController = Pick<WorkspaceDetailController, "updateWorkspaceBudget" | "workspaceBudgetBusy">;
@@ -333,7 +332,7 @@ function ControlPlaneWorkspaceDetailPage({ controller }: { controller: Workspace
     <section className="workspace-detail-page" data-slide="C-WS-05">
       <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />工作空间列表</Button>
       <div className="workspace-detail-content">
-        {installation ? <Alert color={installation.tone} title={installation.title} description={installation.description} actions={detail.applicationInstallation?.canResume ? <Button busy={controller.workspaceApplicationInstallation.busy} disabled={controller.workspaceApplicationInstallation.busy} onClick={() => void controller.workspaceApplicationInstallation.resume()} variant="outline">继续安装应用</Button> : undefined} /> : null}
+        {installation ? <Alert color={installation.tone} title={installation.title} description={installation.description} /> : null}
         <section className="panel workspace-identity-panel"><div className="workspace-heading"><div><h2>{detail.name || "未命名工作空间"}</h2><div className={`workspace-availability workspace-availability--${runtimePresentation?.kind || "pending"}`}><strong>{runtimeLabel}</strong><span>{runtimeDescription}</span></div></div><div className="workspace-entry-actions"><Button color="primary" disabled={!runtimeUrl} onClick={() => runtimeUrl && window.open(runtimeUrl, "_blank", "noopener,noreferrer")}>打开工作空间<ExternalLink aria-hidden size={16} /></Button><Button onClick={() => void controller.refreshCurrentPage()} variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div></div><dl className="workspace-primary-facts"><div><dt>应用</dt><dd>{presentWorkspaceApplicationBinding(detail.applicationBinding, detail.currentApplication).label}</dd></div><div><dt>套餐</dt><dd>{detail.packageId?.toUpperCase() || "-"}</dd></div><div><dt>实际月费</dt><dd>{formatUsdMicros(detail.totalUsdMicros)}</dd></div><div><dt>权益截止</dt><dd>{formatDate(detail.paidThrough)}</dd></div></dl></section>
         {credentials || gateway ? <section className="panel workspace-access-panel"><div className="panel-title"><h2>访问凭据</h2><span>敏感信息将在 60 秒后自动隐藏</span></div>
           {runtime && paidAccess && currentRuntime ? <WorkspaceAccessRows controller={controller.workspaceSecrets} runtime={runtime} credentials={credentials} gateway={gateway} /> : runtimeRead.runtime.loading && !runtimeRead.runtime.value ? <div className="source-loading" aria-live="polite"><span className="spinner" />正在读取</div> : <Alert color="warning" indicator={<AlertCircle size={18} />} title="访问凭据暂不可用" description={paidAccess ? "暂时无法确认登录信息，请稍后刷新。" : "使用权益尚未恢复，请先查看续费状态。"} actions={<Button onClick={() => void controller.refreshCurrentPage()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />重试</Button>} />}

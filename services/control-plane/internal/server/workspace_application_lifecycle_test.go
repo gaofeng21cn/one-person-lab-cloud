@@ -115,7 +115,7 @@ func seedCurrentApplicationForLifecycle(t *testing.T, app *controlPlaneServer, w
 
 func seedApplicationRevisionForLifecycle(t *testing.T, app *controlPlaneServer, workspaceID string, revision contracts.WorkspaceApplicationRevision, configuration contracts.WorkspaceApplicationRuntimeConfiguration, bindings []contracts.WorkspaceApplicationRuntimeSecretBinding, keyID int64, selected bool) workspaceApplicationDeploymentIntent {
 	t.Helper()
-	admitApplicationForReplacement(t, app.tables, revision)
+	seedAdmittedApplicationRevisionForTest(t, app.tables, revision)
 	intent, err := app.createWorkspaceApplicationDeploymentIntent(context.Background(), workspaceID, "seed-"+revision.ApplicationID+"-"+revision.Version, revision.ApplicationID, revision.Version, configuration, bindings, keyID, "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -678,41 +678,35 @@ func TestApplicationLifecycleUnactivatedHistoricalReservationIsFenced(t *testing
 	}
 }
 
-func TestApplicationDefaultPreparationAndDeleteClaimsAreMutuallyExclusive(t *testing.T) {
-	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
-	handler := fixture.server.(*controlPlaneHTTPHandler)
-	app, ctx := handler.app, context.Background()
-	request := workspaceDefaultApplicationRequest{SchemaVersion: 1, OperationID: workspaceDefaultApplicationOperationID("workspace-launch-alpha"), LaunchOperationID: "workspace-launch-alpha", AccountID: "acct-alpha", WorkspaceID: "ws-alpha", OwnerUserID: stringValue(fixture.workspace["ownerUserId"]), Sub2APIUserID: 41, WorkspaceKeyGroupID: 7, Revision: defaultOPLApplicationRevision("registry.example/opl-app@sha256:" + strings.Repeat("a", 64)), Phase: "credentials_required"}
-	row, err := workspaceDefaultApplicationRow(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	mustStore(t, app.tables.SaveRuntimeOperation(ctx, row))
-	request.Phase = "preparing_credentials"
-	if err := app.persistWorkspaceDefaultApplication(ctx, row, request); err != nil {
-		t.Fatal(err)
-	}
-	workspace, _, _ := app.tables.GetWorkspace(ctx, "ws-alpha")
-	deletion, err := app.newWorkspaceDeleteOperation(ctx, handler.service, workspace, 41, time.Now().UTC())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := app.tables.ApplyWorkspaceDelete(ctx, workspaceDeleteStoreMutation{Create: true, DesiredOperation: workspaceDeleteOperationRow(deletion)}); !errors.Is(err, errWorkspaceDeleteCASConflict) {
-		t.Fatalf("delete crossed preparing claim: %v", err)
-	}
-	request.Phase = "credentials_required"
-	if err := app.persistWorkspaceDefaultApplication(ctx, row, request); err != nil {
-		t.Fatal(err)
-	}
-	if err := app.tables.ApplyWorkspaceDelete(ctx, workspaceDeleteStoreMutation{Create: true, DesiredOperation: workspaceDeleteOperationRow(deletion)}); err != nil {
-		t.Fatal(err)
-	}
-	request.Phase = "preparing_credentials"
-	if err := app.persistWorkspaceDefaultApplication(ctx, row, request); !errors.Is(err, errWorkspaceApplicationOperationCASConflict) {
-		t.Fatalf("prepare crossed delete claim: %v", err)
-	}
-	workspace, _, _ = app.tables.GetWorkspace(ctx, "ws-alpha")
-	if workspace["state"] != "deleting" {
-		t.Fatal("delete did not close application admission")
+func TestApplicationHistoricalDefaultPreparationBlocksDelete(t *testing.T) {
+	for _, phase := range []string{"preparing_credentials", "credentials_required"} {
+		t.Run(phase, func(t *testing.T) {
+			fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
+			handler := fixture.server.(*controlPlaneHTTPHandler)
+			app, ctx := handler.app, context.Background()
+			request := workspaceDefaultApplicationRequest{SchemaVersion: 1, OperationID: workspaceDefaultApplicationOperationID("workspace-launch-alpha"), LaunchOperationID: "workspace-launch-alpha", AccountID: "acct-alpha", WorkspaceID: "ws-alpha", OwnerUserID: stringValue(fixture.workspace["ownerUserId"]), Sub2APIUserID: 41, WorkspaceKeyGroupID: 7, Revision: defaultOPLApplicationRevision("registry.example/opl-app@sha256:" + strings.Repeat("a", 64)), Phase: phase}
+			row, err := workspaceDefaultApplicationRow(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mustStore(t, app.tables.SaveRuntimeOperation(ctx, row))
+			workspace, _, _ := app.tables.GetWorkspace(ctx, "ws-alpha")
+			deletion, err := app.newWorkspaceDeleteOperation(ctx, handler.service, workspace, 41, time.Now().UTC())
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = app.tables.ApplyWorkspaceDelete(ctx, workspaceDeleteStoreMutation{Create: true, DesiredOperation: workspaceDeleteOperationRow(deletion)})
+			if phase == "preparing_credentials" {
+				if !errors.Is(err, errWorkspaceDeleteCASConflict) {
+					t.Fatalf("delete crossed historical preparing claim: %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			retained, _, err := app.tables.GetRuntimeOperation(ctx, request.OperationID)
+			if err != nil || retained["result"] != row["result"] {
+				t.Fatalf("delete rewrote historical request: %v", err)
+			}
+		})
 	}
 }

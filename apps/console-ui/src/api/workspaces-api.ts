@@ -22,7 +22,6 @@ import type {
   WorkspaceRenewalReadDTO,
   WorkspaceRuntimeDTO
 } from "./dtos.ts";
-import type { WorkspaceApplicationInstallationDTO } from "./dtos.ts";
 import { deleteJson, postJson, putJson, getJson, patchJson, type ApiError } from "./console-api.ts";
 import { cloudIdentity } from "../app/console-identity.ts";
 import type {
@@ -340,10 +339,6 @@ export async function getWorkspaceOwnerAccess(
 
 const terminalLaunchStatuses = new Set(["succeeded", "failed", "refunded"]);
 
-export function resumeWorkspaceApplicationInstallation(workspaceId: string, operationId: string, csrfToken: string): Promise<{ workspaceId: string; applicationInstallation: WorkspaceApplicationInstallationDTO | null }> {
-  return postJson<unknown>(`/api/workspaces/${encodeURIComponent(workspaceId)}/application-installation/resume`, {}, csrfToken, `application-resume:${operationId}`)
-    .then(decodeDto<{ workspaceId: string; applicationInstallation: WorkspaceApplicationInstallationDTO | null }>);
-}
 const workspaceGatewayBudgetStatuses = new Set(["active", "disabled", "quota_exhausted", "expired"]);
 const workspaceGatewayBudgetFields = [
   "workspaceId", "keyId", "status", "quotaUsdMicros", "quotaUsedUsdMicros",

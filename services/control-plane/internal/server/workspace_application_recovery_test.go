@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"opl-cloud/services/control-plane/internal/clients"
+	"opl-cloud/services/control-plane/internal/controlplane"
 )
 
 func TestWorkspaceApplicationRecoveryMemory(t *testing.T) {
@@ -116,6 +118,20 @@ func TestWorkspaceApplicationRecoveryHTTP(t *testing.T) {
 	row, _, _ := fixture.store.GetRuntimeOperation(ctx, intent.OperationID)
 	mustStore(t, app.markWorkspaceApplicationManualReview(ctx, row, intent, "test_preflight_unavailable"))
 	failed, _, _ := fixture.store.GetRuntimeOperation(ctx, intent.OperationID)
+	workspace, _, _ := fixture.store.GetWorkspace(ctx, intent.WorkspaceID)
+	projection := map[string]any{}
+	mustStore(t, app.projectWorkspaceApplicationInstallation(ctx, workspace, projection))
+	installation, ok := projection["applicationInstallation"].(workspaceApplicationInstallationProjection)
+	if !ok || !installation.CanRetry || installation.Status != "manual_review" || installation.OperationID != intent.OperationID || installation.ApplicationID != intent.ApplicationID || installation.Revision != intent.TargetRevision {
+		t.Fatalf("operator recovery projection=%+v", projection)
+	}
+	expired := cloneMap(workspace)
+	expired["resourceBillingEnabled"], expired["paidThrough"] = true, time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano)
+	expiredProjection := map[string]any{}
+	mustStore(t, app.projectWorkspaceApplicationInstallation(ctx, expired, expiredProjection))
+	if expiredProjection["applicationInstallation"].(workspaceApplicationInstallationProjection).CanRetry {
+		t.Fatal("expired entitlement offered operator retry")
+	}
 	path := "/api/operator/application-deployments/" + intent.OperationID + "/retry"
 	denied := requestWithMutationKeyForTest(t, fixture.server, fixture.session, http.MethodPost, path, "{}", "retry-owner")
 	if denied.Code != http.StatusForbidden {
@@ -156,45 +172,63 @@ func TestWorkspaceApplicationRecoveryHTTP(t *testing.T) {
 	}
 }
 
-func TestWorkspaceDefaultApplicationResumeHTTP(t *testing.T) {
+func TestRetiredWorkspaceDefaultApplicationResumeHTTPPreservesHistory(t *testing.T) {
 	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
 	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
 	ctx := context.Background()
-	request := workspaceDefaultApplicationRequest{SchemaVersion: 1, OperationID: workspaceDefaultApplicationOperationID("workspace-launch-alpha"), LaunchOperationID: "workspace-launch-alpha",
-		AccountID: "acct-alpha", WorkspaceID: "ws-alpha", OwnerUserID: stringValue(fixture.workspace["ownerUserId"]), Sub2APIUserID: 41, WorkspaceKeyGroupID: 5,
-		Revision: defaultOPLApplicationRevision("repo.example/opl-app@sha256:" + strings.Repeat("e", 64)), Phase: "failed", LastError: "test_installation_failed",
-		WorkspaceAPIKeyID: 19, GatewaySecret: &clients.GatewaySecretWriteResult{SecretRef: "secret-ws-alpha", Version: "v1"}}
+	request := workspaceDefaultApplicationRequest{SchemaVersion: 1, OperationID: workspaceDefaultApplicationOperationID("workspace-launch-alpha"), LaunchOperationID: "workspace-launch-alpha", AccountID: "acct-alpha", WorkspaceID: "ws-alpha", OwnerUserID: stringValue(fixture.workspace["ownerUserId"]), Sub2APIUserID: 41, WorkspaceKeyGroupID: 5, Revision: defaultOPLApplicationRevision("repo.example/opl-app@sha256:" + strings.Repeat("e", 64)), Phase: "failed", LastError: "test_installation_failed", WorkspaceAPIKeyID: 19, GatewaySecret: &clients.GatewaySecretWriteResult{SecretRef: "secret-ws-alpha", Version: "v1"}}
 	row, err := workspaceDefaultApplicationRow(request)
 	if err != nil {
 		t.Fatal(err)
 	}
 	mustStore(t, fixture.store.SaveRuntimeOperation(ctx, row))
-	purchase, _, _ := fixture.store.GetRuntimeOperation(ctx, request.LaunchOperationID)
-	path := "/api/workspaces/ws-alpha/application-installation/resume"
-	response := requestWithMutationKeyForTest(t, fixture.server, fixture.session, http.MethodPost, path, "{}", "resume-default")
-	if response.Code != http.StatusAccepted {
-		t.Fatalf("default resume=%d %s", response.Code, response.Body.String())
+	operations, err := fixture.store.ListRuntimeOperations(ctx)
+	if err != nil {
+		t.Fatal(err)
 	}
-	current, _, _ := fixture.store.GetRuntimeOperation(ctx, request.OperationID)
-	resumed, err := decodeWorkspaceDefaultApplication(current)
-	if err != nil || resumed.DeploymentID == "" || resumed.Revision.Version != request.Revision.Version || resumed.WorkspaceAPIKeyID != request.WorkspaceAPIKeyID {
-		t.Fatalf("default resume did not retain original installation: %+v %v", resumed, err)
+	workspace, _, _ := fixture.store.GetWorkspace(ctx, request.WorkspaceID)
+	var externalCalls []string
+	transport := &http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		externalCalls = append(externalCalls, r.Method+" "+r.URL.String())
+		return nil, errors.New("unexpected retired installation request")
+	})}
+	sub2API, err := clients.NewSub2APIHTTPClient(clients.Sub2APIConfig{BaseURL: "https://sub2api.example.test", AdminEmail: "operator@example.test", AdminPassword: "test-password", Timeout: time.Second}, transport)
+	if err != nil {
+		t.Fatal(err)
 	}
-	retained, _, _ := fixture.store.GetRuntimeOperation(ctx, request.LaunchOperationID)
-	if retained["result"] != purchase["result"] {
-		t.Fatal("installation resume rewrote purchase")
+	handler := fixture.server.(*controlPlaneHTTPHandler)
+	*handler.service = *controlplane.NewService(clients.NewLedgerHTTPClient("https://ledger.example.test", "test-token", transport), clients.NewFabricHTTPClientWithCapability("https://fabric.example.test", "test-token", "test-capability", transport), sub2API)
+	for _, path := range []string{"/api/workspaces/ws-alpha/application-installation/resume", "/api/workspaces/not-owned/application-installation/resume"} {
+		for range 2 {
+			response := requestWithMutationKeyForTest(t, fixture.server, fixture.session, http.MethodPost, path, "{}", "resume-retired")
+			if response.Code != http.StatusNotFound && response.Code != http.StatusMethodNotAllowed {
+				t.Fatalf("retired resume=%d %s", response.Code, response.Body.String())
+			}
+		}
 	}
-	replay := requestWithMutationKeyForTest(t, fixture.server, fixture.session, http.MethodPost, path, "{}", "resume-default")
-	if replay.Code != http.StatusAccepted {
-		t.Fatalf("default resume replay=%d %s", replay.Code, replay.Body.String())
+	retained, err := fixture.store.ListRuntimeOperations(ctx)
+	if err != nil || !reflect.DeepEqual(retained, operations) {
+		t.Fatalf("retired resume changed operation history: %v", err)
 	}
-	current, _, _ = fixture.store.GetRuntimeOperation(ctx, request.OperationID)
-	again, err := decodeWorkspaceDefaultApplication(current)
-	if err != nil || again.DeploymentID != resumed.DeploymentID {
-		t.Fatal("resume replay created another deployment")
+	after, _, err := fixture.store.GetWorkspace(ctx, request.WorkspaceID)
+	if err != nil || !reflect.DeepEqual(after, workspace) || len(externalCalls) != 0 {
+		t.Fatalf("retired resume changed workspace or called external owners: calls=%v err=%v", externalCalls, err)
 	}
-	denied := requestWithMutationKeyForTest(t, fixture.server, fixture.session, http.MethodPost, "/api/workspaces/not-owned/application-installation/resume", "{}", "resume-other")
-	if denied.Code != http.StatusNotFound {
-		t.Fatalf("unowned resume=%d", denied.Code)
+	projection := map[string]any{}
+	mustStore(t, handler.app.projectWorkspaceApplicationInstallation(ctx, workspace, projection))
+	installation, ok := projection["applicationInstallation"].(workspaceApplicationInstallationProjection)
+	if !ok || installation.OperationID != request.OperationID || installation.ApplicationID != request.Revision.ApplicationID || installation.Revision != request.Revision.Version || installation.Status != "manual_review" || installation.CanRetry {
+		t.Fatalf("historical installation projection=%+v", projection)
+	}
+	payload, err := json.Marshal(projection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]map[string]any
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := decoded["applicationInstallation"]["canResume"]; exists {
+		t.Fatalf("retired customer action leaked into history: %s", payload)
 	}
 }

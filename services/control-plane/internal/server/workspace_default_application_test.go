@@ -11,7 +11,6 @@ import (
 
 	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
-	"opl-cloud/services/control-plane/internal/domain/application"
 )
 
 type applicationReplacementFabric struct {
@@ -72,20 +71,7 @@ func (f *applicationReplacementFabric) ReadWorkspaceApplicationRuntimeCredential
 	return contracts.WorkspaceApplicationRuntimeCredentials{}, errors.New("not_requested")
 }
 
-func admitApplicationForReplacement(t *testing.T, store controlPlaneTableStore, revision contracts.WorkspaceApplicationRevision) {
-	t.Helper()
-	digest, err := application.RevisionDigest(revision)
-	if err != nil {
-		t.Fatal(err)
-	}
-	payload, _ := json.Marshal(revision)
-	_, err = store.ApplyApplicationRevisionAdmission(context.Background(), applicationRevisionMutation{ApplicationID: revision.ApplicationID, Version: revision.Version, Digest: digest, Payload: string(payload), AdmittedByUserID: "operator-test"})
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestDefaultApplicationThenReplacementPreservesPurchaseAndIsolatesData(t *testing.T) {
+func TestHistoricalDefaultApplicationReplacementPreservesPurchaseAndIsolatesData(t *testing.T) {
 	ctx := context.Background()
 	store := newMemoryTableStore()
 	fabric := &applicationReplacementFabric{}
@@ -100,26 +86,13 @@ func TestDefaultApplicationThenReplacementPreservesPurchaseAndIsolatesData(t *te
 	purchase, _, _ := store.GetRuntimeOperation(ctx, "workspace-launch-alpha")
 	revision := defaultOPLApplicationRevision("repo.example/opl-app@sha256:" + strings.Repeat("b", 64))
 	request := workspaceDefaultApplicationRequest{SchemaVersion: 1, OperationID: workspaceDefaultApplicationOperationID("workspace-launch-alpha"), LaunchOperationID: "workspace-launch-alpha", AccountID: "acct-alpha", WorkspaceID: "ws-alpha", OwnerUserID: "owner-alpha", Sub2APIUserID: 41, WorkspaceKeyGroupID: 5, Revision: revision, Phase: "waiting_resources", WorkspaceAPIKeyID: 19, GatewaySecret: &clients.GatewaySecretWriteResult{SecretRef: "secret-ws-alpha", Version: "v1", Fingerprint: "sha256:" + strings.Repeat("a", 64)}}
-	requestRow, err := workspaceDefaultApplicationRow(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	mustStore(t, store.SaveRuntimeOperation(ctx, requestRow))
-	for range 6 {
-		if err := app.runWorkspaceDefaultApplicationsOnce(ctx, service); err != nil {
-			t.Fatal(err)
-		}
-	}
+	current := seedHistoricalDefaultApplicationForTest(t, app, service, fabric, request)
 	row, _, _ := store.GetRuntimeOperation(ctx, request.OperationID)
 	installed, err := decodeWorkspaceDefaultApplication(row)
 	if err != nil || installed.Phase != "deployed" {
-		t.Fatalf("default installation=%+v err=%v", installed, err)
+		t.Fatalf("historical installation=%+v err=%v", installed, err)
 	}
 	workspace, _, _ := store.GetWorkspace(ctx, "ws-alpha")
-	current, found, err := app.currentWorkspaceApplicationDeployment(ctx, workspace)
-	if err != nil || !found {
-		t.Fatalf("selection found=%v err=%v", found, err)
-	}
 	if current.OperationID != installed.DeploymentID || current.WorkspaceAPIKeyID != 19 || current.Configuration.Environment["OPL_WEBUI_AUTH_MODE"] != "password" || current.Configuration.Environment["OPL_WEBUI_USERNAME"] != "opl" || len(current.SecretBindings) != 1 {
 		t.Fatalf("default configuration not bound: %+v", current)
 	}
@@ -131,7 +104,7 @@ func TestDefaultApplicationThenReplacementPreservesPurchaseAndIsolatesData(t *te
 	upgraded := revision
 	upgraded.Version = "upgrade"
 	upgraded.Image = "repo.example/opl-app@sha256:" + strings.Repeat("c", 64)
-	admitApplicationForReplacement(t, store, upgraded)
+	seedAdmittedApplicationRevisionForTest(t, store, upgraded)
 	successor, err := app.createWorkspaceApplicationDeploymentIntent(ctx, "ws-alpha", "upgrade-default", "opl-app", "upgrade", current.Configuration, current.SecretBindings, 19, "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -148,7 +121,7 @@ func TestDefaultApplicationThenReplacementPreservesPurchaseAndIsolatesData(t *te
 	}
 	// A different app receives a separate namespace and no OPL credentials.
 	other := contracts.WorkspaceApplicationRevision{SchemaVersion: 1, ApplicationID: "agent", Version: "1", Platform: "linux/amd64", Image: "repo.example/agent@sha256:" + strings.Repeat("d", 64), PersistentMounts: []contracts.WorkspaceApplicationMount{{Name: "data", MountPath: "/data"}}, ExposurePolicy: "cloud_private"}
-	admitApplicationForReplacement(t, store, other)
+	seedAdmittedApplicationRevisionForTest(t, store, other)
 	replacement, err := app.createWorkspaceApplicationDeploymentIntent(ctx, "ws-alpha", "replace-agent", "agent", "1", contracts.WorkspaceApplicationRuntimeConfiguration{}, nil, 0, "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -264,7 +237,7 @@ func TestApplicationCredentialMigrationRetainsLatestFullRuntimeVersion(t *testin
 				seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "agent", true)
 			}
 			revision := defaultOPLApplicationRevision("registry.example/opl-app@sha256:" + strings.Repeat("a", 64))
-			admitApplicationForReplacement(t, app.tables, revision)
+			seedAdmittedApplicationRevisionForTest(t, app.tables, revision)
 			bindings := []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", Key: "opl_gateway_api_key", SecretRef: "opl-gateway-ws-alpha", Version: "v1"}}
 			intent, err := app.createWorkspaceApplicationDeploymentIntent(ctx, "ws-alpha", "full-migration", revision.ApplicationID, revision.Version, contracts.WorkspaceApplicationRuntimeConfiguration{}, bindings, 19, "", "")
 			if err != nil || intent.Configuration.CredentialVersion != "full-runtime-explicitly-rotated" || intent.Configuration.CredentialSourceRuntimeOperationID != "workspace-launch-alpha:runtime" {
@@ -331,7 +304,7 @@ func TestHistoricalApplicationReinstallRestoresOriginalDataSource(t *testing.T) 
 			t.Fatal("fixture lost historical predecessor")
 		}
 		revision := defaultOPLApplicationRevision("repo.example/opl-app@sha256:" + strings.Repeat("b", 64))
-		admitApplicationForReplacement(t, fixture.store, revision)
+		seedAdmittedApplicationRevisionForTest(t, fixture.store, revision)
 		bindings := []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", SecretRef: "opl-gateway-ws-alpha", Version: "v1", Key: "opl_gateway_api_key"}}
 		reinstalled, err := app.createWorkspaceApplicationDeploymentIntent(ctx, "ws-alpha", "return-historical-opl", revision.ApplicationID, revision.Version, contracts.WorkspaceApplicationRuntimeConfiguration{}, bindings, 19, "", "")
 		if err != nil || reinstalled.DataLayout != "legacy_opl" || reinstalled.DataSourceRuntimeOperationID != "workspace-launch-alpha:runtime" || reinstalled.PreviousDeploymentID != agent.OperationID {

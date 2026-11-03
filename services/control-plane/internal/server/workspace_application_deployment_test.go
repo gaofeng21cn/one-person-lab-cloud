@@ -29,7 +29,7 @@ func knowledgeApplicationRevisionForTest() contracts.WorkspaceApplicationRevisio
 func createKnowledgeDeploymentForTest(t *testing.T, app *controlPlaneServer, mutationKey string) workspaceApplicationDeploymentIntent {
 	t.Helper()
 	revision := knowledgeApplicationRevisionForTest()
-	admitApplicationForReplacement(t, app.tables, revision)
+	seedAdmittedApplicationRevisionForTest(t, app.tables, revision)
 	intent, err := app.createWorkspaceApplicationDeploymentIntent(context.Background(), "ws-alpha", mutationKey,
 		revision.ApplicationID, revision.Version, contracts.WorkspaceApplicationRuntimeConfiguration{Environment: map[string]string{"CONFIG": strings.Repeat("c", 64)}}, nil, 0, "", "")
 	if err != nil {
@@ -397,10 +397,12 @@ func (s *activationResponseLossStore) ApplyWorkspaceApplicationActivation(ctx co
 }
 
 func TestWorkspaceApplicationDeploymentActivationLostResponseResumesReceipt(t *testing.T) {
-	store := &activationResponseLossStore{controlPlaneTableStore: newMemoryTableStore(), loseResponse: true}
+	backing := newMemoryTableStore()
+	store := &activationResponseLossStore{controlPlaneTableStore: backing, loseResponse: true}
 	fabric := &fakeFabricClient{}
 	service := newTestService(&fakeLedgerClient{}, fabric)
-	handler, operationID := applicationDeploymentWorkerFixture(t, store, service)
+	handler, operationID := applicationDeploymentWorkerFixture(t, backing, service)
+	handler.app.tables = store
 	if err := handler.app.runWorkspaceApplicationDeploymentsOnce(context.Background(), service); err != nil {
 		t.Fatal(err)
 	}

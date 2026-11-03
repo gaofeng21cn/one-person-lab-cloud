@@ -576,11 +576,11 @@ func TestWorkspaceLaunchMonthlyPreflightRunsBeforeDebitAndProviderStages(t *test
 	if err != nil || len(operations) != 1 {
 		t.Fatalf("read launch operations=%#v err=%v", operations, err)
 	}
-	key, monthlyCompute, monthlyStorage, debit, firstFabricStage := -1, -1, -1, -1, -1
+	monthlyCompute, monthlyStorage, debit, firstFabricStage := -1, -1, -1, -1
 	for index, event := range *events {
 		switch event {
 		case "sub2api.workspace-key":
-			key = index
+			t.Fatal("resource-only replay created an installation key")
 		case "fabric.monthly.compute":
 			monthlyCompute = index
 		case "fabric.monthly.storage":
@@ -592,9 +592,9 @@ func TestWorkspaceLaunchMonthlyPreflightRunsBeforeDebitAndProviderStages(t *test
 			firstFabricStage = index
 		}
 	}
-	if key < 0 || monthlyCompute < 0 || monthlyStorage < 0 || debit < 0 || firstFabricStage < 0 ||
-		key >= monthlyCompute || monthlyCompute >= monthlyStorage || monthlyStorage >= debit || debit >= firstFabricStage {
-		t.Fatalf("want key < compute < storage < debit < first Fabric stage: events=%#v", *events)
+	if monthlyCompute < 0 || monthlyStorage < 0 || debit < 0 || firstFabricStage < 0 ||
+		monthlyCompute >= monthlyStorage || monthlyStorage >= debit || debit >= firstFabricStage {
+		t.Fatalf("want compute < storage < debit < first Fabric stage: events=%#v", *events)
 	}
 }
 
@@ -657,23 +657,18 @@ func TestWorkspaceLaunchSameAccountSequentialPurchasesCreateIndependentWorkspace
 			t.Fatalf("%s identity is not independent: %#v", fact, values)
 		}
 	}
-	var installationKeys []int64
 	for _, launch := range []workspaceLaunchReconcileOperation{first, second} {
 		row, found, err := store.GetRuntimeOperation(context.Background(), workspaceDefaultApplicationOperationID(launch.ID))
 		if err != nil || !found {
 			t.Fatalf("default installation missing: %v", err)
 		}
 		request, err := decodeWorkspaceDefaultApplication(row)
-		if err != nil || request.LaunchOperationID != launch.ID || request.WorkspaceID != launch.stringFact("workspaceId") || request.GatewaySecret == nil || request.WorkspaceAPIKeyID <= 0 {
+		if err != nil || request.LaunchOperationID != launch.ID || request.WorkspaceID != launch.stringFact("workspaceId") || request.GatewaySecret != nil || request.WorkspaceAPIKeyID != 0 || request.DeploymentID != "" || request.Phase != "credentials_required" {
 			t.Fatalf("default application identity invalid: %v", err)
 		}
-		installationKeys = append(installationKeys, request.WorkspaceAPIKeyID)
 		if launch.int64Fact("workspaceApiKeyId") != 0 || launch.stringFact("runtimeId") != "" {
 			t.Fatal("resource purchase contains application facts")
 		}
-	}
-	if installationKeys[0] == installationKeys[1] {
-		t.Fatal("default applications share a Workspace Key")
 	}
 	for _, operation := range []workspaceLaunchReconcileOperation{first, second} {
 		receipt, ok := ledger.receipts[operation.ID+":purchase-receipt"]
@@ -696,7 +691,7 @@ func TestWorkspaceLaunchSameAccountSequentialPurchasesCreateIndependentWorkspace
 	if !workspaceIDs[first.stringFact("workspaceId")] || !workspaceIDs[second.stringFact("workspaceId")] {
 		t.Fatalf("Account readback lost a Workspace: ids=%#v", workspaceIDs)
 	}
-	if len(client.charges) != 2 || len(client.keys) != 2 || ledger.writes != 2 || len(ledger.receipts) != 2 || len(fabric.stageResults) != 6 {
+	if len(client.charges) != 2 || len(client.keys) != 0 || ledger.writes != 2 || len(ledger.receipts) != 2 || len(fabric.stageResults) != 6 {
 		t.Fatalf("independent writes charges=%#v keys=%#v ledgerWrites=%d receipts=%#v FabricStages=%#v events=%#v",
 			client.charges, client.keys, ledger.writes, ledger.receipts, fabric.stageResults, *events)
 	}
@@ -715,7 +710,7 @@ func TestWorkspaceLaunchSameAccountSequentialPurchasesCreateIndependentWorkspace
 			t.Fatalf("replay %s status=%d body=%s", replay.key, response.Code, response.Body.String())
 		}
 	}
-	if len(client.charges) != 2 || len(client.keys) != 2 || ledger.writes != 2 || len(ledger.receipts) != 2 || len(fabric.stageResults) != 6 || len(*events) != beforeEvents {
+	if len(client.charges) != 2 || len(client.keys) != 0 || ledger.writes != 2 || len(ledger.receipts) != 2 || len(fabric.stageResults) != 6 || len(*events) != beforeEvents {
 		t.Fatalf("replay added writes charges=%#v keys=%#v ledgerWrites=%d receipts=%#v FabricStages=%#v events=%#v",
 			client.charges, client.keys, ledger.writes, ledger.receipts, fabric.stageResults, *events)
 	}

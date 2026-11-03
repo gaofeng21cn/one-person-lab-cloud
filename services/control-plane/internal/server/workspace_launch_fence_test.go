@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -184,12 +185,6 @@ func seedRetainedWorkspaceLaunchFixture(
 	if err := handler.app.tables.SaveRuntimeOperation(ctx, row); err != nil {
 		t.Fatal(err)
 	}
-	if defaultOperation != nil {
-		// The retained route ignored application-preparation errors here; the
-		// Launch obligation and the frozen default request are the fixture.
-		_ = handler.app.prepareDefaultWorkspaceApplication(ctx, handler.service, created.ID, credential, sub2APIUserID)
-		_ = handler.app.runWorkspaceDefaultApplication(ctx, handler.service, workspaceDefaultApplicationOperationID(created.ID))
-	}
 	return created
 }
 
@@ -279,6 +274,46 @@ func TestRetainedWorkspaceLaunchReplaysOnlyTheHistoricalKey(t *testing.T) {
 		`{"name":"Another purchase","packageId":"basic","autoRenew":false}`, "another-purchase")
 	if fresh.Code != http.StatusConflict || !strings.Contains(fresh.Body.String(), retainedWorkspaceLaunchNewPurchaseRetired) {
 		t.Fatalf("fresh purchase after replay status=%d body=%s", fresh.Code, fresh.Body.String())
+	}
+}
+
+func TestRetainedWorkspaceLaunchReplayPreservesDefaultApplicationHistory(t *testing.T) {
+	server, store, client, fabric, events := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
+	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
+	historical := seedRetainedWorkspaceLaunchWithDefaultApplicationForTest(t, server, session, "acct-alpha", "usr-alpha", 41, "Historical default application", "basic", "historical-default-application", false)
+	ctx := context.Background()
+	before, err := store.ListRuntimeOperations(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventsBefore, chargesBefore, keysBefore, receiptsBefore := len(*events), len(client.charges), len(client.keys), fabric.receiptLedger.writes
+	handler := server.(*controlPlaneHTTPHandler)
+	scan := &retiredDefaultApplicationScanStore{controlPlaneTableStore: store}
+	handler.app.tables = scan
+	for range 2 {
+		response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches", `{"name":"Historical default application","packageId":"basic","autoRenew":false}`, "historical-default-application")
+		if response.Code != http.StatusAccepted {
+			t.Fatalf("historical default replay=%d %s", response.Code, response.Body.String())
+		}
+		var body map[string]any
+		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if stringValue(body["operationId"]) != historical.ID {
+			t.Fatal("replay lost original order identity")
+		}
+	}
+	after, err := store.ListRuntimeOperations(ctx)
+	if err != nil || !reflect.DeepEqual(after, before) {
+		t.Fatal("replay changed default installation or original order history", err)
+	}
+	if len(*events) != eventsBefore || len(client.charges) != chargesBefore || len(client.keys) != keysBefore || fabric.receiptLedger.writes != receiptsBefore || len(fabric.stageResults) != 0 {
+		t.Fatalf("replay executed installation/payment/provider effects: events=%v", *events)
+	}
+	for _, action := range scan.actions {
+		if action == workspaceDefaultApplicationAction {
+			t.Fatal("replay scanned historical default requests for installation")
+		}
 	}
 }
 

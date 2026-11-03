@@ -54,7 +54,6 @@ import { useOperatorAnnouncementController } from "./use-operator-announcement-c
 import { useOperatorResourceReadController } from "./use-operator-resource-read-controller.ts";
 import { useWorkspaceBudgetController } from "./use-workspace-budget-controller.ts";
 import { useWorkspaceDeleteController } from "./use-workspace-delete-controller.ts";
-import { useWorkspaceApplicationInstallationController } from "./use-workspace-application-installation-controller.ts";
 import { useWorkspaceImageReleaseController } from "./use-workspace-image-release-controller.ts";
 import { useWorkspaceLaunchController } from "./use-workspace-launch-controller.ts";
 import { useWorkspaceModelsController } from "./use-workspace-models-controller.ts";
@@ -183,7 +182,6 @@ export function useConsoleController() {
     walletAdjustmentCapability.reset();
     workspaceDeleteCapability.reset();
     workspaceRenewalCapability.reset();
-    workspaceApplicationInstallation.reset();
     workspaceImageReleaseCapability.reset();
     workspaceRuntimeImageReplacementCapability.reset();
     workspaceBudgetCapability.reset();
@@ -292,9 +290,9 @@ export function useConsoleController() {
   });
   const fabricRuntimeRead: FabricRuntimeReadController = fabricRuntimeReadCapability;
   const activeWorkspace = customerWorkspaceRead.activeWorkspace;
-  // The Control Plane's credential, renewal, application-installation
-  // and budget controllers all act on a Workspace the Control Plane owns. A
-  // cloud-identity Workspace belongs to the Workspace owner, so those
+  // The Control Plane's credential, renewal and budget controllers all act on
+  // a Workspace the Control Plane owns. A cloud-identity Workspace belongs
+  // to the Workspace owner, so those
   // controllers receive no Workspace under that identity instead of addressing
   // Control Plane routes that do not describe it.
   const controlPlaneWorkspace = cloudIdentity ? null : activeWorkspace;
@@ -351,11 +349,6 @@ export function useConsoleController() {
     mutationError
   });
   const workspaceRenewal: WorkspaceRenewalController = workspaceRenewalCapability;
-
-  const workspaceApplicationInstallation = useWorkspaceApplicationInstallationController({
-    session, workspace: controlPlaneWorkspace, workspaceId: controlPlaneWorkspaceId, currentMutationRequest,
-    refreshWorkspace: () => refreshCurrentPage(), flash, mutationError
-  });
 
   const workspaceBudgetCapability = useWorkspaceBudgetController({
     session,
@@ -719,6 +712,23 @@ export function useConsoleController() {
     await loadRoute(generation, session, route);
   };
 
+  useEffect(() => {
+    const installation = controlPlaneWorkspace?.applicationInstallation;
+    if (!session || !controlPlaneWorkspace?.currentApplication || !controlPlaneWorkspaceId
+      || !installation || !["pending", "running"].includes(installation.status)) return;
+    const workspaceId = controlPlaneWorkspaceId;
+    const { id: userId } = session.user;
+    const csrfToken = session.csrfToken;
+    const timer = window.setTimeout(() => {
+      const activeSession = sessionRef.current;
+      const activeRoute = currentRouteRef.current;
+      if (!activeSession || activeSession.user.id !== userId || activeSession.csrfToken !== csrfToken
+        || activeRoute?.kind !== "customer.workspace-detail" || activeRoute.workspaceId !== workspaceId) return;
+      void loadWorkspaceAccess(requestGeneration.current, activeSession, workspaceId);
+    }, 2000);
+    return () => window.clearTimeout(timer);
+  }, [controlPlaneWorkspace, controlPlaneWorkspaceId, session, loadWorkspaceAccess]);
+
   const copyText = async (value: string | undefined, message: string) => {
     if (!value) return;
     try {
@@ -779,7 +789,6 @@ export function useConsoleController() {
     operatorAccounts,
     operatorAnnouncements,
     operatorResourceRead,
-    workspaceApplicationInstallation,
     workspaceImageRelease,
     workspaceRuntimeImageReplacement,
     walletAdjustmentOperation: walletAdjustment.operation,

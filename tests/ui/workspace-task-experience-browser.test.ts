@@ -519,7 +519,7 @@ test("lost create response reloads into the original idempotent Workspace reques
 
 test("Workspace detail prioritizes authoritative availability and entry while keeping policy and evidence disclosed", { timeout: 60_000 }, verifyWorkspaceDetailExperience);
 
-test("Current application status and declared capabilities replace legacy Workspace entry and controls", { timeout: 60_000 }, async () => {
+test("Historical installation stays read-only while current application entry and credentials follow declared capabilities", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await launchBrowser({ headless: true });
   const application: WorkspaceCurrentApplicationDTO = {
@@ -553,11 +553,8 @@ test("Current application status and declared capabilities replace legacy Worksp
       await page.addInitScript("window.open = (url) => { window.openedApplication = url; return null; };");
       await page.route("**/api/workspaces?*", (route) => route.fulfill({ json: source<WorkspaceListData>({ items: [detail], total: 1, page: 1, pageSize: 50 }) }));
       await page.route("**/api/workspaces/ws-1/application-installation/resume", async (route) => {
-        assert.equal(route.request().method(), "POST");
-        assert.deepEqual(route.request().postDataJSON(), {});
         installationResumes += 1;
-        detail.applicationInstallation = { operationId: "install-default", applicationId: "opl-app", revision: "1.2.3", status: "running", canResume: false };
-        await route.fulfill({ status: 202, json: { workspaceId: "ws-1", applicationInstallation: detail.applicationInstallation } });
+        await route.fulfill({ status: 410, json: { error: "application_installation_resume_retired" } });
       });
       await page.route("**/api/workspaces/ws-1/runtime-status", (route) => route.fulfill({ json: source<WorkspaceRuntimeDTO>({
         workspaceId: "ws-1", runtimeId: "runtime-ws-1", status: application.status === "ready" ? "running" : "unready",
@@ -580,21 +577,24 @@ test("Current application status and declared capabilities replace legacy Worksp
       const refresh = page.locator(".workspace-identity-panel").getByRole("button", { name: "刷新", exact: true });
       await page.getByText("应用安装中", { exact: true }).waitFor({ state: "visible" });
       assert.equal(await open.isDisabled(), true);
+      assert.equal(await page.getByRole("button", { name: "继续安装应用", exact: true }).count(), 0);
       detail.applicationInstallation.status = "manual_review";
       await refresh.click();
       await page.getByText("应用安装需要处理", { exact: true }).waitFor({ state: "visible" });
       assert.equal(await page.getByRole("button", { name: "继续安装应用", exact: true }).count(), 0);
-      detail.applicationInstallation.canResume = true;
+      detail.applicationInstallation.status = "pending";
+      detail.applicationInstallation.canRetry = true;
       await refresh.click();
-      await page.getByRole("button", { name: "继续安装应用", exact: true }).click();
-      await page.getByText("应用安装中", { exact: true }).waitFor({ state: "visible" });
-      assert.equal(installationResumes, 1);
+      await page.getByText("应用等待安装", { exact: true }).waitFor({ state: "visible" });
+      assert.equal(await page.getByRole("button", { name: "继续安装应用", exact: true }).count(), 0);
+      assert.equal(installationResumes, 0);
       assert.equal(await page.getByRole("button", { name: "重新购买", exact: true }).count(), 0);
       detail.applicationBinding = "knowledge-app@1.2.3";
       detail.currentApplication = application;
-      delete detail.applicationInstallation;
+      detail.applicationInstallation.status = "manual_review";
       await refresh.click();
       await availability.getByText("应用正在部署", { exact: true }).waitFor({ state: "visible" });
+      await page.getByText("应用安装需要处理", { exact: true }).waitFor({ state: "visible" });
       await page.getByText("knowledge-app · 1.2.3", { exact: true }).waitFor({ state: "visible" });
       assert.equal(await open.isDisabled(), true);
       assert.equal(await page.locator(".workspace-access-panel").count(), 0);
@@ -635,6 +635,7 @@ test("Current application status and declared capabilities replace legacy Worksp
         rotationSubmitted = true;
         rotationWrites += 1;
         application.status = "pending";
+        detail.applicationInstallation = { operationId: "application-after-rotation", applicationId: application.applicationId, revision: application.revision, status: "running" };
         return route.fulfill({ status: 202, json: {
           workspaceId: "ws-1", operationId: "application-after-rotation", status: "pending"
         } satisfies RuntimeCredentialRotationResponse });
@@ -654,11 +655,14 @@ test("Current application status and declared capabilities replace legacy Worksp
       application.operationId = "application-after-rotation";
       runtimeOperationId = application.operationId;
       application.status = "ready";
-      await refresh.click();
+      delete detail.applicationInstallation;
+      // The surviving credential operation refreshes both owner and runtime
+      // reads without the retired installation controller or a manual refresh.
       await availability.getByText("可使用", { exact: true }).waitFor({ state: "visible" });
       await accessPanel.getByRole("button", { name: "显示", exact: true }).click();
       await accessPanel.getByText("FixtureAfterRotation", { exact: true }).waitFor({ state: "visible" });
       assert.equal(rotationWrites, 1);
+      assert.equal(installationResumes, 0);
       assert.equal(await accessPanel.getByText("API 密钥", { exact: true }).count(), 0);
       assert.deepEqual(audit.pageErrors, []);
       assert.deepEqual(audit.externalRequests, []);

@@ -3,12 +3,9 @@ package server
 import (
 	"context"
 	"errors"
-	"reflect"
-	"time"
 
 	controlplaneent "opl-cloud/services/control-plane/ent"
 	"opl-cloud/services/control-plane/ent/runtimeoperation"
-	"opl-cloud/services/control-plane/ent/workspace"
 )
 
 var errWorkspaceApplicationOperationCASConflict = errors.New("workspace_application_operation_cas_conflict")
@@ -19,33 +16,6 @@ func workspaceDefaultApplicationPreparationBlocks(row map[string]any) bool {
 	}
 	request, err := decodeWorkspaceDefaultApplication(row)
 	return err != nil || request.Phase == "preparing_credentials"
-}
-
-func validateWorkspaceDefaultApplicationPreparation(workspaceRow, desiredRow map[string]any, operations []map[string]any) error {
-	request, err := decodeWorkspaceDefaultApplication(desiredRow)
-	if err != nil {
-		return errWorkspaceApplicationOperationCASConflict
-	}
-	if request.Phase != "preparing_credentials" {
-		return nil
-	}
-	for _, row := range operations {
-		if workspaceDeleteBlocksRotation(row) || workspaceKeyRotationBlocksDelete(row) {
-			return errWorkspaceApplicationOperationCASConflict
-		}
-	}
-	if workspaceRow != nil {
-		if stringValue(workspaceRow["id"]) != request.WorkspaceID || firstNonEmpty(stringValue(workspaceRow["accountId"]), stringValue(workspaceRow["ownerAccountId"])) != request.AccountID || !workspaceApplicationEntitlementOpen(workspaceRow, time.Now().UTC()) {
-			return errWorkspaceApplicationOperationCASConflict
-		}
-		return nil
-	}
-	launchRow := findRecord(operations, request.LaunchOperationID)
-	launch, err := decodeWorkspaceLaunchReconcileOperation(launchRow)
-	if err != nil || launch.stringFact("accountId") != request.AccountID || launch.stringFact("workspaceId") != request.WorkspaceID || launch.stringFact("ownerUserId") != request.OwnerUserID || launch.int64Fact("sub2apiUserId") != request.Sub2APIUserID || launch.Status != "pending" && launch.Status != "running" {
-		return errWorkspaceApplicationOperationCASConflict
-	}
-	return nil
 }
 
 // Progress writes preserve the accepted command and compare the complete last
@@ -72,21 +42,6 @@ func validateWorkspaceApplicationOperationPersistence(current map[string]any, ex
 		default:
 			return errWorkspaceApplicationOperationCASConflict
 		}
-	case workspaceDefaultApplicationAction:
-		before, beforeErr := decodeWorkspaceDefaultApplication(current)
-		after, afterErr := decodeWorkspaceDefaultApplication(desired)
-		if beforeErr != nil || afterErr != nil {
-			return errWorkspaceApplicationOperationCASConflict
-		}
-		next, err := workspaceDefaultApplicationRow(after)
-		if err != nil || stringValue(next["status"]) != stringValue(desired["status"]) {
-			return errWorkspaceApplicationOperationCASConflict
-		}
-		before.Phase, before.GatewaySecret, before.WorkspaceAPIKeyID, before.DeploymentID, before.LastError = "", nil, 0, "", ""
-		after.Phase, after.GatewaySecret, after.WorkspaceAPIKeyID, after.DeploymentID, after.LastError = "", nil, 0, "", ""
-		if !reflect.DeepEqual(before, after) {
-			return errWorkspaceApplicationOperationCASConflict
-		}
 	default:
 		return errWorkspaceApplicationOperationCASConflict
 	}
@@ -99,28 +54,6 @@ func (s *postgresEntStateStore) PersistWorkspaceApplicationOperation(ctx context
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if stringValue(desiredRow["action"]) == workspaceDefaultApplicationAction {
-		workspaceID := stringValue(desiredRow["workspaceId"])
-		workspaceEntity, workspaceErr := tx.Workspace.Query().Where(workspace.IDEQ(workspaceID), lockRowForUpdate).Only(ctx)
-		if workspaceErr != nil && !controlplaneent.IsNotFound(workspaceErr) {
-			return workspaceErr
-		}
-		var workspaceRow map[string]any
-		if workspaceErr == nil {
-			workspaceRow = recordFromEnt(workspaceEntity, workspaceEntFields)
-		}
-		entities, err := tx.RuntimeOperation.Query().Where(runtimeoperation.WorkspaceIDEQ(workspaceID), lockRowForUpdate).All(ctx)
-		if err != nil {
-			return err
-		}
-		operations := make([]map[string]any, 0, len(entities))
-		for _, entity := range entities {
-			operations = append(operations, recordFromEnt(entity, runtimeOpEntFields))
-		}
-		if err := validateWorkspaceDefaultApplicationPreparation(workspaceRow, desiredRow, operations); err != nil {
-			return err
-		}
-	}
 	entity, err := tx.RuntimeOperation.Query().Where(runtimeoperation.IDEQ(stringValue(desiredRow["id"])), lockRowForUpdate).Only(ctx)
 	if controlplaneent.IsNotFound(err) {
 		return errWorkspaceApplicationOperationCASConflict

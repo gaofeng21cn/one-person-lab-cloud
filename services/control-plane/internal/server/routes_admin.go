@@ -33,7 +33,7 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 	registerWorkspaceRuntimeImageReplacementRoutes(mux, app, service)
 	registerWorkspaceRuntimeGatewayNetworkRecoveryRoutes(mux, app, service)
 	registerWorkspaceApplicationHistoryRoutes(mux, app)
-	registerWorkspaceApplicationRecoveryRoutes(mux, app, service)
+	registerWorkspaceApplicationRecoveryRoutes(mux, app)
 	registerWorkspaceRegistryCatalogRoutes(mux, app)
 	mux.HandleFunc("GET /api/operator/workspace-launches/{operationId}/recovery", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		app.writeOperatorWorkspaceLaunchRecovery(w, r, service)

@@ -111,14 +111,6 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 				}
 				persisted = continued
 			}
-			if defaultFound {
-				_, sub2APIUserID, credential, ok := app.gatewayUserContext(w, r)
-				if !ok {
-					return
-				}
-				_ = app.prepareDefaultWorkspaceApplication(r.Context(), service, operationID, credential, sub2APIUserID)
-				_ = app.runWorkspaceDefaultApplication(r.Context(), service, workspaceDefaultApplicationOperationID(operationID))
-			}
 			app.respondWorkspaceLaunchContinuation(w, r, persisted)
 			return
 		}
