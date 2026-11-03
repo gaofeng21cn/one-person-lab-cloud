@@ -9,7 +9,7 @@ Baseline evidence date: 2026-10-01
 This page keeps the dated baseline evidence above and explicitly dated evidence
 updates below. The baseline SHA does not describe the later changes or qualify
 them: each receipt retains its original source, run and environment. The latest
-evidence update is 2026-11-01. Source/tests, Candidate construction and
+evidence update is 2026-11-03. Source/tests, Candidate construction and
 Instance installation verification are recorded at their own layers below;
 none alone establishes business qualification or a Product Release. The target
 boundary is in [architecture.md](architecture.md),
@@ -29,11 +29,12 @@ key revocation remains unavailable and was not added.
 The Gateway Integration module test suite passes. The repository focused gate
 passed product-boundary and generated-contract freshness checks, but its Go test
 step rejects the package's existing PostgreSQL-gated skips because no isolated
-`OPL_OWNER_MIGRATION_TEST_ADMIN_DSN` is configured. No Candidate, Instance
-deployment, production key action, or A/B key closeout was executed. This source
-repair does not close #1018; the original retained order still needs compute
-absence, deletion/Ledger receipt and original-charge settlement, and the native
-orders need protected key closeout evidence.
+`OPL_OWNER_MIGRATION_TEST_ADMIN_DSN` is configured. At that source-validation
+checkpoint, no Candidate, Instance deployment, production key action or A/B key
+closeout was executed. Subsequent
+protected execution confirmed both native Key closeouts and the retained
+order's resource absence, deletion receipt and original-charge settlement; see
+[completed original-order acceptance](#original-order-closeout-scope-2026-10-23).
 
 ## Protected Tenant Payer Readback Repair (2026-11-02)
 
@@ -177,8 +178,8 @@ The customer readback shows one confirmed `$52.58` Workspace charge, no new
 transaction, one active replacement deployment and no new purchase or Key
 operation. These are actual original-Workspace business observations, while the
 protected payer declaration, dedicated same-Candidate J0 and complete protected
-qualification receipt remain open, as do #1018's separate historical
-original-order obligations.
+qualification receipt remain open. #1018's separate historical original-order
+obligations are [completed](#original-order-closeout-scope-2026-10-23).
 
 ## Native Isolated Application Origin Adaptation (2026-10-31)
 
@@ -272,7 +273,8 @@ observed. Only `accessEntryServed=false`: the consumer predicate at
 `html.includes(APPLICATION_SHELL_MARKER)`, and the marker did not match. The
 consumer has not confirmed the served entry; this does not establish application
 unavailability or a password error. The original Workspace still uses its prior
-path, with neither origin nor startup recipe changed. #1042 and #1018 remain open.
+path, with neither origin nor startup recipe changed. #1042 remains separate from
+the [completed #1018 closeout](#original-order-closeout-scope-2026-10-23).
 
 Local verification passed 343 affected Go tests/subtests with zero failures or
 skips, including Serve's PostgreSQL route and URL-observation consumers. The
@@ -341,8 +343,8 @@ whose two exact-head CI checks passed in
 
 Explicit protected payer declaration and a genuine dedicated-sandbox J0 READY
 receipt for this same Candidate remain open, alongside full login/model/recovery
-acceptance. #1042 and the separate original-order closeout in #1018 remain open;
-installation verification and entry activation do not close those outcomes.
+acceptance under #1042. Installation verification and entry activation do not
+close that outcome; #1018 has its own [completed original-order evidence](#original-order-closeout-scope-2026-10-23).
 
 ## Authorized App Path Repair And Native Upgrade (2026-10-29)
 
@@ -523,9 +525,8 @@ established; the existing business workflow still requires that external receipt
 
 Local v2 remains diagnostic `NOT_READY`; the latest reported local run stopped
 at application entry without DELETE. This update adds no Linux qualification
-or cleanup execution evidence. The three historical original orders remain
-independent obligations under
-[#1018](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1018).
+or cleanup execution evidence. The three historical original orders have independent
+[completed acceptance under #1018](#original-order-closeout-scope-2026-10-23).
 [The roadmap](roadmap.md#native-v2-qualification-and-cp-retirement-1042)
 owns the remaining acceptance outcomes.
 
@@ -613,12 +614,13 @@ production Variables still lacks the RuntimeVersion, compute, storage, Tenant
 and billing-subject selections; no credential values were read. The
 [October 26 evidence](#delivery-lane-reconciliation-2026-10-26) establishes exact
 Candidate deployment and read-only installation verification, while protected
-TKE business/live Gateway qualification remains unexecuted. #1042, #1041 and
-#1018 remain open; their distinct acceptance outcomes are in [the roadmap](roadmap.md#native-v2-qualification-and-cp-retirement-1042).
+TKE business/live Gateway qualification remains unexecuted. #1042 and #1041
+retain their distinct acceptance outcomes in [the roadmap](roadmap.md#native-v2-qualification-and-cp-retirement-1042);
+#1018 is completed by the protected original-order evidence below.
 
 ## Original-order Closeout Scope (2026-10-23)
 
-The November 2 observation supersedes the earlier admission investigations.
+The November 3 acceptance supersedes the earlier admission investigations.
 [#1018](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1018) records
 completed acceptance of the three original orders, as read back on 2026-11-03. The two native orders have resource
 absence, deletion receipts, confirmed original-charge refunds and separate Serve
@@ -672,8 +674,16 @@ refund is 25,559,722 USD micros under `workspace-delete-refund-v1`, with
 business, provider, deletion or refund mutations. It proves the existing original
 operation's closeout, not a replacement Delete, new refund or later purchase.
 This supplies the retained order's previously missing acceptance alongside the
-native A/B evidence above. #1018 is closed; historical attempts and the separate
-retained-owner migration obligations remain intact.
+native A/B evidence above. A second independent [closeout readback 41564508879](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41564508879)
+confirms the same original-charge settlement, all eleven acceptance checks and
+zero mutation counters. The original deployment, verification, preflight, unknown
+release, reconciliation and closeout artifacts are preserved unchanged in
+[Instance #672](https://github.com/gaofeng21cn/opl-instance-medopl/pull/672).
+The before/after global observations retain `partial / source_unavailable`;
+resource absence is established by the exact-resource reconciliation, and
+installation health by the independent twelve-check deployment verification.
+#1018 is closed; historical attempts and the separate retained-owner migration
+obligations remain intact. This Candidate deployment is not a formal Release.
 
 The original CP owner remains responsible until a verified handover. #1052 owns
 the separate retained-owner migration decision; this repair changes neither
