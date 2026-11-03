@@ -1515,16 +1515,25 @@ at `2026-11-03T06:57:24Z`, removing the unused Key lifecycle tool, its exclusive
 tests and registration at source only; it has not been installed. This later
 merge does not change the inventory baseline.
 
-[Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114) remains unmerged. It proposes removing the public activation
-refusal/stub and obsolete callers, with qualification reading an already activated
-account's owner-returned identity. Review verification on 2026-11-03 found that
-the qualification runner's fresh Compose state lacks this prerequisite; caller
-migration remains incomplete. The baseline alias already refused activation.
-Browser verification did not pass; these observations neither establish a
-customer-facing regression nor complete qualification. Native managed-Key
-lifecycle and the BFF-to-internal-CP provisioning writer, Tenant creation and
-wallet binding stay with their real owners. This is not withdrawal of account
-activation or personal-Key capability.
+[Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114) removes the already-refused public activation
+alias and obsolete successful mock/E2E callers. Its standalone qualification
+helper reads an existing active customer and consumes the owner-returned Account
+identity. The scope is alias retirement and helper correction; it does not claim
+to repair the default fresh legacy qualification runner. That runner already
+fails its owner-topology preflight on the baseline, and its fresh CP database
+also does not provide the helper's preactivated customer. The gate remains
+strict and the real runner migration remains a separate open qualification
+outcome. No provisioning or installation lifecycle is added for this retirement.
+
+The browser investigation reproduced a separate Modal focus race on both the
+baseline and the original PR: delayed opening autofocus could steal the wallet
+amount field's focus. Initial focus now runs synchronously with the dialog
+layout. A controlled real-dialog regression fails before the repair and passes
+after it; 107 related Node/browser tests passed without weaker assertions,
+retries or timeouts. The earlier homepage failure was not reproduced and its
+cause remains unknown. Native managed-Key lifecycle and the BFF-to-internal-CP
+provisioning writer, Tenant creation and wallet binding keep their real owners.
+This is not withdrawal of account activation or personal-Key capability.
 
 **R7 — explicit retained shared surface.**
 Keep `apps/console-bff/internal/clients/{legacy_billing,personal_gateway_reads,announcements,operator}.go`

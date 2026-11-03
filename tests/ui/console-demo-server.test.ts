@@ -413,6 +413,58 @@ test("Console demo closes within a bounded time when a client leaves a request b
   }
 });
 
+test("Console wallet form keeps user input focus when opening frames are delayed", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await launchBrowser({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1024 } });
+    await page.goto(`${demo.origin}/login`, { waitUntil: "networkidle" });
+    await page.getByLabel("邮箱").fill(CONSOLE_DEMO_CREDENTIALS.admin.email);
+    await page.getByLabel("密码").fill(CONSOLE_DEMO_CREDENTIALS.admin.password);
+    await page.getByRole("button", { name: "登录", exact: true }).click();
+    await page.waitForURL(/\/console\/overview$/);
+    await page.goto(`${demo.origin}/admin/accounts`, { waitUntil: "networkidle" });
+    const open = page.locator(".operator-account-table tbody tr").filter({ hasText: "pilot@example.com" }).getByRole("button", { name: "余额操作", exact: true });
+    await open.focus();
+    // Hold the opening frame so a user can focus the field before it runs.
+    // No sleeps or timing thresholds are needed to expose delayed autofocus.
+    const flushOpeningFrames = await page.evaluateHandle(() => {
+      const requestFrame = window.requestAnimationFrame.bind(window);
+      const cancelFrame = window.cancelAnimationFrame.bind(window);
+      const pending = new Map<number, FrameRequestCallback>();
+      let nextId = 0;
+      window.requestAnimationFrame = (callback) => {
+        pending.set(--nextId, callback);
+        return nextId;
+      };
+      window.cancelAnimationFrame = (id) => {
+        if (!pending.delete(id)) cancelFrame(id);
+      };
+      return () => {
+        window.requestAnimationFrame = requestFrame;
+        window.cancelAnimationFrame = cancelFrame;
+        for (const callback of pending.values()) callback(performance.now());
+        pending.clear();
+      };
+    });
+    await open.evaluate((button) => (button as HTMLButtonElement).click());
+    const dialog = page.getByRole("dialog", { name: "余额操作", exact: true });
+    await dialog.waitFor({ state: "visible" });
+    const amount = dialog.getByLabel("金额（USD）");
+    await amount.focus();
+    await flushOpeningFrames.evaluate((flush) => flush());
+    await page.keyboard.type("5");
+    assert.equal(await amount.inputValue(), "5", "opening autofocus must not steal an input's focus");
+    await dialog.getByLabel("业务原因").pressSequentially("browser retry");
+    assert.equal(await dialog.getByRole("button", { name: "确认操作", exact: true }).isEnabled(), true);
+    await dialog.getByRole("button", { name: "关闭", exact: true }).last().click();
+    assert.equal(await open.evaluate((button) => document.activeElement === button), true);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
 test("Console demo is clickable in a normal browser for customer and Admin", async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await launchBrowser({ headless: true });

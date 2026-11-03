@@ -27,13 +27,17 @@ status, separate from installation evidence, is:
 - [Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112) merged as `0064c770d87eb25daeaf1f0dc55aeef1c4d99c60`
   at `2026-11-03T06:57:24Z`, removing the unused, test-only Key lifecycle
   prototype at source only. It has not been installed.
-- [Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114) remains unmerged pending caller alignment and re-review.
-  Review verification on 2026-11-03 found the qualification runner's fresh
-  Compose state lacks the existing activated account required by the new read.
-  The baseline alias already refused activation; caller migration remains
-  incomplete. Browser verification did not pass; these observations neither
-  establish a customer-facing regression nor complete qualification. The
-  BFF-to-internal-CP writer and native Tenant/wallet binding remain.
+- [Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114) retires the already-refused activation alias and corrects its
+  standalone qualification helper to read an existing owner-returned Account.
+  The scope does not include repairing the fresh legacy runner: its preexisting
+  topology rejection and missing preactivated customer remain explicit open
+  qualification outcomes. Neither is a newly demonstrated customer regression.
+  The separate browser blocker was reproduced as delayed Modal autofocus
+  stealing input focus on both base and original head. Synchronous initial focus
+  passes the new failing-before/passing-after regression and 107 related
+  Node/browser tests, with no weakened gates. The old homepage failure was not
+  reproduced and its cause remains unknown. BFF-to-internal-CP activation,
+  native Tenant/wallet binding and historical data remain.
 - [Instance #673](https://github.com/gaofeng21cn/opl-instance-medopl/pull/673) extends the existing observation producer's redacted
   operation/deployment-binding projection. Runtime-operation status comes only
   from the owner status field; a missing status remains unknown. This source
