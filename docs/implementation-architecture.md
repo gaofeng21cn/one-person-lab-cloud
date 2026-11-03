@@ -735,12 +735,11 @@ These are source capabilities; only Instance receipts and owner readback prove
 their production execution and effect, as reported in [status](status.md).
 
 The read-only `POST /fabric/provider-facts/batch` boundary delegates resource
-interpretation to the selected adapter. Control Plane Provider Acceptance uses
-that same provider-neutral facts shape for compute, storage, attachment, and
-Runtime readiness. Provider Acceptance tooling and protected Instance qualification
-require canonical compute/storage provider IDs; compatibility node-pool and
-persistent-volume fields are optional response-only projections and do not
-participate in readiness or continuity comparison.
+interpretation to the selected adapter. Retained owner consumers use its
+provider-neutral compute, storage, attachment and Runtime facts; protected
+Instance qualification requires canonical compute/storage provider IDs. The
+fixed-slot Provider Acceptance route, executor and response-only compatibility
+projections are retired with R8 below.
 For Tencent Runtime facts, `computeRuntimeBinding` reports `matched` or
 `mismatched` only after the persisted Compute, active Machine ownership, and
 provider Pod/Node binding can be verified together. Missing ownership or a
@@ -1363,7 +1362,7 @@ operations, data or financial evidence.
 | Retained purchase recovery, expiry/renewal, deletion and settlement | Workspace owns native lifecycle; native BFF deletion/readback and Instance `workspace-native-delete.mjs` use its API; Gateway/Fabric/Ledger own their effects/readbacks | CP original Launch replay/resume, renewal/expiry and delete/refund workers remain registered. Original operations/charges must not be replaced by native re-purchase/refund | R5: finish the all-object/operation census, then remove the retained execution slice and its external callers; the three #1018 selectors are already closed |
 | Legacy package pricing | Resource Catalog owns new compute/storage prices and quotes | Legacy UI and Instance `fresh-workspace-admission.mjs` still read `/api/pricing/catalog` and POST preview; preview is computation/read, not a purchase | R6: remove old pricing callers/adapters with their exclusive model, while preserving accepted historical quote/terms decoding |
 | History, announcements and shared identity/read transport | BFF still calls original-owner billing, personal Gateway history/endpoint, announcements and ACK/activation adapters | `apps/console-bff/internal/clients/legacy_billing.go`, `personal_gateway_reads.go`, `announcements.go`, `operator.go` and the CP proof/Account/receipt readers are live source callers. ACK and activation are real remaining writes | R7: retain in this retirement scope; removing Workspace execution does not retire the CP process, shared transport or these independent capabilities |
-| Fixed-slot provider acceptance | Native business uses Catalog/Workspace and bounded protected execution | [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) proposes removing the route/executor, dedicated token/configuration, unused create-claim machinery and exclusive tests; a named history-only identity helper preserves billing/access readers | R8: HOLD; authoritative all-slot obligation disposition is required before executor source removal or withdrawal PR merge |
+| Fixed-slot provider acceptance | Native business uses Catalog/Workspace and bounded protected execution | [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) removes the route/executor, dedicated token/configuration, unused create-claim machinery and exclusive tests; a named history-only identity helper preserves billing/access readers | R8: the fresh protected observation excludes accepted slot operations in the current installed owner table; source withdrawal can proceed, with installation remaining separate |
 | Test-only Key lifecycle prototype and retired activation alias | Native managed-Key lifecycle lives in Gateway Integration; native BFF activation still invokes the original provisioning writer | [Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112) removes the test-only prototype; [Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114) separately removes the public refusal alias and stale callers, and makes qualification read an existing activated account | R9: independent proposals; internal activation, Tenant/wallet binding and native Key lifecycle remain |
 
 Cloud/legacy browser routing is a build-time choice (`VITE_CONSOLE_IDENTITY`).
@@ -1492,22 +1491,43 @@ The purchase-eligibility command in `routes_admin.go` /
 with retained purchase, not with Account readers. Resource Catalog quotes cover
 new resources; they do not prove arbitrary legacy package-pricing UI parity.
 
-**R8 — fixed-slot provider procurement withdrawal proposal (HOLD).**
-[Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) proposes removing the route/executor, dedicated writer tests and
+**R8 — fixed-slot provider procurement source withdrawal.**
+[Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) removes the route/executor, dedicated writer tests and
 registration, token declarations and the obsolete production-manifest assertion.
-Its only production caller is also removed, so `ClaimWorkspaceCreate`, its
+Its only production caller also leaves, so `ClaimWorkspaceCreate`, its
 PostgreSQL/memory implementations, request/lease helpers and exclusive tests
-leave in the same PR. Original Workspace/operation records and schema remain.
+leave in the same PR. The executor's exclusive compute/storage/attachment/runtime
+service wrappers, input DTOs, gateway-secret shim and receipt helper/test also
+leave. Shared renewal, retained Launch preflight/zone configuration and native
+runtime/Secret methods keep their real callers. Original Workspace/operation
+records and schema remain.
+`provider_acceptance_history.go` retains the original identity tuples and exact
+resource-ID derivation used by Workspace access, Gateway proxy and
+runtime-observation billing classification; historical billing tests remain.
 
-The proposed `provider_acceptance_history.go` keeps only the original identity
-tuples and exact resource-ID derivation used by Workspace access, Gateway proxy
-and runtime-observation billing classification. The existing narrow billing
-exception and history tests remain. Authoritative owner evidence must prove
-complete disposition of all accepted slot-operation obligations before removing
-executor source or merging the withdrawal PR. #1113 is on HOLD pending that
-evidence. Original unknown operations remain unknown; retaining their records or
-history readers does not resolve their obligations. Passing CI or leaving Draft
-does not supply disposition evidence.
+The earlier HOLD lacked evidence for accepted slot operations. Protected
+[observation 41598975341](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41598975341),
+at `2026-11-03T07:50:36.736Z`, now supplies available CP provenance from installed
+Product `4f131caa41324f027c1fee48d6ae5e5356e7e3c4`, projected by Instance
+`7bcc80bc8f550255e756d3c36e593fa824b77585`. Its 44 distinct operation identities
+match the source count. That exact Product queries all current operations with
+no filter, offset zero and a 100-row limit; 44 nonempty rows exclude both query
+failure and truncation for this observation. No identity matches either current
+fixed-slot operation or the historical single-slot operation, and neither the
+`provider_acceptance` action nor its digest occurs. All two returned Workspace
+identities also exclude these slots. The installed executor persists its
+operation before provider execution; its retention path neither archives nor
+deletes RuntimeOperations. Thus no current accepted slot obligation requires
+this executor, and its source withdrawal is no longer held on that ground.
+
+This is a bounded current-owner finding, not a financial audit archive or a
+zero-new-business interval. Empty compute/storage/attachment lists alone would
+not prove absence because their owner readers can suppress read errors. The
+observation remains globally `partial / source_unavailable` for other reads,
+with zero business/provider/Kubernetes mutations. Its original receipt SHA256 is
+`5aec3b831f032efeb085dc0ea06347ba43dd8384173326e68fc1f00cb66ba49b`.
+Installation and any operations accepted after the observation remain Instance
+obligations; this PR performs no deployment or resource disposition.
 
 **R9 — prototype source withdrawal and activation-alias proposal.**
 [Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112) merged as `0064c770d87eb25daeaf1f0dc55aeef1c4d99c60`

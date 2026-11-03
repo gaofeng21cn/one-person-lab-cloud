@@ -2,13 +2,10 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/mail"
 	"strings"
 	"time"
-
-	"opl-cloud/services/control-plane/internal/domain"
 )
 
 var errSub2APIAccountMappingConflict = errors.New("sub2api_account_mapping_conflict")
@@ -34,13 +31,6 @@ type productionE2EAttemptClaim struct {
 	WorkspaceID string
 	URL         string
 	Binding     string
-}
-
-type workspaceCreateOperationResult struct {
-	RequestHash          string                     `json:"requestHash"`
-	LeaseExpiresAt       *time.Time                 `json:"leaseExpiresAt,omitempty"`
-	Workspace            domain.WorkspaceProjection `json:"workspace"`
-	AcceptedBillingState map[string]any             `json:"acceptedBillingState,omitempty"`
 }
 
 type announcementMutation struct {
@@ -219,43 +209,6 @@ func mergedAnnouncementRead(announcementID, userID, readAt string, rows []map[st
 
 func announcementReadID(announcementID, userID string) string {
 	return "announcement-read-" + stableID(announcementID, userID)[:18]
-}
-
-func decodeWorkspaceCreateOperation(operation map[string]any) (workspaceCreateOperationResult, error) {
-	var result workspaceCreateOperationResult
-	if err := json.Unmarshal([]byte(stringValue(operation["result"])), &result); err != nil || result.RequestHash == "" || result.Workspace.ID == "" {
-		return workspaceCreateOperationResult{}, errors.New("invalid_workspace_create_operation")
-	}
-	return result, nil
-}
-
-func encodeWorkspaceCreateOperation(result workspaceCreateOperationResult) string {
-	payload, _ := json.Marshal(result)
-	return string(payload)
-}
-
-func workspaceCreateClaimIdentity(result workspaceCreateOperationResult) string {
-	billingState, _ := json.Marshal(result.AcceptedBillingState)
-	return stableID(result.RequestHash, string(billingState))
-}
-
-func workspaceCreateClaimCompatible(current, claim workspaceCreateOperationResult, persisted map[string]any) bool {
-	persistedID := stringValue(persisted["id"])
-	persistedAccountID := firstNonEmpty(stringValue(persisted["accountId"]), stringValue(persisted["ownerAccountId"]))
-	if persistedID == "" || persistedAccountID == "" ||
-		current.Workspace.ID != claim.Workspace.ID || current.Workspace.ID != persistedID ||
-		current.Workspace.AccountID != claim.Workspace.AccountID || current.Workspace.AccountID != persistedAccountID {
-		return false
-	}
-	if workspaceCreateClaimIdentity(current) == workspaceCreateClaimIdentity(claim) {
-		return true
-	}
-	persistedBillingState := workspaceAcceptedBillingState(persisted)
-	claimBillingState := workspaceAcceptedBillingState(workspaceProjectionBillingRow(claim.Workspace, claim.AcceptedBillingState))
-	return current.AcceptedBillingState == nil && claim.AcceptedBillingState != nil && current.RequestHash == claim.RequestHash &&
-		persistedBillingState != nil && claimBillingState != nil &&
-		workspaceCreateProjectionCompatible(persisted, current.Workspace, claimBillingState, true) &&
-		workspaceCreateProjectionCompatible(persisted, claim.Workspace, claimBillingState, true)
 }
 
 type controlPlaneTableStore interface {

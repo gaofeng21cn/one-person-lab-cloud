@@ -10,7 +10,6 @@ import (
 
 	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/controlplane"
-	"opl-cloud/services/control-plane/internal/domain"
 )
 
 func registerWorkspaceRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
@@ -514,24 +513,6 @@ func workspaceSourceProjection(row map[string]any) (map[string]any, bool) {
 	return item, true
 }
 
-func workspaceCreateProjectionCompatible(existing map[string]any, projection domain.WorkspaceProjection, acceptedBillingState map[string]any, allowClaim bool) bool {
-	expected := workspaceProjectionBillingRow(projection, acceptedBillingState)
-	if firstNonEmpty(stringValue(existing["accountId"]), stringValue(existing["ownerAccountId"])) != projection.AccountID ||
-		firstNonEmpty(stringValue(existing["ownerUserId"]), stringValue(existing["ownerId"])) != projection.OwnerID ||
-		stringValue(existing["name"]) != projection.Name || stringValue(existing["packageId"]) != projection.PackageID ||
-		stringValue(existing["computeAllocationId"]) != projection.ComputeID || stringValue(existing["storageId"]) != projection.VolumeID ||
-		firstNonEmpty(stringValue(existing["attachmentId"]), stringValue(existing["currentAttachmentId"])) != projection.AttachmentID || !workspaceBillingStateMatchesLaunch(existing, expected) {
-		return false
-	}
-	if allowClaim && firstNonEmpty(stringValue(existing["state"]), stringValue(existing["status"])) == "provisioning" && stringValue(existing["runtimeId"]) == "" {
-		return stringValue(existing["currentComputeAllocationId"]) == projection.ComputeID && stringValue(existing["currentAttachmentId"]) == projection.AttachmentID
-	}
-	return stringValue(existing["state"]) == projection.Status && stringValue(existing["status"]) == projection.Status &&
-		stringValue(existing["currentComputeAllocationId"]) == projection.ComputeID && stringValue(existing["currentAttachmentId"]) == projection.AttachmentID &&
-		stringValue(existing["runtimeId"]) == projection.RuntimeID && stringValue(existing["url"]) == projection.URL &&
-		firstNonEmpty(stringValue(existing["runtimeServiceName"]), stringValue(nested(existing, "runtime", "serviceName"))) == projection.RuntimeServiceName
-}
-
 func (app *controlPlaneServer) ownedWorkspaceForCredentialCommand(w http.ResponseWriter, r *http.Request, workspaceID string) (map[string]any, bool) {
 	workspace, workspaceOK := app.getWorkspace(workspaceID)
 	user, userOK := app.sessionUserContext(r)
@@ -553,14 +534,4 @@ func (app *controlPlaneServer) workspaceAccessAllowed(w http.ResponseWriter, r *
 		return false
 	}
 	return true
-}
-
-func workspaceCreateOperationRow(operationID, status string, result workspaceCreateOperationResult) map[string]any {
-	workspace := result.Workspace
-	return map[string]any{
-		"id": operationID, "operationId": operationID, "accountId": workspace.AccountID, "workspaceId": workspace.ID,
-		"resourceId": workspace.ID, "resourceKind": "workspace_runtime", "action": "workspace.create", "provider": workspace.Provider,
-		"providerRequestId": workspace.RuntimeID, "status": status, "result": encodeWorkspaceCreateOperation(result),
-		"computeAllocationId": workspace.ComputeID, "storageId": workspace.VolumeID, "attachmentId": workspace.AttachmentID, "runtimeServiceName": workspace.RuntimeServiceName,
-	}
 }
