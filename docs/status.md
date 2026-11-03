@@ -619,8 +619,8 @@ TKE business/live Gateway qualification remains unexecuted. #1042, #1041 and
 ## Original-order Closeout Scope (2026-10-23)
 
 The November 2 observation supersedes the earlier admission investigations.
-[#1018](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1018) still owns
-acceptance of the three original orders. The two native orders have resource
+[#1018](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1018) records
+completed acceptance of the three original orders, as read back on 2026-11-03. The two native orders have resource
 absence, deletion receipts, confirmed original-charge refunds and separate Serve
 route-retirement evidence:
 
@@ -641,65 +641,39 @@ and [B 41494333326](https://github.com/gaofeng21cn/opl-instance-medopl/actions/r
 `succeeded / confirmed`, no pending step, confirmed original refund, and `keyCloseoutOutcome=confirmed`.
 Both resumes used the existing deletion operation and produced no new purchase or refund.
 
-The retained order `ws-75e18d83e13db76332` has now completed the storage stage of its original CP
-Delete. Three reproduced Fabric defects were repaired and adopted through the standard protected
-Instance deployment path:
+The retained order `ws-75e18d83e13db76332` completed its original CP deletion and
+settlement on 2026-11-03. The explicit original-CVM final-release source in
+[#1109](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1109) was adopted
+through Candidate [41561732330](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/41561732330),
+Instance deployment [41562983386](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41562983386)
+and installation verification [41563366425](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41563366425).
+These bind source `4f131caa41324f027c1fee48d6ae5e5356e7e3c4`, tree
+`c67d27efdc89bc04f6895d035443fc6681259501` and image index
+`sha256:6fdbd2ba463f81f2722dea1812b9cf06339ab7138d5cae84bc012f464788b46f`.
 
-| Repair | Source | Installed evidence |
-| --- | --- | --- |
-| Clone readback data and preserve the frozen original term when CBS shortens its live deadline | [#1098](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1098) | [41405516276](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41405516276) |
-| Accept successful empty output from the exact named `kubectl get --ignore-not-found -o json` when both PV/PVC objects are absent | [#1099](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1099) | [41409241109](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41409241109) |
-| Clear the prior retry classification and error from a successful storage recovery | [#1100](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1100) | [41411868286](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41411868286) |
+The first protected read [41563541963](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41563541963)
+was blocked before dispatch because its bounded pagination did not cover the
+retained Fabric history. Instance [#671](https://github.com/gaofeng21cn/opl-instance-medopl/pull/671)
+repaired that consumer. The authorized release attempt
+[41564225223](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41564225223)
+returned an unknown outcome; read-only reconciliation
+[41564327626](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41564327626),
+at 2026-11-03T02:09:34Z, then confirmed exact original resource absence with
+`dispatchFenced=true`, `absenceConfirmed=true` and `invocationAttempted=false`.
+The unknown attempt remains preserved, and no second release was sent by that readback.
 
-The last deployment binds Cloud source `566872e108845bed0010818b3ba24e32c701d490`, product tree
-`86632a8bb3eb75a68e79586f6cbad5e318d4aa5c`, and image
-`sha256:6c6dff00018820e16c570a1dd3dcc00d0f81d398e2f8e78db9c4bfda8b16d994`. Independent [verification
-41412182290](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41412182290) passes all
-twelve installation checks. The focused Fabric suite passes 1,649 tests/subtests with zero
-failures/skips, including real PostgreSQL reopen and Docker integration. The complete local gate
-also passes on the exact deployed source with PostgreSQL and Docker integration. The regressions
-reproduce the earlier failure and retain original resource identities, mutation journals and fresh
-absence requirements.
-
-[Owner observation
-41412189688](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41412189688), at
-2026-11-02T08:20Z, binds the same original Delete digest
-`sha256:a3d709c944d2ba008f5529c1e2a47c834a2b53584dc738536b21c63a85b38635`. Its immutable
-`storage_absent` stage evidence confirms the original CBS disk is `NOT_FOUND` and
-`bindingPresent=false`; the recovered Fabric record has no stale retry classification or error and
-records zero CBS termination mutations. CP is now `running / storage_absent`, waiting for
-`compute_absent`. The exact compute identity passes its owner and provider checks, but Tencent still
-reports CVM `SHUTDOWN / MANMADE` while the Machine is absent and TKE is `NOT_FOUND`. Fabric retains
-`destroying / unconfirmed_send`; this is not compute absence. The overall observation remains
-`partial / source_unavailable` and all of its observation mutation counters are zero.
-
-[Read-only closeout
-41412409471](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41412409471)
-independently binds the original account, purchase and Workspace. It reports
-`special_chain_deletion_incomplete`, current stage `compute_absent`, original charge 52,580,000 USD
-micros, and no confirmed refund or deletion receipt. Exact resource release, retained
-deletion/Ledger/settlement and the separate Key outcomes remain the [open acceptance
-work](roadmap.md#original-order-workspace-closeout-1018). Instance
-[#666](https://github.com/gaofeng21cn/opl-instance-medopl/pull/666) preserves the current
-deployment, verification and owner receipts unchanged.
-
-A fresh read-only state observation [41494802539](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41494802539)
-performed no business, provider or Kubernetes writes. For retained `ws-75e18d83e13db76332`,
-TKE/Machine remains `NOT_FOUND` while the exact CVM remains `SHUTDOWN` with source `MANMADE`;
-Fabric reports `pending_deletion` and `compute_absent` remains retrying. The retained order is
-therefore still not settled: its deletion receipt and original-charge settlement remain unconfirmed.
-The observation's Fabric transport also returned `source_unavailable`, so it is retained as partial
-readback evidence rather than completion.
-
-On 2026-11-03, the owner authorized irreversible final release of this exact retained CVM.
-[Observation 41558773536](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41558773536)
-still confirms `SHUTDOWN / MANMADE`, Machine/TKE absence and matching original identities, with
-zero observation mutations. The overall receipt remains partial because service-health sources
-were unavailable. The new Fabric operator entry persists an exact-resource dispatch fence,
-checks recycled prepaid state and original ownership before `TerminateInstances`, and reconciles
-uncertain responses by reads only. Successful compute absence also clears stale retry state.
-This is source behavior pending Candidate adoption and protected Instance execution; the retained
-order's final resource absence, deletion receipt and original-charge settlement remain open.
+Independent protected closeout
+[41564472462](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41564472462)
+reports `accepted / closeout_complete`, deletion stage `receipt_recorded`,
+page state `completed`, `workspaceGone=true`, and readable deletion and refund
+receipts. The original charge is 52,580,000 USD micros; the owner's confirmed
+refund is 25,559,722 USD micros under `workspace-delete-refund-v1`, with
+`refundDispatchedOnce=true` and `refundBounds=true`. The readback performed zero
+business, provider, deletion or refund mutations. It proves the existing original
+operation's closeout, not a replacement Delete, new refund or later purchase.
+This supplies the retained order's previously missing acceptance alongside the
+native A/B evidence above. #1018 is closed; historical attempts and the separate
+retained-owner migration obligations remain intact.
 
 The original CP owner remains responsible until a verified handover. #1052 owns
 the separate retained-owner migration decision; this repair changes neither
