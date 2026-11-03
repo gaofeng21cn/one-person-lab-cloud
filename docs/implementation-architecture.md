@@ -537,8 +537,9 @@ Gateway Secret and deletion-residue observations retain their separate owners.
 
 ### Workspace Application Deployment
 
-New default purchases compose a resource-only Launch with a separate durable
-`workspace.application.default-install` request in the same claim transaction.
+This section describes retained CP operations, not the native purchase path.
+Their resource-only Launch may carry a separate durable
+`workspace.application.default-install` request from its original claim transaction.
 The HTTP request returns before the resource worker dispatches a charge. The
 application request freezes the installed default image policy and its OPL App
 runtime description; its Key is handed transiently to Fabric, retaining only
@@ -563,9 +564,10 @@ completed progress. A successor does not create resources or charge the wallet.
 `OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED=1` enables both default
 installation and deployment recovery. The base Compose forwards this setting;
 the local Workspace overlay enables it. With the switch off, accepted requests
-remain durable without application execution. Operators retry a failed frozen
-command through `POST /api/operator/application-deployments/{id}/retry`.
-Customers continue a default installation with
+remain durable without application execution. Operator revision/data admission,
+new deployment and operator retry HTTP commands have been removed with their
+Console controller. Historical GET routes remain in
+`workspace_application_history_routes.go`. Customers continue a default installation with
 `POST /api/workspaces/{id}/application-installation/resume`; this reuses the
 original request, Key and deployment instead of making another purchase.
 
@@ -574,10 +576,9 @@ credential identity is frozen separately in the runtime configuration: ordinary
 updates and reinstallations retain it; explicit password or Gateway rotation
 advances it. Historical migration names the proven credential source rather
 than deriving a new password from the new deployment ID.
-For a new operator deployment, CP supplies the explicit OPL ABI environment
-keys; the request supplies the complete user environment, so omitted user keys
-are removed. Prior user settings do not become CP-owned fields. Replaying the
-original mutation key still requires its original configuration digest.
+Accepted deployment snapshots retain their original configuration and request
+identity for recovery and cleanup; removing the operator command does not rewrite
+those records. Native application selection and updates stay with Workspace/Serve.
 Stable data bindings belong to the Workspace/application pair: compatible
 updates and reinstalling the same application keep those bindings; other
 applications receive separate directories. Explicit historical layouts name the
@@ -1334,7 +1335,7 @@ This is the writer/caller inventory at Cloud baseline
 `a7e793f80ffb764d80b63179b05d32e9bdf64c15` and Instance baseline
 `0a38b429c785f0e1c345f5910b3731f2f49e1f57`. This PR changes documentation
 only. The table below is a snapshot at those exact baselines; later source and
-review status is recorded in R8/R9 and the linked [status](status.md#retained-writer-inventory-and-split-withdrawal-proposals-2026-11-03).
+review status is recorded in R1a/R8/R9 and the linked [status](status.md#retained-writer-inventory-and-split-withdrawal-proposals-2026-11-03).
 Neither the snapshot nor a source merge establishes installed adoption.
 The local Instance source inspected at `709d18530f7e5b54f48d30bae8ca8e45a90cce95`
 differed from the Instance baseline only in final-release pagination/tool tests
@@ -1376,9 +1377,21 @@ absent. There is no automatic switch from a failed native operation to CP.
 #### Code-removal packages for review
 
 **R1 — legacy application admission, deployment and default installation.**
-Remove mutation/retry registrations in `workspace_application_deployment.go`,
-`workspace_application_admission.go` and `workspace_application_data_admission.go`;
-remove the writer/driver portions of `workspace_application_deployment_driver.go`,
+The first bounded slice, **R1a**, removes operator revision/data admission, new
+deployment and operator retry handlers, their exclusive admission functions and
+data-material mutation store method, and the Console deployment controller,
+controls and exclusive DTOs/tests. Historical GETs remain behind
+`workspace_application_history_routes.go`; the revision decoder and persisted
+material/revision records remain readable. The Instance installer command is withdrawn separately
+in the Instance repository; adopt its caller removal before the Cloud withdrawal.
+
+R1a does not retire the shared deployment engine: `workspace_application_access.go`
+still creates/drives intents for password and Workspace-Key rotation, and
+`workspace_default_application.go` plus installation resume still continue original
+accepted installation requests. Those real callers require the worker, activation
+store and current/reserved selection writers; their retirement stays coupled to
+R2/R3 and the remaining original-install obligations. The snapshot above is not
+updated into a claim that all CP deployment writes disappeared. Next remove the writer/driver portions of `workspace_application_deployment_driver.go`,
 `application_revision_store.go`, `workspace_default_application.go` and
 `workspace_application_recovery.go`. Remove deployment-worker startup in
 `server.go`, its `OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED` configuration,

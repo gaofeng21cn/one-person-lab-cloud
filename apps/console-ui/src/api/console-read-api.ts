@@ -1,12 +1,9 @@
-import type { WorkspaceApplicationConfigurationDTO, WorkspaceApplicationSecretBindingDTO } from "./dtos.ts";
 import { decodeDto, decodeSource } from "./dtos.ts";
 import { cloudIdentity } from "../app/console-identity.ts";
 import type {
   AnnouncementPageDTO,
   AnnouncementDTO,
   AnnouncementReadDTO,
-  WorkspaceApplicationIntentDTO,
-  WorkspaceApplicationRevisionAdmissionDTO,
   BillingReceipt,
   BillingReceiptPage,
   WorkspaceSettlementTrend,
@@ -562,93 +559,4 @@ export function publishOperatorAnnouncement(announcementId: string, input: Annou
 
 export function withdrawOperatorAnnouncement(announcementId: string, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<AnnouncementDTO> {
   return postJson<unknown>(operatorWriteRoute(cloud, `/announcements/${encodeURIComponent(announcementId)}/withdraw`), {}, csrfToken, idempotencyKey).then(decodeDto<AnnouncementDTO>);
-}
-
-export function admitOperatorApplicationRevision(
-  revision: unknown,
-  csrfToken: string,
-  idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<WorkspaceApplicationRevisionAdmissionDTO> {
-  return postJson<unknown>(
-    operatorWriteRoute(cloud, "/application-revisions"), revision, csrfToken, idempotencyKey
-  ).then(decodeDto<WorkspaceApplicationRevisionAdmissionDTO>);
-}
-
-export function createOperatorWorkspaceApplicationDeployment(
-  workspaceId: string,
-  applicationId: string,
-  targetRevision: string,
-  configuration: WorkspaceApplicationConfigurationDTO,
-  csrfToken: string,
-  idempotencyKey: string,
-  secretBindings: WorkspaceApplicationSecretBindingDTO[] = [],
-  revision?: unknown, cloud: boolean = cloudIdentity): Promise<{ intent: WorkspaceApplicationIntentDTO }> {
-  // An inline revision lets one deployment command carry the image and its run
-  // requirements. The Control Plane admits that revision into its single
-  // revision owner as part of the same command; sending the publisher
-  // description is not a second, separate business step for the operator.
-  return postJson<unknown>(
-    operatorWriteRoute(cloud, "/application-deployments"),
-    {
-      workspaceId, applicationId, targetRevision, configuration,
-      ...(secretBindings.length ? { secretBindings } : {}),
-      ...(revision === undefined ? {} : { revision })
-    },
-    csrfToken, idempotencyKey
-  ).then(decodeDto<{ intent: WorkspaceApplicationIntentDTO }>);
-}
-
-export function getOperatorWorkspaceApplicationDeployment(operationId: string, signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<{ status: string; intent: WorkspaceApplicationIntentDTO }>> {
-  return sourceGet<{ status: string; intent: WorkspaceApplicationIntentDTO }>(`${operatorReadRoute(cloud)}/application-deployments/${encodeURIComponent(operationId)}`, signal);
-}
-
-export function retryOperatorWorkspaceApplicationDeployment(operationId: string, csrfToken: string, cloud: boolean = cloudIdentity): Promise<{ intent: WorkspaceApplicationIntentDTO }> {
-  return postJson<unknown>(operatorWriteRoute(cloud, `/application-deployments/${encodeURIComponent(operationId)}/retry`), {}, csrfToken, `application-retry:${operationId}`)
-    .then(decodeDto<{ intent: WorkspaceApplicationIntentDTO }>);
-}
-
-export interface WorkspaceRegistryRepositoryDTO {
-  namespace: string;
-  repository: string;
-}
-
-export interface WorkspaceRegistryRepositoryCatalogDTO {
-  host: string;
-  namespaces: string[];
-  items: WorkspaceRegistryRepositoryDTO[];
-}
-
-export interface WorkspaceRegistryTagDTO {
-  tag: string;
-}
-
-export interface WorkspaceRegistryResolutionDTO {
-  // host is the registry endpoint Control Plane resolved against. The client
-  // confirms the returned reference against it instead of assembling a second
-  // reference format from repository and digest alone.
-  host: string;
-  namespace: string;
-  repository: string;
-  tag: string;
-  digest: string;
-  reference: string;
-}
-
-export function listOperatorRegistryRepositories(namespace: string, cloud: boolean = cloudIdentity): Promise<WorkspaceRegistryRepositoryCatalogDTO> {
-  const query = namespace ? `?namespace=${encodeURIComponent(namespace)}` : "";
-  return getJson<unknown>(`${operatorReadRoute(cloud)}/registry/repositories${query}`).then(decodeDto<WorkspaceRegistryRepositoryCatalogDTO>);
-}
-
-export function listOperatorRegistryTags(namespace: string, repository: string, cloud: boolean = cloudIdentity): Promise<{ namespace: string; repository: string; tags: WorkspaceRegistryTagDTO[] }> {
-  return getJson<unknown>(`${operatorReadRoute(cloud)}/registry/tags/${encodeURIComponent(namespace)}/${encodeURIComponent(repository)}`)
-    .then(decodeDto<{ namespace: string; repository: string; tags: WorkspaceRegistryTagDTO[] }>);
-}
-
-export function resolveOperatorRegistryImage(
-  namespace: string,
-  repository: string,
-  tag: string,
-  csrfToken: string,
-  idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<WorkspaceRegistryResolutionDTO> {
-  return postJson<unknown>(operatorWriteRoute(cloud, "/registry/resolve"), { namespace, repository, tag }, csrfToken, idempotencyKey)
-    .then(decodeDto<WorkspaceRegistryResolutionDTO>);
 }

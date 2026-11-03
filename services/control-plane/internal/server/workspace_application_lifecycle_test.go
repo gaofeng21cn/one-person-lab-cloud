@@ -115,9 +115,7 @@ func seedCurrentApplicationForLifecycle(t *testing.T, app *controlPlaneServer, w
 
 func seedApplicationRevisionForLifecycle(t *testing.T, app *controlPlaneServer, workspaceID string, revision contracts.WorkspaceApplicationRevision, configuration contracts.WorkspaceApplicationRuntimeConfiguration, bindings []contracts.WorkspaceApplicationRuntimeSecretBinding, keyID int64, selected bool) workspaceApplicationDeploymentIntent {
 	t.Helper()
-	if _, _, err := app.admitWorkspaceApplicationRevision(context.Background(), revision, "operator-test"); err != nil {
-		t.Fatal(err)
-	}
+	admitApplicationForReplacement(t, app.tables, revision)
 	intent, err := app.createWorkspaceApplicationDeploymentIntent(context.Background(), workspaceID, "seed-"+revision.ApplicationID+"-"+revision.Version, revision.ApplicationID, revision.Version, configuration, bindings, keyID, "", "")
 	if err != nil {
 		t.Fatal(err)

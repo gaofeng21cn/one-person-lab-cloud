@@ -1,7 +1,6 @@
 import {
   Activity,
   Ban,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
@@ -17,13 +16,12 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 
-import type { OperatorAnnouncementController, OperatorResourceReadController, WorkspaceApplicationDeploymentController, WorkspaceImageReleaseController, WorkspaceRuntimeImageReplacementController } from "../app/console-controller-types.ts";
+import type { OperatorAnnouncementController, OperatorResourceReadController, WorkspaceImageReleaseController, WorkspaceRuntimeImageReplacementController } from "../app/console-controller-types.ts";
 import type { AdminConsoleRoute } from "../app/console-router.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
 import { cloudIdentity } from "../app/console-identity.ts";
 import { recoverWorkspaceLaunch, getWorkspaceLaunchRecovery } from "../api/console-read-api.ts";
 import { presentWorkspaceLaunchCloseout } from "../app/workspace-experience-model.ts";
-import { presentWorkspaceApplicationIntent } from "../app/workspace-application-deployment-controller-model.ts";
 import type {
   AnnouncementDTO,
   AnnouncementDraftRequest,
@@ -881,16 +879,13 @@ function OperatorResourceMobileCard({ resource }: { resource: OperatorResourceDT
   );
 }
 
-function ResourceDetail({ controller, release, replacement, deployment }: { controller: OperatorResourceReadController; release: WorkspaceImageReleaseController; replacement: WorkspaceRuntimeImageReplacementController; deployment: WorkspaceApplicationDeploymentController }) {
+function ResourceDetail({ controller, release, replacement }: { controller: OperatorResourceReadController; release: WorkspaceImageReleaseController; replacement: WorkspaceRuntimeImageReplacementController }) {
   const selected = controller.selectedWorkspaceId;
-  const detail = controller.detail.value?.available ? controller.detail.value.data : null;
-  const installation = detail?.workspace.available && detail.workspace.data.id === selected ? detail.workspace.data.applicationInstallation : undefined;
   if (!selected) return <section className="panel" data-slide="A-RES-02"><div className="panel-title"><div><h2>资源详情</h2></div></div><div className="empty-panel">请选择 Workspace 查看资源详情。</div></section>;
   return (
     <section className="panel" data-slide="A-RES-02">
       <div className="panel-title"><div><h2>资源详情</h2></div><span>{selected}</span></div>
       {!cloudIdentity ? <WorkspaceRuntimeImageRelease controller={controller} release={release} replacement={replacement} /> : null}
-      {!cloudIdentity ? <WorkspaceApplicationDeploymentCard deployment={deployment} selectedWorkspaceId={selected} installation={installation} /> : null}
       <SourceState error={controller.detail.error} loading={controller.detail.loading} onRetry={() => void controller.refreshWorkspace(selected)} source={controller.detail.value} unavailableTitle="资源详情暂不可用">
         {(detail) => <>
           <dl className="data-list">
@@ -977,7 +972,7 @@ function OperatorWorkspaceMobileCard({ controller, item }: { controller: Operato
   );
 }
 
-function ResourcesPage({ controller, release, replacement, deployment }: { controller: OperatorResourceReadController; release: WorkspaceImageReleaseController; replacement: WorkspaceRuntimeImageReplacementController; deployment: WorkspaceApplicationDeploymentController }) {
+function ResourcesPage({ controller, release, replacement }: { controller: OperatorResourceReadController; release: WorkspaceImageReleaseController; replacement: WorkspaceRuntimeImageReplacementController }) {
   const workspaces = sourceData(controller.workspaces.value)?.items || [];
   return (
     <section className="admin-dashboard" data-slide="A-RES-01 A-RES-02">
@@ -996,8 +991,7 @@ function ResourcesPage({ controller, release, replacement, deployment }: { contr
         </SourceState>
         <Pagination current={controller.page} label="Workspace 分页" onChange={(page) => void controller.changePage(page)} pages={controller.pages} />
       </section>
-      {!cloudIdentity ? <WorkspaceApplicationRegistration deployment={deployment} /> : null}
-      <ResourceDetail controller={controller} release={release} replacement={replacement} deployment={deployment} />
+      <ResourceDetail controller={controller} release={release} replacement={replacement} />
     </section>
   );
 }
@@ -1122,7 +1116,7 @@ export function AdminPages({ controller, route }: { controller: ConsoleControlle
     case "admin.billing":
       return <ReconciliationPage controller={controller} />;
     case "admin.resources":
-      return <ResourcesPage controller={controller.operatorResourceRead} release={controller.workspaceImageRelease} replacement={controller.workspaceRuntimeImageReplacement} deployment={controller.workspaceApplicationDeployment} />;
+      return <ResourcesPage controller={controller.operatorResourceRead} release={controller.workspaceImageRelease} replacement={controller.workspaceRuntimeImageReplacement} />;
     case "admin.system":
       return <SystemPage controller={controller} />;
     case "admin.announcements":
@@ -1130,111 +1124,4 @@ export function AdminPages({ controller, route }: { controller: ConsoleControlle
     default:
       return assertNever(route);
   }
-}
-
-function WorkspaceApplicationRegistration({ deployment }: { deployment: WorkspaceApplicationDeploymentController }) {
-  const { draft } = deployment;
-  const [registryNamespace, setRegistryNamespace] = useState("oplcloud");
-  const [registryRepository, setRegistryRepository] = useState("");
-  const [registryTag, setRegistryTag] = useState("");
-  return <section className="panel panel-disclosure"><div className="panel-title"><div><h2>应用版本登记</h2></div><span>版本一经准入即不可变更；重复提交一致内容为幂等操作</span></div>
-    <details className="application-registration-details" open>
-      <summary><span>收起 / 展开登记表单：从镜像仓库选择版本、填写运行要求并提交准入</span><ChevronDown aria-hidden size={16} className="application-registration-details__chevron" /></summary>
-    <div className="application-form-section"><h3>从镜像仓库选择</h3>
-      <div className="application-form-grid">
-        <Field label="命名空间" description="服务器限定的目录命名空间，如 oplcloud" disabled={deployment.registryBusy} value={registryNamespace} onChange={(event) => { setRegistryNamespace(event.target.value); setRegistryRepository(""); setRegistryTag(""); deployment.resetRegistrySelection("namespace"); }} />
-        <div className="application-form-pair">
-          <Select block label="repository" description="先列出命名空间下的仓库" disabled={deployment.registryBusy} value={registryRepository} options={(deployment.registryCatalog?.items || []).filter((item) => item.namespace === registryNamespace.trim()).map((item) => ({ value: item.repository, label: item.repository }))} onChange={(value) => { setRegistryRepository(value); setRegistryTag(""); deployment.resetRegistrySelection("repository"); }} />
-          <Select block label="tag/版本" description="选择后解析为固定 digest 并填入镜像字段" disabled={deployment.registryBusy} value={registryTag} options={(deployment.registryTags || []).map((item) => ({ value: item.tag, label: item.tag }))} onChange={(value) => { setRegistryTag(value); deployment.resetRegistrySelection("tag"); }} />
-        </div>
-      </div>
-      <div className="application-form-row">
-        <Button size="sm" variant="outline" busy={deployment.registryBusy} disabled={deployment.registryBusy || registryNamespace.trim() === ""} onClick={() => void deployment.browseRegistryRepositories(registryNamespace.trim())}>列出仓库</Button>
-        <Button size="sm" variant="outline" busy={deployment.registryBusy} disabled={deployment.registryBusy || registryNamespace.trim() === "" || registryRepository.trim() === ""} onClick={() => void deployment.browseRegistryTags(registryNamespace.trim(), registryRepository.trim())}>列出 tag</Button>
-        <Button size="sm" variant="outline" busy={deployment.registryBusy} disabled={deployment.registryBusy || deployment.busy || (deployment.registrationMode === "json" && Boolean(deployment.revisionJSONError)) || registryNamespace.trim() === "" || registryRepository.trim() === "" || registryTag.trim() === ""} onClick={() => void deployment.resolveRegistryTag(registryNamespace.trim(), registryRepository.trim(), registryTag.trim())}>解析 digest</Button>
-      </div>
-      {deployment.registryCatalog ? <p className="application-form-hint">仓库主机 {deployment.registryCatalog.host};命名空间 {deployment.registryCatalog.namespaces.join("、")};{deployment.registryCatalog.items.length} 个 repository。{deployment.registryTags ? `已选 repository 的 ${deployment.registryTags.length} 个 tag。` : ""}</p> : null}
-      {deployment.registryResolution ? <p className="application-form-hint">已解析 <code>{deployment.registryResolution.tag}</code> → <code>{deployment.registryResolution.digest}</code>,镜像字段已填入固定引用。</p> : null}
-    </div>
-    <Select block label="登记方式" disabled={deployment.busy || deployment.registryBusy} value={deployment.registrationMode} options={[{ value: "form", label: "简单表单" }, { value: "json", label: "发布者完整描述 JSON" }]} onChange={(value) => deployment.setRegistrationMode(value as "form" | "json")} />
-    {deployment.registrationMode === "json" ? <div className="console-field">
-      <label className="console-field__label" htmlFor="application-revision-json">完整应用描述 JSON</label>
-      <textarea id="application-revision-json" disabled={deployment.busy || deployment.registryBusy} rows={14} value={deployment.revisionJSON} onChange={(event) => deployment.setRevisionJSON(event.target.value)} aria-invalid={Boolean(deployment.revisionJSONError)} />
-      <span className="console-field__description">完整保留组件、配置接口、依赖和运行要求；由 Control Plane 校验准入。仅提交描述及 Secret 接口，不填写凭据值。</span>
-      {deployment.revisionJSONError ? <span className="console-field__error">{deployment.revisionJSONError}</span> : null}
-    </div> : <>
-    <div className="application-form-grid">
-      <Field label="应用 ID" description="小写字母开头，仅含小写字母、数字或连字符" error={deployment.validation.fieldErrors.applicationId} value={draft.applicationId} onChange={(event) => deployment.setDraftField("applicationId", event.target.value)} />
-      <Field label="版本" description="如 1.0.0" error={deployment.validation.fieldErrors.version} value={draft.version} onChange={(event) => deployment.setDraftField("version", event.target.value)} />
-      <Select block label="平台" value={draft.platform} options={[{ value: "linux/amd64", label: "linux/amd64" }, { value: "linux/arm64", label: "linux/arm64" }]} onChange={(value) => deployment.setDraftField("platform", value)} />
-      <Select block label="暴露策略" value={draft.exposurePolicy} options={[
-        { value: "application", label: "应用自身登录" },
-        { value: "anonymous", label: "匿名可访问" },
-        { value: "cloud_private", label: "不发布外部入口" }
-      ]} onChange={(value) => deployment.setDraftField("exposurePolicy", value)} />
-      <Field label="容器镜像" description="仓库@sha256 摘要钉死，如 repo.example/app@sha256:…" error={deployment.validation.fieldErrors.image} value={draft.image} onChange={(event) => deployment.setDraftField("image", event.target.value)} />
-      <Field label="HTTP 服务端口" optional description="应用网页服务监听的端口；留空则不提供网页入口" error={deployment.validation.fieldErrors.httpPort} value={draft.httpPort} onChange={(event) => deployment.setDraftField("httpPort", event.target.value)} />
-      <div className="application-form-pair">
-        <Field label="健康检查路径" optional error={deployment.validation.fieldErrors.healthCheckPath} value={draft.healthCheckPath} onChange={(event) => deployment.setDraftField("healthCheckPath", event.target.value)} />
-        <Field label="健康检查端口" optional error={deployment.validation.fieldErrors.healthCheckPort} value={draft.healthCheckPort} onChange={(event) => deployment.setDraftField("healthCheckPort", event.target.value)} />
-      </div>
-    </div>
-    <div className="application-form-section"><h3>持久挂载（写入 CBS 数据盘）</h3>
-      {draft.persistentMounts.map((mount, index) => <div className="application-form-row" key={index}>
-        <input aria-label={`持久挂载 ${index + 1} 名称`} value={mount.name} onChange={(event) => deployment.setDraftListItem("persistentMounts", index, "name", event.target.value)} placeholder="data" />
-        <input aria-label={`持久挂载 ${index + 1} 路径`} value={mount.mountPath} onChange={(event) => deployment.setDraftListItem("persistentMounts", index, "mountPath", event.target.value)} placeholder="/data" />
-        {deployment.validation.mountErrors[index] ? <span className="application-form-error">{deployment.validation.mountErrors[index]}</span> : null}
-        <Button size="sm" variant="ghost" onClick={() => deployment.removePersistentMount(index)}>移除</Button>
-      </div>)}
-      <Button size="sm" variant="outline" onClick={deployment.addPersistentMount}>添加持久挂载</Button>
-    </div>
-    <div className="application-form-section"><h3>临时挂载（内存，重启即清）</h3>
-      {draft.scratchMounts.map((mount, index) => <div className="application-form-row" key={index}>
-        <input aria-label={`临时挂载 ${index + 1} 名称`} value={mount.name} onChange={(event) => deployment.setDraftListItem("scratchMounts", index, "name", event.target.value)} placeholder="cache" />
-        <input aria-label={`临时挂载 ${index + 1} 路径`} value={mount.mountPath} onChange={(event) => deployment.setDraftListItem("scratchMounts", index, "mountPath", event.target.value)} placeholder="/tmp" />
-        <Button size="sm" variant="ghost" onClick={() => deployment.removeScratchMount(index)}>移除</Button>
-      </div>)}
-      <Button size="sm" variant="outline" onClick={deployment.addScratchMount}>添加临时挂载</Button>
-    </div>
-    <div className="application-form-section"><h3>依赖服务</h3>
-      {draft.dependencies.map((dependency, index) => <div className="application-form-row" key={index}>
-        <input aria-label={`依赖服务 ${index + 1} 名称`} value={dependency.name} onChange={(event) => deployment.setDraftDependency(index, "name", event.target.value)} placeholder="retrieval" />
-        <input aria-label={`依赖服务 ${index + 1} 镜像`} value={dependency.image} onChange={(event) => deployment.setDraftDependency(index, "image", event.target.value)} placeholder="repo.example/svc@sha256:…" />
-        {deployment.validation.dependencyErrors[index] ? <span className="application-form-error">{deployment.validation.dependencyErrors[index]}</span> : null}
-        <Button size="sm" variant="ghost" onClick={() => deployment.removeDependency(index)}>移除</Button>
-      </div>)}
-      <Button size="sm" variant="outline" onClick={deployment.addDependency}>添加依赖服务</Button>
-    </div>
-    </>}
-    <Button busy={deployment.busy} color="primary" disabled={deployment.busy || (deployment.registrationMode === "json" ? Boolean(deployment.revisionJSONError) : !deployment.validation.ok)} onClick={() => void deployment.admitRevision()}>登记应用版本</Button>
-    </details>
-  </section>;
-}
-
-function WorkspaceApplicationDeploymentCard({ deployment, selectedWorkspaceId, installation }: { deployment: WorkspaceApplicationDeploymentController; selectedWorkspaceId: string; installation?: import("../api/dtos.ts").WorkspaceApplicationInstallationDTO }) {
-  const presentation = deployment.intent ? presentWorkspaceApplicationIntent(deployment.intent) : null;
-  const retryOperationId = deployment.intent?.phase === "manual_review" && deployment.intent.failurePhase ? deployment.intent.operationId : !deployment.intent && installation?.canRetry ? installation.operationId : "";
-  return <section className="panel"><div className="panel-title"><div><h2>应用部署</h2></div><span>把已准入的应用版本部署到选中的工作区</span></div>
-    <div className="application-form-grid">
-      <Field label="应用 ID" description="已准入的应用标识" value={deployment.applicationId} onChange={(event) => deployment.setApplicationId(event.target.value)} />
-      <Field label="目标版本" description="该应用已准入的版本" value={deployment.targetRevision} onChange={(event) => deployment.setTargetRevision(event.target.value)} />
-    </div>
-    <div className="application-form-grid">
-      <div className="console-field"><label className="console-field__label" htmlFor="application-configuration-json">运行配置 JSON</label><textarea id="application-configuration-json" rows={6} value={deployment.configurationJSON} onChange={(event) => deployment.setConfigurationJSON(event.target.value)} /><span className="console-field__description">仅允许非敏感 environment 和 files 字符串映射。</span></div>
-      <div className="console-field"><label className="console-field__label" htmlFor="application-secret-bindings-json">Secret 引用 JSON</label><textarea id="application-secret-bindings-json" rows={6} value={deployment.secretBindingsJSON} onChange={(event) => deployment.setSecretBindingsJSON(event.target.value)} /><span className="console-field__description">数组，每项仅含 name、secretRef、version、key；引用已存在的 Secret，不填写密钥值。</span></div>
-    </div>
-    {deployment.deploymentJSONError ? <p className="console-field__error" role="alert">{deployment.deploymentJSONError}</p> : null}
-    <Button busy={deployment.busy} color="primary" disabled={!selectedWorkspaceId || deployment.busy || Boolean(deployment.deploymentJSONError)} onClick={() => void deployment.deploy(selectedWorkspaceId)}>部署到 {selectedWorkspaceId || "…"} 工作区</Button>
-    {presentation ? <div className="application-deployment-status">
-      <div className="application-phase-steps">{presentation.steps.map((step) => <div className="application-phase-step" data-state={step.state} key={step.label}><span>{step.label}</span></div>)}</div>
-      <dl className="data-list">
-        <div><dt>当前状态</dt><dd>{presentation.phase.label}</dd></div>
-        {presentation.components.map((component) => <div key={component.name}><dt>{component.name}（{component.role === "main" ? "主组件" : "依赖服务"}）</dt><dd><Badge color={component.tone === "info" ? "secondary" : component.tone}>{component.label}</Badge>{component.ports?.length ? <code> 端口 {component.ports.join(", ")}</code> : null}</dd></div>)}
-        {deployment.intent?.runtimeObservation?.entryUrl ? <div><dt>应用入口</dt><dd><a href={deployment.intent.runtimeObservation.entryUrl} rel="noreferrer" target="_blank">{deployment.intent.runtimeObservation.entryUrl}<ExternalLink aria-hidden size={14} /></a></dd></div> : null}
-        {deployment.intent?.receiptId ? <div><dt>部署证据</dt><dd><code>{deployment.intent.receiptId}</code></dd></div> : null}
-        {deployment.intent?.lastError ? <div><dt>最近错误</dt><dd><code>{deployment.intent.lastError}</code></dd></div> : null}
-      </dl>
-    </div> : null}
-    {retryOperationId ? <Button busy={deployment.busy} disabled={deployment.busy} onClick={() => void deployment.retry(selectedWorkspaceId, retryOperationId)} variant="outline">重试此部署</Button> : null}
-  </section>;
 }

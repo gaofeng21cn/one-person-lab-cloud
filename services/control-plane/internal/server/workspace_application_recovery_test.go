@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -101,33 +100,6 @@ func testWorkspaceApplicationRecovery(t *testing.T, store controlPlaneTableStore
 		t.Fatalf("post-activation recovery rejected current binding: %v", err)
 	}
 	runDeploymentWorkerToCompletion(t, app, service, id)
-}
-
-func TestWorkspaceApplicationRecoveryHTTP(t *testing.T) {
-	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
-	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
-	ctx := context.Background()
-	app := fixture.server.(*controlPlaneHTTPHandler).app
-	operator := operatorSessionForTest(t, fixture.server)
-	admitKnowledgeRevisionForTest(t, fixture.server, operator)
-	created := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, "/api/operator/application-deployments", deployIntentBody("recovery"), "recover-http")
-	var response struct {
-		Intent workspaceApplicationDeploymentIntent `json:"intent"`
-	}
-	if created.Code != http.StatusAccepted || json.Unmarshal(created.Body.Bytes(), &response) != nil {
-		t.Fatalf("deployment create=%d %s", created.Code, created.Body.String())
-	}
-	row, _, _ := fixture.store.GetRuntimeOperation(ctx, response.Intent.OperationID)
-	mustStore(t, app.markWorkspaceApplicationManualReview(ctx, row, response.Intent, "test_preflight_unavailable"))
-	path := "/api/operator/application-deployments/" + response.Intent.OperationID + "/retry"
-	denied := requestWithMutationKeyForTest(t, fixture.server, fixture.session, http.MethodPost, path, "{}", "retry-owner")
-	if denied.Code != http.StatusForbidden {
-		t.Fatalf("customer invoked operator retry: %d", denied.Code)
-	}
-	retry := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, path, "{}", "retry-operator")
-	if retry.Code != http.StatusAccepted || json.Unmarshal(retry.Body.Bytes(), &response) != nil || response.Intent.Phase != workspaceApplicationDeploymentIntentPhase {
-		t.Fatalf("operator retry=%d %s", retry.Code, retry.Body.String())
-	}
 }
 
 func TestWorkspaceDefaultApplicationResumeHTTP(t *testing.T) {

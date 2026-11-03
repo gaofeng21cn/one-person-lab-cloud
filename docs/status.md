@@ -16,6 +16,30 @@ boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Retained Operator Application Deployment Withdrawal (2026-11-03)
+
+The R1a source change based on `ae293ec8c2ba6c562ae5c5206d4c0be2b3171c7d`
+removes CP operator revision/data admission, deployment creation and operator retry
+commands, along with their Console controller, controls and exclusive API types.
+The unused data-material admission store mutation is removed with its last caller.
+Existing historical GETs, persisted revisions/materials and deployment records stay
+readable. No refusal stub, alternate writer, new feature or schema deletion is added.
+
+This slice does not claim retirement of the shared deployment engine. Original
+installation resume, password rotation and Workspace-Key rotation still call it;
+their worker, configuration and activation writers remain until those capabilities
+are withdrawn or migrated with their actual callers. Native Runtime Release,
+Workspace and Serve selection/update paths are unchanged. The matching Instance
+installer caller is a separate source withdrawal, with adoption ordered before
+this Cloud change. No Candidate or Instance deployment is part of this source PR.
+
+The current protected observation's old deployment `manual_review` and two refund
+`blocked` records do not belong to #1018's three closed original orders. They are
+not deleted, retried or relabeled by withdrawing an operator command. Their
+settlement and any remaining accepted-install obligation stay separately visible.
+Verification and current-revision CI are reported in the PR; source checks do not
+establish installed retirement or new-customer business acceptance.
+
 ## Retained Writer Inventory And Split Withdrawal Proposals (2026-11-03)
 
 The inventory reviews Cloud `a7e793f80ffb764d80b63179b05d32e9bdf64c15`
@@ -1990,9 +2014,9 @@ details are in [workspace runtime access](implementation/workspace-runtime-acces
 
 ### Unified Deployment Command With Inline Revision (Local Development)
 
-The retained deployment command may carry an inline revision snapshot. Its
-revision identity remains owned by the application/deployment owner and is not
-a second catalog writer.
+The operator CP command that admitted an inline revision has been withdrawn in
+R1a. Previously accepted snapshots remain under their original recovery/history
+readers; native selection and updates continue through Workspace and Serve.
 
 ### Image Reference Identity (Local Development)
 

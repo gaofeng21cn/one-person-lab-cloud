@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -18,165 +17,25 @@ import (
 	"opl-cloud/services/control-plane/internal/domain/provisioning"
 )
 
-func admitKnowledgeRevisionForTest(t *testing.T, server http.Handler, operator *httptest.ResponseRecorder) {
+func knowledgeApplicationRevisionForTest() contracts.WorkspaceApplicationRevision {
+	return contracts.WorkspaceApplicationRevision{
+		SchemaVersion: 1, ApplicationID: "knowledge-app", Version: "1.0.0", Platform: "linux/amd64",
+		Image:     "repo.example/apps/knowledge@sha256:" + strings.Repeat("a", 64),
+		Ports:     []contracts.WorkspaceApplicationPort{{Name: "http", Port: 8080, Protocol: "TCP"}},
+		EntryPort: "http", ExposurePolicy: "application",
+	}
+}
+
+func createKnowledgeDeploymentForTest(t *testing.T, app *controlPlaneServer, mutationKey string) workspaceApplicationDeploymentIntent {
 	t.Helper()
-	revision := `{"schemaVersion":1,"applicationId":"knowledge-app","version":"1.0.0","platform":"linux/amd64",` +
-		`"image":"repo.example/apps/knowledge@sha256:` + strings.Repeat("a", 64) + `",` +
-		`"ports":[{"name":"http","port":8080,"protocol":"TCP"}],` +
-		`"entryPort":"http",` +
-		`"exposurePolicy":"application"}`
-	admitted := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/application-revisions", revision, "admit-deploy-test")
-	if admitted.Code != http.StatusOK {
-		t.Fatalf("revision admission status=%d body=%s", admitted.Code, admitted.Body.String())
-	}
-}
-
-func deployIntentBody(configurationDigest string) string {
-	return `{"workspaceId":"ws-alpha","applicationId":"knowledge-app","targetRevision":"1.0.0","configuration":{"environment":{"CONFIG":"` + configurationDigest + `"}}}`
-}
-
-func TestApplicationDeploymentIntentHTTP(t *testing.T) {
-	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
-	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
-	operator := operatorSessionForTest(t, fixture.server)
-	admitKnowledgeRevisionForTest(t, fixture.server, operator)
-
-	first := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, "/api/operator/application-deployments", deployIntentBody(strings.Repeat("c", 64)), "deploy-knowledge-first")
-	if first.Code != http.StatusAccepted {
-		t.Fatalf("first intent status=%d body=%s", first.Code, first.Body.String())
-	}
-	var admitted struct {
-		Intent struct {
-			OperationID              string `json:"operationId"`
-			Phase                    string `json:"phase"`
-			ExpectedWorkspaceVersion int64  `json:"expectedWorkspaceVersion"`
-			CurrentBinding           string `json:"currentBinding"`
-		} `json:"intent"`
-	}
-	if json.Unmarshal(first.Body.Bytes(), &admitted) != nil || admitted.Intent.OperationID == "" ||
-		admitted.Intent.Phase != workspaceApplicationDeploymentIntentPhase ||
-		admitted.Intent.ExpectedWorkspaceVersion != 0 || admitted.Intent.CurrentBinding != provisioning.ApplicationBindingEmpty {
-		t.Fatalf("first intent body=%s", first.Body.String())
-	}
-
-	replay := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, "/api/operator/application-deployments", deployIntentBody(strings.Repeat("c", 64)), "deploy-knowledge-first")
-	var replayed struct {
-		Intent struct {
-			OperationID string `json:"operationId"`
-		} `json:"intent"`
-	}
-	if replay.Code != http.StatusAccepted || json.Unmarshal(replay.Body.Bytes(), &replayed) != nil ||
-		replayed.Intent.OperationID != admitted.Intent.OperationID {
-		t.Fatalf("replay status=%d body=%s", replay.Code, replay.Body.String())
-	}
-
-	changed := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, "/api/operator/application-deployments", deployIntentBody(strings.Repeat("d", 64)), "deploy-knowledge-first")
-	if changed.Code != http.StatusConflict {
-		t.Fatalf("changed intent under the same key status=%d body=%s", changed.Code, changed.Body.String())
-	}
-
-	notAdmitted := `{"workspaceId":"ws-alpha","applicationId":"unknown-app","targetRevision":"1.0.0","configuration":{"environment":{"CONFIG":"` + strings.Repeat("c", 64) + `"}}}`
-	missing := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, "/api/operator/application-deployments", notAdmitted, "deploy-unknown")
-	if missing.Code != http.StatusNotFound || !strings.Contains(missing.Body.String(), "workspace_application_revision_not_found") {
-		t.Fatalf("unadmitted revision status=%d body=%s", missing.Code, missing.Body.String())
-	}
-
-	workspace := cloneMap(fixture.workspace)
-	workspace["applicationBinding"] = "other-app@2.0.0"
-	mustStore(t, fixture.store.SaveWorkspace(context.Background(), workspace))
-	mismatch := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, "/api/operator/application-deployments", deployIntentBody(strings.Repeat("c", 64)), "deploy-knowledge-mismatch")
-	if mismatch.Code != http.StatusConflict || !strings.Contains(mismatch.Body.String(), "workspace_application_binding_unknown") {
-		t.Fatalf("binding mismatch status=%d body=%s", mismatch.Code, mismatch.Body.String())
-	}
-
-	suspended := cloneMap(fixture.workspace)
-	suspended["state"], suspended["status"] = "suspended", "suspended"
-	mustStore(t, fixture.store.SaveWorkspace(context.Background(), suspended))
-	unready := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, "/api/operator/application-deployments", deployIntentBody(strings.Repeat("c", 64)), "deploy-knowledge-unready")
-	if unready.Code != http.StatusConflict || !strings.Contains(unready.Body.String(), "workspace_application_resources_unready") {
-		t.Fatalf("unready workspace status=%d body=%s", unready.Code, unready.Body.String())
-	}
-
-	read := requestWithSession(t, fixture.server, operator, http.MethodGet, "/api/operator/application-deployments/"+admitted.Intent.OperationID, "")
-	if read.Code != http.StatusOK || !strings.Contains(read.Body.String(), `"phase":"intent"`) {
-		t.Fatalf("intent read status=%d body=%s", read.Code, read.Body.String())
-	}
-}
-
-// An operator can describe the image and its run requirements in the deployment
-// command itself. The revision snapshot keeps its single owner: the command
-// writes the same admitted-revision row the registration route writes, so no
-// second authority and no competing state appear, and the deployment still
-// resolves the admitted payload rather than the request body.
-func TestApplicationDeploymentAcceptsInlineRevision(t *testing.T) {
-	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
-	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
-	operator := operatorSessionForTest(t, fixture.server)
-
-	digest := "sha256:" + strings.Repeat("b", 64)
-	revision := map[string]any{
-		"schemaVersion": 1, "applicationId": "inline-app", "version": "2.0.0", "platform": "linux/amd64",
-		"image":     "repo.example/apps/inline@" + digest,
-		"ports":     []any{map[string]any{"name": "http", "port": 8080, "protocol": "TCP"}},
-		"entryPort": "http", "exposurePolicy": "application",
-	}
-	body, err := json.Marshal(map[string]any{
-		"workspaceId": "ws-alpha", "applicationId": "inline-app", "targetRevision": "2.0.0",
-		"revision": revision, "configuration": map[string]any{"environment": map[string]any{"CONFIG": "value"}},
-	})
+	revision := knowledgeApplicationRevisionForTest()
+	admitApplicationForReplacement(t, app.tables, revision)
+	intent, err := app.createWorkspaceApplicationDeploymentIntent(context.Background(), "ws-alpha", mutationKey,
+		revision.ApplicationID, revision.Version, contracts.WorkspaceApplicationRuntimeConfiguration{Environment: map[string]string{"CONFIG": strings.Repeat("c", 64)}}, nil, 0, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, "/api/operator/application-deployments", string(body), "deploy-inline")
-	if rec.Code != http.StatusAccepted {
-		t.Fatalf("inline revision deployment status=%d body=%s", rec.Code, rec.Body.String())
-	}
-
-	// The command admitted the revision into the single revision owner.
-	admitted, found, err := fixture.store.AdmittedApplicationRevision(context.Background(), "inline-app", "2.0.0")
-	if err != nil || !found {
-		t.Fatalf("revision not admitted: found=%v err=%v", found, err)
-	}
-	payload, ok := decodeApplicationRevisionPayload(stringValue(admitted["payload"]))
-	if !ok || payload.Image != revision["image"] {
-		t.Fatalf("admitted payload=%+v", payload)
-	}
-
-	// Different content under the same admitted identity is a conflict and never
-	// rewrites the stored revision.
-	conflicting := map[string]any{}
-	for key, value := range revision {
-		conflicting[key] = value
-	}
-	conflicting["image"] = "repo.example/apps/inline@sha256:" + strings.Repeat("c", 64)
-	conflictBody, err := json.Marshal(map[string]any{
-		"workspaceId": "ws-alpha", "applicationId": "inline-app", "targetRevision": "2.0.0",
-		"revision": conflicting, "configuration": map[string]any{"environment": map[string]any{"CONFIG": "value"}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	conflict := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, "/api/operator/application-deployments", string(conflictBody), "deploy-inline-conflict")
-	if conflict.Code != http.StatusConflict {
-		t.Fatalf("conflicting inline revision status=%d body=%s", conflict.Code, conflict.Body.String())
-	}
-	stored, _, err := fixture.store.AdmittedApplicationRevision(context.Background(), "inline-app", "2.0.0")
-	if err != nil || stringValue(stored["payload"]) != stringValue(admitted["payload"]) {
-		t.Fatalf("stored revision was rewritten: %s", stringValue(stored["payload"]))
-	}
-
-	// The request envelope must describe one identity; a mismatch is rejected.
-	mismatched, err := json.Marshal(map[string]any{
-		"workspaceId": "ws-alpha", "applicationId": "inline-app", "targetRevision": "3.0.0",
-		"revision": revision, "configuration": map[string]any{"environment": map[string]any{"CONFIG": "value"}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	rejected := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, "/api/operator/application-deployments", string(mismatched), "deploy-inline-mismatch")
-	if rejected.Code != http.StatusBadRequest || !strings.Contains(rejected.Body.String(), "invalid_application_revision") {
-		t.Fatalf("mismatched identity status=%d body=%s", rejected.Code, rejected.Body.String())
-	}
+	return intent
 }
 
 func TestApplicationDeploymentIntentPostgres(t *testing.T) {
@@ -244,27 +103,16 @@ func TestApplicationDeploymentIntentPostgres(t *testing.T) {
 	}
 	mustStore(t, store.SaveWorkspace(context.Background(), workspace))
 
-	operatorSession := operatorSessionForTest(t, server)
-	admitKnowledgeRevisionForTest(t, server, operatorSession)
-	first := requestWithMutationKeyForTest(t, server, operatorSession, http.MethodPost, "/api/operator/application-deployments", deployIntentBody(strings.Repeat("c", 64)), "deploy-pg-first")
-	if first.Code != http.StatusAccepted || !strings.Contains(first.Body.String(), `"phase":"intent"`) {
-		t.Fatalf("postgres intent status=%d body=%s", first.Code, first.Body.String())
-	}
-	var admitted struct {
-		Intent struct {
-			OperationID              string `json:"operationId"`
-			ExpectedWorkspaceVersion int64  `json:"expectedWorkspaceVersion"`
-		} `json:"intent"`
-	}
-	if json.Unmarshal(first.Body.Bytes(), &admitted) != nil || admitted.Intent.ExpectedWorkspaceVersion != 0 {
-		t.Fatalf("postgres intent body=%s", first.Body.String())
+	admitted := createKnowledgeDeploymentForTest(t, server.(*controlPlaneHTTPHandler).app, "deploy-pg-first")
+	if admitted.ExpectedWorkspaceVersion != 0 || admitted.Phase != workspaceApplicationDeploymentIntentPhase {
+		t.Fatalf("postgres intent=%+v", admitted)
 	}
 	restarted, err := NewPersistentServer(newTestService(&fakeLedgerClient{}, &fakeFabricClient{}), store)
 	if err != nil {
 		t.Fatal(err)
 	}
-	read := requestWithSession(t, restarted, operatorSessionForTest(t, restarted), http.MethodGet, "/api/operator/application-deployments/"+admitted.Intent.OperationID, "")
-	if read.Code != http.StatusOK || !strings.Contains(read.Body.String(), admitted.Intent.OperationID) {
+	read := requestWithSession(t, restarted, operatorSessionForTest(t, restarted), http.MethodGet, "/api/operator/application-deployments/"+admitted.OperationID, "")
+	if read.Code != http.StatusOK || !strings.Contains(read.Body.String(), admitted.OperationID) {
 		t.Fatalf("postgres restart readback status=%d body=%s", read.Code, read.Body.String())
 	}
 }
@@ -346,25 +194,11 @@ func TestWorkspaceApplicationDeploymentFullChain(t *testing.T) {
 		t.Fatal(err)
 	}
 	seedResourceOnlyActivatedWorkspace(t, store, "workspace-launch-alpha", "ws-alpha")
-	operator := operatorSessionForTest(t, server)
-	admitKnowledgeRevisionForTest(t, server, operator)
-
-	created := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/application-deployments", deployIntentBody(strings.Repeat("c", 64)), "deploy-chain-first")
-	if created.Code != http.StatusAccepted {
-		t.Fatalf("intent status=%d body=%s", created.Code, created.Body.String())
-	}
-	var createdBody struct {
-		Intent struct {
-			OperationID string `json:"operationId"`
-		} `json:"intent"`
-	}
-	if json.Unmarshal(created.Body.Bytes(), &createdBody) != nil || createdBody.Intent.OperationID == "" {
-		t.Fatalf("intent body=%s", created.Body.String())
-	}
 	handler := server.(*controlPlaneHTTPHandler)
-	runDeploymentWorkerToCompletion(t, handler.app, service, createdBody.Intent.OperationID)
+	created := createKnowledgeDeploymentForTest(t, handler.app, "deploy-chain-first")
+	runDeploymentWorkerToCompletion(t, handler.app, service, created.OperationID)
 
-	row, found, err := store.GetRuntimeOperation(context.Background(), createdBody.Intent.OperationID)
+	row, found, err := store.GetRuntimeOperation(context.Background(), created.OperationID)
 	if err != nil || !found || stringValue(row["status"]) != "succeeded" {
 		t.Fatalf("intent row status=%v found=%v err=%v", stringValue(row["status"]), found, err)
 	}
@@ -391,29 +225,16 @@ func TestWorkspaceApplicationDeploymentActivationConflictGoesManualReview(t *tes
 		t.Fatal(err)
 	}
 	seedResourceOnlyActivatedWorkspace(t, store, "workspace-launch-alpha", "ws-alpha")
-	operator := operatorSessionForTest(t, server)
-	admitKnowledgeRevisionForTest(t, server, operator)
 	handler := server.(*controlPlaneHTTPHandler)
-	created := requestWithMutationKeyForTest(t, handler, operator, http.MethodPost, "/api/operator/application-deployments", deployIntentBody(strings.Repeat("c", 64)), "deploy-chain-conflict")
-	if created.Code != http.StatusAccepted {
-		t.Fatalf("intent status=%d body=%s", created.Code, created.Body.String())
-	}
-	var createdBody struct {
-		Intent struct {
-			OperationID string `json:"operationId"`
-		} `json:"intent"`
-	}
-	if json.Unmarshal(created.Body.Bytes(), &createdBody) != nil {
-		t.Fatal(created.Body.String())
-	}
+	created := createKnowledgeDeploymentForTest(t, handler.app, "deploy-chain-conflict")
 	// The binding moves after the intent reserved version zero: the activation
 	// must fail closed into manual review instead of overwriting.
 	workspace, _ := handler.app.getWorkspace("ws-alpha")
 	workspace["applicationBindingVersion"] = int64(5)
 	mustStore(t, store.SaveWorkspace(context.Background(), workspace))
-	runDeploymentWorkerToCompletion(t, handler.app, service, createdBody.Intent.OperationID)
+	runDeploymentWorkerToCompletion(t, handler.app, service, created.OperationID)
 
-	row, found, readErr := store.GetRuntimeOperation(context.Background(), createdBody.Intent.OperationID)
+	row, found, readErr := store.GetRuntimeOperation(context.Background(), created.OperationID)
 	if readErr != nil || !found {
 		t.Fatalf("intent found=%v err=%v", found, readErr)
 	}
@@ -463,16 +284,9 @@ func applicationDeploymentWorkerFixture(t *testing.T, store controlPlaneTableSto
 		t.Fatal(err)
 	}
 	seedResourceOnlyActivatedWorkspace(t, store, "workspace-launch-alpha", "ws-alpha")
-	operator := operatorSessionForTest(t, server)
-	admitKnowledgeRevisionForTest(t, server, operator)
-	created := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/application-deployments", deployIntentBody(strings.Repeat("c", 64)), "deploy-worker")
-	var response struct {
-		Intent workspaceApplicationDeploymentIntent `json:"intent"`
-	}
-	if created.Code != http.StatusAccepted || json.Unmarshal(created.Body.Bytes(), &response) != nil || response.Intent.OperationID == "" {
-		t.Fatalf("create deployment status=%d body=%s", created.Code, created.Body.String())
-	}
-	return server.(*controlPlaneHTTPHandler), response.Intent.OperationID
+	handler := server.(*controlPlaneHTTPHandler)
+	intent := createKnowledgeDeploymentForTest(t, handler.app, "deploy-worker")
+	return handler, intent.OperationID
 }
 
 func TestWorkspaceApplicationDeploymentWorkerRetriesPendingWithOriginalIdentity(t *testing.T) {

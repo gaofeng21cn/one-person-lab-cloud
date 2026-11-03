@@ -2,10 +2,7 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -14,7 +11,7 @@ import (
 	"opl-cloud/services/control-plane/internal/clients"
 )
 
-func applicationBindingHTTPFixture(t *testing.T) (*controlPlaneHTTPHandler, *httptest.ResponseRecorder, *applicationReplacementFabric, workspaceApplicationDeploymentIntent) {
+func applicationBindingFixture(t *testing.T) (*controlPlaneHTTPHandler, *applicationReplacementFabric, workspaceApplicationDeploymentIntent) {
 	t.Helper()
 	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
 	ctx := context.Background()
@@ -41,10 +38,10 @@ func applicationBindingHTTPFixture(t *testing.T) (*controlPlaneHTTPHandler, *htt
 	if err != nil || !found || current.Phase != workspaceApplicationDeploymentActivePhase {
 		t.Fatalf("default installation not active: %+v found=%v err=%v", current, found, err)
 	}
-	return handler, operatorSessionForTest(t, server), fabric, current
+	return handler, fabric, current
 }
 
-func applicationBindingHTTPRevision() contracts.WorkspaceApplicationRevision {
+func applicationBindingRevision() contracts.WorkspaceApplicationRevision {
 	uid, gid := int64(1000), int64(1000)
 	return contracts.WorkspaceApplicationRevision{
 		SchemaVersion: 1, ApplicationID: "generic-bound-app", Version: "1.0.0", Platform: "linux/amd64", Image: "repo.example/generic@sha256:" + strings.Repeat("c", 64),
@@ -63,66 +60,41 @@ func applicationBindingHTTPRevision() contracts.WorkspaceApplicationRevision {
 	}
 }
 
-func applicationBindingHTTPInputs() (contracts.WorkspaceApplicationRuntimeConfiguration, []contracts.WorkspaceApplicationRuntimeSecretBinding) {
+func applicationBindingInputs() (contracts.WorkspaceApplicationRuntimeConfiguration, []contracts.WorkspaceApplicationRuntimeSecretBinding) {
 	return contracts.WorkspaceApplicationRuntimeConfiguration{Environment: map[string]string{"APP_MODE": "test"}, Files: map[string]string{"app_config": "{\"mode\":\"test\"}\n", "database_config": "max_connections=10\n"}}, []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "api_token", SecretRef: "installation-api", Version: "api-v1", Key: "token"}, {Name: "database_password", SecretRef: "installation-database", Version: "database-v1", Key: "password"}}
 }
 
-func applicationBindingHTTPBody(t *testing.T, revision contracts.WorkspaceApplicationRevision, configuration contracts.WorkspaceApplicationRuntimeConfiguration, bindings []contracts.WorkspaceApplicationRuntimeSecretBinding) string {
+func admitBindingRevisionForTest(t *testing.T, handler *controlPlaneHTTPHandler, revision contracts.WorkspaceApplicationRevision) {
 	t.Helper()
-	payload, err := json.Marshal(struct {
-		WorkspaceID    string                                               `json:"workspaceId"`
-		ApplicationID  string                                               `json:"applicationId"`
-		TargetRevision string                                               `json:"targetRevision"`
-		Configuration  contracts.WorkspaceApplicationRuntimeConfiguration   `json:"configuration"`
-		SecretBindings []contracts.WorkspaceApplicationRuntimeSecretBinding `json:"secretBindings"`
-	}{"ws-alpha", revision.ApplicationID, revision.Version, configuration, bindings})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(payload)
-}
-
-func admitBindingHTTPRevision(t *testing.T, handler *controlPlaneHTTPHandler, operator *httptest.ResponseRecorder, revision contracts.WorkspaceApplicationRevision) {
-	t.Helper()
-	payload, err := json.Marshal(revision)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response := requestWithMutationKeyForTest(t, handler, operator, http.MethodPost, "/api/operator/application-revisions", string(payload), "admit-"+revision.ApplicationID+revision.Version)
-	if response.Code != http.StatusOK {
-		t.Fatalf("revision HTTP admission status=%d body=%s", response.Code, response.Body.String())
-	}
+	admitApplicationForReplacement(t, handler.app.tables, revision)
 	row, found, err := handler.app.tables.AdmittedApplicationRevision(context.Background(), revision.ApplicationID, revision.Version)
 	if err != nil || !found {
 		t.Fatalf("admitted revision missing: found=%v err=%v", found, err)
 	}
 	stored, valid := decodeApplicationRevisionPayload(stringValue(row["payload"]))
 	if !valid || !reflect.DeepEqual(stored, revision) {
-		t.Fatalf("HTTP admission dropped revision fields: %+v", stored)
+		t.Fatalf("revision store dropped fields: %+v", stored)
 	}
 }
 
-func acceptedBindingHTTPIntent(t *testing.T, response *httptest.ResponseRecorder) workspaceApplicationDeploymentIntent {
+func createBindingIntentForTest(t *testing.T, app *controlPlaneServer, revision contracts.WorkspaceApplicationRevision, configuration contracts.WorkspaceApplicationRuntimeConfiguration, bindings []contracts.WorkspaceApplicationRuntimeSecretBinding, mutationKey string) workspaceApplicationDeploymentIntent {
 	t.Helper()
-	var result struct {
-		Intent workspaceApplicationDeploymentIntent `json:"intent"`
+	intent, err := app.createWorkspaceApplicationDeploymentIntent(context.Background(), "ws-alpha", mutationKey, revision.ApplicationID, revision.Version, configuration, bindings, 0, "", "")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if response.Code != http.StatusAccepted || json.Unmarshal(response.Body.Bytes(), &result) != nil || result.Intent.OperationID == "" {
-		t.Fatalf("deployment HTTP status=%d body=%s", response.Code, response.Body.String())
-	}
-	return result.Intent
+	return intent
 }
 
-func TestWorkspaceApplicationBindingHTTPReplacementAndPreflight(t *testing.T) {
-	handler, operator, fabric, original := applicationBindingHTTPFixture(t)
+func TestWorkspaceApplicationBindingReplacementAndPreflight(t *testing.T) {
+	handler, fabric, original := applicationBindingFixture(t)
 	ctx := context.Background()
 	before, _, _ := handler.app.tables.GetWorkspace(ctx, "ws-alpha")
 	purchase, _, _ := handler.app.tables.GetRuntimeOperation(ctx, "workspace-launch-alpha")
-	revision := applicationBindingHTTPRevision()
-	admitBindingHTTPRevision(t, handler, operator, revision)
-	configuration, bindings := applicationBindingHTTPInputs()
-	body := applicationBindingHTTPBody(t, revision, configuration, bindings)
-	replacement := acceptedBindingHTTPIntent(t, requestWithMutationKeyForTest(t, handler, operator, http.MethodPost, "/api/operator/application-deployments", body, "binding-replacement"))
+	revision := applicationBindingRevision()
+	admitBindingRevisionForTest(t, handler, revision)
+	configuration, bindings := applicationBindingInputs()
+	replacement := createBindingIntentForTest(t, handler.app, revision, configuration, bindings, "binding-replacement")
 	if replacement.PreviousDeploymentID != original.OperationID || replacement.DataBindingID == original.DataBindingID || replacement.WorkspaceAPIKeyID != 0 || replacement.Configuration.CredentialVersion != "" {
 		t.Fatalf("generic replacement inherited OPL data or credentials: %+v", replacement)
 	}
@@ -151,7 +123,7 @@ func TestWorkspaceApplicationBindingHTTPReplacementAndPreflight(t *testing.T) {
 	}
 
 	fabric.preflightErr = errors.New("workspace_application_secret_binding_missing")
-	failed := acceptedBindingHTTPIntent(t, requestWithMutationKeyForTest(t, handler, operator, http.MethodPost, "/api/operator/application-deployments", body, "binding-preflight-rejected"))
+	failed := createBindingIntentForTest(t, handler.app, revision, configuration, bindings, "binding-preflight-rejected")
 	lifecycleBefore, runtimeBefore := len(fabric.lifecycle), len(fabric.inputs)
 	mustStore(t, handler.app.runWorkspaceApplicationDeployment(ctx, handler.service, failed.OperationID))
 	row, _, _ = handler.app.tables.GetRuntimeOperation(ctx, failed.OperationID)
@@ -165,20 +137,20 @@ func TestWorkspaceApplicationBindingHTTPReplacementAndPreflight(t *testing.T) {
 	}
 }
 
-func TestWorkspaceApplicationBindingHTTPCommandIdentity(t *testing.T) {
-	handler, operator, fabric, _ := applicationBindingHTTPFixture(t)
-	revision := applicationBindingHTTPRevision()
-	admitBindingHTTPRevision(t, handler, operator, revision)
-	configuration, bindings := applicationBindingHTTPInputs()
-	original := acceptedBindingHTTPIntent(t, requestWithMutationKeyForTest(t, handler, operator, http.MethodPost, "/api/operator/application-deployments", applicationBindingHTTPBody(t, revision, configuration, bindings), "binding-identity"))
+func TestWorkspaceApplicationBindingCommandIdentity(t *testing.T) {
+	handler, fabric, _ := applicationBindingFixture(t)
+	revision := applicationBindingRevision()
+	admitBindingRevisionForTest(t, handler, revision)
+	configuration, bindings := applicationBindingInputs()
+	original := createBindingIntentForTest(t, handler.app, revision, configuration, bindings, "binding-identity")
 	reordered := []contracts.WorkspaceApplicationRuntimeSecretBinding{bindings[1], bindings[0]}
-	replay := acceptedBindingHTTPIntent(t, requestWithMutationKeyForTest(t, handler, operator, http.MethodPost, "/api/operator/application-deployments", applicationBindingHTTPBody(t, revision, configuration, reordered), "binding-identity"))
+	replay := createBindingIntentForTest(t, handler.app, revision, configuration, reordered, "binding-identity")
 	if !reflect.DeepEqual(replay, original) {
 		t.Fatal("binding reordering changed the accepted command")
 	}
 	for _, change := range []string{"secretRef", "version", "key", "files", "environment"} {
 		t.Run(change, func(t *testing.T) {
-			configuration, bindings := applicationBindingHTTPInputs()
+			configuration, bindings := applicationBindingInputs()
 			switch change {
 			case "secretRef":
 				bindings[0].SecretRef = "another-installation-secret"
@@ -191,81 +163,41 @@ func TestWorkspaceApplicationBindingHTTPCommandIdentity(t *testing.T) {
 			case "environment":
 				configuration.Environment["APP_MODE"] = "changed"
 			}
-			rejected := requestWithMutationKeyForTest(t, handler, operator, http.MethodPost, "/api/operator/application-deployments", applicationBindingHTTPBody(t, revision, configuration, bindings), "binding-identity")
-			if rejected.Code != http.StatusConflict || !strings.Contains(rejected.Body.String(), errWorkspaceApplicationIntentConflict.Error()) {
-				t.Fatalf("changed %s status=%d body=%s", change, rejected.Code, rejected.Body.String())
+			_, err := handler.app.createWorkspaceApplicationDeploymentIntent(context.Background(), "ws-alpha", "binding-identity", revision.ApplicationID, revision.Version, configuration, bindings, 0, "", "")
+			if !errors.Is(err, errWorkspaceApplicationIntentConflict) {
+				t.Fatalf("changed %s error=%v", change, err)
 			}
 		})
 	}
 	if len(fabric.lifecycle) != 0 || len(fabric.inputs) != 1 {
-		t.Fatal("HTTP intent/replays changed runtime before worker execution")
+		t.Fatal("Owner intent/replays changed runtime before worker execution")
 	}
 }
 
-func TestWorkspaceApplicationBindingHTTPRejectsInvalidBindings(t *testing.T) {
-	handler, operator, fabric, original := applicationBindingHTTPFixture(t)
-	revision := applicationBindingHTTPRevision()
-	admitBindingHTTPRevision(t, handler, operator, revision)
-	for _, test := range []struct{ name, code string }{
-		{"missing", "workspace_application_secret_binding_missing"},
-		{"duplicate", "invalid_application_secret_bindings"},
-		{"value", "invalid_application_secret_bindings"},
-		{"configuration_unknown", "invalid_application_configuration"},
-		{"opl_owned", "workspace_application_owned_configuration_conflict"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			configuration, bindings := applicationBindingHTTPInputs()
-			target := revision
-			switch test.name {
-			case "missing":
+func TestWorkspaceApplicationBindingRejectsInvalidBindings(t *testing.T) {
+	handler, fabric, original := applicationBindingFixture(t)
+	revision := applicationBindingRevision()
+	admitBindingRevisionForTest(t, handler, revision)
+	for _, name := range []string{"missing", "duplicate"} {
+		t.Run(name, func(t *testing.T) {
+			configuration, bindings := applicationBindingInputs()
+			if name == "missing" {
 				bindings = bindings[:1]
-			case "duplicate":
+			} else {
 				bindings = append(bindings, bindings[0])
-			case "opl_owned":
-				target.ApplicationID, target.Version = original.ApplicationID, original.TargetRevision
-				configuration = contracts.WorkspaceApplicationRuntimeConfiguration{}
-				bindings = original.SecretBindings
 			}
-			body := applicationBindingHTTPBody(t, target, configuration, bindings)
-			if test.name == "configuration_unknown" {
-				body = strings.Replace(body, `"configuration":{`, `"configuration":{"unknown":true,`, 1)
-			}
-			if test.name == "value" {
-				body = strings.Replace(body, `"secretRef":"installation-api"`, `"secretRef":"installation-api","value":"forbidden-inline-value"`, 1)
-			}
-			key := "binding-invalid-" + test.name
-			response := requestWithMutationKeyForTest(t, handler, operator, http.MethodPost, "/api/operator/application-deployments", body, key)
-			if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), test.code) {
-				t.Fatalf("invalid binding status=%d body=%s", response.Code, response.Body.String())
+			key := "binding-invalid-" + name
+			_, err := handler.app.createWorkspaceApplicationDeploymentIntent(context.Background(), "ws-alpha", key, revision.ApplicationID, revision.Version, configuration, bindings, 0, "", "")
+			if !errors.Is(err, errWorkspaceApplicationConfigurationInvalid) {
+				t.Fatalf("invalid %s binding error=%v", name, err)
 			}
 			_, found, err := handler.app.tables.GetRuntimeOperation(context.Background(), workspaceApplicationDeploymentOperationID("ws-alpha", key))
 			if err != nil || found {
-				t.Fatalf("invalid request persisted intent: found=%v err=%v", found, err)
+				t.Fatalf("invalid bindings persisted intent: found=%v err=%v", found, err)
 			}
 		})
 	}
 	if len(fabric.lifecycle) != 0 || len(fabric.inputs) != 1 || fabric.states[original.OperationID+":runtime"] != "ready" {
-		t.Fatal("invalid HTTP bindings changed current runtime")
-	}
-}
-
-func TestWorkspaceApplicationBindingHTTPRejectsUnknownDependencyFields(t *testing.T) {
-	handler, operator, _, _ := applicationBindingHTTPFixture(t)
-	revision := applicationBindingHTTPRevision()
-	payload, err := json.Marshal(revision)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := strings.Replace(string(payload), `"name":"database_password","target"`, `"name":"database_password","value":"forbidden-inline-value","target"`, 1)
-	if body == string(payload) {
-		t.Fatal("negative fixture did not inject unknown nested field")
-	}
-	response := requestWithMutationKeyForTest(t, handler, operator, http.MethodPost, "/api/operator/application-revisions", body, "unknown-dependency-field")
-	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "invalid_application_revision") {
-		t.Fatalf("unknown revision field status=%d body=%s", response.Code, response.Body.String())
-	}
-	_, found, err := handler.app.tables.AdmittedApplicationRevision(context.Background(), revision.ApplicationID, revision.Version)
-	if err != nil || found {
-		t.Fatalf("invalid revision admitted: found=%v err=%v", found, err)
+		t.Fatal("invalid bindings changed current runtime")
 	}
 }

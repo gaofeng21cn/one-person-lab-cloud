@@ -18,9 +18,6 @@ import {
   getWalletAdjustment,
   getWorkspaceLaunchRecovery,
   getOperatorWorkspaceRuntimeImageReplacement,
-  getOperatorWorkspaceApplicationDeployment,
-  listOperatorRegistryRepositories,
-  listOperatorRegistryTags,
   operatorReadRoute
 } from "../../apps/console-ui/src/api/console-read-api.ts";
 import {
@@ -88,7 +85,7 @@ test("a retained build keeps the Control Plane operator reads", async () => {
     "/api/operator/overview",
     "/api/operator/accounts",
     "/api/operator/announcements?page=1&pageSize=20",
-    "/api/operator/workspaces/ws%2F1/runtime-image-replacements/preview"
+    "/api/operator/workspaces/ws%2F1/runtime-image-replacements/preview",
   ]);
 });
 
@@ -114,9 +111,6 @@ test("console-read-api.ts keeps no hardcoded operator read path", () => {
     "getWalletAdjustment",
     "getWorkspaceLaunchRecovery",
     "getOperatorWorkspaceRuntimeImageReplacement",
-    "getOperatorWorkspaceApplicationDeployment",
-    "listOperatorRegistryRepositories",
-    "listOperatorRegistryTags"
   ]) {
     const start = source.indexOf(`export function ${name}`);
     assert.notEqual(start, -1, `${name} must exist`);
@@ -159,14 +153,10 @@ test("remaining operator GET callers use the same CloudIdentity BFF", async () =
  await getWorkspaceLaunchRecovery("op-1", undefined, true);
  await getWalletAdjustment("op/1", undefined, true);
  await getOperatorWorkspaceRuntimeImageReplacement("ws/1", "op/1", undefined, true);
- await getOperatorWorkspaceApplicationDeployment("op/1", undefined, true);
- await listOperatorRegistryRepositories("namespace", true);
- await listOperatorRegistryTags("namespace", "repo/1", true);
  assert.deepEqual(requests, [
   "/api/v2/operator/health", "/api/v2/operator/runtime-observations", "/api/v2/operator/reconciliation?page=1&pageSize=20",
   "/api/v2/operator/workspace-launches/op-1/recovery", "/api/v2/operator/wallet-adjustments/op%2F1",
-  "/api/v2/operator/workspaces/ws%2F1/runtime-image-replacements/op%2F1", "/api/v2/operator/application-deployments/op%2F1",
-  "/api/v2/operator/registry/repositories?namespace=namespace", "/api/v2/operator/registry/tags/namespace/repo%2F1"
+  "/api/v2/operator/workspaces/ws%2F1/runtime-image-replacements/op%2F1",
  ]);
 });
 
@@ -183,10 +173,6 @@ const operatorCommands: Array<[string, string, (cloud: boolean) => Promise<unkno
   ["announcement update", "/announcements/a", cloud => operatorApi.updateOperatorAnnouncement("a", {} as never, "csrf", "key", cloud)],
   ["announcement publish", "/announcements/a/publish", cloud => operatorApi.publishOperatorAnnouncement("a", {} as never, "csrf", "key", cloud)],
   ["announcement withdraw", "/announcements/a/withdraw", cloud => operatorApi.withdrawOperatorAnnouncement("a", "csrf", "key", cloud)],
-  ["application admission", "/application-revisions", cloud => operatorApi.admitOperatorApplicationRevision({}, "csrf", "key", cloud)],
-  ["application deployment", "/application-deployments", cloud => operatorApi.createOperatorWorkspaceApplicationDeployment("ws", "app", "rev", {} as never, "csrf", "key", [], undefined, cloud)],
-  ["application retry", "/application-deployments/op/retry", cloud => operatorApi.retryOperatorWorkspaceApplicationDeployment("op", "csrf", cloud)],
-  ["registry resolution", "/registry/resolve", cloud => operatorApi.resolveOperatorRegistryImage("ns", "repo", "tag", "csrf", "key", cloud)]
 ];
 
 for (const [name, path, invoke] of operatorCommands) {
