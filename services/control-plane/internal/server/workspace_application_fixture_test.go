@@ -10,7 +10,6 @@ import (
 
 	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
-	"opl-cloud/services/control-plane/internal/controlplane"
 	"opl-cloud/services/control-plane/internal/domain/application"
 )
 
@@ -95,7 +94,7 @@ func seedAdmittedApplicationRevisionForTest(t *testing.T, store controlPlaneTabl
 	}
 }
 
-func seedHistoricalDefaultApplicationForTest(t *testing.T, app *controlPlaneServer, service *controlplane.Service, fabric *applicationReplacementFabric, request workspaceDefaultApplicationRequest) workspaceApplicationDeploymentIntent {
+func seedHistoricalDefaultApplicationForTest(t *testing.T, app *controlPlaneServer, fabric *applicationReplacementFabric, request workspaceDefaultApplicationRequest) workspaceApplicationDeploymentIntent {
 	t.Helper()
 	ctx := context.Background()
 	row, err := workspaceDefaultApplicationRow(request)
@@ -103,11 +102,16 @@ func seedHistoricalDefaultApplicationForTest(t *testing.T, app *controlPlaneServ
 		t.Fatal(err)
 	}
 	mustStore(t, app.tables.SaveRuntimeOperation(ctx, row))
-	configuration, bindings, keyID, err := app.workspaceOPLApplicationConfiguration(ctx, service, request.WorkspaceID, request.Revision.ApplicationID)
-	if err != nil {
-		t.Fatal(err)
+	// The accepted installation already owns its configuration and Secret binding.
+	// Fixture setup must not reveal a Gateway Key or write another Fabric Secret.
+	if request.GatewaySecret == nil || request.GatewaySecret.SecretRef == "" || request.GatewaySecret.Version == "" || request.WorkspaceAPIKeyID <= 0 {
+		t.Fatal("historical installation fixture requires its accepted Gateway binding")
 	}
-	current := seedApplicationRevisionForLifecycle(t, app, request.WorkspaceID, request.Revision, configuration, bindings, keyID, true)
+	configuration := contracts.WorkspaceApplicationRuntimeConfiguration{Environment: map[string]string{
+		"OPL_WEBUI_AUTH_MODE": "password", "OPL_WEBUI_USERNAME": "opl",
+	}}
+	bindings := []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", Key: "opl_gateway_api_key", SecretRef: request.GatewaySecret.SecretRef, Version: request.GatewaySecret.Version}}
+	current := seedApplicationRevisionForLifecycle(t, app, request.WorkspaceID, request.Revision, configuration, bindings, request.WorkspaceAPIKeyID, true)
 	input, err := app.workspaceApplicationRuntimeInput(ctx, current)
 	if err != nil {
 		t.Fatal(err)
