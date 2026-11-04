@@ -1270,11 +1270,12 @@ receipt, separate Serve/Fabric absence and unchanged Workspace-scoped Ledger
 receipts; `not_applicable` refund is valid only for the verified no-charge order.
 These source checks do not prove Linux project-quota execution, restart and
 recovery, provider absence after deletion, Ledger receipt completeness, or the
-exact original-charge fixture refund. Instance's current protected consumer
-also still passes `--package-id`; it must adopt the producer's
-RuntimeVersion/compute/storage declarations and Tenant/payer inputs before
-executing the new producer. [The roadmap](roadmap.md#native-v2-qualification-and-cp-retirement-1042)
-owns these remaining outcomes.
+exact original-charge fixture refund. The protected consumer source migration
+was adopted through Instance #593 and recorded by Cloud #1072; its native
+RuntimeVersion/compute/storage and Tenant/payer inputs no longer require the
+old `--package-id` caller migration. Bound installation declarations, a genuine
+same-Candidate J0 READY and the complete protected execution receipt remain
+separate outcomes in [the roadmap](roadmap.md#native-v2-protected-qualification-and-cp-retirement-post-1042).
 
 ## Product Distribution
 
