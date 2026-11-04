@@ -656,24 +656,6 @@ type workspaceKeyRotationStore struct {
 	casResponseLost       bool
 }
 
-func (s *workspaceKeyRotationStore) ClaimWorkspaceKeyRotation(ctx context.Context, row map[string]any) error {
-	var result map[string]any
-	_ = json.Unmarshal([]byte(stringValue(row["result"])), &result)
-	phase := stringValue(result["phase"])
-	if !s.failed && s.failPhase == phase {
-		s.failed = true
-		return errors.New("phase persist failed")
-	}
-	if err := s.memoryTableStore.ClaimWorkspaceKeyRotation(ctx, row); err != nil {
-		return err
-	}
-	if !s.persistedResponseLost && s.failPersistedPhase == phase {
-		s.persistedResponseLost = true
-		return errors.New("phase persist response lost")
-	}
-	return nil
-}
-
 func (s *workspaceKeyRotationStore) SaveRuntimeOperation(ctx context.Context, row map[string]any) error {
 	var phase string
 	if stringValue(row["action"]) == "workspace.gateway_key.rotate" && !s.failed && s.failPhase != "" {
@@ -754,6 +736,59 @@ func newWorkspaceKeyRotationFixture(t *testing.T, failAfter string) workspaceKey
 	return workspaceKeyRotationFixture{server: server, store: store, session: session, email: email, client: client, fabric: fabric, ledger: ledger, service: service}
 }
 
+func (f workspaceKeyRotationFixture) accept(t *testing.T, key string) {
+	t.Helper()
+	ctx := context.Background()
+	workspace, found, err := f.store.GetWorkspace(ctx, "ws-alpha")
+	if err != nil || !found {
+		t.Fatalf("accepted rotation Workspace found=%v err=%v", found, err)
+	}
+	workspaceID := stringValue(workspace["id"])
+	accountID := firstNonEmpty(stringValue(workspace["accountId"]), stringValue(workspace["ownerAccountId"]))
+	ownerID := firstNonEmpty(stringValue(workspace["ownerUserId"]), stringValue(workspace["ownerId"]))
+	oldKeyID, valid := positiveIntegerField(workspace, "workspaceApiKeyId")
+	if !valid {
+		t.Fatal("accepted rotation requires the original Workspace Key")
+	}
+	users, err := f.store.ListUsers(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := findRecord(users, ownerID)
+	if owner == nil {
+		t.Fatal("accepted rotation requires its original owner")
+	}
+	operationID := "workspace-key-rotate-" + stableID(workspaceID, key)[:18]
+	if _, found, err := f.store.GetRuntimeOperation(ctx, operationID); err != nil || found {
+		t.Fatalf("accepted rotation already exists or cannot be read: found=%v err=%v", found, err)
+	}
+	operation := workspaceKeyRotationOperation{
+		RequestHash:     stableID("workspace-key-rotation-v1", workspaceID, string(mustJSON(struct{}{}))),
+		Phase:           "replacement_check",
+		OldKeyID:        oldKeyID,
+		ReplacementName: "opl-workspace-replacement-" + stableID(operationID)[:12],
+		RetiredName:     "opl-workspace-retired-" + stableID(operationID)[:12],
+		AuditEvent: map[string]any{
+			"id":              "audit-" + stableID(operationID, "workspace.gateway_key.rotate")[:12],
+			"actorUserId":     ownerID,
+			"actorRole":       stringValue(owner["role"]),
+			"actorAccountId":  accountID,
+			"targetAccountId": accountID,
+			"action":          "workspace.gateway_key.rotate",
+			"resourceKind":    "workspace_gateway_key",
+			"resourceId":      workspaceID,
+			"ipAddress":       "198.51.100.8",
+			"userAgent":       "original-agent",
+			"before":          map[string]any{"workspaceApiKeyId": fmt.Sprintf("%d", oldKeyID)},
+			"after":           map[string]any{"operationId": operationID},
+			"result":          "started",
+			"createdAt":       "2026-08-16T00:00:00Z",
+		},
+	}
+	// Seed a previously accepted command without passing through recovery fault injection.
+	mustStore(t, f.store.memoryTableStore.SaveRuntimeOperation(ctx, workspaceKeyRotationRow(operationID, accountID, workspaceID, "started", operation)))
+}
+
 func (f workspaceKeyRotationFixture) rotate(t *testing.T, key string) *httptest.ResponseRecorder {
 	t.Helper()
 	return requestWithMutationKeyForTest(t, f.server, f.session, http.MethodPost, "/api/workspaces/ws-alpha/workspace-key/rotate", `{}`, key)
@@ -810,6 +845,7 @@ func TestWorkspaceKeyRotationEveryPhaseResponseLoss(t *testing.T) {
 	for _, phase := range []string{"disable", "create", "policy_readback", "secret", "bind", "readback", "retire", "promote", "delete", "receipt"} {
 		t.Run(phase, func(t *testing.T) {
 			fixture := newWorkspaceKeyRotationFixture(t, phase)
+			fixture.accept(t, "rotate-loss-"+phase)
 			first := fixture.rotate(t, "rotate-loss-"+phase)
 			if first.Code == http.StatusOK {
 				t.Fatalf("%s response loss was not observed: %s", phase, first.Body.String())
@@ -823,6 +859,7 @@ func TestWorkspaceKeyRotationEveryPhaseRestart(t *testing.T) {
 	for _, phase := range []string{"disable", "create", "policy_readback", "secret", "bind", "readback", "retire", "promote", "delete", "receipt"} {
 		t.Run(phase, func(t *testing.T) {
 			fixture := newWorkspaceKeyRotationFixture(t, phase)
+			fixture.accept(t, "rotate-restart-"+phase)
 			if response := fixture.rotate(t, "rotate-restart-"+phase); response.Code == http.StatusOK {
 				t.Fatalf("%s failure did not leave a recovery point", phase)
 			}
@@ -834,12 +871,13 @@ func TestWorkspaceKeyRotationEveryPhaseRestart(t *testing.T) {
 
 func TestWorkspaceKeyRotationEveryPersistedPhaseResponseLossAndRestart(t *testing.T) {
 	for _, phase := range []string{
-		"replacement_check", "old_key_disable", "old_key_drain", "replacement_create", "replacement_policy_readback", "secret_write", "runtime_bind", "runtime_readback",
+		"old_key_disable", "old_key_drain", "replacement_create", "replacement_policy_readback", "secret_write", "runtime_bind", "runtime_readback",
 		"workspace_commit", "retire_old", "promote_new", "delete_old", "receipt", "complete", "succeeded",
 	} {
 		t.Run(phase, func(t *testing.T) {
 			fixture := newWorkspaceKeyRotationFixture(t, "")
 			fixture.store.failPersistedPhase = phase
+			fixture.accept(t, "rotate-persisted-loss-"+phase)
 			if response := fixture.rotate(t, "rotate-persisted-loss-"+phase); response.Code == http.StatusOK {
 				t.Fatalf("%s persisted response loss was not observed: %s", phase, response.Body.String())
 			}
@@ -861,6 +899,7 @@ func TestWorkspaceKeyRotationTransfersProvableRemainingBudget(t *testing.T) {
 	}
 	fixture.client.mu.Unlock()
 
+	fixture.accept(t, "rotate-budget-transfer")
 	response := fixture.rotate(t, "rotate-budget-transfer")
 	assertWorkspaceKeyRotationComplete(t, fixture, response)
 	fixture.client.mu.Lock()
@@ -888,6 +927,7 @@ func TestWorkspaceKeyRotationPreservesUnlimitedBudgetWithLiveUsage(t *testing.T)
 	fixture.client.keys[9] = old
 	fixture.client.mu.Unlock()
 
+	fixture.accept(t, "rotate-unlimited-budget")
 	response := fixture.rotate(t, "rotate-unlimited-budget")
 	assertWorkspaceKeyRotationComplete(t, fixture, response)
 	fixture.client.mu.Lock()
@@ -914,6 +954,7 @@ func TestWorkspaceKeyRotationAllowsReplacementUsageAfterRuntimeBind(t *testing.T
 		fixture.client.keys[19] = key
 	}
 
+	fixture.accept(t, "rotate-live-replacement-usage")
 	response := fixture.rotate(t, "rotate-live-replacement-usage")
 	if response.Code != http.StatusOK {
 		t.Fatalf("replacement live usage reversed rotation: status=%d body=%s", response.Code, response.Body.String())
@@ -936,6 +977,7 @@ func TestWorkspaceKeyRotationWaitsForDisabledKeyToDrain(t *testing.T) {
 	fixture.client.keys[9] = old
 	fixture.client.mu.Unlock()
 
+	fixture.accept(t, "rotate-drain")
 	first := fixture.rotate(t, "rotate-drain")
 	if first.Code != http.StatusConflict || !strings.Contains(first.Body.String(), "workspace_key_rotation_draining") || fixture.client.createWrites != 0 {
 		t.Fatalf("rotation did not wait for drain: status=%d body=%s creates=%d", first.Code, first.Body.String(), fixture.client.createWrites)
@@ -973,6 +1015,7 @@ func TestWorkspaceKeyRotationRejectsUntransferableBudgetBeforeReplacement(t *tes
 			test.mutate(&old)
 			fixture.client.keys[9] = old
 			fixture.client.mu.Unlock()
+			fixture.accept(t, "rotate-reject-"+test.name)
 			response := fixture.rotate(t, "rotate-reject-"+test.name)
 			if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "workspace_key_rotation_conflict") || fixture.client.createWrites != 0 || len(fixture.fabric.gatewaySecretInputs) != 0 {
 				t.Fatalf("untransferable budget crossed replacement boundary: status=%d body=%s creates=%d secrets=%d", response.Code, response.Body.String(), fixture.client.createWrites, len(fixture.fabric.gatewaySecretInputs))
@@ -984,8 +1027,12 @@ func TestWorkspaceKeyRotationRejectsUntransferableBudgetBeforeReplacement(t *tes
 				t.Fatalf("known untransferable budget disabled old Key: %#v", old)
 			}
 			operations, err := fixture.store.ListRuntimeOperations(context.Background())
-			if err != nil || len(operations) != 0 {
-				t.Fatalf("rejected rotation left a durable blocker: operations=%#v err=%v", operations, err)
+			if err != nil || len(operations) != 1 || stringValue(operations[0]["status"]) != "manual_review" {
+				t.Fatalf("accepted rotation lost its recovery evidence: operations=%#v err=%v", operations, err)
+			}
+			operation, err := decodeWorkspaceKeyRotation(operations[0])
+			if err != nil || operation.Phase != "replacement_check" {
+				t.Fatalf("accepted rotation advanced past rejected budget: operation=%#v err=%v", operation, err)
 			}
 		})
 	}
@@ -994,6 +1041,7 @@ func TestWorkspaceKeyRotationRejectsUntransferableBudgetBeforeReplacement(t *tes
 func TestWorkspaceKeyRotationWorkspaceCommitResponseLossAndRestart(t *testing.T) {
 	fixture := newWorkspaceKeyRotationFixture(t, "")
 	fixture.store.failCASAfterCommit = true
+	fixture.accept(t, "rotate-workspace-commit-loss")
 	first := fixture.rotate(t, "rotate-workspace-commit-loss")
 	workspaces, _ := fixture.store.ListWorkspaces(context.Background(), "acct-alpha")
 	if first.Code == http.StatusOK || len(workspaces) != 1 || int64(numberField(workspaces[0], "workspaceApiKeyId", 0)) != 19 {
@@ -1005,6 +1053,7 @@ func TestWorkspaceKeyRotationWorkspaceCommitResponseLossAndRestart(t *testing.T)
 
 func TestWorkspaceKeyRotationSameKeyReplay(t *testing.T) {
 	fixture := newWorkspaceKeyRotationFixture(t, "")
+	fixture.accept(t, "rotate-replay")
 	first := fixture.rotate(t, "rotate-replay")
 	assertWorkspaceKeyRotationComplete(t, fixture, first)
 	writes := []int{fixture.client.createWrites, fixture.client.updateWrites, fixture.client.deleteWrites, len(fixture.fabric.gatewaySecretInputs), len(fixture.fabric.runtimeInputs), len(fixture.ledger.receipts)}
@@ -1035,14 +1084,29 @@ func TestWorkspaceKeyRotationSameKeyReplay(t *testing.T) {
 
 func TestWorkspaceKeyRotationRecoveryDoesNotRewriteAuditIdentity(t *testing.T) {
 	fixture := newWorkspaceKeyRotationFixture(t, "")
+	fixture.accept(t, "rotate-audit-recovery")
+	operationID := "workspace-key-rotate-" + stableID("ws-alpha", "rotate-audit-recovery")[:18]
+	row, found, err := fixture.store.GetRuntimeOperation(context.Background(), operationID)
+	if err != nil || !found {
+		t.Fatalf("accepted rotation found=%v err=%v", found, err)
+	}
+	accepted, err := decodeWorkspaceKeyRotation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
 	fixture.store.failPhase = "succeeded"
-	first := fixture.rotateWithMetadata(t, "rotate-audit-recovery", "original-agent", "198.51.100.8:1234")
+	first := fixture.rotateWithMetadata(t, "rotate-audit-recovery", "first-recovery-agent", "203.0.113.8:1234")
 	if first.Code == http.StatusOK {
 		t.Fatalf("complete persistence failure was not observed: %s", first.Body.String())
 	}
 	audits, err := fixture.store.ListAuditEvents(context.Background(), "acct-alpha")
 	if err != nil || len(audits) != 1 {
 		t.Fatalf("original rotation audits=%#v err=%v", audits, err)
+	}
+	for _, field := range []string{"actorUserId", "actorRole", "actorAccountId", "targetAccountId", "createdAt", "ipAddress", "userAgent"} {
+		if stringValue(audits[0][field]) != stringValue(accepted.AuditEvent[field]) {
+			t.Fatalf("first recovery rewrote frozen audit %s: accepted=%#v got=%#v", field, accepted.AuditEvent, audits[0])
+		}
 	}
 	fixture.restart(t)
 	replay := fixture.rotateWithMetadata(t, "rotate-audit-recovery", "different-replay-agent", "192.0.2.44:4321")
@@ -1055,35 +1119,37 @@ func TestWorkspaceKeyRotationRecoveryDoesNotRewriteAuditIdentity(t *testing.T) {
 	}
 }
 
-func TestWorkspaceKeyRotationCanRotateCanonicalKeyAgain(t *testing.T) {
+func TestWorkspaceKeyRotationRejectsNewIdentityAfterAcceptedRotationCompletes(t *testing.T) {
 	fixture := newWorkspaceKeyRotationFixture(t, "")
+	fixture.accept(t, "rotate-canonical-first")
 	assertWorkspaceKeyRotationComplete(t, fixture, fixture.rotate(t, "rotate-canonical-first"))
-	firstWrites := []int{fixture.client.createWrites, fixture.client.updateWrites, fixture.client.deleteWrites, len(fixture.fabric.gatewaySecretInputs), len(fixture.fabric.bindings), len(fixture.ledger.receipts)}
+	writes := []int{fixture.client.createWrites, fixture.client.updateWrites, fixture.client.deleteWrites, len(fixture.fabric.gatewaySecretInputs), len(fixture.fabric.bindings), len(fixture.ledger.receipts)}
+	operations, err := fixture.store.ListRuntimeOperations(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	audits, err := fixture.store.ListAuditEvents(context.Background(), "acct-alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	second := fixture.rotate(t, "rotate-canonical-second")
-	if second.Code != http.StatusOK {
-		t.Fatalf("second canonical rotation status=%d body=%s", second.Code, second.Body.String())
-	}
-	workspaces, _ := fixture.store.ListWorkspaces(context.Background(), "acct-alpha")
-	if len(workspaces) != 1 {
-		t.Fatalf("canonical rotation Workspaces=%#v", workspaces)
-	}
-	newKeyID := int64(numberField(workspaces[0], "workspaceApiKeyId", 0))
-	fixture.client.mu.Lock()
-	keys := fixture.client.keyList(41)
-	fixture.client.mu.Unlock()
-	if newKeyID <= 0 || newKeyID == 19 || len(keys) != 1 || keys[0].ID != newKeyID || keys[0].Name != workspaceReservedKeyName("ws-alpha") || keys[0].Status != "active" {
-		t.Fatalf("second canonical rotation did not converge: keyId=%d keys=%#v Workspaces=%#v", newKeyID, keys, workspaces)
+	if second.Code != http.StatusGone || !strings.Contains(second.Body.String(), "workspace_key_rotation_creation_retired") {
+		t.Fatalf("new rotation identity status=%d body=%s", second.Code, second.Body.String())
 	}
 	gotWrites := []int{fixture.client.createWrites, fixture.client.updateWrites, fixture.client.deleteWrites, len(fixture.fabric.gatewaySecretInputs), len(fixture.fabric.bindings), len(fixture.ledger.receipts)}
-	for index, before := range firstWrites {
-		if gotWrites[index] != before+1 && index != 1 {
-			t.Fatalf("second canonical rotation side effects before=%#v after=%#v", firstWrites, gotWrites)
-		}
+	if !reflect.DeepEqual(gotWrites, writes) {
+		t.Fatalf("new rotation identity repeated side effects: before=%#v after=%#v", writes, gotWrites)
 	}
-	if gotWrites[1] != firstWrites[1]+3 {
-		t.Fatalf("second canonical rotation must disable and retire old before promoting replacement: before=%#v after=%#v", firstWrites, gotWrites)
+	gotOperations, err := fixture.store.ListRuntimeOperations(context.Background())
+	if err != nil || !reflect.DeepEqual(gotOperations, operations) {
+		t.Fatalf("new rotation identity changed operations: before=%#v after=%#v err=%v", operations, gotOperations, err)
 	}
+	gotAudits, err := fixture.store.ListAuditEvents(context.Background(), "acct-alpha")
+	if err != nil || !reflect.DeepEqual(gotAudits, audits) {
+		t.Fatalf("new rotation identity changed audits: before=%#v after=%#v err=%v", audits, gotAudits, err)
+	}
+	assertWorkspaceKeyRotationComplete(t, fixture, fixture.rotate(t, "rotate-canonical-first"))
 }
 
 func TestWorkspaceKeyRotationDoesNotTouchSiblingWorkspaceKey(t *testing.T) {
@@ -1093,6 +1159,7 @@ func TestWorkspaceKeyRotationDoesNotTouchSiblingWorkspaceKey(t *testing.T) {
 	fixture.client.keys[sibling.ID] = sibling
 	fixture.client.mu.Unlock()
 
+	fixture.accept(t, "rotate-with-sibling")
 	response := fixture.rotate(t, "rotate-with-sibling")
 	if response.Code != http.StatusOK {
 		t.Fatalf("rotation with sibling status=%d body=%s", response.Code, response.Body.String())
@@ -1107,6 +1174,7 @@ func TestWorkspaceKeyRotationDoesNotTouchSiblingWorkspaceKey(t *testing.T) {
 
 func TestWorkspaceKeyRotationSucceededReplayKeepsTerminalReceipt(t *testing.T) {
 	fixture := newWorkspaceKeyRotationFixture(t, "")
+	fixture.accept(t, "rotate-authoritative-replay")
 	assertWorkspaceKeyRotationComplete(t, fixture, fixture.rotate(t, "rotate-authoritative-replay"))
 	writes := []int{fixture.client.createWrites, fixture.client.updateWrites, fixture.client.deleteWrites, len(fixture.fabric.gatewaySecretInputs), len(fixture.fabric.bindings), len(fixture.ledger.receipts)}
 	fixture.client.mu.Lock()
@@ -1124,48 +1192,29 @@ func TestWorkspaceKeyRotationSucceededReplayKeepsTerminalReceipt(t *testing.T) {
 
 func TestWorkspaceKeyRotationConcurrent(t *testing.T) {
 	fixture := newWorkspaceKeyRotationFixture(t, "")
+	fixture.accept(t, "rotate-concurrent-first")
 	fixture.client.createStarted, fixture.client.releaseCreate = make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(fixture.client.releaseCreate) }) }
+	defer release()
 	firstDone := make(chan *httptest.ResponseRecorder, 1)
 	go func() { firstDone <- fixture.rotate(t, "rotate-concurrent-first") }()
-	<-fixture.client.createStarted
+	select {
+	case <-fixture.client.createStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("accepted rotation did not reach replacement creation")
+	}
 	second := fixture.rotate(t, "rotate-concurrent-second")
-	if second.Code != http.StatusConflict || !strings.Contains(second.Body.String(), "workspace_key_rotation_in_progress") {
-		t.Fatalf("concurrent rotation=%d body=%s", second.Code, second.Body.String())
+	if second.Code != http.StatusGone || !strings.Contains(second.Body.String(), "workspace_key_rotation_creation_retired") {
+		t.Fatalf("concurrent new rotation identity=%d body=%s", second.Code, second.Body.String())
 	}
-	close(fixture.client.releaseCreate)
+	replayDone := make(chan *httptest.ResponseRecorder, 1)
+	go func() { replayDone <- fixture.rotate(t, "rotate-concurrent-first") }()
+	release()
 	assertWorkspaceKeyRotationComplete(t, fixture, <-firstDone)
-}
-
-func TestWorkspaceKeyRotationRejectsUnfinishedBudgetMutation(t *testing.T) {
-	fixture := newWorkspaceKeyRotationFixture(t, "")
-	mustStore(t, fixture.store.SaveRuntimeOperation(context.Background(), map[string]any{
-		"id": "budget-manual-review", "operationId": "budget-manual-review", "accountId": "acct-alpha", "workspaceId": "ws-alpha",
-		"resourceId": "ws-alpha", "resourceKind": "workspace_gateway_budget", "action": workspaceGatewayBudgetAction,
-		"provider": "sub2api", "status": "manual_review", "result": `{}`,
-	}))
-
-	response := fixture.rotate(t, "rotate-budget-blocked")
-	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "workspace_gateway_budget_update_in_progress") || fixture.client.createWrites != 0 {
-		t.Fatalf("rotation crossed unfinished budget operation: status=%d body=%s writes=%d", response.Code, response.Body.String(), fixture.client.createWrites)
-	}
-}
-
-func TestWorkspaceKeyRotationStopsBeforeMutationWhileDeleteIsActive(t *testing.T) {
-	fixture := newWorkspaceKeyRotationFixture(t, "")
-	workspace, found, err := fixture.store.GetWorkspace(context.Background(), "ws-alpha")
-	if err != nil || !found {
-		t.Fatalf("Workspace found=%v err=%v", found, err)
-	}
-	operation := workspaceDeleteStoreOperationForWorkspace(workspace, time.Now().UTC().Format(time.RFC3339Nano))
-	if err := fixture.store.ApplyWorkspaceDelete(context.Background(), workspaceDeleteStoreMutation{Create: true, DesiredOperation: workspaceDeleteOperationRow(operation)}); err != nil {
-		t.Fatal(err)
-	}
-	response := fixture.rotate(t, "rotate-during-delete")
-	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "workspace_delete_in_progress") {
-		t.Fatalf("Rotation during Delete status=%d body=%s", response.Code, response.Body.String())
-	}
-	if fixture.client.createWrites != 0 || fixture.client.updateWrites != 0 || fixture.client.deleteWrites != 0 || len(fixture.fabric.gatewaySecretInputs) != 0 || len(fixture.fabric.bindings) != 0 {
-		t.Fatalf("Rotation crossed mutation boundary create=%d update=%d delete=%d secrets=%#v bindings=%#v", fixture.client.createWrites, fixture.client.updateWrites, fixture.client.deleteWrites, fixture.fabric.gatewaySecretInputs, fixture.fabric.bindings)
+	assertWorkspaceKeyRotationComplete(t, fixture, <-replayDone)
+	if fixture.client.createWrites != 1 || fixture.client.updateWrites != 3 || fixture.client.deleteWrites != 1 || len(fixture.fabric.gatewaySecretInputs) != 1 {
+		t.Fatalf("concurrent same-identity recovery repeated side effects: creates=%d updates=%d deletes=%d secrets=%d", fixture.client.createWrites, fixture.client.updateWrites, fixture.client.deleteWrites, len(fixture.fabric.gatewaySecretInputs))
 	}
 }
 
@@ -1173,16 +1222,18 @@ func TestWorkspaceKeyRotationTemporaryNameConflict(t *testing.T) {
 	fixture := newWorkspaceKeyRotationFixture(t, "")
 	name := workspaceReservedKeyName("ws-alpha")
 	fixture.client.keys[18] = clients.Sub2APIWorkspaceKey{ID: 18, UserID: 41, Name: name, Key: "conflicting-secret", Status: "active"}
+	fixture.accept(t, "rotate-temp-conflict")
 	response := fixture.rotate(t, "rotate-temp-conflict")
 	operations, _ := fixture.store.ListRuntimeOperations(context.Background())
-	if response.Code != http.StatusConflict || len(fixture.fabric.gatewaySecretInputs) != 0 || fixture.client.createWrites != 0 || len(operations) != 0 {
-		t.Fatalf("temporary conflict crossed admission boundary or left a durable blocker: status=%d body=%s writes=%d fabric=%#v operations=%#v", response.Code, response.Body.String(), fixture.client.createWrites, fixture.fabric.gatewaySecretInputs, operations)
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "workspace_key_rotation_conflict") || len(fixture.fabric.gatewaySecretInputs) != 0 || fixture.client.createWrites != 0 || len(operations) != 1 || stringValue(operations[0]["status"]) != "manual_review" {
+		t.Fatalf("accepted rotation crossed conflicting Key identity or lost recovery evidence: status=%d body=%s writes=%d fabric=%#v operations=%#v", response.Code, response.Body.String(), fixture.client.createWrites, fixture.fabric.gatewaySecretInputs, operations)
 	}
 }
 
 func TestWorkspaceKeyRotationSecretSwitchedBeforeDatabaseCommit(t *testing.T) {
 	fixture := newWorkspaceKeyRotationFixture(t, "")
 	fixture.store.failPhase = "runtime_bind"
+	fixture.accept(t, "rotate-secret-db-loss")
 	first := fixture.rotate(t, "rotate-secret-db-loss")
 	if first.Code == http.StatusOK || len(fixture.fabric.gatewaySecretInputs) != 1 {
 		t.Fatalf("Secret/database loss point=%d body=%s writes=%#v", first.Code, first.Body.String(), fixture.fabric.gatewaySecretInputs)
@@ -1193,6 +1244,7 @@ func TestWorkspaceKeyRotationSecretSwitchedBeforeDatabaseCommit(t *testing.T) {
 func TestWorkspaceKeyRotationKeepsDisabledOldKeyUntilRuntimeReadbackAndWorkspaceCommit(t *testing.T) {
 	fixture := newWorkspaceKeyRotationFixture(t, "")
 	fixture.store.failPhase = "retire_old"
+	fixture.accept(t, "rotate-old-key-gate")
 	first := fixture.rotate(t, "rotate-old-key-gate")
 	fixture.client.mu.Lock()
 	oldKey, oldKeyPresent := fixture.client.keys[9]
@@ -1207,6 +1259,7 @@ func TestWorkspaceKeyRotationKeepsDisabledOldKeyUntilRuntimeReadbackAndWorkspace
 
 func TestWorkspaceKeySecretAndNoRawPersistence(t *testing.T) {
 	fixture := newWorkspaceKeyRotationFixture(t, "")
+	fixture.accept(t, "rotate-no-raw")
 	response := fixture.rotate(t, "rotate-no-raw")
 	assertWorkspaceKeyRotationComplete(t, fixture, response)
 	operations, _ := fixture.store.ListRuntimeOperations(context.Background())

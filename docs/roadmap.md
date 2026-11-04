@@ -296,6 +296,17 @@ historical operations and financial records while retiring their execution paths
 | R4 personal-Key/admin-wallet/Account provisioning | Keep while product requirement or actual BFF caller remains; decide separately | Existing native readers/managed-Key commands do not supply personal-Key writes, arbitrary wallet adjustment or external-user/Account provisioning parity |
 | R7 history, announcements/ACK, identity proof and shared CP transport | Retain under their current owners in this scope | Separate capability migration is needed before removing their writers, readers, proof/configuration or the CP process; Workspace cleanup alone supplies no such evidence |
 
+R3a withdraws fresh CP Key rotation acceptance and deletes its preparation,
+store claim and unused DTO. The existing POST retains only original-operation
+recovery; no record means HTTP 410, while unknown or damaged state remains an
+error. Current observations exclude rotation records only in their returned
+44-operation sets, not in archives or external Key/Secret state. Accepted parent
+recovery and retained Launch Key stages therefore remain explicit R3/R5 work;
+child deployment success does not prove predecessor closeout or parent receipt
+completion. Retire those implementations only after their original obligations
+and surviving consumers are resolved. This slice is based on merged password
+withdrawal #1118 and changes only Key rotation acceptance and its consumers.
+
 A selected retirement is complete only when its command/implementation, scheduler
 or worker registration, exclusive configuration, caller adapters and dedicated
 obsolete tests are removed together, and the real surviving consumers pass

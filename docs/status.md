@@ -19,7 +19,7 @@ durable decisions are in [decisions.md](decisions.md), and open work is in
 ## Retained Network Recovery Command Withdrawal (2026-11-04)
 
 The independent R2b source change based on
-`f724d6dda9eb5e46ff6741c2f03fc0bb119d8734` removes the old CP operator
+`55c1187e2eea467d7b85532f86084cdfbbe9dae9` removes the old CP operator
 Local-Docker gateway-network recovery route and its complete CP execution chain:
 request validation, operation/audit writer, service wrapper, Fabric client method,
 exclusive port/types and tests. No replacement handler or new Serve feature is
@@ -41,6 +41,36 @@ zero. The prior current/reserved deployment selections were **unobserved**, not
 proved empty. Local verification and actual current-revision CI belong to the
 PR; no Candidate publication or Instance adoption is claimed.
 
+## Retained Workspace Key Rotation Creation Withdrawal (2026-11-04)
+
+R3a is an independent source change based on
+`f724d6dda9eb5e46ff6741c2f03fc0bb119d8734`, after merged password withdrawal
+#1118. It removes fresh CP rotation
+preparation, the database claim mutation, initial audit/name creation and the
+unused Console DTO. The original POST only recovers an existing operation using
+its original owner, Workspace, idempotency key and request. A new key returns
+HTTP 410 without accepting an operation or changing Gateway, Secret, Runtime or
+Ledger state. Accepted-operation recovery, original audit/receipt evidence,
+Key CAS and deletion/budget lineage consumers remain. This is fresh-command
+withdrawal, not complete R3 or shared deployment-engine retirement.
+
+Two protected Instance observations, [41665805194](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41665805194)
+and [41750316687](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41750316687),
+returned the same 44 current CP operations. The latter observed
+`2026-11-04T00:54:57.466Z`, Instance source
+`4a54e6cbbd0daee2bf61b17b4afa800748aa001f` and installed Cloud
+`4f131caa41324f027c1fee48d6ae5e5356e7e3c4`. All 44 action identity digests
+are present and none matches `workspace.gateway_key.rotate`; an omitted
+allowlisted action label alone would not establish that result. These are
+current owner API projections, not archives, external Key/Secret inventory or
+zero-traffic evidence. Current/reserved application fields were unobserved,
+not proven empty. The overall observations remain partial because two legacy
+runtime-health reads returned HTTP 503; mutation counters are zero. These limits
+are why original-operation recovery is preserved.
+
+Local behavior results and current-revision CI are recorded in the PR. No
+Candidate build, Instance installation or production mutation is included.
+
 ## Retained Password Rotation Withdrawal (2026-11-04)
 
 The R2a source change based on `6e475e033877a6231a278c0355183d30f0be750a`
@@ -52,8 +82,8 @@ This withdraws the old command; native credential reveal is not rotation parity.
 
 Already accepted managed credential changes remain frozen deployment operations.
 Their original worker, operator retry, selection/version fences and asynchronous
-Console readback remain. Workspace-Key rotation still creates and resumes its
-own parent operation and deployment child; it is outside this source withdrawal.
+Console readback remain. Accepted Workspace-Key rotations retain their own
+parent recovery and deployment child; R3a above withdraws fresh parent creation.
 No persisted record, schema, Secret, Key or financial receipt is removed.
 
 Protected Instance [observation 41750316687](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41750316687)
@@ -62,9 +92,9 @@ at `2026-11-04T00:54:57.466Z` read the same installed Cloud
 `4a54e6cbbd0daee2bf61b17b4afa800748aa001f`. Complete current CP provenance
 still contains the same 44 operation identities/statuses as observation
 `41665805194`. Both remaining CP Workspace rows are `data_deleted`, with no
-current compute allocation, storage volume or attachment in the current CP
-result. Current/reserved application bindings were unobserved. This is
-current-object disposition evidence,
+compute allocation, storage volume or attachment in the current CP result.
+Current/reserved application fields were unobserved, not proven empty.
+This is current-object disposition evidence,
 not archived-history coverage or a zero-traffic claim. The overall observation
 remains partial because the two legacy runtime-health reads return HTTP 503;
 CP provenance is available, and all three mutation counters are zero.
