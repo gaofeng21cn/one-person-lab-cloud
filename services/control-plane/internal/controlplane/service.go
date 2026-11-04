@@ -19,23 +19,6 @@ type Service struct {
 	sub2API clients.Sub2APIClient
 }
 
-var (
-	ErrWorkspaceRuntimeIdentityMismatch = errors.New("workspace_runtime_identity_mismatch")
-)
-
-type RotateWorkspaceCredentialInput struct {
-	WorkspaceID           string
-	AccountID             string
-	OwnerID               string
-	ComputeID             string
-	VolumeID              string
-	AttachmentID          string
-	AttachmentOperationID string
-	RuntimeID             string
-	RuntimeOperationID    string
-	GatewaySecretRef      string
-}
-
 type ReconciliationInput struct {
 	Report map[string]any `json:"report"`
 }
@@ -478,56 +461,4 @@ func (s *Service) RecordWorkspaceGatewayKeyRotation(ctx context.Context, account
 		OutputRefs: map[string]any{"secretFingerprint": fingerprint},
 		Owner:      map[string]any{"userId": ownerID},
 	}, operationID+":receipt")
-}
-
-func (s *Service) RotateWorkspaceCredential(ctx context.Context, input RotateWorkspaceCredentialInput, idempotencyKey string) (clients.WorkspaceRuntime, clients.Receipt, error) {
-	if input.WorkspaceID == "" || input.AccountID == "" || input.OwnerID == "" || input.ComputeID == "" || input.VolumeID == "" ||
-		input.AttachmentID == "" || input.AttachmentOperationID == "" || input.RuntimeID == "" || input.RuntimeOperationID == "" ||
-		input.GatewaySecretRef == "" || idempotencyKey == "" {
-		return clients.WorkspaceRuntime{}, clients.Receipt{}, errors.New("runtime_credential_rotation_input_required")
-	}
-	operationKey := "runtime-credential-rotate:" + input.WorkspaceID + ":" + idempotencyKey
-	applied, err := s.fabric.CreateWorkspaceRuntime(ctx, clients.WorkspaceRuntimeInput{
-		AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, ComputeID: input.ComputeID, VolumeID: input.VolumeID,
-		AttachmentID: input.AttachmentID, AttachmentOperationID: input.AttachmentOperationID, RuntimeOperationID: input.RuntimeOperationID,
-		ImageID: "one-person-lab-app", GatewaySecretRef: input.GatewaySecretRef,
-	}, operationKey+":runtime")
-	if err != nil {
-		return clients.WorkspaceRuntime{}, clients.Receipt{}, err
-	}
-	if applied.ID != input.RuntimeID || applied.OperationID != input.RuntimeOperationID || applied.WorkspaceID != input.WorkspaceID {
-		return clients.WorkspaceRuntime{}, clients.Receipt{}, ErrWorkspaceRuntimeIdentityMismatch
-	}
-	client, ok := s.fabric.(clients.FabricWorkspaceRuntimeCredentialClient)
-	if !ok {
-		return clients.WorkspaceRuntime{}, clients.Receipt{}, errors.New("fabric_workspace_runtime_credentials_unavailable")
-	}
-	runtime, err := client.RevealWorkspaceRuntimeCredentials(ctx, input.AccountID, input.WorkspaceID, operationKey+":reveal")
-	if err != nil {
-		return clients.WorkspaceRuntime{}, clients.Receipt{}, err
-	}
-	if runtime.ID != input.RuntimeID || runtime.OperationID != input.RuntimeOperationID || runtime.WorkspaceID != input.WorkspaceID {
-		return clients.WorkspaceRuntime{}, clients.Receipt{}, ErrWorkspaceRuntimeIdentityMismatch
-	}
-	if runtime.ServiceName == "" {
-		runtime.ServiceName = applied.ServiceName
-	}
-	if runtime.Access.Password == "" {
-		return clients.WorkspaceRuntime{}, clients.Receipt{}, errors.New("workspace_credentials_unavailable")
-	}
-	receipt, err := s.ledger.RecordReceipt(ctx, clients.ReceiptInput{
-		Type: "workspace.access_token_reset", Status: "completed", Surface: "workspace",
-		AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, JobID: runtime.ID,
-		Execution: map[string]any{
-			"runtimeId": runtime.ID, "computeAllocationId": input.ComputeID, "storageId": input.VolumeID,
-		},
-		OutputRefs: map[string]any{
-			"runtimeId": runtime.ID, "credentialVersion": runtime.Access.CredentialVersion, "credentialSecretRef": runtime.Access.SecretRef,
-		},
-		Owner: map[string]any{"userId": input.OwnerID},
-	}, operationKey)
-	if err != nil {
-		return runtime, clients.Receipt{}, err
-	}
-	return runtime, receipt, nil
 }

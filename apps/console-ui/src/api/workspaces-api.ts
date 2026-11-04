@@ -2,7 +2,6 @@ import { decodeDto, decodeSource } from "./dtos.ts";
 import type {
   AvailableSource,
   RuntimeCredentialResponse,
-  RuntimeCredentialRotationResponse,
   SourceEnvelope,
   WorkspaceLaunchRequest,
   WorkspaceLaunchListResponse,
@@ -713,19 +712,6 @@ export function revealWorkspaceCredentials(
     csrfToken,
     idempotencyKey
   ).then(decodeDto<RuntimeCredentialResponse>);
-}
-
-export function rotateWorkspaceCredentials(
-  workspaceId: string,
-  csrfToken: string,
-  idempotencyKey: string
-): Promise<RuntimeCredentialRotationResponse> {
-  return postJson<unknown>(
-    `/api/workspaces/${encodeURIComponent(workspaceId)}/runtime-credentials/rotate`,
-    {},
-    csrfToken,
-    idempotencyKey
-  ).then(decodeDto<RuntimeCredentialRotationResponse>);
 }
 
 export function updateWorkspaceRenewal(

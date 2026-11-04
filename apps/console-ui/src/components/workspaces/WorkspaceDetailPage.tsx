@@ -137,8 +137,7 @@ function WorkspaceAccessRows({ controller, runtime, credentials, gateway }: {
   gateway: boolean;
 }) {
   return <dl className="data-list">{credentials ? <><div><dt><span>登录账号</span><small>用于登录工作空间</small></dt><dd>{runtime.access?.username || controller.credential?.username || "-"}</dd></div>
-    <SecretRow busy={controller.workspaceBusy} label="登录密码" purpose="用于登录工作空间" onCopy={() => void controller.copyWorkspacePassword()} onHide={controller.clear} onReveal={() => void controller.revealWorkspacePassword()} revealed={Boolean(controller.credential)} value={controller.credential?.password} />
-    <div><dt>密码管理</dt><dd className="workspace-actions"><Button busy={controller.workspaceBusy} onClick={() => void controller.rotateWorkspacePassword()} variant="outline">轮换密码</Button></dd></div></> : null}
+    <SecretRow busy={controller.workspaceBusy} label="登录密码" purpose="用于登录工作空间" onCopy={() => void controller.copyWorkspacePassword()} onHide={controller.clear} onReveal={() => void controller.revealWorkspacePassword()} revealed={Boolean(controller.credential)} value={controller.credential?.password} /></> : null}
     {gateway ? <SecretRow busy={controller.gatewayKeyBusy} label="API 密钥" purpose="用于 Gateway API 调用" onCopy={() => void controller.copyWorkspaceKey()} onHide={controller.clear} onReveal={() => void controller.revealWorkspaceKey()} revealed={Boolean(controller.gatewayKey)} value={controller.gatewayKey?.value} /> : null}
   </dl>;
 }

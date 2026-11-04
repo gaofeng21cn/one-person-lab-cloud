@@ -172,7 +172,7 @@ func TestWorkspaceApplicationRecoveryHTTP(t *testing.T) {
 	}
 }
 
-func TestRetiredWorkspaceDefaultApplicationResumeHTTPPreservesHistory(t *testing.T) {
+func TestRetiredWorkspaceApplicationCommandsHTTPPreserveHistory(t *testing.T) {
 	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
 	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
 	ctx := context.Background()
@@ -198,21 +198,21 @@ func TestRetiredWorkspaceDefaultApplicationResumeHTTPPreservesHistory(t *testing
 	}
 	handler := fixture.server.(*controlPlaneHTTPHandler)
 	*handler.service = *controlplane.NewService(clients.NewLedgerHTTPClient("https://ledger.example.test", "test-token", transport), clients.NewFabricHTTPClientWithCapability("https://fabric.example.test", "test-token", "test-capability", transport), sub2API)
-	for _, path := range []string{"/api/workspaces/ws-alpha/application-installation/resume", "/api/workspaces/not-owned/application-installation/resume"} {
+	for _, path := range []string{"/api/workspaces/ws-alpha/application-installation/resume", "/api/workspaces/not-owned/application-installation/resume", "/api/workspaces/ws-alpha/runtime-credentials/rotate", "/api/workspaces/not-owned/runtime-credentials/rotate"} {
 		for range 2 {
 			response := requestWithMutationKeyForTest(t, fixture.server, fixture.session, http.MethodPost, path, "{}", "resume-retired")
 			if response.Code != http.StatusNotFound && response.Code != http.StatusMethodNotAllowed {
-				t.Fatalf("retired resume=%d %s", response.Code, response.Body.String())
+				t.Fatalf("retired application command=%d %s", response.Code, response.Body.String())
 			}
 		}
 	}
 	retained, err := fixture.store.ListRuntimeOperations(ctx)
 	if err != nil || !reflect.DeepEqual(retained, operations) {
-		t.Fatalf("retired resume changed operation history: %v", err)
+		t.Fatalf("retired application command changed operation history: %v", err)
 	}
 	after, _, err := fixture.store.GetWorkspace(ctx, request.WorkspaceID)
 	if err != nil || !reflect.DeepEqual(after, workspace) || len(externalCalls) != 0 {
-		t.Fatalf("retired resume changed workspace or called external owners: calls=%v err=%v", externalCalls, err)
+		t.Fatalf("retired application command changed workspace or called external owners: calls=%v err=%v", externalCalls, err)
 	}
 	projection := map[string]any{}
 	mustStore(t, handler.app.projectWorkspaceApplicationInstallation(ctx, workspace, projection))

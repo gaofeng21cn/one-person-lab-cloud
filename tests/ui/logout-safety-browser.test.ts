@@ -272,11 +272,12 @@ test("a late login response cannot restore an account or cancel logout", async (
   }
 });
 
-test("Workspace Secret controller rejects late reveal and refreshes after rotation", async () => {
+test("Workspace Secret controller rejects late reveal and expires password and Key after sixty seconds", async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await page.clock.install();
     await page.goto(`${demo.origin}/login`, { waitUntil: "networkidle" });
     await page.getByLabel("邮箱").fill(CONSOLE_DEMO_CREDENTIALS.customer.email);
     await page.getByLabel("密码").fill(CONSOLE_DEMO_CREDENTIALS.customer.password);
@@ -337,27 +338,19 @@ test("Workspace Secret controller rejects late reveal and refreshes after rotati
     assert.ok(currentPassword && !currentPassword.includes("••"));
     assert.notEqual(currentPassword, lateResponse.access.password);
 
-    const rotationDetailReadback = page.waitForRequest((request) => {
-      const url = new URL(request.url());
-      return url.pathname === "/api/workspaces" && url.searchParams.get("pageSize") === "50";
-    });
-    const rotationRuntimeReadback = page.waitForRequest((request) => {
-      return request.method() === "GET"
-        && new URL(request.url()).pathname === "/api/workspaces/ws-1/runtime-status";
-    });
-    const rotationBudgetReadback = page.waitForRequest((request) => {
-      return request.method() === "GET"
-        && new URL(request.url()).pathname === "/api/workspaces/ws-1/gateway-budget";
-    });
-    await page.getByRole("button", { name: "轮换密码", exact: true }).click();
-    await page.getByText("登录密码已轮换", { exact: true }).waitFor({ state: "visible" });
-    await Promise.all([rotationDetailReadback, rotationRuntimeReadback, rotationBudgetReadback]);
-    await page.waitForFunction((previousPassword) => {
-      const rows = [...document.querySelectorAll(".workspace-access-panel .data-list > div")];
-      const row = rows.find((candidate) => candidate.textContent?.includes("登录密码"));
+    await page.clock.fastForward(60_000);
+    assert.match(String(await currentPasswordRow.locator("code").textContent()), /••/);
+    assert.equal(await currentPasswordRow.getByRole("button", { name: "复制", exact: true }).count(), 0);
+    await workspaceKeyRow.getByRole("button", { name: "显示", exact: true }).click();
+    await page.waitForFunction(() => {
+      const row = [...document.querySelectorAll(".workspace-access-panel .data-list > div")]
+        .find((candidate) => candidate.textContent?.includes("API 密钥"));
       const value = row?.querySelector("code")?.textContent || "";
-      return Boolean(value) && !value.includes("••") && value !== previousPassword;
-    }, currentPassword);
+      return Boolean(value) && !value.includes("••");
+    });
+    await page.clock.fastForward(60_000);
+    assert.match(String(await workspaceKeyRow.locator("code").textContent()), /••/);
+    assert.equal(await workspaceKeyRow.getByRole("button", { name: "复制", exact: true }).count(), 0);
   } finally {
     await browser.close();
     await demo.close();

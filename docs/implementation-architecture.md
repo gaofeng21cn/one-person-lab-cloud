@@ -424,8 +424,8 @@ availability, period end and access URL. Native deletion and its readback use
 `apps/console-bff/internal/httpapi/workspace.go`; application credential reveal
 uses `POST .../application-credentials/reveal` in `workspace_credentials.go`.
 The Cloud UI selects these owners explicitly and never retries those commands
-against a retained Workspace API. Legacy renewal, application-installation and
-credential-rotation controls still receive no cloud Workspace; native credential
+against a retained Workspace API. Legacy renewal and image-maintenance controls still receive no cloud Workspace. The old
+password-rotation command and its Console action are removed; native credential
 reveal is not a password-rotation implementation. The
 [browser reference](implementation/console.md) owns query and command state;
 [the retirement inventory](#retained-writer-and-caller-inventory-2026-11-03)
@@ -562,8 +562,8 @@ a competing command or a delayed worker response from overwriting selection or
 completed progress. A successor does not create resources or charge the wallet.
 
 `OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED=1` enables deployment
-recovery for retained credential and Workspace-Key rotation callers. It no longer
-scans or advances default-install requests. The base Compose forwards this
+recovery for already accepted credential deployments and Workspace-Key rotation.
+It no longer scans or advances default-install requests. The base Compose forwards this
 setting; the local Workspace overlay enables it. Operator revision/data admission,
 new deployment commands and customer `application-installation/resume` have been
 removed with their Console mutation controls. Revision admission storage has no
@@ -581,9 +581,9 @@ remove asynchronous rotation readback.
 
 Application generation IDs own Runtime components and Secret mounts. OPL
 credential identity is frozen separately in the runtime configuration: ordinary
-updates and reinstallations retain it; explicit password or Gateway rotation
-advances it. Historical migration names the proven credential source rather
-than deriving a new password from the new deployment ID.
+updates and reinstallations retain it; accepted historical password changes
+and Workspace-Key rotation carry their frozen successor identity. Historical
+migration names the proven credential source rather than deriving a new password from the new deployment ID.
 Accepted deployment snapshots retain their original configuration and request
 identity for recovery and cleanup; removing the operator command does not rewrite
 those records. Native application selection and updates stay with Workspace/Serve.
@@ -1365,7 +1365,7 @@ operations, data or financial evidence.
 | --- | --- | --- | --- |
 | Fresh purchase | Resource Catalog creates the quote; Workspace accepts the order through BFF `/api/v2/quotes` and `/api/v2/workspaces`; UI `createWorkspaceQuote` and Instance `cloud-workspace-launch-readback.mjs` use those routes | CP `POST /api/workspace-launches` only replays an existing account/key-bound operation, otherwise refuses before pricing/payment/provider/persistence. PR #1061 already removed `createWorkspaceLaunch` and fresh-create claim machinery | Already removed; do not implement another fence or preserve a creator for tests |
 | Application revision, deployment and current selection | Runtime Control supplies approved default-App releases; Capability/Build supplies Agent descriptors; Workspace calls Serve Reserve/Deploy. BFF `serve_update.go` delegates version updates to Serve | CP operator revision/data admission, application-deployments and retry, default installer and deployment worker. Claim/activation requires a CP Workspace row and binding/predecessor checks. Legacy UI and Instance installer remain callers | R1: retire the legacy deployment capability after caller/accepted-operation disposition; no proof of a duplicate native writer follows from old columns |
-| Application credentials, runtime maintenance and image policy | Workspace/Serve reveal the exact current ready runtime's credentials; Serve owns approved version replacement/readiness/access | CP credential rotation/reveal, installation resume, repair, image replacement and release-policy mutation. Legacy controllers and Instance rollout/rollback still use them | R2: review withdrawal or necessary caller migration; native reveal/update does not establish password-rotation or arbitrary operator-deploy parity |
+| Application credentials, runtime maintenance and image policy | Workspace/Serve reveal the exact current ready runtime's credentials; Serve owns approved version replacement/readiness/access | CP credential reveal, repair, image replacement and release-policy mutation retain callers; R2a removes password-rotation creation and its Console action. Accepted credential deployments retain recovery | R2: review withdrawal or necessary caller migration; native reveal/update does not establish password-rotation or arbitrary operator-deploy parity |
 | Workspace managed Key | Workspace coordinates intent through Gateway Integration; external Gateway owns effective Key/Group state | CP Workspace Key rotation/default-install handover still touches external Gateway, guarded by CP Workspace/account/old-Key binding. This is distinct from personal user Key CRUD | R3: remove the old Workspace-Key writer with its deployment/default-install callers and original operations, not the personal-Key readers |
 | Personal Gateway Keys, account activation and wallet administration | Gateway Integration owns Cloud mappings; Sub2API remains Key/wallet truth. Cloud activation still has an original-owner BFF bridge | CP user-Key routes, delegated user identity, activation/admin commands and recovery remain separate capabilities; Cloud browser guards do not remove backend entrypoints | R4: identify which public/admin capabilities are still required before choosing withdrawal or migration; no blanket Gateway or Account file deletion |
 | Retained purchase recovery, expiry/renewal, deletion and settlement | Workspace owns native lifecycle; native BFF deletion/readback and Instance `workspace-native-delete.mjs` use its API; Gateway/Fabric/Ledger own their effects/readbacks | CP original Launch replay/resume, renewal/expiry and delete/refund workers remain registered. Original operations/charges must not be replaced by native re-purchase/refund | R5: finish the all-object/operation census, then remove the retained execution slice and its external callers; the three #1018 selectors are already closed |
@@ -1403,9 +1403,11 @@ retains configuration reads for the surviving credential/Key callers. Original
 records and schema stay unchanged. The fresh protected evidence and its limits
 are in [status](status.md#retained-operator-application-deployment-withdrawal-2026-11-03).
 
-The shared deployment engine is still required by password and Workspace-Key
-rotation in `workspace_application_access.go`. Its worker, activation store,
-operator retry, configuration and current/reserved writers remain until R2/R3
+The shared deployment engine still resumes accepted password-change deployments
+and serves Workspace-Key rotation in `workspace_application_access.go`. R2a removes
+the password successor creator, its customer route and direct old-Runtime
+Fabric/receipt orchestration, with the Console mutation action and exclusive types.
+Its worker, activation store, operator retry, configuration and current/reserved writers remain until R2/R3
 withdrawal or caller migration. Their future removal includes the writer/driver
 parts of `workspace_application_deployment_driver.go`, deployment-worker startup
 in `server.go`, `OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED` and its
@@ -1414,11 +1416,22 @@ while historical reads or cleanup consume them; do not drop persisted columns
 or rewrite schema history merely to remove writers.
 
 **R2 — retained runtime/image/credential maintenance.**
-Remove the selected command/worker symbols in `workspace_runtime_image_replacement.go`,
+The first slice, **R2a**, withdraws password-rotation creation. It removes
+`POST /api/workspaces/{workspaceId}/runtime-credentials/rotate`,
+`rotateWorkspaceCurrentApplicationCredentials`, the exclusive
+`RotateWorkspaceCredential` service/input and Console password-rotation action,
+API/type and idempotency-intent model. Credential/Key reveal, secret expiry and
+stale-response isolation remain. Already accepted credential deployments still
+resume through the shared worker and original operator retry; their frozen
+configuration, previous generation, runtime and receipt identities remain intact.
+The Console keeps read-only refresh for those pending deployments. No native
+password-rotation capability is introduced.
+
+Remaining R2 slices remove selected command/worker symbols in
+`workspace_runtime_image_replacement.go`,
 `workspace_image_release_policy.go`, `workspace_launch_repair.go`,
-`workspace_runtime_gateway_network_recovery.go` and credential rotation branches in
-`routes_workspace.go` / `workspace_application_access.go`. Remove legacy image and
-secret-controller command branches, runtime-image worker startup, its
+`workspace_runtime_gateway_network_recovery.go`. Remove the remaining legacy image
+controller command branches, runtime-image worker startup, its
 `OPL_WORKSPACE_RUNTIME_IMAGE_REPLACEMENT_WORKER_ENABLED` setting and exclusive
 policy/configuration consumers together. Image replacement/policy, runtime repair,
 network recovery and UI controller tests retire with those commands. Keep shared

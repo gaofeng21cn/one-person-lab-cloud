@@ -303,13 +303,8 @@ export function useConsoleController() {
     workspace: controlPlaneWorkspace,
     activeWorkspaceId: controlPlaneWorkspaceId,
     currentMutationRequest,
-    refreshWorkspaceDetail: async (workspaceId) => {
-      if (!session) return;
-      await loadWorkspaceAccess(requestGeneration.current, session, workspaceId);
-    },
     flash,
-    friendlyError,
-    mutationError
+    friendlyError
   });
   const workspaceSecrets: WorkspaceSecretController = workspaceSecretCapability;
 

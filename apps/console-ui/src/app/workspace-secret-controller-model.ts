@@ -15,11 +15,6 @@ export type WorkspaceSecretCompletion =
   | { kind: "runtime-credential"; response: RuntimeCredentialResponse }
   | { kind: "workspace-key"; response: GatewayKeySecretDTO };
 
-export interface RuntimeRotationIntent {
-  readonly workspaceId: string;
-  readonly idempotencyKey: string;
-}
-
 export function acceptWorkspaceSecretCompletion(
   activeGeneration: number,
   currentGeneration: number,
@@ -33,13 +28,4 @@ export function acceptWorkspaceSecretCompletion(
 
 export function shouldExpireWorkspaceSecret(revealedAtMs: number, nowMs: number): boolean {
   return nowMs - revealedAtMs >= workspaceSecretLifetimeMs;
-}
-
-export function resolveRuntimeRotationIntent(
-  current: RuntimeRotationIntent | null,
-  workspaceId: string,
-  createIdempotencyKey: () => string
-): RuntimeRotationIntent {
-  if (current?.workspaceId === workspaceId) return current;
-  return { workspaceId, idempotencyKey: createIdempotencyKey() };
 }

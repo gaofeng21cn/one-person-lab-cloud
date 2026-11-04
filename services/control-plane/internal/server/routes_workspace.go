@@ -170,72 +170,6 @@ func registerWorkspaceRoutes(mux *http.ServeMux, app *controlPlaneServer, servic
 		w.Header().Set("Cache-Control", "private, no-store")
 		writeJSON(w, http.StatusOK, workspaceRuntimeCredentialResponse(runtime))
 	}))
-	mux.HandleFunc("POST /api/workspaces/{workspaceId}/runtime-credentials/rotate", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
-		workspaceID := r.PathValue("workspaceId")
-		workspace, ok := app.ownedWorkspaceForCredentialCommand(w, r, workspaceID)
-		if !ok {
-			return
-		}
-		key, ok := requiredMutationKey(w, r)
-		if !ok {
-			return
-		}
-		unlock := app.lockResource("runtime-credential", workspaceID)
-		defer unlock()
-		workspace, ok = app.ownedWorkspaceForCredentialCommand(w, r, workspaceID)
-		if !ok {
-			return
-		}
-		if app.rotateWorkspaceCurrentApplicationCredentials(w, r, service, workspace, key) {
-			return
-		}
-		if response, reason := app.workspaceAccessResponse(r.Context(), cloneMap(workspace), time.Now().UTC()); reason != "" || response["openable"] != true {
-			writeError(w, http.StatusConflict, "workspace_not_running")
-			return
-		}
-		launch, err := app.succeededWorkspaceLaunchForAccess(r.Context(), workspace)
-		if err != nil {
-			writeError(w, http.StatusConflict, "workspace_runtime_truth_unavailable")
-			return
-		}
-		accountID := firstNonEmpty(stringValue(workspace["accountId"]), stringValue(workspace["ownerAccountId"]))
-		gatewaySecretRef, err := app.currentWorkspaceGatewaySecretRef(r.Context(), workspace)
-		if err != nil {
-			writeError(w, http.StatusConflict, "workspace_gateway_secret_ref_unavailable")
-			return
-		}
-		runtime, receipt, err := service.RotateWorkspaceCredential(r.Context(), controlplane.RotateWorkspaceCredentialInput{
-			WorkspaceID: workspaceID, AccountID: accountID, GatewaySecretRef: gatewaySecretRef,
-			OwnerID:   firstNonEmpty(stringValue(workspace["ownerUserId"]), stringValue(workspace["ownerId"])),
-			ComputeID: launch.stringFact("computeAllocationId"), VolumeID: launch.stringFact("storageId"), AttachmentID: launch.stringFact("attachmentId"),
-			AttachmentOperationID: launch.ID + ":attachment", RuntimeID: launch.stringFact("runtimeId"),
-			RuntimeOperationID: launch.stringFact("runtimeBindingRef"),
-		}, key)
-		if err != nil {
-			writeUpstreamError(w, err)
-			return
-		}
-		access := cloneMap(mapField(workspace, "access"))
-		delete(access, "password")
-		access["account"], access["username"] = runtime.Access.Username, runtime.Access.Username
-		access["credentialStatus"] = runtime.Access.CredentialStatus
-		access["credentialVersion"] = runtime.Access.CredentialVersion
-		access["secretRef"] = runtime.Access.SecretRef
-		workspace["access"] = access
-		workspace["runtimeId"] = firstNonEmpty(runtime.ID, stringValue(workspace["runtimeId"]))
-		runtimeProjection := cloneMap(mapField(workspace, "runtime"))
-		runtimeProjection["serviceName"] = firstNonEmpty(runtime.ServiceName, stringValue(runtimeProjection["serviceName"]))
-		runtimeProjection["status"], runtimeProjection["ready"] = runtime.Status, runtime.Ready
-		workspace["runtime"] = runtimeProjection
-		if err := app.tables.SaveWorkspace(r.Context(), workspace); err != nil {
-			writeError(w, http.StatusInternalServerError, "state_persist_failed")
-			return
-		}
-		body := workspaceRuntimeCredentialResponse(runtime)
-		body["receiptId"] = receipt.ReceiptID
-		w.Header().Set("Cache-Control", "private, no-store")
-		writeJSON(w, http.StatusOK, body)
-	}))
 	mux.HandleFunc("POST /api/workspaces/{workspaceId}/workspace-key/rotate", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
 		app.rotateWorkspaceGatewayKey(w, r, service)
 	}))
@@ -383,54 +317,6 @@ func registerWorkspaceRoutes(mux *http.ServeMux, app *controlPlaneServer, servic
 		}
 		writeError(w, http.StatusConflict, errWorkspaceRenewalCASConflict.Error())
 	}))
-}
-
-func (app *controlPlaneServer) currentWorkspaceGatewaySecretRef(ctx context.Context, workspace map[string]any) (string, error) {
-	if stringValue(workspace["currentApplicationDeploymentId"]) != "" {
-		current, found, err := app.currentWorkspaceApplicationDeployment(ctx, workspace)
-		if err != nil || !found || app.requireWorkspaceGatewayApplication(ctx, workspace) != nil {
-			return "", errors.New("workspace_gateway_secret_ref_unavailable")
-		}
-		for _, binding := range current.SecretBindings {
-			if binding.Name == "gateway" && binding.Key == "opl_gateway_api_key" && binding.SecretRef != "" {
-				return binding.SecretRef, nil
-			}
-		}
-		return "", errors.New("workspace_gateway_secret_ref_unavailable")
-	}
-	workspaceID := stringValue(workspace["id"])
-	accountID := firstNonEmpty(stringValue(workspace["accountId"]), stringValue(workspace["ownerAccountId"]))
-	keyID, ok := positiveIntegerField(workspace, "workspaceApiKeyId")
-	if workspaceID == "" || accountID == "" || !ok {
-		return "", errors.New("workspace_gateway_secret_ref_unavailable")
-	}
-	rows, err := queryRuntimeOperations(ctx, app.tables, runtimeOperationQuery{AccountID: accountID, WorkspaceID: workspaceID, Action: "workspace.gateway_key.rotate"})
-	if err != nil {
-		return "", err
-	}
-	for _, row := range rows {
-		operation, decodeErr := decodeWorkspaceKeyRotation(row)
-		if decodeErr != nil {
-			return "", decodeErr
-		}
-		if stringValue(row["status"]) != "succeeded" || operation.Phase != "complete" {
-			return "", errWorkspaceKeyRotationInProgress
-		}
-		if operation.NewKeyID == keyID && operation.SecretRef != "" {
-			return operation.SecretRef, nil
-		}
-	}
-	rows, err = queryRuntimeOperations(ctx, app.tables, runtimeOperationQuery{AccountID: accountID, WorkspaceID: workspaceID, Action: workspaceLaunchAction})
-	if err != nil {
-		return "", err
-	}
-	for _, row := range rows {
-		operation, decodeErr := decodeWorkspaceLaunchReconcileOperation(row)
-		if decodeErr == nil && operation.Status == contracts.StatusSucceeded && operation.int64Fact("workspaceApiKeyId") == keyID && operation.stringFact("gatewaySecretRef") != "" {
-			return operation.stringFact("gatewaySecretRef"), nil
-		}
-	}
-	return "", errors.New("workspace_gateway_secret_ref_unavailable")
 }
 
 func (app *controlPlaneServer) workspaceForSource(ctx context.Context, accountID, workspaceID string) (map[string]any, bool, error) {

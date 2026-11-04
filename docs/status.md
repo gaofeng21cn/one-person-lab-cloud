@@ -16,6 +16,35 @@ boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Retained Password Rotation Withdrawal (2026-11-04)
+
+The R2a source change based on `6e475e033877a6231a278c0355183d30f0be750a`
+removes the legacy customer password-rotation route, Console action/controller
+branch and exclusive API types/model, the managed-application successor creator,
+and the direct old-Runtime Fabric/receipt orchestration. Credential and Key
+reveal/copy, no-store secret handling and historical credential lineage remain.
+This withdraws the old command; native credential reveal is not rotation parity.
+
+Already accepted managed credential changes remain frozen deployment operations.
+Their original worker, operator retry, selection/version fences and asynchronous
+Console readback remain. Workspace-Key rotation still creates and resumes its
+own parent operation and deployment child; it is outside this source withdrawal.
+No persisted record, schema, Secret, Key or financial receipt is removed.
+
+Protected Instance [observation 41750316687](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41750316687)
+at `2026-11-04T00:54:57.466Z` read the same installed Cloud
+`4f131caa41324f027c1fee48d6ae5e5356e7e3c4` from Instance
+`4a54e6cbbd0daee2bf61b17b4afa800748aa001f`. Complete current CP provenance
+still contains the same 44 operation identities/statuses as observation
+`41665805194`. Both remaining CP Workspace rows are `data_deleted`, with no
+current/reserved application binding, compute allocation, storage volume or
+attachment in the current CP result. This is current-object disposition evidence,
+not archived-history coverage or a zero-traffic claim. The overall observation
+remains partial because the two legacy runtime-health reads return HTTP 503;
+CP provenance is available, and all three mutation counters are zero.
+Source tests and actual current-revision CI are recorded in the PR; installation
+adoption and the remaining R2/R3 engine retirement are separate outcomes.
+
 ## Retained Operator Application Deployment Withdrawal (2026-11-03)
 
 The R1a source change based on `ae293ec8c2ba6c562ae5c5206d4c0be2b3171c7d`
@@ -30,8 +59,9 @@ removes the default installer, customer installation-resume route/controller,
 Launch-replay installation side effects, worker scan and final revision-admission
 store mutation. Original request/revision records remain readable for history,
 original-order matching, credential lineage and Secret cleanup. This does not
-retire the shared deployment engine: password and Workspace-Key rotation still
-need its worker, configuration, activation writers and operator retry. The retry
+retire the shared deployment engine: accepted credential deployments and
+Workspace-Key rotation still need its worker, configuration, activation writers
+and operator retry. The retry
 continues an existing frozen operation under reservation, selection/version,
 entitlement and rotation-parent checks. Native Runtime Release, Workspace and
 Serve selection/update paths remain unchanged. Source verification and actual
