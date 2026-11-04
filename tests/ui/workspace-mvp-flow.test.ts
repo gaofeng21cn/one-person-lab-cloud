@@ -754,3 +754,14 @@ test("Cloud deletion browser waits for the owner schedule and stops after cancel
     await demo.close();
   }
 });
+
+
+test("Workspace access readback requires its Serve deployment identity", async () => {
+  for (const deploymentId of [undefined, "", "   ", 42]) {
+    globalThis.fetch = async () => new Response(JSON.stringify({ workspaceId: "ws-1", deploymentId, url: "https://app.example.test", authenticationMode: "application_login" }), { status: 200, headers: { "content-type": "application/json" } });
+    await assert.rejects(workspaceApi.getWorkspaceOwnerAccess("ws-1", "csrf", "access-once"), /invalid_workspace_access_readback/);
+  }
+  globalThis.fetch = async () => new Response(JSON.stringify({ workspaceId: "ws-1", deploymentId: "dep-current", url: "https://app.example.test", authenticationMode: "application_login" }), { status: 200, headers: { "content-type": "application/json" } });
+  const access = await workspaceApi.getWorkspaceOwnerAccess("ws-1", "csrf", "access-once");
+  assert.equal(access.deploymentId, "dep-current");
+});

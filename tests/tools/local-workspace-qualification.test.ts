@@ -12,6 +12,7 @@ import {
   assertWorkspaceQualificationTopology,
   deleteWorkspaceOnOwnerRoute,
   readWorkspaceRefundReceipt,
+  readWorkspaceEvidence,
   readWorkspaceDeletionEvidence,
   cleanupLocalQualificationSecretRoot,
   cleanupLocalQualificationPostgresRoot,
@@ -1180,6 +1181,167 @@ for (const scenario of ["truncated page", "changed total", "wrong page"]) {
   });
 }
 
+// Exercise the owner readbacks, including the existing purchase evidence binding.
+function workspaceEvidenceHTTP(page, options = {}) {
+  const workspaceId = "ws-evidence";
+  const operationId = "operation-evidence";
+  const receiptId = "receipt-evidence";
+  const auth = { cookie: "evidence-session", csrf: "evidence-csrf" };
+  const calls = [];
+  const charge = {
+    id: "wallet-evidence", workspaceId, kind: "charge", status: "confirmed",
+    receiptId, amountUSDMicros: "52580000", externalReference: "charge-evidence",
+  };
+  const responses = new Map([
+    [`/api/v2/operations/workspace/${operationId}`, {
+      operationId, owner: "workspace", kind: "create_workspace", status: "succeeded", resourceId: workspaceId,
+    }],
+    [`/api/v2/workspaces/${workspaceId}`, {
+      id: workspaceId, applicationAvailability: "available", accessUrl: "https://previous.example.test/",
+      capabilityVersionId: "capability-evidence", ...options.workspace,
+    }],
+    [`/api/v2/workspaces/${workspaceId}/deployments?limit=1`, page],
+    [`/api/v2/workspaces/${workspaceId}/access`, Object.hasOwn(options, "access") ? options.access : {
+      workspaceId, deploymentId: "deployment-current", url: "https://app.example.test/",
+    }],
+    [`/api/v2/workspaces/${workspaceId}/transactions?limit=100`, { items: [charge] }],
+    [`/api/v2/workspaces/${workspaceId}/financial-receipts/${receiptId}`, {
+      workspaceId,
+      receipt: { id: receiptId, operationId, owner: "workspace", kind: "wallet_action", outcome: "confirmed" },
+      walletOperation: charge,
+      quote: { id: "quote-evidence", status: "accepted", totalUSDMicros: charge.amountUSDMicros },
+      evidenceDigest: `sha256:${"e".repeat(64)}`,
+    }],
+  ]);
+  return {
+    calls, auth,
+    async json(path, init = {}, suppliedAuth) {
+      calls.push(path);
+      assert.equal(suppliedAuth, auth, "owner reads retain the caller's authentication");
+      if (path.endsWith("/access")) assert.deepEqual(init, {
+        method: "POST", headers: { "idempotency-key": `workspace-access:${page.currentDeployment.id}` },
+      });
+      assert.ok(responses.has(path), `unexpected owner read ${path}`);
+      return { payload: responses.get(path) };
+    },
+  };
+}
+
+test("Workspace evidence uses the Serve current deployment outside the history page", async () => {
+  const current = { id: "deployment-current", workspaceId: "ws-evidence", status: "active",
+    runtimeInstanceId: "runtime-current", capabilityVersionId: "capability-current" };
+  for (const items of [[], [{ ...current, id: "failed-newer", status: "failed", runtimeInstanceId: "runtime-failed" }]]) {
+    const http = workspaceEvidenceHTTP({ items, currentDeployment: current, latestAttempt: items[0] ?? current });
+    const result = await readWorkspaceEvidence(http, http.auth, "operation-evidence", "ws-evidence", "receipt-evidence");
+    assert.equal(result.current.operationId, current.id);
+    assert.equal(result.current.applicationId, current.capabilityVersionId);
+    assert.equal(result.current.revision, current.capabilityVersionId);
+    assert.equal(result.current.entryUrl, "https://app.example.test/");
+    assert.equal(result.workspace.currentApplication.operationId, current.id);
+    assert.equal(result.runtime.runtimeId, current.runtimeInstanceId);
+    assert.equal(result.runtime.currentApplication.operationId, current.id);
+    assert.equal(result.receipt.receiptId, "receipt-evidence");
+    assert.equal(result.receipt.totalUsdMicros, "52580000");
+    assert.equal(http.calls.filter((path) => path.includes("/deployments")).length, 1);
+  }
+});
+
+test("Workspace evidence refuses missing or invalid Serve selection despite active history", async () => {
+  const current = { id: "deployment-current", workspaceId: "ws-evidence", status: "active", runtimeInstanceId: "runtime-current", capabilityVersionId: "capability-current" };
+  for (const selection of [
+    undefined, null,
+    { ...current, status: "verifying" },
+    { ...current, workspaceId: "ws-other" },
+    { ...current, id: undefined }, { ...current, id: "   " }, { ...current, id: 1 }, { ...current, id: {} },
+    { ...current, runtimeInstanceId: undefined }, { ...current, runtimeInstanceId: "   " },
+    { ...current, runtimeInstanceId: 1 }, { ...current, runtimeInstanceId: {} },
+  ]) {
+    const http = workspaceEvidenceHTTP({ items: [current], currentDeployment: selection, latestAttempt: current });
+    await assert.rejects(
+      readWorkspaceEvidence(http, http.auth, "operation-evidence", "ws-evidence", "receipt-evidence"),
+      /Workspace runtime readback is invalid/,
+    );
+    assert.equal(http.calls.length, 3, "invalid selection stops before financial evidence reads");
+  }
+});
+
+test("Workspace evidence binds the current application source and URL independently of the original order", async () => {
+  for (const source of [
+    { capabilityVersionId: "capability-current" },
+    { runtimeVersionId: "release-current" },
+    { capabilityVersionId: "", runtimeVersionId: "release-current" },
+  ]) {
+    const current = { id: "deployment-current", workspaceId: "ws-evidence", status: "active", runtimeInstanceId: "runtime-current", ...source };
+    for (const workspace of [
+      { capabilityVersionId: "capability-original" },
+      { capabilityVersionId: undefined, runtimeVersionId: "release-original" },
+      { capabilityVersionId: undefined, runtimeVersionId: undefined, accessUrl: undefined },
+    ]) {
+      const http = workspaceEvidenceHTTP({ items: [], currentDeployment: current }, { workspace });
+      const result = await readWorkspaceEvidence(http, http.auth, "operation-evidence", "ws-evidence", "receipt-evidence");
+      assert.equal(result.current.applicationId, source.capabilityVersionId || source.runtimeVersionId);
+      assert.equal(result.current.revision, result.current.applicationId);
+      assert.equal(result.current.entryUrl, "https://app.example.test/");
+      assert.equal(result.workspace.accessUrl, result.current.entryUrl);
+      assert.equal(result.workspace.url, result.current.entryUrl);
+      assert.equal(result.runtime.url, result.current.entryUrl);
+    }
+  }
+});
+
+test("Workspace access read retries retain a stable key scoped to the selected deployment", async () => {
+  for (const id of ["deployment-current", "deployment-replacement"]) {
+    const current = { id, workspaceId: "ws-evidence", status: "active", runtimeInstanceId: "runtime-current", runtimeVersionId: "release-current" };
+    const http = workspaceEvidenceHTTP({ items: [], currentDeployment: current }, {
+      access: { workspaceId: current.workspaceId, deploymentId: id, url: "https://app.example.test/" },
+    });
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const result = await readWorkspaceEvidence(http, http.auth, "operation-evidence", "ws-evidence", "receipt-evidence");
+      assert.equal(result.current.operationId, id);
+    }
+    assert.equal(http.calls.filter((path) => path.endsWith("/access")).length, 2);
+  }
+});
+
+test("Workspace evidence rejects absent, ambiguous and malformed current application sources", async () => {
+  for (const source of [
+    {}, { capabilityVersionId: "", runtimeVersionId: "" },
+    { capabilityVersionId: "capability-current", runtimeVersionId: "release-current" },
+    ...[null, 0, false, {}, [], "   "].flatMap((value) => [
+      { capabilityVersionId: value }, { runtimeVersionId: value },
+      { capabilityVersionId: value, runtimeVersionId: "release-current" },
+      { capabilityVersionId: "capability-current", runtimeVersionId: value },
+    ]),
+  ]) {
+    const current = { id: "deployment-current", workspaceId: "ws-evidence", status: "active", runtimeInstanceId: "runtime-current", ...source };
+    const http = workspaceEvidenceHTTP({ items: [], currentDeployment: current });
+    await assert.rejects(readWorkspaceEvidence(http, http.auth, "operation-evidence", "ws-evidence", "receipt-evidence"), /Workspace application readback is invalid/);
+    assert.equal(http.calls.length, 3, "invalid application sources stop before access and financial reads");
+  }
+});
+
+test("Workspace evidence rejects access from another generation and invalid access readbacks", async () => {
+  const current = { id: "deployment-current", workspaceId: "ws-evidence", status: "active", runtimeInstanceId: "runtime-current", runtimeVersionId: "release-current" };
+  const valid = { workspaceId: current.workspaceId, deploymentId: current.id, url: "https://app.example.test/" };
+  for (const access of [
+    undefined, null, {},
+    { ...valid, workspaceId: "ws-other" },
+    ...[undefined, null, "", "   ", 42, {}, "deployment-previous"].map((deploymentId) => ({ ...valid, deploymentId })),
+    ...[undefined, null, "", "   ", 42, {}, [], "/relative", "https://", "https://[invalid", "https:example.test", "ftp://app.example.test/", "javascript:alert(1)", "https://user:password@app.example.test/"].map((url) => ({ ...valid, url })),
+    // Even a URL also reported by Workspace cannot substitute for deployment identity.
+    { ...valid, deploymentId: "deployment-previous", url: "https://previous.example.test/" },
+  ]) {
+    const http = workspaceEvidenceHTTP({ items: [], currentDeployment: current }, { access });
+    await assert.rejects(readWorkspaceEvidence(http, http.auth, "operation-evidence", "ws-evidence", "receipt-evidence"), /Workspace access readback is invalid/);
+    assert.equal(http.calls.length, 4, "unconfirmed access stops before financial reads");
+  }
+  for (const url of ["http://app.example.test:8080/path", valid.url]) {
+    const http = workspaceEvidenceHTTP({ items: [], currentDeployment: current }, { access: { ...valid, url } });
+    const result = await readWorkspaceEvidence(http, http.auth, "operation-evidence", "ws-evidence", "receipt-evidence");
+    assert.equal(result.current.entryUrl, url);
+  }
+});
+
 for (const scenario of [
   { name: "covers every live stage and validates exact local cleanup", status: 200, marker: true },
   { name: "classifies HTTP 502 without a marker", status: 502, marker: false, errorCode: "workspace_open_http_failed", error: "Workspace Runtime open returned HTTP 502" },
@@ -1329,11 +1491,19 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
     }
     if (method === "GET" && url.pathname === `/api/v2/workspaces/${workspaceId}`) {
       return send(response, 200, { id: workspaceId, name: "J1", status: "running",
-        capabilityVersionId: "capability-j1", applicationAvailability: "available", accessUrl: entryURL });
+        runtimeVersionId, applicationAvailability: "available", accessUrl: "https://previous.example.test/" });
     }
     if (method === "GET" && url.pathname === `/api/v2/workspaces/${workspaceId}/deployments`) {
-      return send(response, 200, { items: [{ id: applicationOperationId, workspaceId, status: "active",
-        runtimeInstanceId: runtimeId, capabilityVersionId: "capability-j1" }] });
+      const current = { id: applicationOperationId, workspaceId, status: "active",
+        runtimeInstanceId: runtimeId, capabilityVersionId: "", runtimeVersionId };
+      return send(response, 200, { items: [current], currentDeployment: current, latestAttempt: current });
+    }
+    if (url.pathname === `/api/v2/workspaces/${workspaceId}/access`) {
+      assert.equal(method, "POST");
+      assert.equal(request.headers["idempotency-key"], `workspace-access:${applicationOperationId}`);
+      assert.match(String(request.headers.cookie), /opl_console_session=owner-session/);
+      assert.equal(request.headers["x-csrf-token"], "owner-csrf-token");
+      return send(response, 200, { workspaceId, deploymentId: applicationOperationId, url: entryURL });
     }
     if (method === "GET" && url.pathname === `/api/v2/workspaces/${workspaceId}/transactions`) {
       return send(response, 200, { items: counts.debits ? [{
@@ -1475,6 +1645,9 @@ test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
       assert.equal(writtenReceipt.identities.operationId, operationId);
       assert.equal(writtenReceipt.identities.workspaceId, workspaceId);
       assert.equal(writtenReceipt.identities.runtimeVersionId, runtimeVersionId);
+      assert.equal(writtenReceipt.application.applicationId, runtimeVersionId);
+      assert.equal(writtenReceipt.application.revision, runtimeVersionId);
+      assert.equal(writtenReceipt.application.entryUrl, entryURL);
       assert.equal(writtenReceipt.identities.computePlanId, computePlanId);
       assert.equal(writtenReceipt.identities.storagePlanId, storagePlanId);
       assert.equal(writtenReceipt.receipt.operationId, operationId);

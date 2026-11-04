@@ -44,6 +44,9 @@ func (s *Server) workspaceApplication(ctx context.Context, caller Caller, worksp
 	if workspace == nil || workspace.GetId() != workspaceID {
 		return nil, errOwnerUnconfigured
 	}
+	// Only Serve can confirm the derived application fields.
+	workspace.ApplicationAvailability = api.WorkspaceApplicationAvailabilityEnum_WORKSPACE_APPLICATION_AVAILABILITY_ENUM_UNKNOWN
+	workspace.AccessUrl = nil
 	serve, ok := s.reader.(applicationEntryReader)
 	if !ok {
 		// A deployment without the Serve read surface cannot compose the derived
@@ -61,7 +64,7 @@ func (s *Server) workspaceApplication(ctx context.Context, caller Caller, worksp
 		clients.CallContext(ctx).GetRequestId()); err != nil {
 		return nil, err
 	}
-	page, err := serve.Deployments(ctx, workspaceID, "", 0)
+	page, err := serve.Deployments(ctx, workspaceID, "", 1)
 	if err != nil {
 		// Serve's readback is not available, so its layer is genuinely unknown for
 		// this response. The contract has no per-source reason field on Workspace,
@@ -69,14 +72,21 @@ func (s *Server) workspaceApplication(ctx context.Context, caller Caller, worksp
 		workspace.ApplicationAvailability = api.WorkspaceApplicationAvailabilityEnum_WORKSPACE_APPLICATION_AVAILABILITY_ENUM_UNKNOWN
 		return workspace, nil
 	}
-	current := currentDeployment(page)
-	if current == nil {
+	current, latest, selectionErr := serveDeploymentSelection(page, workspaceID)
+	if selectionErr != nil {
+		return workspace, nil
+	}
+	displayed := current
+	if displayed == nil {
+		displayed = latest
+	}
+	if displayed == nil {
 		// No Serve-owned deployment exists for this Workspace: the rule's legacy
 		// bare-resource case, which is unavailable rather than pending.
 		workspace.ApplicationAvailability = api.WorkspaceApplicationAvailabilityEnum_WORKSPACE_APPLICATION_AVAILABILITY_ENUM_UNAVAILABLE
 		return workspace, nil
 	}
-	switch current.GetStatus() {
+	switch displayed.GetStatus() {
 	case api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_ACTIVE:
 		// Only the current active deployment can confirm readiness and admission.
 	case api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_FAILED,
@@ -108,7 +118,7 @@ func (s *Server) workspaceApplication(ctx context.Context, caller Caller, worksp
 		// The access read is unresolved rather than refused, so this layer stays
 		// unknown and the URL stays absent.
 		workspace.ApplicationAvailability = api.WorkspaceApplicationAvailabilityEnum_WORKSPACE_APPLICATION_AVAILABILITY_ENUM_UNKNOWN
-	case entry == nil:
+	case entry == nil || entry.GetWorkspaceId() != workspaceID || entry.GetDeploymentId() != current.GetId():
 		workspace.ApplicationAvailability = api.WorkspaceApplicationAvailabilityEnum_WORKSPACE_APPLICATION_AVAILABILITY_ENUM_UNKNOWN
 	case validApplicationEntry(entry.GetUrl()):
 		// Serve confirms both readiness and the supported access entry, so the URL

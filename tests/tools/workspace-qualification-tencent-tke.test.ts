@@ -163,7 +163,9 @@ const qualificationRequest = (provider, overrides = {}) => createQualificationRe
  * and refuses its write.
  */
 function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MICROS, loseResponseOnce = false,
-  noBillingReceipt = false, orderStatus = "succeeded", workspaceReadbackUnavailable = false } = {}) {
+  noBillingReceipt = false, orderStatus = "succeeded", workspaceReadbackUnavailable = false,
+  deployment = {}, access = {}, omitCurrentDeployment = false,
+  expectedAuth = { cookie: "opl_session=qualification", csrf: "qualification-csrf" } } = {}) {
   const state = {
     orders: new Map(), byKey: new Map(), quotes: new Map(), quoteById: new Map(),
     posted: 0, charges: [], commands: [], calls: [],
@@ -193,7 +195,13 @@ function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MI
 
   // The owner's own answer to one request. The route decides what the owner
   // says, and the caller decides which status it is willing to read.
-  const ownerAnswer = async (path, init) => {
+  const deploymentPage = (workspaceId) => {
+    const current = { id: APPLICATION_OPERATION_ID, workspaceId, status: "active",
+      runtimeInstanceId: "rt-0123456789abcdef", capabilityVersionId: "", runtimeVersionId: OWNER_RUNTIME_VERSION_ID, ...deployment };
+    const latest = { ...current, id: "failed-replacement", status: "failed" };
+    return { items: omitCurrentDeployment ? [current] : [latest], currentDeployment: omitCurrentDeployment ? undefined : current, latestAttempt: latest };
+  };
+  const ownerAnswer = async (path, init, auth) => {
     if (path === "/api/gateway/wallet") return { status: 200, payload: envelope({ usdMicros: state.wallet }) };
     if (path === "/api/auth/me") {
       return { status: 200, payload: envelope({
@@ -323,12 +331,19 @@ function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MI
       if (workspaceReadbackUnavailable) return { status: 500, payload: null };
       const workspaceId = decodeURIComponent(path.split("/").pop());
       return { status: 200, payload: { id: workspaceId, name: "Qualification workspace", status: "running",
-        capabilityVersionId: "capability-0001", applicationAvailability: "available", accessUrl: ENTRY_URL } };
+        runtimeVersionId: OWNER_RUNTIME_VERSION_ID, applicationAvailability: "available", accessUrl: ENTRY_URL } };
     }
-    if (/^\/api\/v2\/workspaces\/[^/]+\/deployments\?limit=100$/.test(path)) {
+    if (/^\/api\/v2\/workspaces\/[^/]+\/deployments\?limit=1$/.test(path)) {
       const workspaceId = decodeURIComponent(path.split("/")[4]);
-      return { status: 200, payload: { items: [{ id: APPLICATION_OPERATION_ID, workspaceId,
-        status: "active", runtimeInstanceId: "rt-0123456789abcdef" }] } };
+      return { status: 200, payload: deploymentPage(workspaceId) };
+    }
+    if (/^\/api\/v2\/workspaces\/[^/]+\/access$/.test(path)) {
+      const workspaceId = decodeURIComponent(path.split("/")[4]);
+      const current = deploymentPage(workspaceId).currentDeployment;
+      assert.ok(current, "access requires a selected deployment");
+      assert.deepEqual(init, { method: "POST", headers: { "idempotency-key": `workspace-access:${current.id}` } });
+      assert.deepEqual(auth, expectedAuth);
+      return { status: 200, payload: { workspaceId, deploymentId: current.id, url: ENTRY_URL, ...access } };
     }
     if (/^\/api\/v2\/workspaces\/[^/]+\/transactions\?limit=100$/.test(path)) {
       if (noBillingReceipt) throw new Error(`HTTP GET ${path} returned 404`);
@@ -373,19 +388,18 @@ function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MI
         if (workspaceReadbackUnavailable) return { response: { status: 500 }, payload: null };
         const workspaceId = decodeURIComponent(path.split("/").pop());
         return { response: { status: 200 }, payload: { id: workspaceId, name: "Qualification workspace",
-          status: "running", capabilityVersionId: "capability-0001", applicationAvailability: "available", accessUrl: ENTRY_URL } };
+          status: "running", runtimeVersionId: OWNER_RUNTIME_VERSION_ID, applicationAvailability: "available", accessUrl: ENTRY_URL } };
       }
-      if (/^\/api\/v2\/workspaces\/[^/]+\/deployments\?limit=100$/.test(path)) {
+      if (/^\/api\/v2\/workspaces\/[^/]+\/deployments\?limit=1$/.test(path)) {
         const workspaceId = decodeURIComponent(path.split("/")[4]);
-        return { response: { status: 200 }, payload: { items: [{ id: APPLICATION_OPERATION_ID, workspaceId,
-          status: "active", runtimeInstanceId: "rt-0123456789abcdef" }] } };
+        return { response: { status: 200 }, payload: deploymentPage(workspaceId) };
       }
       if (/^\/api\/workspace-launches\/[^/]+$/.test(path)) return retainedLaunch();
       throw new Error(`unexpected request ${path}`);
     },
     async json(path, init = {}, auth = null, statuses = [200]) {
       state.calls.push({ method: init.method || "GET", path });
-      const answer = await ownerAnswer(path, init);
+      const answer = await ownerAnswer(path, init, auth);
       // The owner answers at the status the caller asked for, and no other.
       if (!statuses.includes(answer.status)) throw new Error(`HTTP ${init.method || "GET"} ${path} returned ${answer.status}`);
       return answer;
@@ -485,8 +499,8 @@ test("the TKE adapter satisfies the shared seam and settles the shared flow", as
   // purchase command any more, so no purchase is written there.
   assert.deepEqual(
     platform.state.calls.filter((call) => call.method === "POST").map((call) => call.path),
-    ["/api/v2/quotes", "/api/v2/workspaces"],
-    "the quote and the order are issued on the Workspace owner route",
+    ["/api/v2/quotes", "/api/v2/workspaces", `/api/v2/workspaces/${platform.state.workspaceId}/access`],
+    "the quote and order precede the identity-bound Serve access read",
   );
   assert.equal(
     platform.state.calls.some((call) => call.path.startsWith("/api/workspace-launches") && call.method === "POST"),
@@ -518,16 +532,40 @@ test("the TKE adapter satisfies the shared seam and settles the shared flow", as
   assert.equal(boundary.calls.health, 1);
 });
 
+test("TKE refuses missing selection, invalid sources and cross-generation access", async () => {
+  for (const options of [
+    { omitCurrentDeployment: true },
+    { deployment: { runtimeVersionId: undefined } },
+    { deployment: { runtimeVersionId: 42 } },
+    { deployment: { capabilityVersionId: "capability-current" } },
+    { access: { workspaceId: "workspace-other" } },
+    { access: { deploymentId: "deployment-previous" } },
+    { access: { deploymentId: undefined } },
+    { access: { url: "/relative" } },
+  ]) {
+    const platform = controlPlane(options);
+    const request = qualificationRequest(TENCENT_TKE_PROVIDER);
+    const result = await run(request, adapterFor(platform, request));
+    assert.equal(result.state, "failed");
+    assert.equal(result.receipt.reason, "runtime_not_ready");
+    assert.equal(result.receipt.checks.runtime_ready, false);
+    assert.equal(result.receipt.delivery.applicationOperationDigest, "");
+    assert.equal(result.receipt.delivery.workspaceEntryDigest, "");
+    assert.equal(platform.state.posted, 1);
+    assert.equal(platform.state.charges.length, 1);
+  }
+});
+
 test("a TKE receipt has exactly the Local-Docker business receipt shape", async () => {
   const tkePlatform = controlPlane();
   const tkeRequest = qualificationRequest(TENCENT_TKE_PROVIDER);
   const tke = await run(tkeRequest, adapterFor(tkePlatform, tkeRequest));
 
-  const localPlatform = controlPlane();
+  const localPlatform = controlPlane({ expectedAuth: { cookie: "opl_session=local", csrf: "local-csrf" } });
   const localRequest = qualificationRequest("local-docker");
   const localAdapter = {
     provider: "local-docker",
-    async openBusinessScope() { return { http: localPlatform.http, auth: { cookie: "opl_session=local" } }; },
+    async openBusinessScope() { return { http: localPlatform.http, auth: { cookie: "opl_session=local", csrf: "local-csrf" } }; },
     async closeBusinessScope() { return { restored: true }; },
     async readDeploymentHealth() { return "healthy"; },
   };

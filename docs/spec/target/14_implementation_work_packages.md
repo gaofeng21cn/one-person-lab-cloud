@@ -393,7 +393,7 @@
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
 - `packages/contracts/go/workspace_application.go`
-- `services/control-plane/internal/server/workspace_application_admission.go`
+- `services/capability/catalog/admission.go`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
 - `services/capability/catalog`

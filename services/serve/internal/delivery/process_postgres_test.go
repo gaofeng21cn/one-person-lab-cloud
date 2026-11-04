@@ -171,14 +171,14 @@ func TestServeProcessServesOwnerTruthOverTheWire(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetWorkspaceAccess over the wire: %v", err)
 	}
-	if access.GetUrl() != "https://ws-wire.example/app" || !access.GetApplicationCredentialsAvailable() {
+	if access.GetUrl() != "https://ws-wire.example/app" || !access.GetApplicationCredentialsAvailable() || access.GetDeploymentId() != "dep-wire" {
 		t.Fatalf("wire access readback = %+v", access)
 	}
 	page, err := client.ListDeployments(ctx, &api.ListDeploymentsRpcRequest{Context: callCtx, WorkspaceId: "ws-wire"})
 	if err != nil {
 		t.Fatalf("ListDeployments over the wire: %v", err)
 	}
-	if len(page.GetItems()) != 1 || page.GetItems()[0].GetId() != "dep-wire" {
+	if len(page.GetItems()) != 1 || page.GetItems()[0].GetId() != "dep-wire" || page.GetCurrentDeployment().GetId() != "dep-wire" || page.GetLatestAttempt().GetId() != "dep-wire" {
 		t.Fatalf("wire deployment page = %+v", page)
 	}
 }

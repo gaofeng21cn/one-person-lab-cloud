@@ -54,43 +54,26 @@ func (s *Service) RevealWorkspaceApplicationCredentials(ctx context.Context, r *
 	if err != nil {
 		return nil, err
 	}
-	if access.GetWorkspaceId() != wid || !access.GetApplicationCredentialsAvailable() {
+	if access.GetWorkspaceId() != wid || strings.TrimSpace(access.GetDeploymentId()) == "" || !access.GetApplicationCredentialsAvailable() {
 		return nil, status.Error(codes.FailedPrecondition, "current application login credentials are unavailable")
 	}
-	// Deployment history is keyset-paginated by Serve. Only its active selection
-	// is eligible, including when more recent attempts have failed.
-	cursor, seen := "", map[string]bool{}
-	var current *api.Deployment
-	for {
-		page, err := s.ServeProduct.ListDeployments(ctx, &api.ListDeploymentsRpcRequest{Context: call, WorkspaceId: wid, QueryCursor: proto.String(cursor), QueryLimit: proto.Int32(100)})
-		if err != nil {
-			return nil, err
-		}
-		if page == nil {
-			return nil, status.Error(codes.Unavailable, "Serve deployment readback is unavailable")
-		}
-		for _, d := range page.GetItems() {
-			if d.GetWorkspaceId() != wid {
-				return nil, status.Error(codes.FailedPrecondition, "Serve deployment does not match the Workspace")
-			}
-			if d.GetStatus() == api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_ACTIVE {
-				if current != nil {
-					return nil, status.Error(codes.FailedPrecondition, "Serve current deployment is ambiguous")
-				}
-				current = d
-			}
-		}
-		cursor = page.GetNextCursor()
-		if cursor == "" {
-			break
-		}
-		if seen[cursor] {
-			return nil, status.Error(codes.DataLoss, "Serve deployment cursor repeated")
-		}
-		seen[cursor] = true
+	// Serve's current selection is independent of its paginated attempt history.
+	page, err := s.ServeProduct.ListDeployments(ctx, &api.ListDeploymentsRpcRequest{Context: call, WorkspaceId: wid, QueryLimit: proto.Int32(1)})
+	if err != nil {
+		return nil, err
 	}
-	if current.GetId() == "" || current.GetRuntimeInstanceId() == "" {
+	if page == nil {
+		return nil, status.Error(codes.Unavailable, "Serve deployment readback is unavailable")
+	}
+	current := page.GetCurrentDeployment()
+	if strings.TrimSpace(current.GetId()) == "" || current.GetStatus() != api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_ACTIVE || strings.TrimSpace(current.GetRuntimeInstanceId()) == "" {
 		return nil, status.Error(codes.FailedPrecondition, "Workspace has no current application runtime")
+	}
+	if current.GetWorkspaceId() != wid {
+		return nil, status.Error(codes.FailedPrecondition, "Serve deployment does not match the Workspace")
+	}
+	if access.GetDeploymentId() != current.GetId() {
+		return nil, status.Error(codes.FailedPrecondition, "Serve access does not match the current deployment")
 	}
 	// The explicit reveal decision also binds Fabric's read-only resource check
 	// to this same live session and Workspace. Ordinary Serve reads above obtain

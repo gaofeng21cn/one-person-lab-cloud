@@ -47,6 +47,9 @@ import {
   ACCOUNT_TENANT_ID,
   BILLING_SUBJECT_ID,
   ACCOUNT_ID,
+  APPLICATION_OPERATION_ID,
+  ENTRY_URL,
+  OWNER_CSRF_TOKEN,
   CLOUD_IMAGE_DIGEST,
   CLUSTER_ID,
   NAMESPACE,
@@ -56,8 +59,8 @@ import {
   OWNER_STORAGE_PLAN_ID,
   QUOTE_MICROS,
   candidateReceipt,
-  createFixtureBoundary,
-  createFixturePlatform,
+  createFixtureBoundary as createBaseFixtureBoundary,
+  createFixturePlatform as createBaseFixturePlatform,
   createRecordingBoundary,
   deploymentBinding,
   installationReceipt,
@@ -89,6 +92,58 @@ function candidateFixture() {
   };
 }
 
+// Serve's current fixture is local to this test's write set. It supplies owner
+// selections directly; the shared helper supplies the other owners' fixtures.
+function createFixturePlatform(options = {}) {
+  const { deployment = {}, access = {}, omitCurrentDeployment = false, ...ownerOptions } = options;
+  const platform = createBaseFixturePlatform(ownerOptions);
+  const json = platform.http.json.bind(platform.http);
+  const request = platform.http.request.bind(platform.http);
+  const ownerPath = /^\/api\/v2\/workspaces\/[^/]+(?:\/(?:deployments|access)\b.*)?$/;
+  platform.http.json = async (path, init = {}, auth = null) => {
+    if (!ownerPath.test(path)) return json(path, init);
+    platform.state.calls.push(path);
+    const workspaceId = decodeURIComponent(path.split("/")[4].split("?")[0]);
+    if (workspaceId !== platform.state.workspaceId) return { status: 404, payload: null };
+    if (/^\/api\/v2\/workspaces\/[^/]+$/.test(path)) {
+      return { status: 200, payload: { id: workspaceId, name: "Qualification workspace", status: "running",
+        runtimeVersionId: OWNER_RUNTIME_VERSION_ID, applicationAvailability: "available", accessUrl: ENTRY_URL } };
+    }
+    const current = { id: APPLICATION_OPERATION_ID, workspaceId, status: "active",
+      runtimeInstanceId: "rt-qualification-0001", capabilityVersionId: "", runtimeVersionId: OWNER_RUNTIME_VERSION_ID, ...deployment };
+    if (path.endsWith("/access")) {
+      assert.deepEqual(init, { method: "POST", headers: { "idempotency-key": `workspace-access:${current.id}` } });
+      assert.deepEqual(auth, { accountId: ACCOUNT_ID, cookie: "opl_console_session=qualification",
+        csrf: OWNER_CSRF_TOKEN, ownerCsrf: OWNER_CSRF_TOKEN });
+      return { status: 200, payload: { workspaceId, deploymentId: current.id, url: ENTRY_URL, ...access } };
+    }
+    assert.equal(path, `/api/v2/workspaces/${encodeURIComponent(workspaceId)}/deployments?limit=1`);
+    assert.equal(init.method || "GET", "GET");
+    const latest = { ...current, id: "failed-replacement", status: "failed" };
+    return { status: 200, payload: { items: omitCurrentDeployment ? [current] : [latest],
+      currentDeployment: omitCurrentDeployment ? undefined : current, latestAttempt: latest } };
+  };
+  platform.http.request = async (path, init = {}, auth = null) => {
+    if (!ownerPath.test(path)) return request(path, init);
+    platform.state.calls.push(`request:${path}`);
+    const result = await platform.http.json(path, init, auth);
+    return { response: { status: result.status }, payload: result.payload };
+  };
+  return platform;
+}
+
+function createFixtureBoundary(deployment, platform, options = {}) {
+  const boundary = createBaseFixtureBoundary(deployment, platform, options);
+  const establish = boundary.establishReachability.bind(boundary);
+  return { ...boundary, async establishReachability(input) {
+    const result = await establish(input);
+    if (result.state === "open") result.transport.auth = {
+      accountId: ACCOUNT_ID, cookie: "opl_console_session=qualification", csrf: OWNER_CSRF_TOKEN, ownerCsrf: OWNER_CSRF_TOKEN,
+    };
+    return result;
+  } };
+}
+
 async function writeFixture(root: string) {
   const fixture = candidateFixture();
   const paths = {
@@ -108,7 +163,9 @@ async function writeFixture(root: string) {
   await chmod(paths.j0ReadyReceiptPath, 0o600);
   await writeFile(
     paths.boundaryModulePath,
-    `import { createFixtureBoundary, createFixturePlatform } from ${JSON.stringify(FIXTURE_HELPER_URL)};\n` +
+    `import assert from "node:assert/strict";\n` +
+      `import { createFixtureBoundary as createBaseFixtureBoundary, createFixturePlatform as createBaseFixturePlatform, ACCOUNT_ID, APPLICATION_OPERATION_ID, ENTRY_URL, OWNER_RUNTIME_VERSION_ID, OWNER_CSRF_TOKEN } from ${JSON.stringify(FIXTURE_HELPER_URL)};\n` +
+      `${createFixturePlatform.toString()}\n${createFixtureBoundary.toString()}\n` +
       "export const platform = createFixturePlatform();\n" +
       `export function ${PROTECTED_BOUNDARY_FACTORY}({ deployment }) {\n` +
       "  return createFixtureBoundary(deployment, platform);\n" +
@@ -670,6 +727,38 @@ test("the producer emits the shared Candidate-bound receipt through the real orc
   }
 });
 
+test("the protected producer refuses missing selection, invalid sources and cross-generation access", async () => {
+  for (const options of [
+    { omitCurrentDeployment: true },
+    { deployment: { runtimeVersionId: undefined } },
+    { deployment: { runtimeVersionId: 42 } },
+    { deployment: { capabilityVersionId: "capability-current" } },
+    { access: { workspaceId: "workspace-other" } },
+    { access: { deploymentId: "deployment-previous" } },
+    { access: { deploymentId: undefined } },
+    { access: { url: "/relative" } },
+  ]) {
+    const root = await mkdtemp(join(tmpdir(), "opl-protected-serve-readback-"));
+    try {
+      const fixture = await writeFixture(root);
+      const platform = createFixturePlatform(options);
+      const result = await runProtectedBusinessQualification(input(fixture.paths, fixture.digest), {
+        environment: protectedEnvironment(),
+        boundary: createFixtureBoundary(deploymentBinding(fixture.digest), platform), wait: async () => {},
+      });
+      assert.equal(result.state, "failed");
+      assert.equal(result.reason, "runtime_not_ready");
+      assert.equal(result.receipt.checks.runtime_ready, false);
+      assert.equal(result.receipt.delivery.applicationOperationDigest, "");
+      assert.equal(result.receipt.delivery.workspaceEntryDigest, "");
+      assert.equal(platform.state.purchases, 1);
+      assert.equal(platform.state.charges, 1);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+});
+
 test("the producer invokes the deployed buyer and preserves its Candidate-bound purchase receipt", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "opl-protected-buyer-"));
   try {
@@ -949,7 +1038,8 @@ test("the shared qualification flow runs for the provider the deployment binding
     assert.ok(calls.some((call) => /^\/api\/v2\/workspaces\/[^/]+\/transactions\?limit=100$/.test(call)));
     assert.ok(calls.some((call) => /^\/api\/v2\/workspaces\/[^/]+\/financial-receipts\/[^/]+$/.test(call)));
     assert.ok(calls.some((call) => /^\/api\/v2\/workspaces\/[^/]+$/.test(call)));
-    assert.ok(calls.some((call) => /^\/api\/v2\/workspaces\/[^/]+\/deployments\?limit=100$/.test(call)));
+    assert.ok(calls.some((call) => /^\/api\/v2\/workspaces\/[^/]+\/deployments\?limit=1$/.test(call)));
+    assert.ok(calls.some((call) => /^\/api\/v2\/workspaces\/[^/]+\/access$/.test(call)));
     // The payer is the declared Tenant billing subject. The personal wallet is
     // never read, so a balance cannot stand in for the owner's charge evidence.
     assert.ok(calls.includes("/api/v2/tenant"));
