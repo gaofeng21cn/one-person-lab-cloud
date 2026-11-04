@@ -1368,7 +1368,7 @@ operations, data or financial evidence.
 | --- | --- | --- | --- |
 | Fresh purchase | Resource Catalog creates the quote; Workspace accepts the order through BFF `/api/v2/quotes` and `/api/v2/workspaces`; UI `createWorkspaceQuote` and Instance `cloud-workspace-launch-readback.mjs` use those routes | CP `POST /api/workspace-launches` only replays an existing account/key-bound operation, otherwise refuses before pricing/payment/provider/persistence. PR #1061 already removed `createWorkspaceLaunch` and fresh-create claim machinery | Already removed; do not implement another fence or preserve a creator for tests |
 | Application revision, deployment and current selection | Runtime Control supplies approved default-App releases; Capability/Build supplies Agent descriptors; Workspace calls Serve Reserve/Deploy. BFF `serve_update.go` delegates version updates to Serve | CP operator revision/data admission, application-deployments and retry, default installer and deployment worker. Claim/activation requires a CP Workspace row and binding/predecessor checks. Legacy UI and Instance installer remain callers | R1: retire the legacy deployment capability after caller/accepted-operation disposition; no proof of a duplicate native writer follows from old columns |
-| Application credentials, runtime maintenance and image policy | Workspace/Serve reveal the exact current ready runtime's credentials; Serve owns approved version replacement/readiness/access | CP credential reveal and original Launch repair remain; R2a removes password-rotation creation. R2c removes CP image replacement creation/preview/dispatch/retry worker and policy activation mutation, with Console/BFF callers; direct policy/history reads and safety barriers remain | R2: Instance #675 caller withdrawal is MERGED, CI 2/2 SUCCESS; Cloud entrypoint-removal adoption remains unproven; check in-flight legacy executions before that adoption. Accepted credential deployments retain recovery; native reveal/update does not establish legacy command parity |
+| Application credentials, runtime maintenance and image policy | Workspace/Serve reveal the exact current ready runtime's credentials; Serve owns approved version replacement/readiness/access | CP credential reveal and original Launch repair remain; R2a removes password-rotation creation. R2c removes CP image replacement creation/preview/dispatch/retry worker with Console/BFF callers; direct policy/history reads, policy activation for original Launch recovery, and safety barriers remain | R2: Instance #675 caller withdrawal is MERGED, CI 2/2 SUCCESS; Cloud entrypoint-removal adoption remains unproven; check in-flight legacy executions before that adoption. Accepted credential deployments retain recovery; native reveal/update does not establish legacy command parity |
 | Workspace managed Key | Workspace coordinates intent through Gateway Integration; external Gateway owns effective Key/Group state | R3a removes CP fresh rotation acceptance and its store claim. The original POST resumes only an existing account/Workspace/request-bound rotation; retained Launch Key stages and accepted rotations still coordinate external effects. This is distinct from personal user Key CRUD | R3: finish original-operation disposition before removing recovery, deployment binding and lineage consumers; native disable/reveal is not replacement-Key rotation |
 | Personal Gateway Keys, account activation and wallet administration | Gateway Integration owns Cloud mappings; Sub2API remains Key/wallet truth. Cloud activation still has an original-owner BFF bridge | CP user-Key routes, delegated user identity, activation/admin commands and recovery remain separate capabilities; Cloud browser guards do not remove backend entrypoints | R4: identify which public/admin capabilities are still required before choosing withdrawal or migration; no blanket Gateway or Account file deletion |
 | Retained purchase recovery, expiry/renewal, deletion and settlement | Workspace owns native lifecycle; native BFF deletion/readback and Instance `workspace-native-delete.mjs` use its API; Gateway/Fabric/Ledger own their effects/readbacks | CP original Launch replay/resume, renewal/expiry and delete/refund workers remain registered. Original operations/charges must not be replaced by native re-purchase/refund | R5: finish the all-object/operation census, then remove the retained execution slice and its external callers; the three #1018 selectors are already closed |
@@ -1442,8 +1442,8 @@ Fabric; their retirement requires separate provider-owner/caller disposition.
 
 The **R2c** image slice, based on `173d1afbcbd3dc120f0839707c9e69eb2ba2787b`
 after merged Cloud #1120, removes CP replacement creation, preview, dispatch and
-retry/worker execution plus image-release policy activation mutation. Its CP
-service/Fabric client wrapper, policy-mutation store, exclusive DTOs/tests,
+retry/worker execution. Its CP
+service/Fabric client wrapper and exclusive replacement DTOs/tests,
 worker startup and `OPL_WORKSPACE_RUNTIME_IMAGE_REPLACEMENT_WORKER_ENABLED`
 leave with the Console command controllers and all Console/BFF/internal Cloud
 policy, preview and replacement-result adapters.
@@ -1452,7 +1452,11 @@ policy, preview and replacement-result adapters.
 for policy and an existing Workspace replacement operation, plus historical
 operation decoding/projection. `workspace_image_release_policy.go` keeps catalog
 and persisted-policy validation/readback for Instance registry retention,
-node-cache retirement and original Launch image-revision recovery. Pending
+node-cache retirement and original Launch image-revision recovery. Its existing
+operator policy-activation POST and atomic mutation/audit store remain because
+a persisted policy can otherwise prevent selecting a newer qualified recovery image.
+The catalog, revision and idempotency guards remain unchanged; writer retirement
+requires migration of this actual original-operation consumer. Pending
 transition detection in `operator_runtime_observations.go` still recognizes valid
 `started` image operations; `workspace_resource_reconcile.go` still blocks on
 image-action rows marked `started`. Invalid historical decoding fails the GET.

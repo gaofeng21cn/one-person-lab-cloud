@@ -31,6 +31,7 @@ const (
 
 func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
 	registerWorkspaceImageHistoryRoutes(mux, app)
+	mux.HandleFunc("POST /api/operator/workspace-image-release-activations", app.protected(true, app.activateWorkspaceImageRelease))
 	registerWorkspaceApplicationHistoryRoutes(mux, app)
 	registerWorkspaceApplicationRecoveryRoutes(mux, app)
 	registerWorkspaceRegistryCatalogRoutes(mux, app)

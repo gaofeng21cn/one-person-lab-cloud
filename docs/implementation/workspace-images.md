@@ -12,13 +12,21 @@ original purchase is still non-terminal.
 ## Retained CP reads and withdrawn commands
 
 The source change removes CP Runtime image replacement creation, preview,
-dispatch and retry/worker execution, image-release policy activation mutation,
-and their Console controllers, API/DTOs and BFF/internal Cloud adapters. The
-activation POST and replacement creation/preview routes are removed. Worker
+dispatch and retry/worker execution, and their Console controllers, API/DTOs
+and BFF/internal Cloud adapters. Replacement creation/preview routes are removed. Worker
 startup, `OPL_WORKSPACE_RUNTIME_IMAGE_REPLACEMENT_WORKER_ENABLED`, the exclusive
-CP Fabric client/service wrapper and policy-mutation store leave together.
+CP Fabric client/service wrapper leave together.
 Console no longer reads image policy, preview or replacement results through
 either its legacy API adapter or the BFF.
+
+The operator-authenticated policy activation POST and its atomic revision/audit
+store remain with the original Launch recovery consumer. A persisted active policy
+can differ from a newer installed default: changing installation configuration alone
+does not advance it. The existing activation command selects an approved catalog
+release with expected-revision and idempotency checks before the original Launch
+can authorize that image. This preserves the current owner and authorization rule;
+it does not restore existing-Workspace replacement or a Console controller. Retire
+this writer only after the original recovery selection authority migrates.
 
 Two direct, operator-authenticated CP reads remain:
 

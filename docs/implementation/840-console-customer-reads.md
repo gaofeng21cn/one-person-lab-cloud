@@ -66,8 +66,9 @@ sessions never cause a cookie mutation. The retained build continues to select
 its own authenticated route; there is no runtime fallback.
 
 Image policy, replacement preview and replacement-result reads are removed from
-both Console identity adapters and from the BFF/internal Cloud bridge. Activation
-and replacement commands leave with their controllers. Direct CP policy and
+both Console identity adapters and from the BFF/internal Cloud bridge. Console
+activation/replacement commands leave with their controllers; the direct CP policy
+activation command remains necessary for original Launch recovery. Direct CP policy and
 historical replacement GETs remain for non-browser consumers; the
 [image lifecycle](workspace-images.md) names their routes and retained callers.
 This source inventory does not establish Instance caller withdrawal or adoption.

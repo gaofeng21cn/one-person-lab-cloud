@@ -21,13 +21,17 @@ durable decisions are in [decisions.md](decisions.md), and open work is in
 The R2c source change is based on
 `173d1afbcbd3dc120f0839707c9e69eb2ba2787b`, after merged Cloud #1120.
 The source withdrawal removes CP existing-Workspace image replacement
-creation, preview, dispatch and retry/worker execution, image-release policy
-activation mutation, and the exclusive CP service/client/store/configuration and
+creation, preview, dispatch and retry/worker execution, and the exclusive CP
+replacement service/client/configuration and
 Console/BFF/internal Cloud callers. The [image reference](implementation/workspace-images.md)
 names the retained direct CP policy and historical-operation GETs, policy/history
 decoders, pending-transition and resource-reconcile barriers. Original Launch
 image-revision recovery and Instance registry-retention/node-cache readers keep
-their policy/catalog consumer. Fabric's own replacement/provider capability,
+their policy/catalog consumer. The existing operator policy-activation command
+and atomic revision/audit writer remain necessary: original Launch recovery
+requires the approved target to equal the persisted active policy, which installation
+configuration alone cannot advance. This writer is not retired before that consumer
+and its selection authority migrate. Fabric's own replacement/provider capability,
 journal and strict readback remain; persisted records and audit history stay.
 
 GitHub readback records Instance #675 as MERGED at

@@ -106,7 +106,9 @@ are removed from Console API adapters and BFF/internal Cloud routes. The image
 activation and replacement command controllers and controls are also removed.
 The two direct CP operator GETs remain for Instance maintenance, original Launch
 recovery and history consumers, as specified by the [image lifecycle](workspace-images.md);
-their retention does not expose an image action or read through Console.
+their retention does not expose an image action or read through Console. The direct
+CP policy-activation writer also remains for original Launch recovery; its Console
+controller is removed.
 
 ## Commands And Authoritative Completion
 
