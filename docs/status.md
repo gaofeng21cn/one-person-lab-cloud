@@ -3,7 +3,7 @@
 Owner: `opl-cloud`
 Purpose: `replaceable_current_evidence_snapshot`
 State: `current_snapshot`
-Reviewed source baseline: `089275413ca7d682e02a7c22d7a9356ff24acf35` on `main`
+Reviewed source baseline: `3773966a31e2a5d6630038decfa0a812c1488830` on `main`
 Snapshot reconciliation date: 2026-11-05
 
 Each observation below retains its original source, run and environment; the
@@ -16,7 +16,7 @@ and remaining work in [roadmap.md](roadmap.md).
 
 ## Current Capability Baseline
 
-Reconciled on 2026-11-05 against Cloud source `089275413`; dated source and
+Reconciled on 2026-11-05 against Cloud source `3773966a`; dated source and
 Instance observations below retain their original revisions and limits.
 
 | Scope | Established evidence | Remaining boundary |
@@ -25,7 +25,7 @@ Instance observations below retain their original revisions and limits.
 | Original-order closeout | [#1018's three original orders](#original-order-closeout-scope-2026-10-23) have protected resource absence, deletion-receipt and original-charge settlement evidence | Preserve their original records; completed closeout does not retire every retained CP caller or worker |
 | Serve current application and upgraded deletion | [Current selection](#serve-owned-current-application-readback-2026-11-04) comes from Serve, and [deletion follows the original reservation's successor lineage](#workspace-deletion-after-application-replacement-2026-11-04); both have source regression evidence | Installed adoption and live owner readback for these later repairs remain unverified |
 | Package, Build and Runtime catalog | Approved Default App inputs were used by #1042; Package/Build source and the [Linux Custom Agent profile](#linux-custom-agent-owner-qualification-2026-10-21) have distinct evidence | External OMA admission, hosted tenant-specific OCI publication, Custom Agent TKE acceptance and broader Runtime/provider profiles remain separate |
-| Retained writer migration | [Capability withdrawals](#retained-writer-inventory-and-split-withdrawal-proposals-2026-11-03) and [implementation inventory](implementation-architecture.md#retained-writer-and-caller-inventory-2026-11-03) identify source removals, surviving callers and bounded observations | Account eligibility, Tenant payer-balance consumption, selected-model admission, shared CP recovery and historical duties are not all resolved; source removal is not installed adoption or zero traffic |
+| Retained writer migration | [Capability withdrawals](#retained-writer-inventory-and-split-withdrawal-proposals-2026-11-03) and [implementation inventory](implementation-architecture.md#retained-writer-and-caller-inventory-2026-11-03) identify source removals, surviving callers and bounded observations | Account eligibility is consumed at source; its installed adoption and owner migration, Tenant payer-balance consumption, selected-model admission, shared CP recovery and historical duties remain separate. Source removal is not installed adoption or zero traffic |
 | Protected engineering qualification | Native consumer migration and source repairs are recorded separately from the accepted customer path | Protected payer declaration, same-Candidate J0 READY, W01 ordering and a complete protected receipt remain unproven; existing release admission is unchanged |
 
 The architecture source is [architecture.md](architecture.md#repository-and-instance-topology)
