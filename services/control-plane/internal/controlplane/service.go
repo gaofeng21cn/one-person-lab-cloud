@@ -387,17 +387,6 @@ func (s *Service) FabricCatalog(ctx context.Context) (clients.FabricCatalog, err
 	return s.fabric.Catalog(ctx)
 }
 
-func (s *Service) SyncWorkspaceGatewaySecretByID(ctx context.Context, accountID, workspaceID string, userID, keyID int64, keyName, idempotencyKey string) (clients.GatewaySecretWriteResult, error) {
-	key, err := s.WorkspaceKeyByIDForConvergence(ctx, userID, keyID, keyName)
-	if err != nil {
-		return clients.GatewaySecretWriteResult{}, err
-	}
-	if keyName == "" || key.Name != keyName {
-		return clients.GatewaySecretWriteResult{}, errors.New("invalid_sub2api_workspace_key")
-	}
-	return s.writeGatewaySecretValue(ctx, accountID, workspaceID, userID, key, idempotencyKey)
-}
-
 func (s *Service) SyncWorkspaceGatewayReplacementSecret(ctx context.Context, credential clients.SessionDelegatedCredential, accountID, workspaceID string, userID, keyID int64, replacementName, idempotencyKey string) (clients.GatewaySecretWriteResult, error) {
 	key, err := s.GatewayUserKey(ctx, credential, userID, keyID)
 	if err != nil {
