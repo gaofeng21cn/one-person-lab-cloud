@@ -779,3 +779,112 @@ func TestPostgresCloudAnnouncementsConcurrentACKAndWithdrawal(t *testing.T) {
 		t.Fatalf("withdrawal leaked replay: %v", err)
 	}
 }
+
+func TestCloudIdentityReadCallerConfiguration(t *testing.T) {
+	base := map[string]string{
+		"OPL_CLOUD_IDENTITY_URL": "127.0.0.1:1", "OPL_CLOUD_IDENTITY_TOKEN": cloudAnnouncementFixtureIdentityToken,
+		"OPL_GRPC_INSECURE_LOCAL": "1", "NODE_ENV": "test",
+	}
+	for _, tc := range []struct{ name, bff, workspace string }{
+		{"BFF only", cloudAnnouncementFixtureToken, ""},
+		{"Workspace only", "", cloudWorkspacePurchaseFixtureToken},
+		{"both", cloudAnnouncementFixtureToken, cloudWorkspacePurchaseFixtureToken},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			getenv := func(k string) string {
+				switch k {
+				case "OPL_CONTROL_PLANE_BFF_TOKEN":
+					return tc.bff
+				case "OPL_CONTROL_PLANE_WORKSPACE_TOKEN":
+					return tc.workspace
+				default:
+					return base[k]
+				}
+			}
+			source, err := cloudAnnouncementSourceFromEnv(getenv)
+			if err != nil || source == nil {
+				t.Fatalf("source=%v err=%v", source, err)
+			}
+			defer source.Close()
+			if source.token != tc.bff || source.workspaceToken != tc.workspace {
+				t.Fatal("caller credentials changed or implicitly substituted")
+			}
+			if tc.bff == "" {
+				app := &controlPlaneServer{cloudAnnouncements: source}
+				r := httptest.NewRequest(http.MethodGet, "/internal/cloud/announcements", nil)
+				r.Header.Set(owneridentity.PeerHeader, owneridentity.ConsoleBFF.String())
+				r.Header.Set(owneridentity.TokenHeader, tc.workspace)
+				r.Header.Set(contracts.CloudSessionHeader, owneridentity.SessionReference("workspace-only"))
+				w := httptest.NewRecorder()
+				if _, ok := app.cloudSessionProof(w, r); ok || w.Code != http.StatusServiceUnavailable {
+					t.Fatalf("Workspace-only enabled BFF: %d %s", w.Code, w.Body.String())
+				}
+			}
+		})
+	}
+	for _, callerKey := range []string{"OPL_CONTROL_PLANE_BFF_TOKEN", "OPL_CONTROL_PLANE_WORKSPACE_TOKEN"} {
+		for _, missing := range []string{"OPL_CLOUD_IDENTITY_URL", "OPL_CLOUD_IDENTITY_TOKEN"} {
+			t.Run(callerKey+" requires "+missing, func(t *testing.T) {
+				source, err := cloudAnnouncementSourceFromEnv(func(k string) string {
+					if k == missing {
+						return ""
+					}
+					if k == callerKey {
+						return cloudWorkspacePurchaseFixtureToken
+					}
+					return base[k]
+				})
+				if source != nil {
+					defer source.Close()
+				}
+				if err == nil {
+					t.Fatal("partial caller configuration accepted")
+				}
+			})
+		}
+		t.Run(callerKey+" short", func(t *testing.T) {
+			source, err := cloudAnnouncementSourceFromEnv(func(k string) string {
+				if k == callerKey {
+					return "short"
+				}
+				return base[k]
+			})
+			if source != nil {
+				defer source.Close()
+			}
+			if err == nil {
+				t.Fatal("short caller token accepted")
+			}
+		})
+		for _, outboundKey := range []string{"OPL_CLOUD_IDENTITY_TOKEN", "OPL_FABRIC_SERVICE_TOKEN", "OPL_LEDGER_SERVICE_TOKEN", "OPL_FABRIC_CAPABILITY_KEY", "OPL_LEDGER_CAPABILITY_KEY"} {
+			t.Run(callerKey+" cannot reuse "+outboundKey, func(t *testing.T) {
+				source, err := cloudAnnouncementSourceFromEnv(func(k string) string {
+					if k == callerKey || k == outboundKey {
+						return cloudAnnouncementFixtureIdentityToken
+					}
+					return base[k]
+				})
+				if source != nil {
+					defer source.Close()
+				}
+				if err == nil {
+					t.Fatal("caller reused outbound credential")
+				}
+			})
+		}
+	}
+	t.Run("callers must be independent", func(t *testing.T) {
+		source, err := cloudAnnouncementSourceFromEnv(func(k string) string {
+			if k == "OPL_CONTROL_PLANE_BFF_TOKEN" || k == "OPL_CONTROL_PLANE_WORKSPACE_TOKEN" {
+				return cloudWorkspacePurchaseFixtureToken
+			}
+			return base[k]
+		})
+		if source != nil {
+			defer source.Close()
+		}
+		if err == nil {
+			t.Fatal("BFF and Workspace reused caller credential")
+		}
+	})
+}

@@ -384,13 +384,25 @@ installed adoption; validate upgrade → delete through the existing Instance
 process after adoption. Retained history/recovery is not a fallback for a native
 Workspace, and its obligations remain separate.
 
-The next bounded source gaps are the native purchase's consumption of the
-original Account purchase-eligibility fact, the launch page's use of a personal
-wallet balance to gate a Tenant-funded order, and managed-Key issuance with
-non-empty model selections when the user API supplies no model-scope projection.
-Resolve each at its existing owner with its actual consumer; do not add a second
-eligibility writer, wallet or Gateway allowlist. None is proven resolved by the
-application retirement change.
+The remaining bounded source gaps are the launch page's use of a personal wallet
+balance to gate a Tenant-funded order, and managed-Key issuance with non-empty
+model selections when the user API supplies no model-scope projection. Resolve
+each at its existing owner with its actual consumer; do not add another wallet
+or Gateway allowlist. The new-purchase source now consumes the Account policy;
+its installed adoption and eventual policy-owner migration remain below.
+
+#### Workspace purchase eligibility adoption
+
+New-purchase source admission consumes the existing Account eligibility owner;
+validate the installed owner/client configuration and grant → new purchase →
+revoke → refused new purchase sequence after adoption. Confirm that the accepted
+original order still replays and recovers when eligibility is later revoked or
+its reader is unavailable. A source test or successful CI is not installed proof.
+
+The retained Account remains the sole eligibility writer until its provisioning,
+grant/revoke commands, historical true/false values, audit custody and new-purchase
+reader migrate together.
+
 
 ### Native v2 qualification and CP retirement (#1042)
 

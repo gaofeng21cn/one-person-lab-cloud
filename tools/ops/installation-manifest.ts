@@ -18,7 +18,7 @@ export type ProcessContract = {
   addressPortEnv?: string; additionalListeners?: { addressEnv: string; defaultAddress?: string; valueSemantics: "raw" | "trimmed" }[];
   addressEnv: string; defaultAddress: string; rpcAddressEnv?: string; defaultRPCAddress?: string; peerTokensEnv?: string; rpcEnabledByEnv?: string;
 };
-export type EdgeContract = { caller: string; target: string; addressEnv: string; tokenEnv: string; activation: "required" | "configured"; activationEnv?: string; configuredAddressSemantics?: "raw-nonempty" | "trimmed-nonempty" };
+export type EdgeContract = { caller: string; target: string; addressEnv: string; tokenEnv: string; activation: "required" | "configured"; activationEnvs?: string[]; configuredAddressSemantics?: "raw-nonempty" | "trimmed-nonempty" };
 export type InstallationTopology = { image: { defaultCommand: string[] }; processes: ProcessContract[]; communication: { schemaVersion: number; edges: EdgeContract[]; security: InstallationSecurity } };
 type Resource = Record<string, any>;
 function object(value: unknown): value is Resource {
@@ -506,7 +506,7 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
         ...(contract.additionalListeners ?? []).map(listener => listener.addressEnv)].filter((name): name is string => Boolean(name)));
       for (const edge of topology.communication.edges.filter(edge => edge.caller === contract.transportPrincipal)) {
         names.add(edge.addressEnv); names.add(edge.tokenEnv);
-        if (edge.activationEnv) names.add(edge.activationEnv);
+        for (const name of edge.activationEnvs ?? []) names.add(name);
       }
       const resolved = effectiveEnv(deployment, container, names, resources);
       if (resolved.error) return failure(resolved.error);
@@ -537,7 +537,7 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     const addressSemantics = edge.activation === "configured" ? edge.configuredAddressSemantics! : "trimmed-nonempty";
     if (edge.activation === "configured" && !configured(address, addressSemantics) &&
         !configured(envEntry(caller, edge.tokenEnv), "trimmed-nonempty") &&
-        !(edge.activationEnv && configured(envEntry(caller, edge.activationEnv), "trimmed-nonempty"))) continue;
+        !edge.activationEnvs?.some(name => configured(envEntry(caller, name), "trimmed-nonempty"))) continue;
     deferredLegacyListeners.add(target);
   }
   for (const processes of podProcesses.values()) {
@@ -550,9 +550,9 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     const address = envEntry(caller, edge.addressEnv);
     const addressSemantics = edge.activation === "configured" ? edge.configuredAddressSemantics! : "trimmed-nonempty";
     // Native address activation varies per caller; tokens and the extra
-    // activation variable use Go TrimSpace. Keep address-or-token admission.
+    // activation variables use Go TrimSpace. Keep address-or-token admission.
     if (edge.activation === "configured" && !configured(address, addressSemantics) && !configured(envEntry(caller, edge.tokenEnv), "trimmed-nonempty") &&
-        !(edge.activationEnv && configured(envEntry(caller, edge.activationEnv), "trimmed-nonempty"))) continue;
+        !edge.activationEnvs?.some(name => configured(envEntry(caller, name), "trimmed-nonempty"))) continue;
     const fail = (code: string, reasonCode?: string) => report.errors.push({ code, ...(reasonCode ? { reasonCode } : {}), service: caller.contract.service,
       caller: edge.caller, target: edge.target, addressEnv: edge.addressEnv, tokenEnv: edge.tokenEnv });
     if (!address || !configured(address, addressSemantics)) { fail("rpc_address_required"); continue; }

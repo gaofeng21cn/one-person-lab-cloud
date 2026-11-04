@@ -68,6 +68,10 @@ func main() {
 		if err != nil {
 			return err
 		}
+		service.PurchaseEligibility, err = launch.NewPurchaseEligibilityReader(os.Getenv("OPL_CONTROL_PLANE_URL"), os.Getenv("OPL_CONTROL_PLANE_WORKSPACE_TOKEN"))
+		if err != nil {
+			return err
+		}
 		if address := strings.TrimSpace(os.Getenv("OPL_LEDGER_ADDR")); address != "" {
 			ledgerConn, err := dialPeer(config, server, owneridentity.Ledger, address)
 			if err != nil {

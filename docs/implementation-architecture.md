@@ -106,6 +106,19 @@ confirmed retirement intent prevent initial polling from restarting the runtime.
 Access requires the resulting
 ready deployment and a confirmed entry, never a seeded resource reference.
 
+Workspace accepts new purchases only after the retained Account owner's typed
+`GET /internal/cloud/workspace-purchase-eligibility` read confirms the live actor's
+`workspacePurchaseEnabled` fact. Its command lock and original idempotent replay
+precede that read, so revocation blocks a new order while an existing order stays
+recoverable. The Control Plane revalidates the session through Gateway, resolves
+the exact reciprocal active Account/User mapping, and serves only that Account's
+explicit boolean. The Workspace peer has its own
+`OPL_CONTROL_PLANE_WORKSPACE_TOKEN`, separate from the BFF read credential.
+Missing configuration or unknown readback refuses new acceptance without writing
+a Workspace, operation or idempotency record. Eligibility is not copied to a
+second writer or added to accepted-operation recovery. Account policy migration
+remains an explicit owner/caller handoff; this read does not move its write authority.
+
 Workspace's `internal/launch` worker resumes the original committed operation
 with stable owner command keys and a bounded CloudIdentity grant. Session expiry
 does not discard that obligation; current membership revocation permits closeout
@@ -1593,8 +1606,11 @@ preview/current-price portions of `pricing.go`, legacy UI pricing branches,
 old Instance admission/read consumers and exclusive pricing tests. Retain
 versioned historical quote/price decoding, accepted terms and receipt readers.
 The purchase-eligibility command in `routes_admin.go` /
-`workspace_purchase_eligibility.go`, its UI command and exclusive tests retire
-with retained purchase, not with Account readers. Resource Catalog quotes cover
+`workspace_purchase_eligibility.go` remains the sole Account policy writer.
+Native Workspace new-purchase admission now consumes it through
+`cloud_workspace_purchase_eligibility.go`; its command, original eligibility and
+audit custody can retire only with that policy's complete owner/caller migration,
+not merely with retained Launch creation or Account readers. Resource Catalog quotes cover
 new resources; they do not prove arbitrary legacy package-pricing UI parity.
 
 **R8 — fixed-slot provider procurement source withdrawal.**
