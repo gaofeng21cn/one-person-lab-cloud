@@ -16,6 +16,35 @@ boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Workspace Deletion After Application Replacement (2026-11-04)
+
+The source change is based on `b60140fe3587fdcd675adb6c17cb9b217f9f7b55`.
+A real PostgreSQL owner regression reproduced deletion failing with
+`the Workspace route selects another original runtime` after a successful
+application upgrade: Workspace retained its initial reservation while Serve had
+selected a successor.
+
+Serve now freezes and retires that original reservation's complete successor
+lineage using its existing operation/action journal and conditional route writer.
+The original retirement is confirmed only after all successors close. Workspace
+keeps the original order, resource and payment identities; no new current-
+deployment projection, table, RPC or owner is introduced. Replacement writer
+transitions share the Workspace lock and use one database connection through
+intent commit, provider execution and state confirmation. Lifecycle commands
+have their own idempotency identity while preserving the runtime creation identity.
+
+Configured focused verification passed 238 Go tests/subtests with zero failures
+or skips, including default-App and Agent upgrades, partial-closeout restart,
+response replay, foreign-lineage rejection and in-flight suspension with a
+product pool of two connections. A reviewer invocation without its PostgreSQL
+DSN was rejected for skipped tests; the configured run is the passing evidence.
+The original deletion failure is executed evidence; the connection-exhaustion
+finding was static and its repaired normal-pool regression passed. These source
+and isolated-boundary results do not establish installed adoption, real resource
+absence or a customer refund. Full-gate and current-revision CI results are
+recorded separately in the source PR. The existing Instance adoption/acceptance
+process and other lifecycle owner gaps remain in [roadmap](roadmap.md#customer-lifecycle-owner-convergence).
+
 ## Serve-Owned Current Application Readback (2026-11-04)
 
 The source change is based on merged Cloud #1121 at
@@ -46,6 +75,7 @@ selection store, business writer, RPC or permission. Verification and exact-head
 CI results belong to the source PR. Candidate/Instance adoption and live readback
 remain separate; old-operation recovery and the independent #1122 bootstrap
 cleanup are outside this change.
+
 
 ## Retained Runtime Image Command Withdrawal (2026-11-04)
 
