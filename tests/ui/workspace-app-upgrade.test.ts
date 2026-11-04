@@ -12,8 +12,7 @@ test("native upgrade reads a unique Serve selection and offers only approved Run
   globalThis.fetch = (async (input) => {
     const path = String(input); seen.push(path);
     if (path.startsWith("/api/v2/catalog/")) return reply({ items: [{ id: "rv-next", status: "approved" }, { id: "revoked", status: "revoked" }] });
-    if (path.includes("cursor=next")) return reply({ items: [{ id: "dep-original", workspaceId: intent.workspaceId, status: "active" }] });
-    return reply({ items: [{ id: "dep-old", workspaceId: intent.workspaceId, status: "superseded" }], nextCursor: "next" });
+    return reply({ items: [{ id: "newer-failed-attempt", workspaceId: intent.workspaceId, status: "failed" }], nextCursor: "next", currentDeployment: { id: "dep-original", workspaceId: intent.workspaceId, status: "active" } });
   }) as typeof fetch;
   try {
     const result = await readNativeAppUpgradeContext(intent.workspaceId);
@@ -21,6 +20,8 @@ test("native upgrade reads a unique Serve selection and offers only approved Run
     assert.deepEqual(result.releases.map((release) => release.id), ["rv-next"]);
     assert.ok(seen.some((path) => path.includes("ws_native%2F1042/deployments")));
     assert.ok(seen.every((path) => path.startsWith("/api/v2/")));
+    assert.equal(seen.filter((path) => path.includes("/deployments")).length, 1);
+    assert.ok(seen.every((path) => !path.includes("cursor=")));
   } finally { globalThis.fetch = previous; }
 });
 
@@ -48,8 +49,14 @@ test("native upgrade replays the exact typed command and key after a lost respon
 test("native upgrade refuses ambiguous/current foreign deployments and malformed owner operations", async () => {
   const previous = globalThis.fetch;
   try {
-    for (const items of [[], [{ id: "dep-a", workspaceId: "foreign", status: "active" }], [{ id: "dep-a", workspaceId: intent.workspaceId, status: "active" }, { id: "dep-b", workspaceId: intent.workspaceId, status: "active" }]]) {
-      globalThis.fetch = (async (input) => reply({ items: String(input).includes("catalog") ? [] : items })) as typeof fetch;
+    for (const page of [
+      { items: [] },
+      { items: [{ id: "historical-active", workspaceId: intent.workspaceId, status: "active" }] },
+      { items: [], currentDeployment: { id: "dep-a", workspaceId: "foreign", status: "active" } },
+      { items: [], currentDeployment: { id: "", workspaceId: intent.workspaceId, status: "active" } },
+      { items: [], currentDeployment: { id: "dep-a", workspaceId: intent.workspaceId, status: "queued" } }
+    ]) {
+      globalThis.fetch = (async (input) => reply(String(input).includes("catalog") ? { items: [] } : page)) as typeof fetch;
       await assert.rejects(readNativeAppUpgradeContext(intent.workspaceId));
     }
     for (const value of [{ ...operation, owner: "workspace" }, { ...operation, pollAfterSeconds: 0 }, { ...operation, status: "unknown" }]) {

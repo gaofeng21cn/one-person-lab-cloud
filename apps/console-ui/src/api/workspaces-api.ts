@@ -330,7 +330,8 @@ export async function getWorkspaceOwnerAccess(
   const value = await postJson<unknown>(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/access`, {}, csrfToken, idempotencyKey);
   if (!value || typeof value !== "object") throw new Error("invalid_workspace_access_readback");
   const access = value as WorkspaceOwnerAccessDTO;
-  if (access.workspaceId !== workspaceId || typeof access.url !== "string" || !/^https?:\/\//.test(access.url)) {
+  if (access.workspaceId !== workspaceId || typeof access.deploymentId !== "string" || !access.deploymentId.trim()
+    || typeof access.url !== "string" || !/^https?:\/\//.test(access.url)) {
     throw new Error("invalid_workspace_access_readback");
   }
   return access;

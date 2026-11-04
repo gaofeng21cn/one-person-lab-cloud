@@ -141,16 +141,9 @@ func resolvedReader() *fakeReader {
 			CapabilityVersionId: ptr("cv-1"),
 			Status:              api.WorkspaceStatusEnum_WORKSPACE_STATUS_ENUM_ACTIVE,
 		},
-		deployments: &api.DeploymentPage{
-			Items: []*api.Deployment{{
-				Id:                  "dep-1",
-				WorkspaceId:         "ws-1",
-				CapabilityVersionId: "cv-1",
-				Status:              api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_ACTIVE,
-			}},
-		},
-		access: &api.WorkspaceAccess{WorkspaceId: "ws-1", Url: "https://agent.example.test"},
-		build:  &api.BuildJob{Id: "build-1", Stage: "succeeded", Status: api.BuildJobStatusEnum_BUILD_JOB_STATUS_ENUM_SUCCEEDED},
+		deployments: activeDeployment(),
+		access:      &api.WorkspaceAccess{WorkspaceId: "ws-1", DeploymentId: "dep-1", Url: "https://agent.example.test"},
+		build:       &api.BuildJob{Id: "build-1", Stage: "succeeded", Status: api.BuildJobStatusEnum_BUILD_JOB_STATUS_ENUM_SUCCEEDED},
 		version: &api.CapabilityVersion{
 			Id:             "cv-1",
 			BuildJobId:     ptr("build-1"),
@@ -501,5 +494,43 @@ func TestServeDeploymentListPassesPagination(t *testing.T) {
 				t.Fatal("invalid limit reached the owner")
 			}
 		})
+	}
+}
+
+func TestDeliveryViewUsesServeSelectionOutsideHistoryPage(t *testing.T) {
+	reader := resolvedReader()
+	reader.deployments.Items = []*api.Deployment{{Id: "newer-failure", WorkspaceId: "ws-1", Status: api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_FAILED}}
+	reader.deployments.LatestAttempt = reader.deployments.Items[0]
+	reader.deployments.NextCursor = ptr("older-attempt")
+	server := NewServer(reader, allowedIdentity())
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/delivery/ws-1"))
+	var view DeliveryView
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &view) != nil || view.Serve.Details["deploymentId"] != "dep-1" || view.Serve.Details["accessUrl"] != "https://agent.example.test" {
+		t.Fatalf("Serve selection was replaced by paginated history: status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestDeliveryViewDoesNotUseOriginalWorkspaceCapabilityForCurrentDefaultApp(t *testing.T) {
+	reader := resolvedReader()
+	reader.deployments.CurrentDeployment.CapabilityVersionId = ""
+	reader.version, reader.build = nil, nil
+	server := NewServer(reader, allowedIdentity())
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/delivery/ws-1"))
+	var view DeliveryView
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &view) != nil || view.Capability.State != "not_applicable" || view.Build.State != "not_applicable" {
+		t.Fatalf("original Workspace selection overrode current default App: status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestDeliveryViewRejectsAccessForAnotherDeployment(t *testing.T) {
+	reader := resolvedReader()
+	reader.access.DeploymentId = "replacement-committed-between-reads"
+	server := NewServer(reader, allowedIdentity())
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/delivery/ws-1"))
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("different deployment facts were combined: status=%d body=%s", response.Code, response.Body.String())
 	}
 }

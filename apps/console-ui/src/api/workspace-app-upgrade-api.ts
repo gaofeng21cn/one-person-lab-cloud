@@ -21,24 +21,15 @@ export async function readNativeAppUpgradeContext(workspaceId: string, signal?: 
 }
 
 async function readCurrentDeployment(workspaceId: string, signal?: AbortSignal): Promise<string> {
-  const active: string[] = [];
-  const cursors = new Set<string>();
-  let cursor: string | undefined;
-  do {
-    const query = new URLSearchParams({ limit: "100", ...(cursor ? { cursor } : {}) });
-    const page = await getJson<{ items: Array<{ id: string; workspaceId: string; status: string }>; nextCursor?: string }>(
-      `/api/v2/workspaces/${encodeURIComponent(workspaceId)}/deployments?${query}`, { signal });
-    if (!page || !Array.isArray(page.items)) throw new Error("invalid_serve_deployment_page");
-    for (const item of page.items) {
-      if (!item || item.workspaceId !== workspaceId || typeof item.id !== "string" || !item.id) throw new Error("invalid_serve_deployment_identity");
-      if (item.status === "active") active.push(item.id);
-    }
-    cursor = page.nextCursor;
-    if (cursor !== undefined && (typeof cursor !== "string" || !cursor || cursors.has(cursor))) throw new Error("invalid_serve_deployment_cursor");
-    if (cursor) cursors.add(cursor);
-  } while (cursor);
-  if (active.length !== 1) throw new Error("当前没有唯一可升级的应用部署，请先确认原应用状态。");
-  return active[0]!;
+  const page = await getJson<{ items: unknown[]; currentDeployment?: { id: string; workspaceId: string; status: string } }>(
+    `/api/v2/workspaces/${encodeURIComponent(workspaceId)}/deployments?limit=1`, { signal });
+  if (!page || !Array.isArray(page.items)) throw new Error("invalid_serve_deployment_page");
+  // The owner's current selection is independent of history pagination. Never
+  // derive a command predecessor from attempts or combine multiple page reads.
+  const current = page.currentDeployment;
+  if (!current || current.status !== "active") throw new Error("当前没有唯一可升级的应用部署，请先确认原应用状态。");
+  if (current.workspaceId !== workspaceId || typeof current.id !== "string" || !current.id.trim()) throw new Error("invalid_serve_deployment_identity");
+  return current.id;
 }
 
 // Replaying this exact intent resumes the same accepted replacement. An unknown

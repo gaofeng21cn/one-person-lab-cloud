@@ -606,6 +606,7 @@ message WorkspaceAccess {
  WorkspaceAccessAuthenticationModeEnum authentication_mode = 3;
  google.protobuf.Timestamp expires_at = 4;
  optional bool application_credentials_available = 5;
+ string deployment_id = 6;
 }
 
 message ModelConfiguration {
@@ -633,6 +634,8 @@ message Deployment {
  DataCompatibility data_compatibility = 7;
  google.protobuf.Timestamp created_at = 8;
  google.protobuf.Timestamp updated_at = 9;
+ // Present for a default OPL App; identifies this deployment's Runtime Release.
+ optional string runtime_version_id = 10;
 }
 
 message UpdateWorkspaceVersionRequest {
@@ -886,6 +889,9 @@ message WorkspacePage {
 message DeploymentPage {
  repeated Deployment items = 1;
  optional string next_cursor = 2;
+ // Serve-owned selection, independent of the history cursor and limit.
+ Deployment current_deployment = 3;
+ Deployment latest_attempt = 4;
 }
 
 message WalletOperationPage {

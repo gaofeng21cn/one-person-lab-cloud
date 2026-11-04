@@ -425,7 +425,19 @@ func (s *Service) authorizeWorkspaceAt(ctx context.Context, q rowQueryer, call *
 
 // ListDeployments returns the Serve-owned delivery attempts for one Workspace.
 func (s *Service) ListDeployments(ctx context.Context, r *api.ListDeploymentsRpcRequest) (*api.DeploymentPage, error) {
-	if err := s.authorizeRead(ctx, r.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS, r.GetWorkspaceId()); err != nil {
+	if r.GetContext() == nil || strings.TrimSpace(r.GetWorkspaceId()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "authenticated call context and workspace are required")
+	}
+	if err := ownerservice.ValidateCallContext(ctx, r.GetContext()); err != nil {
+		return nil, err
+	}
+	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if err != nil {
+		return nil, dbError(err)
+	}
+	defer tx.Rollback()
+	// Tenant attribution, history and selection all read the same owner snapshot.
+	if err := s.authorizeWorkspaceAt(ctx, tx, r.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS, r.GetWorkspaceId(), true); err != nil {
 		return nil, err
 	}
 	n := limit(r.GetQueryLimit())
@@ -434,9 +446,9 @@ func (s *Service) ListDeployments(ctx context.Context, r *api.ListDeploymentsRpc
 	// keyset comparison uses the same (created_at, id) pair the index orders by;
 	// ordering by id alone would report a different "newest" than the current-Agent
 	// selection uses.
-	rows, err := s.DB.QueryContext(ctx, `
+	rows, err := tx.QueryContext(ctx, `
 		SELECT id, workspace_id, capability_version_id, runtime_instance_id, previous_deployment_id,
-		       status, data_compatibility, created_at, updated_at
+		       status, data_compatibility, created_at, updated_at, runtime_version_id
 		FROM serve.agent_deployments
 		WHERE workspace_id = $1 AND ($2 = '' OR (created_at, id) < (
 			SELECT created_at, id FROM serve.agent_deployments WHERE workspace_id = $1 AND id = $2
@@ -458,10 +470,36 @@ func (s *Service) ListDeployments(ctx context.Context, r *api.ListDeploymentsRpc
 	if err := rows.Err(); err != nil {
 		return nil, dbError(err)
 	}
+	if err := rows.Close(); err != nil {
+		return nil, dbError(err)
+	}
 	if len(page.Items) > n {
 		page.Items = page.Items[:n]
 		cursor := page.Items[n-1].GetId()
 		page.NextCursor = &cursor
+	}
+	// These owner selections cover the whole Workspace, independently of the
+	// history cursor and limit. scanDeployment maps only sql.ErrNoRows to
+	// NotFound; persistence and decoding errors remain failures.
+	page.CurrentDeployment, err = scanDeployment(tx.QueryRowContext(ctx, `
+		SELECT id, workspace_id, capability_version_id, runtime_instance_id, previous_deployment_id,
+		       status, data_compatibility, created_at, updated_at, runtime_version_id
+		FROM serve.agent_deployments
+		WHERE workspace_id = $1 AND status = 'active'`, r.GetWorkspaceId()))
+	if err != nil && status.Code(err) != codes.NotFound {
+		return nil, err
+	}
+	page.LatestAttempt, err = scanDeployment(tx.QueryRowContext(ctx, `
+		SELECT id, workspace_id, capability_version_id, runtime_instance_id, previous_deployment_id,
+		       status, data_compatibility, created_at, updated_at, runtime_version_id
+		FROM serve.agent_deployments
+		WHERE workspace_id = $1
+		ORDER BY created_at DESC, id DESC LIMIT 1`, r.GetWorkspaceId()))
+	if err != nil && status.Code(err) != codes.NotFound {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, dbError(err)
 	}
 	return page, nil
 }
@@ -476,7 +514,7 @@ func (s *Service) GetDeployment(ctx context.Context, r *api.GetDeploymentRpcRequ
 	}
 	row := s.DB.QueryRowContext(ctx, `
 		SELECT id, workspace_id, capability_version_id, runtime_instance_id, previous_deployment_id,
-		       status, data_compatibility, created_at, updated_at
+		       status, data_compatibility, created_at, updated_at, runtime_version_id
 		FROM serve.agent_deployments
 		WHERE workspace_id = $1 AND id = $2`, r.GetWorkspaceId(), r.GetDeploymentId())
 	item, err := scanDeployment(row)
@@ -497,14 +535,14 @@ func (s *Service) GetWorkspaceAccess(ctx context.Context, r *api.GetWorkspaceAcc
 	if err := s.authorizeRead(ctx, r.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS, r.GetWorkspaceId()); err != nil {
 		return nil, err
 	}
-	access := &api.WorkspaceAccess{WorkspaceId: r.GetWorkspaceId()}
-	mode, ready, url, err := s.currentAgentAccess(ctx, r.GetWorkspaceId())
+	deploymentID, mode, ready, url, err := s.currentAgentAccess(ctx, r.GetWorkspaceId())
 	if err != nil {
 		return nil, err
 	}
 	if !ready || (mode != api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_APPLICATION_LOGIN && mode != api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_ANONYMOUS) {
 		return nil, appAccessUnavailable()
 	}
+	access := &api.WorkspaceAccess{WorkspaceId: r.GetWorkspaceId(), DeploymentId: deploymentID}
 	access.AuthenticationMode = mode
 	available := mode == api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_APPLICATION_LOGIN
 	access.ApplicationCredentialsAvailable = &available
@@ -519,33 +557,33 @@ func appAccessUnavailable() error {
 // currentAgentAccess reads the current active deployment and its own runtime
 // instance. The access URL and readiness come from Serve's runtime observation;
 // a Fabric resource fact never appears here.
-func (s *Service) currentAgentAccess(ctx context.Context, workspaceID string) (api.WorkspaceAccessAuthenticationModeEnum, bool, string, error) {
+func (s *Service) currentAgentAccess(ctx context.Context, workspaceID string) (string, api.WorkspaceAccessAuthenticationModeEnum, bool, string, error) {
 	var descriptorRaw []byte
 	var accessURL sql.NullString
-	var statusText string
+	var deploymentID, statusText string
 	err := s.DB.QueryRowContext(ctx, `
-		SELECT i.deployment_descriptor, i.access_url, i.status
+		SELECT d.id, i.deployment_descriptor, i.access_url, i.status
 		FROM serve.agent_deployments d
 		JOIN serve.agent_runtime_instances i ON i.deployment_id = d.id
 		WHERE d.workspace_id = $1 AND d.status = 'active'
 		ORDER BY d.created_at DESC, d.id DESC
-		LIMIT 1`, workspaceID).Scan(&descriptorRaw, &accessURL, &statusText)
+		LIMIT 1`, workspaceID).Scan(&deploymentID, &descriptorRaw, &accessURL, &statusText)
 	if errors.Is(err, sql.ErrNoRows) {
-		return api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_UNSPECIFIED, false, "", nil
+		return "", api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_UNSPECIFIED, false, "", nil
 	}
 	if err != nil {
-		return 0, false, "", dbError(err)
+		return "", 0, false, "", dbError(err)
 	}
 	descriptor := &api.DeploymentDescriptor{}
 	if err := publicjson.Unmarshal(descriptorRaw, descriptor); err != nil {
-		return 0, false, "", appAccessUnavailable()
+		return "", 0, false, "", appAccessUnavailable()
 	}
 	mode := accessMode(descriptor.GetApplicationRevision().GetExposurePolicy())
 	observedURL := strings.TrimSpace(accessURL.String)
 	entry, parseErr := url.Parse(observedURL)
 	validEntry := parseErr == nil && entry.Hostname() != "" && (entry.Scheme == "http" || entry.Scheme == "https") && entry.User == nil
 	ready := statusText == "ready" && accessURL.Valid && validEntry
-	return mode, ready, observedURL, nil
+	return deploymentID, mode, ready, observedURL, nil
 }
 
 // accessMode maps the descriptor's declared exposure policy to the access
@@ -571,14 +609,18 @@ func scanDeployment(row rowScanner) (*api.Deployment, error) {
 	var (
 		out              api.Deployment
 		runtimeID        sql.NullString
+		runtimeVersionID sql.NullString
 		previousID       sql.NullString
 		rawCompatibility []byte
 		statusText       string
 		created, updated time.Time
 	)
 	if err := row.Scan(&out.Id, &out.WorkspaceId, &out.CapabilityVersionId, &runtimeID, &previousID,
-		&statusText, &rawCompatibility, &created, &updated); err != nil {
+		&statusText, &rawCompatibility, &created, &updated, &runtimeVersionID); err != nil {
 		return nil, dbError(err)
+	}
+	if runtimeVersionID.Valid {
+		out.RuntimeVersionId = &runtimeVersionID.String
 	}
 	if runtimeID.Valid {
 		out.RuntimeInstanceId = &runtimeID.String

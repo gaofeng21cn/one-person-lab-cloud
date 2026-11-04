@@ -64,9 +64,23 @@ prove acceptance or Instance qualification. Remaining outcomes belong to
 Serve implements its read surface in `services/serve/internal/delivery`: the
 owner-local current Deployment, the delivery history and the current Agent's
 access facts are read from `opl_serve`, and Serve refuses to compose another
-owner's fact into its delivery truth. All three reads (`ListDeployments`,
-`GetDeployment`, `GetWorkspaceAccess`) use the Serve audience in the shared policy
-table. `Reserve` allocates the deployment, runtime instance and epoch, verifies
+owner's fact into its delivery truth. `ListDeployments` returns paginated
+history together with the owner's unpaged `currentDeployment` (the unique active
+row) and `latestAttempt` from one read-only repeatable-read snapshot. The latest
+attempt describes initial progress when no active deployment exists; it never
+replaces an active application because it is newer. `GetWorkspaceAccess` returns
+the deployment identity in the same read as its entry/readiness facts. BFF
+Workspace and delivery views consume those explicit selections, reject a changed
+access deployment identity, and use the deployment's own CapabilityVersion rather
+than the original Workspace order's selection. They do not scan history to choose
+current state. Console upgrades, Workspace credential reveal and the Cloud
+qualification producers consume the same explicit selection; they do not scan
+or join successive history pages. Credential reveal checks the access deployment
+identity before requesting that exact Runtime's credentials. Qualification
+producers also match explicit access readback to that selection and take
+application source from the deployment's own CapabilityVersion or Runtime Release. All three reads
+(`ListDeployments`, `GetDeployment`, `GetWorkspaceAccess`) retain their distinct
+Serve-audience permissions. `Reserve` allocates the deployment, runtime instance and epoch, verifies
 the exact Capability descriptor and binds a Serve-owned reference claim.
 `Deploy` requires Fabric's confirmed execution binding and uses the existing
 Fabric application adapter through a dedicated Serve identity. Serve freezes a

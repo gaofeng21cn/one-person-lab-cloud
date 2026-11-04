@@ -87,41 +87,51 @@ func (s *Server) deliveryView(ctx context.Context, caller Caller, workspaceID st
 	if err := authorize(owneridentity.Serve, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, workspaceID); err != nil {
 		return DeliveryView{}, err
 	}
-	deployments, err := reader.Deployments(ctx, workspaceID, "", 0)
+	deployments, err := reader.Deployments(ctx, workspaceID, "", 1)
 	if err != nil {
 		return DeliveryView{}, fmt.Errorf("serve deployments: %w", err)
 	}
-	current := currentDeployment(deployments)
-	if current == nil {
+	current, latest, err := serveDeploymentSelection(deployments, workspaceID)
+	if err != nil {
+		return DeliveryView{}, err
+	}
+	displayed := current
+	if displayed == nil {
+		displayed = latest
+	}
+	if displayed == nil {
 		return DeliveryView{}, fmt.Errorf("serve: workspace %s has no deployment", workspaceID)
 	}
 	view.Serve = OwnerFact{
 		Owner: serveOwner,
-		State: current.GetStatus().String(),
+		State: displayed.GetStatus().String(),
 		Details: map[string]any{
-			"deploymentId":        current.GetId(),
-			"capabilityVersionId": current.GetCapabilityVersionId(),
+			"deploymentId":        displayed.GetId(),
+			"capabilityVersionId": displayed.GetCapabilityVersionId(),
 		},
 	}
 
-	if err := authorize(owneridentity.Serve, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, workspaceID); err != nil {
-		return DeliveryView{}, err
+	// Access belongs to the active deployment, never to a pending/failed attempt.
+	if current != nil {
+		if err := authorize(owneridentity.Serve, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, workspaceID); err != nil {
+			return DeliveryView{}, err
+		}
+		access, err := reader.WorkspaceAccess(ctx, workspaceID)
+		if err != nil {
+			return DeliveryView{}, fmt.Errorf("serve access: %w", err)
+		}
+		if access == nil {
+			return DeliveryView{}, fmt.Errorf("serve access: empty owner readback")
+		}
+		if access.GetWorkspaceId() != workspaceID || access.GetDeploymentId() != current.GetId() {
+			return DeliveryView{}, fmt.Errorf("serve access: current deployment was not confirmed")
+		}
+		view.Serve.Details["accessUrl"] = access.GetUrl()
+		view.Serve.Details["accessAuthenticationMode"] = access.GetAuthenticationMode().String()
+		view.Serve.Details["applicationCredentialsAvailable"] = access.GetApplicationCredentialsAvailable()
 	}
-	access, err := reader.WorkspaceAccess(ctx, workspaceID)
-	if err != nil {
-		return DeliveryView{}, fmt.Errorf("serve access: %w", err)
-	}
-	if access == nil {
-		return DeliveryView{}, fmt.Errorf("serve access: empty owner readback")
-	}
-	view.Serve.Details["accessUrl"] = access.GetUrl()
-	view.Serve.Details["accessAuthenticationMode"] = access.GetAuthenticationMode().String()
-	view.Serve.Details["applicationCredentialsAvailable"] = access.GetApplicationCredentialsAvailable()
 
-	capabilityVersionID := current.GetCapabilityVersionId()
-	if capabilityVersionID == "" {
-		capabilityVersionID = workspace.GetCapabilityVersionId()
-	}
+	capabilityVersionID := displayed.GetCapabilityVersionId()
 	if capabilityVersionID == "" {
 		// The default App is delivered from an approved Runtime Release and needs
 		// no synthetic Package, Build or CapabilityVersion, so a deployment that
@@ -180,18 +190,31 @@ func (s *Server) deliveryView(ctx context.Context, caller Caller, workspaceID st
 	return view, nil
 }
 
-func currentDeployment(page *api.DeploymentPage) *api.Deployment {
-	if page == nil || len(page.GetItems()) == 0 {
-		return nil
+// serveDeploymentSelection validates the owner's explicit readback. History is
+// paginated; it never selects the current application or supplies missing facts.
+func serveDeploymentSelection(page *api.DeploymentPage, workspaceID string) (*api.Deployment, *api.Deployment, error) {
+	invalid := func() (*api.Deployment, *api.Deployment, error) {
+		return nil, nil, fmt.Errorf("serve: invalid deployment selection readback")
 	}
-	for _, item := range page.GetItems() {
-		if item.GetStatus() == api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_ACTIVE {
-			return item
+	if page == nil {
+		return invalid()
+	}
+	current, latest := page.GetCurrentDeployment(), page.GetLatestAttempt()
+	for _, item := range []*api.Deployment{current, latest} {
+		if item != nil && (item.GetId() == "" || item.GetWorkspaceId() != workspaceID) {
+			return invalid()
 		}
 	}
-	// No active deployment yet: report the newest attempt the owner returned. Its
-	// own status already distinguishes queued/deploying/verifying/failed.
-	return page.GetItems()[0]
+	if current != nil && (current.GetStatus() != api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_ACTIVE || latest == nil) {
+		return invalid()
+	}
+	if latest == nil && (len(page.GetItems()) != 0 || page.GetNextCursor() != "") {
+		return invalid()
+	}
+	if latest.GetStatus() == api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_ACTIVE && (current == nil || latest.GetId() != current.GetId()) {
+		return invalid()
+	}
+	return current, latest, nil
 }
 
 // The default App carries no CapabilityVersion and no Build. The delivery view

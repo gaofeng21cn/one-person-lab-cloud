@@ -16,6 +16,37 @@ boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Serve-Owned Current Application Readback (2026-11-04)
+
+The source change is based on merged Cloud #1121 at
+`e38d9598791facbc92892b056c3821c77a95e07e`. A controlled BFF HTTP regression
+reproduced a contradictory read model: a first history page containing 50 failed
+replacement attempts made the Workspace report `applicationAvailability=unavailable`
+without consulting the still-ready access readback. The old BFF helper selected
+an active item only within that page, otherwise its first attempt. This is a
+reproduced source defect, not evidence of a production duplicate writer.
+
+Serve now provides current deployment and latest attempt independently of
+history pagination in the existing list contract, with one read-only database
+snapshot. Access readback includes its own deployment identity. Both BFF views
+consume those owner facts and refuse to combine a changed access deployment
+with an earlier selection. Current artifact metadata comes only from the selected
+deployment; an original Workspace CapabilityVersion cannot fill a current
+default App's absent Package/Build facts. Console's access decoder requires
+the deployment identity. Console upgrade, Workspace credential reveal and both
+Cloud qualification producers also consume the explicit Serve selection,
+removing their history scans. Credential reveal requires the matching access
+deployment before reading the exact Runtime's credential. Qualification also
+uses access from that same deployment and the deployment's own application
+source; the existing stored Runtime Release is exposed on Deployment for the
+default App, without consulting the original purchase selection.
+
+This changes the existing read contract and consumers together, without another
+selection store, business writer, RPC or permission. Verification and exact-head
+CI results belong to the source PR. Candidate/Instance adoption and live readback
+remain separate; old-operation recovery and the independent #1122 bootstrap
+cleanup are outside this change.
+
 ## Retained Runtime Image Command Withdrawal (2026-11-04)
 
 The R2c source change is based on
