@@ -997,43 +997,6 @@ export interface OperatorWorkspacePageDTO {
   pageSize: number;
 }
 
-export interface WorkspaceImageReleaseDTO {
-  version: string;
-  image: string;
-  digest: string;
-}
-
-export interface OperatorWorkspaceRuntimeImagePolicyDTO {
-  schemaVersion: 1;
-  revision: number;
-  active: WorkspaceImageReleaseDTO;
-  installedDefault: WorkspaceImageReleaseDTO;
-  releases: WorkspaceImageReleaseDTO[];
-  source: "control-plane-workspace-image-release-policy";
-  updatedAt?: string;
-  updatedBy?: string;
-  reason?: string;
-}
-
-export interface OperatorWorkspaceRuntimeImagePreviewDTO {
-  workspaceId: string;
-  workspaceStatus: string;
-  runtimeId: string;
-  runtimeStatus: string;
-  currentImageDigest: string;
-  targetImageDigest: string;
-  canReplace: boolean;
-}
-
-export interface WorkspaceRuntimeImageReplacementDTO extends OperationStatusDTO {
-  workspaceId: string;
-  runtimeId: string;
-  previousImageDigest: string;
-  replacementImageDigest: string;
-  reason: string;
-  runtime?: WorkspaceRuntimeDTO;
-}
-
 export interface WalletAdjustmentRequest {
   kind: "recharge" | "debit" | "business_refund";
   amountUsd: string;

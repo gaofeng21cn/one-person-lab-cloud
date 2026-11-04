@@ -21,7 +21,6 @@ import (
 // a rejected read on this path leaves every cookie untouched.
 func (app *controlPlaneServer) registerCloudOperatorRoutes(mux *http.ServeMux, service *controlplane.Service) {
 	pagination := map[string]bool{"page": true, "pageSize": true}
-	replacementPreview := map[string]bool{"replacementImageDigest": true}
 	for _, route := range []struct {
 		path  string
 		query map[string]bool
@@ -35,7 +34,6 @@ func (app *controlPlaneServer) registerCloudOperatorRoutes(mux *http.ServeMux, s
 		{"/internal/cloud/operator/reconciliation", pagination, app.writeOperatorReconciliation},
 		{"/internal/cloud/operator/workspace-launches/{operationId}/recovery", nil, func(w http.ResponseWriter, r *http.Request) { app.writeOperatorWorkspaceLaunchRecovery(w, r, service) }},
 		{"/internal/cloud/operator/wallet-adjustments/{operationId}", nil, app.getWalletAdjustment},
-		{"/internal/cloud/operator/workspaces/{workspaceId}/runtime-image-replacements/{operationId}", nil, app.getWorkspaceRuntimeImageReplacement},
 		{"/internal/cloud/operator/application-deployments/{operationId}", nil, app.writeOperatorApplicationDeployment},
 		{"/internal/cloud/operator/overview", nil, func(w http.ResponseWriter, r *http.Request) {
 			app.writeOperatorOverview(w, r, service)
@@ -49,14 +47,8 @@ func (app *controlPlaneServer) registerCloudOperatorRoutes(mux *http.ServeMux, s
 		{"/internal/cloud/operator/workspaces/{workspaceId}", nil, func(w http.ResponseWriter, r *http.Request) {
 			app.writeOperatorWorkspaceDetail(w, r, service)
 		}},
-		{"/internal/cloud/operator/workspace-runtime-image-policy", nil, func(w http.ResponseWriter, r *http.Request) {
-			app.getWorkspaceImageReleasePolicy(w, r)
-		}},
 		{"/internal/cloud/operator/announcements", pagination, func(w http.ResponseWriter, r *http.Request) {
 			app.listOperatorAnnouncements(w, r)
-		}},
-		{"/internal/cloud/operator/workspaces/{workspaceId}/runtime-image-replacements/preview", replacementPreview, func(w http.ResponseWriter, r *http.Request) {
-			app.previewWorkspaceRuntimeImageReplacement(w, r, service)
 		}},
 	} {
 		mux.HandleFunc("GET "+route.path, app.cloudOperatorRead(route.read, route.query))

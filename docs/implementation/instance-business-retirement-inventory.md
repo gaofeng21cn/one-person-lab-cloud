@@ -286,6 +286,19 @@ qualification.
   deployment" and "Cloud product application lifecycle" is not explicit enough
   to retire it under #517; retain it and decide its owner with the Cloud
   application-deployment entry.
+- Image caller withdrawal update (2026-11-04): Instance #675 is MERGED with
+  2/2 CI checks SUCCESS, withdrawing the old CP rollout, rollback and
+  policy-mutation callers at source. Cloud adoption remains unproven;
+  check in-flight legacy executions before adopting the Cloud entrypoint-removal
+  version based on
+  `173d1afbcbd3dc120f0839707c9e69eb2ba2787b` (after merged Cloud #1120).
+  Registry retention and node-cache retirement keep their shared image client
+  and direct CP policy GET. The measured workflow table above remains the
+  original baseline; the merged withdrawal does not establish installed adoption,
+  zero traffic or clearance of business obligations. The
+  [image reference](workspace-images.md) owns the retained reader boundary;
+  [status](../status.md#retained-runtime-image-command-withdrawal-2026-11-04)
+  records the existing observation and source-verification evidence.
 - `project-explorer-persistence-acceptance.yml` creates/removes bounded
   application conversations and files. It is neither read-only nor a Cloud
   business authority. Retain it as an Instance application acceptance outside
