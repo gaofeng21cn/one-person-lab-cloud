@@ -1064,31 +1064,6 @@ func (s *memoryTableStore) SaveWalletAdjustment(_ context.Context, operationID s
 	return decodeWalletAdjustment(row)
 }
 
-func (s *memoryTableStore) ApplyWorkspaceImageReleaseMutation(_ context.Context, mutation workspaceImageReleaseMutation) (workspaceImageReleasePolicy, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if audit := findRecord(s.auditEvents, stringValue(mutation.AuditEvent["id"])); audit != nil {
-		return workspaceImageReleaseReplay(audit, mutation)
-	}
-	current := mutation.Base
-	createdAt := ""
-	if row := findRecord(s.runtimeOps, workspaceImageReleasePolicyID); row != nil {
-		var err error
-		current, err = decodeWorkspaceImageReleasePolicyRow(row)
-		if err != nil {
-			return workspaceImageReleasePolicy{}, err
-		}
-		createdAt = stringValue(row["createdAt"])
-	}
-	desired, err := prepareWorkspaceImageReleaseMutation(current, mutation, time.Now().UTC())
-	if err != nil {
-		return workspaceImageReleasePolicy{}, err
-	}
-	s.runtimeOps = upsertProjectionByID(s.runtimeOps, workspaceImageReleasePolicyRow(desired, createdAt))
-	s.auditEvents = upsertProjectionByID(s.auditEvents, workspaceImageReleaseAudit(mutation, current, desired))
-	return desired, nil
-}
-
 func (s *memoryTableStore) ReserveWorkspaceLaunchCloseoutRefund(_ context.Context, operation workspaceLaunchReconcileOperation) ([]walletRefundOperation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

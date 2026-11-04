@@ -24,8 +24,6 @@ import type {
   OperatorReconciliationPageDTO,
   OperatorWorkspaceDTO,
   OperatorWorkspacePageDTO,
-  OperatorWorkspaceRuntimeImagePolicyDTO,
-  OperatorWorkspaceRuntimeImagePreviewDTO,
   PlanId,
   PricingCatalogResponse,
   PricingPlan,
@@ -44,7 +42,6 @@ import type {
   WorkspaceListData,
   WorkspaceRuntimeDTO,
   WorkspaceRenewalReadDTO,
-  WorkspaceRuntimeImageReplacementDTO,
   WorkspaceSettlementTrend,
   WalletAdjustmentRequest
 } from "../api/dtos.ts";
@@ -109,8 +106,6 @@ export interface FabricRuntimeReadController {
 export interface OperatorResourceReadController {
   workspaces: RemoteState<SourceEnvelope<OperatorWorkspacePageDTO>>;
   detail: RemoteState<SourceEnvelope<OperatorWorkspaceDTO>>;
-  imagePolicy: RemoteState<SourceEnvelope<OperatorWorkspaceRuntimeImagePolicyDTO>>;
-  imagePreview: RemoteState<SourceEnvelope<OperatorWorkspaceRuntimeImagePreviewDTO>>;
   page: number;
   pages: number;
   selectedWorkspaceId: string;
@@ -119,8 +114,6 @@ export interface OperatorResourceReadController {
   selectWorkspace: (workspaceId: string) => Promise<void>;
   refresh: () => Promise<void>;
   refreshWorkspace: (workspaceId: string) => Promise<void>;
-  refreshPolicy: () => Promise<void>;
-  refreshPreview: (workspaceId: string) => Promise<void>;
   reset: () => void;
 }
 
@@ -187,23 +180,6 @@ export interface WorkspaceDeleteController {
   operation: WorkspaceDeletionDTO | null;
   refresh: () => Promise<void>;
   deleteCurrentWorkspace: () => Promise<void>;
-}
-
-export type WorkspaceRuntimeImageReplacementIssue = "" | "unavailable" | "unconfirmed" | "timeout";
-
-export interface WorkspaceRuntimeImageReplacementController {
-  operation: WorkspaceRuntimeImageReplacementDTO | null;
-  busy: boolean;
-  issue: WorkspaceRuntimeImageReplacementIssue;
-  replaceWorkspaceRuntimeImage: () => Promise<boolean>;
-  refreshWorkspaceRuntimeImageReplacement: () => Promise<void>;
-}
-
-export interface WorkspaceImageReleaseController {
-  selectedVersion: string;
-  busy: boolean;
-  selectVersion: (version: string) => void;
-  activateSelectedRelease: () => Promise<boolean>;
 }
 
 export interface WorkspaceRenewalController {

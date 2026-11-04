@@ -16,6 +16,56 @@ boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Retained Runtime Image Command Withdrawal (2026-11-04)
+
+The R2c source change is based on
+`173d1afbcbd3dc120f0839707c9e69eb2ba2787b`, after merged Cloud #1120.
+The source withdrawal removes CP existing-Workspace image replacement
+creation, preview, dispatch and retry/worker execution, image-release policy
+activation mutation, and the exclusive CP service/client/store/configuration and
+Console/BFF/internal Cloud callers. The [image reference](implementation/workspace-images.md)
+names the retained direct CP policy and historical-operation GETs, policy/history
+decoders, pending-transition and resource-reconcile barriers. Original Launch
+image-revision recovery and Instance registry-retention/node-cache readers keep
+their policy/catalog consumer. Fabric's own replacement/provider capability,
+journal and strict readback remain; persisted records and audit history stay.
+
+GitHub readback records Instance #675 as MERGED at
+`2026-11-04T04:46:45Z` (Beijing `2026-11-04 12:46:45`), with head
+`ca5955f9580d2196c5b39f8e0d5e71d763fed014` and 2/2 CI checks SUCCESS in
+[run 41773136142](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41773136142).
+Its rollout/rollback and policy-mutation caller withdrawal is merged at source;
+Cloud entrypoint-removal adoption remains unproven. Check in-flight legacy
+executions before that adoption through the existing Instance process. Cloud #1120 is already merged. Neither merge nor
+CI success establishes installed runtime adoption, zero traffic or clearance of
+business obligations.
+
+The existing protected Instance [observation 41750316687](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41750316687),
+at `2026-11-04T00:54:57.466Z`, used Instance
+`4a54e6cbbd0daee2bf61b17b4afa800748aa001f` and installed Cloud
+`4f131caa41324f027c1fee48d6ae5e5356e7e3c4`. Its complete current CP result
+contains 44 operations, including seven `workspace.runtime_image_replacement`
+records: five succeeded, two failed and none started. All seven belong to the
+old Workspaces currently marked `data_deleted`. These terminal statuses and
+current Workspace state do not erase historical resource, audit or recovery
+obligations. The observation is globally partial because two legacy Runtime
+health reads returned HTTP 503; CP provenance is available and all three mutation
+counters are zero. Archives, subsequent operations and other installations were
+not observed, and no zero-traffic interval is established. This reuses the
+existing observation; no new protected observation or runtime validation was run.
+
+Focused verification against that exact base passed with 42 Node/browser tests
+and 3,178 Go tests/subtests, zero failures/skips/TODOs, including real PostgreSQL
+policy/history readback after rebuilding the server. Generated contracts,
+TypeScript/development typechecks, product boundaries and whitespace also passed.
+The initial attempts exposed an unconfigured generator PATH and a missing test
+JSON import; the fixed pinned tools and restored import were verified by the
+successful rerun. Independent CP/contracts review found no actionable issue;
+Console/BFF changes also received final diff inspection. The source PR records
+full-gate and current-revision CI results separately. Source verification,
+Candidate publication and Instance adoption require their own evidence; local
+checks do not establish installed readback for the withdrawal.
+
 ## Retained Network Recovery Command Withdrawal (2026-11-04)
 
 The independent R2b source change based on

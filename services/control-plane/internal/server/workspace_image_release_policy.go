@@ -4,12 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"math"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
-	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
 )
@@ -21,8 +18,6 @@ const (
 
 var (
 	errWorkspaceImageReleasePolicyUnavailable = errors.New("workspace_image_release_policy_unavailable")
-	errWorkspaceImageReleaseRequestInvalid    = errors.New("workspace_image_release_request_invalid")
-	errWorkspaceImageReleaseConflict          = errors.New("workspace_image_release_conflict")
 )
 
 type workspaceImageReleasePolicy struct {
@@ -51,21 +46,6 @@ type workspaceImageReleasePolicyDTO struct {
 	UpdatedAt        string                     `json:"updatedAt,omitempty"`
 	UpdatedBy        string                     `json:"updatedBy,omitempty"`
 	Reason           string                     `json:"reason,omitempty"`
-}
-
-type workspaceImageReleaseMutation struct {
-	Base        workspaceImageReleasePolicy
-	Catalog     contracts.WorkspaceImageReleaseCatalog
-	Target      contracts.WorkspaceImageRelease
-	Expected    int
-	Reason      string
-	UpdatedBy   string
-	RequestHash string
-	AuditEvent  map[string]any
-}
-
-type workspaceImageReleaseMutationStore interface {
-	ApplyWorkspaceImageReleaseMutation(context.Context, workspaceImageReleaseMutation) (workspaceImageReleasePolicy, error)
 }
 
 func configuredWorkspaceImageReleaseCatalog() (contracts.WorkspaceImageReleaseCatalog, contracts.WorkspaceImageRelease, error) {
@@ -156,62 +136,6 @@ func workspaceImageReleasePolicyResponse(policy workspaceImageReleasePolicy, cat
 	}
 }
 
-func workspaceImageReleasePolicyRow(policy workspaceImageReleasePolicy, createdAt string) map[string]any {
-	encoded, _ := json.Marshal(policy)
-	row := map[string]any{
-		"id": workspaceImageReleasePolicyID, "operationId": workspaceImageReleasePolicyID,
-		"resourceId": workspaceImageReleasePolicyID, "resourceKind": "workspace_image_release_policy",
-		"action": workspaceImageReleasePolicyAction, "provider": "control-plane", "status": "active", "result": string(encoded),
-	}
-	if createdAt != "" {
-		row["createdAt"] = createdAt
-	}
-	return row
-}
-
-func prepareWorkspaceImageReleaseMutation(current workspaceImageReleasePolicy, mutation workspaceImageReleaseMutation, now time.Time) (workspaceImageReleasePolicy, error) {
-	if err := validateWorkspaceImageReleasePolicy(current, mutation.Catalog); err != nil || mutation.Expected != current.Revision ||
-		mutation.Target.Version == "" || !mutation.Catalog.ContainsImage(mutation.Target.Image) || mutation.Reason == "" || mutation.UpdatedBy == "" || mutation.RequestHash == "" {
-		return workspaceImageReleasePolicy{}, errWorkspaceImageReleaseConflict
-	}
-	if current.ActiveImage == mutation.Target.Image && current.ActiveVersion == mutation.Target.Version {
-		return current, nil
-	}
-	return workspaceImageReleasePolicy{
-		SchemaVersion: 1,
-		Revision:      current.Revision + 1,
-		ActiveVersion: mutation.Target.Version,
-		ActiveImage:   mutation.Target.Image,
-		UpdatedAt:     now.UTC().Format(time.RFC3339Nano),
-		UpdatedBy:     mutation.UpdatedBy,
-		Reason:        mutation.Reason,
-	}, nil
-}
-
-func workspaceImageReleaseAudit(mutation workspaceImageReleaseMutation, before, after workspaceImageReleasePolicy) map[string]any {
-	audit := cloneMap(mutation.AuditEvent)
-	audit["before"] = before
-	audit["after"] = map[string]any{"requestHash": mutation.RequestHash, "policy": after}
-	audit["result"] = "succeeded"
-	return audit
-}
-
-func workspaceImageReleaseReplay(audit map[string]any, mutation workspaceImageReleaseMutation) (workspaceImageReleasePolicy, error) {
-	if audit == nil || stringValue(audit["action"]) != "workspace.image_release.activate" || stringValue(audit["resourceId"]) != workspaceImageReleasePolicyID {
-		return workspaceImageReleasePolicy{}, errWorkspaceImageReleaseConflict
-	}
-	after := mapField(audit, "after")
-	if stringValue(after["requestHash"]) != mutation.RequestHash {
-		return workspaceImageReleasePolicy{}, errIdempotencyConflict
-	}
-	encoded, _ := json.Marshal(after["policy"])
-	var policy workspaceImageReleasePolicy
-	if json.Unmarshal(encoded, &policy) != nil || validateWorkspaceImageReleasePolicy(policy, mutation.Catalog) != nil {
-		return workspaceImageReleasePolicy{}, errWorkspaceImageReleasePolicyUnavailable
-	}
-	return policy, nil
-}
-
 func (app *controlPlaneServer) getWorkspaceImageReleasePolicy(w http.ResponseWriter, r *http.Request) {
 	policy, catalog, installed, err := app.currentWorkspaceImageReleasePolicy(r.Context())
 	if err != nil {
@@ -219,76 +143,4 @@ func (app *controlPlaneServer) getWorkspaceImageReleasePolicy(w http.ResponseWri
 		return
 	}
 	writeSourceEnvelope(w, http.StatusOK, "control-plane", "available", workspaceImageReleasePolicyResponse(policy, catalog, installed), policy.UpdatedAt)
-}
-
-func (app *controlPlaneServer) activateWorkspaceImageRelease(w http.ResponseWriter, r *http.Request) {
-	key, ok := requiredMutationKey(w, r)
-	if !ok || !validBillingReviewOpaqueID(key) {
-		if ok {
-			writeError(w, http.StatusBadRequest, errWorkspaceImageReleaseRequestInvalid.Error())
-		}
-		return
-	}
-	input := decodeJSON(r)
-	if !exactWorkspaceComputeClaimKeys(input, []string{"releaseVersion", "expectedRevision", "reason"}) {
-		writeError(w, http.StatusBadRequest, errWorkspaceImageReleaseRequestInvalid.Error())
-		return
-	}
-	expectedRevision := numberField(input, "expectedRevision", 0)
-	request := contracts.WorkspaceImageReleaseActivationRequest{
-		ReleaseVersion:   stringValue(input["releaseVersion"]),
-		ExpectedRevision: int(expectedRevision),
-		Reason:           stringValue(input["reason"]),
-	}
-	if request.ReleaseVersion != strings.TrimSpace(request.ReleaseVersion) || request.ReleaseVersion == "" || request.ExpectedRevision < 1 || math.Trunc(expectedRevision) != expectedRevision ||
-		request.Reason != strings.TrimSpace(request.Reason) || request.Reason == "" || len(request.Reason) > 256 {
-		writeError(w, http.StatusBadRequest, errWorkspaceImageReleaseRequestInvalid.Error())
-		return
-	}
-	policy, catalog, installed, err := app.currentWorkspaceImageReleasePolicy(r.Context())
-	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, errWorkspaceImageReleasePolicyUnavailable.Error())
-		return
-	}
-	var target contracts.WorkspaceImageRelease
-	for _, release := range catalog.Releases {
-		if release.Version == request.ReleaseVersion {
-			target = release
-			break
-		}
-	}
-	if target.Version == "" {
-		writeError(w, http.StatusConflict, errWorkspaceImageReleaseConflict.Error())
-		return
-	}
-	user, _ := app.sessionUserContext(r)
-	requestHash := stableID("workspace-image-release-activation", request.ReleaseVersion, target.Image, strconv.Itoa(request.ExpectedRevision), request.Reason)
-	audit := app.auditEvent(r, "workspace.image_release.activate", "workspace_image_release_policy", workspaceImageReleasePolicyID, "", policy, nil, "started")
-	audit["id"] = "audit-" + stableID("workspace-image-release-activation", key)[:12]
-	mutation := workspaceImageReleaseMutation{
-		Base: policy, Catalog: catalog, Target: target, Expected: request.ExpectedRevision, Reason: request.Reason,
-		UpdatedBy: stringValue(user["id"]), RequestHash: requestHash, AuditEvent: audit,
-	}
-	store, ok := app.tables.(workspaceImageReleaseMutationStore)
-	if !ok {
-		writeError(w, http.StatusServiceUnavailable, errWorkspaceImageReleasePolicyUnavailable.Error())
-		return
-	}
-	unlock, err := app.lockResourceContext(r.Context(), "workspace-image-release-policy", workspaceImageReleasePolicyID)
-	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, errWorkspaceImageReleasePolicyUnavailable.Error())
-		return
-	}
-	defer unlock()
-	activated, err := store.ApplyWorkspaceImageReleaseMutation(r.Context(), mutation)
-	if err != nil {
-		switch {
-		case errors.Is(err, errIdempotencyConflict), errors.Is(err, errWorkspaceImageReleaseConflict):
-			writeError(w, http.StatusConflict, err.Error())
-		default:
-			writeError(w, http.StatusInternalServerError, errWorkspaceImageReleasePolicyUnavailable.Error())
-		}
-		return
-	}
-	writeJSON(w, http.StatusOK, workspaceImageReleasePolicyResponse(activated, catalog, installed))
 }

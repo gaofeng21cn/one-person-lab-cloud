@@ -2,16 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   getOperatorWorkspace,
-  getOperatorWorkspaceRuntimeImagePolicy,
-  getOperatorWorkspaceRuntimeImageReplacementPreview,
   getOperatorWorkspaces
 } from "../api/console-read-api.ts";
 import type {
   AuthSession,
   OperatorWorkspaceDTO,
   OperatorWorkspacePageDTO,
-  OperatorWorkspaceRuntimeImagePolicyDTO,
-  OperatorWorkspaceRuntimeImagePreviewDTO,
   SourceEnvelope
 } from "../api/dtos.ts";
 import { authorizationFailureState } from "./authorization-error.ts";
@@ -20,8 +16,6 @@ import {
   applyOperatorResourceCompletion,
   createOperatorResourceDetailScope,
   createOperatorResourceListScope,
-  createOperatorResourcePolicyScope,
-  createOperatorResourcePreviewScope,
   createOperatorResourceReadState,
   isValidOperatorResourcePage,
   operatorResourceScopeIsCurrent,
@@ -31,8 +25,6 @@ import {
   type OperatorResourceCompletion,
   type OperatorResourceDetailScope,
   type OperatorResourceListScope,
-  type OperatorResourcePolicyScope,
-  type OperatorResourcePreviewScope,
   type OperatorResourceReadEpoch,
   type OperatorResourceReadState,
   type OperatorResourceScope
@@ -47,27 +39,21 @@ interface OperatorResourceReadDependencies {
 
 export type OperatorResourceReadCapability = OperatorResourceReadController;
 
-type ProjectionKind = "workspaces" | "detail" | "imagePolicy" | "imagePreview";
+type ProjectionKind = "workspaces" | "detail";
 
 type ProjectionSourceMap = {
   workspaces: SourceEnvelope<OperatorWorkspacePageDTO>;
   detail: SourceEnvelope<OperatorWorkspaceDTO>;
-  imagePolicy: SourceEnvelope<OperatorWorkspaceRuntimeImagePolicyDTO>;
-  imagePreview: SourceEnvelope<OperatorWorkspaceRuntimeImagePreviewDTO>;
 };
 
 type ProjectionValueMap = {
   workspaces: OperatorWorkspacePageDTO;
   detail: OperatorWorkspaceDTO;
-  imagePolicy: OperatorWorkspaceRuntimeImagePolicyDTO;
-  imagePreview: OperatorWorkspaceRuntimeImagePreviewDTO;
 };
 
 type ProjectionScopeMap = {
   workspaces: OperatorResourceListScope;
   detail: OperatorResourceDetailScope;
-  imagePolicy: OperatorResourcePolicyScope;
-  imagePreview: OperatorResourcePreviewScope;
 };
 
 const emptyRemote = <T,>(): RemoteState<T> => ({ value: null, loading: false, error: "" });
@@ -82,8 +68,6 @@ function scopeForCurrentProjection(
   generations: {
     list: number;
     detail: number;
-    policy: number;
-    preview: number;
   },
   page: number,
   workspaceId: string
@@ -91,16 +75,8 @@ function scopeForCurrentProjection(
   if (kind === "workspaces") {
     return createOperatorResourceListScope({ ...epoch, requestGeneration: generations.list, page });
   }
-  if (kind === "detail") {
-    return workspaceId
-      ? createOperatorResourceDetailScope({ ...epoch, requestGeneration: generations.detail, workspaceId })
-      : null;
-  }
-  if (kind === "imagePolicy") {
-    return createOperatorResourcePolicyScope({ ...epoch, requestGeneration: generations.policy });
-  }
   return workspaceId
-    ? createOperatorResourcePreviewScope({ ...epoch, requestGeneration: generations.preview, workspaceId })
+    ? createOperatorResourceDetailScope({ ...epoch, requestGeneration: generations.detail, workspaceId })
     : null;
 }
 
@@ -123,8 +99,6 @@ export function useOperatorResourceReadController({
   const routeGeneration = useRef(0);
   const listGeneration = useRef(0);
   const detailGeneration = useRef(0);
-  const policyGeneration = useRef(0);
-  const previewGeneration = useRef(0);
   activeRef.current = active;
 
   const currentEpoch = useCallback((): OperatorResourceReadEpoch => ({
@@ -146,8 +120,6 @@ export function useOperatorResourceReadController({
     routeGeneration.current += 1;
     listGeneration.current += 1;
     detailGeneration.current += 1;
-    policyGeneration.current += 1;
-    previewGeneration.current += 1;
     clearProjection();
   }, [clearProjection]);
 
@@ -167,8 +139,6 @@ export function useOperatorResourceReadController({
     sessionGeneration.current += 1;
     listGeneration.current += 1;
     detailGeneration.current += 1;
-    policyGeneration.current += 1;
-    previewGeneration.current += 1;
     clearProjection();
   }, [clearProjection]);
 
@@ -180,9 +150,7 @@ export function useOperatorResourceReadController({
       currentEpoch(),
       {
         list: listGeneration.current,
-        detail: detailGeneration.current,
-        policy: policyGeneration.current,
-        preview: previewGeneration.current
+        detail: detailGeneration.current
       },
       listRequestedPageRef.current,
       selectedWorkspaceIdRef.current
@@ -229,22 +197,6 @@ export function useOperatorResourceReadController({
             source: source as ProjectionSourceMap["detail"],
             ...(error ? { error } : {})
           });
-        case "imagePolicy":
-          return applyCompletion(current, {
-            kind,
-            activeScope: scope as ProjectionScopeMap["imagePolicy"],
-            responseScope: scope as ProjectionScopeMap["imagePolicy"],
-            source: source as ProjectionSourceMap["imagePolicy"],
-            ...(error ? { error } : {})
-          });
-        case "imagePreview":
-          return applyCompletion(current, {
-            kind,
-            activeScope: scope as ProjectionScopeMap["imagePreview"],
-            responseScope: scope as ProjectionScopeMap["imagePreview"],
-            source: source as ProjectionSourceMap["imagePreview"],
-            ...(error ? { error } : {})
-          });
       }
     });
   }, [applyCompletion]);
@@ -260,10 +212,6 @@ export function useOperatorResourceReadController({
           return { ...current, workspaces: failed };
         case "detail":
           return { ...current, detail: failed };
-        case "imagePolicy":
-          return { ...current, imagePolicy: failed };
-        case "imagePreview":
-          return { ...current, imagePreview: failed };
       }
     });
   }, []);
@@ -285,18 +233,6 @@ export function useOperatorResourceReadController({
           kind,
           scope: scope as OperatorResourceDetailScope,
           source: source as ProjectionSourceMap["detail"]
-        });
-      case "imagePolicy":
-        return operatorResourceSourceMatchesScope({
-          kind,
-          scope: scope as OperatorResourcePolicyScope,
-          source: source as ProjectionSourceMap["imagePolicy"]
-        });
-      case "imagePreview":
-        return operatorResourceSourceMatchesScope({
-          kind,
-          scope: scope as OperatorResourcePreviewScope,
-          source: source as ProjectionSourceMap["imagePreview"]
         });
     }
   }, []);
@@ -364,19 +300,6 @@ export function useOperatorResourceReadController({
     }
   }, [currentEpoch, currentSession, requestOwnsScope, settle, unavailableSource]);
 
-  const loadPolicy = useCallback(async () => {
-    const scope = createOperatorResourcePolicyScope({
-      ...currentEpoch(),
-      requestGeneration: ++policyGeneration.current
-    });
-    await settle(
-      "imagePolicy",
-      scope,
-      () => getOperatorWorkspaceRuntimeImagePolicy(),
-      "control-plane"
-    );
-  }, [currentEpoch, settle]);
-
   const loadDetail = useCallback(async (workspaceId: string) => {
     if (!workspaceId || selectedWorkspaceIdRef.current !== workspaceId) return;
     const scope = createOperatorResourceDetailScope({
@@ -392,21 +315,6 @@ export function useOperatorResourceReadController({
     );
   }, [currentEpoch, settle]);
 
-  const loadPreview = useCallback(async (workspaceId: string) => {
-    if (!workspaceId || selectedWorkspaceIdRef.current !== workspaceId) return;
-    const scope = createOperatorResourcePreviewScope({
-      ...currentEpoch(),
-      requestGeneration: ++previewGeneration.current,
-      workspaceId
-    });
-    await settle(
-      "imagePreview",
-      scope,
-      () => getOperatorWorkspaceRuntimeImageReplacementPreview(workspaceId),
-      "control-plane+fabric"
-    );
-  }, [currentEpoch, settle]);
-
   const load = useCallback(async () => {
     const session = currentSession();
     if (!session || !activeRef.current) return;
@@ -414,10 +322,9 @@ export function useOperatorResourceReadController({
     const selected = selectedWorkspaceIdRef.current;
     await Promise.allSettled([
       loadList(pageRef.current),
-      loadPolicy(),
-      ...(selected ? [loadDetail(selected), loadPreview(selected)] : [])
+      ...(selected ? [loadDetail(selected)] : [])
     ]);
-  }, [currentSession, loadDetail, loadList, loadPolicy, loadPreview, syncSessionBoundary]);
+  }, [currentSession, loadDetail, loadList, syncSessionBoundary]);
 
   const changePage = useCallback(async (nextPage: number) => {
     const session = currentSession();
@@ -431,20 +338,15 @@ export function useOperatorResourceReadController({
     if (!session || !activeRef.current) return;
     syncSessionBoundary(session);
     detailGeneration.current += 1;
-    previewGeneration.current += 1;
     selectedWorkspaceIdRef.current = workspaceId;
     setSelectedWorkspaceId(workspaceId);
     setState((current) => ({
       ...current,
-      detail: emptyRemote(),
-      imagePreview: emptyRemote()
+      detail: emptyRemote()
     }));
     if (!workspaceId) return;
-    await Promise.allSettled([
-      loadDetail(workspaceId),
-      loadPreview(workspaceId)
-    ]);
-  }, [currentSession, loadDetail, loadPreview, syncSessionBoundary]);
+    await loadDetail(workspaceId);
+  }, [currentSession, loadDetail, syncSessionBoundary]);
 
   const refreshWorkspace = useCallback(async (workspaceId: string) => {
     const session = currentSession();
@@ -452,20 +354,6 @@ export function useOperatorResourceReadController({
     syncSessionBoundary(session);
     await loadDetail(workspaceId);
   }, [currentSession, loadDetail, syncSessionBoundary]);
-
-  const refreshPolicy = useCallback(async () => {
-    const session = currentSession();
-    if (!session || !activeRef.current) return;
-    syncSessionBoundary(session);
-    await loadPolicy();
-  }, [currentSession, loadPolicy, syncSessionBoundary]);
-
-  const refreshPreview = useCallback(async (workspaceId: string) => {
-    const session = currentSession();
-    if (!session || !activeRef.current || selectedWorkspaceIdRef.current !== workspaceId) return;
-    syncSessionBoundary(session);
-    await loadPreview(workspaceId);
-  }, [currentSession, loadPreview, syncSessionBoundary]);
 
   const refresh = useCallback(async () => {
     await load();
@@ -478,8 +366,6 @@ export function useOperatorResourceReadController({
   return {
     workspaces: state.workspaces,
     detail: state.detail,
-    imagePolicy: state.imagePolicy,
-    imagePreview: state.imagePreview,
     page,
     pages,
     selectedWorkspaceId,
@@ -488,8 +374,6 @@ export function useOperatorResourceReadController({
     selectWorkspace,
     refresh,
     refreshWorkspace,
-    refreshPolicy,
-    refreshPreview,
     reset
   };
 }

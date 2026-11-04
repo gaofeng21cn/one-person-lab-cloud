@@ -11,12 +11,9 @@ import type {
   OperatorRuntimeObservationsDTO,
   OperatorWorkspaceDTO,
   OperatorWorkspacePageDTO,
-  OperatorWorkspaceRuntimeImagePolicyDTO,
-  OperatorWorkspaceRuntimeImagePreviewDTO,
   SourceEnvelope,
   WorkspaceBillingReceiptDTO,
-  WorkspaceDTO,
-  WorkspaceRuntimeImageReplacementDTO
+  WorkspaceDTO
 } from "../../apps/console-ui/src/api/dtos.ts";
 import {
   CONSOLE_DEMO_CREDENTIALS,
@@ -26,10 +23,6 @@ import { launchBrowser } from "../../tools/launch-browser.ts";
 
 const fetchedAt = "2026-08-27T00:00:00Z";
 const pageSize = 20;
-const targetDigest = `sha256:${"b".repeat(64)}`;
-const targetImage = `ghcr.io/gaofeng21cn/one-person-lab-webui@${targetDigest}`;
-const rollbackDigest = `sha256:${"a".repeat(64)}`;
-const rollbackImage = `ghcr.io/gaofeng21cn/one-person-lab-webui@${rollbackDigest}`;
 
 function deferred() {
   let resolve!: () => void;
@@ -153,48 +146,6 @@ function workspacePage(
   return source({ items, total, page, pageSize }, "control-plane+fabric+sub2api");
 }
 
-function policyData(activeVersion = "26.8.26", revision = 1): OperatorWorkspaceRuntimeImagePolicyDTO {
-  const releases = [
-    { version: "26.8.26", image: targetImage, digest: targetDigest },
-    { version: "26.8.4", image: rollbackImage, digest: rollbackDigest }
-  ];
-  const active = releases.find((release) => release.version === activeVersion);
-  if (!active) throw new Error(`unknown fixture release: ${activeVersion}`);
-  return {
-    schemaVersion: 1,
-    revision,
-    active,
-    installedDefault: releases[0],
-    releases,
-    source: "control-plane-workspace-image-release-policy"
-  };
-}
-
-function policy(activeVersion = "26.8.26", revision = 1): SourceEnvelope<OperatorWorkspaceRuntimeImagePolicyDTO> {
-  return source(policyData(activeVersion, revision));
-}
-
-function imageDigest(workspaceId: string, version: string): string {
-  return `sha256:${workspaceId}-${version}`;
-}
-
-function preview(
-  workspaceId: string,
-  version = "current",
-  overrides: Partial<OperatorWorkspaceRuntimeImagePreviewDTO> = {}
-): OperatorWorkspaceRuntimeImagePreviewDTO {
-  return {
-    workspaceId,
-    workspaceStatus: "running",
-    runtimeId: `runtime-${workspaceId}`,
-    runtimeStatus: "ready",
-    currentImageDigest: imageDigest(workspaceId, version),
-    targetImageDigest: targetImage,
-    canReplace: true,
-    ...overrides
-  };
-}
-
 async function fulfill<T>(route: Route, body: T, status = 200) {
   await route.fulfill({
     status,
@@ -230,18 +181,16 @@ async function settle(page: Page) {
   }));
 }
 
-test("Operator Resource Read loads list and policy and rejects a late page 1 response", { timeout: 60_000 }, async () => {
+test("Operator Resource Read loads list and rejects a late page 1 response", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await launchBrowser({ headless: true });
   const stalePageHeld = deferred();
   const releaseStalePage = deferred();
   const stalePageSettled = deferred();
-  const initialPolicyLoaded = deferred();
   const first = operatorWorkspace("workspace-page-one", "Page One");
   const stale = operatorWorkspace("workspace-page-one-stale", "Page One Stale");
   const second = operatorWorkspace("workspace-page-two", "Page Two");
   let pageOneReads = 0;
-  let policyReads = 0;
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await page.route("**/api/operator/workspaces?*", async (route) => {
@@ -260,18 +209,11 @@ test("Operator Resource Read loads list and policy and rejects a late page 1 res
       }
       await fulfill(route, workspacePage([second], 2, 40));
     });
-    await page.route("**/api/operator/workspace-runtime-image-policy", async (route) => {
-      policyReads += 1;
-      await fulfill(route, policy());
-      initialPolicyLoaded.resolve();
-    });
 
     await login(page, demo.origin);
     await openResources(page, demo.origin);
     await workspaceRow(page, first.workspace.available ? first.workspace.data.id : "").waitFor({ state: "visible" });
-    await initialPolicyLoaded.promise;
     assert.equal(pageOneReads, 1);
-    assert.equal(policyReads, 1);
     assert.equal(await page.getByRole("heading", { name: "应用版本登记", exact: true }).count(), 0);
 
     await page.getByRole("button", { name: "刷新", exact: true }).click();
@@ -286,7 +228,6 @@ test("Operator Resource Read loads list and policy and rejects a late page 1 res
     assert.equal(await workspaceRow(page, second.workspace.available ? second.workspace.data.id : "").count(), 1);
     assert.equal(await workspaceRow(page, stale.workspace.available ? stale.workspace.data.id : "").count(), 0);
     await page.getByText("第 2 / 2 页", { exact: true }).waitFor({ state: "visible" });
-    assert.equal(policyReads, 2);
   } finally {
     releaseStalePage.resolve();
     await browser.close();
@@ -294,35 +235,21 @@ test("Operator Resource Read loads list and policy and rejects a late page 1 res
   }
 });
 
-test("Operator Resource Read rejects late detail and preview after selecting another Workspace", { timeout: 60_000 }, async () => {
+test("Operator Resource Read rejects late detail after selecting another Workspace", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await launchBrowser({ headless: true });
   const alphaDetailHeld = deferred();
-  const alphaPreviewHeld = deferred();
   const releaseAlpha = deferred();
   const alphaDetailSettled = deferred();
-  const alphaPreviewSettled = deferred();
   const alphaList = operatorWorkspace("workspace-alpha", "Alpha", "listed");
   const alphaLate = operatorWorkspace("workspace-alpha", "Alpha", "late");
   const beta = operatorWorkspace("workspace-beta", "Beta", "current");
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await page.route("**/api/operator/workspaces?*", (route) => fulfill(route, workspacePage([alphaList, beta], 1)));
-    await page.route("**/api/operator/workspace-runtime-image-policy", (route) => fulfill(route, policy()));
     await page.route("**/api/operator/workspaces/**", async (route) => {
       const pathname = new URL(route.request().url()).pathname;
       const workspaceId = decodeURIComponent(pathname.split("/")[4] || "");
-      if (pathname.endsWith("/runtime-image-replacements/preview")) {
-        if (workspaceId === "workspace-alpha") {
-          alphaPreviewHeld.resolve();
-          await releaseAlpha.promise;
-          await fulfill(route, source(preview(workspaceId, "late"), "control-plane+fabric"));
-          alphaPreviewSettled.resolve();
-          return;
-        }
-        await fulfill(route, source(preview(workspaceId, "current"), "control-plane+fabric"));
-        return;
-      }
       if (workspaceId === "workspace-alpha") {
         alphaDetailHeld.resolve();
         await releaseAlpha.promise;
@@ -337,19 +264,17 @@ test("Operator Resource Read rejects late detail and preview after selecting ano
     await openResources(page, demo.origin);
     await workspaceRow(page, "workspace-alpha").waitFor({ state: "visible" });
     await selectWorkspace(page, "workspace-alpha");
-    await Promise.all([alphaDetailHeld.promise, alphaPreviewHeld.promise]);
+    await alphaDetailHeld.promise;
 
     await selectWorkspace(page, "workspace-beta");
     await page.getByText("receipt-workspace-beta-current", { exact: true }).first().waitFor({ state: "visible" });
-    await page.getByText(imageDigest("workspace-beta", "current"), { exact: true }).waitFor({ state: "visible" });
     assert.equal(await page.getByRole("heading", { name: "应用部署", exact: true }).count(), 0);
 
     releaseAlpha.resolve();
-    await Promise.all([alphaDetailSettled.promise, alphaPreviewSettled.promise]);
+    await alphaDetailSettled.promise;
     await settle(page);
     assert.ok(await page.getByText("receipt-workspace-beta-current", { exact: true }).count() > 0);
     assert.equal(await page.getByText("receipt-workspace-alpha-late", { exact: true }).count(), 0);
-    assert.equal(await page.getByText(imageDigest("workspace-alpha", "late"), { exact: true }).count(), 0);
   } finally {
     releaseAlpha.resolve();
     await browser.close();
@@ -357,7 +282,7 @@ test("Operator Resource Read rejects late detail and preview after selecting ano
   }
 });
 
-test("Operator Resource Read keeps detail and preview failures independent", { timeout: 60_000 }, async () => {
+test("Operator Resource Read keeps a detail failure independent of the list", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await launchBrowser({ headless: true });
   const alpha = operatorWorkspace("workspace-alpha", "Alpha");
@@ -365,16 +290,9 @@ test("Operator Resource Read keeps detail and preview failures independent", { t
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await page.route("**/api/operator/workspaces?*", (route) => fulfill(route, workspacePage([alpha, beta], 1)));
-    await page.route("**/api/operator/workspace-runtime-image-policy", (route) => fulfill(route, policy()));
     await page.route("**/api/operator/workspaces/**", async (route) => {
       const pathname = new URL(route.request().url()).pathname;
       const workspaceId = decodeURIComponent(pathname.split("/")[4] || "");
-      if (pathname.endsWith("/runtime-image-replacements/preview")) {
-        await fulfill(route, workspaceId === "workspace-beta"
-          ? unavailable<OperatorWorkspaceRuntimeImagePreviewDTO>("control-plane+fabric", "preview_unavailable")
-          : source(preview(workspaceId), "control-plane+fabric"));
-        return;
-      }
       await fulfill(route, workspaceId === "workspace-alpha"
         ? unavailable<OperatorWorkspaceDTO>("control-plane+fabric+ledger", "detail_unavailable")
         : source(beta, "control-plane+fabric+ledger"));
@@ -386,29 +304,27 @@ test("Operator Resource Read keeps detail and preview failures independent", { t
 
     await selectWorkspace(page, "workspace-alpha");
     await page.getByText("资源详情暂不可用", { exact: true }).waitFor({ state: "visible" });
-    await page.getByText(imageDigest("workspace-alpha", "current"), { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await workspaceRow(page, "workspace-alpha").count(), 1);
+    assert.equal(await workspaceRow(page, "workspace-beta").count(), 1);
 
     await selectWorkspace(page, "workspace-beta");
     await page.getByText("receipt-workspace-beta-current", { exact: true }).first().waitFor({ state: "visible" });
     assert.ok(await page.getByText("provider-workspace-beta-current", { exact: true }).count() > 0);
-    assert.equal(await page.getByText(imageDigest("workspace-beta", "current"), { exact: true }).count(), 0);
   } finally {
     await browser.close();
     await demo.close();
   }
 });
 
-test("Operator Resource Read rejects late list, detail, and preview after route and Session reset", { timeout: 60_000 }, async () => {
+test("Operator Resource Read rejects late list and detail after route and Session reset", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await launchBrowser({ headless: true });
   const routeListHeld = deferred();
   const routeDetailHeld = deferred();
-  const routePreviewHeld = deferred();
   const releaseRouteReads = deferred();
   const routeReadsSettled = deferred();
   const sessionListHeld = deferred();
   const sessionDetailHeld = deferred();
-  const sessionPreviewHeld = deferred();
   const releaseSessionReads = deferred();
   const sessionReadsSettled = deferred();
   const logoutHeld = deferred();
@@ -422,11 +338,11 @@ test("Operator Resource Read rejects late list, detail, and preview after route 
   let sessionSettlements = 0;
   const settleRouteRead = () => {
     routeSettlements += 1;
-    if (routeSettlements === 3) routeReadsSettled.resolve();
+    if (routeSettlements === 2) routeReadsSettled.resolve();
   };
   const settleSessionRead = () => {
     sessionSettlements += 1;
-    if (sessionSettlements === 3) sessionReadsSettled.resolve();
+    if (sessionSettlements === 2) sessionReadsSettled.resolve();
   };
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -448,32 +364,24 @@ test("Operator Resource Read rejects late list, detail, and preview after route 
       }
       await fulfill(route, workspacePage([listReads === 1 ? routeOld : current], 1));
     });
-    await page.route("**/api/operator/workspace-runtime-image-policy", (route) => fulfill(route, policy()));
     await page.route("**/api/operator/workspaces/**", async (route) => {
       const pathname = new URL(route.request().url()).pathname;
       const workspaceId = decodeURIComponent(pathname.split("/")[4] || "");
-      const isPreview = pathname.endsWith("/runtime-image-replacements/preview");
       if (sessionResetPending && workspaceId === "workspace-current") {
-        (isPreview ? sessionPreviewHeld : sessionDetailHeld).resolve();
+        sessionDetailHeld.resolve();
         await releaseSessionReads.promise;
-        await fulfill(route, isPreview
-          ? source(preview(workspaceId, "session-late"), "control-plane+fabric")
-          : source(sessionLate, "control-plane+fabric+ledger"));
+        await fulfill(route, source(sessionLate, "control-plane+fabric+ledger"));
         settleSessionRead();
         return;
       }
       if (workspaceId === "workspace-route-old") {
-        (isPreview ? routePreviewHeld : routeDetailHeld).resolve();
+        routeDetailHeld.resolve();
         await releaseRouteReads.promise;
-        await fulfill(route, isPreview
-          ? source(preview(workspaceId, "late"), "control-plane+fabric")
-          : source(routeOld, "control-plane+fabric+ledger"));
+        await fulfill(route, source(routeOld, "control-plane+fabric+ledger"));
         settleRouteRead();
         return;
       }
-      await fulfill(route, isPreview
-        ? source(preview(workspaceId, "fresh"), "control-plane+fabric")
-        : source(current, "control-plane+fabric+ledger"));
+      await fulfill(route, source(current, "control-plane+fabric+ledger"));
     });
     await page.route("**/api/auth/logout", async (route) => {
       logoutHeld.resolve();
@@ -485,7 +393,7 @@ test("Operator Resource Read rejects late list, detail, and preview after route 
     await openResources(page, demo.origin);
     await workspaceRow(page, "workspace-route-old").waitFor({ state: "visible" });
     await selectWorkspace(page, "workspace-route-old");
-    await Promise.all([routeDetailHeld.promise, routePreviewHeld.promise]);
+    await routeDetailHeld.promise;
     await page.getByRole("button", { name: "刷新", exact: true }).click();
     await routeListHeld.promise;
 
@@ -496,20 +404,18 @@ test("Operator Resource Read rejects late list, detail, and preview after route 
     await workspaceRow(page, "workspace-current").waitFor({ state: "visible" });
     await selectWorkspace(page, "workspace-current");
     await page.getByText("receipt-workspace-current-fresh", { exact: true }).first().waitFor({ state: "visible" });
-    await page.getByText(imageDigest("workspace-current", "fresh"), { exact: true }).waitFor({ state: "visible" });
 
     releaseRouteReads.resolve();
     await routeReadsSettled.promise;
     await settle(page);
     assert.equal(await page.getByText("receipt-workspace-route-old-late", { exact: true }).count(), 0);
-    assert.equal(await page.getByText(imageDigest("workspace-route-old", "late"), { exact: true }).count(), 0);
     assert.ok(await page.getByText("receipt-workspace-current-fresh", { exact: true }).count() > 0);
 
     sessionResetPending = true;
     await page.getByRole("button", { name: "刷新", exact: true }).click();
     await sessionListHeld.promise;
     await selectWorkspace(page, "workspace-current");
-    await Promise.all([sessionDetailHeld.promise, sessionPreviewHeld.promise]);
+    await sessionDetailHeld.promise;
     await page.getByRole("button", { name: "退出登录", exact: true }).click();
     await logoutHeld.promise;
     await page.getByRole("heading", { name: "正在安全退出", exact: true }).waitFor({ state: "visible" });
@@ -518,7 +424,6 @@ test("Operator Resource Read rejects late list, detail, and preview after route 
     await sessionReadsSettled.promise;
     await settle(page);
     assert.equal(await page.getByText("receipt-workspace-current-session-late", { exact: true }).count(), 0);
-    assert.equal(await page.getByText(imageDigest("workspace-current", "session-late"), { exact: true }).count(), 0);
 
     releaseLogout.resolve();
     await page.waitForURL(`${demo.origin}/`);
@@ -526,201 +431,6 @@ test("Operator Resource Read rejects late list, detail, and preview after route 
     releaseRouteReads.resolve();
     releaseSessionReads.resolve();
     releaseLogout.resolve();
-    await browser.close();
-    await demo.close();
-  }
-});
-
-test("Runtime Image Replacement refreshes only the selected Workspace detail and preview", { timeout: 60_000 }, async () => {
-  const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await launchBrowser({ headless: true });
-  const alpha = operatorWorkspace("workspace-alpha", "Alpha");
-  const betaBefore = operatorWorkspace("workspace-beta", "Beta", "before");
-  const betaAfter = operatorWorkspace("workspace-beta", "Beta", "after");
-  const replacement: WorkspaceRuntimeImageReplacementDTO = {
-    operationId: "replace-workspace-beta",
-    status: "succeeded",
-    phase: "completed",
-    workspaceId: "workspace-beta",
-    runtimeId: "runtime-workspace-beta",
-    previousImageDigest: imageDigest("workspace-beta", "before"),
-    replacementImageDigest: targetImage,
-    reason: "promote the protected Workspace image release",
-    createdAt: fetchedAt,
-    updatedAt: fetchedAt
-  };
-  let listReads = 0;
-  let policyReads = 0;
-  let alphaDetailReads = 0;
-  let alphaPreviewReads = 0;
-  let betaDetailReads = 0;
-  let betaPreviewReads = 0;
-  let replacementWrites = 0;
-  try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    page.on("dialog", (dialog) => void dialog.accept());
-    await page.route("**/api/operator/workspaces?*", async (route) => {
-      listReads += 1;
-      await fulfill(route, workspacePage([alpha, betaBefore], 1));
-    });
-    await page.route("**/api/operator/workspace-runtime-image-policy", async (route) => {
-      policyReads += 1;
-      await fulfill(route, policy());
-    });
-    await page.route("**/api/operator/workspaces/**", async (route) => {
-      const pathname = new URL(route.request().url()).pathname;
-      const workspaceId = decodeURIComponent(pathname.split("/")[4] || "");
-      const isPreview = pathname.endsWith("/runtime-image-replacements/preview");
-      const isReplacement = pathname.endsWith("/runtime-image-replacements") && route.request().method() === "POST";
-      if (isReplacement) {
-        replacementWrites += 1;
-        await fulfill(route, replacement);
-        return;
-      }
-      if (workspaceId === "workspace-alpha") {
-        if (isPreview) alphaPreviewReads += 1;
-        else alphaDetailReads += 1;
-        await fulfill(route, isPreview
-          ? source(preview(workspaceId), "control-plane+fabric")
-          : source(alpha, "control-plane+fabric+ledger"));
-        return;
-      }
-      if (isPreview) {
-        betaPreviewReads += 1;
-        const readback = betaPreviewReads === 1
-          ? preview(workspaceId, "before")
-          : preview(workspaceId, "after", {
-            currentImageDigest: targetImage,
-            canReplace: false
-          });
-        await fulfill(route, source(readback, "control-plane+fabric"));
-        return;
-      }
-      betaDetailReads += 1;
-      await fulfill(route, source(betaDetailReads === 1 ? betaBefore : betaAfter, "control-plane+fabric+ledger"));
-    });
-
-    await login(page, demo.origin);
-    await openResources(page, demo.origin);
-    await workspaceRow(page, "workspace-beta").waitFor({ state: "visible" });
-    await selectWorkspace(page, "workspace-beta");
-    await page.getByText("receipt-workspace-beta-before", { exact: true }).first().waitFor({ state: "visible" });
-    await page.getByText(imageDigest("workspace-beta", "before"), { exact: true }).waitFor({ state: "visible" });
-
-    await page.getByRole("button", { name: "更新 / 回滚当前 Workspace", exact: true }).click();
-    await page.getByText("Workspace WebUI 镜像已更新 / 回滚", { exact: true }).waitFor({ state: "visible" });
-    await page.getByText("receipt-workspace-beta-after", { exact: true }).first().waitFor({ state: "visible" });
-    await page.getByText(targetImage, { exact: true }).first().waitFor({ state: "visible" });
-
-    assert.deepEqual({
-      listReads,
-      policyReads,
-      alphaDetailReads,
-      alphaPreviewReads,
-      betaDetailReads,
-      betaPreviewReads,
-      replacementWrites
-    }, {
-      listReads: 1,
-      policyReads: 1,
-      alphaDetailReads: 0,
-      alphaPreviewReads: 0,
-      betaDetailReads: 2,
-      betaPreviewReads: 3,
-      replacementWrites: 1
-    });
-  } finally {
-    await browser.close();
-    await demo.close();
-  }
-});
-
-test("Admin activates an approved rollback for new launches and applies it to an existing Workspace", { timeout: 60_000 }, async () => {
-  const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await launchBrowser({ headless: true });
-  const value = operatorWorkspace("workspace-rollback", "Rollback", "before");
-  let activeVersion = "26.8.26";
-  let policyRevision = 1;
-  let currentImage = imageDigest("workspace-rollback", "before");
-  let activationRequest: Record<string, unknown> | null = null;
-  let replacementRequest: Record<string, unknown> | null = null;
-  let activationWrites = 0;
-  let replacementWrites = 0;
-  try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    page.on("dialog", (dialog) => void dialog.accept());
-    await page.route("**/api/operator/workspaces?*", (route) => fulfill(route, workspacePage([value], 1)));
-    await page.route("**/api/operator/workspace-image-release-activations", async (route) => {
-      activationWrites += 1;
-      activationRequest = route.request().postDataJSON() as Record<string, unknown>;
-      assert.match(route.request().headers()["idempotency-key"] || "", /^wira-/);
-      activeVersion = String(activationRequest.releaseVersion || "");
-      policyRevision += 1;
-      await fulfill(route, policyData(activeVersion, policyRevision));
-    });
-    await page.route("**/api/operator/workspace-runtime-image-policy", (route) => fulfill(route, policy(activeVersion, policyRevision)));
-    await page.route("**/api/operator/workspaces/**", async (route) => {
-      const pathname = new URL(route.request().url()).pathname;
-      const isPreview = pathname.endsWith("/runtime-image-replacements/preview");
-      const isReplacement = pathname.endsWith("/runtime-image-replacements") && route.request().method() === "POST";
-      if (isReplacement) {
-        replacementWrites += 1;
-        replacementRequest = route.request().postDataJSON() as Record<string, unknown>;
-        assert.match(route.request().headers()["idempotency-key"] || "", /^wri-/);
-        const previousImage = currentImage;
-        currentImage = String(replacementRequest.replacementImageDigest || "");
-        await fulfill(route, {
-          operationId: "replace-workspace-rollback",
-          status: "succeeded",
-          phase: "completed",
-          workspaceId: "workspace-rollback",
-          runtimeId: "runtime-workspace-rollback",
-          previousImageDigest: previousImage,
-          replacementImageDigest: currentImage,
-          reason: String(replacementRequest.reason || ""),
-          createdAt: fetchedAt,
-          updatedAt: fetchedAt
-        } satisfies WorkspaceRuntimeImageReplacementDTO);
-        return;
-      }
-      if (isPreview) {
-        const activeImage = policyData(activeVersion, policyRevision).active.image;
-        await fulfill(route, source(preview("workspace-rollback", "before", {
-          currentImageDigest: currentImage,
-          targetImageDigest: activeImage,
-          canReplace: currentImage !== activeImage
-        }), "control-plane+fabric"));
-        return;
-      }
-      await fulfill(route, source(value, "control-plane+fabric+ledger"));
-    });
-
-    await login(page, demo.origin);
-    await openResources(page, demo.origin);
-    await workspaceRow(page, "workspace-rollback").waitFor({ state: "visible" });
-    await selectWorkspace(page, "workspace-rollback");
-    await page.locator(".operator-runtime-image-upgrade .console-select").getByRole("button").click();
-    await page.getByRole("option", { name: "26.8.4", exact: true }).click();
-    await page.getByRole("button", { name: "设为新开通默认版本", exact: true }).click();
-    await page.getByText("新开通 Workspace 默认版本已切换为 26.8.4", { exact: true }).waitFor({ state: "visible" });
-
-    assert.deepEqual(activationRequest, {
-      releaseVersion: "26.8.4",
-      expectedRevision: 1,
-      reason: "activate approved Workspace image release for new launches"
-    });
-    await page.getByRole("button", { name: "更新 / 回滚当前 Workspace", exact: true }).click();
-    await page.getByText("Workspace WebUI 镜像已更新 / 回滚", { exact: true }).waitFor({ state: "visible" });
-    await page.getByText(rollbackImage, { exact: true }).first().waitFor({ state: "visible" });
-
-    assert.deepEqual(replacementRequest, {
-      replacementImageDigest: rollbackImage,
-      reason: "apply the active protected Workspace image release"
-    });
-    assert.equal(activationWrites, 1);
-    assert.equal(replacementWrites, 1);
-    assert.equal(currentImage, rollbackImage);
-  } finally {
     await browser.close();
     await demo.close();
   }
@@ -750,11 +460,9 @@ test("Resource refresh updates an expanded Workspace and rejects its late respon
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     page.on("request", (request) => { if (request.url().includes("/api/operator/") && request.method() !== "GET") writes.push(request.url()); });
     await page.route("**/api/operator/workspaces?*", (route) => fulfill(route, workspacePage([alpha(), beta], 1)));
-    await page.route("**/api/operator/workspace-runtime-image-policy", (route) => fulfill(route, policy()));
     await page.route("**/api/operator/workspaces/**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       const id = path.split("/")[4];
-      if (path.endsWith("/preview")) return fulfill(route, source(preview(id), "control-plane+fabric"));
       if (id === "workspace-refresh") {
         alphaReads += 1;
         if (alphaReads === 5) {
