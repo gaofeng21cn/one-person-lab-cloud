@@ -962,7 +962,7 @@ func TestWorkspaceDeleteStopsBeforeMutationWhileKeyRotationIsActive(t *testing.T
 		ReplacementName: "opl-workspace-replacement-active", RetiredName: "opl-workspace-retired-active",
 		AuditEvent: workspaceDeleteRotationAudit("rotation-active", "acct-alpha", "ws-alpha"),
 	}
-	if err := fixture.store.ClaimWorkspaceKeyRotation(context.Background(), workspaceKeyRotationRow("rotation-active", "acct-alpha", "ws-alpha", "started", rotation)); err != nil {
+	if err := fixture.store.SaveRuntimeOperation(context.Background(), workspaceKeyRotationRow("rotation-active", "acct-alpha", "ws-alpha", "started", rotation)); err != nil {
 		t.Fatal(err)
 	}
 	response := requestWithMutationKeyForTest(t, fixture.server, fixture.session, http.MethodDelete, "/api/workspaces/ws-alpha", `{}`, "delete-during-rotation")
@@ -1929,7 +1929,7 @@ func TestWorkspaceDeleteRenewalMutualExclusionMemoryAndSQLite(t *testing.T) {
 	}
 }
 
-func TestWorkspaceDeleteRotationMutualExclusionMemoryAndSQLite(t *testing.T) {
+func TestWorkspaceDeleteBlockedByAcceptedRotationMemoryAndSQLite(t *testing.T) {
 	for _, storeCase := range []struct {
 		name string
 		new  func(*testing.T) controlPlaneTableStore
@@ -1940,23 +1940,7 @@ func TestWorkspaceDeleteRotationMutualExclusionMemoryAndSQLite(t *testing.T) {
 		}},
 	} {
 		t.Run(storeCase.name, func(t *testing.T) {
-			exerciseWorkspaceDeleteRotationMutualExclusion(t, storeCase.new(t))
-		})
-	}
-}
-
-func TestWorkspaceDeleteLegacyV1BlocksRotationMemoryAndSQLite(t *testing.T) {
-	for _, storeCase := range []struct {
-		name string
-		new  func(*testing.T) controlPlaneTableStore
-	}{
-		{name: "memory", new: func(*testing.T) controlPlaneTableStore { return newMemoryTableStore() }},
-		{name: "sqlite", new: func(t *testing.T) controlPlaneTableStore {
-			return NewTestEntStateStore(t, t.TempDir()+"/workspace-delete-legacy-rotation.sqlite")
-		}},
-	} {
-		t.Run(storeCase.name, func(t *testing.T) {
-			exerciseWorkspaceDeleteLegacyV1BlocksRotation(t, storeCase.new)
+			exerciseWorkspaceDeleteBlockedByAcceptedRotation(t, storeCase.new(t))
 		})
 	}
 }
@@ -1969,68 +1953,8 @@ func TestPostgresWorkspaceDeleteRenewalMutualExclusion(t *testing.T) {
 	exerciseWorkspaceDeleteRenewalMutualExclusion(t, newPostgresWorkspaceRenewalStore(t))
 }
 
-func TestPostgresWorkspaceDeleteRotationMutualExclusion(t *testing.T) {
-	exerciseWorkspaceDeleteRotationMutualExclusion(t, newPostgresWorkspaceRenewalStore(t))
-}
-
-func TestPostgresWorkspaceDeleteLegacyV1BlocksRotation(t *testing.T) {
-	exerciseWorkspaceDeleteLegacyV1BlocksRotation(t, func(t *testing.T) controlPlaneTableStore {
-		return newPostgresWorkspaceRenewalStore(t)
-	})
-}
-
-func TestPostgresWorkspaceDeleteRotationConcurrentClaim(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	store := newPostgresWorkspaceRenewalStore(t)
-	workspace := currentWorkspaceRenewalAPIRow()
-	workspaceID := "workspace-delete-rotation-concurrent-claim"
-	workspace["id"], workspace["accountId"], workspace["ownerAccountId"], workspace["ownerUserId"] = workspaceID, "acct-delete", "acct-delete", "usr-delete"
-	workspace["workspaceApiKeyId"] = int64(19)
-	if err := store.SaveWorkspace(ctx, workspace); err != nil {
-		t.Fatal(err)
-	}
-	deleteOperation := workspaceDeleteStoreOperationForWorkspace(workspace, time.Now().UTC().Format(time.RFC3339Nano))
-	rotation := workspaceKeyRotationOperation{
-		RequestHash: "rotation-concurrent-request", Phase: "replacement_check", OldKeyID: 19,
-		ReplacementName: "opl-workspace-replacement-concurrent", RetiredName: "opl-workspace-retired-concurrent",
-		AuditEvent: workspaceDeleteRotationAudit("rotation-concurrent", "acct-delete", workspaceID),
-	}
-	rotationRow := workspaceKeyRotationRow("rotation-concurrent", "acct-delete", workspaceID, "started", rotation)
-	type claimResult struct {
-		kind string
-		err  error
-	}
-	start := make(chan struct{})
-	results := make(chan claimResult, 2)
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		<-start
-		results <- claimResult{kind: "delete", err: store.ApplyWorkspaceDelete(ctx, workspaceDeleteStoreMutation{Create: true, DesiredOperation: workspaceDeleteOperationRow(deleteOperation)})}
-	}()
-	go func() {
-		defer wg.Done()
-		<-start
-		results <- claimResult{kind: "rotation", err: store.ClaimWorkspaceKeyRotation(ctx, rotationRow)}
-	}()
-	close(start)
-	wg.Wait()
-	close(results)
-	succeeded, conflicted := 0, 0
-	for result := range results {
-		if result.err == nil {
-			succeeded++
-		} else if errors.Is(result.err, errWorkspaceDeleteCASConflict) || errors.Is(result.err, errWorkspaceKeyRotationInProgress) {
-			conflicted++
-		} else {
-			t.Fatalf("unexpected %s claim error: %v", result.kind, result.err)
-		}
-	}
-	if succeeded != 1 || conflicted != 1 {
-		t.Fatalf("concurrent Delete/Rotation claims succeeded=%d conflicted=%d", succeeded, conflicted)
-	}
+func TestPostgresWorkspaceDeleteBlockedByAcceptedRotation(t *testing.T) {
+	exerciseWorkspaceDeleteBlockedByAcceptedRotation(t, newPostgresWorkspaceRenewalStore(t))
 }
 
 func TestPostgresWorkspaceDeleteRenewalConcurrentClaim(t *testing.T) {
@@ -2266,7 +2190,7 @@ func exerciseWorkspaceDeleteRenewalMutualExclusion(t *testing.T, store controlPl
 	}
 }
 
-func exerciseWorkspaceDeleteRotationMutualExclusion(t *testing.T, store controlPlaneTableStore) {
+func exerciseWorkspaceDeleteBlockedByAcceptedRotation(t *testing.T, store controlPlaneTableStore) {
 	t.Helper()
 	ctx := context.Background()
 	for _, phase := range []string{"replacement_check", "replacement_create", "secret_write", "runtime_bind", "runtime_readback", "workspace_commit", "retire_old", "promote_new", "delete_old", "receipt"} {
@@ -2278,15 +2202,10 @@ func exerciseWorkspaceDeleteRotationMutualExclusion(t *testing.T, store controlP
 			t.Fatal(err)
 		}
 		rotation := workspaceKeyRotationOperation{
-			RequestHash: "rotation-request-" + phase, Phase: "replacement_check", OldKeyID: 19,
+			RequestHash: "rotation-request-" + phase, Phase: phase, OldKeyID: 19,
 			ReplacementName: "opl-workspace-replacement-" + phase, RetiredName: "opl-workspace-retired-" + phase,
 			AuditEvent: workspaceDeleteRotationAudit("rotation-"+phase, "acct-delete", workspaceID),
 		}
-		row := workspaceKeyRotationRow("rotation-"+phase, "acct-delete", workspaceID, "started", rotation)
-		if err := store.ClaimWorkspaceKeyRotation(ctx, row); err != nil {
-			t.Fatal(err)
-		}
-		rotation.Phase = phase
 		if err := store.SaveRuntimeOperation(ctx, workspaceKeyRotationRow("rotation-"+phase, "acct-delete", workspaceID, "started", rotation)); err != nil {
 			t.Fatal(err)
 		}
@@ -2294,51 +2213,6 @@ func exerciseWorkspaceDeleteRotationMutualExclusion(t *testing.T, store controlP
 		if err := store.ApplyWorkspaceDelete(ctx, workspaceDeleteStoreMutation{Create: true, DesiredOperation: workspaceDeleteOperationRow(operation)}); !errors.Is(err, errWorkspaceDeleteCASConflict) {
 			t.Fatalf("Rotation phase %s did not block Delete claim: %v", phase, err)
 		}
-	}
-
-	workspace := currentWorkspaceRenewalAPIRow()
-	workspaceID := "workspace-rotation-blocked-by-delete"
-	workspace["id"], workspace["accountId"], workspace["ownerAccountId"], workspace["ownerUserId"] = workspaceID, "acct-delete", "acct-delete", "usr-delete"
-	workspace["workspaceApiKeyId"] = int64(19)
-	if err := store.SaveWorkspace(ctx, workspace); err != nil {
-		t.Fatal(err)
-	}
-	operation := workspaceDeleteStoreOperationForWorkspace(workspace, time.Now().UTC().Format(time.RFC3339Nano))
-	if err := store.ApplyWorkspaceDelete(ctx, workspaceDeleteStoreMutation{Create: true, DesiredOperation: workspaceDeleteOperationRow(operation)}); err != nil {
-		t.Fatal(err)
-	}
-	rotation := workspaceKeyRotationOperation{
-		RequestHash: "rotation-blocked-request", Phase: "replacement_check", OldKeyID: 19,
-		ReplacementName: "opl-workspace-replacement-blocked", RetiredName: "opl-workspace-retired-blocked",
-		AuditEvent: workspaceDeleteRotationAudit("rotation-blocked-by-delete", "acct-delete", workspaceID),
-	}
-	if err := store.ClaimWorkspaceKeyRotation(ctx, workspaceKeyRotationRow("rotation-blocked-by-delete", "acct-delete", workspaceID, "started", rotation)); !errors.Is(err, errWorkspaceKeyRotationInProgress) {
-		t.Fatalf("active Delete did not block Rotation claim: %v", err)
-	}
-}
-
-func exerciseWorkspaceDeleteLegacyV1BlocksRotation(t *testing.T, newStore func(*testing.T) controlPlaneTableStore) {
-	t.Helper()
-	for _, phase := range []string{"claimed", "storage_destroyed"} {
-		t.Run(phase, func(t *testing.T) {
-			fixture, _, ledger := newWorkspaceDeleteCompletionFixtureWith(t, newStore(t), &workspaceDeleteFabric{})
-			legacy := workspaceDeleteLegacyFixtureRow(fixture, ledger.purchase.ReceiptInput, phase, "running")
-			if err := fixture.store.SaveRuntimeOperation(context.Background(), legacy); err != nil {
-				t.Fatal(err)
-			}
-			operationID := "rotation-blocked-by-legacy-" + phase
-			rotation := workspaceKeyRotationOperation{
-				RequestHash: "rotation-blocked-by-legacy-request-" + phase, Phase: "replacement_check", OldKeyID: 19,
-				ReplacementName: "opl-workspace-replacement-legacy-" + phase, RetiredName: "opl-workspace-retired-legacy-" + phase,
-				AuditEvent: workspaceDeleteRotationAudit(operationID, "acct-alpha", "ws-alpha"),
-			}
-			if err := fixture.store.ClaimWorkspaceKeyRotation(context.Background(), workspaceKeyRotationRow(operationID, "acct-alpha", "ws-alpha", "started", rotation)); !errors.Is(err, errWorkspaceKeyRotationInProgress) {
-				t.Fatalf("historical v1 phase %s did not block Rotation claim: %v", phase, err)
-			}
-			if row, found, err := fixture.store.GetRuntimeOperation(context.Background(), operationID); err != nil || found {
-				t.Fatalf("blocked Rotation was persisted: found=%v row=%#v err=%v", found, row, err)
-			}
-		})
 	}
 }
 

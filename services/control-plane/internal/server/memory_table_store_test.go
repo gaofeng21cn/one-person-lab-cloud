@@ -540,43 +540,6 @@ func (s *memoryTableStore) CompareAndSwapWorkspaceAPIKey(_ context.Context, work
 	return nil
 }
 
-func (s *memoryTableStore) ClaimWorkspaceKeyRotation(_ context.Context, row map[string]any) error {
-	operation, ok := validWorkspaceKeyRotationClaim(row)
-	if !ok {
-		return errWorkspaceKeyRotationState
-	}
-	workspaceID, accountID := stringValue(row["workspaceId"]), stringValue(row["accountId"])
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	workspace := s.workspaces[workspaceID]
-	currentKeyID, keyOK := positiveIntegerField(workspace, "workspaceApiKeyId")
-	if workspace == nil || firstNonEmpty(stringValue(workspace["accountId"]), stringValue(workspace["ownerAccountId"])) != accountID || !keyOK || currentKeyID != operation.OldKeyID {
-		return errWorkspaceKeyRotationInProgress
-	}
-	reservedID := stringValue(workspace["reservedApplicationDeploymentId"])
-	reservationConfirmed := reservedID == ""
-	for _, existing := range s.runtimeOps {
-		if stringValue(existing["workspaceId"]) != workspaceID {
-			continue
-		}
-		if stringValue(existing["id"]) == reservedID {
-			intent, err := decodeWorkspaceApplicationDeploymentIntent(existing)
-			if err != nil || intent.Phase != workspaceApplicationDeploymentActivePhase || intent.OperationID != stringValue(workspace["currentApplicationDeploymentId"]) {
-				return errWorkspaceKeyRotationInProgress
-			}
-			reservationConfirmed = true
-		}
-		if workspaceKeyRotationBlocksDelete(existing) || workspaceDeleteBlocksRotation(existing) || workspaceDefaultApplicationPreparationBlocks(existing) {
-			return errWorkspaceKeyRotationInProgress
-		}
-	}
-	if !reservationConfirmed {
-		return errWorkspaceKeyRotationInProgress
-	}
-	s.runtimeOps = append(s.runtimeOps, cloneMap(row))
-	return nil
-}
-
 func (s *memoryTableStore) ApplyWorkspaceRenewalIntent(_ context.Context, update workspaceRenewalIntentCAS) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

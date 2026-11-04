@@ -1366,7 +1366,7 @@ operations, data or financial evidence.
 | Fresh purchase | Resource Catalog creates the quote; Workspace accepts the order through BFF `/api/v2/quotes` and `/api/v2/workspaces`; UI `createWorkspaceQuote` and Instance `cloud-workspace-launch-readback.mjs` use those routes | CP `POST /api/workspace-launches` only replays an existing account/key-bound operation, otherwise refuses before pricing/payment/provider/persistence. PR #1061 already removed `createWorkspaceLaunch` and fresh-create claim machinery | Already removed; do not implement another fence or preserve a creator for tests |
 | Application revision, deployment and current selection | Runtime Control supplies approved default-App releases; Capability/Build supplies Agent descriptors; Workspace calls Serve Reserve/Deploy. BFF `serve_update.go` delegates version updates to Serve | CP operator revision/data admission, application-deployments and retry, default installer and deployment worker. Claim/activation requires a CP Workspace row and binding/predecessor checks. Legacy UI and Instance installer remain callers | R1: retire the legacy deployment capability after caller/accepted-operation disposition; no proof of a duplicate native writer follows from old columns |
 | Application credentials, runtime maintenance and image policy | Workspace/Serve reveal the exact current ready runtime's credentials; Serve owns approved version replacement/readiness/access | CP credential reveal, repair, image replacement and release-policy mutation retain callers; R2a removes password-rotation creation and its Console action. Accepted credential deployments retain recovery | R2: review withdrawal or necessary caller migration; native reveal/update does not establish password-rotation or arbitrary operator-deploy parity |
-| Workspace managed Key | Workspace coordinates intent through Gateway Integration; external Gateway owns effective Key/Group state | CP Workspace Key rotation/default-install handover still touches external Gateway, guarded by CP Workspace/account/old-Key binding. This is distinct from personal user Key CRUD | R3: remove the old Workspace-Key writer with its deployment/default-install callers and original operations, not the personal-Key readers |
+| Workspace managed Key | Workspace coordinates intent through Gateway Integration; external Gateway owns effective Key/Group state | R3a removes CP fresh rotation acceptance and its store claim. The original POST resumes only an existing account/Workspace/request-bound rotation; retained Launch Key stages and accepted rotations still coordinate external effects. This is distinct from personal user Key CRUD | R3: finish original-operation disposition before removing recovery, deployment binding and lineage consumers; native disable/reveal is not replacement-Key rotation |
 | Personal Gateway Keys, account activation and wallet administration | Gateway Integration owns Cloud mappings; Sub2API remains Key/wallet truth. Cloud activation still has an original-owner BFF bridge | CP user-Key routes, delegated user identity, activation/admin commands and recovery remain separate capabilities; Cloud browser guards do not remove backend entrypoints | R4: identify which public/admin capabilities are still required before choosing withdrawal or migration; no blanket Gateway or Account file deletion |
 | Retained purchase recovery, expiry/renewal, deletion and settlement | Workspace owns native lifecycle; native BFF deletion/readback and Instance `workspace-native-delete.mjs` use its API; Gateway/Fabric/Ledger own their effects/readbacks | CP original Launch replay/resume, renewal/expiry and delete/refund workers remain registered. Original operations/charges must not be replaced by native re-purchase/refund | R5: finish the all-object/operation census, then remove the retained execution slice and its external callers; the three #1018 selectors are already closed |
 | Legacy package pricing | Resource Catalog owns new compute/storage prices and quotes | Legacy UI and Instance `fresh-workspace-admission.mjs` still read `/api/pricing/catalog` and POST preview; preview is computation/read, not a purchase | R6: remove old pricing callers/adapters with their exclusive model, while preserving accepted historical quote/terms decoding |
@@ -1441,19 +1441,28 @@ withdrawal/migration decision: do not build every legacy command in Serve solely
 to make the old code removable.
 
 **R3 — retained Workspace Key creation and rotation.**
-The default-install Key preparation has been removed in R1b. Remove the remaining
-Key-stage writer in `workspace_launch_account_stages.go`, its
-`workspace_launch_service.go` dispatch and the rotation route in `routes_workspace.go`
-with its writer in `workspace_gateway.go`. Remove rotation claims/CAS from
-`ent_state_store_workspace.go` and command-only Sub2API client wrappers only when
-R1/R5 no longer call them. Preserve current-Secret resolution, rotation lineage,
-original external IDs and overlap guards used by deletion/budget/history.
-`source_truth_gateway_test.go` rotation cases and the corresponding command
-fixtures leave with the removed implementation. Native CreateManagedKey and
-reversible read/disable/enable are implemented; full replacement-Key rotation
-and permanent revoke are not equivalent existing native commands. Review
-whether the obsolete rotation capability is withdrawn or still needed, rather
-than automatically implementing parity.
+The default-install Key preparation has been removed in R1b. R3a removes fresh
+rotation preparation, initial audit/name generation, the `WorkspaceStore`/Ent
+claim mutation and its memory/test implementation, and the unused Console
+rotation DTO. `POST /api/workspaces/{workspaceId}/workspace-key/rotate` now only
+resumes the original persisted operation under the original idempotency key,
+owner and request hash. Confirmed absence returns HTTP 410
+`workspace_key_rotation_creation_retired` before accepting an operation or
+dispatching Gateway/Secret/Runtime/receipt effects. Failed reads, damaged state
+and identity conflicts retain their errors rather than becoming absence.
+
+The original recovery state machine remains necessary: a child deployment worker
+alone cannot commit the parent Key mapping, retire/delete the predecessor or
+finish its receipt. Tests seed accepted historical operations explicitly, then
+exercise real HTTP recovery, response loss, restart, CAS and terminal replay.
+The remaining Key-stage writer in `workspace_launch_account_stages.go`, its
+`workspace_launch_service.go` dispatch, accepted rotation persistence/CAS and
+Sub2API wrappers leave only with their R3/R5 original-operation obligations.
+Preserve current-Secret resolution, rotation lineage, original external IDs and
+overlap guards consumed by deletion/budget/history. Native CreateManagedKey and
+reversible read/disable/enable exist; full replacement-Key rotation and permanent
+revoke are not equivalent commands. No parity implementation is added merely
+to enable removal.
 
 **R4 — personal user-Key and wallet/account administration.**
 The create/update/delete/reveal command branches in `routes_gateway.go`, the

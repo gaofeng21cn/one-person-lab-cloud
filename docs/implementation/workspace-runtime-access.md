@@ -120,8 +120,11 @@ image updates and reinstalling the same application retain the frozen credential
 identity; migration from a full Launch preserves its proven credential source.
 The legacy password-rotation creator and its Console action are removed. Already
 accepted credential deployments retain their frozen successor identity and data
-binding, shared worker and original operator retry. Workspace-Key rotation still
-creates its own successor deployment and retains its parent recovery path.
+binding, shared worker and original operator retry. Fresh legacy Workspace-Key
+rotation acceptance and its store claim are also removed. The original rotation
+POST only resumes a persisted operation with its original identity; confirmed
+absence returns HTTP 410. Accepted rotations may still create their frozen
+successor deployment and retain the parent recovery path for Key/receipt closeout.
 HTTP 202 means the operation is pending, not that a new password is already in
 use. Console keeps read-only pending refresh, drops revealed credentials when the
 selection changes and keeps passwords only in component memory. Native credential
@@ -200,8 +203,9 @@ Control Plane resolves the target Workspace's persisted `workspaceApiKeyId` and
 hands the Key transiently to Fabric. Fabric writes or rotates a deterministic
 Workspace-scoped secret bound to account, Workspace, Key ID, and fingerprint,
 and records only its ref, version, and fingerprint. Existing
-account-scoped Secrets remain read-compatible until that Workspace's first Key
-rotation; ordinary reads never infer scope from Workspace count or Key name.
+account-scoped Secrets remain read-compatible; an already accepted rotation can
+finish the replacement binding. Ordinary reads never infer scope from Workspace
+count or Key name.
 Ordinary runtime status is non-secret. The dedicated owner-only POST reveals the
 password transiently; the legacy password-rotation command is removed. Control
 Plane never persists the password, and Console retains it only in Workspace detail
