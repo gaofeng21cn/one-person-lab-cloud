@@ -3,18 +3,38 @@
 Owner: `opl-cloud`
 Purpose: `replaceable_current_evidence_snapshot`
 State: `current_snapshot`
-Baseline evidence source: `9db27a91bc236cdf294253a352a3e1682fd35235` on `main`
-Baseline evidence date: 2026-10-01
+Reviewed source baseline: `3773966a31e2a5d6630038decfa0a812c1488830` on `main`
+Snapshot reconciliation date: 2026-11-05
 
-This page keeps the dated baseline evidence above and explicitly dated evidence
-updates below. The baseline SHA does not describe the later changes or qualify
-them: each receipt retains its original source, run and environment. The latest
-evidence update is 2026-11-05. Source/tests, Candidate construction and
-Instance installation verification are recorded at their own layers below;
-none alone establishes business qualification or a Product Release. The target
-boundary is in [architecture.md](architecture.md),
-durable decisions are in [decisions.md](decisions.md), and open work is in
-[roadmap.md](roadmap.md).
+Each observation below retains its original source, run and environment; the
+reviewed source baseline does not requalify those receipts. The latest retained
+runtime/source evidence is dated 2026-11-05. Source tests, Candidate construction,
+Instance installation and customer acceptance prove separate layers; none alone
+establishes a formal Product Release. Target ownership is in
+[architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
+and remaining work in [roadmap.md](roadmap.md).
+
+## Current Capability Baseline
+
+Reconciled on 2026-11-05 against Cloud source `3773966a`; dated source and
+Instance observations below retain their original revisions and limits.
+
+| Scope | Established evidence | Remaining boundary |
+| --- | --- | --- |
+| Default App customer acceptance | [#1042](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1042) closed on 2026-11-02 after official App login, Gateway-backed model response, restart/response-loss recovery, one `$52.58` charge and no duplicate purchase or Key; [original observations](#native-runtime-admission-and-serve-upgrade-authorization-2026-11-01) | This accepted Workspace does not prove every future customer is unattended, the Cloud model-configuration API is qualified or every writer has migrated |
+| Original-order closeout | [#1018's three original orders](#original-order-closeout-scope-2026-10-23) have protected resource absence, deletion-receipt and original-charge settlement evidence | Preserve their original records; completed closeout does not retire every retained CP caller or worker |
+| Serve current application and upgraded deletion | [Current selection](#serve-owned-current-application-readback-2026-11-04) comes from Serve, and [deletion follows the original reservation's successor lineage](#workspace-deletion-after-application-replacement-2026-11-04); both have source regression evidence | Installed adoption and live owner readback for these later repairs remain unverified |
+| Package, Build and Runtime catalog | Approved Default App inputs were used by #1042; Package/Build source and the [Linux Custom Agent profile](#linux-custom-agent-owner-qualification-2026-10-21) have distinct evidence | External OMA admission, hosted tenant-specific OCI publication, Custom Agent TKE acceptance and broader Runtime/provider profiles remain separate |
+| Retained writer migration | [Capability withdrawals](#retained-writer-inventory-and-split-withdrawal-proposals-2026-11-03) and [implementation inventory](implementation-architecture.md#retained-writer-and-caller-inventory-2026-11-03) identify source removals, surviving callers and bounded observations | Account eligibility is consumed at source; its installed adoption and owner migration, Tenant payer-balance consumption, selected-model admission, shared CP recovery and historical duties remain separate. Source removal is not installed adoption or zero traffic |
+| Protected engineering qualification | Native consumer migration and source repairs are recorded separately from the accepted customer path | Protected payer declaration, same-Candidate J0 READY, W01 ordering and a complete protected receipt remain unproven; existing release admission is unchanged |
+
+The architecture source is [architecture.md](architecture.md#repository-and-instance-topology)
+and its adopted [single delivery/owner decision](decisions.md#2026-09-22-adopt-the-domain-separated-agent-saas-target-architecture).
+Current callers belong to [implementation architecture](implementation-architecture.md);
+remaining outcomes belong to [roadmap](roadmap.md#current-delivery-lane-owner-convergence-and-retained-writer-retirement-2026-11-05).
+The current objective is one writer per fact and removal of obsolete code with
+its callers, workers, configuration and exclusive tests. Qualification is a
+separate release lane, not a blanket prerequisite for source retirement.
 
 ## Retained Generic Deployment Builder Removal (2026-11-05)
 
@@ -56,7 +76,6 @@ passed under the race detector. Verification and current-revision CI results are
 recorded in the source PR. Source evidence does not prove installed adoption or
 real purchases; the installed configuration and policy sequence remain in
 [roadmap](roadmap.md#workspace-purchase-eligibility-adoption).
-
 
 ## Workspace Deletion After Application Replacement (2026-11-04)
 
@@ -783,11 +802,11 @@ installation caller and its receipts remain Instance-owned; no new RPC or
 browser route is introduced.
 
 Installed adoption and automatic worker continuation are now evidenced above;
-no second retry was needed. Remaining acceptance concerns the actual App API
-path, complete login, a real model response and restart/lost-response recovery.
-The existing order, charge, Key, resource binding and application image remain
-the identities to verify. Instance deployment and business receipts remain
-Instance-owned; #1042 stays open.
+no second retry was needed. This section preserves the installation observation;
+the later customer readback recorded in the current baseline completed the App
+API path, login, model response and restart/response-loss recovery for #1042.
+Instance deployment receipts remain Instance-owned, while the independent
+protected qualification receipt remains a separate engineering outcome.
 
 ## Authorized Default App Launch Observation (2026-10-27)
 
@@ -882,9 +901,9 @@ Instance owns retention of the original bytes at
 and in the corresponding installation receipt. Cloud records the identities
 and validation result here without copying the Instance receipts.
 
-[#1042](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1042)
-remains open. No protected Default App business-entry, runtime, Gateway or
-recovery-chain execution evidence has been obtained for this Candidate;
+At this 2026-10-26 observation, [#1042](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1042)
+had not yet received the protected Default App business-entry, runtime, Gateway
+or recovery-chain execution evidence for this Candidate;
 `cloud-business-qualification.yml` has no recorded runs at this observation.
 Protected RuntimeVersion, compute, storage, Tenant and payer variables remain
 unconfigured, and no real dedicated-sandbox J0 READY receipt bound to this same
@@ -913,8 +932,8 @@ Local v2 remains diagnostic `NOT_READY`; the latest reported local run stopped
 at application entry without DELETE. This update adds no Linux qualification
 or cleanup execution evidence. The three historical original orders have independent
 [completed acceptance under #1018](#original-order-closeout-scope-2026-10-23).
-[The roadmap](roadmap.md#native-v2-qualification-and-cp-retirement-1042)
-owns the remaining acceptance outcomes.
+[The roadmap](roadmap.md#native-v2-protected-qualification-and-cp-retirement-post-1042)
+owns the remaining independent qualification and migration outcomes.
 
 ## Retained CP Purchase Fence (2026-10-24)
 
@@ -939,11 +958,13 @@ These are source/fixture checks, not a deployed zero-new-write observation.
 Remote Instance source at `e8ee04df32142347c2acd801fdcd4da348eb6265`
 already uses v2 quotes and Workspace create in
 `tools/cloud-workspace-launch-readback.mjs`. The older local checkout is not a
-current caller inventory. The separate protected business-qualification workflow
-still needs the #1042 input migration. #1041 remains open for a complete caller
-inventory, write counters and a measured zero-new-write interval, plus evidence
-for legacy customer Launch discovery. No historical table, worker obligation,
-original-order acceptance or financial retention is retired by this source cut.
+current caller inventory. The protected consumer input migration still pending
+at that checkpoint was subsequently adopted through Instance #593, with the
+adoption recorded by Cloud #1072. Remaining caller coverage, legacy customer Launch discovery and a measured
+zero-new-write interval belong to the current migration scope; the historical
+#1041/#1042 Issue states do not establish those outcomes. No historical table,
+worker obligation, original-order acceptance or financial retention is retired
+by this source cut.
 
 ## Native v2 Qualification Evidence (2026-10-24)
 
@@ -1000,8 +1021,9 @@ production Variables still lacks the RuntimeVersion, compute, storage, Tenant
 and billing-subject selections; no credential values were read. The
 [October 26 evidence](#delivery-lane-reconciliation-2026-10-26) establishes exact
 Candidate deployment and read-only installation verification, while protected
-TKE business/live Gateway qualification remains unexecuted. #1042 and #1041
-retain their distinct acceptance outcomes in [the roadmap](roadmap.md#native-v2-qualification-and-cp-retirement-1042);
+TKE business/live Gateway qualification remained unexecuted at that observation.
+The later #1042 customer acceptance and #1041 migration scope retain distinct
+outcomes in [the roadmap](roadmap.md#native-v2-protected-qualification-and-cp-retirement-post-1042);
 #1018 is completed by the protected original-order evidence below.
 
 ## Original-order Closeout Scope (2026-10-23)
@@ -2091,27 +2113,12 @@ authorization. Serve owns the current deployment, readiness, applied runtime
 configuration and access route. Fabric never deploys the Agent OCI, Gateway
 never owns Agent lifecycle, and Ledger never authorizes continuation.
 
-## Current Capability Baseline
-
-| Capability | Current Cloud source | Evidence layer | Boundary still open |
-| --- | --- | --- | --- |
-| CloudIdentity and tenant scope | Owner process, typed authorization and cloud-identity Console Workspace read are implemented | [cloud-identity read](evidence/source-checks/2026-09-30-cloud-console-workspace-owner-read.json) | Owner-backed renewal, deletion, credential and application-installation routes are not yet exposed through the cloud identity |
-| Package, WebUI and Capability catalog | Package/version/reference-claim reads and admission are implemented | [runtime capability readback](evidence/source-checks/2026-09-28-runtime-capability-readback-repair.json) | Original external OMA candidate and hosted publication remain unverified |
-| Build and immutable OCI evidence | Build admission, BuildKit/OCI readback and artifact registration are implemented | [package-to-registry readback](evidence/source-checks/2026-09-29-build-package-to-real-registry-readback.json) | A hosted Candidate must prove the real tenant destination and exact publication path |
-| Runtime Control | Approved Runtime Release catalog and compatibility facts are implemented | [exact Runtime local build](evidence/source-checks/2026-09-28-exact-runtime-local-build.json) | Approved production Runtime/native-UI inputs and Instance readback remain open |
-| Resource Catalog and Workspace order | Approved plan, quote, acceptance, Workspace order and owner-local recovery are implemented | [Workspace original-order](evidence/source-checks/2026-09-26-workspace-resource-original-order.json), [refund list encoding defect](evidence/source-checks/2026-10-08-refund-policy-list-enum-encoding-defect.json) | Paid production purchase and provider acceptance require separately authorized Cloud Workspace/Fabric qualification; Instance supplies installation and deployment evidence; the administrator refund policy list reader now normalizes the stored hyphenated algorithm onto its wire member ([repair source check](evidence/source-checks/2026-10-09-refund-policy-algorithm-enum-encoding.json)), and the repaired source is included in the verified `78dbe9b4` Instance Candidate; current administrator-page HTTP acceptance still requires its own readback |
-| Gateway managed key | Gateway Integration owns Cloud-to-Gateway mapping, Secret delivery reference and lifecycle/rotation operation records; Workspace consumes only opaque binding identity. The external Gateway creates the Workspace Key, applies the approved Group and remains the effective Key, wallet, routing and usage authority. Cloud now uses the logged-in user's in-memory Gateway bearer with the existing `/api/v1/groups/available` and `/api/v1/keys` APIs, sends the Cloud operation idempotency key, and stores no raw Key. The adapter leaves model scope empty because the external Group is the routing authority. | [model update owner](evidence/source-checks/2026-10-01-workspace-model-configuration-update-owner.json) | Deployed login-to-Gateway readback, existing `Codex` Group availability, one external Key creation and Secret/config handover, retry replay, Group administration, key rotation/old-Key closeout and lifecycle readback remain open. The owner tests use HTTP contract fixtures, not the live authority. Production revocation remains refused; a local attempt does not prove that the external Key changed. |
-| Fabric Secret binding | Serve performs the initial launch handover; authenticated Workspace model updates may bind/rebind through Fabric as well. Both guards retain predecessor and opaque binding/version checks. The current caller fix is [PR 837](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/837) | [Secret rebind](evidence/source-checks/2026-10-01-fabric-secret-rebind-second-configuration.json), [launch handover](evidence/source-checks/workspace-handover-contracts2-20261010-source-contracts-2.json) | Workspace presents a Fabric-confirmed binding to Serve; that source route is admitted. Production mTLS/Secret handover and declared non-Gateway runtime inputs remain separately unqualified |
-| Serve model apply/readback | Serve resolves the frozen publisher contract, applies through the declared interface and records only the application's readback | [Serve model readback](evidence/source-checks/2026-09-30-serve-model-configuration-apply-readback.json) | Console BFF/UI model routes use the Workspace owner; the retained Control Plane routes have separate callers; live TKE execution and route acceptance are open |
-| Serve delivery and access | Deployment/readiness/access ownership and the stable Instance ingress boundary are implemented in source; initial dependency progression is bounded by existing deployment, runtime and lifecycle facts | [Serve access data plane](evidence/source-checks/2026-10-01-serve-access-data-plane-rebase-on-merged-ssot.json); [PostgreSQL progression boundaries](../services/serve/internal/delivery/dependency_progression_postgres_test.go) and [executor dependency/read boundaries](../services/serve/internal/tkeapply/executor_test.go) | Typed application execution, route activation, DNS/TLS and a real Instance request remain unqualified |
-| Owner topology and browser identity | Portable owner topology, HTTP surface and baked Console identity are declared and contract-tested | [topology](evidence/source-checks/2026-09-30-owner-topology-installation-contract.json), [HTTP/identity](evidence/source-checks/2026-09-30-http-surface-and-console-identity-declaration.json) | The Instance manifest still has to install and route the complete set |
-| Ledger | Append-only receipts, evidence and reconciliation boundaries remain in the retained Ledger owner. Three typed receipt writers now share the existing receipt store: Local no-charge, wallet action, and the non-financial provider action that records a confirmed Workspace deletion absence, with no migration and no typed readback RPC because the deletion path reads its receipt back through the generic `ReadReceiptByReference`. Receipt read authority binds to the immutable owner-accepted commit, not to the privacy-mutable receipt provenance, so a privacy redaction cannot widen who may read a redacted receipt | [local receipts](evidence/source-checks/2026-09-26-ledger-local-receipts.json) | Source-level only, proven over real gRPC and PostgreSQL in the ledger suites. Current Candidate and Instance evidence must be bound to the same bytes, and the Workspace-to-Ledger deletion/refund closure is still unproven end to end |
-
-A source capability is usable for local development only to the extent its
-owner tests and caller readback prove it. The table does not claim that a
-portable image, Candidate, Instance or public endpoint has adopted every row.
-
 ## Source Qualification
+
+The following source-check results and limits are historical observations for
+the named September/October revisions. Later installed and customer evidence in
+the current baseline supersedes their former rollout gaps; their receipts are
+not rewritten or promoted to the current source.
 
 The 2026-10-14 Serve repair passed
 `npm run verify:local:focused -- --base ea07b16405a30b6b69208361a9b1c933e916495d`:
