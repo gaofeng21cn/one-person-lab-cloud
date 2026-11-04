@@ -24,25 +24,41 @@ import (
 // This is a client of Gateway's persisted binding proof, not another identity
 // writer. Every request revalidates the reference through the original owner.
 type cloudAnnouncementSource struct {
-	token   string
-	gateway api.GatewayCoordinationClient
-	conn    *grpc.ClientConn
+	token          string
+	workspaceToken string
+	gateway        api.GatewayCoordinationClient
+	conn           *grpc.ClientConn
 }
 
 func cloudAnnouncementSourceFromEnv(getenv func(string) string) (*cloudAnnouncementSource, error) {
 	token := strings.TrimSpace(getenv("OPL_CONTROL_PLANE_BFF_TOKEN"))
+	workspaceToken := strings.TrimSpace(getenv("OPL_CONTROL_PLANE_WORKSPACE_TOKEN"))
 	address := strings.TrimSpace(getenv("OPL_CLOUD_IDENTITY_URL"))
 	upstreamToken := strings.TrimSpace(getenv("OPL_CLOUD_IDENTITY_TOKEN"))
-	if token == "" && address == "" && upstreamToken == "" {
+	if token == "" && workspaceToken == "" && address == "" && upstreamToken == "" {
 		return nil, nil
 	}
-	if len(token) < owneridentity.MinimumTokenLength || address == "" || len(upstreamToken) < owneridentity.MinimumTokenLength {
-		return nil, fmt.Errorf("Cloud announcements require OPL_CONTROL_PLANE_BFF_TOKEN, OPL_CLOUD_IDENTITY_URL and OPL_CLOUD_IDENTITY_TOKEN (tokens at least %d characters)", owneridentity.MinimumTokenLength)
+	if (token == "" && workspaceToken == "") || address == "" || len(upstreamToken) < owneridentity.MinimumTokenLength {
+		return nil, fmt.Errorf("Cloud identity reads require OPL_CONTROL_PLANE_BFF_TOKEN and/or OPL_CONTROL_PLANE_WORKSPACE_TOKEN, OPL_CLOUD_IDENTITY_URL and OPL_CLOUD_IDENTITY_TOKEN (tokens at least %d characters)", owneridentity.MinimumTokenLength)
 	}
-	for _, key := range []string{"OPL_CLOUD_IDENTITY_TOKEN", "OPL_FABRIC_SERVICE_TOKEN", "OPL_LEDGER_SERVICE_TOKEN", "OPL_FABRIC_CAPABILITY_KEY", "OPL_LEDGER_CAPABILITY_KEY"} {
-		if token == strings.TrimSpace(getenv(key)) {
-			return nil, errors.New("OPL_CONTROL_PLANE_BFF_TOKEN must be independent of outbound service credentials")
+	for _, caller := range []struct{ key, token string }{
+		{"OPL_CONTROL_PLANE_BFF_TOKEN", token},
+		{"OPL_CONTROL_PLANE_WORKSPACE_TOKEN", workspaceToken},
+	} {
+		if caller.token == "" {
+			continue
 		}
+		if len(caller.token) < owneridentity.MinimumTokenLength {
+			return nil, fmt.Errorf("%s must be at least %d characters", caller.key, owneridentity.MinimumTokenLength)
+		}
+		for _, key := range []string{"OPL_CLOUD_IDENTITY_TOKEN", "OPL_FABRIC_SERVICE_TOKEN", "OPL_LEDGER_SERVICE_TOKEN", "OPL_FABRIC_CAPABILITY_KEY", "OPL_LEDGER_CAPABILITY_KEY"} {
+			if caller.token == strings.TrimSpace(getenv(key)) {
+				return nil, fmt.Errorf("%s must be independent of outbound service credentials", caller.key)
+			}
+		}
+	}
+	if token != "" && token == workspaceToken {
+		return nil, errors.New("OPL_CONTROL_PLANE_BFF_TOKEN and OPL_CONTROL_PLANE_WORKSPACE_TOKEN must be independent")
 	}
 	options, err := owneridentity.TLSFromEnv(getenv).DialOptions(owneridentity.ControlPlane, owneridentity.Tenant.Service(), upstreamToken)
 	if err != nil {
@@ -52,7 +68,7 @@ func cloudAnnouncementSourceFromEnv(getenv func(string) string) (*cloudAnnouncem
 	if err != nil {
 		return nil, err
 	}
-	return &cloudAnnouncementSource{token: token, gateway: api.NewGatewayCoordinationClient(conn), conn: conn}, nil
+	return &cloudAnnouncementSource{token: token, workspaceToken: workspaceToken, gateway: api.NewGatewayCoordinationClient(conn), conn: conn}, nil
 }
 
 func (source *cloudAnnouncementSource) Close() error {
@@ -131,8 +147,12 @@ func validCloudSessionReference(ref string) bool {
 }
 
 var errCloudUserLineage = errors.New("announcement_identity_lineage_invalid")
+var errCloudUserInactive = fmt.Errorf("%w: inactive original owner", errCloudUserLineage)
 
-type cloudUserIdentity struct{ cloudUserID, legacyUserID, legacyAccountID string }
+type cloudUserIdentity struct {
+	cloudUserID, legacyUserID, legacyAccountID string
+	legacyAccount                              map[string]any
+}
 
 func (app *controlPlaneServer) cloudUserLineage(ctx context.Context, proof *api.UserIdentityReadback) (cloudUserIdentity, error) {
 	if proof == nil || proof.GetActorId() == "" || proof.GetActorId() != strings.TrimSpace(proof.GetActorId()) ||
@@ -159,17 +179,23 @@ func (app *controlPlaneServer) cloudUserLineage(ctx context.Context, proof *api.
 	// User link proves historical ACK ownership. Email and actor spelling do not.
 	mappedSubject, valid := positiveIntegerField(account, "sub2apiUserId")
 	ownerID := stringValue(account["ownerUserId"])
-	if !valid || mappedSubject != subject || ownerID == "" || strings.HasPrefix(ownerID, "cloud-user:") || stringValue(account["id"]) == "" || stringValue(account["status"]) != "active" {
+	if !valid || mappedSubject != subject || ownerID == "" || strings.HasPrefix(ownerID, "cloud-user:") || stringValue(account["id"]) == "" {
 		return cloudUserIdentity{}, errCloudUserLineage
+	}
+	if stringValue(account["status"]) != "active" {
+		return cloudUserIdentity{}, errCloudUserInactive
 	}
 	user, userFound, err := app.tables.GetUser(ctx, ownerID)
 	if err != nil {
 		return cloudUserIdentity{}, err
 	}
-	if !userFound || stringValue(user["id"]) != ownerID || stringValue(user["accountId"]) != stringValue(account["id"]) ||
-		stringValue(user["status"]) != "active" || stringValue(user["disabledAt"]) != "" || stringValue(user["deletedAt"]) != "" {
+	if !userFound || stringValue(user["id"]) != ownerID || stringValue(user["accountId"]) != stringValue(account["id"]) {
 		return cloudUserIdentity{}, errCloudUserLineage
 	}
+	if stringValue(user["status"]) != "active" || stringValue(user["disabledAt"]) != "" || stringValue(user["deletedAt"]) != "" {
+		return cloudUserIdentity{}, errCloudUserInactive
+	}
+	identity.legacyAccount = account
 	identity.legacyUserID = ownerID
 	identity.legacyAccountID = stringValue(account["id"])
 	return identity, nil
@@ -236,14 +262,27 @@ func (app *controlPlaneServer) markCloudAnnouncementRead(w http.ResponseWriter, 
 }
 
 func (app *controlPlaneServer) cloudSessionProof(w http.ResponseWriter, r *http.Request) (*api.UserIdentityReadback, bool) {
+	return app.cloudSessionProofForCaller(w, r, owneridentity.ConsoleBFF)
+}
+
+func (app *controlPlaneServer) cloudSessionProofForCaller(w http.ResponseWriter, r *http.Request, caller owneridentity.Service) (*api.UserIdentityReadback, bool) {
 	source := app.cloudAnnouncements
-	if source == nil {
+	var expectedToken string
+	if source != nil {
+		switch caller {
+		case owneridentity.ConsoleBFF:
+			expectedToken = source.token
+		case owneridentity.Workspace.Service():
+			expectedToken = source.workspaceToken
+		}
+	}
+	if source == nil || source.gateway == nil || len(expectedToken) < owneridentity.MinimumTokenLength {
 		writeSourceEnvelope(w, http.StatusServiceUnavailable, "control-plane", "unavailable", nil)
 		return nil, false
 	}
 	owner, ownerOK := singleCloudHeader(r, owneridentity.PeerHeader)
 	token, tokenOK := singleCloudHeader(r, owneridentity.TokenHeader)
-	if !ownerOK || owner != owneridentity.ConsoleBFF.String() || !tokenOK || subtle.ConstantTimeCompare([]byte(token), []byte(source.token)) != 1 {
+	if !ownerOK || owner != caller.String() || !tokenOK || subtle.ConstantTimeCompare([]byte(token), []byte(expectedToken)) != 1 {
 		writeError(w, http.StatusUnauthorized, "invalid_owner_identity")
 		return nil, false
 	}

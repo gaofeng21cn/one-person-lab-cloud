@@ -1396,11 +1396,15 @@ does not grant new-purchase permission. Operator provisioning explicitly selects
 `full_cloud_customer` or `gateway_only`, and grant/revoke actions are audited.
 The retained Launch route no longer reads this fact to admit a fresh Create;
 its historical replay, resume and reconciliation keep their recorded account
-identity. New Workspace purchases belong to the Workspace owner route. Applying
-the current purchase-eligibility fact on that route remains a target obligation
-until its implementation and owner readback exist; this document does not claim
-that migration is complete. Revocation affects only future purchases. Account
-migration must preserve persisted eligibility and audit custody; no owner may
-substitute an Instance-specific per-account allowlist.
+identity. New Workspace purchases belong to the Workspace owner route and consume the
+current Account owner's typed eligibility readback. The read resolves the live
+session's User through Gateway and the original reciprocal Account mapping;
+Tenant membership, wallet funds and existing Workspaces cannot replace it.
+Workspace checks eligibility after its command lock and original-order replay,
+before accepting a new order. Missing or unknown owner evidence refuses new
+acceptance. Revocation affects only future purchases; original accepted-order
+replay and recovery retain their original identity. Account migration must
+preserve persisted eligibility and audit custody; no owner may substitute an
+Instance-specific per-account allowlist.
 Contract presence, documentation, a successful build or an empty queue does not
 prove Cloud, package, domain or production readiness.

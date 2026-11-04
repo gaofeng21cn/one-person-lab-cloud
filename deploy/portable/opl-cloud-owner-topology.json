@@ -159,6 +159,8 @@
    "databaseEnv": "DATABASE_URL",
    "env": [
     "OPL_CAPABILITY_ADDR",
+    "OPL_CONTROL_PLANE_URL",
+    "OPL_CONTROL_PLANE_WORKSPACE_TOKEN",
     "OPL_FABRIC_ADDR",
     "OPL_GATEWAY_ADDR",
     "OPL_LEDGER_ADDR",
@@ -174,7 +176,8 @@
     "WorkspaceAdmission"
    ],
    "notes": [
-    "Owns the accepted order and resource intent; it persists no second current-deployment pointer."
+    "Owns the accepted order and resource intent; it persists no second current-deployment pointer.",
+    "Reads purchase eligibility from its single retained Control Plane owner through typed HTTP using OPL_CONTROL_PLANE_URL and the independent OPL_CONTROL_PLANE_WORKSPACE_TOKEN shared by both processes. This read adds no writer and is outside the gRPC communication edges."
    ],
    "transportPrincipal": "workspace",
    "daemonArgs": []
@@ -456,14 +459,16 @@
     "OPL_SUB2API_USER_EMAIL",
     "OPL_SUB2API_USER_PASSWORD",
     "OPL_SUB2API_REQUEST_TIMEOUT_MS",
-    "OPL_CONTROL_PLANE_BFF_TOKEN"
+    "OPL_CONTROL_PLANE_BFF_TOKEN",
+    "OPL_CONTROL_PLANE_WORKSPACE_TOKEN"
    ],
    "registers": [
     "legacy Control Plane HTTP surface"
    ],
    "notes": [
     "Migration source, not a permanent second writer; it also serves the Console static bundle.",
-    "Cloud announcement reads use the authenticated BFF-only typed HTTP boundary; Control Plane revalidates its Cloud session with Gateway under the control_plane transport principal and retains publication/ACK persistence."
+    "Cloud announcement reads use the authenticated BFF-only typed HTTP boundary; Control Plane revalidates its Cloud session with Gateway under the control_plane transport principal and retains publication/ACK persistence.",
+    "Remains the single purchase-eligibility owner, serving Workspace through typed HTTP with OPL_CONTROL_PLANE_WORKSPACE_TOKEN independently of BFF and outbound credentials; this adds no writer. Either BFF or Workspace token activates its CloudIdentity client."
    ],
    "transportPrincipal": "control_plane",
    "daemonArgs": [],
@@ -648,7 +653,7 @@
   "schemaVersion": 1,
   "scope": "Current owner gRPC transports only; retained signed HTTP and object-store transports are separate contracts.",
   "principals": "caller and target are transport principals. gateway resolves to tenant in the gateway-integration deployment unit; console_bff is a transport principal, not a business owner.",
-  "activation": "required edges apply when the caller RPC surface is installed. configured edges retain address-or-token admission: address activation and the dialed address value follow that edge's configuredAddressSemantics (raw-nonempty or trimmed-nonempty using Go strings.TrimSpace); token and activationEnv activation always use Go strings.TrimSpace. Unresolved references cannot disable a potentially configured edge. rpcEnabledByEnvSemantics separately declares optional process RPC activation: Ledger uses raw-nonempty; Fabric uses trimmed-nonempty. Listener defaulting is separate from activation. An unrelated env/optionalEnv entry is never made mandatory by this contract.",
+  "activation": "required edges apply when the caller RPC surface is installed. configured edges retain address-or-token admission: address activation and the dialed address value follow that edge's configuredAddressSemantics (raw-nonempty or trimmed-nonempty using Go strings.TrimSpace); token and activationEnvs activation always use Go strings.TrimSpace. Unresolved references cannot disable a potentially configured edge. rpcEnabledByEnvSemantics separately declares optional process RPC activation: Ledger uses raw-nonempty; Fabric uses trimmed-nonempty. Listener defaulting is separate from activation. An unrelated env/optionalEnv entry is never made mandatory by this contract.",
   "deploymentIdentity": "An explicit Kubernetes command plus args must exactly match the process binary followed by daemonArgs. Absent/empty command and args use defaultCommand only for a proven Product image. An args-only override cannot prove the inherited image entrypoint. Probe and unsupported argv cannot prove a daemon. Deployment names and labels are installation facts, never service-name heuristics.",
   "edges": [
    {
@@ -1021,7 +1026,10 @@
     "addressEnv": "OPL_CLOUD_IDENTITY_URL",
     "tokenEnv": "OPL_CLOUD_IDENTITY_TOKEN",
     "activation": "configured",
-    "activationEnv": "OPL_CONTROL_PLANE_BFF_TOKEN",
+    "activationEnvs": [
+     "OPL_CONTROL_PLANE_BFF_TOKEN",
+     "OPL_CONTROL_PLANE_WORKSPACE_TOKEN"
+    ],
     "configuredAddressSemantics": "trimmed-nonempty"
    },
    {
