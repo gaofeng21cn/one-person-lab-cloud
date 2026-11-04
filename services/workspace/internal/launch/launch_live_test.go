@@ -266,6 +266,7 @@ func TestLiveAcceptedWorkspaceResourceReference(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	workspaceOwner.PurchaseEligibility = purchaseEligibilityReadFunc(allowPurchaseEligibilityForTest)
 	wa := liveOwnerServer(t, owneridentity.Workspace, []owneridentity.Service{owneridentity.ConsoleBFF, owneridentity.Tenant.Service(), owneridentity.Ledger.Service()}, workspaceOwner.Register)
 	identity.WorkspaceCommit = api.NewOwnerCommitReadbackClient(liveDial(t, wa, owneridentity.Tenant, owneridentity.Workspace, livePeerToken))
 	ldb, ledgerOwner := liveLedgerDB(t, ctx, dsn)

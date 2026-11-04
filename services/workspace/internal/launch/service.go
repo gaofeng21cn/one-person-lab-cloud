@@ -28,13 +28,14 @@ type Service struct {
 	api.UnimplementedWorkspaceProductServiceServer
 	api.UnimplementedOwnerCommitReadbackServer
 	api.UnimplementedWorkspaceAccessReadbackServer
-	Store      *ownerstore.Store
-	Auth       *ownerservice.Authorizer
-	Catalog    api.CatalogCoordinationClient
-	Fabric     api.FabricCoordinationClient
-	Identity   api.CloudIdentityAuthorizationClient
-	Ledger     api.LedgerCoordinationClient
-	Capability api.CapabilityProductServiceClient
+	Store               *ownerstore.Store
+	Auth                *ownerservice.Authorizer
+	Catalog             api.CatalogCoordinationClient
+	Fabric              api.FabricCoordinationClient
+	PurchaseEligibility PurchaseEligibilityReader
+	Identity            api.CloudIdentityAuthorizationClient
+	Ledger              api.LedgerCoordinationClient
+	Capability          api.CapabilityProductServiceClient
 	// RuntimeReleases is the Runtime Control read surface. A default OPL App order
 	// resolves its immutable artifact from the approved Runtime Release instead of
 	// a CapabilityVersion.
@@ -224,6 +225,9 @@ func (s *Service) CreateWorkspace(ctx context.Context, r *api.CreateWorkspaceRpc
 	}
 	if err = owneridentity.ValidateDecision(decisionRequest, decision, time.Now()); err != nil || decision.GetAuthorizationContextId() == "" {
 		return nil, status.Error(codes.PermissionDenied, "fresh Workspace authorization required")
+	}
+	if err := s.requirePurchaseEligibility(ctx, c); err != nil {
+		return nil, err
 	}
 	wid, oid := id("workspace_"), id("op_")
 	material, _ := json.Marshal(struct {

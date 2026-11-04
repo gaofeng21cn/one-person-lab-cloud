@@ -160,3 +160,27 @@ test("the local v2 topology names the Local-Docker gateway container once", asyn
     );
   }
 });
+
+
+test("the local v2 Workspace reads purchase eligibility with its independent Control Plane credential", async () => {
+  const compose = YAML.parse(await readFile(composePath, "utf8"));
+  const workspace = compose.services.workspace.environment;
+  const controlPlane = compose.services["control-plane"].environment;
+  const bff = compose.services["console-bff"].environment;
+  const requiredToken = "${OPL_CONTROL_PLANE_WORKSPACE_TOKEN:?Set OPL_CONTROL_PLANE_WORKSPACE_TOKEN}";
+
+  assert.equal(workspace.OPL_CONTROL_PLANE_URL, "http://control-plane:8787");
+  assert.equal(workspace.OPL_CONTROL_PLANE_WORKSPACE_TOKEN, requiredToken);
+  assert.equal(controlPlane.OPL_CONTROL_PLANE_WORKSPACE_TOKEN, requiredToken);
+  assert.notEqual(requiredToken, controlPlane.OPL_CONTROL_PLANE_BFF_TOKEN);
+  assert.notEqual(requiredToken, bff.OPL_CONTROL_PLANE_TOKEN);
+  assert.equal(bff.OPL_CONTROL_PLANE_WORKSPACE_TOKEN, undefined);
+
+  const topology = JSON.parse(await readFile("deploy/portable/opl-cloud-owner-topology.json", "utf8"));
+  const workspaceProcess = topology.processes.find(process => process.service === "workspace");
+  const controlPlaneProcess = topology.processes.find(process => process.service === "control-plane");
+  for (const name of ["OPL_CONTROL_PLANE_URL", "OPL_CONTROL_PLANE_WORKSPACE_TOKEN"]) {
+    assert.ok(workspaceProcess.env.includes(name), `Workspace must declare ${name}`);
+  }
+  assert.ok(controlPlaneProcess.env.includes("OPL_CONTROL_PLANE_WORKSPACE_TOKEN"));
+});

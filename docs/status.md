@@ -16,6 +16,28 @@ boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Workspace New-Purchase Eligibility Consumption (2026-11-04)
+
+The source change is based on `8af9d819a3da66ae6be38ecc21c3338665dc44c8`.
+A PostgreSQL regression with the admission read removed reproduced a new
+Workspace being accepted despite an explicit false Account purchase-eligibility
+answer. Native Workspace now consumes the original Account owner's typed read
+after its command lock, same-key replay and fresh Tenant authorization, before
+committing a new order. The existing Account writer and audit remain unchanged.
+The retained owner verifies the live Gateway session and exact active reciprocal
+Account/User mapping. Unknown facts refuse new acceptance; explicit false remains
+an authoritative refusal rather than an assumed permission.
+
+Configured focused verification passed 3,009 Go tests/subtests and 439 Node
+tests, with zero failures, skips or TODOs. Coverage includes no durable acceptance
+on refusal, queued revocation, same-operation replay after revocation or owner
+unavailability, real HTTP decoder rejection, caller/credential isolation and
+portable configuration/installation consumers. Targeted HTTP/PostgreSQL tests also
+passed under the race detector. Verification and current-revision CI results are
+recorded in the source PR. Source evidence does not prove installed adoption or
+real purchases; the installed configuration and policy sequence remain in
+[roadmap](roadmap.md#workspace-purchase-eligibility-adoption).
+
 ## Serve-Owned Current Application Readback (2026-11-04)
 
 The source change is based on merged Cloud #1121 at

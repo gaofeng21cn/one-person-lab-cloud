@@ -373,6 +373,20 @@ and #1018's three-order closeout stay complete. The scopes in this section are
 the current review boundary; they neither reopen those Issues nor imply their
 closure physically removed every retained writer.
 
+### Workspace purchase eligibility adoption
+
+New-purchase source admission consumes the existing Account eligibility owner;
+validate the installed owner/client configuration and grant → new purchase →
+revoke → refused new purchase sequence after adoption. Confirm that the accepted
+original order still replays and recovers when eligibility is later revoked or
+its reader is unavailable. A source test or successful CI is not installed proof.
+
+The retained Account remains the sole eligibility writer until its provisioning,
+grant/revoke commands, historical true/false values, audit custody and new-purchase
+reader migrate together. The launch page's personal-versus-Tenant payer balance
+and managed-Key model-scope consumption remain separate source gaps; this change
+does not claim either is resolved.
+
 ### Native v2 qualification and CP retirement (#1042)
 
 Workspace owns purchase and deletion orchestration; CloudIdentity owns the live
