@@ -12,6 +12,7 @@ import (
 	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
+	"opl-cloud/services/control-plane/internal/domain/provisioning"
 )
 
 type applicationLifecycleFabric struct {
@@ -122,11 +123,31 @@ func seedCurrentApplicationForLifecycle(t *testing.T, app *controlPlaneServer, w
 
 func seedApplicationRevisionForLifecycle(t *testing.T, app *controlPlaneServer, workspaceID string, revision contracts.WorkspaceApplicationRevision, configuration contracts.WorkspaceApplicationRuntimeConfiguration, bindings []contracts.WorkspaceApplicationRuntimeSecretBinding, keyID int64, selected bool) workspaceApplicationDeploymentIntent {
 	t.Helper()
-	seedAdmittedApplicationRevisionForTest(t, app.tables, revision)
-	intent, err := app.createWorkspaceApplicationDeploymentIntent(context.Background(), workspaceID, "seed-"+revision.ApplicationID+"-"+revision.Version, revision.ApplicationID, revision.Version, configuration, bindings, keyID, "", "")
-	if err != nil {
-		t.Fatal(err)
+	intent := applicationDeploymentFixtureForTest(t, app, workspaceID, "seed-"+revision.ApplicationID+"-"+revision.Version, revision)
+	workspace, found, err := app.tables.GetWorkspace(context.Background(), workspaceID)
+	if err != nil || !found {
+		t.Fatalf("fixture Workspace missing: found=%v err=%v", found, err)
 	}
+	// These lifecycle fixtures share workspace-launch-alpha as their original
+	// full Launch. Its accepted runtime remains the explicit legacy predecessor.
+	if intent.CurrentBinding == provisioning.ApplicationBindingOPLApp {
+		intent.LegacyPredecessor = &contracts.WorkspaceRuntimePowerInput{
+			SchemaVersion: 1, AccountID: intent.AccountID, WorkspaceID: workspaceID,
+			RuntimeID: stringValue(workspace["runtimeId"]), RuntimeOperationID: "workspace-launch-alpha:runtime", PaidThrough: stringValue(workspace["paidThrough"]),
+		}
+	}
+	if contracts.WorkspaceApplicationRequiresPlatformCredentials(revision) && configuration.CredentialVersion == "" {
+		configuration.CredentialVersion = "accepted-fixture-credential-" + intent.OperationID
+		if intent.LegacyPredecessor != nil {
+			configuration.CredentialVersion = stringValue(nested(workspace, "access", "credentialVersion"))
+			configuration.CredentialSourceRuntimeOperationID = intent.LegacyPredecessor.RuntimeOperationID
+		}
+	}
+	if intent.LegacyPredecessor != nil && contracts.WorkspaceApplicationCredentialKind(revision, contracts.WorkspaceApplicationCredentialGatewayKey) {
+		intent.DataLayout, intent.DataSourceRuntimeOperationID = "legacy_opl", intent.LegacyPredecessor.RuntimeOperationID
+	}
+	intent.Configuration, intent.SecretBindings, intent.WorkspaceAPIKeyID = configuration, bindings, keyID
+	intent = seedAcceptedApplicationDeploymentForTest(t, app, intent)
 	if !selected {
 		return intent
 	}
@@ -155,7 +176,7 @@ func seedApplicationRevisionForLifecycle(t *testing.T, app *controlPlaneServer, 
 	if err := app.tables.SaveRuntimeOperation(context.Background(), row); err != nil {
 		t.Fatal(err)
 	}
-	workspace, found, err := app.tables.GetWorkspace(context.Background(), workspaceID)
+	workspace, found, err = app.tables.GetWorkspace(context.Background(), workspaceID)
 	if err != nil || !found {
 		t.Fatal("missing workspace", err)
 	}
@@ -513,11 +534,10 @@ func TestAcceptedApplicationCredentialDeploymentRecoversAfterRestart(t *testing.
 	configuration := selected.Configuration
 	configuration.CredentialVersion = "previously-accepted-password-version"
 	configuration.CredentialSourceRuntimeOperationID = ""
-	accepted, err := app.createWorkspaceApplicationDeploymentIntent(ctx, selected.WorkspaceID, "credential-rotation:accepted-before-retirement",
-		selected.ApplicationID, selected.TargetRevision, configuration, selected.SecretBindings, selected.WorkspaceAPIKeyID, "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	accepted := applicationDeploymentFixtureForTest(t, app, selected.WorkspaceID, "credential-rotation:accepted-before-retirement", revision)
+	accepted.Configuration, accepted.SecretBindings, accepted.WorkspaceAPIKeyID = configuration, selected.SecretBindings, selected.WorkspaceAPIKeyID
+	accepted.DataBindingID, accepted.DataLayout, accepted.DataSourceRuntimeOperationID = selected.DataBindingID, selected.DataLayout, selected.DataSourceRuntimeOperationID
+	accepted = seedAcceptedApplicationDeploymentForTest(t, app, accepted)
 	row, _, _ := fixture.store.GetRuntimeOperation(ctx, accepted.OperationID)
 	mustStore(t, app.markWorkspaceApplicationManualReview(ctx, row, accepted, "test_preflight_unavailable"))
 	frozen, _, _ := fixture.store.GetRuntimeOperation(ctx, accepted.OperationID)
@@ -604,8 +624,20 @@ func TestApplicationAccessGatewayRotationAdvancesCredentialIdentity(t *testing.T
 	if selected.Configuration.CredentialSourceRuntimeOperationID == "" {
 		t.Fatal("fixture did not inherit the full Runtime credential")
 	}
-	operation := workspaceKeyRotationOperation{RequestHash: "key-rotation-command", Phase: "runtime_binding", OldKeyID: 19, NewKeyID: 20, SecretRef: "opl-gateway-ws-alpha", SecretVersion: "v2", ReplacementName: "opl-workspace-ws-alpha-next", RetiredName: "opl-workspace-ws-alpha-retired"}
-	handled, err := app.bindWorkspaceCurrentApplicationGateway(ctx, service, "ws-alpha", "key-rotation-operation", &operation)
+	// The child builder requires the original persisted parent, not a synthetic
+	// in-memory rotation command. Reuse the accepted-rotation audit fixture.
+	const key = "accepted-application-gateway-rotation"
+	parentID := "workspace-key-rotate-" + stableID("ws-alpha", key)[:18]
+	parentFixture := workspaceKeyRotationFixture{store: &workspaceKeyRotationStore{memoryTableStore: fixture.store.(*memoryTableStore)}}
+	parentFixture.accept(t, key)
+	parentRow, _, _ := app.tables.GetRuntimeOperation(ctx, parentID)
+	operation, err := decodeWorkspaceKeyRotation(parentRow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation.Phase, operation.NewKeyID, operation.SecretRef, operation.SecretVersion = "runtime_bind", 20, "opl-gateway-ws-alpha", "v2"
+	mustStore(t, app.tables.SaveRuntimeOperation(ctx, workspaceKeyRotationRow(parentID, selected.AccountID, selected.WorkspaceID, "started", operation)))
+	handled, err := app.bindWorkspaceCurrentApplicationGateway(ctx, service, "ws-alpha", parentID, &operation)
 	if !handled || !errors.Is(err, errWorkspaceKeyRotationInProgress) || operation.ApplicationDeploymentID == "" {
 		t.Fatalf("rotation did not reserve a successor: %+v %v", operation, err)
 	}
@@ -614,7 +646,7 @@ func TestApplicationAccessGatewayRotationAdvancesCredentialIdentity(t *testing.T
 	if err != nil || rotated.Configuration.CredentialVersion == "" || rotated.Configuration.CredentialVersion == selected.Configuration.CredentialVersion || rotated.Configuration.CredentialSourceRuntimeOperationID != "" || rotated.WorkspaceAPIKeyID != 20 || rotated.SecretBindings[0].Version != "v2" {
 		t.Fatalf("Key rotation did not advance credential and Secret binding together: %+v %v", rotated, err)
 	}
-	_, err = app.bindWorkspaceCurrentApplicationGateway(ctx, service, "ws-alpha", "key-rotation-operation", &operation)
+	_, err = app.bindWorkspaceCurrentApplicationGateway(ctx, service, "ws-alpha", parentID, &operation)
 	if !errors.Is(err, errWorkspaceKeyRotationInProgress) {
 		t.Fatalf("Key rotation replay=%v", err)
 	}

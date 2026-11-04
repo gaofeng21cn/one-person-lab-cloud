@@ -211,35 +211,12 @@ func (app *controlPlaneServer) bindWorkspaceCurrentApplicationGateway(ctx contex
 		return false, nil
 	}
 	if operation.ApplicationDeploymentID == "" {
-		current, found, err := app.currentWorkspaceApplicationDeployment(ctx, workspace)
-		if err != nil || !found || operation.SecretVersion == "" {
-			return true, errWorkspaceKeyRotationState
-		}
-		input, err := app.workspaceApplicationRuntimeInput(ctx, current)
-		if err != nil || !contracts.WorkspaceApplicationCredentialKind(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey) {
-			return true, errWorkspaceKeyRotationConflict
-		}
-		bindings := append([]contracts.WorkspaceApplicationRuntimeSecretBinding(nil), current.SecretBindings...)
-		bound := false
-		for index := range bindings {
-			if bindings[index].Name == "gateway" && bindings[index].Key == "opl_gateway_api_key" {
-				bindings[index].SecretRef, bindings[index].Version = operation.SecretRef, operation.SecretVersion
-				bound = true
-			}
-		}
-		if !bound {
-			return true, errWorkspaceKeyRotationConflict
-		}
-		configuration := current.Configuration
-		configuration.CredentialVersion = stableID("workspace-application-gateway-rotation", workspaceID, operationID)
-		configuration.CredentialSourceRuntimeOperationID = ""
-		next, err := app.createWorkspaceApplicationDeploymentIntent(ctx, workspaceID, "gateway-rotation:"+operationID,
-			current.ApplicationID, current.TargetRevision, configuration, bindings, operation.NewKeyID, operationID, "")
+		next, err := app.createWorkspaceApplicationKeyRotationDeployment(ctx, workspaceID, operationID, *operation)
 		if err != nil {
 			return true, err
 		}
 		operation.ApplicationDeploymentID = next.OperationID
-		if err := app.persistWorkspaceKeyRotation(ctx, operationID, current.AccountID, workspaceID, "started", *operation); err != nil {
+		if err := app.persistWorkspaceKeyRotation(ctx, operationID, next.AccountID, workspaceID, "started", *operation); err != nil {
 			return true, err
 		}
 	}

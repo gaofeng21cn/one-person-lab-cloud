@@ -66,10 +66,9 @@ func admitBindingRevisionForTest(t *testing.T, handler *controlPlaneHTTPHandler,
 
 func createBindingIntentForTest(t *testing.T, app *controlPlaneServer, revision contracts.WorkspaceApplicationRevision, configuration contracts.WorkspaceApplicationRuntimeConfiguration, bindings []contracts.WorkspaceApplicationRuntimeSecretBinding, mutationKey string) workspaceApplicationDeploymentIntent {
 	t.Helper()
-	intent, err := app.createWorkspaceApplicationDeploymentIntent(context.Background(), "ws-alpha", mutationKey, revision.ApplicationID, revision.Version, configuration, bindings, 0, "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	intent := applicationDeploymentFixtureForTest(t, app, "ws-alpha", mutationKey, revision)
+	intent.Configuration, intent.SecretBindings = configuration, bindings
+	intent = seedAcceptedApplicationDeploymentForTest(t, app, intent)
 	return intent
 }
 
@@ -110,7 +109,10 @@ func TestWorkspaceApplicationBindingReplacementAndPreflight(t *testing.T) {
 	}
 
 	fabric.preflightErr = errors.New("workspace_application_secret_binding_missing")
-	failed := createBindingIntentForTest(t, handler.app, revision, configuration, bindings, "binding-preflight-rejected")
+	failed := applicationDeploymentFixtureForTest(t, handler.app, "ws-alpha", "binding-preflight-rejected", revision)
+	failed.Configuration, failed.SecretBindings = configuration, bindings
+	failed.DataBindingID, failed.DataLayout, failed.DataSourceRuntimeOperationID = replacement.DataBindingID, replacement.DataLayout, replacement.DataSourceRuntimeOperationID
+	failed = seedAcceptedApplicationDeploymentForTest(t, handler.app, failed)
 	lifecycleBefore, runtimeBefore := len(fabric.lifecycle), len(fabric.inputs)
 	mustStore(t, handler.app.runWorkspaceApplicationDeployment(ctx, handler.service, failed.OperationID))
 	row, _, _ = handler.app.tables.GetRuntimeOperation(ctx, failed.OperationID)
@@ -121,70 +123,5 @@ func TestWorkspaceApplicationBindingReplacementAndPreflight(t *testing.T) {
 	after, _, _ = handler.app.tables.GetWorkspace(ctx, "ws-alpha")
 	if len(fabric.lifecycle) != lifecycleBefore || len(fabric.inputs) != runtimeBefore || fabric.states[replacement.OperationID+":runtime"] != "ready" || stringValue(after["currentApplicationDeploymentId"]) != replacement.OperationID {
 		t.Fatal("Fabric preflight rejection interrupted selected application")
-	}
-}
-
-func TestWorkspaceApplicationBindingCommandIdentity(t *testing.T) {
-	handler, fabric, _ := applicationBindingFixture(t)
-	revision := applicationBindingRevision()
-	admitBindingRevisionForTest(t, handler, revision)
-	configuration, bindings := applicationBindingInputs()
-	original := createBindingIntentForTest(t, handler.app, revision, configuration, bindings, "binding-identity")
-	reordered := []contracts.WorkspaceApplicationRuntimeSecretBinding{bindings[1], bindings[0]}
-	replay := createBindingIntentForTest(t, handler.app, revision, configuration, reordered, "binding-identity")
-	if !reflect.DeepEqual(replay, original) {
-		t.Fatal("binding reordering changed the accepted command")
-	}
-	for _, change := range []string{"secretRef", "version", "key", "files", "environment"} {
-		t.Run(change, func(t *testing.T) {
-			configuration, bindings := applicationBindingInputs()
-			switch change {
-			case "secretRef":
-				bindings[0].SecretRef = "another-installation-secret"
-			case "version":
-				bindings[0].Version = "api-v2"
-			case "key":
-				bindings[0].Key = "other-token"
-			case "files":
-				configuration.Files["database_config"] = "max_connections=20\n"
-			case "environment":
-				configuration.Environment["APP_MODE"] = "changed"
-			}
-			_, err := handler.app.createWorkspaceApplicationDeploymentIntent(context.Background(), "ws-alpha", "binding-identity", revision.ApplicationID, revision.Version, configuration, bindings, 0, "", "")
-			if !errors.Is(err, errWorkspaceApplicationIntentConflict) {
-				t.Fatalf("changed %s error=%v", change, err)
-			}
-		})
-	}
-	if len(fabric.lifecycle) != 0 || len(fabric.inputs) != 1 {
-		t.Fatal("Owner intent/replays changed runtime before worker execution")
-	}
-}
-
-func TestWorkspaceApplicationBindingRejectsInvalidBindings(t *testing.T) {
-	handler, fabric, original := applicationBindingFixture(t)
-	revision := applicationBindingRevision()
-	admitBindingRevisionForTest(t, handler, revision)
-	for _, name := range []string{"missing", "duplicate"} {
-		t.Run(name, func(t *testing.T) {
-			configuration, bindings := applicationBindingInputs()
-			if name == "missing" {
-				bindings = bindings[:1]
-			} else {
-				bindings = append(bindings, bindings[0])
-			}
-			key := "binding-invalid-" + name
-			_, err := handler.app.createWorkspaceApplicationDeploymentIntent(context.Background(), "ws-alpha", key, revision.ApplicationID, revision.Version, configuration, bindings, 0, "", "")
-			if !errors.Is(err, errWorkspaceApplicationConfigurationInvalid) {
-				t.Fatalf("invalid %s binding error=%v", name, err)
-			}
-			_, found, err := handler.app.tables.GetRuntimeOperation(context.Background(), workspaceApplicationDeploymentOperationID("ws-alpha", key))
-			if err != nil || found {
-				t.Fatalf("invalid bindings persisted intent: found=%v err=%v", found, err)
-			}
-		})
-	}
-	if len(fabric.lifecycle) != 0 || len(fabric.inputs) != 1 || fabric.states[original.OperationID+":runtime"] != "ready" {
-		t.Fatal("invalid bindings changed current runtime")
 	}
 }

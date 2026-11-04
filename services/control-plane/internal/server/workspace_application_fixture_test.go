@@ -126,3 +126,60 @@ func seedHistoricalDefaultApplicationForTest(t *testing.T, app *controlPlaneServ
 	mustStore(t, app.tables.SaveRuntimeOperation(ctx, row))
 	return current
 }
+
+// applicationDeploymentFixtureForTest snapshots only the fixture's resource and
+// selection fields. Callers supply the accepted configuration, data lineage and
+// credentials explicitly; this does not resolve or admit an application change.
+func applicationDeploymentFixtureForTest(t *testing.T, app *controlPlaneServer, workspaceID, mutationKey string, revision contracts.WorkspaceApplicationRevision) workspaceApplicationDeploymentIntent {
+	t.Helper()
+	seedAdmittedApplicationRevisionForTest(t, app.tables, revision)
+	workspace, found, err := app.tables.GetWorkspace(context.Background(), workspaceID)
+	if err != nil || !found {
+		t.Fatalf("fixture Workspace missing: found=%v err=%v", found, err)
+	}
+	return workspaceApplicationDeploymentIntent{
+		SchemaVersion: workspaceApplicationDeploymentSchemaVersion, Version: 2,
+		OperationID: workspaceApplicationDeploymentOperationID(workspaceID, mutationKey),
+		AccountID:   stringValue(workspace["accountId"]), WorkspaceID: workspaceID,
+		ComputeID: stringValue(workspace["currentComputeAllocationId"]), StorageID: stringValue(workspace["storageId"]), AttachmentID: stringValue(workspace["currentAttachmentId"]),
+		ApplicationID: revision.ApplicationID, TargetRevision: revision.Version,
+		ExpectedWorkspaceVersion: int64(numberField(workspace, "applicationBindingVersion", 0)), CurrentBinding: stringValue(workspace["applicationBinding"]),
+		PreviousDeploymentID: stringValue(workspace["currentApplicationDeploymentId"]),
+		DataBindingID:        "application-data-" + stableID(workspaceID, revision.ApplicationID),
+		Phase:                workspaceApplicationDeploymentIntentPhase, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	}
+}
+
+// seedAcceptedApplicationDeploymentForTest persists a frozen typed command using
+// the existing reservation CAS. It computes serialization identities only; all
+// command fields and historical lineage have already been chosen by the fixture.
+func seedAcceptedApplicationDeploymentForTest(t *testing.T, app *controlPlaneServer, intent workspaceApplicationDeploymentIntent) workspaceApplicationDeploymentIntent {
+	t.Helper()
+	ctx := context.Background()
+	revision, found, err := app.tables.AdmittedApplicationRevision(ctx, intent.ApplicationID, intent.TargetRevision)
+	if err != nil || !found {
+		t.Fatalf("accepted revision missing: found=%v err=%v", found, err)
+	}
+	intent.RevisionDigest = stringValue(revision["digest"])
+	intent.ConfigurationDigest, err = contracts.WorkspaceApplicationConfigurationDigest(intent.Configuration, intent.SecretBindings, intent.DataBindingID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent.SecretBindingVersions = nil
+	for _, binding := range intent.SecretBindings {
+		intent.SecretBindingVersions = append(intent.SecretBindingVersions, binding.Name+":"+binding.SecretRef+":"+binding.Version+":"+binding.Key)
+	}
+	intent.DataBindingIDs = []string{intent.DataBindingID}
+	intent.RequestHash = workspaceApplicationDeploymentRequestHash(intent)
+	payload, err := json.Marshal(intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := map[string]any{
+		"id": intent.OperationID, "operationId": intent.OperationID, "accountId": intent.AccountID,
+		"workspaceId": intent.WorkspaceID, "resourceId": intent.WorkspaceID, "resourceKind": "workspace",
+		"action": workspaceApplicationDeploymentAction, "status": "pending", "result": string(payload), "createdAt": intent.CreatedAt,
+	}
+	mustStore(t, app.tables.ClaimWorkspaceApplicationDeploymentIntent(ctx, row))
+	return intent
+}

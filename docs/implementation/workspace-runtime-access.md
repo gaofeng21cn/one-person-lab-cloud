@@ -115,16 +115,20 @@ cannot resolve.
 
 Only a declared OPL runtime profile enables OPL password and Gateway controls.
 It uses username `opl`, `/run/secrets/opl_webui_password`,
-`/run/secrets/webui_session_secret` and its declared Gateway Key file. Ordinary
-image updates and reinstalling the same application retain the frozen credential
-identity; migration from a full Launch preserves its proven credential source.
+`/run/secrets/webui_session_secret` and its declared Gateway Key file. Retained
+accepted commands preserve their frozen credential identity and proven source.
+CP no longer constructs ordinary image-update or reinstall commands.
 The legacy password-rotation creator and its Console action are removed. Already
 accepted credential deployments retain their frozen successor identity and data
 binding, shared worker and original operator retry. Fresh legacy Workspace-Key
 rotation acceptance and its store claim are also removed. The original rotation
 POST only resumes a persisted operation with its original identity; confirmed
-absence returns HTTP 410. Accepted rotations may still create their frozen
-successor deployment and retain the parent recovery path for Key/receipt closeout.
+absence returns HTTP 410. Accepted rotations may still create a successor from
+the selected application, revision, resources and data, replacing only the
+parent's Gateway Secret and
+credential version. The constructor reads the original parent and reuses its
+frozen child after a lost claim response. Parent recovery remains responsible
+for Key/receipt closeout.
 HTTP 202 means the operation is pending, not that a new password is already in
 use. Console keeps read-only pending refresh, drops revealed credentials when the
 selection changes and keeps passwords only in component memory. Native credential

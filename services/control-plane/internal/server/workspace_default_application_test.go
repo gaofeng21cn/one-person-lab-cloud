@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -71,7 +70,7 @@ func (f *applicationReplacementFabric) ReadWorkspaceApplicationRuntimeCredential
 	return contracts.WorkspaceApplicationRuntimeCredentials{}, errors.New("not_requested")
 }
 
-func TestHistoricalDefaultApplicationReplacementPreservesPurchaseAndIsolatesData(t *testing.T) {
+func TestAcceptedDefaultApplicationReplacementPreservesPurchaseAndIsolatesData(t *testing.T) {
 	ctx := context.Background()
 	store := newMemoryTableStore()
 	fabric := &applicationReplacementFabric{}
@@ -104,32 +103,27 @@ func TestHistoricalDefaultApplicationReplacementPreservesPurchaseAndIsolatesData
 	upgraded := revision
 	upgraded.Version = "upgrade"
 	upgraded.Image = "repo.example/opl-app@sha256:" + strings.Repeat("c", 64)
-	seedAdmittedApplicationRevisionForTest(t, store, upgraded)
-	successor, err := app.createWorkspaceApplicationDeploymentIntent(ctx, "ws-alpha", "upgrade-default", "opl-app", "upgrade", current.Configuration, current.SecretBindings, 19, "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if successor.PreviousDeploymentID != current.OperationID || successor.DataBindingID != dataID {
-		t.Fatal("upgrade lost predecessor or stable data")
-	}
-	if successor.Configuration.CredentialVersion != current.Configuration.CredentialVersion || successor.Configuration.CredentialSourceRuntimeOperationID != current.Configuration.CredentialSourceRuntimeOperationID {
-		t.Fatal("image upgrade changed credential identity")
-	}
+	successor := applicationDeploymentFixtureForTest(t, app, "ws-alpha", "upgrade-default", upgraded)
+	successor.Configuration, successor.SecretBindings, successor.WorkspaceAPIKeyID = current.Configuration, current.SecretBindings, current.WorkspaceAPIKeyID
+	successor.DataBindingID, successor.DataLayout, successor.DataSourceRuntimeOperationID = current.DataBindingID, current.DataLayout, current.DataSourceRuntimeOperationID
+	successor = seedAcceptedApplicationDeploymentForTest(t, app, successor)
 	runDeploymentWorkerToCompletion(t, app, service, successor.OperationID)
+	upgradedInput := fabric.inputs[successor.OperationID+":runtime"]
+	if upgradedInput.DataBindingID != dataID || upgradedInput.Configuration.CredentialVersion != current.Configuration.CredentialVersion || upgradedInput.Configuration.CredentialSourceRuntimeOperationID != current.Configuration.CredentialSourceRuntimeOperationID {
+		t.Fatalf("worker changed the accepted data or credential identity: %+v", upgradedInput)
+	}
 	if len(fabric.lifecycle) != 2 || fabric.lifecycle[0].DesiredState != "suspended" || fabric.lifecycle[1].DesiredState != "absent" || fabric.lifecycle[1].RuntimeOperationID != current.OperationID+":runtime" {
 		t.Fatalf("wrong predecessor lifecycle: %+v", fabric.lifecycle)
 	}
-	// A different app receives a separate namespace and no OPL credentials.
+	// The accepted replacement specifies its own namespace and no OPL credentials.
 	other := contracts.WorkspaceApplicationRevision{SchemaVersion: 1, ApplicationID: "agent", Version: "1", Platform: "linux/amd64", Image: "repo.example/agent@sha256:" + strings.Repeat("d", 64), PersistentMounts: []contracts.WorkspaceApplicationMount{{Name: "data", MountPath: "/data"}}, ExposurePolicy: "cloud_private"}
-	seedAdmittedApplicationRevisionForTest(t, store, other)
-	replacement, err := app.createWorkspaceApplicationDeploymentIntent(ctx, "ws-alpha", "replace-agent", "agent", "1", contracts.WorkspaceApplicationRuntimeConfiguration{}, nil, 0, "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if replacement.DataBindingID == dataID || len(replacement.SecretBindings) != 0 {
-		t.Fatal("unrelated application inherited OPL data or credentials")
-	}
+	replacement := applicationDeploymentFixtureForTest(t, app, "ws-alpha", "replace-agent", other)
+	replacement = seedAcceptedApplicationDeploymentForTest(t, app, replacement)
 	runDeploymentWorkerToCompletion(t, app, service, replacement.OperationID)
+	replacementInput := fabric.inputs[replacement.OperationID+":runtime"]
+	if replacementInput.DataBindingID != replacement.DataBindingID || replacementInput.DataBindingID == dataID || len(replacementInput.SecretBindings) != 0 || replacementInput.Configuration.CredentialVersion != "" || replacementInput.Configuration.CredentialSourceRuntimeOperationID != "" {
+		t.Fatalf("worker gave the replacement OPL data or credentials: %+v", replacementInput)
+	}
 	workspace, _, _ = store.GetWorkspace(ctx, "ws-alpha")
 	for _, field := range []string{"storageId", "currentComputeAllocationId", "currentAttachmentId", "paidThrough", "periodStart", "purchaseReceiptId"} {
 		if workspace[field] != original[field] {
@@ -143,16 +137,11 @@ func TestHistoricalDefaultApplicationReplacementPreservesPurchaseAndIsolatesData
 	if stringValue(workspace["currentApplicationDeploymentId"]) != replacement.OperationID {
 		t.Fatal("replacement was not selected")
 	}
-	// Replaying the accepted request after activation must retain its original predecessor.
-	replay, err := app.createWorkspaceApplicationDeploymentIntent(ctx, "ws-alpha", "replace-agent", "agent", "1", contracts.WorkspaceApplicationRuntimeConfiguration{}, nil, 0, "", "")
-	if err != nil || replay.OperationID != replacement.OperationID || replay.PreviousDeploymentID != replacement.PreviousDeploymentID {
-		t.Fatalf("replay changed accepted command: %+v %v", replay, err)
-	}
-	// Returning to OPL must reuse its previous data binding, not the Agent's.
-	reinstalled, err := app.createWorkspaceApplicationDeploymentIntent(ctx, "ws-alpha", "return-opl", "opl-app", "upgrade", current.Configuration, current.SecretBindings, 19, "", "")
-	if err != nil || reinstalled.DataBindingID != dataID {
-		t.Fatalf("reinstall lost data: %+v %v", reinstalled, err)
-	}
+	// An accepted historical return already names its original data and credentials.
+	reinstalled := applicationDeploymentFixtureForTest(t, app, "ws-alpha", "return-opl", upgraded)
+	reinstalled.Configuration, reinstalled.SecretBindings, reinstalled.WorkspaceAPIKeyID = current.Configuration, current.SecretBindings, current.WorkspaceAPIKeyID
+	reinstalled.DataBindingID, reinstalled.DataLayout, reinstalled.DataSourceRuntimeOperationID = dataID, current.DataLayout, current.DataSourceRuntimeOperationID
+	reinstalled = seedAcceptedApplicationDeploymentForTest(t, app, reinstalled)
 	// A failed preflight leaves the currently selected Agent running.
 	fabric.preflightErr = errors.New("workspace_application_secret_binding_missing")
 	beforeLifecycle := len(fabric.lifecycle)
@@ -167,113 +156,14 @@ func TestHistoricalDefaultApplicationReplacementPreservesPurchaseAndIsolatesData
 	if err != nil || failed.Phase != workspaceApplicationDeploymentManualReviewPhase {
 		t.Fatalf("preflight failure not recorded: %+v %v", failed, err)
 	}
-
 }
 
-func TestApplicationCredentialConfigurationFollowsSelectedLineage(t *testing.T) {
-	ctx := context.Background()
-	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
-	app := fixture.server.(*controlPlaneHTTPHandler).app
-	revision := defaultOPLApplicationRevision("registry.example/opl-app@sha256:" + strings.Repeat("a", 64))
-	bindings := []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", Key: "opl_gateway_api_key", SecretRef: "opl-gateway-ws-alpha", Version: "gateway-original"}}
-	initial := seedApplicationRevisionForLifecycle(t, app, "ws-alpha", revision, contracts.WorkspaceApplicationRuntimeConfiguration{Environment: map[string]string{"OPL_WEBUI_USERNAME": "opl", "PRIOR_USER_SETTING": "original"}}, bindings, 19, true)
-	revision.Version = "rotated"
-	configuration := initial.Configuration
-	configuration.CredentialVersion = "explicit-credential-version"
-	bindings[0].Version = "gateway-rotated"
-	rotated := seedApplicationRevisionForLifecycle(t, app, "ws-alpha", revision, configuration, bindings, 20, true)
-	selected := seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "agent", true)
-	// An unrelated newer intent is not evidence that its credentials served.
-	detached := rotated
-	detached.OperationID = "detached-opl-candidate"
-	detached.Configuration.CredentialVersion = "never-selected"
-	detached.ConfigurationDigest, _ = contracts.WorkspaceApplicationConfigurationDigest(detached.Configuration, detached.SecretBindings, detached.DataBindingID)
-	detached.Phase, detached.ActivationAt, detached.ReceiptID = workspaceApplicationDeploymentManualReviewPhase, "", ""
-	detached.CreatedAt = time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano)
-	detached.RequestHash = workspaceApplicationDeploymentRequestHash(detached)
-	row, _, _ := app.tables.GetRuntimeOperation(ctx, rotated.OperationID)
-	row["id"], row["operationId"] = detached.OperationID, detached.OperationID
-	row["status"] = "manual_review"
-	payload, _ := json.Marshal(detached)
-	row["result"] = string(payload)
-	mustStore(t, app.tables.SaveRuntimeOperation(ctx, row))
-	workspace, _, _ := app.tables.GetWorkspace(ctx, "ws-alpha")
-	ancestor, found, err := app.workspaceApplicationSelectedAncestor(ctx, workspace, revision.ApplicationID)
-	if err != nil || !found || ancestor.OperationID != rotated.OperationID || !reflect.DeepEqual(ancestor.SecretBindings, rotated.SecretBindings) || ancestor.WorkspaceAPIKeyID != 20 {
-		t.Fatalf("selected lineage lost the served Gateway binding: ancestor=%+v found=%v err=%v", ancestor, found, err)
-	}
-	// An empty credential input exercises inheritance from the selected chain.
-	resolved, err := app.workspaceApplicationCredentialConfiguration(ctx, workspace, revision, "return-after-rotation", contracts.WorkspaceApplicationRuntimeConfiguration{})
-	if err != nil || resolved.CredentialVersion != rotated.Configuration.CredentialVersion || resolved.CredentialSourceRuntimeOperationID != rotated.Configuration.CredentialSourceRuntimeOperationID {
-		t.Fatalf("selected lineage lost the served credential identity: configuration=%+v err=%v", resolved, err)
-	}
-	returned, err := app.createWorkspaceApplicationDeploymentIntent(ctx, "ws-alpha", "return-after-rotation", revision.ApplicationID, revision.Version, resolved, ancestor.SecretBindings, ancestor.WorkspaceAPIKeyID, "", "")
-	if err != nil || returned.Configuration.CredentialVersion != rotated.Configuration.CredentialVersion || returned.DataBindingID != initial.DataBindingID {
-		t.Fatalf("return to OPL changed credentials or data: %+v %v", returned, err)
-	}
-	// A broken chain cannot be repaired by timestamps or the default request.
-	row, _, _ = app.tables.GetRuntimeOperation(ctx, selected.OperationID)
-	selected.PreviousDeploymentID = "missing-selected-predecessor"
-	selected.RequestHash = workspaceApplicationDeploymentRequestHash(selected)
-	payload, _ = json.Marshal(selected)
-	row["result"] = string(payload)
-	mustStore(t, app.tables.SaveRuntimeOperation(ctx, row))
-	if _, _, err := app.workspaceApplicationSelectedAncestor(ctx, workspace, revision.ApplicationID); err == nil {
-		t.Fatal("broken selected lineage recovered an unproven ancestor")
-	}
-	if _, err := app.workspaceApplicationCredentialConfiguration(ctx, workspace, revision, "return-after-rotation", contracts.WorkspaceApplicationRuntimeConfiguration{}); err == nil {
-		t.Fatal("broken selected lineage recovered unproven credentials")
-	}
-}
-
-func TestApplicationCredentialMigrationRetainsLatestFullRuntimeVersion(t *testing.T) {
-	ctx := context.Background()
-	for _, switchFirst := range []bool{false, true} {
-		t.Run(map[bool]string{false: "direct migration", true: "return after another application"}[switchFirst], func(t *testing.T) {
-			fixture, _, _ := newWorkspaceDeleteCompletionFixture(t)
-			app := fixture.server.(*controlPlaneHTTPHandler).app
-			workspace, _, _ := app.tables.GetWorkspace(ctx, "ws-alpha")
-			access := cloneMap(mapField(workspace, "access"))
-			access["credentialVersion"] = "full-runtime-explicitly-rotated"
-			workspace["access"] = access
-			mustStore(t, app.tables.SaveWorkspace(ctx, workspace))
-			purchase, _, _ := app.tables.GetRuntimeOperation(ctx, "workspace-launch-alpha")
-			if switchFirst {
-				seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "agent", true)
-			}
-			revision := defaultOPLApplicationRevision("registry.example/opl-app@sha256:" + strings.Repeat("a", 64))
-			seedAdmittedApplicationRevisionForTest(t, app.tables, revision)
-			bindings := []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", Key: "opl_gateway_api_key", SecretRef: "opl-gateway-ws-alpha", Version: "v1"}}
-			intent, err := app.createWorkspaceApplicationDeploymentIntent(ctx, "ws-alpha", "full-migration", revision.ApplicationID, revision.Version, contracts.WorkspaceApplicationRuntimeConfiguration{}, bindings, 19, "", "")
-			if err != nil || intent.Configuration.CredentialVersion != "full-runtime-explicitly-rotated" || intent.Configuration.CredentialSourceRuntimeOperationID != "workspace-launch-alpha:runtime" {
-				t.Fatalf("full migration changed the current credential: %+v %v", intent, err)
-			}
-			input, err := app.workspaceApplicationRuntimeInput(ctx, intent)
-			if err != nil || !reflect.DeepEqual(input.Configuration, intent.Configuration) {
-				t.Fatalf("Fabric did not receive the bound credential identity: %+v %v", input, err)
-			}
-			replay, err := app.createWorkspaceApplicationDeploymentIntent(ctx, "ws-alpha", "full-migration", revision.ApplicationID, revision.Version, contracts.WorkspaceApplicationRuntimeConfiguration{}, bindings, 19, "", "")
-			if err != nil || !reflect.DeepEqual(replay, intent) {
-				t.Fatalf("migration replay changed accepted identity: %+v %v", replay, err)
-			}
-			retained, _, _ := app.tables.GetRuntimeOperation(ctx, "workspace-launch-alpha")
-			if retained["result"] != purchase["result"] {
-				t.Fatal("credential migration rewrote purchase evidence")
-			}
-		})
-	}
-}
-
-func TestApplicationReservationAndSuspensionFence(t *testing.T) {
+func TestAcceptedApplicationDeploymentSuspensionFence(t *testing.T) {
 	store := newMemoryTableStore()
 	fabric := &fakeFabricClient{}
 	service := newTestService(&fakeLedgerClient{}, fabric)
 	handler, id := applicationDeploymentWorkerFixture(t, store, service)
 	ctx := context.Background()
-	_, err := handler.app.createWorkspaceApplicationDeploymentIntent(ctx, "ws-alpha", "concurrent", "knowledge-app", "1.0.0", contracts.WorkspaceApplicationRuntimeConfiguration{}, nil, 0, "", "")
-	if !errors.Is(err, errWorkspaceApplicationIntentConflict) {
-		t.Fatalf("concurrent command err=%v", err)
-	}
 	if err := handler.app.runWorkspaceApplicationDeployment(ctx, service, id); err != nil {
 		t.Fatal(err)
 	}
@@ -298,44 +188,65 @@ func TestApplicationReservationAndSuspensionFence(t *testing.T) {
 	}
 }
 
-func TestHistoricalApplicationReinstallRestoresOriginalDataSource(t *testing.T) {
+// Frozen historical data/credential fields must still reach the real Runtime
+// input reader after the general reinstall admission path has been removed.
+func TestAcceptedHistoricalApplicationRuntimeInputRetainsDataSource(t *testing.T) {
 	ctx := context.Background()
-	t.Run("full OPL to another app and back", func(t *testing.T) {
-		fixture, _, _ := newWorkspaceDeleteCompletionFixture(t)
-		app := fixture.server.(*controlPlaneHTTPHandler).app
-		purchase, _, _ := fixture.store.GetRuntimeOperation(ctx, "workspace-launch-alpha")
-		agent := seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "another-app", true)
-		if agent.LegacyPredecessor == nil {
-			t.Fatal("fixture lost historical predecessor")
-		}
-		revision := defaultOPLApplicationRevision("repo.example/opl-app@sha256:" + strings.Repeat("b", 64))
-		seedAdmittedApplicationRevisionForTest(t, fixture.store, revision)
-		bindings := []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", SecretRef: "opl-gateway-ws-alpha", Version: "v1", Key: "opl_gateway_api_key"}}
-		reinstalled, err := app.createWorkspaceApplicationDeploymentIntent(ctx, "ws-alpha", "return-historical-opl", revision.ApplicationID, revision.Version, contracts.WorkspaceApplicationRuntimeConfiguration{}, bindings, 19, "", "")
-		if err != nil || reinstalled.DataLayout != "legacy_opl" || reinstalled.DataSourceRuntimeOperationID != "workspace-launch-alpha:runtime" || reinstalled.PreviousDeploymentID != agent.OperationID {
-			t.Fatalf("historical data lost: %+v %v", reinstalled, err)
-		}
-		retained, _, _ := fixture.store.GetRuntimeOperation(ctx, "workspace-launch-alpha")
-		if retained["result"] != purchase["result"] {
-			t.Fatal("data resolution rewrote purchase")
-		}
-	})
-	t.Run("generic v1 to another app and back", func(t *testing.T) {
-		fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
-		app := fixture.server.(*controlPlaneHTTPHandler).app
-		original := seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "original-app", true)
-		row, _, _ := fixture.store.GetRuntimeOperation(ctx, original.OperationID)
-		original.Version = 1
-		original.Configuration, original.SecretBindings = contracts.WorkspaceApplicationRuntimeConfiguration{}, nil
-		original.DataBindingID, original.DataLayout, original.DataSourceRuntimeOperationID = "", "", ""
-		original.RequestHash = workspaceApplicationDeploymentRequestHash(original)
-		payload, _ := json.Marshal(original)
-		row["result"] = string(payload)
-		mustStore(t, fixture.store.SaveRuntimeOperation(ctx, row))
-		agent := seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "another-app", true)
-		reinstalled, err := app.createWorkspaceApplicationDeploymentIntent(ctx, "ws-alpha", "return-historical-generic", original.ApplicationID, original.TargetRevision, contracts.WorkspaceApplicationRuntimeConfiguration{}, nil, 0, "", "")
-		if err != nil || reinstalled.DataLayout != "legacy_application" || reinstalled.DataSourceRuntimeOperationID != original.OperationID+":runtime" || reinstalled.PreviousDeploymentID != agent.OperationID {
-			t.Fatalf("historical generic data lost: %+v %v", reinstalled, err)
-		}
-	})
+	for _, layout := range []string{"legacy_opl", "legacy_application"} {
+		t.Run(layout, func(t *testing.T) {
+			fixture, _, _ := newWorkspaceDeleteCompletionFixture(t)
+			app := fixture.server.(*controlPlaneHTTPHandler).app
+			purchase, _, _ := fixture.store.GetRuntimeOperation(ctx, "workspace-launch-alpha")
+			revision := knowledgeApplicationRevisionForTest()
+			configuration := contracts.WorkspaceApplicationRuntimeConfiguration{}
+			var bindings []contracts.WorkspaceApplicationRuntimeSecretBinding
+			source := "workspace-launch-alpha:runtime"
+			if layout == "legacy_application" {
+				original := seedApplicationRevisionForLifecycle(t, app, "ws-alpha", revision, configuration, nil, 0, true)
+				row, _, _ := fixture.store.GetRuntimeOperation(ctx, original.OperationID)
+				original.Version = 1
+				original.Configuration, original.SecretBindings = contracts.WorkspaceApplicationRuntimeConfiguration{}, nil
+				original.DataBindingID, original.DataLayout, original.DataSourceRuntimeOperationID = "", "", ""
+				original.RequestHash = workspaceApplicationDeploymentRequestHash(original)
+				payload, err := json.Marshal(original)
+				if err != nil {
+					t.Fatal(err)
+				}
+				row["result"] = string(payload)
+				mustStore(t, fixture.store.SaveRuntimeOperation(ctx, row))
+				source = original.OperationID + ":runtime"
+			}
+			if layout == "legacy_opl" {
+				revision = defaultOPLApplicationRevision("repo.example/opl-app@sha256:" + strings.Repeat("b", 64))
+				source = "workspace-launch-alpha:runtime"
+				configuration = contracts.WorkspaceApplicationRuntimeConfiguration{CredentialVersion: "full-runtime-explicitly-rotated", CredentialSourceRuntimeOperationID: source}
+				bindings = []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", SecretRef: "opl-gateway-ws-alpha", Version: "v1", Key: "opl_gateway_api_key"}}
+			}
+			seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "another-app", true)
+			intent := applicationDeploymentFixtureForTest(t, app, "ws-alpha", "accepted-historical-return", revision)
+			intent.Configuration, intent.SecretBindings = configuration, bindings
+			intent.DataLayout, intent.DataSourceRuntimeOperationID = layout, source
+			intent = seedAcceptedApplicationDeploymentForTest(t, app, intent)
+			restarted, err := NewPersistentServer(newTestService(&fakeLedgerClient{}, &fakeFabricClient{}), fixture.store)
+			if err != nil {
+				t.Fatal(err)
+			}
+			row, found, err := fixture.store.GetRuntimeOperation(ctx, intent.OperationID)
+			if err != nil || !found {
+				t.Fatalf("accepted history found=%v err=%v", found, err)
+			}
+			retained, err := decodeWorkspaceApplicationDeploymentIntent(row)
+			if err != nil {
+				t.Fatal(err)
+			}
+			input, err := restarted.(*controlPlaneHTTPHandler).app.workspaceApplicationRuntimeInput(ctx, retained)
+			if err != nil || input.DataLayout != layout || input.DataSourceRuntimeOperationID != source || input.DataBindingID != intent.DataBindingID || input.Configuration.CredentialVersion != configuration.CredentialVersion || input.Configuration.CredentialSourceRuntimeOperationID != configuration.CredentialSourceRuntimeOperationID {
+				t.Fatalf("historical runtime input lost accepted lineage: %+v err=%v", input, err)
+			}
+			after, _, _ := fixture.store.GetRuntimeOperation(ctx, "workspace-launch-alpha")
+			if after["result"] != purchase["result"] {
+				t.Fatal("historical runtime read rewrote purchase")
+			}
+		})
+	}
 }

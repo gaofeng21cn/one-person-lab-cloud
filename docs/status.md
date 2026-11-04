@@ -8,7 +8,7 @@ Snapshot reconciliation date: 2026-11-05
 
 Each observation below retains its original source, run and environment; the
 reviewed source baseline does not requalify those receipts. The latest retained
-runtime/source evidence is dated 2026-11-04. Source tests, Candidate construction,
+runtime/source evidence is dated 2026-11-05. Source tests, Candidate construction,
 Instance installation and customer acceptance prove separate layers; none alone
 establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
@@ -35,6 +35,25 @@ remaining outcomes belong to [roadmap](roadmap.md#current-delivery-lane-owner-co
 The current objective is one writer per fact and removal of obsolete code with
 its callers, workers, configuration and exclusive tests. Qualification is a
 separate release lane, not a blanket prerequisite for source retirement.
+
+## Retained Generic Deployment Builder Removal (2026-11-05)
+
+R1d is based on merged Cloud #1125 at
+`3773966a31e2a5d6630038decfa0a812c1488830`. The source removes CP's generic
+new-install/replacement/reinstall builder, transition validator and credential/data
+inheritance helpers, together with their exclusive admission tests. The only
+remaining deployment constructor reads a persisted accepted Key-rotation parent
+and keeps the selected application, revision, resources and data. It replaces
+that parent's Gateway Secret and credential version; a lost child-claim response
+reuses the original frozen child, including after activation advances selection.
+
+Accepted deployment decoding/hashing, worker, activation CAS and operator retry
+remain, as does parent Key/receipt closeout. The current protected observations
+listed under [R3a](#retained-workspace-key-rotation-creation-withdrawal-2026-11-04)
+are owner projections, not archive or external-effect clearance. They do not
+justify deleting the shared recovery engine. Historical fixtures now seed
+accepted commands directly. Local verification and current-revision CI belong
+to the PR; no Candidate, Instance adoption or production mutation is claimed.
 
 ## Workspace New-Purchase Eligibility Consumption (2026-11-04)
 
