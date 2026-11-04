@@ -198,7 +198,7 @@ a deployed Candidate or final business PASS.
 | P0 | Complete runtime SecretInput delivery | Serve, Fabric and contract owners | Gateway-managed input is covered; other declared runtime inputs are refused | Approved opaque binding/version delivery through RuntimeDeployCommand, application authorization and readback tests |
 | P0 | Build one exact Candidate and install the complete owner topology | Cloud release owner; Instance deployment owner | The `78dbe9b4` Candidate has a verified ten-owner deployment and twelve passing checks; newer `d430825c` has local fixture READY evidence but no Instance adoption evidence in this snapshot | Exact SHA/tree/index/digest manifest, complete owner deployment, protected health/readiness and route readback |
 | P0 | Qualify Default App and Custom Agent on the same Candidate | Serve, Workspace, Instance | Local owner journeys exist; no protected TKE user acceptance | One confirmation reaches a ready application in each mode, restart and response-loss recovery, exact image and route evidence |
-| P1 | Retire retained Control Plane application execution and its callers | Control Plane migration owner and Serve; Instance owns its caller removal | [R1/R2 inventory](implementation-architecture.md#retained-writer-and-caller-inventory-2026-11-03) identifies registered old writers, legacy UI and Instance callers; review pending | Resolve accepted obligations and withdraw or migrate callers, then delete old commands, worker registrations, exclusive config/DTOs/tests and current-selection writers; preserve named historical readers and verify surviving native consumers |
+| P1 | Retire retained Control Plane application execution and its callers | Control Plane migration owner and Serve; Instance owns its caller removal | [R1/R2 inventory](implementation-architecture.md#retained-writer-and-caller-inventory-2026-11-03) tracks bounded source withdrawals and remaining callers; R2c image-command source withdrawal requires source verification and separate Instance adoption evidence; Instance #675 caller withdrawal is merged, while installed adoption remains unproven | Resolve accepted obligations and withdraw or migrate callers, then delete old commands, worker registrations, exclusive config/DTOs/tests and current-selection writers; preserve named historical readers and verify surviving native consumers |
 | P1 | Public registration, administrator top-up and controlled purchase | Control Plane, CloudIdentity, Console | Existing operator/admin path exists; public self-service chain is incomplete | Concurrent registration, zero initial balance, one audited top-up, quote/purchase idempotency and protected browser readback |
 | P1 | Backup, restore, alert and data-exit contracts | Cloud owners; Instance operates them | Owner boundaries are described; production schedules and receivers are external | Isolated restore identity/readback, stable active/recovered signals, stop-purchase boundary and export/delete receipts |
 | P1 | MAP domain contracts and evaluation gate | MAP medical domain owner/Instance | Cloud logical Connect boundary is documented; no clinical domain or qualified MAP adapter/backend combination is claimed | MAP task/adapter contract, selected OPL Connect backend, approved data classes, source/evidence model, human review states, evaluation set, release gate and institution acceptance; no medical-specific Cloud adapter is required |
@@ -269,7 +269,30 @@ recovery command, its service/client adapters and exclusive types/tests. The
 current protected census has no such accepted operation; archive/traffic and
 installation adoption remain unproved. Fabric provider-network execution and
 strict readback stay with Fabric pending their own caller/obligation disposition.
-Image policy/replacement and Launch runtime repair remain separate R2 work.
+The separate R2c image slice removes CP replacement creation, preview, dispatch
+and retry/worker execution and Console/BFF callers. The existing policy activation
+writer remains necessary for original Launch image-revision recovery; migrate its
+selection authority before retiring its atomic revision/audit store.
+It retains the direct CP policy and historical replacement GETs, historical
+operation/policy decoders, pending-transition/resource-reconcile barriers and
+original Launch revision recovery. Fabric retains its own provider/replacement,
+journal and strict readback. The [image reference](implementation/workspace-images.md)
+owns the source boundary and [status](status.md#retained-runtime-image-command-withdrawal-2026-11-04)
+records its bounded evidence.
+
+R2c is based on `173d1afbcbd3dc120f0839707c9e69eb2ba2787b`, after merged
+Cloud #1120. Instance #675 rollout/rollback and policy-mutation caller withdrawal
+is MERGED with 2/2 CI checks SUCCESS; [status](status.md#retained-runtime-image-command-withdrawal-2026-11-04)
+records its exact merge/head/run evidence. Configured callers are withdrawn at source. Cloud adoption remains unproven;
+check in-flight legacy executions before adopting the entrypoint-removal version
+through the existing Instance process. Retain the shared Instance image client
+for registry retention/node-cache retirement. Acceptance requires source
+verification and exact-version installed readback of caller withdrawal,
+the removed entrypoints and surviving policy/history/recovery consumers. The
+existing seven terminal image operations among 44 current operations, all on
+currently `data_deleted` old Workspaces, do not establish zero traffic, archive
+absence, later state or other-installation disposition. Original Launch runtime
+repair and remaining accepted credential/Key obligations stay separate work.
 
 The user approved actual code deletion, capability by capability. Independent
 proposals cover the unused Key prototype ([Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112)), refused activation alias
@@ -277,9 +300,10 @@ proposals cover the unused Key prototype ([Cloud #1112](https://github.com/gaofe
 and fixed-slot procurement ([Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113)) at the inventoried baselines. Since then,
 #1112 merged at `2026-11-03T06:57:24Z` as
 `0064c770d87eb25daeaf1f0dc55aeef1c4d99c60`, at source only and not installed.
-This inventory PR changes no runtime code. Verification belongs to each source
-revision; neither this snapshot nor a source merge establishes installed state
-or completed Control Plane retirement.
+The original inventory is a documentation snapshot; subsequent source withdrawals
+are described separately. Verification belongs to each source revision; neither
+this snapshot nor a source merge establishes installed state or completed Control
+Plane retirement.
 
 The [writer/caller inventory](implementation-architecture.md#retained-writer-and-caller-inventory-2026-11-03)
 binds the exact Cloud/Instance baselines, includes external source callers and
@@ -291,7 +315,7 @@ historical operations and financial records while retiring their execution paths
 | R8 fixed-slot provider procurement | [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) removes route/executor, dedicated config, unused create-claim machinery and exclusive tests; the source HOLD is resolved by fresh owner evidence | Observation `41598975341` excludes current accepted fixed-slot and historical single-slot operations through complete current-table identity comparison; no recovery owner migration is needed for absent operations. Preserve historical identity/billing readers. Installation and later accepted operations remain separate |
 | R9 test-only Key lifecycle prototype; retired browser activation alias | [Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112) is merged source only, not installed; [Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114) delivers alias retirement and a standalone existing-account reader, with the reproduced Modal focus race repaired | Fresh legacy runner migration remains an open qualification outcome, not a prerequisite for retiring the already-refused alias. Keep topology admission strict; a future runner must consume the declared preactivated installation and preserve its persistent state. No new provisioning capability is needed here. Native lifecycle, internal activation and Tenant/wallet binding remain |
 | R1 application admission/default install/deployment | R1a removes operator admission/create commands and Console controls; R1b removes default-install execution/resume and its final revision-admission writer. R1c removes the test-only application configuration/Secret bootstrap and its exclusive service wrapper; live credential inheritance stays with its actual recovery callers. Instance #674 removes the installer caller. Shared engine retirement remains open | Fresh observation `41665805194` links all three current default-install and five deployment records to later succeeded Workspace deletions; preserve original records and separate refunds. Accepted credential deployments and Workspace-Key rotation still need the shared worker, activation writers and frozen operator retry. Withdraw or migrate those callers before deleting the engine; source removal does not establish installed adoption |
-| R2 runtime/image/password maintenance; R3 Workspace Key rotation | R2a removes the legacy password creator, direct old-Runtime orchestration and Console command; image/repair and Workspace-Key rotation remain separate slices | Preserve original accepted credential-deployment worker/retry and readback. Fresh observation `41750316687` confirms both current CP Workspaces are data-deleted and the 44 current operation identities/statuses are unchanged; it does not cover archives or prove zero traffic. Resolve remaining runtime/Secret/Key obligations before retiring the shared engine; reveal/disable is not rotation parity |
+| R2 runtime/image/password maintenance; R3 Workspace Key rotation | R2a removes password creation; R2c removes CP image replacement creation/preview/dispatch/retry worker and Console/BFF callers. Original-Launch policy activation, Launch repair, historical readers/barriers and accepted credential/Key recovery remain | Instance #675 caller withdrawal is MERGED, CI 2/2 SUCCESS; Cloud entrypoint-removal adoption remains unproven; check in-flight legacy executions before that adoption. Source merge/CI do not establish zero traffic or clearance of business obligations. Source verification and exact-version installed adoption require separate evidence. Observation `41750316687` has seven image records (five succeeded, two failed, none started) among 44 current operations, on currently data-deleted old Workspaces; archive/later/other-installation and zero-traffic conclusions remain unproved. Preserve direct policy/history GETs, Instance retention/node-cache consumers and Fabric capability; resolve remaining obligations before shared-engine retirement |
 | R5 retained lifecycle/renewal/delete/refund; R6 pricing/eligibility | Review full execution-engine removal with its worker, store/client and external-tool slice | Establish other accepted operations/renewal/financial obligations, independently settle original refunds, remove or migrate history consumers, preserve the native path; the three #1018 orders need no further mutations |
 | R4 personal-Key/admin-wallet/Account provisioning | Keep while product requirement or actual BFF caller remains; decide separately | Existing native readers/managed-Key commands do not supply personal-Key writes, arbitrary wallet adjustment or external-user/Account provisioning parity |
 | R7 history, announcements/ACK, identity proof and shared CP transport | Retain under their current owners in this scope | Separate capability migration is needed before removing their writers, readers, proof/configuration or the CP process; Workspace cleanup alone supplies no such evidence |

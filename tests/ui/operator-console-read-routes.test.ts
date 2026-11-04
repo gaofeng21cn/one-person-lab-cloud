@@ -9,15 +9,12 @@ import {
   getOperatorAnnouncements,
   getOperatorOverview,
   getOperatorWorkspace,
-  getOperatorWorkspaceRuntimeImagePolicy,
-  getOperatorWorkspaceRuntimeImageReplacementPreview,
   getOperatorWorkspaces,
   getOperatorReconciliation,
   getOperatorHealth,
   getOperatorRuntimeObservations,
   getWalletAdjustment,
   getWorkspaceLaunchRecovery,
-  getOperatorWorkspaceRuntimeImageReplacement,
   operatorReadRoute
 } from "../../apps/console-ui/src/api/console-read-api.ts";
 import {
@@ -59,9 +56,7 @@ test("operator console reads resolve to the Cloud BFF under CloudIdentity", asyn
   await getOperatorAccountsPage(2, 20, undefined, true);
   await getOperatorWorkspaces(1, 20, undefined, true);
   await getOperatorWorkspace("ws/1", undefined, true);
-  await getOperatorWorkspaceRuntimeImagePolicy(undefined, true);
   await getOperatorAnnouncements(1, 20, undefined, true);
-  await getOperatorWorkspaceRuntimeImageReplacementPreview("ws/1", undefined, true);
 
   assert.deepEqual(requests, [
     "/api/v2/operator/accounts",
@@ -69,9 +64,7 @@ test("operator console reads resolve to the Cloud BFF under CloudIdentity", asyn
     "/api/v2/operator/accounts?page=2&pageSize=20",
     "/api/v2/operator/workspaces?page=1&pageSize=20",
     "/api/v2/operator/workspaces/ws%2F1",
-    "/api/v2/operator/workspace-runtime-image-policy",
     "/api/v2/operator/announcements?page=1&pageSize=20",
-    "/api/v2/operator/workspaces/ws%2F1/runtime-image-replacements/preview"
   ]);
 });
 
@@ -80,12 +73,10 @@ test("a retained build keeps the Control Plane operator reads", async () => {
   await getOperatorOverview(undefined, false);
   await getOperatorAccounts(false);
   await getOperatorAnnouncements(1, 20, undefined, false);
-  await getOperatorWorkspaceRuntimeImageReplacementPreview("ws/1", undefined, false);
   assert.deepEqual(requests, [
     "/api/operator/overview",
     "/api/operator/accounts",
     "/api/operator/announcements?page=1&pageSize=20",
-    "/api/operator/workspaces/ws%2F1/runtime-image-replacements/preview",
   ]);
 });
 
@@ -102,15 +93,12 @@ test("console-read-api.ts keeps no hardcoded operator read path", () => {
     "getOperatorAccountsPage",
     "getOperatorWorkspaces",
     "getOperatorWorkspace",
-    "getOperatorWorkspaceRuntimeImagePolicy",
     "getOperatorAnnouncements",
-    "getOperatorWorkspaceRuntimeImageReplacementPreview",
     "getOperatorReconciliation",
     "getOperatorHealth",
     "getOperatorRuntimeObservations",
     "getWalletAdjustment",
     "getWorkspaceLaunchRecovery",
-    "getOperatorWorkspaceRuntimeImageReplacement",
   ]) {
     const start = source.indexOf(`export function ${name}`);
     assert.notEqual(start, -1, `${name} must exist`);
@@ -152,17 +140,13 @@ test("remaining operator GET callers use the same CloudIdentity BFF", async () =
  await getOperatorReconciliation(1, 20, undefined, true);
  await getWorkspaceLaunchRecovery("op-1", undefined, true);
  await getWalletAdjustment("op/1", undefined, true);
- await getOperatorWorkspaceRuntimeImageReplacement("ws/1", "op/1", undefined, true);
  assert.deepEqual(requests, [
   "/api/v2/operator/health", "/api/v2/operator/runtime-observations", "/api/v2/operator/reconciliation?page=1&pageSize=20",
   "/api/v2/operator/workspace-launches/op-1/recovery", "/api/v2/operator/wallet-adjustments/op%2F1",
-  "/api/v2/operator/workspaces/ws%2F1/runtime-image-replacements/op%2F1",
  ]);
 });
 
 const operatorCommands: Array<[string, string, (cloud: boolean) => Promise<unknown>]> = [
-  ["image release", "/workspace-image-release-activations", cloud => operatorApi.activateOperatorWorkspaceImageRelease("r", 1, "reason", "csrf", "key", cloud)],
-  ["image replacement", "/workspaces/ws/runtime-image-replacements", cloud => operatorApi.createOperatorWorkspaceRuntimeImageReplacement("ws", "digest", "reason", "csrf", "key", cloud)],
   ["wallet adjustment", "/accounts/acct/wallet-adjustments", cloud => operatorApi.createWalletAdjustment("acct", {} as never, "csrf", "key", cloud)],
   ["wallet recovery", "/wallet-adjustments/op/recover", cloud => operatorApi.recoverWalletAdjustment("op", {} as never, "csrf", "key", cloud)],
   ["disable account", "/accounts/acct/disable", cloud => operatorApi.disableOperatorAccount("acct", "reason", "csrf", "key", cloud)],

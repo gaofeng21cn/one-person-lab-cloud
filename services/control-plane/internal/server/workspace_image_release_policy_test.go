@@ -8,11 +8,9 @@ import (
 	"testing"
 
 	contracts "opl-cloud/packages/contracts/go"
-	"opl-cloud/services/control-plane/internal/clients"
-	"opl-cloud/services/control-plane/internal/controlplane"
 )
 
-func TestWorkspaceImageReleaseActivationPersistsDefaultForNewLaunchAndExistingRuntime(t *testing.T) {
+func TestRetainedImagePolicyActivationPreservesRevisionAndIdempotency(t *testing.T) {
 	const currentImage = "registry.example/workspace@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	const rollbackImage = "registry.example/workspace@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	catalogJSON, err := json.Marshal(contracts.WorkspaceImageReleaseCatalog{SchemaVersion: 1, Releases: []contracts.WorkspaceImageRelease{
@@ -24,15 +22,13 @@ func TestWorkspaceImageReleaseActivationPersistsDefaultForNewLaunchAndExistingRu
 	}
 	t.Setenv("OPL_WORKSPACE_IMAGE", currentImage)
 	t.Setenv(contracts.WorkspaceImageReleasesEnv, string(catalogJSON))
-	t.Setenv("OPL_WORKSPACE_RUNTIME_IMAGE_REPLACEMENT_WORKER_ENABLED", "0")
 
 	store := newMemoryTableStore()
-	fabric := &runtimeImageReplacementRouteFabric{fakeFabricClient: fakeFabricClient{runtimeStatus: clientsWorkspaceRuntimeForReleaseTest(currentImage)}}
+	fabric := &fakeFabricClient{}
 	server, err := NewPersistentServer(newTestService(fakeLedgerClient{}, fabric), store)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedCanonicalRuntimeAccessWorkspaceForTest(t, store, "usr-alpha")
 	operator := reservedOperatorSessionForTest(t, server)
 	body := workspaceImageReleaseActivationBodyForTest(t, "26.8.4", 1, "rollback incompatible Workspace WebUI")
 	activated := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/workspace-image-release-activations", body, "workspace-release-rollback")
@@ -52,16 +48,6 @@ func TestWorkspaceImageReleaseActivationPersistsDefaultForNewLaunchAndExistingRu
 	if err != nil || policy.ActiveImage != rollbackImage {
 		t.Fatalf("persisted policy=%#v err=%v", policy, err)
 	}
-	descriptor, err := newWorkspaceLaunchDescriptorWithImage("acct-alpha", "usr-alpha", "Workspace", "basic", 10, true, "price-v1", "launch-key", policy.ActiveImage, "")
-	if err != nil || descriptor.WorkspaceImageDigest != rollbackImage {
-		t.Fatalf("new launch descriptor=%#v err=%v", descriptor, err)
-	}
-
-	preview := requestWithSession(t, server, operator, http.MethodGet, "/api/operator/workspaces/ws-alpha/runtime-image-replacements/preview", "")
-	if preview.Code != http.StatusOK || !strings.Contains(preview.Body.String(), `"targetImageDigest":"`+rollbackImage+`"`) || !strings.Contains(preview.Body.String(), `"canReplace":true`) {
-		t.Fatalf("preview status=%d body=%s", preview.Code, preview.Body.String())
-	}
-
 	replayed := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/workspace-image-release-activations", body, "workspace-release-rollback")
 	if replayed.Code != http.StatusOK || !strings.Contains(replayed.Body.String(), `"revision":2`) {
 		t.Fatalf("replay status=%d body=%s", replayed.Code, replayed.Body.String())
@@ -114,46 +100,6 @@ func TestPostgresWorkspaceImageReleaseActivationPersistsPolicyAndAuditReplay(t *
 	}
 }
 
-func TestWorkspaceImageReleaseActivationPinsDefaultApplicationToActiveImage(t *testing.T) {
-	const currentImage = "registry.example/workspace@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	const rollbackImage = "registry.example/workspace@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	catalogJSON, err := json.Marshal(contracts.WorkspaceImageReleaseCatalog{SchemaVersion: 1, Releases: []contracts.WorkspaceImageRelease{
-		{Version: "26.8.26", Image: currentImage},
-		{Version: "26.8.4", Image: rollbackImage},
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("OPL_DEPLOYMENT_MODE", "customer_owned")
-	t.Setenv("OPL_FABRIC_PROVIDER", "local-docker")
-	t.Setenv("OPL_WORKSPACE_IMAGE", currentImage)
-	t.Setenv(contracts.WorkspaceImageReleasesEnv, string(catalogJSON))
-
-	fabric := &providerProfileCatalogFabricClient{packages: []clients.FabricWorkspacePackage{{ID: "basic", Name: "Basic Workspace", SizeGB: 10, Available: true}}}
-	sub2API := &providerProfileSub2APIClient{testSub2APIClient: &testSub2APIClient{balance: 1_000_000_000_000, charges: map[string]int64{}}}
-	server := NewServer(controlplane.NewService(fakeLedgerClient{}, fabric, sub2API))
-	operator := reservedOperatorSessionForTest(t, server)
-	activation := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/workspace-image-release-activations", workspaceImageReleaseActivationBodyForTest(t, "26.8.4", 1, "rollback new Workspace default"), "workspace-release-launch-default")
-	if activation.Code != http.StatusOK {
-		t.Fatalf("activation status=%d body=%s", activation.Code, activation.Body.String())
-	}
-
-	customer := loginForTest(t, server, "customer-owner@opl.local", "CorrectHorseBatteryStaple!")
-	seedRetainedWorkspaceLaunchWithDefaultApplicationForTest(t, server, customer, "acct-customer-"+stableID("customer-account", "customer-owner@opl.local")[:18], "usr-customer-"+stableID("customer-user", "customer-owner@opl.local")[:18], 41, "Rollback Workspace", "basic", "workspace-release-launch", false)
-	if len(fabric.preflightInputs) != 1 || fabric.preflightInputs[0].WorkspaceImageDigest != "" {
-		t.Fatalf("preflight inputs=%#v", fabric.preflightInputs)
-	}
-	rows, err := queryRuntimeOperations(context.Background(), server.(*controlPlaneHTTPHandler).app.tables, runtimeOperationQuery{Action: workspaceDefaultApplicationAction})
-	if err != nil || len(rows) != 1 {
-		t.Fatalf("default installation missing: %v", err)
-	}
-	request, err := decodeWorkspaceDefaultApplication(rows[0])
-	if err != nil || request.Revision.Image != rollbackImage {
-		t.Fatalf("default revision did not freeze active image: %+v %v", request.Revision, err)
-	}
-
-}
-
 func workspaceImageReleaseActivationBodyForTest(t *testing.T, releaseVersion string, expectedRevision int, reason string) string {
 	t.Helper()
 	body, err := json.Marshal(contracts.WorkspaceImageReleaseActivationRequest{
@@ -163,11 +109,4 @@ func workspaceImageReleaseActivationBodyForTest(t *testing.T, releaseVersion str
 		t.Fatal(err)
 	}
 	return string(body)
-}
-
-func clientsWorkspaceRuntimeForReleaseTest(image string) clients.WorkspaceRuntime {
-	return clients.WorkspaceRuntime{
-		ID: "rt-unit", OperationID: "workspace-launch-unit:runtime", WorkspaceID: "ws-alpha",
-		URL: "https://workspace.medopl.com/w/ws-alpha/", Status: "running", ServiceName: "runtime-unit", ImageID: image, Ready: true,
-	}
 }

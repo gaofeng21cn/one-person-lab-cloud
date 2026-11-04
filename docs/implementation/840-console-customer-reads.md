@@ -4,8 +4,10 @@ Owner: `opl-cloud`
 Question: which customer reads does the Console issue under a CloudIdentity
 session, which route and owner answer each one, and which remain transitional?
 State: current source inventory; installed acceptance is not claimed
-Observed: 2026-10-18 at `592446e1` (`fix/console-cloudidentity-reads`, base
-`origin/main`)
+Customer-read baseline: 2026-10-18 at `592446e1` (`fix/console-cloudidentity-reads`,
+base `origin/main`). The operator image-read inventory below is updated for the
+2026-11-04 source withdrawal based on `173d1afbcbd3dc120f0839707c9e69eb2ba2787b`;
+this does not refresh the baseline's installed evidence.
 
 This is the issue-scoped inventory for
 [#840](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/840). It
@@ -54,14 +56,22 @@ and [`console-read-api.ts`](../../apps/console-ui/src/api/console-read-api.ts).
 | Legacy Workspace renewal, runtime status, Gateway budget, launch list/detail | Renewal, Fabric Runtime Read, console detail, launch recovery | No cloud caller; cloud detail receives no Control Plane Workspace | Retained `/api/workspaces/*` and `/api/workspace-launches` | Retained Control Plane | Retained Account session | Yes: legacy-only; no cloud caller is allowed to address these routes |
 
 Every operator GET used by `console-read-api.ts` selects the build-time
-`operatorReadRoute`: overview, accounts, workspaces/detail, image policy/preview
-and replacement result, announcements, health, runtime observations,
+`operatorReadRoute`: overview, accounts, workspaces/detail, announcements,
+health, runtime observations,
 reconciliation, launch recovery, wallet adjustment and application-deployment
 results, and registry repository/tag reads. The BFF requires the live
 CloudIdentity platform-admin decision before calling the retained owner through
 `/internal/cloud/operator/*`; tenant administrators are refused and unknown
 sessions never cause a cookie mutation. The retained build continues to select
 its own authenticated route; there is no runtime fallback.
+
+Image policy, replacement preview and replacement-result reads are removed from
+both Console identity adapters and from the BFF/internal Cloud bridge. Console
+activation/replacement commands leave with their controllers; the direct CP policy
+activation command remains necessary for original Launch recovery. Direct CP policy and
+historical replacement GETs remain for non-browser consumers; the
+[image lifecycle](workspace-images.md) names their routes and retained callers.
+This source inventory does not establish Instance caller withdrawal or adoption.
 
 Control Plane still owns the existing projection, persisted runtime operations
 and registry configuration until an actual owner/caller migration occurs. A BFF

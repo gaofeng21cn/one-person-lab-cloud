@@ -33,11 +33,9 @@ import type {
   WalletAdjustmentController,
   WorkspaceBudgetController,
   WorkspaceDeleteController,
-  WorkspaceImageReleaseController,
   WorkspaceLaunchController,
   WorkspaceModelsController,
   WorkspaceRenewalController,
-  WorkspaceRuntimeImageReplacementController,
   WorkspaceSecretController,
   WorkspaceSourceProjectionLease
 } from "./console-controller-types.ts";
@@ -54,11 +52,9 @@ import { useOperatorAnnouncementController } from "./use-operator-announcement-c
 import { useOperatorResourceReadController } from "./use-operator-resource-read-controller.ts";
 import { useWorkspaceBudgetController } from "./use-workspace-budget-controller.ts";
 import { useWorkspaceDeleteController } from "./use-workspace-delete-controller.ts";
-import { useWorkspaceImageReleaseController } from "./use-workspace-image-release-controller.ts";
 import { useWorkspaceLaunchController } from "./use-workspace-launch-controller.ts";
 import { useWorkspaceModelsController } from "./use-workspace-models-controller.ts";
 import { useWorkspaceRenewalController } from "./use-workspace-renewal-controller.ts";
-import { useWorkspaceRuntimeImageReplacementController } from "./use-workspace-runtime-image-replacement-controller.ts";
 import { useWorkspaceSecretController } from "./use-workspace-secret-controller.ts";
 import { useWalletAdjustmentController } from "./use-wallet-adjustment-controller.ts";
 
@@ -182,8 +178,6 @@ export function useConsoleController() {
     walletAdjustmentCapability.reset();
     workspaceDeleteCapability.reset();
     workspaceRenewalCapability.reset();
-    workspaceImageReleaseCapability.reset();
-    workspaceRuntimeImageReplacementCapability.reset();
     workspaceBudgetCapability.reset();
     gatewayUsageCapability.reset();
     billingCapability.reset();
@@ -406,30 +400,6 @@ export function useConsoleController() {
     mutationError
   });
   const walletAdjustment: WalletAdjustmentController = walletAdjustmentCapability;
-
-  const workspaceImageReleaseCapability = useWorkspaceImageReleaseController({
-    session,
-    workspaceId: operatorResourceRead.selectedWorkspaceId,
-    policy: operatorResourceRead.imagePolicy.value,
-    currentMutationRequest,
-    refreshPolicy: operatorResourceRead.refreshPolicy,
-    refreshPreview: operatorResourceRead.refreshPreview,
-    flash,
-    mutationError
-  });
-  const workspaceImageRelease: WorkspaceImageReleaseController = workspaceImageReleaseCapability;
-
-  const workspaceRuntimeImageReplacementCapability = useWorkspaceRuntimeImageReplacementController({
-    session,
-    workspaceId: operatorResourceRead.selectedWorkspaceId,
-    preview: operatorResourceRead.imagePreview.value,
-    currentMutationRequest,
-    refreshWorkspace: operatorResourceRead.refreshWorkspace,
-    refreshPreview: operatorResourceRead.refreshPreview,
-    flash,
-    mutationError
-  });
-  const workspaceRuntimeImageReplacement: WorkspaceRuntimeImageReplacementController = workspaceRuntimeImageReplacementCapability;
 
   const billingCapability = useBillingController({
     route: route?.kind === "customer.overview"
@@ -784,8 +754,6 @@ export function useConsoleController() {
     operatorAccounts,
     operatorAnnouncements,
     operatorResourceRead,
-    workspaceImageRelease,
-    workspaceRuntimeImageReplacement,
     walletAdjustmentOperation: walletAdjustment.operation,
     setWalletAdjustmentOperation: walletAdjustment.setOperation,
     submitWalletAdjustment: walletAdjustment.submit,

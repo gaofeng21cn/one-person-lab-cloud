@@ -62,8 +62,8 @@ API for a CloudIdentity session.
 A response commits only for its current Session, route, request generation and
 selected identity. Pagination parameters and source identity must match.
 Independent sources settle independently: Runtime failure cannot replace
-Workspace detail; Usage failure cannot hide a valid Summary; operator detail
-and replacement-preview errors cannot overwrite each other.
+Workspace detail; Usage failure cannot hide a valid Summary; operator resource
+page and selected Workspace detail settle independently.
 
 | Query owner | Scope and completion |
 | --- | --- |
@@ -73,7 +73,7 @@ and replacement-preview errors cannot overwrite each other.
 | Gateway Usage | Searchable/paginated Key query, independently selected Key, period/committed Usage page and separate Usage/Summary generations; only authoritative single-Key absence clears an established selection |
 | Billing / Receipt | Ledger list/detail, selected Receipt and opaque cursor stack; Overview requests 3 without adopting Billing cursor state, Billing requests 20 |
 | Workspace Settlement Trend | One owner read of the fixed 14-day Workspace wallet-movement window; Console renders the returned days and totals without re-bucketing, keeps unconfirmed, in-flight, unattributed and out-of-window counts separate from them, and presents an incomplete window as its confirmed part instead of a zero or absent charge |
-| Operator Resource Read | Resource page, selected Workspace detail, image policy and replacement preview; each projection has independent identity/freshness and failure settlement |
+| Operator Resource Read | Resource page and selected Workspace detail; each projection has independent identity/freshness and failure settlement |
 
 The root owns the independent Workspace Budget lease and starts budget lookup
 only after accepting Workspace detail and its Key identity. Renewal readback
@@ -100,6 +100,15 @@ values remain unavailable. Presenters do not decode APIs, calculate billing,
 poll, retain Secrets or own command state. Workspace and Gateway Usage page
 components compose these projections; `CustomerPages` remains their route
 composition layer.
+
+The retained CP image-policy, replacement-preview and replacement-result reads
+are removed from Console API adapters and BFF/internal Cloud routes. The image
+activation and replacement command controllers and controls are also removed.
+The two direct CP operator GETs remain for Instance maintenance, original Launch
+recovery and history consumers, as specified by the [image lifecycle](workspace-images.md);
+their retention does not expose an image action or read through Console. The direct
+CP policy-activation writer also remains for original Launch recovery; its Console
+controller is removed.
 
 ## Commands And Authoritative Completion
 

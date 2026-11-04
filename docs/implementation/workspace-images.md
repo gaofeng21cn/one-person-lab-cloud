@@ -1,53 +1,79 @@
 # Workspace Image Lifecycle
 
-This reference owns the source-level image catalog, activation and existing
-Workspace replacement behavior. [Runtime access](workspace-runtime-access.md)
-owns routing and credentials; [Launch recovery](workspace-launch-recovery.md)
-owns image revision while a purchase is still non-terminal.
+This reference owns the retained Control Plane image-policy and replacement
+history reads, their safety consumers and Fabric's image capability. The source
+withdrawal is based on `173d1afbcbd3dc120f0839707c9e69eb2ba2787b`;
+[status](../status.md#retained-runtime-image-command-withdrawal-2026-11-04)
+separates that source change from verification and installed adoption.
+[Runtime access](workspace-runtime-access.md) owns routing and credentials;
+[Launch recovery](workspace-launch-recovery.md) owns image revision while an
+original purchase is still non-terminal.
 
-Instance injects a schema-1 `OPL_WORKSPACE_IMAGE_RELEASES_JSON` catalog whose
-unique entries are immutable `repository@sha256` references and which must
-contain the installation's `OPL_WORKSPACE_IMAGE`. Control Plane exposes that
-catalog plus one persisted active release. An administrator changes the active
-release through `POST /api/operator/workspace-image-release-activations` with
-an expected revision, idempotency key, reason, and audit identity. A new Launch
-copies the active image into its immutable launch descriptor; changing the
-policy does not rewrite existing Launches or Runtimes.
+## Retained CP reads and withdrawn commands
 
-For an already succeeded and running Workspace whose Runtime still exists,
-including an unready Runtime that needs image recovery, Control Plane exposes a
-separate administrator-only Runtime image replacement operation:
-`POST /api/operator/workspaces/{workspaceId}/runtime-image-replacements` creates
-an asynchronous operation and the matching `GET` route returns its persisted
-status. The request fixes an immutable target from the approved catalog, independently
-of subsequent active-release changes. Preview accepts the optional
-`replacementImageDigest` query; omitting it selects the active release for the
-existing Console caller. Tags and images outside the catalog are rejected. Control Plane resolves the successful Launch and live
-Runtime using a Workspace-scoped successful-Launch query and persists the request
-before dispatching a typed Fabric capability. Current paid entitlement, including
-confirmed renewal and the current Key, is checked again before dispatch. Expired,
-suspended and deleting Workspaces cannot be restarted by an image update.
-Fabric independently requires the target to remain in its injected release
-catalog, rechecks the full account/Workspace/Compute/CBS/Attachment/Runtime
-owner chain, shares the persisted Runtime lock with power and deletion, uses its Runtime
-operation CAS and provider-mutation journal, and
-performs a provider-specific image-only mutation. Tencent/TKE patches only the
-existing `workspace` container image on the existing Deployment using a
-`resourceVersion` compare-and-swap. Ready readback requires the current observed
-generation and Ready Pods reporting the target digest. A stale ready Pod cannot
-complete an update. The currently supported replacement adapter is Tencent/TKE;
-Local-Docker retains its existing Launch and power capabilities. No Compute, CBS, Attachment,
-Secret, Launch, billing Receipt, Runtime service identity, or Workspace URL is
-recreated or rewritten. Console presents activation and existing-Workspace
-replacement as two separate commands. The Cloud source and portable image own
-these APIs and capabilities; `opl-instance-medopl` still owns the protected
-catalog values, production deployment authorization, TKE readback, rollback,
-and receipts.
+The source change removes CP Runtime image replacement creation, preview,
+dispatch and retry/worker execution, and their Console controllers, API/DTOs
+and BFF/internal Cloud adapters. Replacement creation/preview routes are removed. Worker
+startup, `OPL_WORKSPACE_RUNTIME_IMAGE_REPLACEMENT_WORKER_ENABLED`, the exclusive
+CP Fabric client/service wrapper leave together.
+Console no longer reads image policy, preview or replacement results through
+either its legacy API adapter or the BFF.
 
-A failed pre-mutation read can resume the original operation. A lost mutation
-response is resolved through owner readback and the same journal, without a
-blind second write. A superseded operation cannot reapply its old target after
-a later rollback. Started and terminal audit evidence use distinct identities.
+The operator-authenticated policy activation POST and its atomic revision/audit
+store remain with the original Launch recovery consumer. A persisted active policy
+can differ from a newer installed default: changing installation configuration alone
+does not advance it. The existing activation command selects an approved catalog
+release with expected-revision and idempotency checks before the original Launch
+can authorize that image. This preserves the current owner and authorization rule;
+it does not restore existing-Workspace replacement or a Console controller. Retire
+this writer only after the original recovery selection authority migrates.
+
+Two direct, operator-authenticated CP reads remain:
+
+- `GET /api/operator/workspace-runtime-image-policy` serves the validated catalog
+  and retained active policy. Instance registry retention and node-cache
+  retirement still consume it; original Launch image-revision recovery still
+  consumes the policy/catalog validation. The schema-1
+  `OPL_WORKSPACE_IMAGE_RELEASES_JSON` catalog and immutable image validation stay.
+- `GET /api/operator/workspaces/{workspaceId}/runtime-image-replacements/{operationId}`
+  reads an existing persisted operation under its Workspace identity. It neither
+  accepts nor dispatches a replacement.
+
+`workspace_runtime_image_history.go` retains the operation decoder and response
+projection; invalid history decoding still fails the GET. Pending-transition
+detection recognizes valid `started` image operations, and resource reconciliation
+still blocks on image-action rows marked `started`. Policy decoding remains in
+`workspace_image_release_policy.go`. Original operations, policy records,
+audits and schema remain unchanged. Failed historical records do not acquire a
+new CP retry path. Original Launch revision recovery remains a separate live
+caller and is not retired by removing existing-Workspace replacement.
+
+Instance #675 has merged its rollout/rollback and policy-mutation caller
+withdrawal, with 2/2 CI checks SUCCESS; [status](../status.md#retained-runtime-image-command-withdrawal-2026-11-04)
+records its exact merge/head/run evidence. This removes configured workflow/tool callers at source; it is not a deployment
+of the Cloud version that removes these entrypoints. Check in-flight legacy
+executions before that Cloud adoption through the existing Instance process. Source verification and installed adoption are separate evidence layers.
+The shared Instance image client and its retention/node-cache readers remain.
+Source cleanup does not prove production adoption, zero traffic, archive absence
+or the disposition of later operations or other installations. Open acceptance
+belongs to [roadmap](../roadmap.md#retained-code-removal-review-2026-11-03).
+
+## Fabric capability remains
+
+Fabric retains its own replacement API, provider adapter, Runtime operation CAS,
+provider-mutation journal, lock and authoritative readback. Its catalog admission
+and account/Workspace/Compute/CBS/Attachment/Runtime ownership checks remain.
+Tencent/TKE replaces only the existing `workspace` container image on the existing
+Deployment with a `resourceVersion` compare-and-swap; completion requires current
+observed generation and Ready Pods reporting the target digest. A stale Ready Pod
+cannot establish completion. Local-Docker retains its existing Launch and power
+capabilities. Removing the CP caller does not retire Fabric provider execution.
+
+Fabric resolves an uncertain mutation response through the original journal and
+owner readback. It does not recreate Compute, CBS, Attachment, Secret, Launch,
+billing Receipt, Runtime service identity or Workspace URL for an image-only
+replacement. Instance continues to own protected catalog values, deployment
+adoption, rollback authorization and receipts.
 
 ## Node cache retirement
 

@@ -26,15 +26,12 @@ type OperatorReader interface {
 	OperatorAccounts(context.Context, string, int, int) ([]byte, error)
 	OperatorWorkspaces(context.Context, string, int, int) ([]byte, error)
 	OperatorWorkspace(context.Context, string, string) ([]byte, error)
-	OperatorWorkspaceRuntimeImagePolicy(context.Context, string) ([]byte, error)
 	OperatorAnnouncements(context.Context, string, int, int) ([]byte, error)
-	OperatorWorkspaceRuntimeImageReplacementPreview(context.Context, string, string, string) ([]byte, error)
 	OperatorHealth(context.Context, string) ([]byte, error)
 	OperatorRuntimeObservations(context.Context, string) ([]byte, error)
 	OperatorReconciliation(context.Context, string, int, int) ([]byte, error)
 	OperatorWorkspaceLaunchRecovery(context.Context, string, string) ([]byte, error)
 	OperatorWalletAdjustment(context.Context, string, string) ([]byte, error)
-	OperatorWorkspaceRuntimeImageReplacement(context.Context, string, string, string) ([]byte, error)
 	OperatorApplicationDeployment(context.Context, string, string) ([]byte, error)
 	OperatorRegistryRepositories(context.Context, string, string) ([]byte, error)
 	OperatorRegistryTags(context.Context, string, string, string) ([]byte, error)
@@ -51,25 +48,19 @@ const (
 // operator fact; a tenant administrator is denied it.
 const operatorPrivilegeAction = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEPUBLISHERNAMESPACE
 
-var (
-	errInvalidOperatorPage = errors.New("invalid operator pagination")
-	errInvalidOperatorRead = errors.New("invalid operator read")
-)
+var errInvalidOperatorPage = errors.New("invalid operator pagination")
 
 func (s *Server) registerOperatorRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v2/operator/overview", s.operatorReadHandler("overview", "control-plane"))
 	mux.HandleFunc("GET /api/v2/operator/accounts", s.operatorReadHandler("accounts", "control-plane+sub2api"))
 	mux.HandleFunc("GET /api/v2/operator/workspaces", s.operatorReadHandler("workspaces", "control-plane+fabric+sub2api"))
 	mux.HandleFunc("GET /api/v2/operator/workspaces/{workspaceId}", s.operatorReadHandler("workspace", "control-plane+fabric+ledger"))
-	mux.HandleFunc("GET /api/v2/operator/workspace-runtime-image-policy", s.operatorReadHandler("policy", "control-plane"))
 	mux.HandleFunc("GET /api/v2/operator/announcements", s.operatorReadHandler("announcements", "control-plane"))
-	mux.HandleFunc("GET /api/v2/operator/workspaces/{workspaceId}/runtime-image-replacements/preview", s.operatorReadHandler("preview", "control-plane+fabric"))
 	mux.HandleFunc("GET /api/v2/operator/health", s.operatorReadHandler("Health", "control-plane"))
 	mux.HandleFunc("GET /api/v2/operator/runtime-observations", s.operatorReadHandler("RuntimeObservations", "control-plane+fabric"))
 	mux.HandleFunc("GET /api/v2/operator/reconciliation", s.operatorReadHandler("Reconciliation", "control-plane"))
 	mux.HandleFunc("GET /api/v2/operator/workspace-launches/{operationId}/recovery", s.operatorReadHandler("WorkspaceLaunchRecovery", ""))
 	mux.HandleFunc("GET /api/v2/operator/wallet-adjustments/{operationId}", s.operatorReadHandler("WalletAdjustment", ""))
-	mux.HandleFunc("GET /api/v2/operator/workspaces/{workspaceId}/runtime-image-replacements/{operationId}", s.operatorReadHandler("WorkspaceRuntimeImageReplacement", ""))
 	mux.HandleFunc("GET /api/v2/operator/application-deployments/{operationId}", s.operatorReadHandler("ApplicationDeployment", ""))
 	mux.HandleFunc("GET /api/v2/operator/registry/repositories", s.operatorReadHandler("RegistryRepositories", ""))
 	mux.HandleFunc("GET /api/v2/operator/registry/tags/{namespace}/{repository}", s.operatorReadHandler("RegistryTags", ""))
@@ -90,7 +81,6 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 			return
 		}
 		page, pageSize := 1, operatorDefaultPageSize
-		replacementImageDigest := ""
 		switch kind {
 		case "accounts", "workspaces", "announcements", "Reconciliation":
 			if page, pageSize, err = operatorPage(r); err != nil {
@@ -109,15 +99,6 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 					return
 				}
 			}
-		case "preview":
-			if r.ContentLength != 0 {
-				writePublisherError(w, r, 400, "invalid_operator_read", "only the declared operator read is accepted")
-				return
-			}
-			if replacementImageDigest, err = operatorReplacementImageDigest(r); err != nil {
-				writePublisherError(w, r, 400, "invalid_operator_read", "only the declared operator read is accepted")
-				return
-			}
 		default:
 			if r.URL.RawQuery != "" || r.ContentLength != 0 {
 				writePublisherError(w, r, 400, "invalid_operator_read", "only the declared operator read is accepted")
@@ -125,7 +106,7 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 			}
 		}
 		workspaceID := ""
-		if kind == "workspace" || kind == "preview" {
+		if kind == "workspace" {
 			workspaceID = strings.TrimSpace(r.PathValue("workspaceId"))
 			if workspaceID == "" || workspaceID != r.PathValue("workspaceId") {
 				writePublisherError(w, r, 400, "invalid_workspace_id", "Workspace id is required")
@@ -149,7 +130,7 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 			writePublisherIdentityError(w, r, err)
 			return
 		}
-		raw, err := s.operatorRead(ctx, kind, caller.SessionID, workspaceID, replacementImageDigest, page, pageSize, r)
+		raw, err := s.operatorRead(ctx, kind, caller.SessionID, workspaceID, page, pageSize, r)
 		if err != nil {
 			writeOwnerCallFailure(w, r, err)
 			return
@@ -164,7 +145,7 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 	}
 }
 
-func (s *Server) operatorRead(ctx context.Context, kind, session, workspaceID, replacementImageDigest string, page, pageSize int, r *http.Request) ([]byte, error) {
+func (s *Server) operatorRead(ctx context.Context, kind, session, workspaceID string, page, pageSize int, r *http.Request) ([]byte, error) {
 	switch kind {
 	case "overview":
 		return s.operator.OperatorOverview(ctx, session)
@@ -174,12 +155,8 @@ func (s *Server) operatorRead(ctx context.Context, kind, session, workspaceID, r
 		return s.operator.OperatorWorkspaces(ctx, session, page, pageSize)
 	case "workspace":
 		return s.operator.OperatorWorkspace(ctx, session, workspaceID)
-	case "policy":
-		return s.operator.OperatorWorkspaceRuntimeImagePolicy(ctx, session)
 	case "announcements":
 		return s.operator.OperatorAnnouncements(ctx, session, page, pageSize)
-	case "preview":
-		return s.operator.OperatorWorkspaceRuntimeImageReplacementPreview(ctx, session, workspaceID, replacementImageDigest)
 	case "Health":
 		return s.operator.OperatorHealth(ctx, session)
 	case "RuntimeObservations":
@@ -190,8 +167,6 @@ func (s *Server) operatorRead(ctx context.Context, kind, session, workspaceID, r
 		return s.operator.OperatorWorkspaceLaunchRecovery(ctx, session, r.PathValue("operationId"))
 	case "WalletAdjustment":
 		return s.operator.OperatorWalletAdjustment(ctx, session, r.PathValue("operationId"))
-	case "WorkspaceRuntimeImageReplacement":
-		return s.operator.OperatorWorkspaceRuntimeImageReplacement(ctx, session, r.PathValue("workspaceId"), r.PathValue("operationId"))
 	case "ApplicationDeployment":
 		return s.operator.OperatorApplicationDeployment(ctx, session, r.PathValue("operationId"))
 	case "RegistryRepositories":
@@ -201,27 +176,6 @@ func (s *Server) operatorRead(ctx context.Context, kind, session, workspaceID, r
 	default:
 		return nil, status.Error(codes.Internal, "unknown operator read")
 	}
-}
-
-// operatorReplacementImageDigest admits only the optional target the retained
-// preview writer itself reads. The image catalog membership decision stays with
-// the owner; the BFF only refuses undeclared selectors.
-func operatorReplacementImageDigest(r *http.Request) (string, error) {
-	query, err := url.ParseQuery(r.URL.RawQuery)
-	if err != nil {
-		return "", errInvalidOperatorRead
-	}
-	digest := ""
-	for key, values := range query {
-		if key != "replacementImageDigest" || len(values) != 1 {
-			return "", errInvalidOperatorRead
-		}
-		digest = values[0]
-		if digest == "" || digest != strings.TrimSpace(digest) || len(digest) > 512 {
-			return "", errInvalidOperatorRead
-		}
-	}
-	return digest, nil
 }
 
 func operatorPage(r *http.Request) (int, int, error) {

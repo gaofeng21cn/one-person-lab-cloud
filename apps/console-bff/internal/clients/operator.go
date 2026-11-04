@@ -34,20 +34,8 @@ func (c *Clients) OperatorWorkspace(ctx context.Context, session, workspaceID st
 	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, "/internal/cloud/operator/workspaces/"+url.PathEscape(workspaceID), "", operatorReadMaximumBytes)
 }
 
-func (c *Clients) OperatorWorkspaceRuntimeImagePolicy(ctx context.Context, session string) ([]byte, error) {
-	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, "/internal/cloud/operator/workspace-runtime-image-policy", "", operatorReadMaximumBytes)
-}
-
 func (c *Clients) OperatorAnnouncements(ctx context.Context, session string, page, pageSize int) ([]byte, error) {
 	path := "/internal/cloud/operator/announcements?" + url.Values{"page": {strconv.Itoa(page)}, "pageSize": {strconv.Itoa(pageSize)}}.Encode()
-	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
-}
-
-func (c *Clients) OperatorWorkspaceRuntimeImageReplacementPreview(ctx context.Context, session, workspaceID, replacementImageDigest string) ([]byte, error) {
-	path := "/internal/cloud/operator/workspaces/" + url.PathEscape(workspaceID) + "/runtime-image-replacements/preview"
-	if replacementImageDigest != "" {
-		path += "?" + url.Values{"replacementImageDigest": {replacementImageDigest}}.Encode()
-	}
 	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
 }
 
@@ -73,11 +61,6 @@ func (c *Clients) OperatorWorkspaceLaunchRecovery(ctx context.Context, session s
 
 func (c *Clients) OperatorWalletAdjustment(ctx context.Context, session string, operationId string) ([]byte, error) {
 	path := "/internal/cloud/operator/wallet-adjustments/" + url.PathEscape(operationId)
-	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
-}
-
-func (c *Clients) OperatorWorkspaceRuntimeImageReplacement(ctx context.Context, session string, workspaceId, operationId string) ([]byte, error) {
-	path := "/internal/cloud/operator/workspaces/" + url.PathEscape(workspaceId) + "/runtime-image-replacements/" + url.PathEscape(operationId)
 	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
 }
 

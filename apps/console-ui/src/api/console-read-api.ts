@@ -38,9 +38,6 @@ import type {
   OperatorReconciliationPageDTO,
   OperatorWorkspaceDTO,
   OperatorWorkspacePageDTO,
-  OperatorWorkspaceRuntimeImagePolicyDTO,
-  OperatorWorkspaceRuntimeImagePreviewDTO,
-  WorkspaceRuntimeImageReplacementDTO,
   WalletAdjustmentOperationDTO,
   WalletAdjustmentRecoveryRequest,
   WalletAdjustmentRequest,
@@ -430,50 +427,6 @@ export function getOperatorWorkspaces(page = 1, pageSize = 20, signal?: AbortSig
 
 export function getOperatorWorkspace(workspaceId: string, signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorWorkspaceDTO>> {
   return sourceGet<OperatorWorkspaceDTO>(`${operatorReadRoute(cloud)}/workspaces/${encodeURIComponent(workspaceId)}`, signal);
-}
-
-export function getOperatorWorkspaceRuntimeImagePolicy(signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorWorkspaceRuntimeImagePolicyDTO>> {
-  return sourceGet<OperatorWorkspaceRuntimeImagePolicyDTO>(`${operatorReadRoute(cloud)}/workspace-runtime-image-policy`, signal);
-}
-
-export function activateOperatorWorkspaceImageRelease(
-  releaseVersion: string,
-  expectedRevision: number,
-  reason: string,
-  csrfToken: string,
-  idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperatorWorkspaceRuntimeImagePolicyDTO> {
-  return postJson<unknown>(
-    operatorWriteRoute(cloud, "/workspace-image-release-activations"),
-    { releaseVersion, expectedRevision, reason }, csrfToken, idempotencyKey
-  ).then(decodeDto<OperatorWorkspaceRuntimeImagePolicyDTO>);
-}
-
-export function getOperatorWorkspaceRuntimeImageReplacementPreview(workspaceId: string, signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorWorkspaceRuntimeImagePreviewDTO>> {
-  return sourceGet<OperatorWorkspaceRuntimeImagePreviewDTO>(`${operatorReadRoute(cloud)}/workspaces/${encodeURIComponent(workspaceId)}/runtime-image-replacements/preview`, signal);
-}
-
-export function createOperatorWorkspaceRuntimeImageReplacement(
-  workspaceId: string,
-  replacementImageDigest: string,
-  reason: string,
-  csrfToken: string,
-  idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<WorkspaceRuntimeImageReplacementDTO> {
-  return postJson<unknown>(
-    operatorWriteRoute(cloud, `/workspaces/${encodeURIComponent(workspaceId)}/runtime-image-replacements`),
-    { replacementImageDigest, reason }, csrfToken, idempotencyKey
-  ).then(decodeDto<WorkspaceRuntimeImageReplacementDTO>);
-}
-
-export function getOperatorWorkspaceRuntimeImageReplacement(
-  workspaceId: string,
-  operationId: string,
-  signal?: AbortSignal,
-  cloud: boolean = cloudIdentity
-): Promise<WorkspaceRuntimeImageReplacementDTO> {
-  return getJson<unknown>(
-    `${operatorReadRoute(cloud)}/workspaces/${encodeURIComponent(workspaceId)}/runtime-image-replacements/${encodeURIComponent(operationId)}`,
-    { signal }
-  ).then(decodeDto<WorkspaceRuntimeImageReplacementDTO>);
 }
 
 export function getOperatorReconciliation(page = 1, pageSize = 20, signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorReconciliationPageDTO>> {
