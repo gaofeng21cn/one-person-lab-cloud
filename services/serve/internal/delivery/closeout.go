@@ -18,7 +18,7 @@ import (
 
 // Called under the runtime's owner lock before admitting or executing a start.
 // An unconfirmed termination also fences starts: its external effect is unknown.
-func refuseRetiredRuntime(ctx context.Context, tx *sql.Tx, runtimeID string) error {
+func refuseRetiredRuntime(ctx context.Context, tx rowQueryer, runtimeID string) error {
 	var retiring bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM serve.agent_runtime_actions WHERE runtime_instance_id=$1 AND action='terminate')`, runtimeID).Scan(&retiring); err != nil {
 		return dbError(err)
@@ -29,117 +29,185 @@ func refuseRetiredRuntime(ctx context.Context, tx *sql.Tx, runtimeID string) err
 	return nil
 }
 
-// Retire through the same conditional route writer as activation. A replay of
-// an already cleared route has no new generation or route effect.
-func (s *Service) retireRuntimeRoute(ctx context.Context, deploy *persistedRuntime) error {
+// A Workspace deletion keeps its original reservation identity, even after Serve
+// replaces the application. Freeze every descendant under the same owner lock:
+// no caller needs to copy Serve's current selection into Workspace state.
+type runtimeRetirement struct {
+	deploy  *persistedRuntime
+	started bool
+}
+
+func (s *Service) prepareWorkspaceRetirement(ctx context.Context, command *api.RuntimeStopCommand) ([]runtimeRetirement, error) {
+	var workspace string
+	if err := s.DB.QueryRowContext(ctx, `SELECT workspace_id FROM serve.agent_runtime_instances WHERE id=$1 AND deployment_id=$2`, command.GetRuntimeInstanceId(), command.GetDeploymentId()).Scan(&workspace); err != nil {
+		return nil, dbError(err)
+	}
+	if command.GetWorkspaceId() != "" && command.GetWorkspaceId() != workspace {
+		return nil, status.Error(codes.FailedPrecondition, "retirement identifies another Workspace")
+	}
+	if err := s.authorize(ctx, command.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RETIRERUNTIME, workspace); err != nil {
+		return nil, err
+	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return dbError(err)
+		return nil, dbError(err)
 	}
 	defer tx.Rollback()
-	workspace := deploy.command.GetWorkspaceId()
 	if err = lockWorkspace(ctx, tx, workspace); err != nil {
-		return dbError(err)
+		return nil, dbError(err)
 	}
+	if err = s.authorizeWorkspaceAt(ctx, tx, command.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RETIRERUNTIME, workspace, false); err != nil {
+		return nil, err
+	}
+	rows, err := tx.QueryContext(ctx, `WITH RECURSIVE lineage(id) AS (
+  SELECT id FROM serve.agent_deployments WHERE id=$2 AND workspace_id=$1 AND previous_deployment_id IS NULL
+  UNION
+  SELECT d.id FROM serve.agent_deployments d JOIN lineage p ON d.previous_deployment_id=p.id WHERE d.workspace_id=$1
+ )
+ SELECT d.id,d.runtime_instance_id,d.operation_id,COALESCE(o.tenant_id,''),o.actor_id,o.request_id,
+ r.workspace_id,r.fabric_resource_set_id,r.data_attachment_contract,
+ EXISTS(SELECT 1 FROM lineage WHERE id=d.id),
+ EXISTS(SELECT 1 FROM serve.agent_runtime_actions WHERE runtime_instance_id=r.id AND action='start')
+ FROM serve.agent_deployments d
+ JOIN serve.agent_runtime_instances r ON r.id=d.runtime_instance_id AND r.deployment_id=d.id
+ JOIN serve.operations o ON o.id=d.operation_id
+ WHERE d.workspace_id=$1 ORDER BY (d.id=$2),d.execution_epoch DESC,d.id`, workspace, command.GetDeploymentId())
+	if err != nil {
+		return nil, dbError(err)
+	}
+	var targets []runtimeRetirement
+	var original *persistedRuntime
+	for rows.Next() {
+		deploy := &persistedRuntime{command: &api.RuntimeDeployCommand{Context: command.GetContext(), WorkspaceId: workspace}}
+		var runtimeWorkspace string
+		var attachment []byte
+		var inLineage, started bool
+		if err = rows.Scan(&deploy.command.DeploymentId, &deploy.command.RuntimeInstanceId, &deploy.operationID, &deploy.tenantID, &deploy.actorID, &deploy.requestID, &runtimeWorkspace, &deploy.command.ResourceSetId, &attachment, &inLineage, &started); err != nil {
+			rows.Close()
+			return nil, dbError(err)
+		}
+		var binding struct {
+			AttachmentID string `json:"attachmentId"`
+		}
+		if !inLineage || runtimeWorkspace != workspace || deploy.tenantID != command.GetContext().GetScope().GetTenant().GetTenantId() || json.Unmarshal(attachment, &binding) != nil || binding.AttachmentID == "" {
+			rows.Close()
+			return nil, status.Error(codes.FailedPrecondition, "Workspace delivery does not belong to the original retirement lineage")
+		}
+		deploy.command.DataAttachmentId = binding.AttachmentID
+		if deploy.command.GetDeploymentId() == command.GetDeploymentId() && deploy.command.GetRuntimeInstanceId() == command.GetRuntimeInstanceId() {
+			original = deploy
+		}
+		targets = append(targets, runtimeRetirement{deploy: deploy, started: started})
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		return nil, dbError(err)
+	}
+	rows.Close()
+	if original == nil {
+		return nil, status.Error(codes.FailedPrecondition, "original retirement reservation is unavailable")
+	}
+	if command.GetRetainedDataAttachmentId() != "" && original.command.GetDataAttachmentId() != command.GetRetainedDataAttachmentId() {
+		return nil, status.Error(codes.FailedPrecondition, "retirement does not identify the reserved attachment")
+	}
+	var count int
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM serve.agent_deployments WHERE workspace_id=$1`, workspace).Scan(&count); err != nil {
+		return nil, dbError(err)
+	}
+	if count != len(targets) {
+		return nil, status.Error(codes.FailedPrecondition, "Workspace retirement has an unresolved deployment identity")
+	}
+	for _, target := range targets {
+		if target.deploy.command.GetResourceSetId() != original.command.GetResourceSetId() || target.deploy.command.GetDataAttachmentId() != original.command.GetDataAttachmentId() {
+			return nil, status.Error(codes.FailedPrecondition, "retirement lineage differs from the original resources")
+		}
+		exact := proto.Clone(command).(*api.RuntimeStopCommand)
+		exact.RuntimeInstanceId, exact.DeploymentId = target.deploy.command.GetRuntimeInstanceId(), target.deploy.command.GetDeploymentId()
+		if err = s.recordRuntimeRetirement(ctx, tx, exact, target.deploy); err != nil {
+			return nil, err
+		}
+	}
+	// Validate the selected route before clearing it or touching a provider. A
+	// different delivery is a conflict, never evidence of application absence.
 	if err = lockRouteBinding(ctx, tx, workspace); err != nil {
-		return dbError(err)
+		return nil, dbError(err)
 	}
 	binding, err := ensureRouteBinding(ctx, tx, workspace)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if !binding.TargetExecutionResource.Valid {
-		return nil
+	if binding.TargetExecutionResource.Valid {
+		var selected *persistedRuntime
+		for _, target := range targets {
+			if binding.TargetExecutionResource.String == target.deploy.command.GetRuntimeInstanceId() && binding.TargetRuntimeInstance.String == target.deploy.command.GetRuntimeInstanceId() && binding.TargetDeployment.String == target.deploy.command.GetDeploymentId() {
+				selected = target.deploy
+			}
+		}
+		if selected == nil {
+			return nil, status.Error(codes.FailedPrecondition, "the Workspace route selects another original runtime")
+		}
+		if _, err = commitRouteSwitchTx(ctx, tx, routeSwitchPlan{
+			workspaceID: workspace, operationID: stableID("op_", "runtime_retire", original.command.GetRuntimeInstanceId(), original.operationID),
+			actionKind: "retire", executionEpoch: binding.AcceptedExecutionEpoch + 1,
+			expectedRouteGeneration: binding.RouteGeneration, expectedRouteRevision: binding.RouteRevision.String,
+		}); err != nil {
+			return nil, err
+		}
 	}
-	if binding.TargetRuntimeInstance.Valid && binding.TargetRuntimeInstance.String != deploy.command.GetRuntimeInstanceId() {
-		return status.Error(codes.FailedPrecondition, "the Workspace route selects another original runtime")
+	if err = tx.Commit(); err != nil {
+		return nil, dbError(err)
 	}
-	_, err = commitRouteSwitchTx(ctx, tx, routeSwitchPlan{
-		workspaceID: workspace, operationID: stableID("op_", "runtime_retire", deploy.command.GetRuntimeInstanceId(), deploy.operationID),
-		actionKind: "retire", executionEpoch: binding.AcceptedExecutionEpoch + 1,
-		expectedRouteGeneration: binding.RouteGeneration, expectedRouteRevision: binding.RouteRevision.String,
-	})
-	if err != nil {
-		return err
+	// Decode every frozen start before provider effects. The original operation is
+	// completed last, so a failed successor cannot be reported as deletion success.
+	for i := range targets {
+		if targets[i].started {
+			expected := targets[i].deploy
+			recorded, err := s.persistedRuntimeCommand(ctx, expected.command.GetRuntimeInstanceId(), expected.command.GetDeploymentId())
+			if err != nil {
+				return nil, err
+			}
+			if recorded.command.GetWorkspaceId() != workspace || recorded.command.GetResourceSetId() != expected.command.GetResourceSetId() || recorded.command.GetDataAttachmentId() != expected.command.GetDataAttachmentId() {
+				return nil, status.Error(codes.DataLoss, "recorded runtime command differs from its retirement resources")
+			}
+			recorded.command.Context = command.GetContext()
+			targets[i].deploy = recorded
+		}
 	}
-	return dbError(tx.Commit())
+	return targets, nil
 }
 
-// Freeze the exact reservation before resolving its optional start command. The
-// workspace lock drains in-flight delivery; the durable terminate action then
-// prevents late Deploy, including a start whose caller lost its response.
-func (s *Service) prepareRuntimeRetirement(ctx context.Context, command *api.RuntimeStopCommand) (*persistedRuntime, bool, error) {
-	var workspace string
-	if err := s.DB.QueryRowContext(ctx, `SELECT workspace_id FROM serve.agent_runtime_instances WHERE id=$1 AND deployment_id=$2`, command.GetRuntimeInstanceId(), command.GetDeploymentId()).Scan(&workspace); err != nil {
-		return nil, false, dbError(err)
-	}
-	if err := s.authorize(ctx, command.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RETIRERUNTIME, workspace); err != nil {
-		return nil, false, err
-	}
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, false, dbError(err)
-	}
-	defer tx.Rollback()
-	if err = lockWorkspace(ctx, tx, workspace); err != nil {
-		return nil, false, dbError(err)
-	}
-	if err = s.authorizeWorkspaceAt(ctx, tx, command.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RETIRERUNTIME, workspace, false); err != nil {
-		return nil, false, err
-	}
-	deploy := &persistedRuntime{command: &api.RuntimeDeployCommand{Context: command.GetContext(), WorkspaceId: workspace, RuntimeInstanceId: command.GetRuntimeInstanceId(), DeploymentId: command.GetDeploymentId()}}
-	var attachment []byte
-	if err = tx.QueryRowContext(ctx, `SELECT d.operation_id,COALESCE(o.tenant_id,''),o.actor_id,o.request_id,r.data_attachment_contract FROM serve.agent_runtime_instances r JOIN serve.agent_deployments d ON d.id=r.deployment_id JOIN serve.operations o ON o.id=d.operation_id WHERE r.id=$1 AND d.id=$2`, command.GetRuntimeInstanceId(), command.GetDeploymentId()).Scan(&deploy.operationID, &deploy.tenantID, &deploy.actorID, &deploy.requestID, &attachment); err != nil {
-		return nil, false, dbError(err)
-	}
-	var binding struct {
-		AttachmentID string `json:"attachmentId"`
-	}
-	if json.Unmarshal(attachment, &binding) != nil || (command.GetRetainedDataAttachmentId() != "" && binding.AttachmentID != command.GetRetainedDataAttachmentId()) {
-		return nil, false, status.Error(codes.FailedPrecondition, "retirement does not identify the reserved attachment")
-	}
+func (s *Service) recordRuntimeRetirement(ctx context.Context, tx *sql.Tx, command *api.RuntimeStopCommand, deploy *persistedRuntime) error {
 	operationID := stableID("op_", "runtime_retire", command.GetRuntimeInstanceId(), deploy.operationID)
 	var kind, resource, requestID string
-	err = tx.QueryRowContext(ctx, `SELECT kind,resource_id,request_id FROM serve.operations WHERE id=$1`, operationID).Scan(&kind, &resource, &requestID)
+	err := tx.QueryRowContext(ctx, `SELECT kind,resource_id,request_id FROM serve.operations WHERE id=$1`, operationID).Scan(&kind, &resource, &requestID)
 	if err == nil {
 		if kind != "runtime_retire" || resource != command.GetRuntimeInstanceId() || requestID != deploy.requestID {
-			return nil, false, status.Error(codes.AlreadyExists, "runtime lifecycle operation identity mismatch")
+			return status.Error(codes.AlreadyExists, "runtime lifecycle operation identity mismatch")
 		}
 	} else if errors.Is(err, sql.ErrNoRows) {
 		accepted, _ := json.Marshal(map[string]any{"runtimeInstanceId": command.GetRuntimeInstanceId(), "deploymentId": command.GetDeploymentId(), "action": "runtime_retire", "identity": []string(nil)})
 		if _, err = s.Store.CreateOperation(ctx, tx, ownerstore.OperationInput{ID: operationID, TenantID: deploy.tenantID, ActorID: deploy.actorID, Kind: "runtime_retire", ResourceID: command.GetRuntimeInstanceId(), Stage: "retirement", RequestID: deploy.requestID, AcceptedInput: accepted}); err != nil {
-			return nil, false, dbError(err)
+			return dbError(err)
 		}
 	} else {
-		return nil, false, dbError(err)
+		return dbError(err)
 	}
 	snapshot, _ := json.Marshal(map[string]string{"desired": "absent", "retainedDataAttachmentId": command.GetRetainedDataAttachmentId()})
 	actionID := stableID("act_", "terminate", command.GetRuntimeInstanceId(), deploy.operationID)
 	if _, err = tx.ExecContext(ctx, `INSERT INTO serve.agent_runtime_actions(id,runtime_instance_id,command_id,action,expected_deployment_id,input_snapshot,observation_result) VALUES($1,$2,$1,'terminate',$3,$4,'unknown') ON CONFLICT(command_id) DO NOTHING`, actionID, command.GetRuntimeInstanceId(), command.GetDeploymentId(), snapshot); err != nil {
-		return nil, false, dbError(err)
+		return dbError(err)
 	}
 	var identical bool
 	if err = tx.QueryRowContext(ctx, `SELECT input_snapshot=$2::jsonb FROM serve.agent_runtime_actions WHERE command_id=$1`, actionID, snapshot).Scan(&identical); err != nil {
-		return nil, false, dbError(err)
+		return dbError(err)
 	}
 	if !identical {
-		return nil, false, status.Error(codes.AlreadyExists, "runtime retirement differs from the original command")
+		return status.Error(codes.AlreadyExists, "runtime retirement differs from the original command")
 	}
-	var started bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM serve.agent_runtime_actions WHERE runtime_instance_id=$1 AND action='start')`, command.GetRuntimeInstanceId()).Scan(&started); err != nil {
-		return nil, false, dbError(err)
-	}
-	if err = tx.Commit(); err != nil {
-		return nil, false, dbError(err)
-	}
-	if !started {
-		return deploy, false, nil
-	}
-	deploy, err = s.persistedRuntimeCommand(ctx, command.GetRuntimeInstanceId(), command.GetDeploymentId())
-	return deploy, true, err
+	return nil
 }
 
-func refuseClosedWorkspace(ctx context.Context, tx *sql.Tx, workspace string) error {
+func refuseClosedWorkspace(ctx context.Context, tx rowQueryer, workspace string) error {
 	var closing bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM serve.operations o LEFT JOIN serve.agent_runtime_instances r ON r.id=o.resource_id WHERE o.kind='runtime_retire' AND (o.resource_id=$1 OR r.workspace_id=$1))`, workspace).Scan(&closing); err != nil {
 		return dbError(err)

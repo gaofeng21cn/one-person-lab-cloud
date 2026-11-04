@@ -3,6 +3,8 @@ package delivery_test
 import (
 	"context"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
+	"strings"
 	"testing"
 
 	"google.golang.org/grpc/codes"
@@ -207,5 +209,90 @@ func TestRuntimeRetirementRejectsALateReadyObservation(t *testing.T) {
 	read, err := service.ReadRuntime(ctx, &api.RuntimeReadbackRequest{Context: request.Context, RuntimeInstanceId: original.RuntimeInstanceId, DeploymentId: original.DeploymentId})
 	if err != nil || read.GetState() != api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_TERMINATED || read.GetApplicationAvailable() {
 		t.Fatalf("late observation changed the retired readback: %v %v", read, err)
+	}
+}
+
+// Workspace retains its original order identity after Serve upgrades the application.
+// Its deletion must close the successors without substituting that order identity.
+func TestWorkspaceRetirementAfterVersionSwitch(t *testing.T) {
+	s, request, catalog := reservationFixture(t)
+	ctx := workspaceContext()
+	next := replacementVersion(t, "cv-retire-next", strings.Repeat("2", 64))
+	catalog.versions = map[string]*api.CapabilityVersion{next.GetId(): next}
+	runtime := &runtimeForServe{}
+	s.Resources, s.Runtime = &resourcesForServe{confirmed: true}, runtime
+	first, err := s.Reserve(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Deploy(ctx, deployReserved(request, first)); err != nil {
+		t.Fatal(err)
+	}
+	update := call("tenant-alpha", false)
+	update.IdempotencyKey = "upgrade-before-delete"
+	operation, err := s.UpdateWorkspaceVersion(serveContext(), &api.UpdateWorkspaceVersionRpcRequest{
+		Context: update, WorkspaceId: request.WorkspaceId,
+		Body: &api.UpdateWorkspaceVersionRequest{CapabilityVersionId: proto.String(next.GetId()), ExpectedCurrentAgentDeploymentId: first.DeploymentId},
+	})
+	if err != nil || operation.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
+		t.Fatalf("upgrade: %v %v", operation, err)
+	}
+	successor, _, _, _ := currentDeploymentFacts(t, s, request.WorkspaceId)
+	if successor == first.DeploymentId {
+		t.Fatal("upgrade did not replace the original deployment")
+	}
+	command := &api.RuntimeStopCommand{Context: request.Context, RuntimeInstanceId: first.RuntimeInstanceId, DeploymentId: first.DeploymentId, RetainedDataAttachmentId: request.DataAttachmentId}
+	retired, err := s.Retire(ctx, command)
+	if err != nil {
+		t.Fatalf("delete after upgrade: %v", err)
+	}
+	if retired.GetResourceId() != first.RuntimeInstanceId || retired.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED || retired.GetObservationResult() != api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_CONFIRMED {
+		t.Fatalf("original retirement: %v", retired)
+	}
+	var live int
+	if err = s.DB.QueryRow(`SELECT count(*) FROM serve.agent_runtime_instances WHERE workspace_id=$1 AND status <> 'terminated'`, request.WorkspaceId).Scan(&live); err != nil || live != 0 {
+		t.Fatalf("live runtimes after deletion: %d %v", live, err)
+	}
+	generation, target := routeBinding(t, s, request.WorkspaceId)
+	if target != "" {
+		t.Fatalf("retired successor remains routed: %s", target)
+	}
+	before := len(runtime.lifecycle)
+	replay, err := s.Retire(ctx, command)
+	if err != nil || replay.GetOperationId() != retired.GetOperationId() {
+		t.Fatalf("retirement replay: %v %v", replay, err)
+	}
+	if after, _ := routeBinding(t, s, request.WorkspaceId); after != generation || len(runtime.lifecycle) != before {
+		t.Fatal("retirement replay repeated a confirmed effect")
+	}
+}
+
+func TestWorkspaceRetirementAfterDefaultAppUpgrade(t *testing.T) {
+	s, original, _, runtime, resources, gateway := nativeUpgradeFixture(t)
+	first, _ := frozenUpgradeCommand(t, s, original.GetDeploymentId())
+	request := nativeUpgradeRequest(original.GetDeploymentId(), "native-upgrade-before-delete")
+	upgraded, err := s.UpdateWorkspaceVersion(serveContext(), request)
+	if err != nil || upgraded.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
+		t.Fatalf("default App upgrade: %v %v", upgraded, err)
+	}
+	bound, keys := resources.binds, gateway.calls
+	closing := call("tenant-alpha", false)
+	closing.IdempotencyKey = "native-delete:retire_runtime"
+	result, err := s.Retire(workspaceContext(), &api.RuntimeStopCommand{Context: closing, RuntimeInstanceId: original.GetRuntimeInstanceId(), DeploymentId: original.GetDeploymentId(), RetainedDataAttachmentId: first.GetDataAttachmentId()})
+	if err != nil || result.GetResourceId() != original.GetRuntimeInstanceId() || result.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
+		t.Fatalf("default App retirement: %v %v", result, err)
+	}
+	var absent int
+	for _, event := range runtime.events {
+		if event == "absent" {
+			absent++
+		}
+	}
+	if absent != 2 || resources.binds != bound || gateway.calls != keys {
+		t.Fatalf("retirement effects: events=%v Secret binds=%d Gateway calls=%d", runtime.events, resources.binds, gateway.calls)
+	}
+	read, err := s.ReadRuntime(workspaceContext(), &api.RuntimeReadbackRequest{Context: closing, RuntimeInstanceId: original.GetRuntimeInstanceId(), DeploymentId: original.GetDeploymentId()})
+	if err != nil || read.GetState() != api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_TERMINATED || read.GetFirstFulfilledAt() == nil || read.GetNeverDeliveredConfirmed() {
+		t.Fatalf("original fulfillment was lost: %v %v", read, err)
 	}
 }

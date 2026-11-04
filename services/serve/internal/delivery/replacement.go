@@ -873,28 +873,31 @@ func (s *Service) recordRuntimeAction(ctx context.Context, id, runtimeInstanceID
 	if err != nil {
 		return false, dbError(err)
 	}
-	defer func() { _ = tx.Rollback() }()
-	// The stored snapshot is PostgreSQL jsonb, so compare it semantically in the
-	// database rather than byte-for-byte against Go's encoding of the request.
+	defer tx.Rollback()
+	confirmed, err := recordRuntimeActionTx(ctx, tx, id, runtimeInstanceID, action, expectedDeploymentID, snapshot)
+	if err != nil {
+		return false, err
+	}
+	return confirmed, dbError(tx.Commit())
+}
+
+func recordRuntimeActionTx(ctx context.Context, tx *sql.Tx, id, runtimeInstanceID, action, expectedDeploymentID string, snapshot []byte) (bool, error) {
 	var result string
 	var identical bool
-	err = tx.QueryRowContext(ctx, `SELECT observation_result,input_snapshot=$2::jsonb FROM serve.agent_runtime_actions WHERE command_id=$1 FOR UPDATE`, id, snapshot).Scan(&result, &identical)
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
+	err := tx.QueryRowContext(ctx, `SELECT observation_result,input_snapshot=$2::jsonb FROM serve.agent_runtime_actions WHERE command_id=$1 FOR UPDATE`, id, snapshot).Scan(&result, &identical)
+	if errors.Is(err, sql.ErrNoRows) {
 		if _, err = tx.ExecContext(ctx, `INSERT INTO serve.agent_runtime_actions(id,runtime_instance_id,command_id,action,expected_deployment_id,input_snapshot,observation_result) VALUES($1,$2,$1,$3,$4,$5,'unknown')`, id, runtimeInstanceID, action, expectedDeploymentID, snapshot); err != nil {
 			return false, dbError(err)
 		}
-		if err = tx.Commit(); err != nil {
-			return false, dbError(err)
-		}
 		return false, nil
-	case err != nil:
+	}
+	if err != nil {
 		return false, dbError(err)
 	}
 	if !identical {
 		return false, status.Error(codes.AlreadyExists, "runtime lifecycle action input differs from its original command")
 	}
-	return result == "confirmed", dbError(tx.Commit())
+	return result == "confirmed", nil
 }
 
 // confirmRuntimeAction records that the provider confirmed one lifecycle action.
@@ -908,68 +911,65 @@ func (s *Service) confirmRuntimeAction(ctx context.Context, id, evidence string)
 // recorded against the replacement's own identity before the provider call, so a
 // replayed switch never issues a second stop.
 func (s *Service) quiesceCurrentWriter(ctx context.Context, plan replacementPlan, current *currentDelivery, replacementDeploymentID string) error {
-	deploy, err := s.persistedRuntimeCommand(ctx, current.RuntimeID, current.DeploymentID)
-	if err != nil {
-		return err
-	}
-	deploy.command.Context = plan.call
-	target, err := s.confirmedRuntimeTarget(ctx, deploy.command)
-	if err != nil {
-		return err
-	}
-	id := stableID("stop_", replacementDeploymentID)
-	snapshot, err := json.Marshal(map[string]string{"action": "stop", "runtimeInstanceId": current.RuntimeID, "deploymentId": current.DeploymentID, "replacementDeploymentId": replacementDeploymentID})
-	if err != nil {
-		return status.Error(codes.Internal, "cannot record the replacement stop")
-	}
-	confirmed, err := s.recordRuntimeAction(ctx, id, current.RuntimeID, "stop", current.DeploymentID, snapshot)
-	if err != nil {
-		return err
-	}
-	if confirmed {
-		return nil
-	}
-	if err = s.Runtime.Lifecycle(ctx, deploy.command, target, "suspended"); err != nil {
-		return err
-	}
-	if err = s.confirmRuntimeAction(ctx, id, "suspended:"+replacementDeploymentID); err != nil {
-		return err
-	}
-	return s.setRuntimeInstanceState(ctx, current.RuntimeID, "stopped")
+	return s.transitionCurrentWriter(ctx, current, replacementDeploymentID, plan.call, "stop", "suspended", "stopped")
 }
 
-// resumeCurrentWriter restores the application a switch stopped, after a
-// replacement failed definitively. It is the inverse of quiesceCurrentWriter
-// under its own recorded identity, and it restores the same runtime instance the
-// Workspace was already serving rather than admitting a new delivery.
 func (s *Service) resumeCurrentWriter(ctx context.Context, current *currentDelivery, replacementDeploymentID string, call *api.CallContext) error {
-	deploy, err := s.persistedRuntimeCommand(ctx, current.RuntimeID, current.DeploymentID)
+	return s.transitionCurrentWriter(ctx, current, replacementDeploymentID, call, "start", "running", "ready")
+}
+
+func (s *Service) transitionCurrentWriter(ctx context.Context, current *currentDelivery, replacementDeploymentID string, call *api.CallContext, action, desired, state string) error {
+	conn, deploy, release, err := s.lockRuntimeTransition(ctx, current.RuntimeID, current.DeploymentID)
 	if err != nil {
 		return err
 	}
+	defer release()
 	deploy.command.Context = call
-	target, err := s.confirmedRuntimeTarget(ctx, deploy.command)
+	target, err := s.confirmedRuntimeTargetAt(ctx, conn, deploy.command)
 	if err != nil {
 		return err
 	}
-	resumeID := stableID("resume_", replacementDeploymentID)
-	snapshot, err := json.Marshal(map[string]string{"action": "start", "runtimeInstanceId": current.RuntimeID, "deploymentId": current.DeploymentID, "replacementDeploymentId": replacementDeploymentID})
-	if err != nil {
-		return status.Error(codes.Internal, "cannot record the replacement recovery")
+	prefix := "stop_"
+	if action == "start" {
+		prefix = "resume_"
 	}
-	confirmed, err := s.recordRuntimeAction(ctx, resumeID, current.RuntimeID, "start", current.DeploymentID, snapshot)
+	id := stableID(prefix, replacementDeploymentID)
+	snapshot, err := json.Marshal(map[string]string{"action": action, "runtimeInstanceId": current.RuntimeID, "deploymentId": current.DeploymentID, "replacementDeploymentId": replacementDeploymentID})
 	if err != nil {
+		return status.Error(codes.Internal, "cannot record the replacement lifecycle")
+	}
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return dbError(err)
+	}
+	confirmed, err := recordRuntimeActionTx(ctx, tx, id, current.RuntimeID, action, current.DeploymentID, snapshot)
+	if err != nil {
+		tx.Rollback()
 		return err
+	}
+	if err = tx.Commit(); err != nil {
+		return dbError(err)
+	}
+	if confirmed && action == "stop" {
+		return nil
 	}
 	if !confirmed {
-		if err = s.Runtime.Lifecycle(ctx, deploy.command, target, "running"); err != nil {
+		if err = s.Runtime.Lifecycle(ctx, runtimeLifecycleCommand(deploy.command, id), target, desired); err != nil {
 			return err
 		}
-		if err = s.confirmRuntimeAction(ctx, resumeID, "running:"+replacementDeploymentID); err != nil {
-			return err
+		if _, err = conn.ExecContext(ctx, `UPDATE serve.agent_runtime_actions SET observation_result='confirmed',evidence_ref=$2,updated_at=now() WHERE command_id=$1`, id, desired+":"+replacementDeploymentID); err != nil {
+			return dbError(err)
 		}
 	}
-	return s.setRuntimeInstanceState(ctx, current.RuntimeID, "ready")
+	tx, err = conn.BeginTx(ctx, nil)
+	if err != nil {
+		return dbError(err)
+	}
+	defer tx.Rollback()
+	if err = setRuntimeInstanceStateTx(ctx, tx, current.RuntimeID, state); err != nil {
+		return err
+	}
+	return dbError(tx.Commit())
 }
 
 // setRuntimeInstanceState records the state Serve itself applied and the provider
@@ -981,11 +981,25 @@ func (s *Service) setRuntimeInstanceState(ctx context.Context, runtimeID, state 
 	if err != nil {
 		return dbError(err)
 	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err = tx.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET status=$2,observed_at=now(),updated_at=now() WHERE id=$1`, runtimeID, state); err != nil {
-		return dbError(err)
+	defer tx.Rollback()
+	if err = setRuntimeInstanceStateTx(ctx, tx, runtimeID, state); err != nil {
+		return err
 	}
 	return dbError(tx.Commit())
+}
+
+func setRuntimeInstanceStateTx(ctx context.Context, tx *sql.Tx, runtimeID, state string) error {
+	result, err := tx.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET status=$2,observed_at=now(),updated_at=now() WHERE id=$1
+ AND ($2='terminated' OR (status <> 'terminated' AND NOT EXISTS(SELECT 1 FROM serve.agent_runtime_actions WHERE runtime_instance_id=$1 AND action='terminate')))`, runtimeID, state)
+	if err != nil {
+		return dbError(err)
+	}
+	if count, err := result.RowsAffected(); err != nil {
+		return dbError(err)
+	} else if count != 1 {
+		return status.Error(codes.FailedPrecondition, "retired runtime cannot resume a replacement transition")
+	}
+	return nil
 }
 
 // retireFailedReplacement removes the exact runtime a replacement created after
@@ -1012,7 +1026,7 @@ func (s *Service) retireFailedReplacement(ctx context.Context, command *api.Runt
 	if confirmed {
 		return nil
 	}
-	if err = s.Runtime.Lifecycle(ctx, command, target, "absent"); err != nil {
+	if err = s.Runtime.Lifecycle(ctx, runtimeLifecycleCommand(command, id), target, "absent"); err != nil {
 		return err
 	}
 	if err = s.confirmRuntimeAction(ctx, id, "absent:"+command.GetDeploymentId()); err != nil {
