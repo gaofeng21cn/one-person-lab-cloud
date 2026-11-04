@@ -1,11 +1,9 @@
 package application
 
 import (
-	"errors"
 	"testing"
 
 	contracts "opl-cloud/packages/contracts/go"
-	"opl-cloud/services/control-plane/internal/domain/provisioning"
 )
 
 func validRevision() contracts.WorkspaceApplicationRevision {
@@ -50,56 +48,5 @@ func TestRevisionDigestIsStableAndContentSensitive(t *testing.T) {
 	}
 	if _, err := RevisionDigest(contracts.WorkspaceApplicationRevision{SchemaVersion: 1}); err == nil {
 		t.Fatal("an invalid revision must not produce a digest")
-	}
-}
-
-func TestParseRevisionRef(t *testing.T) {
-	ref, err := ParseRevisionRef("knowledge-app@1.0.0")
-	if err != nil || ref.ApplicationID != "knowledge-app" || ref.Version != "1.0.0" {
-		t.Fatalf("ParseRevisionRef() = %#v, %v", ref, err)
-	}
-	for _, invalid := range []string{"", "knowledge-app", "@1.0.0", "knowledge-app@", "a@b@c", "knowledge-app@1.0.0@x"} {
-		if _, err := ParseRevisionRef(invalid); err == nil {
-			t.Fatalf("ParseRevisionRef(%q) must fail", invalid)
-		}
-	}
-	if _, err := ParseRevisionRef(provisioning.ApplicationBindingOPLApp); err == nil {
-		t.Fatal("the retained OPL App binding is not a revision reference")
-	}
-}
-
-func TestValidateDeploymentTransition(t *testing.T) {
-	revision := validRevision()
-	deployment := contracts.WorkspaceApplicationDeployment{
-		SchemaVersion: 1, OperationID: "workspace-application-deploy-unit", WorkspaceID: "ws-unit",
-		ApplicationID: "knowledge-app", TargetRevision: "1.0.0", ConfigurationDigest: repeat('c', 64),
-		ExpectedWorkspaceVersion: 3, IdempotencyKey: "workspace-application-deploy-unit:1",
-	}
-	if err := ValidateDeploymentTransition(deployment, revision, provisioning.ApplicationBindingEmpty); err != nil {
-		t.Fatalf("empty-binding transition error = %v", err)
-	}
-	if err := ValidateDeploymentTransition(deployment, revision, provisioning.ApplicationBindingOPLApp); err != nil {
-		t.Fatalf("opl-app replacement transition error = %v", err)
-	}
-	if err := ValidateDeploymentTransition(deployment, revision, "knowledge-app@0.9.0"); !errors.Is(err, ErrDeploymentTransitionInvalid) {
-		t.Fatalf("mismatched previous identity error = %v, want %v", err, ErrDeploymentTransitionInvalid)
-	}
-	upgrade := deployment
-	upgrade.PreviousApplicationID, upgrade.PreviousRevision = "knowledge-app", "0.9.0"
-	if err := ValidateDeploymentTransition(upgrade, revision, "knowledge-app@0.9.0"); err != nil {
-		t.Fatalf("matching previous transition error = %v", err)
-	}
-	unadmitted := contracts.WorkspaceApplicationRevision{ApplicationID: "other-app", Version: "1.0.0"}
-	if err := ValidateDeploymentTransition(deployment, unadmitted, provisioning.ApplicationBindingEmpty); !errors.Is(err, ErrRevisionNotAdmitted) {
-		t.Fatalf("unadmitted target error = %v, want %v", err, ErrRevisionNotAdmitted)
-	}
-	brokenDeployment := deployment
-	brokenDeployment.IdempotencyKey = ""
-	if err := ValidateDeploymentTransition(brokenDeployment, revision, provisioning.ApplicationBindingEmpty); err == nil {
-		t.Fatal("a deployment failing contract validation must be rejected")
-	}
-	brokenBinding := "not-a-reference"
-	if err := ValidateDeploymentTransition(deployment, revision, brokenBinding); !errors.Is(err, ErrDeploymentTransitionInvalid) {
-		t.Fatalf("unparseable binding error = %v, want %v", err, ErrDeploymentTransitionInvalid)
 	}
 }

@@ -9,12 +9,31 @@ Baseline evidence date: 2026-10-01
 This page keeps the dated baseline evidence above and explicitly dated evidence
 updates below. The baseline SHA does not describe the later changes or qualify
 them: each receipt retains its original source, run and environment. The latest
-evidence update is 2026-11-04. Source/tests, Candidate construction and
+evidence update is 2026-11-05. Source/tests, Candidate construction and
 Instance installation verification are recorded at their own layers below;
 none alone establishes business qualification or a Product Release. The target
 boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
+
+## Retained Generic Deployment Builder Removal (2026-11-05)
+
+R1d is based on merged Cloud #1125 at
+`3773966a31e2a5d6630038decfa0a812c1488830`. The source removes CP's generic
+new-install/replacement/reinstall builder, transition validator and credential/data
+inheritance helpers, together with their exclusive admission tests. The only
+remaining deployment constructor reads a persisted accepted Key-rotation parent
+and keeps the selected application, revision, resources and data. It replaces
+that parent's Gateway Secret and credential version; a lost child-claim response
+reuses the original frozen child, including after activation advances selection.
+
+Accepted deployment decoding/hashing, worker, activation CAS and operator retry
+remain, as does parent Key/receipt closeout. The current protected observations
+listed under [R3a](#retained-workspace-key-rotation-creation-withdrawal-2026-11-04)
+are owner projections, not archive or external-effect clearance. They do not
+justify deleting the shared recovery engine. Historical fixtures now seed
+accepted commands directly. Local verification and current-revision CI belong
+to the PR; no Candidate, Instance adoption or production mutation is claimed.
 
 ## Workspace New-Purchase Eligibility Consumption (2026-11-04)
 
@@ -37,6 +56,7 @@ passed under the race detector. Verification and current-revision CI results are
 recorded in the source PR. Source evidence does not prove installed adoption or
 real purchases; the installed configuration and policy sequence remain in
 [roadmap](roadmap.md#workspace-purchase-eligibility-adoption).
+
 
 ## Workspace Deletion After Application Replacement (2026-11-04)
 

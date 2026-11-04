@@ -1,61 +1,14 @@
-// Package application owns the admission and deployment rules for Workspace
-// application revisions: immutable identity, idempotent re-admission,
-// conflict detection and the deployment transition checks that reference an
-// admitted revision. The rules are pure; persistence, registry access and
-// administrator authorization stay outside this package.
+// Package application validates and hashes retained immutable application
+// revisions for historical readback and accepted-operation recovery.
 package application
 
 import (
 	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"strings"
 
 	contracts "opl-cloud/packages/contracts/go"
-	"opl-cloud/services/control-plane/internal/domain/provisioning"
 )
-
-var (
-	// ErrRevisionConflict reports two different revision contents admitted
-	// under the same application identity.
-	ErrRevisionConflict = errors.New("workspace_application_revision_conflict")
-	// ErrRevisionNotAdmitted reports a deployment that targets a revision
-	// identity without an admitted revision behind it.
-	ErrRevisionNotAdmitted = errors.New("workspace_application_revision_not_admitted")
-	// ErrDeploymentTransitionInvalid reports a deployment intent whose
-	// previous-application facts do not match the Workspace's current binding.
-	ErrDeploymentTransitionInvalid = errors.New("workspace_application_deployment_transition_invalid")
-)
-
-// RevisionRef names one admitted revision inside a Workspace binding. Both
-// parts exclude the separator, so the reference is unambiguous.
-type RevisionRef struct {
-	ApplicationID string
-	Version       string
-}
-
-// RevisionRefOf returns the reference of one revision.
-func RevisionRefOf(revision contracts.WorkspaceApplicationRevision) RevisionRef {
-	return RevisionRef{ApplicationID: revision.ApplicationID, Version: revision.Version}
-}
-
-// String renders the reference as "<applicationID>@<version>", the value the
-// Workspace projection carries once a deployment activates.
-func (r RevisionRef) String() string {
-	return r.ApplicationID + "@" + r.Version
-}
-
-// ParseRevisionRef parses a binding value into a reference. Retained binding
-// values such as the empty binding and the fixed OPL App are not references.
-func ParseRevisionRef(value string) (RevisionRef, error) {
-	applicationID, version, found := strings.Cut(value, "@")
-	if !found || strings.TrimSpace(applicationID) == "" || strings.TrimSpace(version) == "" ||
-		strings.ContainsAny(applicationID, " \t") || strings.ContainsAny(version, " \t@") {
-		return RevisionRef{}, errors.New("workspace_application_revision_ref_invalid")
-	}
-	return RevisionRef{ApplicationID: applicationID, Version: version}, nil
-}
 
 // RevisionDigest returns the canonical content digest of one revision. Two
 // revisions with the same identity and the same digest are identical; the
@@ -70,38 +23,4 @@ func RevisionDigest(revision contracts.WorkspaceApplicationRevision) (string, er
 	}
 	sum := sha256.Sum256(encoded)
 	return fmt.Sprintf("%x", sum), nil
-}
-
-// ValidateDeploymentTransition checks one deployment intent against the
-// admitted revision it targets and the Workspace's current application
-// binding. The binding is the projection's application binding value: the
-// empty binding, the retained fixed OPL App value, or a revision reference.
-func ValidateDeploymentTransition(deployment contracts.WorkspaceApplicationDeployment, admittedRevision contracts.WorkspaceApplicationRevision, currentBinding string) error {
-	if err := contracts.ValidateWorkspaceApplicationDeployment(deployment); err != nil {
-		return err
-	}
-	if target := RevisionRefOf(admittedRevision); deployment.ApplicationID != target.ApplicationID || deployment.TargetRevision != target.Version {
-		return ErrRevisionNotAdmitted
-	}
-	switch currentBinding {
-	case provisioning.ApplicationBindingEmpty, "":
-		if deployment.PreviousApplicationID != "" || deployment.PreviousRevision != "" {
-			return ErrDeploymentTransitionInvalid
-		}
-	case provisioning.ApplicationBindingOPLApp:
-		// Replacing the retained default application names no previous
-		// revision, because the fixed OPL App never carried one.
-		if deployment.PreviousApplicationID != "" || deployment.PreviousRevision != "" {
-			return ErrDeploymentTransitionInvalid
-		}
-	default:
-		previous, err := ParseRevisionRef(currentBinding)
-		if err != nil {
-			return ErrDeploymentTransitionInvalid
-		}
-		if deployment.PreviousApplicationID != previous.ApplicationID || deployment.PreviousRevision != previous.Version {
-			return ErrDeploymentTransitionInvalid
-		}
-	}
-	return nil
 }

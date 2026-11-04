@@ -29,12 +29,9 @@ func knowledgeApplicationRevisionForTest() contracts.WorkspaceApplicationRevisio
 func createKnowledgeDeploymentForTest(t *testing.T, app *controlPlaneServer, mutationKey string) workspaceApplicationDeploymentIntent {
 	t.Helper()
 	revision := knowledgeApplicationRevisionForTest()
-	seedAdmittedApplicationRevisionForTest(t, app.tables, revision)
-	intent, err := app.createWorkspaceApplicationDeploymentIntent(context.Background(), "ws-alpha", mutationKey,
-		revision.ApplicationID, revision.Version, contracts.WorkspaceApplicationRuntimeConfiguration{Environment: map[string]string{"CONFIG": strings.Repeat("c", 64)}}, nil, 0, "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	intent := applicationDeploymentFixtureForTest(t, app, "ws-alpha", mutationKey, revision)
+	intent.Configuration = contracts.WorkspaceApplicationRuntimeConfiguration{Environment: map[string]string{"CONFIG": strings.Repeat("c", 64)}}
+	intent = seedAcceptedApplicationDeploymentForTest(t, app, intent)
 	return intent
 }
 
