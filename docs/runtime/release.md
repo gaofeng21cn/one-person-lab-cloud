@@ -226,9 +226,11 @@ It also requires `OPL_QUALIFICATION_TENANT_ID` and
 `OPL_QUALIFICATION_BILLING_SUBJECT_ID`, compared with live owner readback before
 purchase. Its product arguments are `--runtime-version-id`, `--compute-plan-id`
 and `--storage-plan-id`; `--package-id` no longer selects a native Workspace.
-The current Instance workflow still passes that old argument and does not export
-the two declarations. Its owner must migrate and verify the consumer before this
-producer is usable there; see [the remaining qualification work](../roadmap.md#native-v2-qualification-and-cp-retirement-1042).
+Instance #593 adopted this native consumer source migration; Cloud #1072
+records its adoption evidence.
+Source adoption does not supply the installation's declarations, genuine
+same-Candidate J0 or complete protected execution receipt; see the
+[remaining qualification work](../roadmap.md#native-v2-protected-qualification-and-cp-retirement-post-1042).
 It deliberately requires no cross-repository evidence token: it reads only the
 files this workflow materialized and its own J0 receipt, so it has no
 cross-repository read to authorize. The workflow's own Instance evidence-read
