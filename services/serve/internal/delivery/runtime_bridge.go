@@ -74,12 +74,13 @@ func (s *Service) StopRuntime(ctx context.Context, command *api.RuntimeStopComma
 	if err != nil {
 		return nil, err
 	}
+	deploy.command.Context = command.GetContext()
 	target, err := s.confirmedRuntimeTarget(ctx, deploy.command)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.applyRecordedLifecycle(ctx, deploy, "stop", map[string]string{"desired": "suspended"}, func() error {
-		return s.Runtime.Lifecycle(ctx, deploy.command, target, "suspended")
+	if err := s.applyRecordedLifecycle(ctx, deploy, "stop", map[string]string{"desired": "suspended"}, func(execution *api.RuntimeDeployCommand) error {
+		return s.Runtime.Lifecycle(ctx, execution, target, "suspended")
 	}); err != nil {
 		return nil, err
 	}
@@ -87,8 +88,9 @@ func (s *Service) StopRuntime(ctx context.Context, command *api.RuntimeStopComma
 	return s.runtimeLifecycleOperation(ctx, deploy, "runtime_stop", "runtime", "succeeded")
 }
 
-// Retire is the Workspace-owner coordination entry point for deleting a workspace's
-// runtime. It is deliberately not an alias of StopRuntime: a stop suspends the
+// Retire is the Workspace-owner coordination entry point for closing its original
+// application reservation and every successor delivery. It is deliberately not an
+// alias of StopRuntime: a stop suspends the
 // runtime so the same instance can be resumed later, while a retirement releases
 // the runtime for good. Fabric refuses to move a runtime back out of "absent", and
 // the provider's own lifecycle vocabulary has no way to resume an absent runtime,
@@ -118,35 +120,47 @@ func (s *Service) Retire(ctx context.Context, command *api.RuntimeStopCommand) (
 	if runtimeID == "" {
 		return nil, status.Error(codes.InvalidArgument, "runtime instance is required")
 	}
-	deploy, started, err := s.prepareRuntimeRetirement(ctx, command)
+	targets, err := s.prepareWorkspaceRetirement(ctx, command)
 	if err != nil {
 		return nil, err
 	}
-	deploy.command.Context = command.GetContext()
-	if err := s.applyRecordedLifecycle(ctx, deploy, "terminate", map[string]string{"desired": "absent", "retainedDataAttachmentId": command.GetRetainedDataAttachmentId()}, func() error {
-		if err := s.retireRuntimeRoute(ctx, deploy); err != nil {
-			return err
+	var original *api.Operation
+	for _, target := range targets {
+		retired, err := s.retirePreparedRuntime(ctx, command, target)
+		if err != nil {
+			return nil, err
 		}
+		if target.deploy.command.GetRuntimeInstanceId() == runtimeID {
+			original = retired
+		}
+	}
+	return original, nil
+}
+
+// Each delivery retains its own provider and lifecycle identity. Returning the
+// original operation only after all successors confirms the whole closeout.
+func (s *Service) retirePreparedRuntime(ctx context.Context, command *api.RuntimeStopCommand, target runtimeRetirement) (*api.Operation, error) {
+	deploy, started := target.deploy, target.started
+	runtimeID := deploy.command.GetRuntimeInstanceId()
+	if err := s.applyRecordedLifecycle(ctx, deploy, "terminate", map[string]string{"desired": "absent", "retainedDataAttachmentId": command.GetRetainedDataAttachmentId()}, func(execution *api.RuntimeDeployCommand) error {
 		if !started {
 			return nil
 		}
-		target, err := s.confirmedRuntimeTarget(ctx, deploy.command)
+		target, err := s.confirmedRuntimeTarget(ctx, execution)
 		if err != nil {
 			return err
 		}
-		return s.Runtime.Lifecycle(ctx, deploy.command, target, "absent")
+		return s.Runtime.Lifecycle(ctx, execution, target, "absent")
 	}); err != nil {
 		return nil, err
 	}
-	if _, err = s.DB.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET status='terminated',access_url=NULL,observed_at=now(),updated_at=now() WHERE id=$1 AND deployment_id=$2`, runtimeID, deploy.command.GetDeploymentId()); err != nil {
+	if _, err := s.DB.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET status='terminated',access_url=NULL,observed_at=now(),updated_at=now() WHERE id=$1 AND deployment_id=$2`, runtimeID, deploy.command.GetDeploymentId()); err != nil {
 		return nil, dbError(err)
 	}
 	retired, err := s.runtimeLifecycleOperation(ctx, deploy, "runtime_retire", "retirement", "succeeded")
 	if err != nil {
 		return nil, err
 	}
-	// The provider confirmed the runtime is absent, so the retirement itself is an
-	// observed fact. The deletion's evidence is the confirmation, not the request.
 	if _, err = s.DB.ExecContext(ctx, `UPDATE serve.operations SET status='succeeded',observation_result='confirmed',completed_at=COALESCE(completed_at,now()),updated_at=now() WHERE id=$1`, retired.GetOperationId()); err != nil {
 		return nil, dbError(err)
 	}
@@ -206,6 +220,13 @@ func (s *Service) reloadRuntime(ctx context.Context, command *api.RuntimeReloadC
 	if err = lockWorkspace(ctx, guard, deploy.command.GetWorkspaceId()); err != nil {
 		return nil, dbError(err)
 	}
+	if err = refuseClosedWorkspace(ctx, guard, deploy.command.GetWorkspaceId()); err != nil {
+		return nil, err
+	}
+	if err = refuseRetiredRuntime(ctx, guard, runtimeID); err != nil {
+		return nil, err
+	}
+
 	if err = refusePendingReplacement(ctx, guard, deploy.command.GetWorkspaceId(), ""); err != nil {
 		return nil, err
 	}

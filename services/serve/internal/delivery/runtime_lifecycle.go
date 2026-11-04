@@ -3,13 +3,16 @@ package delivery
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"google.golang.org/protobuf/proto"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/services/internal/ownerstore"
 )
@@ -31,9 +34,13 @@ type persistedRuntime struct {
 // runtime instance. The command was stored in serve.agent_runtime_actions at
 // Reserve/Deploy time, so this is the identical command every continuation replays.
 func (s *Service) persistedRuntimeCommand(ctx context.Context, runtimeID, deploymentID string) (*persistedRuntime, error) {
+	return persistedRuntimeCommandAt(ctx, s.DB, runtimeID, deploymentID)
+}
+
+func persistedRuntimeCommandAt(ctx context.Context, q rowQueryer, runtimeID, deploymentID string) (*persistedRuntime, error) {
 	var deployment, workspace, opID, tenantID, actorID, requestID, accountID string
 	var appliedVersion int64
-	err := s.DB.QueryRowContext(ctx, `
+	err := q.QueryRowContext(ctx, `
 		SELECT d.id, d.workspace_id, d.operation_id, COALESCE(o.tenant_id,''), o.actor_id, o.request_id,
 		       COALESCE(r.fabric_resource_set_id,''), r.applied_model_configuration_version
 		FROM serve.agent_runtime_instances r
@@ -48,7 +55,7 @@ func (s *Service) persistedRuntimeCommand(ctx context.Context, runtimeID, deploy
 		return nil, dbError(err)
 	}
 	var raw []byte
-	err = s.DB.QueryRowContext(ctx, `SELECT input_snapshot FROM serve.agent_runtime_actions WHERE command_id=$1`, stableID("start_", deployment)).Scan(&raw)
+	err = q.QueryRowContext(ctx, `SELECT input_snapshot FROM serve.agent_runtime_actions WHERE command_id=$1`, stableID("start_", deployment)).Scan(&raw)
 	if err != nil {
 		return nil, dbError(err)
 	}
@@ -64,6 +71,10 @@ func (s *Service) persistedRuntimeCommand(ctx context.Context, runtimeID, deploy
 // reserved, so lifecycle and credentials reach the same provider object on the same
 // confirmed placement.
 func (s *Service) confirmedRuntimeTarget(ctx context.Context, command *api.RuntimeDeployCommand) (ExecutionTarget, error) {
+	return s.confirmedRuntimeTargetAt(ctx, s.DB, command)
+}
+
+func (s *Service) confirmedRuntimeTargetAt(ctx context.Context, q rowQueryer, command *api.RuntimeDeployCommand) (ExecutionTarget, error) {
 	if s.Resources == nil {
 		return ExecutionTarget{}, status.Error(codes.Unavailable, "Fabric readback is not configured")
 	}
@@ -71,7 +82,7 @@ func (s *Service) confirmedRuntimeTarget(ctx context.Context, command *api.Runti
 	if err != nil {
 		return ExecutionTarget{}, err
 	}
-	return confirmedExecutionTarget(ctx, s.DB, command, resources)
+	return confirmedExecutionTarget(ctx, q, command, resources)
 }
 
 // runtimeLifecycleOperation records one lifecycle action as an owner Operation in
@@ -121,7 +132,7 @@ func (s *Service) runtimeLifecycleOperation(ctx context.Context, deploy *persist
 // call, and a retry presenting different input is refused rather than silently
 // re-targeting the runtime. The provider call is repeated only when the earlier
 // outcome was never confirmed, which is the one case where it is unknown.
-func (s *Service) applyRecordedLifecycle(ctx context.Context, deploy *persistedRuntime, action string, snapshot map[string]string, apply func() error) error {
+func (s *Service) applyRecordedLifecycle(ctx context.Context, deploy *persistedRuntime, action string, snapshot map[string]string, apply func(*api.RuntimeDeployCommand) error) error {
 	raw, err := json.Marshal(snapshot)
 	if err != nil {
 		return status.Error(codes.Internal, "cannot record the runtime lifecycle action")
@@ -134,8 +145,65 @@ func (s *Service) applyRecordedLifecycle(ctx context.Context, deploy *persistedR
 	if confirmed {
 		return nil
 	}
-	if err = apply(); err != nil {
+	if err = apply(runtimeLifecycleCommand(deploy.command, id)); err != nil {
 		return err
 	}
 	return s.confirmRuntimeAction(ctx, id, action)
+}
+
+// Replacements must commit their intent before the provider call while retaining
+// the Workspace lock. A session lock on one dedicated pool connection permits
+// those commits without acquiring another connection from an exhausted pool.
+func (s *Service) lockRuntimeTransition(ctx context.Context, runtimeID, deploymentID string) (*sql.Conn, *persistedRuntime, func(), error) {
+	conn, err := s.DB.Conn(ctx)
+	if err != nil {
+		return nil, nil, nil, dbError(err)
+	}
+	var workspace string
+	if err = conn.QueryRowContext(ctx, `SELECT workspace_id FROM serve.agent_runtime_instances WHERE id=$1 AND deployment_id=$2`, runtimeID, deploymentID).Scan(&workspace); err != nil {
+		conn.Close()
+		return nil, nil, nil, dbError(err)
+	}
+	key := "serve-workspace:" + workspace
+	if _, err = conn.ExecContext(ctx, `SELECT pg_advisory_lock(hashtextextended($1,0))`, key); err != nil {
+		// A lost acquisition response may already hold the session lock. Never return
+		// that connection to the pool with an unknown lock state.
+		_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+		conn.Close()
+		return nil, nil, nil, dbError(err)
+	}
+	release := func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		var unlocked bool
+		if err := conn.QueryRowContext(cleanup, `SELECT pg_advisory_unlock(hashtextextended($1,0))`, key).Scan(&unlocked); err != nil || !unlocked {
+			_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+		}
+		conn.Close()
+	}
+	if err = refuseClosedWorkspace(ctx, conn, workspace); err != nil {
+		release()
+		return nil, nil, nil, err
+	}
+	if err = refuseRetiredRuntime(ctx, conn, runtimeID); err != nil {
+		release()
+		return nil, nil, nil, err
+	}
+	deploy, err := persistedRuntimeCommandAt(ctx, conn, runtimeID, deploymentID)
+	if err != nil {
+		release()
+		return nil, nil, nil, err
+	}
+	return conn, deploy, release, nil
+}
+
+// The persisted owner action, rather than a retrier's transport key, identifies
+// the downstream command. An unknown outcome always replays that same action.
+func runtimeLifecycleCommand(command *api.RuntimeDeployCommand, actionID string) *api.RuntimeDeployCommand {
+	execution := proto.Clone(command).(*api.RuntimeDeployCommand)
+	if execution.Context == nil {
+		execution.Context = &api.CallContext{}
+	}
+	execution.Context.IdempotencyKey = actionID
+	return execution
 }

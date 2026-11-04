@@ -265,10 +265,15 @@ func referencedSecretRequired(revision contracts.WorkspaceApplicationRevision) b
 // readback that does not show the requested state is refused rather than reported
 // as an applied lifecycle.
 func (a *agentExecutionAdapter) Lifecycle(ctx context.Context, c *api.RuntimeDeployCommand, target ExecutionTarget, desired string) error {
+	commandKey := c.GetContext().GetIdempotencyKey()
+	if strings.TrimSpace(commandKey) == "" {
+		return status.Error(codes.InvalidArgument, "runtime lifecycle command idempotency key is required")
+	}
 	input, err := a.runtimeInput(c, target)
 	if err != nil {
 		return err
 	}
+	input.IdempotencyKey = commandKey
 	result, err := a.Executor.SetWorkspaceApplicationRuntimeLifecycle(ctx, input, desired)
 	if err != nil {
 		return err

@@ -373,7 +373,25 @@ and #1018's three-order closeout stay complete. The scopes in this section are
 the current review boundary; they neither reopen those Issues nor imply their
 closure physically removed every retained writer.
 
-### Workspace purchase eligibility adoption
+### Customer lifecycle owner convergence
+
+The Cloud customer path is CloudIdentity session → Catalog quote → Workspace
+order/deletion → Gateway, Fabric, Serve and Ledger owner commands/readbacks.
+A reachable deletion gap after application replacement is repaired in Serve:
+close the original reservation's successor lineage while preserving the original
+Workspace order and payment. Source and isolated-owner tests do not establish
+installed adoption; validate upgrade → delete through the existing Instance
+process after adoption. Retained history/recovery is not a fallback for a native
+Workspace, and its obligations remain separate.
+
+The remaining bounded source gaps are the launch page's use of a personal wallet
+balance to gate a Tenant-funded order, and managed-Key issuance with non-empty
+model selections when the user API supplies no model-scope projection. Resolve
+each at its existing owner with its actual consumer; do not add another wallet
+or Gateway allowlist. The new-purchase source now consumes the Account policy;
+its installed adoption and eventual policy-owner migration remain below.
+
+#### Workspace purchase eligibility adoption
 
 New-purchase source admission consumes the existing Account eligibility owner;
 validate the installed owner/client configuration and grant → new purchase →
@@ -383,9 +401,8 @@ its reader is unavailable. A source test or successful CI is not installed proof
 
 The retained Account remains the sole eligibility writer until its provisioning,
 grant/revoke commands, historical true/false values, audit custody and new-purchase
-reader migrate together. The launch page's personal-versus-Tenant payer balance
-and managed-Key model-scope consumption remain separate source gaps; this change
-does not claim either is resolved.
+reader migrate together.
+
 
 ### Native v2 qualification and CP retirement (#1042)
 

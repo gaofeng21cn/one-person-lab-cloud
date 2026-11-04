@@ -102,7 +102,16 @@ func (b *fabricApplicationBridge) ReadWorkspaceApplicationRuntimeCredentials(ctx
 
 func (b *fabricApplicationBridge) lifecycle(ctx context.Context, input contracts.WorkspaceApplicationRuntimeInput, desired, endpoint, action string) (contracts.WorkspaceApplicationRuntimeLifecycleResult, error) {
 	var result contracts.WorkspaceApplicationRuntimeLifecycleResult
-	response, err := b.post(ctx, "/fabric/workspace-application-runtimes/"+url.PathEscape(input.WorkspaceID)+"/"+endpoint, action, lifecycleWire(input, desired), input.RuntimeOperationID, input.AccountID, input.WorkspaceID, contracts.WorkspaceApplicationRuntimeID(input.RuntimeOperationID))
+	operationID := input.RuntimeOperationID
+	if endpoint == "lifecycle" {
+		if strings.TrimSpace(input.IdempotencyKey) == "" {
+			return result, status.Error(codes.InvalidArgument, "runtime lifecycle command idempotency key is required")
+		}
+		// Each command has its own journal identity, including repeated transitions
+		// to the same desired state. The payload retains the original runtime identity.
+		operationID = stableID("app_lifecycle_", input.IdempotencyKey, input.RuntimeOperationID, desired)
+	}
+	response, err := b.post(ctx, "/fabric/workspace-application-runtimes/"+url.PathEscape(input.WorkspaceID)+"/"+endpoint, action, lifecycleWire(input, desired), operationID, input.AccountID, input.WorkspaceID, contracts.WorkspaceApplicationRuntimeID(input.RuntimeOperationID))
 	if err != nil {
 		return result, err
 	}

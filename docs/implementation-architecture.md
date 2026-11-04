@@ -1766,9 +1766,17 @@ The extracted Workspace service accepts unfinished original orders through the
 same `DeleteWorkspace` command. The closing intent and original-create
 cancellation commit together under the Workspace row lock, revoking its worker
 lease. A late response cannot checkpoint or activate the cancelled create;
-downstream owners resolve and fence already-dispatched effects. Serve retires
-the exact reserved delivery, fences later Deploy/adapter starts, clears the
-published route through its existing conditional route writer, and retains
+downstream owners resolve and fence already-dispatched effects. Workspace keeps
+its original reservation, resources and charge identities after application
+updates. Serve resolves that reservation's complete successor lineage under its
+Workspace lock, checks Tenant/resource/attachment and current-route identities,
+and atomically freezes every runtime's termination intent with the conditional
+route retirement. It closes successors before confirming the original retirement
+operation, so partial cleanup remains pending and restart resumes confirmed
+effects without reissuing them. Replacement quiesce/recovery shares that lock and
+refuses closed Workspaces; late state commits cannot restore a terminated runtime.
+The execution bridge uses a lifecycle-command identity distinct from runtime
+creation while retaining the original runtime resource identity. Serve retains
 first-fulfilled or confirmed-never-delivered readback. An original reservation
 that has not arrived is closed in Serve's own command journal; a different live
 delivery never becomes absence.

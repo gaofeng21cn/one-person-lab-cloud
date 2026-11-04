@@ -488,6 +488,7 @@ func TestAgentExecutionRefusesAnUnresolvableModelConfiguration(t *testing.T) {
 // reported when the executor observed that state.
 func TestAgentExecutionRefusesALifecycleDrift(t *testing.T) {
 	command := executionCommand(t)
+	command.Context = &api.CallContext{IdempotencyKey: "replacement-lifecycle-command"}
 	target := executionTargetFixture(command)
 	fake := &fakeExecutor{lifecycle: contracts.WorkspaceApplicationRuntimeLifecycleResult{RuntimeID: contracts.WorkspaceApplicationRuntimeID(command.GetRuntimeInstanceId()), WorkspaceID: command.GetWorkspaceId(), State: "pending"}}
 	adapter := executionAdapter(fake, RouteOrigin{})
@@ -925,7 +926,7 @@ func TestFabricApplicationBridgeScopesLifecycleToTheRuntime(t *testing.T) {
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			input := contracts.WorkspaceApplicationRuntimeInput{AccountID: "account", WorkspaceID: "workspace_scope", RuntimeOperationID: "rti_scope"}
+			input := contracts.WorkspaceApplicationRuntimeInput{AccountID: "account", WorkspaceID: "workspace_scope", RuntimeOperationID: "rti_scope", IdempotencyKey: "retire-runtime-command"}
 			var claims map[string]any
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				parts := strings.Split(r.Header.Get("X-OPL-Fabric-Capability"), ".")
