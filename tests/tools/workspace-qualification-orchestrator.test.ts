@@ -134,6 +134,7 @@ function controlPlane({ sessionAccountId = ACCOUNT_ID, sessionRole = "owner", se
   applicationStatus = "ready", runtimeReady = true,
   runtimeStatus = "running", runtimeComponents = [{ name: "console", ok: true }, { name: "gateway", ok: true }],
   extraChargeMicros = "0", receipt: receiptOverrides = {}, runtime: runtimeOverrides = {},
+  workspace: workspaceOverrides = {}, access: accessOverrides = {},
   applicationReadyAfter = null, applicationStalled = false, applicationManualReview = false,
   workspacePage = 1, resumeProjection = null,
   catalogRuntimeStatus = "approved", catalogPlanAvailability = "available",
@@ -175,6 +176,7 @@ function controlPlane({ sessionAccountId = ACCOUNT_ID, sessionRole = "owner", se
           id: state.workspaceId, name: "Qualification workspace", status: "running",
           applicationAvailability: available ? "available" : (applicationManualReview ? "unavailable" : "pending"),
           accessUrl: available ? ENTRY_URL : undefined,
+          runtimeVersionId: OWNER_RUNTIME_VERSION_ID, ...workspaceOverrides,
         } };
       }
       throw new Error(`unexpected request ${path}`);
@@ -282,13 +284,23 @@ function controlPlane({ sessionAccountId = ACCOUNT_ID, sessionRole = "owner", se
           evidenceDigest: `sha256:${"e".repeat(64)}`,
         } };
       }
-      if (/^\/api\/v2\/workspaces\/[^/]+\/deployments\?limit=100$/.test(path)) {
+      if (/^\/api\/v2\/workspaces\/[^/]+\/deployments\?limit=1$/.test(path)) {
         const workspaceId = decodeURIComponent(path.split("/")[4]);
-        const active = runtimeReady && runtimeStatus === "running";
-        return { status: 200, payload: { items: active ? [{
-          id: APPLICATION_OPERATION_ID, workspaceId, status: "active", runtimeInstanceId: "rt-0123456789abcdef", capabilityVersionId: "capability-0001",
+        const current = runtimeReady && runtimeStatus === "running" ? {
+          id: APPLICATION_OPERATION_ID, workspaceId, status: "active", runtimeInstanceId: "rt-0123456789abcdef",
+          capabilityVersionId: "", runtimeVersionId: OWNER_RUNTIME_VERSION_ID,
           ...runtimeOverrides,
-        }] : [] } };
+        } : undefined;
+        return { status: 200, payload: { items: current ? [current] : [], currentDeployment: current, latestAttempt: current } };
+      }
+      if (/^\/api\/v2\/workspaces\/[^/]+\/access$/.test(path)) {
+        assert.deepEqual(init, {
+          method: "POST", headers: { "idempotency-key": `workspace-access:${runtimeOverrides.id ?? APPLICATION_OPERATION_ID}` },
+        });
+        assert.deepEqual(auth, { cookie: "opl_session=qualification", csrf: "qualification-csrf" });
+        return { status: 200, payload: {
+          workspaceId: state.workspaceId, deploymentId: APPLICATION_OPERATION_ID, url: ENTRY_URL, ...accessOverrides,
+        } };
       }
       throw new Error(`unexpected path ${path}`);
     },
@@ -824,6 +836,135 @@ test("a purchase with no running Runtime behind it does not settle", async () =>
     assert.equal(state, "failed", JSON.stringify(broken));
     assert.equal(receipt.reason, "runtime_not_ready", JSON.stringify(broken));
     assert.equal(receipt.checks.runtime_ready, false);
+  }
+});
+
+test("qualification uses the Serve current deployment outside the history page", async () => {
+  for (const emptyHistory of [false, true]) {
+    const platform = controlPlane();
+    const read = platform.http.json.bind(platform.http);
+    platform.http.json = async (...args) => {
+      const result = await read(...args);
+      if (args[0].includes("/deployments?")) {
+        const current = result.payload.currentDeployment;
+        const items = emptyHistory ? [] : [{ ...current, id: "newer-failure", status: "failed", runtimeInstanceId: "runtime-failed" }];
+        return { ...result, payload: { items, currentDeployment: current, latestAttempt: items[0] ?? current } };
+      }
+      return result;
+    };
+    const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+    assert.equal(state, "settled");
+    assert.equal(receipt.checks.runtime_ready, true);
+    assert.equal(receipt.delivery.applicationOperationDigest,
+      `sha256:${createHash("sha256").update(APPLICATION_OPERATION_ID).digest("hex")}`);
+    assert.equal(receipt.delivery.componentsObserved, 1);
+    assert.equal(platform.state.calls.filter((path) => path.includes("/deployments?")).length, 1);
+    assert.equal(platform.state.posted, 1);
+    assert.equal(platform.state.charges.length, 1);
+  }
+});
+
+test("qualification refuses missing or invalid Serve selection despite active history", async () => {
+  for (const overrides of [
+    undefined, null,
+    { status: "verifying" }, { workspaceId: "ws-other" },
+    { id: undefined }, { id: "   " }, { id: 1 }, { id: {} },
+    { runtimeInstanceId: undefined }, { runtimeInstanceId: "   " },
+    { runtimeInstanceId: 1 }, { runtimeInstanceId: {} },
+  ]) {
+    const platform = controlPlane();
+    const read = platform.http.json.bind(platform.http);
+    platform.http.json = async (...args) => {
+      const result = await read(...args);
+      if (args[0].includes("/deployments?")) {
+        const currentDeployment = overrides == null ? overrides : { ...result.payload.currentDeployment, ...overrides };
+        return { ...result, payload: { ...result.payload, currentDeployment } };
+      }
+      return result;
+    };
+    const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+    assert.equal(state, "failed");
+    assert.equal(receipt.reason, "runtime_not_ready");
+    assert.equal(receipt.checks.runtime_ready, false);
+    assert.equal(receipt.delivery.componentsObserved, 0);
+    assert.equal(receipt.delivery.applicationOperationDigest, "");
+    assert.equal(platform.state.posted, 1);
+    assert.equal(platform.state.charges.length, 1);
+  }
+});
+
+test("qualification binds access to the selected deployment despite original order and Workspace URL changes", async () => {
+  for (const runtime of [
+    { id: "deployment-current-agent", capabilityVersionId: "capability-current", runtimeVersionId: undefined },
+    { id: "deployment-current-app", capabilityVersionId: "", runtimeVersionId: "release-current" },
+  ]) {
+    for (const accessUrl of ["https://previous.example.test/", undefined]) {
+      const url = "http://current.example.test:8080/app";
+      const platform = controlPlane({ runtime, workspace: { runtimeVersionId: "release-original", accessUrl }, access: { url, deploymentId: runtime.id } });
+      const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+      assert.equal(state, "settled");
+      assert.equal(receipt.checks.runtime_ready, true);
+      assert.equal(receipt.delivery.workspaceEntryDigest, `sha256:${createHash("sha256").update(url).digest("hex")}`);
+      assert.equal(receipt.delivery.applicationOperationDigest, `sha256:${createHash("sha256").update(runtime.id).digest("hex")}`);
+      const selection = platform.state.calls.findIndex((path) => path.includes("/deployments?"));
+      const access = platform.state.calls.findIndex((path) => path.endsWith("/access"));
+      assert.ok(access > selection, "the access read confirms the selected deployment");
+      assert.equal(platform.state.calls.filter((path) => path.endsWith("/access")).length, 1);
+    }
+  }
+});
+
+test("qualification rejects absent, ambiguous and malformed current application sources", async () => {
+  for (const source of [
+    {}, { capabilityVersionId: "", runtimeVersionId: "" },
+    { capabilityVersionId: "capability-current", runtimeVersionId: "release-current" },
+    ...[null, 0, false, {}, [], "   "].flatMap((value) => [
+      { capabilityVersionId: value }, { runtimeVersionId: value },
+      { capabilityVersionId: value, runtimeVersionId: "release-current" },
+      { capabilityVersionId: "capability-current", runtimeVersionId: value },
+    ]),
+  ]) {
+    const platform = controlPlane({ runtime: { capabilityVersionId: undefined, runtimeVersionId: undefined, ...source } });
+    const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+    assert.equal(state, "failed");
+    assert.equal(receipt.reason, "runtime_not_ready");
+    assert.equal(receipt.checks.runtime_ready, false);
+    assert.equal(receipt.delivery.applicationOperationDigest, "");
+    assert.equal(platform.state.calls.some((path) => path.endsWith("/access")), false);
+  }
+});
+
+test("qualification rejects cross-generation, missing and invalid access instead of settling", async () => {
+  for (const overrides of [
+    { workspaceId: "ws-other" },
+    ...[undefined, null, "", "   ", 42, {}, "deployment-previous"].map((deploymentId) => ({ deploymentId })),
+    ...[undefined, null, "", "   ", 42, {}, [], "/relative", "https://", "https://[invalid", "https:example.test", "ftp://app.example.test/", "javascript:alert(1)", "https://user:password@app.example.test/"].map((url) => ({ url })),
+    // An unchanged URL does not make an old deployment's access current.
+    { deploymentId: "deployment-previous", url: ENTRY_URL },
+  ]) {
+    const platform = controlPlane({ access: overrides });
+    const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+    assert.equal(state, "failed");
+    assert.equal(receipt.reason, "runtime_not_ready");
+    assert.equal(receipt.checks.runtime_ready, false);
+    assert.equal(receipt.delivery.componentsObserved, 0);
+    assert.equal(receipt.delivery.workspaceEntryDigest, "");
+    assert.equal(receipt.delivery.applicationOperationDigest, "");
+    assert.equal(platform.state.posted, 1);
+    assert.equal(platform.state.charges.length, 1);
+  }
+  for (const access of [undefined, null, {}]) {
+    const platform = controlPlane();
+    const read = platform.http.json.bind(platform.http);
+    platform.http.json = async (...args) => {
+      const result = await read(...args);
+      return args[0].endsWith("/access") ? { ...result, payload: access } : result;
+    };
+    const { state, receipt } = await run(qualificationRequest("local-docker"), providerAdapter("local-docker", platform));
+    assert.equal(state, "failed");
+    assert.equal(receipt.reason, "runtime_not_ready");
+    assert.equal(receipt.checks.runtime_ready, false);
+    assert.equal(receipt.delivery.workspaceEntryDigest, "");
   }
 });
 

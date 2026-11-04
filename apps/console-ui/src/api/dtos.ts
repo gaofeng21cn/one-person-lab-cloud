@@ -313,6 +313,7 @@ export interface WorkspaceOwnerDTO {
 
 export interface WorkspaceOwnerAccessDTO {
   workspaceId: string;
+  deploymentId: string;
   url: string;
   authenticationMode: "application_login" | "cloud_private" | "anonymous";
   expiresAt?: string;

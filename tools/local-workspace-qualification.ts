@@ -1417,40 +1417,54 @@ export async function readWorkspaceEvidence(http, auth, operationId, workspaceId
     throw new Error("Workspace owner operation readback is invalid");
   }
   const workspace = (await http.json(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}`, {}, auth)).payload;
-  const entryUrl = String(workspace?.accessUrl || "");
-  // The accepted application source is the owner's own fact: a built Agent
-  // names its CapabilityVersion, the default App names its Runtime Release.
-  const applicationId = String(workspace?.capabilityVersionId || workspace?.runtimeVersionId || "");
-  if (workspace?.id !== workspaceId || workspace.applicationAvailability !== "available" || !entryUrl.trim() ||
-    !applicationId.trim()) {
+  if (workspace?.id !== workspaceId || workspace.applicationAvailability !== "available") {
     throw new Error("Workspace owner readback is invalid");
   }
-  const page = (await http.json(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/deployments?limit=100`, {}, auth)).payload;
-  const deployments = Array.isArray(page?.items) ? page.items : [];
-  const active = deployments.find((deployment) => deployment?.status === "active" &&
-    deployment?.workspaceId === workspaceId && String(deployment?.runtimeInstanceId || "").trim());
-  if (!active || !String(active.id || "").trim()) {
+  const page = (await http.json(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/deployments?limit=1`, {}, auth)).payload;
+  const active = page?.currentDeployment;
+  if (active?.status !== "active" || active?.workspaceId !== workspaceId ||
+    typeof active?.id !== "string" || !active.id.trim() ||
+    typeof active?.runtimeInstanceId !== "string" || !active.runtimeInstanceId.trim()) {
     throw new Error("Workspace runtime readback is invalid");
   }
+  const sources = [active.capabilityVersionId, active.runtimeVersionId];
+  if (sources.some((id) => id !== undefined && (typeof id !== "string" || (id !== "" && !id.trim()))) ||
+      sources.filter((id) => typeof id === "string" && id.trim()).length !== 1) {
+    throw new Error("Workspace application readback is invalid");
+  }
+  const applicationId = active.capabilityVersionId || active.runtimeVersionId;
+  const access = (await http.json(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/access`, {
+    method: "POST", headers: { "idempotency-key": `workspace-access:${active.id}` },
+  }, auth)).payload;
+  if (access?.workspaceId !== workspaceId || access?.deploymentId !== active.id ||
+      typeof access?.url !== "string" || !/^https?:\/\//.test(access.url)) {
+    throw new Error("Workspace access readback is invalid");
+  }
+  let entry;
+  try {
+    entry = new URL(access.url);
+  } catch {
+    throw new Error("Workspace access readback is invalid");
+  }
+  if (!entry.hostname || !["http:", "https:"].includes(entry.protocol) || entry.username || entry.password) {
+    throw new Error("Workspace access readback is invalid");
+  }
+  const entryUrl = access.url;
   const transactions = await listWorkspaceTransactions(http, auth, workspaceId);
   const charges = transactions.filter((item) => item.kind === "charge" && item.status === "confirmed" && item.receiptId === receiptId);
   if (charges.length !== 1) throw new Error("Ledger charge readback is invalid");
   const financial = await readWorkspacePurchaseEvidence(http, auth, {
     workspaceId, operationId, expectedReceiptId: receiptId, amountUsdMicros: String(charges[0].amountUSDMicros),
   });
-  // The v2 owner route publishes the accepted application source on the
-  // Workspace and the running generation on the Serve deployment. Those are the
-  // owner's own identities, so the receipt binds them rather than inventing an
-  // application id or revision the owner never returned. A deployment that
-  // publishes no capability version is still identified by its own deployment
-  // generation, which is what Serve actually retired.
+  // Serve names the current application source and deployment generation. Its
+  // matching access readback confirms the entry for that same generation.
   const current = {
     status: "ready", entryUrl, operationId: active.id,
-    applicationId, revision: String(active.capabilityVersionId || active.id),
+    applicationId, revision: applicationId,
   };
   return {
     operation,
-    workspace: { ...workspace, url: entryUrl, openable: true, currentApplication: current },
+    workspace: { ...workspace, accessUrl: entryUrl, url: entryUrl, openable: true, currentApplication: current },
     current,
     runtime: {
       workspaceId, ready: true, status: "running", url: entryUrl,

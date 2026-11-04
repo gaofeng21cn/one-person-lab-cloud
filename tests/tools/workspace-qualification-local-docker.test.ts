@@ -147,11 +147,13 @@ function result(payload, { status = 200, headers = {} } = {}) {
  */
 function controlPlane({
   workspaceReadbackUnavailable = false, walletBeforeMicros = "999999999", quoteMicros = QUOTE_MICROS, loseResponseOnce = false,
-  billingReceiptUnavailable = false, operationStatus = "succeeded" } = {}) {
+  billingReceiptUnavailable = false, operationStatus = "succeeded",
+  deployment = {}, access = {}, omitCurrentDeployment = false,
+  expectedAuth = { cookie: SESSION_COOKIE, csrf: CSRF_TOKEN } } = {}) {
   const state = {
     orders: new Map(), byKey: new Map(), posted: 0, charges: [], commands: [], quotes: [],
     wallet: walletBeforeMicros, workspaceId: "", operationId: "", responsesLost: false,
-    pageReads: 0, logins: 0, minted: 0, retainedReads: 0, ownerReads: 0,
+    pageReads: 0, logins: 0, minted: 0, retainedReads: 0, ownerReads: 0, serveReads: [],
   };
 
   // One shape for the owner operation, so both seams answer the same operation.
@@ -169,6 +171,12 @@ function controlPlane({
     return { operationId: `workspace-operation-${ordinal}`, workspaceId: `ws-owner-${ordinal}` };
   };
 
+  const deploymentPage = (workspaceId) => {
+    const current = { id: APPLICATION_OPERATION_ID, workspaceId, status: "active",
+      runtimeInstanceId: "rt-0123456789abcdef", capabilityVersionId: "", runtimeVersionId: OWNER_RUNTIME_VERSION_ID, ...deployment };
+    const latest = { ...current, id: "failed-replacement", status: "failed" };
+    return { items: omitCurrentDeployment ? [current] : [latest], currentDeployment: omitCurrentDeployment ? undefined : current, latestAttempt: latest };
+  };
   const http = {
     async request(path) {
       // A successful Console page load is deliberately served here, because it
@@ -199,18 +207,16 @@ function controlPlane({
         if (workspaceId !== state.workspaceId) return { response: { status: 404 }, payload: null };
         return { response: { status: 200 }, payload: {
           id: workspaceId, name: "Qualification workspace", status: "running",
-          capabilityVersionId: "capability-0001", applicationAvailability: "available", accessUrl: ENTRY_URL,
+          runtimeVersionId: OWNER_RUNTIME_VERSION_ID, applicationAvailability: "available", accessUrl: ENTRY_URL,
         } };
       }
-      if (/^\/api\/v2\/workspaces\/[^/]+\/deployments\?limit=100$/.test(path)) {
+      if (/^\/api\/v2\/workspaces\/[^/]+\/deployments\?limit=1$/.test(path)) {
         const workspaceId = decodeURIComponent(path.split("/")[4]);
-        return { response: { status: 200 }, payload: { items: [{
-          id: APPLICATION_OPERATION_ID, workspaceId, status: "active", runtimeInstanceId: "rt-0123456789abcdef", capabilityVersionId: "capability-0001",
-        }] } };
+        return { response: { status: 200 }, payload: deploymentPage(workspaceId) };
       }
       throw new Error(`unexpected request ${path}`);
     },
-    async json(path, init = {}) {
+    async json(path, init = {}, auth = null) {
       if (path === "/api/auth/login" && init.method === "POST") {
         state.logins += 1;
         if (init.body?.email !== QUALIFICATION_EMAIL || init.body?.password !== QUALIFICATION_PASSWORD) {
@@ -250,12 +256,21 @@ function controlPlane({
       if (/^\/api\/v2\/workspaces\/[^/]+$/.test(path)) {
         const workspaceId = decodeURIComponent(path.split("/").pop());
         return result({ id: workspaceId, name: "Qualification workspace", status: "running",
-          capabilityVersionId: "capability-0001", applicationAvailability: "available", accessUrl: ENTRY_URL });
+          runtimeVersionId: OWNER_RUNTIME_VERSION_ID, applicationAvailability: "available", accessUrl: ENTRY_URL });
       }
-      if (/^\/api\/v2\/workspaces\/[^/]+\/deployments\?limit=100$/.test(path)) {
+      if (/^\/api\/v2\/workspaces\/[^/]+\/deployments\?limit=1$/.test(path)) {
         const workspaceId = decodeURIComponent(path.split("/")[4]);
-        return result({ items: [{ id: APPLICATION_OPERATION_ID, workspaceId, status: "active",
-          runtimeInstanceId: "rt-0123456789abcdef" }] });
+        state.serveReads.push({ path, method: init.method || "GET" });
+        return result(deploymentPage(workspaceId));
+      }
+      if (/^\/api\/v2\/workspaces\/[^/]+\/access$/.test(path)) {
+        const workspaceId = decodeURIComponent(path.split("/")[4]);
+        const current = deploymentPage(workspaceId).currentDeployment;
+        assert.ok(current, "access requires a selected deployment");
+        assert.deepEqual(init, { method: "POST", headers: { "idempotency-key": `workspace-access:${current.id}` } });
+        assert.deepEqual(auth, expectedAuth);
+        state.serveReads.push({ path, method: init.method, key: init.headers["idempotency-key"] });
+        return result({ workspaceId, deploymentId: current.id, url: ENTRY_URL, ...access });
       }
       if (/^\/api\/v2\/workspaces\/[^/]+\/transactions\?limit=100$/.test(path)) {
         const workspaceId = decodeURIComponent(path.split("/")[4]);
@@ -460,6 +475,10 @@ test("the Local-Docker adapter satisfies the shared seam and settles the shared 
   assert.equal(receipt.provider, LOCAL_DOCKER_PROVIDER);
   assert.equal(receipt.state, "settled");
   assert.ok(QUALIFICATION_BUSINESS_CHECKS.every((name) => receipt.checks[name] === true));
+  assert.deepEqual(platform.state.serveReads, [
+    { path: `/api/v2/workspaces/${platform.state.workspaceId}/deployments?limit=1`, method: "GET" },
+    { path: `/api/v2/workspaces/${platform.state.workspaceId}/access`, method: "POST", key: `workspace-access:${APPLICATION_OPERATION_ID}` },
+  ]);
   assert.equal(platform.state.posted, 1, "one owner order for one declared qualification");
   // The order names the quote the owner priced and asks for manual renewal,
   // and the quote froze the application selection and the plan pair it prices.
@@ -483,12 +502,36 @@ test("the Local-Docker adapter satisfies the shared seam and settles the shared 
   assert.equal(platform.state.pageReads, 0, "no Console page load participates in the result");
 });
 
+test("Local-Docker refuses missing selection, invalid sources and cross-generation access", async () => {
+  for (const options of [
+    { omitCurrentDeployment: true },
+    { deployment: { runtimeVersionId: undefined } },
+    { deployment: { runtimeVersionId: 42 } },
+    { deployment: { capabilityVersionId: "capability-current" } },
+    { access: { workspaceId: "workspace-other" } },
+    { access: { deploymentId: "deployment-previous" } },
+    { access: { deploymentId: undefined } },
+    { access: { url: "/relative" } },
+  ]) {
+    const platform = controlPlane(options);
+    const request = qualificationRequest(LOCAL_DOCKER_PROVIDER);
+    const result = await run(request, adapterFor(platform, request));
+    assert.equal(result.state, "failed");
+    assert.equal(result.receipt.reason, "runtime_not_ready");
+    assert.equal(result.receipt.checks.runtime_ready, false);
+    assert.equal(result.receipt.delivery.applicationOperationDigest, "");
+    assert.equal(result.receipt.delivery.workspaceEntryDigest, "");
+    assert.equal(platform.state.posted, 1);
+    assert.equal(platform.state.charges.length, 1);
+  }
+});
+
 test("a Local-Docker receipt has exactly the shared business receipt shape", async () => {
   const localPlatform = controlPlane();
   const localRequest = qualificationRequest(LOCAL_DOCKER_PROVIDER);
   const local = await run(localRequest, adapterFor(localPlatform, localRequest));
 
-  const tkePlatform = controlPlane();
+  const tkePlatform = controlPlane({ expectedAuth: { cookie: "opl_session=tke", csrf: "tke-csrf" } });
   const tkeRequest = qualificationRequest("tencent-tke");
   const tkeAdapter = {
     provider: "tencent-tke",

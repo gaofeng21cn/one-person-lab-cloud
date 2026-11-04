@@ -528,22 +528,44 @@ async function waitForWorkspaceApplicationInstallation(http, auth, { workspaceId
 
 async function readDeliveredWorkspace(http, auth, workspaceId) {
   const workspace = await readWorkspaceOwnerItem(http, auth, workspaceId);
-  if (!workspace || workspace.applicationAvailability !== "available" ||
-      !String(workspace.accessUrl || "").trim()) {
+  if (!workspace || workspace.applicationAvailability !== "available") {
     throw adapterError("workspace_not_ready");
   }
-  // The deployment is Serve's own record. The current active deployment names
-  // the Runtime instance this Workspace is actually served from; the composed
-  // Workspace read above names the access entry Serve confirmed for it.
-  const page = (await http.json(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/deployments?limit=100`, {}, auth)).payload;
-  const deployments = Array.isArray(page?.items) ? page.items : [];
-  const active = deployments.find((deployment) => deployment?.status === "active" &&
-    deployment?.workspaceId === workspaceId && String(deployment?.runtimeInstanceId || "").trim());
-  if (!active || !String(active.id || "").trim()) throw adapterError("runtime_not_ready");
+  // The current selection and its access must name the same Serve deployment;
+  // the composed Workspace entry may belong to an earlier generation.
+  const page = (await http.json(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/deployments?limit=1`, {}, auth)).payload;
+  const active = page?.currentDeployment;
+  if (active?.status !== "active" || active?.workspaceId !== workspaceId ||
+      typeof active?.id !== "string" || !active.id.trim() ||
+      typeof active?.runtimeInstanceId !== "string" || !active.runtimeInstanceId.trim()) {
+    throw adapterError("runtime_not_ready");
+  }
+  const sources = [active.capabilityVersionId, active.runtimeVersionId];
+  if (sources.some((id) => id !== undefined && (typeof id !== "string" || (id !== "" && !id.trim()))) ||
+      sources.filter((id) => typeof id === "string" && id.trim()).length !== 1) {
+    throw adapterError("runtime_not_ready");
+  }
+  const access = (await http.json(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/access`, {
+    method: "POST", headers: { "idempotency-key": `workspace-access:${active.id}` },
+  }, auth)).payload;
+  if (access?.workspaceId !== workspaceId || access?.deploymentId !== active.id ||
+      typeof access?.url !== "string" || !/^https?:\/\//.test(access.url)) {
+    throw adapterError("runtime_not_ready");
+  }
+  let entry;
+  try {
+    entry = new URL(access.url);
+  } catch {
+    throw adapterError("runtime_not_ready");
+  }
+  if (!entry.hostname || !["http:", "https:"].includes(entry.protocol) || entry.username || entry.password) {
+    throw adapterError("runtime_not_ready");
+  }
   return {
-    entryUrl: String(workspace.accessUrl),
-    applicationOperationId: String(active.id),
-    componentsObserved: deployments.length,
+    entryUrl: access.url,
+    applicationOperationId: active.id,
+    // This read confirms one current deployment, independent of history pages.
+    componentsObserved: 1,
   };
 }
 

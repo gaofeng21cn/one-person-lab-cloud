@@ -405,7 +405,7 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
       if (path === `/api/v2/workspaces/${workspaceId}/access`) {
         accessReads += 1;
         assert.equal(request.method(), "POST");
-        return route.fulfill({ json: { workspaceId, url: `https://agent.example.invalid/${workspaceId}`, authenticationMode: "application_login" } });
+        return route.fulfill({ json: { workspaceId, deploymentId: `deployment-${workspaceId}`, url: `https://agent.example.invalid/${workspaceId}`, authenticationMode: "application_login" } });
       }
       return route.fulfill({ status: 404, json: { error: "unexpected_v2_route" } });
     });

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"google.golang.org/grpc"
@@ -120,15 +121,16 @@ func (f composedFixture) read(t *testing.T) (int, map[string]any) {
 }
 
 func activeDeployment() *api.DeploymentPage {
-	return &api.DeploymentPage{Items: []*api.Deployment{{
+	current := &api.Deployment{
 		Id: "dep-1", WorkspaceId: "ws-1", CapabilityVersionId: "cv-1",
 		Status: api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_ACTIVE,
-	}}}
+	}
+	return &api.DeploymentPage{Items: []*api.Deployment{current}, CurrentDeployment: current, LatestAttempt: current}
 }
 
 func applicationEntry() *api.WorkspaceAccess {
 	return &api.WorkspaceAccess{
-		WorkspaceId: "ws-1", Url: "https://agent.example.test",
+		WorkspaceId: "ws-1", DeploymentId: "dep-1", Url: "https://agent.example.test",
 		AuthenticationMode: api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_APPLICATION_LOGIN,
 	}
 }
@@ -193,7 +195,7 @@ func TestWorkspaceReadDerivesAvailabilityFromTheCurrentDeployment(t *testing.T) 
 		},
 		{
 			name: "active entry without a usable origin", status: api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_ACTIVE,
-			entry: &api.WorkspaceAccess{WorkspaceId: "ws-1", Url: "not-a-url"},
+			entry: &api.WorkspaceAccess{WorkspaceId: "ws-1", DeploymentId: "dep-1", Url: "not-a-url"},
 			want:  "unknown", wantReads: 1,
 		},
 		{
@@ -203,6 +205,10 @@ func TestWorkspaceReadDerivesAvailabilityFromTheCurrentDeployment(t *testing.T) 
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			page := &api.DeploymentPage{Items: []*api.Deployment{{Id: "dep-1", WorkspaceId: "ws-1", CapabilityVersionId: "cv-1", Status: test.status}}}
+			page.LatestAttempt = page.Items[0]
+			if test.status == api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_ACTIVE {
+				page.CurrentDeployment = page.Items[0]
+			}
 			serve := &serveApplicationStub{deployments: page, entry: test.entry, accessErr: test.accessErr}
 			fixture := newComposedFixture(servedWorkspace(api.WorkspaceStatusEnum_WORKSPACE_STATUS_ENUM_ACTIVE), serve)
 			code, body := fixture.read(t)
@@ -224,7 +230,7 @@ func TestWorkspaceReadDerivesAvailabilityFromTheCurrentDeployment(t *testing.T) 
 // legacy bare-resource case: the Workspace exists but Serve has delivered no
 // application, so it must be unavailable rather than pending or openable.
 func TestWorkspaceReadReportsUnavailableWithoutAServeDeployment(t *testing.T) {
-	fixture := newComposedFixture(servedWorkspace(api.WorkspaceStatusEnum_WORKSPACE_STATUS_ENUM_PROVISIONING), &serveApplicationStub{})
+	fixture := newComposedFixture(servedWorkspace(api.WorkspaceStatusEnum_WORKSPACE_STATUS_ENUM_PROVISIONING), &serveApplicationStub{deployments: &api.DeploymentPage{}})
 	code, body := fixture.read(t)
 	if code != http.StatusOK || body["applicationAvailability"] != "unavailable" {
 		t.Fatalf("status = %d, body = %v", code, body)
@@ -363,4 +369,41 @@ func (c *listWorkspaceClient) GetWorkspace(context.Context, *api.GetWorkspaceRpc
 
 func (c *listWorkspaceClient) ListWorkspaces(context.Context, *api.ListWorkspacesRpcRequest, ...grpc.CallOption) (*api.WorkspacePage, error) {
 	return c.composedReader.page, nil
+}
+
+// An active application can precede an entire page of failed replacement attempts.
+// History pagination must not select a failed attempt as the current application.
+func TestWorkspaceReadKeepsCurrentApplicationOutsideHistoryPage(t *testing.T) {
+	page := &api.DeploymentPage{NextCursor: ptr("failed-49")}
+	for index := range 50 {
+		page.Items = append(page.Items, &api.Deployment{Id: "failed-" + strconv.Itoa(index), WorkspaceId: "ws-1", Status: api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_FAILED})
+	}
+	page.CurrentDeployment, page.LatestAttempt = activeDeployment().CurrentDeployment, page.Items[0]
+	serve := &serveApplicationStub{deployments: page, entry: applicationEntry()}
+	fixture := newComposedFixture(servedWorkspace(api.WorkspaceStatusEnum_WORKSPACE_STATUS_ENUM_ACTIVE), serve)
+	code, body := fixture.read(t)
+	if code != http.StatusOK || body["applicationAvailability"] != "available" || body["accessUrl"] != "https://agent.example.test" {
+		t.Fatalf("deployment history overrode the running application: status=%d body=%v", code, body)
+	}
+}
+
+func TestWorkspaceReadRejectsAccessForAnotherDeployment(t *testing.T) {
+	entry := applicationEntry()
+	entry.DeploymentId = "replacement-committed-between-reads"
+	fixture := newComposedFixture(servedWorkspace(api.WorkspaceStatusEnum_WORKSPACE_STATUS_ENUM_ACTIVE), &serveApplicationStub{deployments: activeDeployment(), entry: entry})
+	code, body := fixture.read(t)
+	if code != http.StatusOK || body["applicationAvailability"] != "unknown" || body["accessUrl"] != nil {
+		t.Fatalf("different deployment facts were combined: status=%d body=%v", code, body)
+	}
+}
+
+func TestWorkspaceReadDoesNotSelectFromHistoryWhenOwnerSelectionIsMissing(t *testing.T) {
+	page := activeDeployment()
+	page.CurrentDeployment, page.LatestAttempt = nil, nil
+	serve := &serveApplicationStub{deployments: page, entry: applicationEntry()}
+	fixture := newComposedFixture(servedWorkspace(api.WorkspaceStatusEnum_WORKSPACE_STATUS_ENUM_ACTIVE), serve)
+	code, body := fixture.read(t)
+	if code != http.StatusOK || body["applicationAvailability"] != "unknown" || body["accessUrl"] != nil || serve.accessReads != 0 {
+		t.Fatalf("history replaced missing owner selection: status=%d body=%v accessReads=%d", code, body, serve.accessReads)
+	}
 }

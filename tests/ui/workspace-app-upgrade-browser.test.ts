@@ -36,7 +36,10 @@ test("native Default App UI keeps the original command after unknown response an
       if (request.method() === "GET") reads.push(url.pathname);
       const json = (value: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(value) });
       if (url.pathname === "/api/v2/catalog/runtime-versions") return json({ items: [{ id: "rv-next", name: "OPL App", versionLabel: "2", status: "approved" }, { id: "rv-revoked", name: "Old App", versionLabel: "0", status: "revoked" }] });
-      if (url.pathname.endsWith("/deployments")) return json({ items: [{ id: "dep-original", workspaceId: url.pathname.split("/")[4], status: "active" }] });
+      if (url.pathname.endsWith("/deployments")) {
+        const current = { id: "dep-original", workspaceId: url.pathname.split("/")[4], status: "active" };
+        return json({ items: [], currentDeployment: current, latestAttempt: current });
+      }
       if (url.pathname.endsWith("/update")) {
         writes.push({ body: request.postDataJSON(), key: request.headers()["idempotency-key"] });
         assert.equal(request.headers()["x-csrf-token"], "csrf-original");

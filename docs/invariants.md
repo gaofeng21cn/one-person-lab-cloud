@@ -217,6 +217,11 @@ implementation and remaining gaps are reported separately in status/roadmap.
 - Initial application distribution, update, rollback and deployment settings
   require administrator authorization. Account ownership alone does not grant
   deployment permission; other management actions retain their role policies.
+- Serve alone reports the current application selection. Paginated deployment
+  history and the latest attempt do not determine which application is serving.
+  A composed view uses the selected deployment's artifact facts and accepts an
+  access readback only for that same deployment identity; a concurrent switch
+  stays unconfirmed rather than combining facts from different deployments.
 - Each Workspace fixes its own application revision, configuration and data
   bindings. A registry upload or installation-default change cannot update
   existing Workspaces; updating Workspace A does not change Workspace B.
