@@ -31,7 +31,6 @@ const (
 
 func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
 	registerWorkspaceRuntimeImageReplacementRoutes(mux, app, service)
-	registerWorkspaceRuntimeGatewayNetworkRecoveryRoutes(mux, app, service)
 	registerWorkspaceApplicationHistoryRoutes(mux, app)
 	registerWorkspaceApplicationRecoveryRoutes(mux, app)
 	registerWorkspaceRegistryCatalogRoutes(mux, app)

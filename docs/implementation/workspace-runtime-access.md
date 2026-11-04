@@ -245,27 +245,10 @@ credential status/version and Secret ref before recovering the binding. This
 is a read-only persisted-data constraint, not a second creation or mutation
 entrypoint.
 
-## Gateway Network Recovery
-
-An administrator may call
-`POST /api/operator/workspaces/{workspaceId}/runtime-gateway-network/recover`
-with an idempotency key and exactly `confirmationWorkspaceId` and `reason`.
-The confirmation must match the URL Workspace. Control Plane requires a
-succeeded Local-Docker Launch and its matching, running Workspace projection;
-Runtime, Compute, original Runtime operation and Service identities are taken
-from that Launch. A ready Runtime or the exact gateway-network mismatch is
-admissible; other read failures stop recovery.
-
-Control Plane persists the operation and audit, then sends a narrowly bound
-`workspace_runtime_gateway_network` capability for
-`recover_workspace_runtime_gateway_network` to Fabric. The Local-Docker adapter
-verifies the healthy Runtime, exact Compute network and membership, and the
-configured Control Plane gateway container's ownership labels. Its only
-provider mutation connects that gateway to the existing Compute network. The
-provider journal and final readback must match the original Runtime and network
-before success. Recovery neither rebuilds the Runtime nor purchases resources
-or changes the wallet; failed terminal operations are not replayed under the
-same key. Source tests for this route do not prove Instance network recovery.
+The retained Control Plane operator network-recovery command and its Fabric
+client adapter are withdrawn. Fabric's provider-owned network operations and
+strict Runtime network-membership readback remain; a missing gateway binding
+continues to fail readback rather than triggering an implicit repair.
 
 The customer Launch readback publishes `provisioningMode` from the persisted
 operation as `full` or `resource_only`. Readback consumers must use that owner

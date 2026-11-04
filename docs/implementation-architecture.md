@@ -1427,14 +1427,24 @@ configuration, previous generation, runtime and receipt identities remain intact
 The Console keeps read-only refresh for those pending deployments. No native
 password-rotation capability is introduced.
 
+The independent **R2b** slice removes the CP operator gateway-network recovery
+route, command/state-machine and service wrapper, exclusive Fabric client port,
+request/result types and tests. There is no registered replacement or refusal
+stub. No Console or configured Instance caller was found in the inspected source;
+this is not a production zero-traffic claim. The protected current-owner census
+and its limits are recorded in [status](status.md#retained-network-recovery-command-withdrawal-2026-11-04).
+Persisted CP/Fabric operations and audit records are unchanged. Fabric's own
+provider-network capability, journal and strict membership readback stay with
+Fabric; their retirement requires separate provider-owner/caller disposition.
+
 Remaining R2 slices remove selected command/worker symbols in
 `workspace_runtime_image_replacement.go`,
-`workspace_image_release_policy.go`, `workspace_launch_repair.go`,
-`workspace_runtime_gateway_network_recovery.go`. Remove the remaining legacy image
+`workspace_image_release_policy.go`, `workspace_launch_repair.go`.
+Remove the remaining legacy image
 controller command branches, runtime-image worker startup, its
 `OPL_WORKSPACE_RUNTIME_IMAGE_REPLACEMENT_WORKER_ENABLED` setting and exclusive
-policy/configuration consumers together. Image replacement/policy, runtime repair,
-network recovery and UI controller tests retire with those commands. Keep shared
+policy/configuration consumers together. Image replacement/policy, runtime repair
+and UI controller tests retire with those commands. Keep shared
 lifecycle/absence, credential lineage, origin codec and history readers until
 R5 and the relevant read consumers no longer use them. This is a capability
 withdrawal/migration decision: do not build every legacy command in Serve solely
