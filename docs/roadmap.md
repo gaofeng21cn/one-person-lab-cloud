@@ -264,6 +264,13 @@ and operator command routing follow the remaining callers in #1028; #1031 and
 
 ### Retained code-removal review (2026-11-03)
 
+The independent R2b proposal withdraws only the old CP Local-Docker network
+recovery command, its service/client adapters and exclusive types/tests. The
+current protected census has no such accepted operation; archive/traffic and
+installation adoption remain unproved. Fabric provider-network execution and
+strict readback stay with Fabric pending their own caller/obligation disposition.
+Image policy/replacement and Launch runtime repair remain separate R2 work.
+
 The user approved actual code deletion, capability by capability. Independent
 proposals cover the unused Key prototype ([Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112)), refused activation alias
 ([Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114)), existing Instance observation projection ([Instance #673](https://github.com/gaofeng21cn/opl-instance-medopl/pull/673))

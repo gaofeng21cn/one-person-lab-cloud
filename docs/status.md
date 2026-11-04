@@ -16,6 +16,31 @@ boundary is in [architecture.md](architecture.md),
 durable decisions are in [decisions.md](decisions.md), and open work is in
 [roadmap.md](roadmap.md).
 
+## Retained Network Recovery Command Withdrawal (2026-11-04)
+
+The independent R2b source change based on
+`f724d6dda9eb5e46ff6741c2f03fc0bb119d8734` removes the old CP operator
+Local-Docker gateway-network recovery route and its complete CP execution chain:
+request validation, operation/audit writer, service wrapper, Fabric client method,
+exclusive port/types and tests. No replacement handler or new Serve feature is
+added. Repository source and the inspected Instance caller inventory contain no
+configured non-test caller of this command. Fabric remains the provider-network
+owner; its network capability, provider journal, strict readback and their tests
+are outside this CP command withdrawal. Historical operations/audits stay stored.
+
+Protected Instance [observation 41750316687](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41750316687),
+observed at `2026-11-04T00:54:57.466Z`, contains 44 operations in the complete
+current CP owner API result. All 44 include action identity digests, with zero
+matches for `workspace.runtime_gateway_network_recovery` using the observer's
+`workspace-state-observation:v1:action` domain and NUL separator. This excludes
+an accepted recovery operation in that current result; it does not establish
+archive absence, a zero-traffic window, later state or another installation.
+The observation is partial because the two legacy Runtime health reads return
+HTTP 503. Its CP provenance is available and all three mutation counters are
+zero. The prior current/reserved deployment selections were **unobserved**, not
+proved empty. Local verification and actual current-revision CI belong to the
+PR; no Candidate publication or Instance adoption is claimed.
+
 ## Retained Password Rotation Withdrawal (2026-11-04)
 
 The R2a source change based on `6e475e033877a6231a278c0355183d30f0be750a`
@@ -37,8 +62,9 @@ at `2026-11-04T00:54:57.466Z` read the same installed Cloud
 `4a54e6cbbd0daee2bf61b17b4afa800748aa001f`. Complete current CP provenance
 still contains the same 44 operation identities/statuses as observation
 `41665805194`. Both remaining CP Workspace rows are `data_deleted`, with no
-current/reserved application binding, compute allocation, storage volume or
-attachment in the current CP result. This is current-object disposition evidence,
+current compute allocation, storage volume or attachment in the current CP
+result. Current/reserved application bindings were unobserved. This is
+current-object disposition evidence,
 not archived-history coverage or a zero-traffic claim. The overall observation
 remains partial because the two legacy runtime-health reads return HTTP 503;
 CP provenance is available, and all three mutation counters are zero.
