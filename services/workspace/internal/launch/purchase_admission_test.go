@@ -277,6 +277,53 @@ func TestCreateWorkspacePurchaseEligibilityAcceptedReplay(t *testing.T) {
 		t.Fatalf("unconfigured new purchase: operation=%v err=%v", refused, err)
 	}
 	assertPurchaseAdmissionCounts(t, db, [3]int{1, 1, 1})
+
+	// A new Service must resume the accepted obligation without consulting the
+	// current purchase policy or live authorization. Catalog stays unavailable,
+	// so an actual persisted retry proves recovery without funding or resources.
+	accepted, err := service.Store.ReadOperation(ctx, original.GetOperationId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, policy := range []string{"revoked", "unavailable", "unconfigured"} {
+		t.Run("recovery after "+policy, func(t *testing.T) {
+			restarted, err := New(db, service.Auth, catalog, service.Fabric, identity)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if policy != "unconfigured" {
+				restarted.PurchaseEligibility = purchaseEligibilityReadFunc(func(ctx context.Context, call *api.CallContext) (*contracts.WorkspacePurchaseEligibility, error) {
+					reads.Add(1)
+					if policy == "unavailable" {
+						return nil, status.Error(codes.Unavailable, "eligibility owner unavailable during recovery")
+					}
+					fact, err := allowPurchaseEligibilityForTest(ctx, call)
+					*fact.WorkspacePurchaseEnabled = false
+					return fact, err
+				})
+			}
+			beforeReads, beforeAuthorizations, beforeAttempts := reads.Load(), identity.authorizations.Load(), catalog.accepts.Load()
+			if err := restarted.Resume(ctx, original.GetOperationId()); status.Code(err) != codes.Unavailable {
+				t.Fatalf("recovery did not reach the original pending Catalog command: %v", err)
+			}
+			if reads.Load() != beforeReads || identity.authorizations.Load() != beforeAuthorizations || identity.grants.Load() != 1 || catalog.accepts.Load() != beforeAttempts+1 || catalog.acceptedWorkspace != original.GetResourceId() || catalog.acceptedOperation != original.GetOperationId() {
+				t.Fatal("recovery changed the original obligation or consulted new-purchase admission")
+			}
+			var attempts int64
+			var commandID, key string
+			if err := db.QueryRowContext(ctx, `SELECT attempt_count,command_id,idempotency_key FROM workspace.saga_steps WHERE operation_id=$1 AND step_key='accept_quote'`, original.GetOperationId()).Scan(&attempts, &commandID, &key); err != nil {
+				t.Fatal(err)
+			}
+			if attempts != beforeAttempts+1 || commandID != original.GetOperationId()+":accept_quote" || key != commandID {
+				t.Fatalf("retry lost the original command: attempts=%d command=%q key=%q", attempts, commandID, key)
+			}
+			stored, err := restarted.Store.ReadOperation(ctx, original.GetOperationId())
+			if err != nil || stored.ResourceID != accepted.ResourceID || stored.ActorID != accepted.ActorID || stored.TenantID != accepted.TenantID || string(stored.AcceptedInput) != string(accepted.AcceptedInput) || stored.Status != "awaiting_confirmation" || stored.Stage != "quote_binding" || stored.Observation != "unknown" || stored.ErrorCode != "DEPENDENCY_UNAVAILABLE" {
+				t.Fatalf("recovery did not preserve the pending original order: %+v err=%v", stored, err)
+			}
+			assertPurchaseAdmissionCounts(t, db, [3]int{1, 1, 1})
+		})
+	}
 }
 
 func TestCreateWorkspacePurchaseEligibilityRevokedWhileQueued(t *testing.T) {
