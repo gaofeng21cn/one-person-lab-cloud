@@ -86,7 +86,7 @@ func TestHistoricalDefaultApplicationReplacementPreservesPurchaseAndIsolatesData
 	purchase, _, _ := store.GetRuntimeOperation(ctx, "workspace-launch-alpha")
 	revision := defaultOPLApplicationRevision("repo.example/opl-app@sha256:" + strings.Repeat("b", 64))
 	request := workspaceDefaultApplicationRequest{SchemaVersion: 1, OperationID: workspaceDefaultApplicationOperationID("workspace-launch-alpha"), LaunchOperationID: "workspace-launch-alpha", AccountID: "acct-alpha", WorkspaceID: "ws-alpha", OwnerUserID: "owner-alpha", Sub2APIUserID: 41, WorkspaceKeyGroupID: 5, Revision: revision, Phase: "waiting_resources", WorkspaceAPIKeyID: 19, GatewaySecret: &clients.GatewaySecretWriteResult{SecretRef: "secret-ws-alpha", Version: "v1", Fingerprint: "sha256:" + strings.Repeat("a", 64)}}
-	current := seedHistoricalDefaultApplicationForTest(t, app, service, fabric, request)
+	current := seedHistoricalDefaultApplicationForTest(t, app, fabric, request)
 	row, _, _ := store.GetRuntimeOperation(ctx, request.OperationID)
 	installed, err := decodeWorkspaceDefaultApplication(row)
 	if err != nil || installed.Phase != "deployed" {
@@ -174,7 +174,6 @@ func TestApplicationCredentialConfigurationFollowsSelectedLineage(t *testing.T) 
 	ctx := context.Background()
 	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
 	app := fixture.server.(*controlPlaneHTTPHandler).app
-	service := fixture.server.(*controlPlaneHTTPHandler).service
 	revision := defaultOPLApplicationRevision("registry.example/opl-app@sha256:" + strings.Repeat("a", 64))
 	bindings := []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", Key: "opl_gateway_api_key", SecretRef: "opl-gateway-ws-alpha", Version: "gateway-original"}}
 	initial := seedApplicationRevisionForLifecycle(t, app, "ws-alpha", revision, contracts.WorkspaceApplicationRuntimeConfiguration{Environment: map[string]string{"OPL_WEBUI_USERNAME": "opl", "PRIOR_USER_SETTING": "original"}}, bindings, 19, true)
@@ -198,14 +197,17 @@ func TestApplicationCredentialConfigurationFollowsSelectedLineage(t *testing.T) 
 	payload, _ := json.Marshal(detached)
 	row["result"] = string(payload)
 	mustStore(t, app.tables.SaveRuntimeOperation(ctx, row))
-	resolved, resolvedBindings, keyID, err := app.workspaceOPLApplicationConfiguration(ctx, service, "ws-alpha", revision.ApplicationID)
-	if err != nil || resolved.CredentialVersion != rotated.Configuration.CredentialVersion || resolved.CredentialSourceRuntimeOperationID != rotated.Configuration.CredentialSourceRuntimeOperationID || !reflect.DeepEqual(resolvedBindings, rotated.SecretBindings) || keyID != 20 {
-		t.Fatalf("return to OPL lost selected credentials: configuration=%+v bindings=%+v key=%d err=%v", resolved, resolvedBindings, keyID, err)
+	workspace, _, _ := app.tables.GetWorkspace(ctx, "ws-alpha")
+	ancestor, found, err := app.workspaceApplicationSelectedAncestor(ctx, workspace, revision.ApplicationID)
+	if err != nil || !found || ancestor.OperationID != rotated.OperationID || !reflect.DeepEqual(ancestor.SecretBindings, rotated.SecretBindings) || ancestor.WorkspaceAPIKeyID != 20 {
+		t.Fatalf("selected lineage lost the served Gateway binding: ancestor=%+v found=%v err=%v", ancestor, found, err)
 	}
-	if _, retained := resolved.Environment["PRIOR_USER_SETTING"]; retained || resolved.Environment["OPL_WEBUI_AUTH_MODE"] != "password" || resolved.Environment["OPL_WEBUI_USERNAME"] != "opl" || resolved.Environment["DATA_DIR"] != "/data" {
-		t.Fatal("OPL configuration did not resolve exactly the platform ABI environment")
+	// An empty credential input exercises inheritance from the selected chain.
+	resolved, err := app.workspaceApplicationCredentialConfiguration(ctx, workspace, revision, "return-after-rotation", contracts.WorkspaceApplicationRuntimeConfiguration{})
+	if err != nil || resolved.CredentialVersion != rotated.Configuration.CredentialVersion || resolved.CredentialSourceRuntimeOperationID != rotated.Configuration.CredentialSourceRuntimeOperationID {
+		t.Fatalf("selected lineage lost the served credential identity: configuration=%+v err=%v", resolved, err)
 	}
-	returned, err := app.createWorkspaceApplicationDeploymentIntent(ctx, "ws-alpha", "return-after-rotation", revision.ApplicationID, revision.Version, resolved, resolvedBindings, keyID, "", "")
+	returned, err := app.createWorkspaceApplicationDeploymentIntent(ctx, "ws-alpha", "return-after-rotation", revision.ApplicationID, revision.Version, resolved, ancestor.SecretBindings, ancestor.WorkspaceAPIKeyID, "", "")
 	if err != nil || returned.Configuration.CredentialVersion != rotated.Configuration.CredentialVersion || returned.DataBindingID != initial.DataBindingID {
 		t.Fatalf("return to OPL changed credentials or data: %+v %v", returned, err)
 	}
@@ -216,7 +218,10 @@ func TestApplicationCredentialConfigurationFollowsSelectedLineage(t *testing.T) 
 	payload, _ = json.Marshal(selected)
 	row["result"] = string(payload)
 	mustStore(t, app.tables.SaveRuntimeOperation(ctx, row))
-	if _, _, _, err := app.workspaceOPLApplicationConfiguration(ctx, service, "ws-alpha", revision.ApplicationID); err == nil {
+	if _, _, err := app.workspaceApplicationSelectedAncestor(ctx, workspace, revision.ApplicationID); err == nil {
+		t.Fatal("broken selected lineage recovered an unproven ancestor")
+	}
+	if _, err := app.workspaceApplicationCredentialConfiguration(ctx, workspace, revision, "return-after-rotation", contracts.WorkspaceApplicationRuntimeConfiguration{}); err == nil {
 		t.Fatal("broken selected lineage recovered unproven credentials")
 	}
 }

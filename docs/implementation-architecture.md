@@ -1398,10 +1398,22 @@ Launch-replay side effects, customer resume route, worker scan and Console
 controller. Its last production revision-admission caller and store mutation
 leave together. `workspace_default_application_history.go` retains the accepted
 request decoder for original-order replay, historical installation display,
-credential lineage and Secret cleanup; `workspace_application_configuration.go`
-retains configuration reads for the surviving credential/Key callers. Original
-records and schema stay unchanged. The fresh protected evidence and its limits
-are in [status](status.md#retained-operator-application-deployment-withdrawal-2026-11-03).
+credential lineage and Secret cleanup. Original records and schema stay
+unchanged. The fresh protected evidence and its limits are in
+[status](status.md#retained-operator-application-deployment-withdrawal-2026-11-03).
+
+The independent **R1c** slice removes the unused
+`workspaceOPLApplicationConfiguration` bootstrap and its sole service callee,
+`SyncWorkspaceGatewaySecretByID`. After default-install and password command
+withdrawal, only test fixtures called this bootstrap; it could still resolve a
+Gateway Key and write a Fabric Secret. Historical fixtures now supply the
+accepted configuration and Secret binding explicitly. Surviving credential
+inheritance reads remain in `workspace_application_selection.go`; accepted Key
+rotation copies its selected deployment's frozen configuration and uses
+`SyncWorkspaceGatewayReplacementSecret`. Launch Key creation still uses
+`SyncWorkspaceGatewaySecretWithKey`. Those live consumers retain the common
+Secret writer and Key convergence reader. No new owner capability or refusal
+route is added.
 
 The shared deployment engine still resumes accepted password-change deployments
 and serves Workspace-Key rotation in `workspace_application_access.go`. R2a removes

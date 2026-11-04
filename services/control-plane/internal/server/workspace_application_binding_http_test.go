@@ -24,7 +24,7 @@ func applicationBindingFixture(t *testing.T) (*controlPlaneHTTPHandler, *applica
 	handler := server.(*controlPlaneHTTPHandler)
 	seedResourceOnlyActivatedWorkspace(t, store, "workspace-launch-alpha", "ws-alpha")
 	installation := workspaceDefaultApplicationRequest{SchemaVersion: 1, OperationID: workspaceDefaultApplicationOperationID("workspace-launch-alpha"), LaunchOperationID: "workspace-launch-alpha", AccountID: "acct-alpha", WorkspaceID: "ws-alpha", OwnerUserID: "owner-alpha", Sub2APIUserID: 41, WorkspaceKeyGroupID: 5, Revision: defaultOPLApplicationRevision("repo.example/opl-app@sha256:" + strings.Repeat("b", 64)), Phase: "waiting_resources", WorkspaceAPIKeyID: 19, GatewaySecret: &clients.GatewaySecretWriteResult{SecretRef: "gateway-original", Version: "v1"}}
-	current := seedHistoricalDefaultApplicationForTest(t, handler.app, service, fabric, installation)
+	current := seedHistoricalDefaultApplicationForTest(t, handler.app, fabric, installation)
 	return handler, fabric, current
 }
 

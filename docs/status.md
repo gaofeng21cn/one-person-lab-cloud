@@ -101,6 +101,29 @@ CP provenance is available, and all three mutation counters are zero.
 Source tests and actual current-revision CI are recorded in the PR; installation
 adoption and the remaining R2/R3 engine retirement are separate outcomes.
 
+## Unused Application Secret Bootstrap Removal (2026-11-04)
+
+The R1c source cleanup is based on
+`173d1afbcbd3dc120f0839707c9e69eb2ba2787b`, after merged Cloud #1120.
+It removes `workspaceOPLApplicationConfiguration` and its exclusive
+`SyncWorkspaceGatewaySecretByID` service method. A repository caller scan found
+only historical test setup and a lineage test still invoking the bootstrap;
+no production caller remains. The fixture now supplies accepted configuration,
+Gateway Secret binding and Key identity without resolving a Key or writing a
+Secret. The lineage test exercises the surviving selected-ancestor and
+credential-inheritance readers, including rejection of a broken predecessor
+chain and exclusion of a newer, unselected candidate.
+
+Accepted rotation recovery still uses the selected deployment's frozen
+configuration and the separate replacement-Secret path. Original Launch Key
+creation and renewal convergence retain their actual service callers. Shared
+deployment worker, activation/current-selection writers, operator retry,
+historical decoders and persisted records remain. Source caller absence for
+this removed bootstrap does not establish a production zero-traffic interval,
+archive clearance or retirement of the shared engine. Local verification and
+current-revision CI results belong to the source PR; no Candidate publication,
+Instance deployment or production mutation is included.
+
 ## Retained Operator Application Deployment Withdrawal (2026-11-03)
 
 The R1a source change based on `ae293ec8c2ba6c562ae5c5206d4c0be2b3171c7d`
