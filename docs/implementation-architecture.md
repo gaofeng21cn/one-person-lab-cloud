@@ -1451,10 +1451,12 @@ owner and request hash. Confirmed absence returns HTTP 410
 dispatching Gateway/Secret/Runtime/receipt effects. Failed reads, damaged state
 and identity conflicts retain their errors rather than becoming absence.
 
-The original recovery state machine remains necessary: a child deployment worker
-alone cannot commit the parent Key mapping, retire/delete the predecessor or
-finish its receipt. Tests seed accepted historical operations explicitly, then
-exercise real HTTP recovery, response loss, restart, CAS and terminal replay.
+The original recovery state machine remains necessary: child activation can
+commit the Workspace Key projection, but does not complete the parent operation,
+retire/delete the predecessor or finish the parent's receipt. Parent recovery
+still performs its idempotent Key CAS and closeout. Tests seed accepted historical
+operations explicitly, then exercise real HTTP recovery, response loss, restart,
+CAS and terminal replay.
 The remaining Key-stage writer in `workspace_launch_account_stages.go`, its
 `workspace_launch_service.go` dispatch, accepted rotation persistence/CAS and
 Sub2API wrappers leave only with their R3/R5 original-operation obligations.
