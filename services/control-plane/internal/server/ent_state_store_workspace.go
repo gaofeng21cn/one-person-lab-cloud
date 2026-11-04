@@ -567,61 +567,6 @@ func (s *postgresEntStateStore) CompareAndSwapWorkspaceAPIKey(ctx context.Contex
 	return tx.Commit()
 }
 
-func (s *postgresEntStateStore) ClaimWorkspaceKeyRotation(ctx context.Context, row map[string]any) error {
-	operation, ok := validWorkspaceKeyRotationClaim(row)
-	if !ok {
-		return errWorkspaceKeyRotationState
-	}
-	workspaceID, accountID := stringValue(row["workspaceId"]), stringValue(row["accountId"])
-	tx, err := s.client.Tx(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	client := tx.Client()
-	workspaceEntity, err := client.Workspace.Query().Where(workspace.IDEQ(workspaceID), lockRowForUpdate).Only(ctx)
-	if err != nil {
-		if controlplaneent.IsNotFound(err) {
-			return errWorkspaceKeyRotationInProgress
-		}
-		return err
-	}
-	workspaceRow := recordFromEnt(workspaceEntity, workspaceEntFields)
-	currentKeyID, keyOK := positiveIntegerField(workspaceRow, "workspaceApiKeyId")
-	if firstNonEmpty(stringValue(workspaceRow["accountId"]), stringValue(workspaceRow["ownerAccountId"])) != accountID || !keyOK || currentKeyID != operation.OldKeyID {
-		return errWorkspaceKeyRotationInProgress
-	}
-	operationEntities, err := client.RuntimeOperation.Query().Where(runtimeoperation.WorkspaceIDEQ(workspaceID), lockRowForUpdate).All(ctx)
-	if err != nil {
-		return err
-	}
-	reservedID := stringValue(workspaceRow["reservedApplicationDeploymentId"])
-	reservationConfirmed := reservedID == ""
-	for _, entity := range operationEntities {
-		existing := recordFromEnt(entity, runtimeOpEntFields)
-		if stringValue(existing["id"]) == reservedID {
-			intent, err := decodeWorkspaceApplicationDeploymentIntent(existing)
-			if err != nil || intent.Phase != workspaceApplicationDeploymentActivePhase || intent.OperationID != stringValue(workspaceRow["currentApplicationDeploymentId"]) {
-				return errWorkspaceKeyRotationInProgress
-			}
-			reservationConfirmed = true
-		}
-		if workspaceKeyRotationBlocksDelete(existing) || workspaceDeleteBlocksRotation(existing) || workspaceDefaultApplicationPreparationBlocks(existing) {
-			return errWorkspaceKeyRotationInProgress
-		}
-	}
-	if !reservationConfirmed {
-		return errWorkspaceKeyRotationInProgress
-	}
-	if err := saveRecord(ctx, stringValue(row["id"]), row, client.RuntimeOperation.Create(), runtimeOpEntFields); err != nil {
-		if controlplaneent.IsConstraintError(err) {
-			return errWorkspaceKeyRotationInProgress
-		}
-		return err
-	}
-	return tx.Commit()
-}
-
 func (s *postgresEntStateStore) ApplyWorkspaceRenewalIntent(ctx context.Context, update workspaceRenewalIntentCAS) error {
 	tx, err := s.client.Tx(ctx)
 	if err != nil {
