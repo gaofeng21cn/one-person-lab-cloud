@@ -7,7 +7,6 @@ import type {
   PricingCatalogResponse,
   PricingPreviewResponse,
   RuntimeCredentialResponse,
-  RuntimeCredentialRotationResponse,
   SourceEnvelope,
   WorkspaceDTO,
   WorkspaceGatewayBudgetDTO,
@@ -539,6 +538,7 @@ test("Historical installation stays read-only while current application entry an
   });
   try {
     for (const viewport of viewports) {
+      application.operationId = "application-knowledge";
       application.status = "pending";
       application.capabilities.credentials = false;
       delete application.entryUrl;
@@ -547,21 +547,36 @@ test("Historical installation stays read-only while current application entry an
       delete detail.currentApplication;
       detail.applicationInstallation = { operationId: "install-default", applicationId: "opl-app", revision: "1.2.3", status: "running" };
       let installationResumes = 0;
+      let detailReads = 0;
+      let runtimeReads = 0;
+      const workspaceCommands: string[] = [];
       const context = await browser.newContext({ viewport });
       const page = await context.newPage();
       const audit = await installBrowserAudit(page, demo.origin);
+      page.on("request", (request) => {
+        const path = new URL(request.url()).pathname;
+        if (path.startsWith("/api/workspaces/") && request.method() !== "GET" && !path.endsWith("/reveal")) {
+          workspaceCommands.push(`${request.method()} ${path}`);
+        }
+      });
       await page.addInitScript("window.open = (url) => { window.openedApplication = url; return null; };");
-      await page.route("**/api/workspaces?*", (route) => route.fulfill({ json: source<WorkspaceListData>({ items: [detail], total: 1, page: 1, pageSize: 50 }) }));
+      await page.route("**/api/workspaces?*", (route) => {
+        detailReads += 1;
+        return route.fulfill({ json: source<WorkspaceListData>({ items: [detail], total: 1, page: 1, pageSize: 50 }) });
+      });
       await page.route("**/api/workspaces/ws-1/application-installation/resume", async (route) => {
         installationResumes += 1;
         await route.fulfill({ status: 410, json: { error: "application_installation_resume_retired" } });
       });
-      await page.route("**/api/workspaces/ws-1/runtime-status", (route) => route.fulfill({ json: source<WorkspaceRuntimeDTO>({
-        workspaceId: "ws-1", runtimeId: "runtime-ws-1", status: application.status === "ready" ? "running" : "unready",
-        ready: application.status === "ready", checks: [], url: "https://retired-entry.example.invalid/",
-        access: { username: "retired-user", credentialStatus: "configured" },
-        currentApplication: detail.currentApplication ? { ...application, operationId: runtimeOperationId } : undefined
-      }, "fabric") }));
+      await page.route("**/api/workspaces/ws-1/runtime-status", (route) => {
+        runtimeReads += 1;
+        return route.fulfill({ json: source<WorkspaceRuntimeDTO>({
+          workspaceId: "ws-1", runtimeId: "runtime-ws-1", status: application.status === "ready" ? "running" : "unready",
+          ready: application.status === "ready", checks: [], url: "https://retired-entry.example.invalid/",
+          access: { username: "retired-user", credentialStatus: "configured" },
+          currentApplication: detail.currentApplication ? { ...application, operationId: runtimeOperationId } : undefined
+        }, "fabric") });
+      });
       await page.route("**/api/workspaces/ws-1/renewal", (route) => route.fulfill({ json: {
         workspaceId: "ws-1", autoRenew: false, paidThrough: "2026-10-13T00:00:00Z", renewalStatus: "manual",
         recovery: { state: "not_required", reason: "" }
@@ -623,45 +638,43 @@ test("Historical installation stays read-only while current application entry an
       assert.equal(await open.isDisabled(), true);
       assert.equal(budgetReads, 0);
 
-      let rotationSubmitted = false;
-      let rotationWrites = 0;
       await page.route("**/api/workspaces/ws-1/runtime-credentials/reveal", (route) => route.fulfill({ json: {
         workspaceId: "ws-1", access: {
-          account: "application-user", username: "application-user", password: rotationSubmitted ? "FixtureAfterRotation" : "FixtureBeforeRotation",
-          credentialStatus: "configured", credentialVersion: rotationSubmitted ? "2" : "1"
+          account: "application-user", username: "application-user",
+          password: application.operationId === "application-historical-rotation" ? "FixtureAcceptedRotation" : "FixtureCurrentPassword",
+          credentialStatus: "configured", credentialVersion: application.operationId === "application-historical-rotation" ? "2" : "1"
         }
       } satisfies RuntimeCredentialResponse }));
-      await page.route("**/api/workspaces/ws-1/runtime-credentials/rotate", (route) => {
-        rotationSubmitted = true;
-        rotationWrites += 1;
-        application.status = "pending";
-        detail.applicationInstallation = { operationId: "application-after-rotation", applicationId: application.applicationId, revision: application.revision, status: "running" };
-        return route.fulfill({ status: 202, json: {
-          workspaceId: "ws-1", operationId: "application-after-rotation", status: "pending"
-        } satisfies RuntimeCredentialRotationResponse });
-      });
       application.capabilities.credentials = true;
       runtimeOperationId = application.operationId;
       await refresh.click();
       await availability.getByText("可使用", { exact: true }).waitFor({ state: "visible" });
       const accessPanel = page.locator(".workspace-access-panel");
       await accessPanel.getByRole("button", { name: "显示", exact: true }).click();
-      await accessPanel.getByText("FixtureBeforeRotation", { exact: true }).waitFor({ state: "visible" });
-      await accessPanel.getByRole("button", { name: "轮换密码", exact: true }).click();
-      await page.getByText("密码轮换已提交，应用正在更新；完成后请重新显示密码", { exact: true }).waitFor({ state: "visible" });
-      await availability.getByText("应用正在部署", { exact: true }).waitFor({ state: "visible" });
-      assert.equal(await accessPanel.getByText("FixtureBeforeRotation", { exact: true }).count(), 0);
-      assert.equal(await page.getByText("登录密码已轮换", { exact: true }).count(), 0);
-      application.operationId = "application-after-rotation";
+      await accessPanel.getByText("FixtureCurrentPassword", { exact: true }).waitFor({ state: "visible" });
+
+      // Reopen an already accepted historical deployment. No command creates it.
+      application.operationId = "application-historical-rotation";
       runtimeOperationId = application.operationId;
+      application.status = "pending";
+      detail.applicationInstallation = {
+        operationId: application.operationId, applicationId: application.applicationId,
+        revision: application.revision, status: "running"
+      };
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await availability.getByText("应用正在部署", { exact: true }).waitFor({ state: "visible" });
+      assert.equal(await open.isDisabled(), true);
+      assert.equal(await accessPanel.getByText("FixtureCurrentPassword", { exact: true }).count(), 0);
+      const pendingReads = { detail: detailReads, runtime: runtimeReads };
       application.status = "ready";
       delete detail.applicationInstallation;
-      // The surviving credential operation refreshes both owner and runtime
-      // reads without the retired installation controller or a manual refresh.
+      // The retained read-only polling refreshes owner and runtime automatically.
       await availability.getByText("可使用", { exact: true }).waitFor({ state: "visible" });
+      assert.ok(detailReads > pendingReads.detail);
+      assert.ok(runtimeReads > pendingReads.runtime);
       await accessPanel.getByRole("button", { name: "显示", exact: true }).click();
-      await accessPanel.getByText("FixtureAfterRotation", { exact: true }).waitFor({ state: "visible" });
-      assert.equal(rotationWrites, 1);
+      await accessPanel.getByText("FixtureAcceptedRotation", { exact: true }).waitFor({ state: "visible" });
+      assert.deepEqual(workspaceCommands, []);
       assert.equal(installationResumes, 0);
       assert.equal(await accessPanel.getByText("API 密钥", { exact: true }).count(), 0);
       assert.deepEqual(audit.pageErrors, []);

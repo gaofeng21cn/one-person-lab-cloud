@@ -583,23 +583,6 @@ export async function apiFixture(route, state, session = state) {
       }
     });
   }
-  const credentialRotationMatch = path.match(/^\/api\/workspaces\/([^/]+)\/runtime-credentials\/rotate$/);
-  if (credentialRotationMatch && method === "POST") {
-    const workspaceId = credentialRotationMatch[1];
-    if (!state.workspaces.some((item) => item.id === workspaceId && item.ownerAccountId === session.accountId)) return fulfillJson(route, { error: "workspace_not_found" }, 404);
-    const credentialVersion = (state.workspaceCredentialVersions.get(workspaceId) || 1) + 1;
-    const password = `fixture-${workspaceId}-workspace-password-v${credentialVersion}`;
-    state.workspacePasswords.set(workspaceId, password);
-    state.workspaceCredentialVersions.set(workspaceId, credentialVersion);
-    return fulfillJson(route, {
-      workspaceId,
-      access: {
-        account: session.accountId, username: "opl", password, credentialStatus: "configured",
-        credentialVersion: String(credentialVersion)
-      },
-      receiptId: `receipt-rotation-${workspaceId}`
-    });
-  }
   if (path === "/api/pricing/catalog") return fulfillJson(route, {
     priceVersion: "pilot-usd-2026-07-v1", billingUnit: "calendar_month", displayCurrency: "USD", walletCurrency: "USD", currency: "USD",
     packages: [

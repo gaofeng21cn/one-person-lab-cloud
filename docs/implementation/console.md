@@ -165,11 +165,13 @@ generation. Route, Session, selected Workspace, reset and unmount clear the
 Secret and invalidate pending completions. Only an identity-matching owner
 response can reveal it; late completion cannot restore cleared data.
 
-Runtime rotation retains its idempotency key after an unknown result. A valid
-response displays the returned credential and refreshes authoritative Workspace
-detail. Clipboard is a transient interaction; raw values never enter browser
-storage, logs, receipts or ordinary persisted state. Gateway Key CRUD remains
-with its own panel because its pagination and mutation lifecycle differ.
+The legacy password-rotation command, Console action and idempotency-intent model
+are removed. Already accepted credential deployments retain read-only pending
+refresh and exact selected-generation reveal; their worker and original operator
+retry remain with Control Plane. Native credential reveal does not provide
+password rotation. Clipboard is a transient interaction; raw values never enter
+browser storage, logs, receipts or ordinary persisted state. Gateway Key CRUD
+remains with its own panel because its pagination and mutation lifecycle differ.
 
 ## Verification Sources
 

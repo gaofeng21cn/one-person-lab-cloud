@@ -85,7 +85,7 @@ test("Workspace launch recovery lists the current account operations", async () 
   assert.equal(launches[0]?.operationId, "launch-alpha");
 });
 
-test("Workspace credential and renewal commands use explicit routes and mutation keys", async () => {
+test("Workspace credential reveal and renewal use explicit routes and request keys", async () => {
   const requests: Array<{ url: string; init?: RequestInit }> = [];
   globalThis.fetch = async (input, init) => {
     requests.push({ url: String(input), init });
@@ -96,17 +96,17 @@ test("Workspace credential and renewal commands use explicit routes and mutation
   };
 
   await workspaceApi.revealWorkspaceCredentials("workspace-alpha", "csrf-alpha");
-  await workspaceApi.rotateWorkspaceCredentials("workspace-alpha", "csrf-alpha", "rotate-once");
   const renewal = await workspaceApi.updateWorkspaceRenewal("workspace-alpha", { autoRenew: true }, "csrf-alpha", "renew-once");
 
   assert.deepEqual(requests.map(({ url }) => url), [
     "/api/workspaces/workspace-alpha/runtime-credentials/reveal",
-    "/api/workspaces/workspace-alpha/runtime-credentials/rotate",
     "/api/workspaces/workspace-alpha/auto-renew"
   ]);
   const keys = requests.map(({ init }) => new Headers(init?.headers).get("Idempotency-Key"));
   assert.match(keys[0] ?? "", /^runtime-credential-reveal:/);
-  assert.deepEqual(keys.slice(1), ["rotate-once", "renew-once"]);
-  assert.deepEqual(JSON.parse(String(requests[2]?.init?.body)), { autoRenew: true });
+  assert.deepEqual(keys.slice(1), ["renew-once"]);
+  assert.deepEqual(JSON.parse(String(requests[0]?.init?.body)), {});
+  assert.equal(new Headers(requests[0]?.init?.headers).get("x-opl-csrf"), "csrf-alpha");
+  assert.deepEqual(JSON.parse(String(requests[1]?.init?.body)), { autoRenew: true });
   assert.equal(renewal.autoRenew, true);
 });

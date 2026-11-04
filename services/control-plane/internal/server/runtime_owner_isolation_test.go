@@ -553,11 +553,9 @@ func TestWorkspaceRuntimeAndSecretCommandsRequireCanonicalAccess(t *testing.T) {
 	}
 	commands := []struct {
 		name, method, path string
-		mutation           bool
 	}{
 		{name: "runtime status", method: http.MethodGet, path: "/api/workspaces/ws-alpha/runtime-status"},
 		{name: "credential reveal", method: http.MethodPost, path: "/api/workspaces/ws-alpha/runtime-credentials/reveal"},
-		{name: "credential rotate", method: http.MethodPost, path: "/api/workspaces/ws-alpha/runtime-credentials/rotate", mutation: true},
 	}
 
 	for _, state := range states {
@@ -602,13 +600,7 @@ func TestWorkspaceRuntimeAndSecretCommandsRequireCanonicalAccess(t *testing.T) {
 				beforeWorkspaces, _ := store.ListWorkspaces(context.Background(), "acct-alpha")
 				beforeOperations, _ := store.ListRuntimeOperations(context.Background())
 
-				body := `{}`
-				var response *httptest.ResponseRecorder
-				if command.mutation {
-					response = requestWithMutationKeyForTest(t, server, owner, command.method, command.path, body, "blocked-command")
-				} else {
-					response = requestWithSession(t, server, owner, command.method, command.path, body)
-				}
+				response := requestWithSession(t, server, owner, command.method, command.path, `{}`)
 				if response.Code >= 200 && response.Code < 300 {
 					t.Fatalf("blocked command status=%d body=%s", response.Code, response.Body.String())
 				}

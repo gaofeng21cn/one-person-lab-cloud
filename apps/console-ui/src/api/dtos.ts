@@ -539,12 +539,6 @@ export interface RuntimeCredentialResponse {
   receiptId?: string;
 }
 
-export type RuntimeCredentialRotationResponse = RuntimeCredentialResponse | {
-  workspaceId: string;
-  operationId: string;
-  status: "pending";
-};
-
 export type WorkspaceRuntimeCredentialDTO = RuntimeCredentialResponse;
 
 export interface WorkspaceKeyRotationDTO extends OperationStatusDTO {

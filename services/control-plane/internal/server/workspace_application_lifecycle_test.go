@@ -16,14 +16,16 @@ import (
 
 type applicationLifecycleFabric struct {
 	*workspaceDeleteFabric
-	states            map[string]string
-	failRuntime       string
-	mutations         []clients.WorkspaceApplicationRuntimeLifecycleInput
-	readbackError     bool
-	readbackTransform func(contracts.WorkspaceApplicationRuntimeLifecycleResult) contracts.WorkspaceApplicationRuntimeLifecycleResult
-	secretMutations   []clients.WorkspaceApplicationGatewaySecretCleanupInput
-	secretError       error
-	runtimeInputs     []clients.WorkspaceApplicationRuntimeInput
+	states              map[string]string
+	failRuntime         string
+	mutations           []clients.WorkspaceApplicationRuntimeLifecycleInput
+	readbackError       bool
+	readbackTransform   func(contracts.WorkspaceApplicationRuntimeLifecycleResult) contracts.WorkspaceApplicationRuntimeLifecycleResult
+	secretMutations     []clients.WorkspaceApplicationGatewaySecretCleanupInput
+	secretError         error
+	runtimeInputs       []clients.WorkspaceApplicationRuntimeInput
+	credentialInputs    []clients.WorkspaceApplicationRuntimeLifecycleInput
+	credentialPasswords map[string]string
 	// gatewaySecretPresent models the Workspace Gateway Secret file Local-Docker
 	// keeps until the application Secret retirement removes it: Fabric reports
 	// that file as a labelled residual of the Workspace until then.
@@ -88,7 +90,12 @@ func applicationGatewayEntry(revision contracts.WorkspaceApplicationRevision) *c
 }
 
 func (f *applicationLifecycleFabric) ReadWorkspaceApplicationRuntimeCredentials(_ context.Context, input clients.WorkspaceApplicationRuntimeLifecycleInput) (contracts.WorkspaceApplicationRuntimeCredentials, error) {
-	return contracts.WorkspaceApplicationRuntimeCredentials{RuntimeID: input.RuntimeID, WorkspaceID: input.WorkspaceID, WebUIUsername: "owner", WebUIPassword: "test-current-password"}, nil
+	f.credentialInputs = append(f.credentialInputs, input)
+	password := "test-current-password"
+	if f.credentialPasswords != nil {
+		password = f.credentialPasswords[input.RuntimeOperationID]
+	}
+	return contracts.WorkspaceApplicationRuntimeCredentials{RuntimeID: input.RuntimeID, WorkspaceID: input.WorkspaceID, WebUIUsername: "owner", WebUIPassword: password}, nil
 }
 
 func (f *applicationLifecycleFabric) ReadWorkspaceApplicationRuntime(_ context.Context, input clients.WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
@@ -492,46 +499,97 @@ func TestApplicationAccessReadyWithoutWebEntryIsNotOpenable(t *testing.T) {
 	}
 }
 
-func TestApplicationAccessCredentialRotationWaitsForSelectedGeneration(t *testing.T) {
+// Accepted credential changes are ordinary frozen deployments. Withdrawing the
+// customer creator must preserve their operator recovery and original identity.
+func TestAcceptedApplicationCredentialDeploymentRecoversAfterRestart(t *testing.T) {
 	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "false")
+	ctx := context.Background()
 	fixture, sub2api, ledger, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
 	app := fixture.server.(*controlPlaneHTTPHandler).app
 	revision := defaultOPLApplicationRevision("registry.example/opl-app@sha256:" + strings.Repeat("a", 64))
-	selected := seedApplicationRevisionForLifecycle(t, app, "ws-alpha", revision, contracts.WorkspaceApplicationRuntimeConfiguration{}, []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", Key: "opl_gateway_api_key", SecretRef: "opl-gateway-ws-alpha", Version: "v1"}}, 19, true)
-	fabric := &applicationLifecycleFabric{workspaceDeleteFabric: fixture.fabric, states: map[string]string{}}
-	server, err := NewPersistentServer(controlplane.NewService(ledger, fabric, sub2api), fixture.store)
+	selected := seedApplicationRevisionForLifecycle(t, app, "ws-alpha", revision,
+		contracts.WorkspaceApplicationRuntimeConfiguration{CredentialVersion: "original-password"},
+		[]contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", Key: "opl_gateway_api_key", SecretRef: "opl-gateway-ws-alpha", Version: "v1"}}, 19, true)
+	configuration := selected.Configuration
+	configuration.CredentialVersion = "previously-accepted-password-version"
+	configuration.CredentialSourceRuntimeOperationID = ""
+	accepted, err := app.createWorkspaceApplicationDeploymentIntent(ctx, selected.WorkspaceID, "credential-rotation:accepted-before-retirement",
+		selected.ApplicationID, selected.TargetRevision, configuration, selected.SecretBindings, selected.WorkspaceAPIKeyID, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	session := tenantOwnerSessionForTest(t, server)
-	response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspaces/ws-alpha/runtime-credentials/rotate", `{}`, "password-once")
-	if response.Code != http.StatusAccepted || strings.Contains(response.Body.String(), "test-current-password") || strings.Contains(response.Body.String(), `"access"`) {
-		t.Fatalf("pending password=%d %s", response.Code, response.Body.String())
+	row, _, _ := fixture.store.GetRuntimeOperation(ctx, accepted.OperationID)
+	mustStore(t, app.markWorkspaceApplicationManualReview(ctx, row, accepted, "test_preflight_unavailable"))
+	frozen, _, _ := fixture.store.GetRuntimeOperation(ctx, accepted.OperationID)
+
+	fabric := &applicationLifecycleFabric{workspaceDeleteFabric: fixture.fabric, states: map[string]string{},
+		credentialPasswords: map[string]string{selected.OperationID + ":runtime": "test-predecessor-password", accepted.OperationID + ":runtime": "test-accepted-password"},
 	}
-	workspace, _, _ := app.tables.GetWorkspace(context.Background(), "ws-alpha")
-	if stringValue(workspace["currentApplicationDeploymentId"]) != selected.OperationID || stringValue(workspace["reservedApplicationDeploymentId"]) == "" {
-		t.Fatal("pending rotation changed selected generation")
+	fabric.applicationRuntimeObservation = contracts.WorkspaceApplicationRuntimeObservation{
+		SchemaVersion: 1, WorkspaceID: accepted.WorkspaceID, RuntimeID: contracts.WorkspaceApplicationRuntimeID(accepted.OperationID + ":runtime"),
+		Status: "ready", Entry: applicationGatewayEntry(revision), Components: contracts.WorkspaceApplicationRuntimeComponents(revision),
 	}
-	row, _, _ := app.tables.GetRuntimeOperation(context.Background(), stringValue(workspace["reservedApplicationDeploymentId"]))
-	rotated, err := decodeWorkspaceApplicationDeploymentIntent(row)
-	if err != nil || rotated.Configuration.CredentialVersion == "" || rotated.Configuration.CredentialVersion == selected.Configuration.CredentialVersion || rotated.Configuration.CredentialSourceRuntimeOperationID != "" {
-		t.Fatalf("explicit rotation did not advance credential identity: %+v %v", rotated, err)
+	for index := range fabric.applicationRuntimeObservation.Components {
+		fabric.applicationRuntimeObservation.Components[index].State = "ready"
 	}
-	replayed := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspaces/ws-alpha/runtime-credentials/rotate", `{}`, "password-once")
-	if replayed.Code != http.StatusAccepted {
-		t.Fatalf("password rotation replay=%d %s", replayed.Code, replayed.Body.String())
-	}
-	replayedRow, _, _ := app.tables.GetRuntimeOperation(context.Background(), rotated.OperationID)
-	if replayedRow["result"] != row["result"] {
-		t.Fatal("password rotation replay changed its accepted version")
-	}
-	projection := map[string]any{}
-	if err := app.projectWorkspaceApplicationInstallation(context.Background(), workspace, projection); err != nil {
+	service := controlplane.NewService(ledger, fabric, sub2api)
+	restarted, err := NewPersistentServer(service, fixture.store)
+	if err != nil {
 		t.Fatal(err)
 	}
-	installation, ok := projection["applicationInstallation"].(workspaceApplicationInstallationProjection)
-	if !ok || installation.Status != "pending" {
-		t.Fatalf("rotation installation=%+v", projection)
+	handler := restarted.(*controlPlaneHTTPHandler)
+	owner := tenantOwnerSessionForTest(t, restarted)
+	operator := operatorSessionForTest(t, restarted)
+	for _, key := range []string{"accepted-before-retirement", "new-password-request"} {
+		response := requestWithMutationKeyForTest(t, restarted, owner, http.MethodPost, "/api/workspaces/ws-alpha/runtime-credentials/rotate", `{}`, key)
+		if response.Code != http.StatusNotFound && response.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("retired password command=%d %s", response.Code, response.Body.String())
+		}
+	}
+	retained, _, _ := fixture.store.GetRuntimeOperation(ctx, accepted.OperationID)
+	workspace, _, _ := fixture.store.GetWorkspace(ctx, selected.WorkspaceID)
+	if retained["result"] != frozen["result"] || retained["status"] != frozen["status"] ||
+		stringValue(workspace["currentApplicationDeploymentId"]) != selected.OperationID ||
+		stringValue(workspace["reservedApplicationDeploymentId"]) != accepted.OperationID ||
+		len(fabric.applicationRuntimeInputs) != 0 || len(fabric.mutations) != 0 {
+		t.Fatal("retired command changed the accepted operation, selection or runtime")
+	}
+	path := "/api/operator/application-deployments/" + accepted.OperationID + "/retry"
+	response := requestWithMutationKeyForTest(t, restarted, operator, http.MethodPost, path, `{}`, "recover-original-credential")
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("original credential deployment recovery=%d %s", response.Code, response.Body.String())
+	}
+	runDeploymentWorkerToCompletion(t, handler.app, service, accepted.OperationID)
+	completed, _, _ := fixture.store.GetRuntimeOperation(ctx, accepted.OperationID)
+	observed, err := decodeWorkspaceApplicationDeploymentIntent(completed)
+	if err != nil || stringValue(completed["status"]) != "succeeded" || observed.Phase != workspaceApplicationDeploymentActivePhase ||
+		observed.OperationID != accepted.OperationID || observed.RequestHash != accepted.RequestHash ||
+		observed.Configuration.CredentialVersion != configuration.CredentialVersion || observed.Configuration.CredentialSourceRuntimeOperationID != "" {
+		t.Fatalf("recovery changed the accepted credential identity: %+v err=%v", observed, err)
+	}
+	workspace, _, _ = fixture.store.GetWorkspace(ctx, selected.WorkspaceID)
+	if stringValue(workspace["currentApplicationDeploymentId"]) != accepted.OperationID || stringValue(workspace["reservedApplicationDeploymentId"]) != accepted.OperationID || int64(numberField(workspace, "applicationBindingVersion", 0)) != accepted.ExpectedWorkspaceVersion+1 {
+		t.Fatal("recovered credential deployment did not become the selected generation")
+	}
+	deployments, err := queryRuntimeOperations(ctx, fixture.store, runtimeOperationQuery{Action: workspaceApplicationDeploymentAction})
+	if err != nil || len(deployments) != 2 {
+		t.Fatalf("credential recovery created another deployment: count=%d err=%v", len(deployments), err)
+	}
+	for _, input := range fabric.applicationRuntimeInputs {
+		if input.RuntimeOperationID != accepted.OperationID+":runtime" || input.Configuration.CredentialVersion != configuration.CredentialVersion {
+			t.Fatal("credential runtime recovery changed its original command")
+		}
+	}
+	reveal := requestWithMutationKeyForTest(t, restarted, owner, http.MethodPost, "/api/workspaces/ws-alpha/runtime-credentials/reveal", `{}`, "reveal-recovered-credential")
+	if reveal.Code != http.StatusOK || !strings.Contains(reveal.Body.String(), "test-accepted-password") || strings.Contains(reveal.Body.String(), "test-predecessor-password") || reveal.Header().Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("current credential readback=%d %s", reveal.Code, reveal.Body.String())
+	}
+	if len(fabric.credentialInputs) != 1 {
+		t.Fatalf("credential reads=%d, want one exact generation read", len(fabric.credentialInputs))
+	}
+	read := fabric.credentialInputs[0]
+	if read.AccountID != accepted.AccountID || read.WorkspaceID != accepted.WorkspaceID || read.RuntimeID != contracts.WorkspaceApplicationRuntimeID(accepted.OperationID+":runtime") || read.RuntimeOperationID != accepted.OperationID+":runtime" {
+		t.Fatalf("reveal read another credential generation: %+v", read)
 	}
 }
 

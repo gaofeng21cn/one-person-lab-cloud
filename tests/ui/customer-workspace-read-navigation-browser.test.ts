@@ -294,30 +294,22 @@ test("Renewal readback invalidates an older Workspace detail refresh", { timeout
   }
 });
 
-test("Runtime credential rotation refreshes Workspace, Runtime, and Gateway Budget projections", { timeout: 60_000 }, async () => {
+test("Workspace password and Key reveal and copy use owner routes without changing projections", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await launchBrowser({ headless: true });
   try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, permissions: ["clipboard-read", "clipboard-write"] });
     await login(page, demo.origin);
 
-    const initialWorkspace = workspace("ws-1", "Workspace Before Rotation");
-    const refreshedWorkspace = workspace("ws-1", "Workspace After Rotation", {
-      updatedAt: "2026-08-27T00:05:00Z"
-    });
+    const initialWorkspace = workspace("ws-1", "Workspace Credentials");
     const initialRuntime: WorkspaceRuntimeDTO = {
       workspaceId: "ws-1",
       status: "running",
       ready: true,
       checks: [{ name: "workspace_service_ready", ok: true }],
       runtimeId: "runtime-ws-1",
-      url: "https://runtime-before-rotation.example/ws-1",
+      url: "https://runtime-current.example/ws-1",
       access: { username: "workspace-owner", credentialStatus: "active", credentialVersion: "1" }
-    };
-    const refreshedRuntime: WorkspaceRuntimeDTO = {
-      ...initialRuntime,
-      url: "https://runtime-after-rotation.example/ws-1",
-      access: { username: "workspace-owner", credentialStatus: "active", credentialVersion: "2" }
     };
     const initialBudget: WorkspaceGatewayBudgetDTO = {
       workspaceId: "ws-1",
@@ -334,28 +326,21 @@ test("Runtime credential rotation refreshes Workspace, Runtime, and Gateway Budg
       enabled: true,
       updatedAt: fetchedAt
     };
-    const refreshedBudget: WorkspaceGatewayBudgetDTO = {
-      ...initialBudget,
-      quotaUsedUsdMicros: "7654321",
-      usage5hUsdMicros: "111111",
-      updatedAt: "2026-08-27T00:05:00Z"
-    };
-    const rotation: RuntimeCredentialResponse = {
+    const credential: RuntimeCredentialResponse = {
       workspaceId: "ws-1",
       access: {
         account: "owner",
         username: "workspace-owner",
-        password: "rotated-runtime-password",
+        password: "current-runtime-password",
         credentialStatus: "active",
         credentialVersion: "2"
       }
     };
 
-    let rotated = false;
     let detailReads = 0;
     let runtimeReads = 0;
     let budgetReads = 0;
-    let rotationWrites = 0;
+    const secretReads: string[] = [];
     await page.route("**/api/workspaces?*", async (route) => {
       const url = new URL(route.request().url());
       if (url.searchParams.get("pageSize") !== "50") {
@@ -366,7 +351,7 @@ test("Runtime credential rotation refreshes Workspace, Runtime, and Gateway Budg
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(workspaceSource(rotated ? refreshedWorkspace : initialWorkspace, 1, 50))
+        body: JSON.stringify(workspaceSource(initialWorkspace, 1, 50))
       });
     });
     await page.route("**/api/workspaces/ws-1/runtime-status", async (route) => {
@@ -374,7 +359,7 @@ test("Runtime credential rotation refreshes Workspace, Runtime, and Gateway Budg
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(available("fabric", rotated ? refreshedRuntime : initialRuntime))
+        body: JSON.stringify(available("fabric", initialRuntime))
       });
     });
     await page.route("**/api/workspaces/ws-1/gateway-budget", async (route) => {
@@ -382,19 +367,20 @@ test("Runtime credential rotation refreshes Workspace, Runtime, and Gateway Budg
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(available("sub2api", rotated ? refreshedBudget : initialBudget))
+        body: JSON.stringify(available("sub2api", initialBudget))
       });
     });
-    await page.route("**/api/workspaces/ws-1/runtime-credentials/rotate", async (route) => {
-      rotationWrites += 1;
+    await page.route("**/api/workspaces/ws-1/runtime-credentials/reveal", async (route) => {
       assert.equal(route.request().method(), "POST");
-      assert.match(route.request().headers()["idempotency-key"] || "", /^runtime-credential:/);
-      rotated = true;
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(rotation)
-      });
+      assert.match(route.request().headers()["idempotency-key"] || "", /^runtime-credential-reveal:/);
+      secretReads.push(new URL(route.request().url()).pathname);
+      await route.fulfill({ json: credential });
+    });
+    const key = { id: initialWorkspace.workspaceApiKeyId!, name: "Workspace Key", status: "active", value: "current-workspace-key" };
+    await page.route(`**/api/gateway/keys/${key.id}/reveal`, async (route) => {
+      assert.equal(route.request().method(), "POST");
+      secretReads.push(new URL(route.request().url()).pathname);
+      await route.fulfill({ json: available("sub2api", key) });
     });
 
     await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "domcontentloaded" });
@@ -406,18 +392,27 @@ test("Runtime credential rotation refreshes Workspace, Runtime, and Gateway Budg
       .filter({ hasText: "总额度已用" }).getByText("$0.10", { exact: true }).waitFor();
     assert.deepEqual({ detailReads, runtimeReads, budgetReads }, { detailReads: 1, runtimeReads: 1, budgetReads: 1 });
 
-    await page.getByRole("button", { name: "轮换密码", exact: true }).click();
-    await page.getByText("登录密码已轮换", { exact: true }).waitFor({ state: "visible" });
-    await page.getByRole("heading", { name: refreshedWorkspace.name!, exact: true }).waitFor();
-    await page.getByRole("link", { name: refreshedRuntime.url!, exact: true }).waitFor();
-    await page.locator(".workspace-budget-panel .data-list > div")
-      .filter({ hasText: "总额度已用" }).getByText("$7.65", { exact: true }).waitFor();
     const passwordRow = page.locator(".workspace-access-panel .data-list > div")
       .filter({ hasText: "登录密码" }).first();
-    await passwordRow.locator("code").getByText(rotation.access.password, { exact: true }).waitFor();
-
-    assert.equal(rotationWrites, 1);
-    assert.deepEqual({ detailReads, runtimeReads, budgetReads }, { detailReads: 2, runtimeReads: 2, budgetReads: 2 });
+    const keyRow = page.locator(".workspace-access-panel .data-list > div")
+      .filter({ hasText: "API 密钥" }).first();
+    assert.deepEqual(secretReads, []);
+    await passwordRow.getByRole("button", { name: "显示", exact: true }).click();
+    await passwordRow.getByText(credential.access.password, { exact: true }).waitFor();
+    await passwordRow.getByRole("button", { name: "复制", exact: true }).click();
+    await page.getByText("登录密码已复制", { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), credential.access.password);
+    await keyRow.getByRole("button", { name: "显示", exact: true }).click();
+    await keyRow.getByText(key.value, { exact: true }).waitFor();
+    assert.match(String(await passwordRow.locator("code").textContent()), /••/);
+    await keyRow.getByRole("button", { name: "复制", exact: true }).click();
+    await page.getByText("API 密钥已复制", { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), key.value);
+    assert.deepEqual(secretReads, [
+      "/api/workspaces/ws-1/runtime-credentials/reveal",
+      `/api/gateway/keys/${key.id}/reveal`
+    ]);
+    assert.deepEqual({ detailReads, runtimeReads, budgetReads }, { detailReads: 1, runtimeReads: 1, budgetReads: 1 });
   } finally {
     await browser.close();
     await demo.close();

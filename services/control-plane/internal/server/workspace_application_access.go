@@ -187,51 +187,6 @@ func (app *controlPlaneServer) workspaceCurrentApplicationCredentials(w http.Res
 	return true
 }
 
-func (app *controlPlaneServer) rotateWorkspaceCurrentApplicationCredentials(w http.ResponseWriter, r *http.Request, service *controlplane.Service, workspace map[string]any, key string) bool {
-	if stringValue(workspace["currentApplicationDeploymentId"]) == "" {
-		return false
-	}
-	current, found, err := app.currentWorkspaceApplicationDeployment(r.Context(), workspace)
-	if err != nil || !found {
-		writeError(w, http.StatusConflict, "workspace_runtime_truth_unavailable")
-		return true
-	}
-	input, err := app.workspaceApplicationRuntimeInput(r.Context(), current)
-	if err != nil || !contracts.WorkspaceApplicationRequiresPlatformCredentials(input.Revision) {
-		writeError(w, http.StatusConflict, "workspace_credentials_unavailable")
-		return true
-	}
-	configuration := current.Configuration
-	configuration.CredentialVersion = stableID("workspace-application-credential-rotation", current.WorkspaceID, key)
-	configuration.CredentialSourceRuntimeOperationID = ""
-	next, err := app.createWorkspaceApplicationDeploymentIntent(r.Context(), current.WorkspaceID, "credential-rotation:"+key,
-		current.ApplicationID, current.TargetRevision, configuration, current.SecretBindings, current.WorkspaceAPIKeyID, "", "")
-	if err != nil {
-		writeError(w, http.StatusConflict, "workspace_credential_rotation_conflict")
-		return true
-	}
-	if workspaceApplicationDeploymentWorkerEnabled() {
-		_ = app.runWorkspaceApplicationDeployment(r.Context(), service, next.OperationID)
-	}
-	row, exists, readErr := app.tables.GetRuntimeOperation(r.Context(), next.OperationID)
-	if readErr != nil || !exists {
-		writeError(w, http.StatusInternalServerError, "workspace_credential_rotation_readback_unavailable")
-		return true
-	}
-	observed, readErr := decodeWorkspaceApplicationDeploymentIntent(row)
-	if readErr != nil || observed.Phase == workspaceApplicationDeploymentManualReviewPhase {
-		writeError(w, http.StatusConflict, "workspace_credential_rotation_failed")
-		return true
-	}
-	workspace, exists, readErr = app.tables.GetWorkspace(r.Context(), current.WorkspaceID)
-	if readErr == nil && exists && stringValue(workspace["currentApplicationDeploymentId"]) == next.OperationID && observed.Phase == workspaceApplicationDeploymentActivePhase {
-		return app.workspaceCurrentApplicationCredentials(w, r, service, workspace)
-	}
-	w.Header().Set("Cache-Control", "private, no-store")
-	writeJSON(w, http.StatusAccepted, map[string]any{"workspaceId": current.WorkspaceID, "operationId": next.OperationID, "status": "pending"})
-	return true
-}
-
 func (app *controlPlaneServer) requireWorkspaceGatewayApplication(ctx context.Context, workspace map[string]any) error {
 	if stringValue(workspace["currentApplicationDeploymentId"]) == "" {
 		return nil

@@ -118,11 +118,14 @@ It uses username `opl`, `/run/secrets/opl_webui_password`,
 `/run/secrets/webui_session_secret` and its declared Gateway Key file. Ordinary
 image updates and reinstalling the same application retain the frozen credential
 identity; migration from a full Launch preserves its proven credential source.
-Explicit password and Gateway rotation advance the credential version through a
-successor deployment with the same data binding;
+The legacy password-rotation creator and its Console action are removed. Already
+accepted credential deployments retain their frozen successor identity and data
+binding, shared worker and original operator retry. Workspace-Key rotation still
+creates its own successor deployment and retains its parent recovery path.
 HTTP 202 means the operation is pending, not that a new password is already in
-use. Console drops revealed credentials when the selection changes and keeps
-passwords only in component memory.
+use. Console keeps read-only pending refresh, drops revealed credentials when the
+selection changes and keeps passwords only in component memory. Native credential
+reveal does not provide password rotation.
 
 Native credential reveal carries its existing short-lived Workspace authorization
 context through Serve only to Fabric's resource read. CloudIdentity permits that
@@ -199,9 +202,10 @@ Workspace-scoped secret bound to account, Workspace, Key ID, and fingerprint,
 and records only its ref, version, and fingerprint. Existing
 account-scoped Secrets remain read-compatible until that Workspace's first Key
 rotation; ordinary reads never infer scope from Workspace count or Key name.
-Ordinary runtime status is non-secret. Dedicated owner-only POST commands reveal
-or rotate the password transiently; Control Plane never persists it, and Console
-retains it only in Workspace detail component memory. A Workspace image candidate
+Ordinary runtime status is non-secret. The dedicated owner-only POST reveals the
+password transiently; the legacy password-rotation command is removed. Control
+Plane never persists the password, and Console retains it only in Workspace detail
+component memory. A Workspace image candidate
 combines exact `one-person-lab-app`, active-shell, and Framework revisions. The
 Workspace owner publishes that image independently; an instance pins its
 immutable `repository@sha256` alongside the OPL Cloud product release. The Cloud

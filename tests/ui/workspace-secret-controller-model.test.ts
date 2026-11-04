@@ -7,9 +7,7 @@ import type {
 } from "../../apps/console-ui/src/api/dtos.ts";
 import {
   acceptWorkspaceSecretCompletion,
-  resolveRuntimeRotationIntent,
   shouldExpireWorkspaceSecret,
-  type RuntimeRotationIntent,
   type WorkspaceSecretProjection
 } from "../../apps/console-ui/src/app/workspace-secret-controller-model.ts";
 
@@ -72,40 +70,4 @@ test("Workspace Secret expires at the exact 60 second boundary", () => {
 
   assert.equal(shouldExpireWorkspaceSecret(revealedAtMs, revealedAtMs + 59_999), false);
   assert.equal(shouldExpireWorkspaceSecret(revealedAtMs, revealedAtMs + 60_000), true);
-});
-
-test("Runtime rotation reuses an intent for the same Workspace", () => {
-  let keysCreated = 0;
-  const current: RuntimeRotationIntent = {
-    workspaceId: "workspace-alpha",
-    idempotencyKey: "runtime-credential:existing"
-  };
-
-  const result = resolveRuntimeRotationIntent(current, "workspace-alpha", () => {
-    keysCreated += 1;
-    return "runtime-credential:new";
-  });
-
-  assert.equal(result, current);
-  assert.equal(result.idempotencyKey, "runtime-credential:existing");
-  assert.equal(keysCreated, 0);
-});
-
-test("Runtime rotation creates a new intent when the Workspace changes", () => {
-  let keysCreated = 0;
-  const current: RuntimeRotationIntent = {
-    workspaceId: "workspace-alpha",
-    idempotencyKey: "runtime-credential:existing"
-  };
-
-  const result = resolveRuntimeRotationIntent(current, "workspace-beta", () => {
-    keysCreated += 1;
-    return "runtime-credential:new";
-  });
-
-  assert.deepEqual(result, {
-    workspaceId: "workspace-beta",
-    idempotencyKey: "runtime-credential:new"
-  });
-  assert.equal(keysCreated, 1);
 });

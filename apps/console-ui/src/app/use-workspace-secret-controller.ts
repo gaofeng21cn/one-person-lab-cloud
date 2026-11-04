@@ -2,14 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { revealGatewayKey } from "../api/console-read-api.ts";
 import type { AuthSession, WorkspaceDTO } from "../api/dtos.ts";
-import { revealWorkspaceCredentials, rotateWorkspaceCredentials } from "../api/workspaces-api.ts";
+import { revealWorkspaceCredentials } from "../api/workspaces-api.ts";
 import type { WorkspaceSecretController } from "./console-controller-types.ts";
 import {
   acceptWorkspaceSecretCompletion,
-  resolveRuntimeRotationIntent,
   shouldExpireWorkspaceSecret,
   workspaceSecretLifetimeMs,
-  type RuntimeRotationIntent,
   type WorkspaceSecretProjection
 } from "./workspace-secret-controller-model.ts";
 
@@ -18,10 +16,8 @@ interface WorkspaceSecretDependencies {
   workspace: WorkspaceDTO | null;
   activeWorkspaceId: string;
   currentMutationRequest: () => () => boolean;
-  refreshWorkspaceDetail: (workspaceId: string) => Promise<void>;
   flash: (text: string, tone?: "good" | "danger") => void;
   friendlyError: (error: unknown) => string;
-  mutationError: (error: unknown) => string;
 }
 
 export interface WorkspaceSecretCapability extends WorkspaceSecretController {
@@ -47,17 +43,14 @@ export function useWorkspaceSecretController({
   workspace,
   activeWorkspaceId,
   currentMutationRequest,
-  refreshWorkspaceDetail,
   flash,
-  friendlyError,
-  mutationError
+  friendlyError
 }: WorkspaceSecretDependencies): WorkspaceSecretCapability {
   const [projection, setProjection] = useState<WorkspaceSecretProjection>(emptyProjection);
   const [operation, setOperation] = useState<SecretOperation>("");
   const requestGeneration = useRef(0);
   const timer = useRef<number | undefined>(undefined);
   const revealedAt = useRef<number | undefined>(undefined);
-  const rotationIntent = useRef<RuntimeRotationIntent | null>(null);
   const scope = useRef({
     userId: session?.user.id || "",
     csrfToken: session?.csrfToken || "",
@@ -82,10 +75,7 @@ export function useWorkspaceSecretController({
     setOperation("");
   }, [clearTimer]);
 
-  const reset = useCallback(() => {
-    clear();
-    rotationIntent.current = null;
-  }, [clear]);
+  const reset = clear;
 
   useEffect(() => {
     reset();
@@ -190,48 +180,6 @@ export function useWorkspaceSecretController({
     }
   };
 
-  const rotateWorkspacePassword = async () => {
-    if (!session || !workspace || operation === "workspace") return;
-    const { csrfToken } = session;
-    const userId = session.user.id;
-    const workspaceId = workspace.id;
-    const requestStillCurrent = currentMutationRequest();
-    const intent = resolveRuntimeRotationIntent(
-      rotationIntent.current,
-      workspaceId,
-      () => `runtime-credential:${crypto.randomUUID()}`
-    );
-    rotationIntent.current = intent;
-    const generation = beginOperation("workspace");
-    try {
-      const response = await rotateWorkspaceCredentials(workspaceId, csrfToken, intent.idempotencyKey);
-      if (!requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) return;
-      if (response.workspaceId !== workspaceId) throw new Error("workspace_credentials_unavailable");
-      if ("status" in response) {
-        if (response.status !== "pending" || !response.operationId?.trim() || "access" in response) throw new Error("workspace_credentials_unavailable");
-        flash("密码轮换已提交，应用正在更新；完成后请重新显示密码");
-        await refreshWorkspaceDetail(workspaceId);
-        return;
-      }
-      const accepted = acceptWorkspaceSecretCompletion(generation, requestGeneration.current, {
-        kind: "runtime-credential",
-        response
-      });
-      if (!accepted) return;
-      rotationIntent.current = null;
-      setProjection(accepted);
-      armTimeout();
-      flash("登录密码已轮换");
-      await refreshWorkspaceDetail(workspaceId);
-    } catch (error) {
-      if (requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) {
-        flash(secretErrorMessage(error, mutationError), "danger");
-      }
-    } finally {
-      if (requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) setOperation("");
-    }
-  };
-
   const copy = async (value: string | undefined, message: string) => {
     if (!value) return;
     try {
@@ -251,7 +199,6 @@ export function useWorkspaceSecretController({
     reset,
     revealWorkspacePassword,
     revealWorkspaceKey,
-    rotateWorkspacePassword,
     copyWorkspacePassword: () => copy(projection.workspace?.password, "登录密码已复制"),
     copyWorkspaceKey: () => copy(projection.apiKey?.value, "API 密钥已复制")
   };

@@ -299,18 +299,16 @@ test("Console demo keeps a unique persistent Runtime credential per Workspace", 
     const adminInitial = await (await adminClient.postJson(`/api/workspaces/${adminWorkspaceId}/runtime-credentials/reveal`, {})).json();
     assert.notEqual(customerInitial.access.password, adminInitial.access.password);
 
-    const customerRotated = await (await customerClient.postJson(`/api/workspaces/${customerWorkspaceId}/runtime-credentials/rotate`, {})).json();
-    const adminRotated = await (await adminClient.postJson(`/api/workspaces/${adminWorkspaceId}/runtime-credentials/rotate`, {})).json();
-    assert.notEqual(customerRotated.access.password, customerInitial.access.password);
-    assert.notEqual(adminRotated.access.password, adminInitial.access.password);
-    assert.notEqual(customerRotated.access.password, adminRotated.access.password);
-
     const customerReadback = await (await customerClient.postJson(`/api/workspaces/${customerWorkspaceId}/runtime-credentials/reveal`, {})).json();
     const adminReadback = await (await adminClient.postJson(`/api/workspaces/${adminWorkspaceId}/runtime-credentials/reveal`, {})).json();
-    assert.equal(customerReadback.access.password, customerRotated.access.password);
-    assert.equal(adminReadback.access.password, adminRotated.access.password);
-    assert.equal(customerReadback.access.credentialVersion, "2");
-    assert.equal(adminReadback.access.credentialVersion, "2");
+    assert.deepEqual(customerReadback, customerInitial);
+    assert.deepEqual(adminReadback, adminInitial);
+    assert.ok(customerReadback.access.password);
+    assert.ok(adminReadback.access.password);
+    assert.deepEqual(demo.state.workspacePasswords, beforeReplay.workspacePasswords);
+    assert.deepEqual(demo.state.workspaceCredentialVersions, beforeReplay.workspaceCredentialVersions);
+    assert.deepEqual(demo.state.workspaces, beforeReplay.workspaces);
+    assert.deepEqual(demo.state.workspaceSecretReads, new Map([[customerWorkspaceId, 2], [adminWorkspaceId, 2]]));
   } finally {
     await demo.close();
   }

@@ -137,7 +137,6 @@ export interface WorkspaceSecretController {
   clear: () => void;
   revealWorkspacePassword: () => Promise<void>;
   revealWorkspaceKey: () => Promise<void>;
-  rotateWorkspacePassword: () => Promise<void>;
   copyWorkspacePassword: () => Promise<void>;
   copyWorkspaceKey: () => Promise<void>;
 }
