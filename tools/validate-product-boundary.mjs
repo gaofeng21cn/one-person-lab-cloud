@@ -4,6 +4,7 @@ import YAML from "yaml";
 const root = new URL("../", import.meta.url);
 const workflowRoot = new URL(".github/workflows/", root);
 const allowedWorkflows = new Set([
+  "build-cloud-agent-webui.yml",
   "build-opl-cloud-candidate.yml",
   "clean-host-qualification.yml",
   "cloud-business-readback.yml",
@@ -18,8 +19,8 @@ const allowedWorkflows = new Set([
 
 const workflows = (await readdir(workflowRoot)).filter((name) => name.endsWith(".yml"));
 // A second build workflow bypassed the Candidate guard once (an actor-pinned,
-// single-branch bridge). Keep exactly one build entry: any additional build must
-// be merged into the canonical Candidate workflow, not added beside it.
+// single-branch bridge). Keep exactly one Product-image build entry. The separate
+// WebUI input below must not become another Product builder or deployment lane.
 const buildWorkflows = workflows.filter((name) => name.startsWith("build-opl-cloud")).sort();
 if (JSON.stringify(buildWorkflows) !== JSON.stringify(["build-opl-cloud-candidate.yml"])) {
   throw new Error(`exactly one Cloud build workflow is allowed: ${buildWorkflows.join(",") || "none"}`);
@@ -49,6 +50,24 @@ for (const name of workflows) {
       throw new Error(`Cloud publisher credential requires its protected environment and owner gate: ${name}:${id}`);
     }
   }
+}
+
+const webuiWorkflow = YAML.parse(await readFile(new URL(".github/workflows/build-cloud-agent-webui.yml", root), "utf8"));
+const webuiJob = webuiWorkflow.jobs?.artifact;
+const webuiCommands = (webuiJob?.steps || []).map(step => step.run || "").join("\n");
+if (JSON.stringify(Object.keys(webuiWorkflow.on || {})) !== JSON.stringify(["workflow_dispatch"]) ||
+    JSON.stringify(Object.keys(webuiWorkflow.on?.workflow_dispatch?.inputs || {})) !== JSON.stringify(["product_sha"]) ||
+    webuiWorkflow.on.workflow_dispatch.inputs.product_sha.required !== true ||
+    JSON.stringify(Object.keys(webuiWorkflow.jobs || {})) !== JSON.stringify(["artifact"]) ||
+    webuiJob?.if !== "${{ github.ref_type == 'branch' && github.sha == inputs.product_sha && github.actor == github.triggering_actor }}" ||
+    webuiJob?.["runs-on"] !== "ubuntu-latest" || webuiJob?.environment !== undefined ||
+    JSON.stringify(webuiJob?.permissions) !== JSON.stringify({ contents: "read", packages: "write" }) ||
+    !webuiCommands.includes('git archive "$PRODUCT_SHA" webui/cloud-agent') ||
+    !webuiCommands.includes('printf \'BUILD_CONTEXT=%s/webui/cloud-agent\\n\' "$build_context"') ||
+    !webuiCommands.includes('IMAGE_REPOSITORY=ghcr.io/%s/opl-cloud-agent-webui') ||
+    !webuiCommands.includes('sha256sum build-metadata.json source.txt index.json amd64.image.json arm64.image.json') ||
+    JSON.stringify(webuiWorkflow).includes("secrets.")) {
+  throw new Error("Cloud Agent WebUI workflow authority boundary is invalid");
 }
 
 const release = await readFile(new URL(".github/workflows/release-opl-cloud-image.yml", root), "utf8");

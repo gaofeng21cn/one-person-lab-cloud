@@ -9,6 +9,23 @@ rollback and deployment receipts. Production-private access runs only through
 - Product/Instance ownership: [Architecture](../architecture.md)
 - Current evidence: [Status](../status.md)
 
+## Cloud Agent WebUI Build Input
+
+The Cloud-owned independent Agent WebUI has its own exact-source artifact build:
+`.github/workflows/build-cloud-agent-webui.yml`. Dispatch `Build Cloud Agent WebUI`
+with `product_sha` equal to the selected branch head. It archives only
+`webui/cloud-agent`, builds Linux amd64/arm64 images and publishes to
+`ghcr.io/<repository-owner>/opl-cloud-agent-webui` under a source/run/attempt tag.
+It uses the job's GitHub token, without Instance credentials or deployment access.
+
+The `cloud-agent-webui-<sha>-<attempt>` artifact retains push metadata, registry
+index/config readbacks, Git commit/tree identifiers and `SHA256SUMS`. Its
+single-platform child digests are the Build inputs; the multi-platform index is
+not a substitute. Image source labels and the original GitHub run bind source
+and workflow provenance, not Runtime compatibility, Capability admission or a Product Release. Instance
+registry transfer and catalog/default-policy writes remain separately authorized
+owner operations. Runtime recipes remain Runtime-publisher inputs.
+
 ## Product Release Admission
 
 The [2026-11-05 owner decision](../decisions.md#2026-11-05-stable-publication-uses-non-spending-acceptance)

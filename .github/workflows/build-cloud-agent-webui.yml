@@ -1,0 +1,154 @@
+name: Build Cloud Agent WebUI
+
+on:
+  workflow_dispatch:
+    inputs:
+      product_sha:
+        description: Exact source commit at the head of the dispatched branch.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-agent-webui-${{ inputs.product_sha }}
+  cancel-in-progress: false
+
+jobs:
+  artifact:
+    # This builds a replaceable WebUI input, not a Cloud Product Release or a
+    # catalog approval. As with Candidate construction, write-access collaborators
+    # select their exact branch head and the run remains self-attributed.
+    if: ${{ github.ref_type == 'branch' && github.sha == inputs.product_sha && github.actor == github.triggering_actor }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PRODUCT_REPOSITORY: ${{ github.repository }}
+      PRODUCT_SHA: ${{ inputs.product_sha }}
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.product_sha }}
+          persist-credentials: false
+
+      - name: Freeze WebUI source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! [[ "$PRODUCT_SHA" =~ ^[0-9a-f]{40}$ ]] || [ "$(git rev-parse HEAD)" != "$PRODUCT_SHA" ]; then
+            echo 'product_sha must match the exact checked-out source.' >&2
+            exit 1
+          fi
+          if [ -n "$(git status --porcelain=v1 --untracked-files=all)" ]; then
+            echo 'WebUI source checkout must be clean.' >&2
+            exit 1
+          fi
+          build_context="$RUNNER_TEMP/cloud-agent-webui-source"
+          artifact_dir="$RUNNER_TEMP/cloud-agent-webui-artifact"
+          mkdir "$build_context" "$artifact_dir"
+          git archive "$PRODUCT_SHA" webui/cloud-agent | tar -xf - -C "$build_context"
+          git show -s --format='%H%n%T' "$PRODUCT_SHA" > "$artifact_dir/source.txt"
+          image_owner="${PRODUCT_REPOSITORY%%/*}"
+          {
+            printf 'PRODUCT_TREE=%s\n' "$(git rev-parse HEAD^{tree})"
+            printf 'BUILD_CONTEXT=%s/webui/cloud-agent\n' "$build_context"
+            printf 'ARTIFACT_DIR=%s\n' "$artifact_dir"
+            printf 'IMAGE_REPOSITORY=ghcr.io/%s/opl-cloud-agent-webui\n' "${image_owner,,}"
+          } >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to GHCR
+        env:
+          PACKAGES_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$PACKAGES_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Build and publish static WebUI images
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_tag="$IMAGE_REPOSITORY:source-$PRODUCT_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          metadata="$ARTIFACT_DIR/build-metadata.json"
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --network=none \
+            --provenance=false \
+            --label "org.opencontainers.image.source=https://github.com/$PRODUCT_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$PRODUCT_SHA" \
+            --metadata-file "$metadata" \
+            --output "type=image,name=$image_tag,push=true,oci-mediatypes=true" \
+            "$BUILD_CONTEXT"
+          digest="$(jq -r '."containerimage.digest" // empty' "$metadata")"
+          if ! [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo 'WebUI build did not return an immutable index digest.' >&2
+            exit 1
+          fi
+          printf 'INDEX_DIGEST=%s\n' "$digest" >> "$GITHUB_ENV"
+
+      - name: Read back immutable index and platform images
+        id: readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          index="$ARTIFACT_DIR/index.json"
+          docker buildx imagetools inspect "$IMAGE_REPOSITORY@$INDEX_DIGEST" \
+            --format '{{json .Manifest}}' > "$index"
+          jq -e --arg digest "$INDEX_DIGEST" '
+            .digest == $digest and
+            .mediaType == "application/vnd.oci.image.index.v1+json" and
+            (.manifests | type) == "array" and
+            (.manifests | length) == 2 and
+            ([.manifests[].digest] | unique | length) == 2 and
+            all(.manifests[]; .platform.os == "linux" and
+              (.platform.architecture == "amd64" or .platform.architecture == "arm64") and
+              (.digest | test("^sha256:[0-9a-f]{64}$")))
+          ' "$index" >/dev/null
+          for architecture in amd64 arm64; do
+            child_digest="$(jq -er --arg architecture "$architecture" '
+              [.manifests[] | select(.platform.os == "linux" and .platform.architecture == $architecture)] |
+              if length == 1 then .[0].digest else error("ambiguous WebUI platform") end
+            ' "$index")"
+            image="$ARTIFACT_DIR/$architecture.image.json"
+            docker buildx imagetools inspect "$IMAGE_REPOSITORY@$child_digest" \
+              --format '{{json .Image}}' > "$image"
+            jq -e --arg architecture "$architecture" --arg sha "$PRODUCT_SHA" \
+              --arg source "https://github.com/$PRODUCT_REPOSITORY" '
+              .os == "linux" and .architecture == $architecture and
+              .config.Labels["org.opencontainers.image.revision"] == $sha and
+              .config.Labels["org.opencontainers.image.source"] == $source
+            ' "$image" >/dev/null
+          done
+          (
+            cd "$ARTIFACT_DIR"
+            sha256sum build-metadata.json source.txt index.json amd64.image.json arm64.image.json > SHA256SUMS
+          )
+          {
+            printf '## Cloud Agent WebUI build\n\n'
+            printf -- '- Source: `%s`\n' "$PRODUCT_SHA"
+            printf -- '- WebUI index: `%s@%s`\n' "$IMAGE_REPOSITORY" "$INDEX_DIGEST"
+            printf -- '- Single-platform inputs: see `index.json`.\n'
+            printf -- '- Catalog admission, Runtime compatibility and Instance delivery remain separate.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload WebUI publication evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cloud-agent-webui-${{ inputs.product_sha }}-${{ github.run_attempt }}
+          path: ${{ env.ARTIFACT_DIR }}/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Log out from GHCR
+        if: always()
+        shell: bash
+        run: docker logout ghcr.io >/dev/null 2>&1 || true

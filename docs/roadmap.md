@@ -121,6 +121,16 @@ evidence and its source/fixture boundaries are owned by
 records the scoped source closure and its historical review/CI. Generic WebUI
 chat changes, browser-driven sending and a new provider are outside this scope.
 
+The [November 5 customer test](status.md#custom-agent-publication-inputs-2026-11-05)
+stops before upload because effective Build defaults and compatible catalog inputs
+are unavailable. The full local IBD Package also retains a producer-machine
+marketplace path, isolated by an actual Runtime install/control pair. Complete
+Cloud WebUI publication through the [exact-source artifact entry](runtime/release.md#cloud-agent-webui-build-input),
+obtain the Runtime publisher's real fixed recipe and the Package publisher's
+portable carrier references, then admit the inputs and set the effective Build
+policy before retrying upload/build and customer delivery. Source implementation
+of the WebUI publisher does not close those installed outcomes.
+
 Same-Candidate and installed Tencent/TKE acceptance remain open. The local
 `LOCAL_NO_CHARGE` order did not activate a paid subscription: after positive
 checks, customer deletion was refused with 422. Real resource absence, Ledger
