@@ -64,7 +64,11 @@ func (s *Service) RuntimeObservations(ctx context.Context) (contracts.RuntimeObs
 				}
 				applicationOwnersByWorkspace[item.WorkspaceID] = owners
 			}
-			item.Ownership, item.ReasonCode = verifyApplicationRuntimeOwner(owners, item)
+			ownership, reason := verifyApplicationRuntimeOwner(owners, item)
+			item.Ownership = ownership
+			if reason != "" {
+				item.ReasonCode = reason
+			}
 		} else {
 			owners, cached := ownersByWorkspace[item.WorkspaceID]
 			if !cached {
