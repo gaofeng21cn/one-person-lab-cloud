@@ -402,24 +402,16 @@ Candidate manifest and image index. The following are the remaining independent
 qualification and migration outcomes; they do not reopen #1042's completed
 customer acceptance:
 
-- Keep the local qualification source wiring aligned with the complete v2
-  installation. `--mode local-v2` now consumes the installation-owned
-  declaration, CA-backed HTTPS, CloudIdentity/Tenant, owner catalog, zero-price
-  local quote/order and owner readbacks, while preserving the legacy receipt
-  projection. Its result is diagnostic `NOT_READY` evidence rather than a v1
-  READY receipt or Release input. A declaration or login/catalog/quote smoke
-  test is not a completed purchase/deletion qualification. The driver now gates
-  restart/DELETE on exact declared-origin entry access and owner readiness,
-  binds the zero-price quote and original replay, and accepts the owner-confirmed
-  no-charge refund outcome. Its latest reported real run still stops at the
-  application entry; complete the installed route/readback gate with an exact
-  Candidate before treating that source as full lifecycle evidence. The current
-  read-only Instance verification adds no Linux qualification or cleanup result.
-- Prove Fabric's Local-Docker execution and gateway identity together with
-  Serve's actual access routing. Do not label Control Plane as the native
-  route owner to bypass provider admission. Qualify quote, create, deployment,
-  restart, Workspace DELETE, provider absence, Ledger receipt and exact original-
-  charge fixture refund on the same source and images.
+- Admit the native Local-Docker installation through its version-two receipt.
+  The complete native topology and anonymous fixture have executed application
+  access, restart continuity, owner deletion and duplicate deletion with actual
+  provider absence; [status](status.md#native-local-docker-release-qualification-2026-11-05)
+  retains the exact source and run. The new producer/consumer must still return
+  READY for one exact Candidate through the `main` Clean Host workflow before
+  publication. This `LOCAL_NO_CHARGE` profile uses the owner's not-applicable
+  refund result; live Gateway charge, model and Key evidence remains in the
+  separate protected business qualification. Retained version-one receipts keep
+  their own validator and paid-fixture facts.
 - Complete the installed use of the adopted Instance protected consumer:
   RuntimeVersion/compute/storage, authenticated Tenant/payer and a genuine
   dedicated-sandbox J0 READY receipt must be explicitly bound to the same

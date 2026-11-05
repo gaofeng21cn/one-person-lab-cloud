@@ -16,9 +16,9 @@ on:
         required: false
         type: string
       mode:
-        description: Native installation diagnostics retain NOT_READY until native receipt admission is implemented.
+        description: Native Local-Docker qualification, or the retained version-one fixture profile.
         required: false
-        default: legacy-fixture
+        default: local-v2
         type: choice
         options:
           - legacy-fixture
@@ -126,7 +126,7 @@ jobs:
           printf 'storage_root=%s\n' "$qualification_root/storage" >> "$GITHUB_OUTPUT"
 
       - name: Run local Workspace qualification
-        if: ${{ inputs.mode != 'local-v2' }}
+        if: ${{ inputs.mode == 'legacy-fixture' }}
         shell: bash
         env:
           PRODUCT_SHA: ${{ inputs.ref }}
@@ -144,7 +144,7 @@ jobs:
             --receipt "$RUNNER_TEMP/local-workspace-qualification.json"
 
       - name: Prepare and exercise the native owner installation
-        if: ${{ inputs.mode == 'local-v2' }}
+        if: ${{ inputs.mode != 'legacy-fixture' }}
         env:
           GH_TOKEN: ${{ github.token }}
           PRODUCT_SHA: ${{ inputs.ref }}
@@ -197,11 +197,19 @@ jobs:
           if-no-files-found: error
 
       - name: Preserve the separate native Tenant bootstrap attempt
-        if: ${{ always() && inputs.mode == 'local-v2' }}
+        if: ${{ always() && inputs.mode != 'legacy-fixture' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.6.2
         with:
           name: local-v2-tenant-bootstrap
           path: ${{ runner.temp }}/local-v2-bootstrap.json
+          if-no-files-found: ignore
+
+      - name: Preserve native owner and lifecycle readbacks
+        if: ${{ always() && inputs.mode != 'legacy-fixture' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.6.2
+        with:
+          name: local-v2-native-evidence
+          path: ${{ runner.temp }}/local-workspace-qualification.json.diagnostic.json
           if-no-files-found: ignore
 
       - name: Remove the Local-Docker storage root
@@ -224,10 +232,14 @@ jobs:
               --env-file "$qualification_root/native/installation.env" \
               -f deploy/portable/compose.local-v2.yaml down --volumes --remove-orphans
             if [ -f "$RUNNER_TEMP/local-workspace-qualification.json" ]; then
+              cleanup_receipt="$RUNNER_TEMP/local-workspace-qualification.json"
+              if [ -f "$cleanup_receipt.diagnostic.json" ]; then
+                cleanup_receipt="$cleanup_receipt.diagnostic.json"
+              fi
               node "$RUNNER_TEMP/native-qualification-installer/tools/local-v2-clean-host.ts" \
                 --product-root "$PWD" --directory "$qualification_root/native" --project "$OPL_NATIVE_PROJECT" \
                 --source-sha "$PRODUCT_SHA" --cloud-image "$CLOUD_IMAGE_REF" \
-                --cleanup-from "$RUNNER_TEMP/local-workspace-qualification.json"
+                --cleanup-from "$cleanup_receipt"
             fi
           fi
           if mountpoint -q "$qualification_root/storage"; then

@@ -36,6 +36,26 @@ The current objective is one writer per fact and removal of obsolete code with
 its callers, workers, configuration and exclusive tests. Qualification is a
 separate release lane, not a blanket prerequisite for source retirement.
 
+## Native Local-Docker Release Qualification (2026-11-05)
+
+[Clean Host run `41962716311`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/41962716311)
+executed Candidate source `3204139a4b8df601f7feeffc8a6fdfc801db3840` through
+the existing native topology: fourteen services, eleven independent databases,
+CloudIdentity/Tenant and catalog, a zero-price native order, the provider-bound
+anonymous application entry, restart/session continuity, owner-confirmed resource
+and data deletion, and a repeated deletion with unchanged Ledger evidence. These
+stages completed. That run still failed because its diagnostic producer always
+returned version-one `NOT_READY`; it is not an admitted qualification receipt.
+
+The source now defines the native version-two READY receipt and its shared
+Release validator. It binds the clean source, admitted and running images,
+owner processes/stores, actual application port and image, restart continuity,
+deletion ownership/replay and remaining Workspace resources. The retained
+version-one validator remains separate. Execution of this new producer and a
+successful `main` qualification run are still required. The local profile is
+`LOCAL_NO_CHARGE`, with no claimed live charge, Gateway model response, Instance
+adoption or formal publication.
+
 ## Retained Generic Deployment Builder Removal (2026-11-05)
 
 R1d is based on merged Cloud #1125 at

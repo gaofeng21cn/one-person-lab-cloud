@@ -105,14 +105,20 @@ produce a protected receipt or satisfy release admission. A
 failed or unknown result on either path returns the release unit to development;
 it does not create a Product Release.
 
-The `local-v2` qualification driver provides diagnostic source wiring through
-one installation-owned environment, CA-backed HTTPS, CloudIdentity/Tenant
-readback, owner catalog and zero-price local quote/order facts. Its result
-remains `NOT_READY` diagnostic evidence until complete provider and lifecycle
-readbacks are proven. It is not the retained v1 READY receipt and cannot satisfy
-Candidate qualification or Release admission. Source tests and the current
-local diagnostic do not establish Linux project-quota execution, restart or
-recovery, deletion/refund, or Instance acceptance.
+The Clean Host workflow defaults to `local-v2`: one declared native owner
+installation, CA-backed Console HTTPS, independent owner stores, Linux project
+quota and the existing anonymous application fixture. Its version-two READY
+receipt is owned by `tools/local-v2-qualification-receipt.ts` and consumed through
+`validateLocalQualificationReceipt` by both the producer and Release admission.
+It requires the exact clean source and running images, every owner process and
+database, the provider-bound application entry, restart continuity, owner
+deletion and duplicate-command readback, and zero remaining Workspace resources.
+The profile is explicitly `LOCAL_NO_CHARGE`; it proves no live Gateway charge,
+model response or Instance acceptance. Incomplete or mismatched evidence remains
+`NOT_READY`. The explicit `legacy-fixture` mode and its version-one validator
+remain available; a native receipt does not invent their retained CP identities
+or paid-fixture wallet facts. Full native execution evidence and remaining
+publication prerequisites belong to [status](../status.md).
 
 ### Protected Cloud Customer Reads
 
