@@ -1,125 +1,61 @@
 # Product Release Operations
 
-OPL Cloud does not operate or automatically deploy a concrete instance. This
-repository owns reusable source, contracts, installation assets, candidate
-artifacts, and owner-admitted product releases.
+OPL Cloud owns reusable source, contracts, portable Candidate bytes and public
+product releases. Instance owns installation configuration, Secrets, deployment,
+rollback and deployment receipts. Production-private access runs only through
+`opl-instance-medopl` protected workflows and authorized runners.
 
-- Generic Docker installation: [Install OPL Cloud](../installation.md)
-- Product/instance ownership: [Architecture](../architecture.md)
-- medopl production operations and `.com` domain bindings: private
-  `gaofeng21cn/opl-instance-medopl` repository
-
-Installation credentials, deployment approval gates, rollout, deployment rollback
-and deployment receipts remain with the selected instance owner. Customer
-operations and business qualification retain their product owners and require
-separately bounded protected authorization.
-
-Medopl-specific deployment, installation acceptance, deployment recovery,
-service-health canary, rollback and deployment-evidence tools belong to
-`opl-instance-medopl` and run from its scoped `main` checkout. Customer business
-operations and business qualification belong to Cloud's existing product owners,
-as defined by [the current decision](../decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads).
-Deployment and product qualification must bind the same immutable Candidate.
-
-The publication source now adds a separately protected Cloud customer-read
-receipt alongside the retained Instance launch/use, qualification-decision and
-Workspace artifacts. It also requires a separate Cloud business qualification
-receipt from the protected #926 producer. Its source and Instance caller now
-exist, but no protected run has emitted the required settled receipt, so formal
-publication remains blocked on that execution. This formal Release gate is separate
-from the first-use customer journey tracked by #856, which may record a
-successful deployed revision before formal Candidate qualification.
-The legacy business, administrator and Fabric evidence paths remain required
-until full parity is actually verified; their current execution location does
-not transfer product ownership to Instance. This runbook does not authorize
-workflow dispatch or customer business operations, and a local checkout does not
-gain production-network access from the target decision. Current execution
-availability and verification limits are recorded in
-[status](../status.md#cloud-customer-readback-source-wiring-2026-10-16).
-The current cross-repo classification of the Instance business paths and the
-exact release inputs that must remain until #926/#928 replace them is in the
-[Instance business-path retirement inventory](../implementation/instance-business-retirement-inventory.md).
+- Generic installation: [Install OPL Cloud](../installation.md)
+- Product/Instance ownership: [Architecture](../architecture.md)
+- Current evidence: [Status](../status.md)
 
 ## Product Release Admission
 
-A formal OPL Cloud Release records a candidate that has already passed the
-required adoption path. During the current pre-1.0 phase it is not a CI
-checkpoint, a record of every merged change, or an input used to discover
-whether `opl-instance-medopl` can deploy the product.
-
-### Release Unit
-
-Before building a release candidate, the Product Release owner records one
-reviewable release unit with all of the following:
-
-- **Objective:** the complete product problem or bounded product milestone the
-  Release closes;
-- **Owner:** the primary Product module responsible for that outcome;
-- **Acceptance:** the scoped Product checks plus exact supported Local-Docker
-  and `opl-instance-medopl` deployment/product readback for the same Candidate
-  required before publication;
-- **Artifact impact:** the runtime image, public contract, schema, dependency,
-  installation asset, or security boundary that requires new released bytes;
-- **Consumers:** during pre-1.0, the supported local installation and
-  `opl-instance-medopl` Candidate deployment;
-- **Predecessor gap:** why the current Release cannot satisfy that consumer;
-- **Known blockers:** confirmation that no known Product-side blocker remains
-  for the same objective.
-
-The release unit is review evidence attached to the owning change or release
-conversation. It does not become a second roadmap, status, architecture, or
-machine-contract owner.
+The [2026-11-05 owner decision](../decisions.md#2026-11-05-stable-publication-uses-non-spending-acceptance)
+sets the current acceptance: actual installation verification and business
+source-path availability, without cost-incurring business execution. A release
+unit identifies its product outcome, owner, supported installation, changed
+artifact bytes and predecessor gap in the owning PR or release conversation.
 
 ### Candidate Qualification
 
-PR checks, CI artifacts, and exact-SHA candidate images are replaceable inputs.
-They may fail, be superseded, or be deleted without creating a formal version.
-The Candidate must identify one exact Cloud SHA on a workflow-admitted branch
-and one digest-addressed multi-architecture image. It must be available to both qualification paths
-without creating a Git tag, GitHub Release, or versioned GHCR tag.
-Its portable bundle contains the installation assets, canonical
-`opl-cloud-candidate.json`, and `SHA256SUMS`. The manifest binds the exact
-Product repository/SHA/tree, Cloud index ref/digest/revision, both platform
-child digests, each installation asset SHA-256, and workflow provenance.
-`SHA256SUMS` covers every installation asset plus the manifest itself; it does
-not cover itself. The canonical Candidate manifest schema does not bind a
-selected Workspace image, Provider Profile, domain, or Instance fact. The
-bundle includes the generic environment template from the same Product SHA.
+Build one exact Cloud SHA on a workflow-admitted branch, with a digest-addressed
+Linux amd64/arm64 image. The portable bundle contains its canonical
+`opl-cloud-candidate.json`, installation assets and `SHA256SUMS`. The Candidate
+manifest binds Product repository/SHA/tree, index and platform digests, asset
+hashes and workflow provenance. Candidate construction creates no formal tag or
+Release. Formal publication requires that exact source reachable from canonical
+main and promotes the same Candidate image without rebuilding.
 
-The local installation owner qualifies that Candidate on a supported clean Linux
-Docker host using an explicit Local-Docker Provider Profile and immutable
-Workspace image, then returns a local owner-authoritative receipt.
-The Clean Host workflow accepts an explicit immutable Workspace reference or
-builds only the existing qualification Workspace fixture into a run-owned
-loopback registry. It always qualifies the supplied Cloud Candidate digest;
-fixture construction never rebuilds the Cloud image. Fixture acceptance does
-not establish a production application or live Sub2API acceptance.
-`opl-instance-medopl` independently binds the same Candidate SHA and digest,
-deploys through Instance `main` with its explicit `.com` domains, Tencent/TKE
-Provider Profile and immutable Workspace image. The existing qualification
-mechanism combines rollout and product acceptance in Instance artifacts; it has
-not yet adopted the separated ownership above. The current release consumer
-still requires those owner-authoritative receipts, and separately requires the
-Cloud business qualification receipt described under Publication. A new
-provider-neutral qualification flow and its adapter tests do not by themselves
-produce a protected receipt or satisfy release admission. A
-failed or unknown result on either path returns the release unit to development;
-it does not create a Product Release.
+The main Clean Host workflow qualifies the supplied Candidate on a clean Linux
+Docker host. Its default `local-v2` profile uses the declared native topology,
+CA-backed Console HTTPS, independent owner stores, project quota and the
+existing anonymous application fixture. The version-two READY receipt binds
+source/images, owner processes/stores, actual application access, restart
+continuity, owner deletion and replay, and zero remaining Workspace resources.
+It is explicitly `LOCAL_NO_CHARGE` with `p0Ready: false`. The explicit
+`legacy-fixture` mode retains its own version-one validator and evidence scope.
+A failed or mismatched installation remains NOT_READY.
 
-The Clean Host workflow defaults to `local-v2`: one declared native owner
-installation, CA-backed Console HTTPS, independent owner stores, Linux project
-quota and the existing anonymous application fixture. Its version-two READY
-receipt is owned by `tools/local-v2-qualification-receipt.ts` and consumed through
-`validateLocalQualificationReceipt` by both the producer and Release admission.
-It requires the exact clean source and running images, every owner process and
-database, the provider-bound application entry, restart continuity, owner
-deletion and duplicate-command readback, and zero remaining Workspace resources.
-The profile is explicitly `LOCAL_NO_CHARGE`; it proves no live Gateway charge,
-model response or Instance acceptance. Incomplete or mismatched evidence remains
-`NOT_READY`. The explicit `legacy-fixture` mode and its version-one validator
-remain available; a native receipt does not invent their retained CP identities
-or paid-fixture wallet facts. Full native execution evidence and remaining
-publication prerequisites belong to [status](../status.md).
+Instance independently deploys the same Candidate through its protected main
+workflow, then its separate `deployment-verify.yml` records native installation
+identity and technical health. Cloud validates the original bytes through the
+producing Instance revision and binds the receipt/run to that Candidate.
+Successful installation does not imply paid business acceptance.
+
+The exact Candidate's successful Pull Request CI run must include all six
+completed successful jobs. Release admission inspects the existing business
+entry files from its clean exact checkout, records their hashes and binds the
+source CI run. It emits `source_verified` with `paidBusinessExecuted: false` and
+`customerReadsExecuted: false`; it never relabels an unexecuted purchase as
+settled or creates a Workspace acceptance receipt.
+
+## Optional Operational Qualification
+
+The following existing producers remain available for separately authorized
+operational acceptance. Their native contracts and protected boundaries remain
+in force. They are not required or invoked by the current non-spending Release
+admission, and their absence does not create a substitute success receipt.
 
 ### Protected Cloud Customer Reads
 
@@ -161,7 +97,7 @@ provides no production-private network access or resource/financial mutation
 qualification.
 
 The customer workflow emits only `cloud-customer-readback-<run>-<attempt>`,
-consumed by Release admission. It does not invoke the business purchase producer.
+retained for its own operational acceptance. It does not invoke the business purchase producer.
 The protected Instance lane below remains the sole workflow producer of business
 qualification evidence; its trust and exact-Candidate gates are unchanged.
 
@@ -260,7 +196,7 @@ contains `business-qualification.json` and `product-source.json`, plus
 `business-qualification.purchase.json` when the buyer reached a receipt; the
 existing `cloud-customer-readback-<run_id>-<run_attempt>` artifact is unchanged.
 The product-source file binds the exact Cloud product SHA and tree independently
-of the Instance run's own `head_sha`. Release admission resolves this run and
+of the Instance run's own `head_sha`. The retained full-business evidence consumer resolves this run and
 artifact from the Instance repository with `OPL_GITHUB_RELEASE_ADMIN_TOKEN`, rejects
 another repository or workflow, and validates both receipt files through the
 Cloud-owned typed consumer. Receipts are Candidate-bound and contain no raw
@@ -278,83 +214,30 @@ Tenant, payer, RuntimeVersion, plans, origin, credentials and provider boundary,
 a fabric sandbox must emit the exact-Candidate J0 receipt, and the Instance lane
 must emit the settled business receipt for that same Candidate.
 
-### Publication
+## Publication
 
-After candidate qualification succeeds, an allowlisted Cloud Release publisher
-supplies the exact canonical SHA and the Candidate, Local qualification,
-Instance deployment-verification, qualification-decision, and `workspace_verified`
-run IDs, plus the required `cloud_customer_readback_run_id` and
-`cloud_business_qualification_run_id`.
+The owner or `RenDeHuang` dispatches `release-opl-cloud-image.yml` from main;
+original and triggering actors must match. Its required inputs are `version`,
+exact Product `ref`, `candidate_run_id`, `local_qualification_run_id`,
+`instance_deployment_verification_run_id` and `source_verification_run_id`.
+Admission validates their original run/artifact authority and exact identity.
 
-Release admission consumes two evidence classes that prove different things,
-and neither may stand in for the other:
+Both admission and publication use the existing protected `cloud-release`
+environment. Admission reuses the owner-approved
+`OPL_GITHUB_RELEASE_ADMIN_TOKEN` solely for Instance evidence and validator
+reads. Its actual publisher permissions are broader than the Actions/Contents
+reads require; Candidate and PR jobs do not receive it. Instance installation
+validation and source-path verification produce distinct evidence.
 
-- **Cloud business qualification** is the protected Cloud producer's
-  Candidate-bound receipt from the shared provider-neutral qualification
-  contract (`tools/workspace-qualification-contract.ts`). The consumer requires
-  the exact protected producer workflow run from Cloud `main` at the released
-  source SHA, validates the native receipt through that contract, and requires
-  terminal state `settled`. It refuses a receipt whose Candidate receipt
-  digest, source SHA/tree or Cloud image digest does not equal the release
-  Candidate, a receipt outside the bounded freshness window, and any receipt
-  shape that carries an undeclared Secret, Key, customer identifier or private
-  provider identifier. The producer, artifact, receipt kind, terminal state and
-  freshness window are declared in
-  `packages/contracts/opl-cloud-distribution-contract.json`.
-- **Instance deployment** is the exact producing Instance revision's native
-  `deployment_verified` receipt and workflow run. It proves installation
-  identity and health, not customer business qualification. Cloud binds its
-  raw-byte digest, workflow run, Candidate source/index/amd64 digest, Workspace
-  image and provider scope to the qualification decision.
-
-The Candidate, Local installation, Cloud customer-read, Instance
-qualification-decision and Instance `workspace_verified` gates remain separate,
-required evidence. The Cloud customer receipt consumer validates the receipt,
-producer source/run provenance, exact Candidate identity and original
-installation receipt hash. A `customer_reads_verified` pass and a
-`deployment_verified` pass do not replace any retained gate; every retained
-gate stays required until full parity is actually verified.
-
-The sealed release manifest and attestation retain separate `installation`,
-`qualifications.business` and customer scope records, and release provenance
-records the two evidence classes explicitly. Release manifest and provenance
-use `schemaVersion: 3`; the Candidate manifest remains version 2. Release
-admission contract schema 7 replaces the undifferentiated `requiredEvidence`
-list with typed evidence classes and retains all six previous evidence
-requirements plus `cloud_business_qualification`. Admission validates every
-class's run/artifact provenance, native receipts, release assets, checksums,
-Product tree, and index/platform digests. All evidence must bind the same Cloud
-Candidate while retaining its owner-specific Workspace image and Provider
-Profile facts.
-
-**Current external dependency.** The #926 producer exists in source
-(`tools/protected-business-qualification.ts`) and the protected Instance entry
-`.github/workflows/cloud-business-qualification.yml` is now bound to Release
-admission. Until that entry executes for the exact Candidate, emits the settled
-receipt and `product-source.json`, and the consumer admits the same artifact, a
-formal Release cannot satisfy the Cloud business qualification class. This
-source change makes that dependency explicit; it does not claim a real
-qualification, a Release run, or production evidence.
-The repository owner or `RenDeHuang` then explicitly dispatches the Release
-workflow from Cloud `main`; the original actor and current triggering actor must
-match. Publication must promote the exact qualified image bytes and must fail
-if it would rebuild a different digest.
-
-The publication workflow now implements the core sequence as admission followed
-by protected publication. Only publication holds the global lock and write
-permissions. The separate `release-opl-cloud-public-readback.yml` follower is
-triggered by a successful publication run and performs anonymous GHCR/Release
-readback plus attestation checks from that run's sealed checkpoint. It is
-read-only and non-blocking; a failed follower can be retried with the original
-publication run ID. Both Release admission and publication reference the
-existing `cloud-release` environment; customer readback references
-`cloud-business-qualification`. The reused `OPL_GITHUB_RELEASE_ADMIN_TOKEN`
-Secret is confined to the main-only owner-gated evidence jobs. Its Instance
-calls perform only Actions and Contents reads, although the owner-approved
-credential itself has broader publisher permissions. Reuse does not authorize
-Instance deployment. The required evidence must exist for the exact Candidate
-before publication.
-Retained publication evidence belongs only in [status](../status.md).
+The sealed schema-four manifest and provenance bind source, Candidate digest,
+actual local/Instance installation and `business_source_paths` evidence. They
+explicitly declare `installation_and_source_paths` acceptance and no paid or
+customer-read business execution. The publication job alone holds the global
+publication lock and write permissions. It verifies the sealed cohort, attests
+all assets, promotes the admitted image digest and reconciles the same tag.
+Release notes disclose the unexecuted paid paths. The separate public follower
+checks anonymous GHCR/Release bytes, checksums and attestation against the
+original sealed provenance; a failure is recovered for the original tag/run.
 
 Publication retries reconcile the same tag: they promote the admitted digest,
 replace the complete Release asset cohort, remove non-contract assets, and then
@@ -384,5 +267,5 @@ next attempt:
 | Product runtime, public contract, schema, installation asset, dependency, or security boundary | Fix Cloud, create a new Candidate SHA/digest, and repeat both qualification paths | Allowed only after the new Candidate succeeds on both paths |
 
 An urgent security correction may define a narrow release unit, but during the
-current pre-1.0 phase it still requires both exact Candidate qualification paths
+current pre-1.0 phase it still requires both exact Candidate installation paths
 before formal publication.

@@ -75,13 +75,14 @@ merged as `c5a15c501`; canonical main no longer contains the transfer workflow,
 and both local and Actions transport envelopes were removed. Cloud consumer
 execution and independent customer-account Secrets remain unverified or absent.
 
-Formal publication still lacks this Candidate's Instance deployment and
-independent installation verification, genuine dedicated-sandbox J0, settled
-protected business qualification, customer reads, retained qualification decision
-and Workspace acceptance. The Instance billing-subject declaration is absent.
-No Instance deployment, procurement, charge, renewal or customer-resource deletion
-was performed for this release task; those mutations need their own bounded
-authorization. The public stable Release remains `v0.1.7`.
+The owner subsequently authorized Candidate registration/deployment and chose
+source-path availability instead of cost-incurring business acceptance. Instance
+registration PR #682 merged as `d39d6c8`; deployment run `41971059395` succeeded
+for the frozen Candidate, followed by successful independent read-only
+installation run `41971608915`. The revised publication contract requires actual
+local/Instance installation and exact-source CI/path hashes. Paid business and
+customer-read execution are explicitly unclaimed. The public stable Release
+remains `v0.1.7` until formal publication and anonymous public readback complete.
 
 ## Retained Generic Deployment Builder Removal (2026-11-05)
 
