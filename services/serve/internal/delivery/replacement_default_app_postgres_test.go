@@ -76,6 +76,8 @@ func nativeUpgradeFixture(t *testing.T) (*delivery.Service, *api.RuntimeReservat
 	t.Helper()
 	s, base, _ := reservationFixture(t)
 	original, next := nativeUpgradeRelease(t, "rv-original", "1", "1"), nativeUpgradeRelease(t, "rv-next", "2", "2")
+	original.PublisherContract.ModelConfiguration = modelConfigurationInterface()
+	next.PublisherContract.ModelConfiguration = modelConfigurationInterface()
 	next.PublisherContract.ApplicationRevisionTemplate.Entrypoint = []string{"/usr/bin/env", "OPL_WEBUI_DEPLOYMENT_MODE=cloud", "OPL_WEBUI_AUTH_MODE=password", "OPL_WEBUI_USERNAME=opl", "OPL_WEBUI_PASSWORD_FILE=/run/secrets/opl_webui_password", "OPL_WEBUI_SESSION_SECRET_FILE=/run/secrets/webui_session_secret", "/usr/local/bin/opl-webui-entrypoint"}
 	catalog := &upgradeRuntimeCatalog{versions: map[string]*api.RuntimeVersion{"rv-original": original, "rv-next": next}}
 	s.RuntimeReleases = catalog

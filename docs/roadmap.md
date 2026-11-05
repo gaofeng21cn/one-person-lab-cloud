@@ -379,6 +379,11 @@ The separately reported background-service warning is not evidence that the
 observed model turn failed. Preserve both observations without extending this
 check into unrelated App capabilities.
 
+After adopting the Serve reload admission repair, verify that a Runtime without
+a declared model-configuration interface is refused before Secret handover,
+preserving its active binding and applied version. Source owner tests establish
+this ordering; they do not establish installed adoption.
+
 #### Workspace purchase eligibility adoption
 
 New-purchase source admission consumes the existing Account eligibility owner;

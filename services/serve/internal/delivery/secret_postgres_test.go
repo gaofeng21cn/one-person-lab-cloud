@@ -81,6 +81,8 @@ func (r *secretResources) RebindSecret(_ context.Context, c *api.SecretBindingRe
 func managedKeyFixture(t *testing.T) (*delivery.Service, *api.RuntimeReservationCommand, *api.RuntimeReservation, *gatewayForServe, *secretResources) {
 	t.Helper()
 	s, r, cap := reservationFixture(t)
+	cap.version.RuntimeVersionId = proto.String("rv-agent")
+	s.RuntimeReleases = &runtimeControlForServe{release: agentRelease(t, modelConfigurationInterface())}
 	r.DeploymentDescriptor.ApplicationRevision.Credentials = []*api.WorkspaceApplicationCredential{{Name: "gateway", Kind: api.WorkspaceApplicationCredentialKindEnum_WORKSPACE_APPLICATION_CREDENTIAL_KIND_ENUM_GATEWAY_KEY, Target: "/run/secrets/opl_gateway_api_key"}}
 	// The declared credential changes the descriptor, so its digest must be re-derived
 	// from the canonical public bytes; Reserve authenticates the descriptor against it.
@@ -321,6 +323,58 @@ func TestServeDeployRecoversAfterExecutionLostACK(t *testing.T) {
 	}
 	if starts != 1 {
 		t.Fatalf("start actions=%d, want one original delivery", starts)
+	}
+}
+
+func TestServeReloadRefusesUnavailableModelConfigurationBeforeSecretHandover(t *testing.T) {
+	for _, reason := range []string{"undeclared", "unsupported protocol", "unavailable owner"} {
+		t.Run(reason, func(t *testing.T) {
+			s, r, reservation, _, resources := managedKeyFixture(t)
+			catalog := s.RuntimeReleases.(*runtimeControlForServe)
+			wantCode := codes.FailedPrecondition
+			switch reason {
+			case "undeclared":
+				catalog.release.PublisherContract.ModelConfiguration = nil
+			case "unsupported protocol":
+				catalog.release.PublisherContract.ModelConfiguration.Protocol = api.ModelConfigurationContractProtocolEnum(999)
+			case "unavailable owner":
+				s.RuntimeReleases = nil
+				wantCode = codes.Unavailable
+			}
+			runtime := &runtimeForServe{reloadVersion: 7}
+			s.Runtime = runtime
+			deploy := deployReserved(r, reservation)
+			deploy.ManagedKeyBinding = launchManagedKeyHandover(r.GetWorkspaceId(), "key-original")
+			if _, err := s.Deploy(workspaceContext(), deploy); err != nil {
+				t.Fatal(err)
+			}
+			active := resources.active
+			reloadCall := call(r.GetContext().GetScope().GetTenant().GetTenantId(), false)
+			reloadCall.IdempotencyKey, reloadCall.RequestId = "unsupported-model-update", "unsupported-model-update"
+			command := &api.RuntimeReloadCommand{Context: reloadCall, RuntimeInstanceId: reservation.RuntimeInstanceId, TargetVersion: 7, Selections: []*api.ModelSelection{{Slot: "chat", ModelId: "model-7"}}, ManagedKeyBinding: confirmedReloadBindingReadback(r.GetWorkspaceId(), "key-7")}
+			for _, invoke := range []func() (*api.Operation, error){
+				func() (*api.Operation, error) { return s.ReloadModels(workspaceContext(), command) },
+				func() (*api.Operation, error) { return s.ReloadRuntime(servePeerContext(), command) },
+			} {
+				_, err := invoke()
+				if status.Code(err) != wantCode {
+					t.Fatalf("reload err=%v, want %v", err, wantCode)
+				}
+				if wantCode == codes.FailedPrecondition && !strings.Contains(err.Error(), delivery.ReasonModelConfigurationUnavailable) {
+					t.Fatalf("reload lost the unavailable capability reason: %v", err)
+				}
+			}
+			if resources.rebinds != 0 || resources.binds != 1 || resources.active != active || len(runtime.reloads) != 0 {
+				t.Fatalf("refused reload changed owner state: binds=%d rebinds=%d active=%q reloads=%d", resources.binds, resources.rebinds, resources.active, len(runtime.reloads))
+			}
+			var actions int
+			if err := s.DB.QueryRow(`SELECT count(*) FROM serve.agent_runtime_actions WHERE runtime_instance_id=$1 AND action='reload'`, reservation.RuntimeInstanceId).Scan(&actions); err != nil {
+				t.Fatal(err)
+			}
+			if actions != 0 || appliedModelConfiguration(t, s, reservation.RuntimeInstanceId) != 0 {
+				t.Fatal("a refused reload recorded an action or advanced the applied version")
+			}
+		})
 	}
 }
 
