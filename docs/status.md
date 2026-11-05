@@ -4,11 +4,11 @@ Owner: `opl-cloud`
 Purpose: `replaceable_current_evidence_snapshot`
 State: `current_snapshot`
 Reviewed source baseline: `3773966a31e2a5d6630038decfa0a812c1488830` on `main`
-Snapshot reconciliation date: 2026-11-05
+Snapshot reconciliation date: 2026-11-06
 
 Each observation below retains its original source, run and environment; the
 reviewed source baseline does not requalify those receipts. The latest retained
-runtime/source evidence is dated 2026-11-05. Source tests, Candidate construction,
+runtime/source evidence is dated 2026-11-06. Source tests, Candidate construction,
 Instance installation and customer acceptance prove separate layers; none alone
 establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
@@ -33,7 +33,7 @@ Instance observations below retain their original revisions and limits.
 | Default App customer acceptance | [#1042](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1042) closed on 2026-11-02 after official App login, Gateway-backed model response, restart/response-loss recovery, one `$52.58` charge and no duplicate purchase or Key; the [November 5 readback](#existing-default-app-provisioning-closure-readback-2026-11-05) separately confirms current model use and page-reload persistence | This accepted Workspace does not prove every future customer is unattended, the Cloud model-configuration API is qualified or every writer has migrated |
 | Original-order closeout | [#1018's three original orders](#original-order-closeout-scope-2026-10-23) have protected resource absence, deletion-receipt and original-charge settlement evidence | Preserve their original records; completed closeout does not retire every retained CP caller or worker |
 | Serve current application and upgraded deletion | [Current selection](#serve-owned-current-application-readback-2026-11-04) comes from Serve, and [deletion follows the original reservation's successor lineage](#workspace-deletion-after-application-replacement-2026-11-04); both have source regression evidence | Installed adoption and live owner readback for these later repairs remain unverified |
-| Package, Build and Runtime catalog | Approved Default App inputs were used by #1042; the [Agent publication input check](#custom-agent-publication-inputs-2026-11-05) identifies the current Publisher blocker and Package portability issue; the [Linux Custom Agent profile](#linux-custom-agent-owner-qualification-2026-10-21) retains its distinct historical inputs | Cloud WebUI publication/admission, a compatible Runtime recipe, portable Package input and effective Build policy remain prerequisites for the current customer test; hosted OCI and Custom Agent TKE acceptance remain separate |
+| Package, Build and Runtime catalog | Approved Default App inputs were used by #1042; the [Agent publication input check](#custom-agent-publication-inputs-2026-11-05) identifies the current Publisher blocker and Package portability issue; the [Linux Custom Agent profile](#linux-custom-agent-owner-qualification-2026-10-21) retains its distinct historical inputs | The Cloud WebUI is published and admitted; a compatible Runtime recipe, portable Package input and effective Build policy remain prerequisites for the current customer test; hosted OCI and Custom Agent TKE acceptance remain separate |
 | Retained writer migration | [Capability withdrawals](#retained-writer-inventory-and-split-withdrawal-proposals-2026-11-03) and [implementation inventory](implementation-architecture.md#retained-writer-and-caller-inventory-2026-11-03) identify source removals, surviving callers and bounded observations | Account eligibility is consumed at source; its installed adoption and owner migration, Tenant payer-balance consumption, selected-model admission, shared CP recovery and historical duties remain separate. Source removal is not installed adoption or zero traffic |
 | Protected engineering qualification | Native consumer migration and source repairs are recorded separately from the accepted customer path | Protected payer declaration, same-Candidate J0 READY, W01 ordering and a complete protected receipt remain unproven; existing release admission is unchanged |
 
@@ -90,10 +90,35 @@ retains source, push metadata, index and image readbacks with matching checksums
 An independent anonymous registry read matched the index digest, both child
 manifests/configs/layers and all four served WebUI source files against that
 commit. Registry transfer has not been shown necessary: anonymous retrieval
-works, while installed namespace approval and Build pull access remain unverified.
-Catalog admission, a real compatible Runtime recipe, portable Package delivery,
-effective Build policy and customer upload/build/deployment remain open. No
-existing Runtime record or original Package bytes were changed by this run.
+works; installed Build pull access remains unverified.
+
+On November 6 (Asia/Shanghai), the protected Instance main workflow admitted the
+exact WebUI publisher namespace in [run 42091540145](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/42091540145).
+The version `2026.11.05-d58dabc-amd64` binds the published amd64 digest above.
+[Run 42092204127](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/42092204127)
+created it with HTTP 201 and read one approved customer-visible version, but
+retained a blocked receipt because the complete create/list projections differed.
+An exact replay in [run 42092686735](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/42092686735)
+confirmed `already_effective`, all contract/catalog checks and zero new WebUI
+versions. The blocked attempt remains evidence; replay does not erase it.
+A real Linux/PostgreSQL regression reproduced the discrepancy: admission and
+command replay returned nanosecond `created_at`, while the persisted list read
+returned PostgreSQL's microsecond value. Capability now returns `created_at`
+from `INSERT ... RETURNING` before recording the command result. Full-version
+admission/list/replay equality and unchanged replay catalogs pass locally;
+focused verification executed 51 tests with no failures or skips. Installed
+adoption of this source fix remains unverified.
+
+The latest successful official App WebUI publication, [run 39921425320](https://github.com/gaofeng21cn/one-person-lab-app/actions/runs/39921425320),
+was also inspected at its four actual artifacts with matching download and
+receipt hashes. Those artifacts bind Runtime image build inputs and image
+identity, but contain no Cloud `buildRecipe`, Package-format declaration or
+recipe archive. This finding is limited to that publication's artifacts, not
+an assertion about every image file or unpublished Runtime input.
+A real compatible Runtime recipe, portable Package delivery, effective Build
+policy and customer upload/build/deployment remain open. These admission runs
+changed neither existing Runtime records nor Workspace, provider or financial
+state; the original Package bytes remain unchanged.
 
 ## Native Local-Docker Release Qualification (2026-11-05)
 
