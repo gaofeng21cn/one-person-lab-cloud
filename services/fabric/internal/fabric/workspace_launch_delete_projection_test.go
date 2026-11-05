@@ -113,7 +113,7 @@ func (p *workspaceLaunchDeleteProjectionProvider) DestroyComputeAllocation(_ con
 	return allocation, nil
 }
 
-func workspaceLaunchDeleteProjectionFixture(t *testing.T) (*Service, *MemoryOperationStore, *workspaceLaunchDeleteProjectionProvider, WorkspaceLaunchResources) {
+func workspaceLaunchDeleteProjectionFixture(t *testing.T, initial ...WorkspaceLaunchResources) (*Service, *MemoryOperationStore, *workspaceLaunchDeleteProjectionProvider, WorkspaceLaunchResources) {
 	t.Helper()
 	ctx := context.Background()
 	store := NewMemoryOperationStore()
@@ -129,6 +129,9 @@ func workspaceLaunchDeleteProjectionFixture(t *testing.T) (*Service, *MemoryOper
 		t.Fatalf("preflight=%#v err=%v", preflight, err)
 	}
 	resources := WorkspaceLaunchResources{}
+	if len(initial) > 0 {
+		resources = initial[0]
+	}
 	for _, stage := range []struct{ name, action string }{
 		{"ensure_compute_allocation", "ensure_compute_allocation"},
 		{"storage", "ensure_storage"},
@@ -377,10 +380,14 @@ func TestWorkspaceLaunchDeleteHydrationDoesNotOverwriteConcurrentResourceState(t
 	}
 }
 
-func retainedTencentComputeTagsFixture(t *testing.T, mutate func(*ComputeAllocation, *MachineOwnership)) (*MemoryOperationStore, *TencentProvider, ComputeAllocation, MachineOwnership) {
+func retainedTencentComputeTagsFixture(t *testing.T, mutate func(*ComputeAllocation, *MachineOwnership), initial ...WorkspaceLaunchResources) (*MemoryOperationStore, *TencentProvider, ComputeAllocation, MachineOwnership) {
 	t.Helper()
 	_, store, provider, preflight, image, launchHash := newTencentWorkspaceLaunchService(t)
-	input := workspaceLaunchStageFixtureInput(preflight, image, launchHash, "ensure_compute_allocation", "ensure_compute_allocation", WorkspaceLaunchResources{})
+	request := WorkspaceLaunchResources{}
+	if len(initial) > 0 {
+		request = initial[0]
+	}
+	input := workspaceLaunchStageFixtureInput(preflight, image, launchHash, "ensure_compute_allocation", "ensure_compute_allocation", request)
 	compute := canonicalTencentComputeDestroyFixture()
 	compute.ID, compute.OperationID = workspaceLaunchComputeID(input.Binding), input.Binding.FabricOperationID
 	compute.ProviderResourceID, compute.ProviderRequestID = compute.InstanceID, "original-compute-read"
@@ -397,7 +404,7 @@ func retainedTencentComputeTagsFixture(t *testing.T, mutate func(*ComputeAllocat
 		mutate(&compute, &owner)
 	}
 	seedTencentWorkspaceLaunchStage(t, store, preflight, image, launchHash, "ensure_compute_allocation", "ensure_compute_allocation",
-		WorkspaceLaunchResources{}, WorkspaceLaunchResources{ComputeAllocationID: compute.ID, ComputeBindingRef: input.Binding.FabricOperationID},
+		request, WorkspaceLaunchResources{ComputeAllocationID: compute.ID, ComputeBindingRef: input.Binding.FabricOperationID, GatewaySecretFingerprint: request.GatewaySecretFingerprint},
 		tencentWorkspaceLaunchState{Compute: &compute, Ownership: &owner}, 0)
 	// A real child resource record populates the service map at restart before
 	// canonical Launch hydration. It predates the missing CostTags projection.
@@ -700,7 +707,7 @@ func TestRetainedLaunchComputeTagsRequireUniqueOriginalStage(t *testing.T) {
 func TestPostgresRetainedLaunchComputeTagsRecoverAfterStoreReopen(t *testing.T) {
 	ctx := context.Background()
 	databaseURL := fabricTestDatabaseURL(t)
-	fixture, provider, compute, owner := retainedTencentComputeTagsFixture(t, nil)
+	fixture, provider, compute, owner := retainedTencentComputeTagsFixture(t, nil, WorkspaceLaunchResources{GatewaySecretFingerprint: "sha256:" + strings.Repeat("a", 64)})
 	first, err := newTestPostgresOperationStore(databaseURL)
 	if err != nil {
 		t.Fatal(err)
