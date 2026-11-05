@@ -686,7 +686,10 @@ func TestRetainedLaunchComputeTagsRequireUniqueOriginalStage(t *testing.T) {
 			}
 			service := NewServiceWithOperationStore(provider, store)
 			_, err := service.ReadComputeDestroyStatus(context.Background(), compute.ID)
-			const want computeReadbackFailure = "compute_readback_launch_unavailable"
+			want := computeReadbackFailure("compute_readback_launch_unavailable")
+			if !missing {
+				want = "compute_readback_launch_binding_invalid"
+			}
 			if !errors.Is(err, want) || calls != 0 {
 				t.Fatalf("unproven original stage reached provider: err=%v calls=%d", err, calls)
 			}
@@ -863,5 +866,52 @@ func TestTencentStaticLaunchResourcesRecoverForReads(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestComputeLaunchReadbackReportsRejectedRecordWithoutProviderCalls(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*FabricOperation)
+		want   computeReadbackFailure
+	}{
+		{"binding", func(op *FabricOperation) { delete(op.RedactedProviderPayload, launchStageBindingPayloadKey) }, "compute_readback_launch_binding_invalid"},
+		{"missing record", func(op *FabricOperation) { delete(op.RedactedProviderPayload, workspaceLaunchStageRecordPayloadKey) }, "compute_readback_launch_record_invalid"},
+		{"record digest", func(op *FabricOperation) {
+			record, ok := decodeWorkspaceLaunchStageRecord(*op)
+			if !ok {
+				t.Fatal("fixture record is invalid")
+			}
+			op.RedactedProviderPayload[workspaceLaunchStageRecordPayloadKey] = persistedWorkspaceLaunchStageRecord{Record: record, Digest: strings.Repeat("0", 64)}
+		}, "compute_readback_launch_record_digest"},
+		{"resource identity", func(op *FabricOperation) {
+			record, ok := decodeWorkspaceLaunchStageRecord(*op)
+			if !ok {
+				t.Fatal("fixture record is invalid")
+			}
+			record.Resources.ComputeAllocationID = "different-resource"
+			setWorkspaceLaunchStageRecord(op, record)
+		}, "compute_readback_launch_stage_invalid"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store, provider, compute, _ := retainedTencentComputeTagsFixture(t, nil)
+			for i := range store.operation {
+				if store.operation[i].Action == "ensure_compute_allocation" {
+					test.mutate(&store.operation[i])
+				}
+			}
+			calls := 0
+			provider.provision = func(context.Context, provisionerRequest) (provisionerResponse, error) {
+				calls++
+				return provisionerResponse{}, errors.New("must not reach provider")
+			}
+			service := NewServiceWithOperationStore(provider, store)
+			before, _ := json.Marshal(store.operation)
+			_, err := service.ReadComputeDestroyStatus(context.Background(), compute.ID)
+			after, _ := json.Marshal(store.operation)
+			if !errors.Is(err, test.want) || calls != 0 || string(before) != string(after) {
+				t.Fatalf("err=%v want=%v calls=%d persistedChanged=%t", err, test.want, calls, string(before) != string(after))
+			}
+		})
 	}
 }

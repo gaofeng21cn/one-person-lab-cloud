@@ -139,6 +139,35 @@ func TestApplicationRuntimeOwnershipKeepsUnownedAndUnrecordedDistinct(t *testing
 	}
 }
 
+func TestApplicationRuntimeOwnershipPreservesPhysicalDiagnostics(t *testing.T) {
+	for _, registered := range []bool{false, true} {
+		name := "unregistered"
+		if registered {
+			name = "verified"
+		}
+		t.Run(name, func(t *testing.T) {
+			store := NewMemoryOperationStore()
+			revision := applicationRevisionForTest()
+			revision.Dependencies = nil
+			input := applicationRuntimeInput("app-physical-diagnostic", revision)
+			wantOwnership := contracts.RuntimeOwnershipUnregistered
+			if registered {
+				creator := runtimeTestService(&recordingApplicationRuntimeProvider{}, store)
+				if _, err := creator.CreateWorkspaceApplicationRuntime(context.Background(), input); err != nil {
+					t.Fatal(err)
+				}
+				wantOwnership = contracts.RuntimeOwnershipVerified
+			}
+			workloads := applicationObservationWorkload(input, "main", "acct-alpha", applicationRuntimeID(input), input.RuntimeOperationID)
+			workloads[0].(map[string]any)["status"].(map[string]any)["observedGeneration"] = float64(0)
+			observed := applicationOwnerObservedRuntime(t, store, workloads)
+			if observed.Ownership != wantOwnership || observed.ObservedState != contracts.ResourceObservedPending || observed.ReasonCode != "runtime_generation_pending" {
+				t.Fatalf("ownership enrichment erased physical diagnostic: %#v", observed)
+			}
+		})
+	}
+}
+
 func TestApplicationRuntimeOwnershipVerifiesEveryDeclaredComponent(t *testing.T) {
 	// The default test revision declares main plus the retrieval dependency;
 	// both physical deployments verify on their own component identity, and a
