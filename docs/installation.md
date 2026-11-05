@@ -125,6 +125,12 @@ project quota enabled and rejects unsupported layouts before Launch mutation.
 These configuration and health checks do not establish Candidate qualification;
 see [Candidate Qualification](runtime/release.md#candidate-qualification).
 
+New publications use a schema-four Release manifest with actual Local-Docker
+and Instance installation evidence plus exact-source CI and business-path
+hashes. The manifest and release notes explicitly state that paid business and
+customer-read acceptance were not executed. These claims do not change the
+historical public v0.1.7 manifest.
+
 The retained Compose services are Control Plane, Fabric and Ledger. The product
 image also carries Console BFF and the extracted
 domain-owner executables, but the base profile does not install them. A conforming
