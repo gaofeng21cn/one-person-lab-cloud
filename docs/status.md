@@ -36,10 +36,57 @@ The current objective is one writer per fact and removal of obsolete code with
 its callers, workers, configuration and exclusive tests. Qualification is a
 separate release lane, not a blanket prerequisite for source retirement.
 
+## Native Local-Docker Release Qualification (2026-11-05)
+
+[PR #1131](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1131)
+merged as `e92524de` after all six checks passed for the frozen source
+`5e3d58dc2897648a01aa298dfa77bb02c3615aea`. Focused verification executed
+150 tests with zero failures, skips or TODOs. [Candidate build
+`41968022170`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/41968022170)
+succeeded for that exact source and both Linux architectures. Its portable
+bundle passed its own validator and binds image index
+`sha256:411b9948b0701c44525abedfec20d2ed2f651b25e48c8e88334cc6badf40c2c1`.
+
+[Main Clean Host run `41968911003`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/41968911003)
+succeeded and produced the native schema-two READY receipt for the same
+Candidate. The shared Release consumer validated the original downloaded bytes.
+All eleven owner processes and eleven stores were confirmed; the anonymous
+application returned HTTP 200; restart preserved the operation, Workspace,
+Runtime, receipt and re-established session; owner deletion confirmed resource
+and data absence; duplicate deletion kept the operation and Ledger receipts
+unchanged. Remaining Workspace containers, volumes and networks were all zero,
+and both host-storage and fixture-registry cleanup steps succeeded.
+
+The earlier [run `41962716311`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/41962716311)
+completed the native lifecycle on source `3204139a` but failed because its old
+diagnostic producer always emitted NOT_READY. That retained diagnostic was not
+converted into a READY receipt. The new producer and shared Release consumer
+use the native version-two receipt, preserving the separate version-one
+validator. The profile is `LOCAL_NO_CHARGE` and `p0Ready: false`; live Gateway
+charge/model response and Instance/business qualification remain separate.
+
+The owner approved reuse of the existing publisher credential. Its sealed
+transfer succeeded in App run `41962800078`; Cloud `cloud-release` and
+`cloud-business-qualification` Secret metadata was read back on 2026-11-05.
+Main-only owner-gated evidence jobs are its only Cloud source consumers. The
+credential has broader actual publisher permissions than the Actions/Contents
+reads require. App cleanup [PR #346](https://github.com/gaofeng21cn/one-person-lab-app/pull/346)
+merged as `c5a15c501`; canonical main no longer contains the transfer workflow,
+and both local and Actions transport envelopes were removed. Cloud consumer
+execution and independent customer-account Secrets remain unverified or absent.
+
+Formal publication still lacks this Candidate's Instance deployment and
+independent installation verification, genuine dedicated-sandbox J0, settled
+protected business qualification, customer reads, retained qualification decision
+and Workspace acceptance. The Instance billing-subject declaration is absent.
+No Instance deployment, procurement, charge, renewal or customer-resource deletion
+was performed for this release task; those mutations need their own bounded
+authorization. The public stable Release remains `v0.1.7`.
+
 ## Existing Default App Provisioning Closure Readback (2026-11-05)
 
-The current source audit is bound to merged Cloud #1127,
-`082b98371cb321ac2a0db3edcc88b9096e9b0186`; the installed Candidate is still
+This source audit is bound to merged Cloud #1127,
+`082b98371cb321ac2a0db3edcc88b9096e9b0186`; the installed Candidate at that observation was
 `4f131caa41324f027c1fee48d6ae5e5356e7e3c4`. No fresh purchase, deployment or
 provider mutation was performed. The existing designated #1042 Workspace was
 read through the Instance-owned [customer readback run 41949644043](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41949644043).
@@ -2263,6 +2310,26 @@ is the Cloud-owned input for an Instance manifest. It names owner identities,
 executables, addresses, database roles, peer identities, HTTP surfaces and the
 baked Console identity. It is a source and packaging contract; it is not proof
 that an installation runs the complete set.
+
+## Console Interface Refinement (2026-11-05)
+
+Against checked baseline `5e3d58dc2897648a01aa298dfa77bb02c3615aea`, the
+Console overview now presents Workspace actions before the charge trend. Shared
+surfaces use clearer text/action contrast and quieter panel styling; mobile
+Workspace names wrap in full. Navigation and account panels close each other,
+support Escape and return focus; the mobile drawer keeps keyboard navigation
+inside it while open. The preview fixture now displays
+`https://gateway.medopl.com/v1`; the product still reads its API address from
+the Gateway owner response.
+
+Focused local verification passed 20 tests with zero failures, skips or TODOs,
+including customer/operator journeys, source availability states and layout
+checks across fifteen routes at 1440, 1280, 1024 and 390 pixels. Typecheck,
+lint and the production build passed. These are local fixture/browser results;
+installed adoption remains an [acceptance outcome](roadmap.md#console-interface-adoption).
+Additional browser readback at 320, 390 and 1440 pixels passed nine scenarios,
+including copying the current API address and keeping a valid Workspace usable
+when the Cloud identity's independent wallet/history sources are unavailable.
 
 ## Browser-Facing HTTP Surface And Console Identity
 

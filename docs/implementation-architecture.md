@@ -810,7 +810,12 @@ the remaining CVM.
 
 `GET /fabric/runtime-observations` inventories physical Runtime controllers
 before matching persisted Fabric ownership. Binding claims remain visible for
-unregistered or conflicting objects. Control Plane reconciles this inventory
+unregistered or conflicting objects. Pods are matched through their actual
+ReplicaSet and Deployment controllers before their binding labels are checked;
+another component or retained revision in the same Workspace cannot keep a
+suspended Deployment pending. Unresolved controller claims remain conflicts,
+and ownership enrichment preserves an existing physical observation reason.
+Control Plane reconciles this inventory
 against its complete current Workspace set, retained operations and lifecycle intent through
 `GET /internal/cloud/operator/runtime-observations` for the CloudIdentity BFF
 and the retained `GET /api/operator/runtime-observations` for legacy callers;
@@ -820,6 +825,20 @@ Control Plane browser session. See the [read inventory](implementation/840-conso
 objects remain distinct. Incomplete discovery cannot prove absence. The older
 physical summary retains `ready + unready = total`; a suspended controller is
 physically unready without necessarily being a business fault.
+This retained Workspace/Fabric view is not a native Serve ownership registry.
+Native application deployments must be reconciled against Workspace and Serve's
+own records; an absent Fabric application record alone does not prove an orphan.
+Compute destroy-status rejection distinguishes unreadable history, invalid
+Launch binding, invalid record or digest, and invalid stage structure. These
+bounded diagnostics preserve the original rejection and never authorize a
+provider read or mutation with an unverified binding.
+Retained full Launches run the Key stage before Compute; the original Key
+fingerprint therefore accompanies Compute, Storage and Attachment requests.
+Canonical recovery preserves that exact fingerprint in each stage result and
+across the original sequence, while continuing to reject extra Secret/runtime
+bindings, changed fingerprints and conflicting resource or owner identities.
+It never rewrites historical records or treats the fingerprint as deletion
+authority. Resource-only Launches keep their empty pre-Compute context.
 The response declares `ownershipScope=workspaces_and_retained_operations` only
 after both complete owner reads succeed. A Runtime with a retained operation but
 no Workspace reports `runtime_operation_without_workspace`; it cannot be treated

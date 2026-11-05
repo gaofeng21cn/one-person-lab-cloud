@@ -145,11 +145,25 @@ func (p *TencentProvider) readRuntimeObservations(ctx context.Context) ([]runtim
 		current := generation > 0 && number(nested(deployment, "status", "observedGeneration")) >= generation
 		currentReady, active, wrongOwner := 0, 0, false
 		for _, pod := range pods {
-			if stringValue(nested(pod, "metadata", "labels", "oplcloud.cn/workspace-id")) != k8sCostLabelValue(observation.WorkspaceID) {
-				continue
-			}
 			rs := replicaSets[controllerUID(pod, "ReplicaSet")]
 			if rs == nil || controllerUID(rs, "Deployment") != uid {
+				// A Workspace can retain previous revisions and run several declared
+				// components. Their Pods belong to their own controllers; they do not
+				// conflict with, or keep alive, this Deployment.
+				if rs == nil || !deploymentUIDs[controllerUID(rs, "Deployment")] {
+					// An unresolved controller is not proof of a different owner.
+					// Keep an otherwise matching claim visible as a conflict.
+					if stringValue(nested(pod, "metadata", "labels", "oplcloud.cn/workspace-id")) == k8sCostLabelValue(observation.WorkspaceID) &&
+						stringValue(nested(pod, "metadata", "labels", "oplcloud.cn/runtime-id")) == k8sCostLabelValue(observation.RuntimeID) &&
+						stringValue(nested(pod, "metadata", "labels", "oplcloud.cn/runtime-operation-id")) == k8sCostLabelValue(observation.operationID) {
+						wrongOwner = true
+					}
+				}
+				continue
+			}
+			if stringValue(nested(pod, "metadata", "labels", "oplcloud.cn/workspace-id")) != k8sCostLabelValue(observation.WorkspaceID) ||
+				stringValue(nested(pod, "metadata", "labels", "oplcloud.cn/runtime-id")) != k8sCostLabelValue(observation.RuntimeID) ||
+				stringValue(nested(pod, "metadata", "labels", "oplcloud.cn/runtime-operation-id")) != k8sCostLabelValue(observation.operationID) {
 				wrongOwner = true
 				continue
 			}

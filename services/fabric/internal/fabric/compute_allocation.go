@@ -544,17 +544,24 @@ func (s *Service) ReadComputeDestroyStatus(ctx context.Context, allocationID str
 func (s *Service) computeDestroyStatusOwnershipInput(ctx context.Context, existing ComputeAllocation) (ComputeAllocation, error) {
 	records, err := s.operationHistory.List(ctx)
 	if err != nil {
-		return existing, computeReadbackFailure("compute_readback_launch_unavailable")
+		return existing, computeReadbackFailure("compute_readback_history_unavailable")
 	}
 	stages := newWorkspaceLaunchDeleteStageSet()
+	var rejected computeReadbackFailure
 	for _, operation := range records {
 		candidate, workspaceID, resourceID, isCandidate, valid := canonicalWorkspaceLaunchDeleteStage(operation, "ensure_compute_allocation")
 		if isCandidate {
 			stages.add(workspaceID, resourceID, candidate, valid)
+			if workspaceID == existing.WorkspaceID && !valid {
+				rejected = computeLaunchReadbackRejection(operation)
+			}
 		}
 	}
 	original, found := stages.canonical(existing.WorkspaceID)
 	if !found || original.resourceID != existing.ID {
+		if rejected != "" {
+			return existing, rejected
+		}
 		return existing, computeReadbackFailure("compute_readback_launch_unavailable")
 	}
 	if !sameWorkspaceLaunchComputeTagIdentity(existing, original.compute) {
@@ -572,6 +579,30 @@ func (s *Service) computeDestroyStatusOwnershipInput(ctx context.Context, existi
 		return existing, computeReadbackFailure("compute_readback_launch_mismatch")
 	}
 	return s.computeOwnershipReadbackInput(ctx, existing)
+}
+
+// Classify the rejected original record using the same owner decoders. These
+// fixed diagnostics reveal no identity or payload and never admit a rejected
+// record, reconstruct a digest, or change the deletion gate.
+func computeLaunchReadbackRejection(operation FabricOperation) computeReadbackFailure {
+	if _, ok := decodeLaunchStageBinding(operation); !ok {
+		return "compute_readback_launch_binding_invalid"
+	}
+	if _, ok := decodeWorkspaceLaunchStageRecord(operation); !ok {
+		body, err := json.Marshal(operation.RedactedProviderPayload[workspaceLaunchStageRecordPayloadKey])
+		var persisted persistedWorkspaceLaunchStageRecord
+		if err == nil && json.Unmarshal(body, &persisted) == nil && persisted.Digest != "" {
+			expected := legacyWorkspaceLaunchStageRecordDigest(persisted.Record)
+			if persisted.Record.SchemaVersion == workspaceLaunchStageRecordSchemaVersion {
+				expected = workspaceLaunchStageRecordDigest(persisted.Record)
+			}
+			if expected != "" && persisted.Digest != expected {
+				return "compute_readback_launch_record_digest"
+			}
+		}
+		return "compute_readback_launch_record_invalid"
+	}
+	return "compute_readback_launch_stage_invalid"
 }
 
 // validTencentComputeDestroyRetryEvidence bounds a retryable readback: a provider

@@ -13,6 +13,10 @@ import (
 
 func observationWorkload(workspaceID string, replicas int, ready bool) []any {
 	runtimeID, operationID, name := "rt_"+workspaceID, "op-"+workspaceID, "runtime-"+workspaceID
+	return observationWorkloadWithIdentity(workspaceID, runtimeID, operationID, name, replicas, ready)
+}
+
+func observationWorkloadWithIdentity(workspaceID, runtimeID, operationID, name string, replicas int, ready bool) []any {
 	tags := oplCostTags("acct", workspaceID, runtimeID, operationID)
 	labels := stringAnyMap(k8sCostLabels(tags))
 	labels["oplcloud.cn/runtime-id"] = runtimeID
@@ -22,18 +26,37 @@ func observationWorkload(workspaceID string, replicas int, ready bool) []any {
 	if ready {
 		count = 1
 	}
-	deployment := map[string]any{"kind": "Deployment", "metadata": map[string]any{"uid": "deploy-" + workspaceID, "name": name, "generation": float64(2), "labels": labels, "annotations": stringAnyMap(tags)}, "spec": map[string]any{"replicas": float64(replicas), "template": template}, "status": map[string]any{"observedGeneration": float64(2), "updatedReplicas": float64(count), "readyReplicas": float64(count), "availableReplicas": float64(count)}}
+	deployment := map[string]any{"kind": "Deployment", "metadata": map[string]any{"uid": "deploy-" + name, "name": name, "generation": float64(2), "labels": labels, "annotations": stringAnyMap(tags)}, "spec": map[string]any{"replicas": float64(replicas), "template": template}, "status": map[string]any{"observedGeneration": float64(2), "updatedReplicas": float64(count), "readyReplicas": float64(count), "availableReplicas": float64(count)}}
 	result := []any{deployment}
 	if replicas == 0 {
 		return result
 	}
-	rs := map[string]any{"kind": "ReplicaSet", "metadata": map[string]any{"uid": "rs-" + workspaceID, "name": name + "-rs", "labels": labels, "ownerReferences": []any{map[string]any{"kind": "Deployment", "uid": "deploy-" + workspaceID, "controller": true}}}, "spec": map[string]any{"replicas": float64(1), "template": template}}
+	rs := map[string]any{"kind": "ReplicaSet", "metadata": map[string]any{"uid": "rs-" + name, "name": name + "-rs", "labels": labels, "ownerReferences": []any{map[string]any{"kind": "Deployment", "uid": "deploy-" + name, "controller": true}}}, "spec": map[string]any{"replicas": float64(1), "template": template}}
 	phase, condition := "Pending", "False"
 	if ready {
 		phase, condition = "Running", "True"
 	}
-	pod := map[string]any{"kind": "Pod", "metadata": map[string]any{"uid": "pod-" + workspaceID, "name": name + "-pod", "labels": labels, "ownerReferences": []any{map[string]any{"kind": "ReplicaSet", "uid": "rs-" + workspaceID, "controller": true}}}, "status": map[string]any{"phase": phase, "conditions": []any{map[string]any{"type": "Ready", "status": condition}}}}
+	pod := map[string]any{"kind": "Pod", "metadata": map[string]any{"uid": "pod-" + name, "name": name + "-pod", "labels": labels, "ownerReferences": []any{map[string]any{"kind": "ReplicaSet", "uid": "rs-" + name, "controller": true}}}, "status": map[string]any{"phase": phase, "conditions": []any{map[string]any{"type": "Ready", "status": condition}}}}
 	return append(result, rs, pod)
+}
+
+func TestRuntimeObservationSeparatesControllersWithinOneWorkspace(t *testing.T) {
+	items := observationWorkloadWithIdentity("ws", "old", "old-op", "old-revision", 0, false)
+	items = append(items, observationWorkloadWithIdentity("ws", "current", "current-op", "current-main", 1, true)...)
+	items = append(items, observationWorkloadWithIdentity("ws", "current", "current-op", "current-sidecar", 1, true)...)
+	result, err := NewService(inventoryProvider(t, items)).RuntimeObservations(context.Background())
+	if err != nil || len(result.Items) != 3 {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+	for _, item := range result.Items {
+		want := contracts.ResourceObservedRunning
+		if item.RuntimeID == "old" {
+			want = contracts.ResourceObservedSuspended
+		}
+		if item.ObservedState != want || item.ReasonCode != "" || item.Ownership != contracts.RuntimeOwnershipUnregistered {
+			t.Fatalf("independent physical controller must retain its state without inventing ownership: %#v", item)
+		}
+	}
 }
 
 func inventoryProvider(t *testing.T, items []any) *TencentProvider {
@@ -105,6 +128,23 @@ func TestRuntimeObservationUsesCurrentGenerationAndPodController(t *testing.T) {
 			items[1].(map[string]any)["spec"].(map[string]any)["template"] = map[string]any{"spec": map[string]any{"containers": []any{map[string]any{"image": "old"}}}}
 		}, state: contracts.ResourceObservedPending, reason: "runtime_workload_pending"},
 		{name: "pod missing controller", change: func(items []any) { delete(items[2].(map[string]any)["metadata"].(map[string]any), "ownerReferences") }, fail: true},
+		{name: "terminated matching pod with unresolved controller", change: func(items []any) {
+			items[0].(map[string]any)["spec"].(map[string]any)["replicas"] = float64(0)
+			items[2].(map[string]any)["status"].(map[string]any)["phase"] = "Succeeded"
+			delete(items[2].(map[string]any)["metadata"].(map[string]any), "ownerReferences")
+		}, state: contracts.ResourceObservedPending, reason: "runtime_pod_owner_conflict"},
+		{name: "live pod missing replica set", change: func(items []any) {
+			items[2].(map[string]any)["metadata"].(map[string]any)["ownerReferences"] = []any{map[string]any{"kind": "ReplicaSet", "uid": "missing", "controller": true}}
+		}, fail: true},
+		{name: "owned pod claims another runtime", change: func(items []any) {
+			pod := items[2].(map[string]any)["metadata"].(map[string]any)
+			labels := map[string]any{}
+			for key, value := range pod["labels"].(map[string]any) {
+				labels[key] = value
+			}
+			labels["oplcloud.cn/runtime-id"] = "foreign-runtime"
+			pod["labels"] = labels
+		}, state: contracts.ResourceObservedPending, reason: "runtime_pod_owner_conflict"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			items := observationWorkload("ws", 1, true)

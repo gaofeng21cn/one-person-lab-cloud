@@ -10,12 +10,11 @@ import {
   ReceiptText,
   RefreshCw,
   Server,
-  Settings,
   UserRound,
   UsersRound,
   X
 } from "lucide-react";
-import type { ComponentType, ReactNode } from "react";
+import { useEffect, useRef, type ComponentType, type ReactNode } from "react";
 
 import { presentAccountStatus } from "../app/customer-experience-model.ts";
 import type { ConsoleNavigationId, ConsoleRoute } from "../app/console-router.ts";
@@ -62,14 +61,27 @@ function NavigationLink({ controller, item }: { controller: ConsoleController; i
 }
 
 export function ConsoleShell({ children, controller }: { children: ReactNode; controller: ConsoleController }) {
+  const sidebarRef = useRef<HTMLElement>(null);
+  const mobileMenuRef = useRef<HTMLButtonElement>(null);
+  const accountHeadingRef = useRef<HTMLHeadingElement>(null);
+  const accountReturnFocusRef = useRef<HTMLElement | null>(null);
+  const { sidebarOpen, globalSlide, setSidebarOpen, setGlobalSlide } = controller;
   const adminSurface = controller.route?.surface === "admin";
   const accountStatus = presentAccountStatus(controller.session?.user.status);
   const mobileItems = adminSurface
     ? adminMenu.filter((item) => item.id !== "admin.announcements")
     : customerMenu;
   const openAccount = () => {
-    controller.setSidebarOpen(false);
-    controller.setGlobalSlide("account");
+    const focused = document.activeElement;
+    accountReturnFocusRef.current = focused instanceof HTMLElement && !(sidebarOpen && sidebarRef.current?.contains(focused))
+      ? focused
+      : mobileMenuRef.current;
+    setSidebarOpen(false);
+    setGlobalSlide("account");
+  };
+  const openNavigation = () => {
+    setGlobalSlide("");
+    setSidebarOpen(true);
   };
   const toggleAccount = () => {
     if (controller.globalSlide) {
@@ -79,13 +91,53 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
     openAccount();
   };
 
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    sidebarRef.current?.querySelector<HTMLButtonElement>(".sidebar-close")?.focus();
+    return () => { mobileMenuRef.current?.focus(); };
+  }, [sidebarOpen]);
+
+  useEffect(() => {
+    if (!globalSlide) return;
+    accountHeadingRef.current?.focus();
+    return () => {
+      const target = accountReturnFocusRef.current;
+      if (target?.isConnected && target.getClientRects().length) target.focus();
+    };
+  }, [globalSlide]);
+
+  useEffect(() => {
+    if (!sidebarOpen && !globalSlide) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSidebarOpen(false);
+        setGlobalSlide("");
+      }
+      if (event.key !== "Tab" || !sidebarOpen || !window.matchMedia("(max-width: 820px)").matches) return;
+      const controls = Array.from(sidebarRef.current?.querySelectorAll<HTMLElement>("a[href], button:not(:disabled)") || [])
+        .filter((element) => element.getClientRects().length > 0);
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [sidebarOpen, globalSlide, setSidebarOpen, setGlobalSlide]);
+
   return (
     <div className="app-shell">
       {controller.sidebarOpen ? <button aria-label="关闭导航" className="sidebar-scrim" onClick={() => controller.setSidebarOpen(false)} /> : null}
-      <aside className={`sidebar ${controller.sidebarOpen ? "open" : ""}`} aria-label="产品导航">
+      <aside className={`sidebar ${controller.sidebarOpen ? "open" : ""}`} aria-label="产品导航" id="console-navigation" ref={sidebarRef}>
         <div className="sidebar-head">
           <a className="brand" href="/console/overview" onClick={(event) => { event.preventDefault(); controller.navigate("/console/overview"); }}>
-            <img alt="OPL Cloud" src="/opl-app-icon.png" />
+            <img alt="" src="/opl-app-icon.png" />
             <strong>OPL Cloud</strong>
           </a>
           <Tooltip content="关闭导航">
@@ -111,7 +163,7 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
             <small>{controller.session?.isOperator ? "管理员" : "客户"}</small>
           </span>
           <Tooltip content="账号信息">
-            <button aria-label="账号信息" onClick={toggleAccount}>
+            <button aria-controls="console-account" aria-expanded={Boolean(globalSlide)} aria-label="账号信息" onClick={toggleAccount}>
               <ChevronDown aria-hidden size={17} />
             </button>
           </Tooltip>
@@ -121,9 +173,8 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
       <div className="main-column">
         <header className={`topbar ${controller.route?.kind === "customer.overview" ? "topbar-overview" : ""}`}>
           <div className="topbar-title">
-            <button aria-label="打开导航" className="mobile-menu" onClick={() => controller.setSidebarOpen(true)}><Menu aria-hidden size={19} /></button>
+            <button aria-controls="console-navigation" aria-expanded={sidebarOpen} aria-label="打开导航" className="mobile-menu" onClick={openNavigation} ref={mobileMenuRef}><Menu aria-hidden size={19} /></button>
             <div>
-              <span className="eyebrow">{adminSurface ? "Admin" : "Console"}</span>
               <h1>{controller.pageTitle}</h1>
             </div>
           </div>
@@ -141,8 +192,8 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
               </Button>
             </Tooltip>
             <Tooltip content="账号信息">
-              <Button aria-label="账号信息" onClick={openAccount} size="sm" uniform variant="ghost">
-                <Settings aria-hidden size={17} />
+              <Button aria-controls="console-account" aria-expanded={Boolean(globalSlide)} aria-label="账号信息" onClick={openAccount} size="sm" uniform variant="ghost">
+                <UserRound aria-hidden size={17} />
               </Button>
             </Tooltip>
             {adminSurface ? (
@@ -169,9 +220,9 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
       </nav>
 
       {controller.globalSlide ? (
-        <div className="account-band global-slide" role="complementary" aria-label="账号信息">
+        <div className="account-band global-slide" role="complementary" aria-label="账号信息" id="console-account">
           <div className="account-band-copy">
-            <h2>账号信息</h2>
+            <h2 ref={accountHeadingRef} tabIndex={-1}>账号信息</h2>
             <dl className="data-list">
               <div><dt>邮箱</dt><dd>{controller.session?.user.email || "-"}</dd></div>
               <div><dt>身份</dt><dd>{controller.session?.isOperator ? "管理员" : "客户"}</dd></div>

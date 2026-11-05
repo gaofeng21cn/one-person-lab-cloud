@@ -46,6 +46,7 @@ permissions:
 jobs:
   admission:
     name: Admit qualified Candidate bytes
+    environment: cloud-release
     if: ${{ github.ref == 'refs/heads/main' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -83,7 +84,7 @@ jobs:
     steps:
       - name: Require exact publication inputs and private evidence reader
         env:
-          INSTANCE_EVIDENCE_TOKEN: ${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}
+          INSTANCE_EVIDENCE_TOKEN: ${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -98,7 +99,7 @@ jobs:
         id: evidence
         env:
           CLOUD_TOKEN: ${{ github.token }}
-          INSTANCE_TOKEN: ${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}
+          INSTANCE_TOKEN: ${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -215,7 +216,7 @@ jobs:
         with:
           repository: gaofeng21cn/opl-instance-medopl
           ref: ${{ steps.evidence.outputs.deployment_authority_sha }}
-          token: ${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}
+          token: ${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}
           fetch-depth: 1
           persist-credentials: false
           path: instance-deployment-authority
@@ -225,7 +226,7 @@ jobs:
         with:
           repository: gaofeng21cn/opl-instance-medopl
           ref: ${{ steps.evidence.outputs.decision_authority_sha }}
-          token: ${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}
+          token: ${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}
           fetch-depth: 1
           persist-credentials: false
           path: instance-decision-authority
@@ -235,7 +236,7 @@ jobs:
         with:
           repository: gaofeng21cn/opl-instance-medopl
           ref: ${{ steps.evidence.outputs.workspace_authority_sha }}
-          token: ${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}
+          token: ${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}
           fetch-depth: 1
           persist-credentials: false
           path: instance-workspace-authority
@@ -274,7 +275,7 @@ jobs:
         with:
           name: cloud-business-qualification
           path: evidence/business
-          github-token: ${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}
+          github-token: ${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}
           repository: gaofeng21cn/opl-instance-medopl
           run-id: ${{ inputs.cloud_business_qualification_run_id }}
 
@@ -283,7 +284,7 @@ jobs:
         with:
           name: opl-cloud-deployment-verification-${{ inputs.instance_deployment_verification_run_id }}
           path: evidence/instance-deployment
-          github-token: ${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}
+          github-token: ${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}
           repository: gaofeng21cn/opl-instance-medopl
           run-id: ${{ inputs.instance_deployment_verification_run_id }}
 
@@ -292,7 +293,7 @@ jobs:
         with:
           name: opl-cloud-qualification-decision-${{ inputs.instance_qualification_decision_run_id }}
           path: evidence/instance-decision
-          github-token: ${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}
+          github-token: ${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}
           repository: gaofeng21cn/opl-instance-medopl
           run-id: ${{ inputs.instance_qualification_decision_run_id }}
 
@@ -301,7 +302,7 @@ jobs:
         with:
           name: verify-post-activation
           path: evidence/instance-workspace
-          github-token: ${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}
+          github-token: ${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}
           repository: gaofeng21cn/opl-instance-medopl
           run-id: ${{ inputs.instance_workspace_verification_run_id }}
 

@@ -34,6 +34,9 @@ import {
 // through the module that derives and validates it against the template and the
 // Compose file, so it never keeps a second variable list of its own.
 import { localV2InstallationFacts } from "./local-v2-installation-facts.ts";
+import {
+  LOCAL_V2_OWNER_PROCESSES, LOCAL_V2_STORE_IDENTITIES, createLocalV2ReadyReceipt, validateLocalV2ReadyReceipt,
+} from "./local-v2-qualification-receipt.ts";
 
 // Local-Docker is the first adapter over the provider-neutral contract. Its
 // identity is declared here rather than asserted inside the validator, which is
@@ -87,38 +90,13 @@ export const QUALIFICATION_MODE_LEGACY_LIVE = "legacy-live";
 // Every owner in the v2 installation keeps its own database and role. One
 // database per owner is what makes a receipt, a resource set and an order
 // separately readable, so the v2 run asserts the whole set.
-export const LOCAL_V2_OWNER_STORES = Object.freeze([
-  ["opl_control_plane", "opl_control_plane"],
-  ["opl_fabric", "opl_fabric_owner"],
-  ["opl_ledger", "opl_ledger"],
-  ["opl_tenant", "opl_tenant_owner"],
-  ["opl_gateway", "opl_gateway_owner"],
-  ["opl_resource_catalog", "opl_resource_catalog_owner"],
-  ["opl_capability", "opl_capability_owner"],
-  ["opl_build", "opl_build_owner"],
-  ["opl_runtime_control", "opl_runtime_control_owner"],
-  ["opl_workspace", "opl_workspace_owner"],
-  ["opl_serve", "opl_serve_owner"]
-]);
+export const LOCAL_V2_OWNER_STORES = Object.freeze(LOCAL_V2_STORE_IDENTITIES.map(([database, owner]) => [database, owner]));
 
-const LOCAL_V2_OWNER_SCHEMAS = Object.freeze({
-  opl_control_plane: "public",
-  opl_fabric: "fabric",
-  opl_ledger: "public",
-  opl_tenant: "tenant",
-  opl_gateway: "gateway",
-  opl_resource_catalog: "resource_catalog",
-  opl_capability: "capability",
-  opl_build: "build",
-  opl_runtime_control: "runtime_control",
-  opl_workspace: "workspace",
-  opl_serve: "serve"
-});
+const LOCAL_V2_OWNER_SCHEMAS = Object.freeze(Object.fromEntries(LOCAL_V2_STORE_IDENTITIES.map(([database, , schema]) => [database, schema])));
 
 // The owner processes a v2 qualification reaches through the same origin.
 export const LOCAL_V2_QUALIFICATION_SERVICES = Object.freeze([
-  "postgres", "sub2api-authority", "tenant", "resource-catalog", "ledger", "capability",
-  "build", "runtime-control", "workspace", "serve", "fabric", "control-plane", "console-bff", "cloud-local-v2"
+  "postgres", "sub2api-authority", ...LOCAL_V2_OWNER_PROCESSES, "cloud-local-v2"
 ]);
 
 const LEGACY_OWNER_STORES = Object.freeze([
@@ -469,6 +447,7 @@ export async function loadJ0ReadyReceipt(path, sourceSha, sourceTree, { currentU
 }
 
 export function validateLocalQualificationReceipt(value) {
+  if (value?.schemaVersion === 2) return validateLocalV2ReadyReceipt(value);
   if (!value || value.schemaVersion !== 1 || value.status !== "READY") throw new Error("READY receipt is required");
   if (!shaPattern.test(String(value.source?.sha || "")) || !shaPattern.test(String(value.source?.tree || ""))) {
     throw new Error("source identity is invalid");
@@ -2163,8 +2142,8 @@ export async function readLocalV2InstallationDeclaration({
   return { envFile: declaredPath, values: facts.values, facts };
 }
 
-// The one origin every request in this run is served from, and the CA that
-// signed the certificate it serves.
+// Authenticated Console and owner requests use this declared HTTPS origin and
+// its own CA. The anonymous Local-Docker application has a separate binding.
 export function localV2QualificationOrigin(values) {
   const declared = String(values?.OPL_LOCAL_V2_PUBLIC_URL || "").trim();
   let url;
@@ -2187,11 +2166,8 @@ export function localV2QualificationCA(values) {
   return join(directory, "ca.crt");
 }
 
-// The Workspace entry the owner publishes carries no port, so it is only
-// reachable when the installation serves that host on 443. A public origin on
-// another port means the entry URL a customer would be sent to is not served,
-// and that is a boundary this run reports instead of calling the application
-// available.
+// Same-origin entries must match the installation's actual host, protocol and
+// port. A separate anonymous Docker entry requires the Runtime proof below.
 export function localV2ApplicationEntryBoundary(entryUrl, publicOrigin) {
   const entry = String(entryUrl || "").trim();
   if (!entry) return { ok: false, code: "local_v2_application_entry_missing", detail: "the Workspace owner has not published an application entry" };
@@ -2220,6 +2196,27 @@ export function localV2ApplicationEntryBoundary(entryUrl, publicOrigin) {
     };
   }
   return { ok: true, code: "", detail: `${parsed.origin} is served by the declared origin` };
+}
+
+// A Local-Docker anonymous application has its own loopback publication rather
+// than the Console's HTTPS origin. Admit that origin only after the provider's
+// actual container, immutable image, owner labels and declared port agree.
+export function localV2AnonymousDockerOrigin({ entryUrl, workspaceId, accountId, imageRef, imageId, revision, containers }) {
+  const port = localApplicationEntryPort(entryUrl);
+  const target = (revision?.ports || []).find((value) => value.name === revision.entryPort);
+  const runtime = (containers || []).filter((container) => container?.Config?.Labels?.["opl.fabric.kind"] === "application_runtime" &&
+    container?.Config?.Labels?.["opl.component.role"] === "main");
+  const container = runtime[0];
+  const labels = container?.Config?.Labels || {};
+  const bindings = container?.NetworkSettings?.Ports?.[`${target?.port}/tcp`] || [];
+  if (!port || revision?.exposurePolicy !== "anonymous" || !target || runtime.length !== 1 ||
+      container?.State?.Running !== true || container?.Image !== imageId || !digestPattern.test(String(imageId || "")) ||
+      labels["opl.fabric.provider"] !== "local-docker" || labels["opl.workspace.id"] !== workspaceId ||
+      labels["opl.account.id"] !== accountId || labels["opl.image.ref"] !== imageRef || !labels["opl.runtime.id"] ||
+      !bindings.some((binding) => binding.HostIp === "127.0.0.1" && binding.HostPort === String(port))) {
+    throw namedQualificationError("local_v2_application_runtime_binding_invalid", "the published entry does not match the declared anonymous Local-Docker Runtime");
+  }
+  return new URL(entryUrl).origin;
 }
 
 // The Workspace owner reports a parked saga as a dependency failure; the
@@ -2329,10 +2326,9 @@ function localV2LaunchReadbackBoundary(workspace, workspaceId, origin) {
 
 // The Local v2 qualification: one declared installation, the owner processes it
 // starts, and the owner routes it serves. Every step records the readback it
-// observed, and a step that cannot complete returns the boundary it hit instead
-// of a READY result. The retained receipt shape is deliberately not produced
-// here: it binds Control Plane identities this installation does not have, so
-// this run publishes collected evidence and names what is still missing.
+// observed. Incomplete runs retain their diagnostic boundary. The complete
+// anonymous Local-Docker profile emits its native version-two receipt; retained
+// CP identities and paid-fixture facts stay with the version-one profile.
 export async function runLocalV2Qualification(options, dependencies = {}) {
   const pollIntervalMs = localV2ConfiguredBudget(dependencies.pollIntervalMs, process.env.OPL_LOCAL_V2_POLL_INTERVAL_MS, 3000, {
     name: "OPL_LOCAL_V2_POLL_INTERVAL_MS", code: "local_v2_poll_interval_invalid", minimum: 0, maximum: LOCAL_V2_MAX_POLL_INTERVAL_MS
@@ -2363,13 +2359,17 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
   let failure = null;
   let composePrefix = [];
   let sourceTree = "unavailable";
-  try {
-    sourceTree = (await runProcess("git", ["rev-parse", `${options.sourceSha}^{tree}`])).stdout.trim() || sourceTree;
-  } catch {
-    // The requested source is still the identity this run reports.
-  }
+  let sourceIdentity;
+  let admittedImages;
+  const processes = {};
+  const readSource = dependencies.readSourceIdentity || readQualificationSourceIdentity;
+  const inspectImage = dependencies.inspectImage || imageInspection;
+  const inspectOwner = dependencies.inspectOwner || inspectComposeImage;
   const workspaceName = String(options.workspaceName || "Local v2 qualification");
   try {
+    sourceIdentity = await readSource();
+    validateQualificationSourceIdentity(sourceIdentity, sourceIdentity, options.sourceSha);
+    sourceTree = sourceIdentity.tree;
     const declaration = await readDeclaration({ envFile: options.installationEnv });
     const values = declaration.values;
     const origin = localV2QualificationOrigin(values);
@@ -2421,12 +2421,31 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     const effectiveEnvironment = await compose([...composePrefix, "config", "--environment"]);
     assertLocalV2ComposeEnvironment(effectiveEnvironment.stdout, values);
     record("compose_environment", "confirmed", { declared: Object.keys(values).length });
+    stage = "image_admission";
+    admittedImages = {};
+    for (const [name, reference] of [["cloud", values.OPL_CLOUD_IMAGE], ["workspace", values.OPL_WORKSPACE_IMAGE]]) {
+      const image = await inspectImage(reference);
+      const digest = immutableImageDigest(reference);
+      if (!digest || !image.RepoDigests?.includes(reference) || !digestPattern.test(String(image.Id || "")) ||
+          name === "cloud" && image.Config?.Labels?.["org.opencontainers.image.revision"] !== options.sourceSha) {
+        throw namedQualificationError("local_v2_image_binding_invalid", `${name} image does not match the admitted immutable source`);
+      }
+      admittedImages[name] = { input: reference, repoDigest: reference, digest, runningDigest: image.Id };
+    }
+    stage = "compose_topology";
     const up = await compose([...composePrefix, "up", "-d", "--wait", "--wait-timeout", "300"], { allowFailure: true });
     if (up.code !== 0) {
       throw namedQualificationError("local_v2_compose_start_failed", (up.stderr || up.stdout || "docker compose up failed").slice(0, 500));
     }
     const config = JSON.parse((await compose([...composePrefix, "config", "--format", "json"])).stdout);
     assertWorkspaceQualificationTopology(config, { services: LOCAL_V2_QUALIFICATION_SERVICES });
+    for (const owner of LOCAL_V2_OWNER_PROCESSES) {
+      const container = await inspectOwner((args) => compose([...composePrefix, ...args]), owner);
+      if (container.Image !== admittedImages.cloud.runningDigest) {
+        throw namedQualificationError("local_v2_running_image_mismatch", `${owner} is not running the admitted Cloud image`);
+      }
+      processes[owner] = "ready";
+    }
     readbacks.topology = { services: Object.keys(config.services || {}).sort() };
     record("compose_topology", "confirmed", { services: readbacks.topology.services.length });
     const stores = await verifyStores((args) => compose([...composePrefix, ...args]), { stores: LOCAL_V2_OWNER_STORES, v2: true });
@@ -2684,7 +2703,21 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
         boundary = { ...boundary, workspaceCode: boundary.code, code: provider.code, detail: provider.detail, providerLog: provider.line };
       }
     } else {
-      const entryBoundary = localV2LaunchReadbackBoundary(workspace, workspaceId, origin);
+      let applicationOrigin = origin;
+      if (contract.applicationAccess?.mode === "anonymous" && revision.exposurePolicy === "anonymous" &&
+          localApplicationEntryPort(workspace.accessUrl) !== 0) {
+        const ids = await exactLabelIDs("containers", readbacks.accountBinding.accountId, workspaceId);
+        const containers = ids.length ? JSON.parse((await runProcess("docker", ["inspect", ...ids])).stdout) : [];
+        const image = await imageInspection(readbacks.installation.workspaceImage);
+        applicationOrigin = localV2AnonymousDockerOrigin({ entryUrl: workspace.accessUrl, workspaceId,
+          accountId: readbacks.accountBinding.accountId, imageRef: readbacks.installation.workspaceImage,
+          imageId: image.Id, revision, containers });
+        readbacks.applicationRuntime = { imageRef: readbacks.installation.workspaceImage, imageId: image.Id,
+          runtimeId: containers.find((value) => value.Config?.Labels?.["opl.fabric.kind"] === "application_runtime" &&
+            value.Config?.Labels?.["opl.component.role"] === "main")?.Config?.Labels?.["opl.runtime.id"],
+          origin: applicationOrigin, publishedPort: localApplicationEntryPort(workspace.accessUrl), providerBindingVerified: true };
+      }
+      const entryBoundary = localV2LaunchReadbackBoundary(workspace, workspaceId, applicationOrigin);
       if (!entryBoundary.ok) {
         boundary = entryBoundary;
         stage = "application_entry";
@@ -2692,6 +2725,10 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
         stage = "application_entry";
         try {
           const fetchEntry = dependencies.fetchEntry || (async (url) => {
+            if (applicationOrigin !== origin) {
+              const response = await fetch(url, { redirect: "manual", signal: ownerRequestSignal() });
+              return { response, text: await response.text() };
+            }
             const response = await caRequest(url, { method: "GET" }, new Headers(), undefined, readFileSync(caFile));
             return { response, text: await response.text() };
           });
@@ -2877,6 +2914,26 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     },
     deferred: [...deferredCloudGates]
   };
+  if (!failure && !boundary && readbacks.applicationRuntime?.providerBindingVerified === true) {
+    try {
+      validateQualificationSourceIdentity(sourceIdentity, await readSource(), options.sourceSha);
+      const residuals = await residualCounts(readbacks.accountBinding.accountId, readbacks.order.workspaceId);
+      const ready = createLocalV2ReadyReceipt(result, {
+        sha: sourceIdentity.sha, tree: sourceIdentity.tree, clean: sourceIdentity.clean,
+      }, admittedImages, processes, residuals);
+      await writeJSONAtomic(`${options.receiptPath}.diagnostic.json`, {
+        ...result, status: "EVIDENCE_COLLECTED", errorCode: "", error: null,
+        receiptCompatibility: { nativeSchemaVersion: 2, legacyReceiptCompatible: false },
+      });
+      await writeJSONAtomic(options.receiptPath, ready);
+      return ready;
+    } catch (error) {
+      result.stage = "receipt_admission";
+      result.errorCode = String(error?.code || "local_v2_ready_receipt_invalid");
+      result.error = redactedError(error);
+      result.boundary = { code: result.errorCode, detail: result.error, stage: result.stage };
+    }
+  }
   await writeJSONAtomic(options.receiptPath, result);
   return result;
 }

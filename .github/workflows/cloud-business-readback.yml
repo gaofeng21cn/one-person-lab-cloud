@@ -73,7 +73,7 @@ jobs:
         id: inputs
         env:
           CLOUD_TOKEN: ${{ github.token }}
-          INSTANCE_TOKEN: ${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}
+          INSTANCE_TOKEN: ${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -113,7 +113,7 @@ jobs:
         with:
           repository: gaofeng21cn/opl-instance-medopl
           ref: ${{ steps.inputs.outputs.installation_sha }}
-          token: ${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}
+          token: ${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}
           persist-credentials: false
           path: installation-authority
 
@@ -130,7 +130,7 @@ jobs:
         with:
           name: ${{ steps.inputs.outputs.installation_artifact }}
           path: qualification-inputs/installation
-          github-token: ${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}
+          github-token: ${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}
           repository: gaofeng21cn/opl-instance-medopl
           run-id: ${{ inputs.installation_run_id }}
 
