@@ -21,7 +21,7 @@ Instance observations below retain their original revisions and limits.
 
 | Scope | Established evidence | Remaining boundary |
 | --- | --- | --- |
-| Default App customer acceptance | [#1042](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1042) closed on 2026-11-02 after official App login, Gateway-backed model response, restart/response-loss recovery, one `$52.58` charge and no duplicate purchase or Key; [original observations](#native-runtime-admission-and-serve-upgrade-authorization-2026-11-01) | This accepted Workspace does not prove every future customer is unattended, the Cloud model-configuration API is qualified or every writer has migrated |
+| Default App customer acceptance | [#1042](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1042) closed on 2026-11-02 after official App login, Gateway-backed model response, restart/response-loss recovery, one `$52.58` charge and no duplicate purchase or Key; the [November 5 readback](#existing-default-app-provisioning-closure-readback-2026-11-05) separately confirms current model use and page-reload persistence | This accepted Workspace does not prove every future customer is unattended, the Cloud model-configuration API is qualified or every writer has migrated |
 | Original-order closeout | [#1018's three original orders](#original-order-closeout-scope-2026-10-23) have protected resource absence, deletion-receipt and original-charge settlement evidence | Preserve their original records; completed closeout does not retire every retained CP caller or worker |
 | Serve current application and upgraded deletion | [Current selection](#serve-owned-current-application-readback-2026-11-04) comes from Serve, and [deletion follows the original reservation's successor lineage](#workspace-deletion-after-application-replacement-2026-11-04); both have source regression evidence | Installed adoption and live owner readback for these later repairs remain unverified |
 | Package, Build and Runtime catalog | Approved Default App inputs were used by #1042; Package/Build source and the [Linux Custom Agent profile](#linux-custom-agent-owner-qualification-2026-10-21) have distinct evidence | External OMA admission, hosted tenant-specific OCI publication, Custom Agent TKE acceptance and broader Runtime/provider profiles remain separate |
@@ -91,6 +91,44 @@ Latest and the tag resolve to the frozen Product source; both image architecture
 all ten assets, checksums and the signed provenance match the admitted Candidate.
 The manifest declares installation/source-path acceptance and no paid business
 or customer-read execution.
+
+## Existing Default App Provisioning Closure Readback (2026-11-05)
+
+This source audit is bound to merged Cloud #1127,
+`082b98371cb321ac2a0db3edcc88b9096e9b0186`; the installed Candidate at that observation was
+`4f131caa41324f027c1fee48d6ae5e5356e7e3c4`. No fresh purchase, deployment or
+provider mutation was performed. The existing designated #1042 Workspace was
+read through the Instance-owned [customer readback run 41949644043](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41949644043).
+Its original receipt is **blocked**, not accepted: customer login, Workspace
+list/detail, Serve deployment and access APIs all returned HTTP 200, while the
+unauthenticated application-entry request returned HTTP 302 and failed the
+producer's `accessEntryServed` check. All business/provider/Workspace mutation
+counters are zero. This result does not establish an application outage or
+justify weakening that producer's acceptance rule.
+
+The actual application browser session separately opened the official App,
+completed one model turn returning `OPL_CLOSURE_20261105_OK`, and retained that
+reply and the session after page reload. This is existing-Workspace model and
+browser-persistence evidence, not a new-order, Runtime-restart, deletion/refund
+or latest-source adoption result. The App's runtime overview separately reported
+its background service not ready; the successful model turn does not qualify
+that separate background capability. The expired Console browser session had
+redirected to login, while the protected customer login succeeded.
+
+Targeted owner checks at the source above passed 53 Go tests/subtests with zero
+failures/skips across BFF, Workspace, Gateway Integration, Fabric, Serve and
+Ledger, using isolated PostgreSQL where required. They cover original-operation
+recovery, unknown-charge readback, retained Key/reservation identity, whole-runtime
+readiness, deployment replay and receipt restart. Their downstream doubles do
+not establish one live cross-owner paid purchase. An isolated real-issuer/owner
+reproduction also confirmed the existing selected-model gap: a non-empty Agent
+selection receives an external Key but fails the resolved-model comparison,
+leaving the command pending without Secret delivery or a binding. Replaying
+uses the same external idempotency key; the simulated Gateway returned one Key.
+The empty-model Default App control completed and replayed without another
+issuance. These reproduction assertions passed because they detected the bug;
+they are not a fixed-Agent acceptance result. Remaining native new-order gaps
+and installed adoption stay in [customer lifecycle convergence](roadmap.md#customer-lifecycle-owner-convergence).
 
 ## Retained Generic Deployment Builder Removal (2026-11-05)
 
