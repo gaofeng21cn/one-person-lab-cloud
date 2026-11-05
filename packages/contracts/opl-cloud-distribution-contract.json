@@ -110,7 +110,7 @@
         ]
       },
       "instanceEvidenceReader": {
-        "secret": "OPL_INSTANCE_EVIDENCE_TOKEN",
+        "secret": "OPL_GITHUB_RELEASE_ADMIN_TOKEN",
         "repository": "gaofeng21cn/opl-instance-medopl",
         "permissions": [
           "actions:read",

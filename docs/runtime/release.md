@@ -133,9 +133,13 @@ policy for `main`. The workflow does not configure or create that environment.
 
 The protected environment supplies `vars.OPL_QUALIFICATION_ORIGIN` and the
 independent customer Secrets `OPL_QUALIFICATION_CUSTOMER_EMAIL` and
-`OPL_QUALIFICATION_CUSTOMER_PASSWORD`. `OPL_INSTANCE_EVIDENCE_TOKEN` is restricted
-to Instance `Actions: read` and `Contents: read` for original evidence and its
-validator source. The exact producing Instance revision first validates the
+`OPL_QUALIFICATION_CUSTOMER_PASSWORD`. The protected environment reuses
+`OPL_GITHUB_RELEASE_ADMIN_TOKEN` for Instance evidence and validator source
+reads. These calls require only Instance `Actions: read` and `Contents: read`.
+The owner explicitly approved reuse of the existing publisher credential,
+whose all-repository read/write permissions exceed those required reads.
+Its value remains in the protected environments; it is not available to PR or
+Candidate jobs. The exact producing Instance revision first validates the
 native installation receipt; the producer then binds that receipt and run to
 the same Candidate.
 
@@ -239,9 +243,10 @@ same-Candidate J0 or complete protected execution receipt; see the
 [remaining qualification work](../roadmap.md#native-v2-protected-qualification-and-cp-retirement-post-1042).
 It deliberately requires no cross-repository evidence token: it reads only the
 files this workflow materialized and its own J0 receipt, so it has no
-cross-repository read to authorize. The workflow's own Instance evidence-read
-steps keep `OPL_INSTANCE_EVIDENCE_TOKEN` limited to Instance `Actions: read` and
-`Contents: read`. A missing declaration, variable, Secret, J0 receipt or
+cross-repository read to authorize. The Instance workflow reads its own
+installation artifacts with its repository-scoped `github.token`. Cloud's
+separate cross-repository consumers use the protected publisher credential
+as described above. A missing declaration, variable, Secret, J0 receipt or
 boundary module fails closed with `external_prerequisite_absent` before a
 provider scope opens; the workflow does not create any of them.
 
@@ -255,7 +260,7 @@ contains `business-qualification.json` and `product-source.json`, plus
 existing `cloud-customer-readback-<run_id>-<run_attempt>` artifact is unchanged.
 The product-source file binds the exact Cloud product SHA and tree independently
 of the Instance run's own `head_sha`. Release admission resolves this run and
-artifact from the Instance repository with `OPL_INSTANCE_EVIDENCE_TOKEN`, rejects
+artifact from the Instance repository with `OPL_GITHUB_RELEASE_ADMIN_TOKEN`, rejects
 another repository or workflow, and validates both receipt files through the
 Cloud-owned typed consumer. Receipts are Candidate-bound and contain no raw
 Secret, Key, customer identifier, origin, cluster, namespace or entry URL. They
@@ -340,10 +345,14 @@ permissions. The separate `release-opl-cloud-public-readback.yml` follower is
 triggered by a successful publication run and performs anonymous GHCR/Release
 readback plus attestation checks from that run's sealed checkpoint. It is
 read-only and non-blocking; a failed follower can be retried with the original
-publication run ID. The Instance evidence reader Secret
-`OPL_INSTANCE_EVIDENCE_TOKEN` must be limited to `Actions: read` and
-`Contents: read` on `opl-instance-medopl`; it is not an Instance deployment
-credential. The required evidence must exist for the exact Candidate before publication.
+publication run ID. Both Release admission and publication reference the
+existing `cloud-release` environment; customer readback references
+`cloud-business-qualification`. The reused `OPL_GITHUB_RELEASE_ADMIN_TOKEN`
+Secret is confined to the main-only owner-gated evidence jobs. Its Instance
+calls perform only Actions and Contents reads, although the owner-approved
+credential itself has broader publisher permissions. Reuse does not authorize
+Instance deployment. The required evidence must exist for the exact Candidate
+before publication.
 Retained publication evidence belongs only in [status](../status.md).
 
 Publication retries reconcile the same tag: they promote the admitted digest,

@@ -56,6 +56,15 @@ successful `main` qualification run are still required. The local profile is
 `LOCAL_NO_CHARGE`, with no claimed live charge, Gateway model response, Instance
 adoption or formal publication.
 
+The owner approved reuse of the existing publisher credential rather than a
+new token. Its sealed transfer succeeded in App run `41962800078`; Cloud
+`cloud-release` and `cloud-business-qualification` Secret metadata was read back
+on 2026-11-05. The source confines its references to protected, main-only
+owner-gated evidence jobs. Instance Actions/Contents reads succeeded in the
+source environment; Cloud consumer execution and independent customer-account
+Secrets remain unverified or absent. The reused credential has broader actual
+publisher permissions than the evidence reads require.
+
 ## Retained Generic Deployment Builder Removal (2026-11-05)
 
 R1d is based on merged Cloud #1125 at
