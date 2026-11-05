@@ -47,8 +47,9 @@ test("Cloud Release promotes an admitted Candidate and isolates public mutation"
   assert.equal(admission.if, publisherGate);
   assert.equal(publish.if, publisherGate);
   assert.deepEqual(admission.permissions, { actions: "read", contents: "read", packages: "read" });
-  assert.equal(admission.environment, undefined);
+  assert.equal(admission.environment, "cloud-release");
   assert.equal(admission.concurrency, undefined);
+  assert.equal(admission.steps.find((step: any) => step.id === "evidence").env.INSTANCE_TOKEN, "${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}");
   assert.equal(publish.environment, "cloud-release");
   assert.equal(publish.needs, "admission");
   assert.deepEqual(publish.concurrency, { group: "opl-cloud-publication-global", "cancel-in-progress": false });
@@ -79,7 +80,7 @@ test("Cloud Release promotes an admitted Candidate and isolates public mutation"
     (step: any) => step.name === "Download exact Cloud business qualification",
   );
   assert.equal(businessDownload.with.repository, "gaofeng21cn/opl-instance-medopl");
-  assert.equal(businessDownload.with["github-token"], "${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}");
+  assert.equal(businessDownload.with["github-token"], "${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}");
   assert.match(admissionCommands, /qualification-decision\.mjs.*gate/s);
   assert.match(admissionCommands, /fresh-workspace-readback\.mjs.*validate/s);
   assert.match(instanceGate.run, /--github-output "\$gate_output"/);
@@ -96,6 +97,28 @@ test("Cloud Release promotes an admitted Candidate and isolates public mutation"
   assert.match(readbackCommands, /curl -fsSL/);
   assert.match(readbackCommands, /gh attestation verify/);
   assert.match(readbackCommands, /sha256sum --check --strict SHA256SUMS/);
+});
+
+test("reused release credential is confined to protected main-only evidence jobs", async () => {
+  const { readdir } = await import("node:fs/promises");
+  const uses: string[] = [];
+  const expected = new Map([
+    ["release-opl-cloud-image.yml:admission", "cloud-release"],
+    ["cloud-business-readback.yml:readback", "cloud-business-qualification"]
+  ]);
+  for (const file of (await readdir(".github/workflows")).filter((name) => name.endsWith(".yml"))) {
+    const workflow = YAML.parse(await readFile(`.github/workflows/${file}`, "utf8"));
+    assert.doesNotMatch(JSON.stringify(workflow.env || {}), /secrets\.OPL_GITHUB_RELEASE_ADMIN_TOKEN/);
+    for (const [id, job] of Object.entries(workflow.jobs) as Array<[string, any]>) {
+      if (!JSON.stringify(job).includes("secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN")) continue;
+      const key = `${file}:${id}`;
+      uses.push(key);
+      assert.ok(expected.has(key), `unexpected credential consumer: ${key}`);
+      assert.equal(job.environment, expected.get(key));
+      assert.equal(job.if, "${{ github.ref == 'refs/heads/main' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang') }}");
+    }
+  }
+  assert.deepEqual(uses.sort(), [...expected.keys()].sort());
 });
 
 test("Cloud distribution contract makes same-tag recovery explicit", async () => {
@@ -131,7 +154,7 @@ test("Cloud distribution contract makes same-tag recovery explicit", async () =>
     binds: ["receiptDigest", "candidateReceiptDigest", "productSha", "productTree", "cloudImageDigest"]
   });
   assert.deepEqual(publication.instanceEvidenceReader, {
-    secret: "OPL_INSTANCE_EVIDENCE_TOKEN",
+    secret: "OPL_GITHUB_RELEASE_ADMIN_TOKEN",
     repository: "gaofeng21cn/opl-instance-medopl",
     permissions: ["actions:read", "contents:read"]
   });

@@ -2180,6 +2180,10 @@ async function runLocalV2FixtureQualification(fixture, dependencies = {}) {
       sourceSha: "a".repeat(40), receiptPath: join(root, "receipt.json"), installationEnv: join(root, "installation.env"),
       applicationContract: contractPath, project: "opl-local-v2", workspaceName: "Local v2 qualification"
     }, {
+      readSourceIdentity: async () => ({ sha: "a".repeat(40), tree: "b".repeat(40), clean: true }),
+      inspectImage: async (reference) => ({ Id: `sha256:${"f".repeat(64)}`, RepoDigests: [reference],
+        Config: { Labels: { "org.opencontainers.image.revision": "a".repeat(40) } } }),
+      inspectOwner: async () => ({ Image: `sha256:${"f".repeat(64)}` }),
       readDeclaration: async () => ({ envFile: join(root, "installation.env"), values: fixture.values, facts: { entries: [], unresolved: [] } }),
       createClient: () => fixture.client, compose: fixture.compose, ownerQuery: async () => "3",
       wait: async () => {}, pollIntervalMs: 0, pollAttempts: 100, ...dependencies
@@ -2289,6 +2293,10 @@ test("local-v2 qualification collects owner readbacks and reports the host bound
       sourceSha: "a".repeat(40), receiptPath, installationEnv: join(root, "installation.env"),
       applicationContract: contractPath, project: "opl-local-v2", workspaceName: "Local v2 qualification"
     }, {
+      readSourceIdentity: async () => ({ sha: "a".repeat(40), tree: "b".repeat(40), clean: true }),
+      inspectImage: async (reference) => ({ Id: `sha256:${"f".repeat(64)}`, RepoDigests: [reference],
+        Config: { Labels: { "org.opencontainers.image.revision": "a".repeat(40) } } }),
+      inspectOwner: async () => ({ Image: `sha256:${"f".repeat(64)}` }),
       readDeclaration: async () => ({ envFile: join(root, "installation.env"), values: fixture.values, facts: { entries: [], unresolved: [] } }),
       createClient: () => fixture.client,
       compose: fixture.compose,

@@ -15,6 +15,14 @@ on:
         description: Exact immutable Workspace image reference; empty builds only the existing qualification fixture.
         required: false
         type: string
+      mode:
+        description: Native Local-Docker qualification, or the retained version-one fixture profile.
+        required: false
+        default: local-v2
+        type: choice
+        options:
+          - legacy-fixture
+          - local-v2
 
 permissions:
   contents: read
@@ -118,6 +126,7 @@ jobs:
           printf 'storage_root=%s\n' "$qualification_root/storage" >> "$GITHUB_OUTPUT"
 
       - name: Run local Workspace qualification
+        if: ${{ inputs.mode == 'legacy-fixture' }}
         shell: bash
         env:
           PRODUCT_SHA: ${{ inputs.ref }}
@@ -134,6 +143,51 @@ jobs:
             --authority-mode fixture \
             --receipt "$RUNNER_TEMP/local-workspace-qualification.json"
 
+      - name: Prepare and exercise the native owner installation
+        if: ${{ inputs.mode != 'legacy-fixture' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRODUCT_SHA: ${{ inputs.ref }}
+          CLOUD_IMAGE_REF: ${{ inputs.cloud_image_ref }}
+          WORKSPACE_IMAGE_REF: ${{ steps.workspace.outputs.image_ref }}
+          STORAGE_ROOT: ${{ steps.storage.outputs.storage_root }}
+          INSTALLER_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          installer="$RUNNER_TEMP/native-qualification-installer"
+          mkdir -p "$installer/tools"
+          # Installer control code is separately bound to the workflow revision;
+          # the product checkout and image remain the exact supplied Candidate.
+          for file in local-v2-clean-host.ts local-v2-installation-facts.ts; do
+            gh api "repos/$GITHUB_REPOSITORY/contents/tools/$file?ref=$INSTALLER_SHA" --jq .content |
+              base64 --decode > "$installer/tools/$file"
+          done
+          directory="$OPL_QUALIFICATION_ROOT/native"
+          project="opl-native-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          args=(--product-root "$PWD" --directory "$directory" --project "$project"
+            --source-sha "$PRODUCT_SHA" --cloud-image "$CLOUD_IMAGE_REF"
+            --workspace-image "$WORKSPACE_IMAGE_REF" --storage-root "$STORAGE_ROOT")
+          node "$installer/tools/local-v2-clean-host.ts" "${args[@]}"
+          bash deploy/portable/local-v2-pki.sh "$directory/pki"
+          curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
+            https://agent-plugins.org/schemas/1.0.0/plugin.schema.json --output "$directory/plugin.schema.json"
+          expected="$(awk -F= '$1 == "OPL_LOCAL_V2_PACKAGE_SCHEMA_DIGEST" { print $2 }' deploy/portable/opl-cloud.env.example)"
+          printf '%s  %s\n' "${expected#sha256:}" "$directory/plugin.schema.json" | sha256sum --check
+          printf 'OPL_NATIVE_PROJECT=%s\n' "$project" >> "$GITHUB_ENV"
+          native_args=(--mode local-v2 --source-sha "$PRODUCT_SHA" --installation-env "$directory/installation.env"
+            --application-contract "$directory/application.json" --project "$project")
+          bootstrap="$RUNNER_TEMP/local-v2-bootstrap.json"
+          node tools/local-workspace-qualification.ts "${native_args[@]}" --receipt "$bootstrap" || true
+          # The first run obtains the Tenant from its real owner before this
+          # installation may bind Fabric to it. No purchase precedes that bind.
+          if ! node "$installer/tools/local-v2-clean-host.ts" "${args[@]}" --bind-from "$bootstrap"; then
+            cp "$bootstrap" "$RUNNER_TEMP/local-workspace-qualification.json"
+            exit 1
+          fi
+          node tools/local-workspace-qualification.ts "${native_args[@]}" \
+            --receipt "$RUNNER_TEMP/local-workspace-qualification.json"
+
       - name: Upload local qualification receipt
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.6.2
@@ -142,8 +196,27 @@ jobs:
           path: ${{ runner.temp }}/local-workspace-qualification.json
           if-no-files-found: error
 
+      - name: Preserve the separate native Tenant bootstrap attempt
+        if: ${{ always() && inputs.mode != 'legacy-fixture' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.6.2
+        with:
+          name: local-v2-tenant-bootstrap
+          path: ${{ runner.temp }}/local-v2-bootstrap.json
+          if-no-files-found: ignore
+
+      - name: Preserve native owner and lifecycle readbacks
+        if: ${{ always() && inputs.mode != 'legacy-fixture' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.6.2
+        with:
+          name: local-v2-native-evidence
+          path: ${{ runner.temp }}/local-workspace-qualification.json.diagnostic.json
+          if-no-files-found: ignore
+
       - name: Remove the Local-Docker storage root
         if: ${{ always() }}
+        env:
+          PRODUCT_SHA: ${{ inputs.ref }}
+          CLOUD_IMAGE_REF: ${{ inputs.cloud_image_ref }}
         shell: bash
         run: |
           set -euo pipefail
@@ -153,6 +226,22 @@ jobs:
           [ -n "$qualification_root" ] || exit 0
           test "$qualification_root" = "/tmp/opl-clean-host-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           test ! -L "$qualification_root"
+          if [ -n "${OPL_NATIVE_PROJECT:-}" ]; then
+            test "$OPL_NATIVE_PROJECT" = "opl-native-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            docker compose --project-name "$OPL_NATIVE_PROJECT" \
+              --env-file "$qualification_root/native/installation.env" \
+              -f deploy/portable/compose.local-v2.yaml down --volumes --remove-orphans
+            if [ -f "$RUNNER_TEMP/local-workspace-qualification.json" ]; then
+              cleanup_receipt="$RUNNER_TEMP/local-workspace-qualification.json"
+              if [ -f "$cleanup_receipt.diagnostic.json" ]; then
+                cleanup_receipt="$cleanup_receipt.diagnostic.json"
+              fi
+              node "$RUNNER_TEMP/native-qualification-installer/tools/local-v2-clean-host.ts" \
+                --product-root "$PWD" --directory "$qualification_root/native" --project "$OPL_NATIVE_PROJECT" \
+                --source-sha "$PRODUCT_SHA" --cloud-image "$CLOUD_IMAGE_REF" \
+                --cleanup-from "$cleanup_receipt"
+            fi
+          fi
           if mountpoint -q "$qualification_root/storage"; then
             sudo umount "$qualification_root/storage"
           fi

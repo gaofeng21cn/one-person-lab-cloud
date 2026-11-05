@@ -29,6 +29,28 @@ if (unexpectedWorkflows.length > 0) {
   throw new Error(`unexpected Cloud workflow: ${unexpectedWorkflows.join(",")}`);
 }
 
+// The reused publisher credential has broader permissions than these reads
+// require. Keep every reference behind the existing main-only owner gate and
+// its exact protected environment; never expose it to Candidate or PR jobs.
+const credentialEnvironments = {
+  "release-opl-cloud-image.yml:admission": "cloud-release",
+  "cloud-business-readback.yml:readback": "cloud-business-qualification"
+};
+for (const name of workflows) {
+  const workflow = YAML.parse(await readFile(new URL(name, workflowRoot), "utf8"));
+  if (JSON.stringify(workflow.env || {}).includes("secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN")) {
+    throw new Error("Cloud publisher credential cannot be exposed at workflow scope");
+  }
+  for (const [id, job] of Object.entries(workflow.jobs || {})) {
+    if (!JSON.stringify(job).includes("secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN")) continue;
+    const environment = credentialEnvironments[`${name}:${id}`];
+    const gate = "${{ github.ref == 'refs/heads/main' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang') }}";
+    if (!environment || job.environment !== environment || job.if !== gate) {
+      throw new Error(`Cloud publisher credential requires its protected environment and owner gate: ${name}:${id}`);
+    }
+  }
+}
+
 const release = await readFile(new URL(".github/workflows/release-opl-cloud-image.yml", root), "utf8");
 const releaseWorkflow = YAML.parse(release);
 const releaseAdmission = releaseWorkflow.jobs?.admission;
@@ -37,7 +59,7 @@ const readback = await readFile(new URL(".github/workflows/release-opl-cloud-pub
 const readbackWorkflow = YAML.parse(readback);
 const readbackJob = readbackWorkflow.jobs?.["public-readback"];
 if (JSON.stringify(Object.keys(releaseWorkflow.jobs || {})) !== JSON.stringify(["admission", "publish"]) ||
-    releaseWorkflow.concurrency !== undefined || releaseAdmission?.environment !== undefined || releaseAdmission?.concurrency !== undefined ||
+    releaseWorkflow.concurrency !== undefined || releaseAdmission?.environment !== "cloud-release" || releaseAdmission?.concurrency !== undefined ||
     releasePublish?.environment !== "cloud-release" || releasePublish?.needs !== "admission" ||
     releasePublish?.concurrency?.group !== "opl-cloud-publication-global" ||
     JSON.stringify(Object.keys(readbackWorkflow.jobs || {})) !== JSON.stringify(["public-readback"]) ||
@@ -93,7 +115,7 @@ if (businessDownload?.with?.name !== "cloud-business-qualification" ||
     businessDownload?.with?.path !== "evidence/business" ||
     businessDownload?.with?.["run-id"] !== "${{ inputs.cloud_business_qualification_run_id }}" ||
     businessDownload?.with?.repository !== "gaofeng21cn/opl-instance-medopl" ||
-    businessDownload?.with?.["github-token"] !== "${{ secrets.OPL_INSTANCE_EVIDENCE_TOKEN }}") {
+    businessDownload?.with?.["github-token"] !== "${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}") {
   throw new Error("Cloud business qualification must download from the protected Instance run");
 }
 const installationStep = String((releaseAdmission?.steps || []).find((step) => step.id === "installation")?.run || "");
@@ -300,7 +322,7 @@ if (contract.schemaVersion !== 7 || contract.productRepository !== "gaofeng21cn/
     contract.distribution?.publication?.customerReadback?.status !== "customer_reads_verified" ||
     contract.distribution?.publication?.customerReadback?.installationBinding !== "original_instance_receipt_bytes" ||
     contract.distribution?.publication?.customerReadback?.replacesFullBusinessQualification !== false ||
-    contract.distribution?.publication?.instanceEvidenceReader?.secret !== "OPL_INSTANCE_EVIDENCE_TOKEN" ||
+    contract.distribution?.publication?.instanceEvidenceReader?.secret !== "OPL_GITHUB_RELEASE_ADMIN_TOKEN" ||
     contract.distribution?.publication?.instanceEvidenceReader?.repository !== "gaofeng21cn/opl-instance-medopl" ||
     JSON.stringify(contract.distribution?.publication?.instanceEvidenceReader?.permissions) !== JSON.stringify(["actions:read", "contents:read"]) ||
     contract.distribution?.publication?.serialization?.concurrencyGroup !== "opl-cloud-publication-global" ||

@@ -242,7 +242,7 @@ test("the protected representation fails closed when the environment or a secret
   // producer declares no evidence token. The value is ignored when a caller
   // still exports it, rather than being required and never used.
   assert.deepEqual(
-    protectedQualificationPrerequisites(protectedEnvironment({ OPL_INSTANCE_EVIDENCE_TOKEN: "" })),
+    protectedQualificationPrerequisites(protectedEnvironment({ OPL_GITHUB_RELEASE_ADMIN_TOKEN: "" })),
     protectedQualificationPrerequisites(valid),
   );
   assert.throws(
