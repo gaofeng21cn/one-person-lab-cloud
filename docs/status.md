@@ -72,8 +72,9 @@ Main-only owner-gated evidence jobs are its only Cloud source consumers. The
 credential has broader actual publisher permissions than the Actions/Contents
 reads require. App cleanup [PR #346](https://github.com/gaofeng21cn/one-person-lab-app/pull/346)
 merged as `c5a15c501`; canonical main no longer contains the transfer workflow,
-and both local and Actions transport envelopes were removed. Cloud consumer
-execution and independent customer-account Secrets remain unverified or absent.
+and both local and Actions transport envelopes were removed. Release admission
+subsequently consumed the original Instance evidence with the protected Secret.
+Separate customer-read execution remains unclaimed.
 
 The owner subsequently authorized Candidate registration/deployment and chose
 source-path availability instead of cost-incurring business acceptance. Instance
@@ -81,8 +82,15 @@ registration PR #682 merged as `d39d6c8`; deployment run `41971059395` succeeded
 for the frozen Candidate, followed by successful independent read-only
 installation run `41971608915`. The revised publication contract requires actual
 local/Instance installation and exact-source CI/path hashes. Paid business and
-customer-read execution are explicitly unclaimed. The public stable Release
-remains `v0.1.7` until formal publication and anonymous public readback complete.
+customer-read execution are explicitly unclaimed.
+
+Public stable [v0.1.8](https://github.com/gaofeng21cn/one-person-lab-cloud/releases/tag/v0.1.8)
+was published by [run `41974595669`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/41974595669)
+and independently verified by [public readback `41974709759`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/41974709759).
+Latest and the tag resolve to the frozen Product source; both image architectures,
+all ten assets, checksums and the signed provenance match the admitted Candidate.
+The manifest declares installation/source-path acceptance and no paid business
+or customer-read execution.
 
 ## Retained Generic Deployment Builder Removal (2026-11-05)
 

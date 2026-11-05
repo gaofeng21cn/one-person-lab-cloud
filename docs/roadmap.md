@@ -379,8 +379,9 @@ reader migrate together.
 
 ### Native v2 protected qualification and CP retirement (post-#1042)
 
-The non-spending publication decision makes the following live business and
-retirement outcomes independent of stable publication. They remain unverified
+Public stable v0.1.8 completed the non-spending installation and source-path
+publication acceptance. The following live business and retirement outcomes are
+independent of that completed publication. They remain unverified
 until separately authorized execution supplies their native evidence.
 
 Workspace owns purchase and deletion orchestration; CloudIdentity owns the live
