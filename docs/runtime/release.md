@@ -24,8 +24,9 @@ Deployment and product qualification must bind the same immutable Candidate.
 The publication source now adds a separately protected Cloud customer-read
 receipt alongside the retained Instance launch/use, qualification-decision and
 Workspace artifacts. It also requires a separate Cloud business qualification
-receipt from the protected #926 producer; that producer is not present yet, so
-formal publication remains blocked on it. This formal Release gate is separate
+receipt from the protected #926 producer. Its source and Instance caller now
+exist, but no protected run has emitted the required settled receipt, so formal
+publication remains blocked on that execution. This formal Release gate is separate
 from the first-use customer journey tracked by #856, which may record a
 successful deployed revision before formal Candidate qualification.
 The legacy business, administrator and Fabric evidence paths remain required
