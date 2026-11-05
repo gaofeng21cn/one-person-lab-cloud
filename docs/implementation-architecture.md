@@ -832,6 +832,13 @@ Compute destroy-status rejection distinguishes unreadable history, invalid
 Launch binding, invalid record or digest, and invalid stage structure. These
 bounded diagnostics preserve the original rejection and never authorize a
 provider read or mutation with an unverified binding.
+Retained full Launches run the Key stage before Compute; the original Key
+fingerprint therefore accompanies Compute, Storage and Attachment requests.
+Canonical recovery preserves that exact fingerprint in each stage result and
+across the original sequence, while continuing to reject extra Secret/runtime
+bindings, changed fingerprints and conflicting resource or owner identities.
+It never rewrites historical records or treats the fingerprint as deletion
+authority. Resource-only Launches keep their empty pre-Compute context.
 The response declares `ownershipScope=workspaces_and_retained_operations` only
 after both complete owner reads succeed. A Runtime with a retained operation but
 no Workspace reports `runtime_operation_without_workspace`; it cannot be treated

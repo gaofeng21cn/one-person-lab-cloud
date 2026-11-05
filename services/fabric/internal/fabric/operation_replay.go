@@ -382,8 +382,10 @@ func validWorkspaceLaunchDeleteCompute(candidate workspaceLaunchDeleteStageCandi
 	Attachment *StorageAttachment `json:"attachment,omitempty"`
 }) bool {
 	binding, record, compute := candidate.binding, candidate.record, candidate.compute
-	expected := WorkspaceLaunchResources{ComputeAllocationID: workspaceLaunchComputeID(binding), ComputeBindingRef: binding.FabricOperationID}
-	return record.RequestResources == (WorkspaceLaunchResources{}) && record.Resources == expected && state.Compute != nil && state.Storage == nil && state.Attachment == nil &&
+	request := WorkspaceLaunchResources{GatewaySecretFingerprint: record.RequestResources.GatewaySecretFingerprint}
+	expected := request
+	expected.ComputeAllocationID, expected.ComputeBindingRef = workspaceLaunchComputeID(binding), binding.FabricOperationID
+	return validWorkspaceLaunchPriorKeyFingerprint(request.GatewaySecretFingerprint) && record.RequestResources == request && record.Resources == expected && state.Compute != nil && state.Storage == nil && state.Attachment == nil &&
 		compute.ID == expected.ComputeAllocationID && compute.OperationID == binding.FabricOperationID && compute.AccountID == binding.AccountID && compute.WorkspaceID == binding.WorkspaceID &&
 		compute.PackageID != "" && compute.Provider == record.ProviderProfileRef && compute.ProviderResourceID != "" && compute.ProviderRequestID != "" &&
 		compute.NodePoolID != "" && compute.InstanceType != "" && compute.Zone != "" && compute.ChargeType != "" && isReadyResourceStatus(compute.Status)
@@ -397,10 +399,11 @@ func validWorkspaceLaunchDeleteStorage(candidate workspaceLaunchDeleteStageCandi
 	// StorageClass is optional: the Tencent adapter owns static PV/PVC bindings
 	// with no dynamic class. Replay validates the persisted owner and disk facts.
 	binding, record, volume := candidate.binding, candidate.record, candidate.volume
-	request := WorkspaceLaunchResources{ComputeAllocationID: record.RequestResources.ComputeAllocationID, ComputeBindingRef: record.RequestResources.ComputeBindingRef}
+	request := WorkspaceLaunchResources{ComputeAllocationID: record.RequestResources.ComputeAllocationID, ComputeBindingRef: record.RequestResources.ComputeBindingRef,
+		GatewaySecretFingerprint: record.RequestResources.GatewaySecretFingerprint}
 	expected := request
 	expected.StorageID, expected.StorageBindingRef = workspaceLaunchStorageID(binding), binding.FabricOperationID
-	return request.ComputeAllocationID != "" && request.ComputeBindingRef != "" && record.RequestResources == request && record.Resources == expected &&
+	return validWorkspaceLaunchPriorKeyFingerprint(request.GatewaySecretFingerprint) && request.ComputeAllocationID != "" && request.ComputeBindingRef != "" && record.RequestResources == request && record.Resources == expected &&
 		state.Compute == nil && state.Storage != nil && state.Attachment == nil && volume.ID == expected.StorageID && volume.OperationID == binding.IdempotencyKey &&
 		volume.AccountID == binding.AccountID && volume.WorkspaceID == binding.WorkspaceID && volume.Provider == record.ProviderProfileRef &&
 		volume.ProviderResourceID != "" && volume.ProviderRequestID != "" && volume.SizeGB > 0 && volume.DiskType != "" && volume.Zone != "" && isReadyResourceStatus(volume.Status)
@@ -415,20 +418,34 @@ func validWorkspaceLaunchDeleteAttachment(candidate workspaceLaunchDeleteStageCa
 	request := WorkspaceLaunchResources{
 		ComputeAllocationID: record.RequestResources.ComputeAllocationID, ComputeBindingRef: record.RequestResources.ComputeBindingRef,
 		StorageID: record.RequestResources.StorageID, StorageBindingRef: record.RequestResources.StorageBindingRef,
+		GatewaySecretFingerprint: record.RequestResources.GatewaySecretFingerprint,
 	}
 	expected := request
 	expected.AttachmentID, expected.AttachmentBindingRef = workspaceLaunchAttachmentID(binding), binding.FabricOperationID
-	return request.ComputeAllocationID != "" && request.ComputeBindingRef != "" && request.StorageID != "" && request.StorageBindingRef != "" &&
+	return validWorkspaceLaunchPriorKeyFingerprint(request.GatewaySecretFingerprint) && request.ComputeAllocationID != "" && request.ComputeBindingRef != "" && request.StorageID != "" && request.StorageBindingRef != "" &&
 		record.RequestResources == request && record.Resources == expected && state.Compute == nil && state.Storage == nil && state.Attachment != nil &&
 		attachment.ID == expected.AttachmentID && attachment.OperationID == binding.IdempotencyKey && attachment.WorkspaceID == binding.WorkspaceID &&
 		attachment.ComputeID == request.ComputeAllocationID && attachment.VolumeID == request.StorageID && attachment.Provider == record.ProviderProfileRef &&
 		attachment.ProviderAttachmentID != "" && attachment.ProviderRequestID != "" && attachment.Status == "attached"
 }
 
+// Retained full Launches create the Key before Compute. The CP producer
+// carries its fingerprint through the resource stages; it is immutable context,
+// not a Secret binding or authority to delete anything. Resource-only Launches
+// omit it. Preserve the exact original value across requests, results and stages.
+func validWorkspaceLaunchPriorKeyFingerprint(value string) bool {
+	if value == "" {
+		return true
+	}
+	digest, ok := strings.CutPrefix(value, "sha256:")
+	return ok && validWorkspaceLaunchHash(digest)
+}
+
 func sameWorkspaceLaunchDeleteSequence(left, right workspaceLaunchDeleteStageCandidate) bool {
 	return left.binding.LaunchOperationID == right.binding.LaunchOperationID && left.binding.AccountID == right.binding.AccountID &&
 		left.binding.WorkspaceID == right.binding.WorkspaceID && left.record.ProviderProfileRef == right.record.ProviderProfileRef &&
-		left.record.ProviderBindingRef == right.record.ProviderBindingRef && left.record.SpecDigest == right.record.SpecDigest
+		left.record.ProviderBindingRef == right.record.ProviderBindingRef && left.record.SpecDigest == right.record.SpecDigest &&
+		left.record.RequestResources.GatewaySecretFingerprint == right.record.RequestResources.GatewaySecretFingerprint
 }
 
 func validTencentFailedComputeDestroyReplay(operation FabricOperation, resource ComputeAllocation) bool {
