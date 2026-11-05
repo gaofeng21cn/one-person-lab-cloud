@@ -68,8 +68,8 @@ Mobile results and primary actions precede filters and low-frequency controls.
 Long names, identifiers, dates and complete amounts remain readable without
 horizontal page overflow; fixed navigation cannot cover actions. Controls keep
 visible focus, meaningful accessible names and usable touch targets. The
-current visual baseline uses restrained neutral surfaces, blue for primary
-actions/focus, semantic status colors and the existing system fonts/tokens.
+current visual baseline uses restrained neutral surfaces, shared primary
+action/focus tokens, semantic status colors and the existing system fonts.
 Normal text maintains accessible contrast; style values remain owned by CSS.
 
 Technical disclosure needs a current diagnostic purpose. Workspace and Usage

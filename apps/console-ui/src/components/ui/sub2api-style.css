@@ -1,6 +1,6 @@
 /*
  * Sub2API 风格覆写层（参考 Wei-Shaw/sub2api 前端设计 token）。
- * 只做呈现层调优：胶囊徽章、柔和卡片阴影、宽松表格、彩色图标块、弹窗圆角。
+ * 呈现层：语义配色、清晰的内容分层、宽松表格与可访问的交互状态。
  * 通过 unlayered 优先级覆盖 layered 组件样式；不改动任何 DOM/文案/测试契约。
  */
 
@@ -39,7 +39,7 @@ td [class*="_Badge_1viyg_"] {
   overflow-wrap: anywhere;
 }
 
-/* ---------- 面板/卡片：16px 圆角 + 柔和分层阴影 + 悬停上浮 ---------- */
+/* ---------- 面板/卡片：边界分层，静态内容保持稳定 ---------- */
 .panel,
 .metric-row article,
 .plan-panel,
@@ -48,10 +48,9 @@ td [class*="_Badge_1viyg_"] {
 .attention-card,
 .wallet-target-card,
 .access-features li {
-  border-radius: 16px;
-  border-color: #e8eef4;
-  box-shadow: 0 1px 3px rgb(16 42 67 / 5%), 0 1px 2px rgb(16 42 67 / 4%);
-  transition: box-shadow 200ms ease, transform 200ms ease, border-color 200ms ease;
+  border-radius: 12px;
+  border-color: var(--line);
+  box-shadow: none;
 }
 
 /* 覆盖 styles.css 后段的 8px 重定义（source order 更靠后，需保持同样晚的层联胜出） */
@@ -59,9 +58,9 @@ body .panel,
 body .metric-row article,
 body .plan-panel,
 body .operator-object-card {
-  border-radius: 16px;
-  border-color: #e8eef4;
-  box-shadow: 0 1px 3px rgb(16 42 67 / 5%), 0 1px 2px rgb(16 42 67 / 4%);
+  border-radius: 12px;
+  border-color: var(--line);
+  box-shadow: none;
 }
 
 .overview-grid > .panel,
@@ -69,7 +68,7 @@ body .operator-object-card {
 .billing-surface,
 .gateway-detail,
 .gateway-usage-metrics {
-  border-radius: 16px;
+  border-radius: 12px;
 }
 
 .workspace-list > a:hover,
@@ -153,7 +152,7 @@ tbody tr:last-child td {
   backdrop-filter: blur(6px);
 }
 
-/* ---------- 按钮：rounded-xl + 主按钮同色系阴影 ---------- */
+/* ---------- 按钮：以颜色和焦点表达交互，不移动点击目标 ---------- */
 .button,
 .ui-button {
   border-radius: 10px;
@@ -162,18 +161,24 @@ tbody tr:last-child td {
 body .button.primary,
 body .ui-button[data-color="primary"] {
   border-radius: 10px;
-  box-shadow: 0 2px 8px rgb(22 100 160 / 22%);
+  box-shadow: none;
 }
 
 body .button.primary:hover:not(:disabled),
 body .ui-button[data-color="primary"]:hover:not(:disabled) {
-  box-shadow: 0 4px 14px rgb(22 100 160 / 30%);
+  box-shadow: none;
+}
+
+.ui-button[data-variant="solid"]:hover:not(:disabled),
+.ui-button[data-variant="outline"]:hover:not(:disabled) {
+  transform: none;
+  box-shadow: none;
 }
 
 /* ---------- 统计卡副信息：正数绿/异常红 ---------- */
 .account-band .band-metric small,
 .overview-summary .band-metric small {
-  color: #94a3b8;
+  color: var(--color-text-secondary);
 }
 
 .metric-ok strong { color: #0d9464; }
@@ -203,15 +208,16 @@ body .ui-button[data-color="primary"]:hover:not(:disabled) {
   background: #f8fbfd;
 }
 
-.metric-row article:hover,
-.review-card:hover,
-.operator-object-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 40px rgb(16 42 67 / 8%);
-  border-color: #d7e2ec;
+/* ---------- 概览趋势条形图（纯 CSS，不引图表库） ---------- */
+.overview-trend {
+  grid-column: 1 / -1;
 }
 
-/* ---------- 概览趋势条形图（纯 CSS，不引图表库） ---------- */
+.overview-trend .panel-title > div > span {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .overview-trend .trend-chart {
   display: grid;
   grid-template-columns: repeat(14, minmax(0, 1fr));
@@ -235,7 +241,7 @@ body .ui-button[data-color="primary"]:hover:not(:disabled) {
   width: 100%;
   min-height: 4px;
   border-radius: 6px 6px 2px 2px;
-  background: linear-gradient(180deg, #14b8a6 0%, #0d9488 100%);
+  background: var(--action);
   transition: height 300ms ease;
 }
 
@@ -244,12 +250,14 @@ body .ui-button[data-color="primary"]:hover:not(:disabled) {
 }
 
 .trend-bar[data-refund="true"] {
-  background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
+  background: #0369a1;
 }
 
 .trend-col small {
-  color: #94a3b8;
-  font-size: 10px;
+  min-height: 16px;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  line-height: 16px;
   text-align: center;
   white-space: nowrap;
 }
@@ -267,6 +275,20 @@ body .ui-button[data-color="primary"]:hover:not(:disabled) {
 }
 
 @media (max-width: 620px) {
+  .overview-trend .panel-title {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .overview-trend .panel-title > div {
+    flex-basis: 100%;
+  }
+
+  .overview-trend .panel-title > .ui-button {
+    justify-content: flex-start;
+    padding-left: 0;
+  }
+
   /* 窄屏压缩条形而非隐藏日期，卡片标注的“近 14 天”与实际渲染范围保持一致。 */
   .overview-trend .trend-chart {
     gap: 4px;
@@ -293,7 +315,7 @@ body .overview-summary .band-metric > span {
 
 body .overview-summary .band-metric small {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-text-secondary);
 }
 
 /* ---------- 侧栏导航：teal 激活态 + 圆润项 ---------- */
@@ -306,7 +328,7 @@ body .overview-summary .band-metric small {
 .operator-nav .admin-nav-links a.active {
   border-radius: 10px;
   background: #f0fdfa;
-  color: #0d9488;
+  color: var(--action);
   font-weight: 680;
 }
 
@@ -318,24 +340,60 @@ body .overview-summary .band-metric small {
   color: inherit;
 }
 
-/* 品牌图标：teal 发光底 */
+/* 品牌图标使用原始资产。 */
 .sidebar .brand img,
 .brand img {
   border-radius: 10px;
-  box-shadow: 0 0 0 2px #ccfbf1, 0 2px 8px rgb(13 148 136 / 18%);
+  box-shadow: none;
 }
 
 /* ---------- 顶栏：细边框 + 柔白 ---------- */
 body .topbar {
   border-bottom: 1px solid #eef2f6;
-  background: rgb(255 255 255 / 92%);
-  backdrop-filter: blur(10px);
+  background: var(--surface);
 }
 
 body .topbar h1 {
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 700;
   letter-spacing: -0.01em;
+}
+
+@media (max-width: 820px) {
+  body .topbar h1 {
+    font-size: 18px;
+  }
+
+  .sidebar {
+    visibility: hidden;
+  }
+
+  .sidebar.open {
+    visibility: visible;
+  }
+}
+
+@media (max-width: 360px) {
+  .overview-workspace-table th:last-child,
+  .overview-workspace-table td:last-child {
+    width: 60px;
+    padding-inline: 8px;
+  }
+
+  .overview-workspace-table td:last-child a {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .overview-workspace-table .workspace-detail-link {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 
 /* ---------- 系统状态：服务健康卡行（保留 tr DOM 供测试定位） ---------- */
@@ -428,7 +486,7 @@ body .topbar h1 {
 }
 
 .health-card__meta small {
-  color: #94a3b8;
+  color: var(--color-text-secondary);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
@@ -529,7 +587,7 @@ body .topbar h1 {
 }
 
 .resource-detail-card__type .source-value--unavailable {
-  color: #94a3b8;
+  color: var(--color-text-secondary);
   font-weight: 500;
 }
 
@@ -547,7 +605,7 @@ body .topbar h1 {
 }
 
 .resource-detail-card__facts dt {
-  color: #94a3b8;
+  color: var(--color-text-secondary);
   font-size: 11px;
 }
 

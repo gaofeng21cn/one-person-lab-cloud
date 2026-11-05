@@ -640,7 +640,7 @@ export async function apiFixture(route, state, session = state) {
     const pageSize = Number(url.searchParams.get("pageSize"));
     return fulfillJson(route, source({ items: [], total: 0, page, pageSize, pages: 1 }, "sub2api", "empty"));
   }
-  if (path === "/api/gateway/endpoint") return fulfillJson(route, source({ baseUrl: "https://gflabtoken.cn/v1" }, "sub2api"));
+  if (path === "/api/gateway/endpoint") return fulfillJson(route, source({ baseUrl: "https://gateway.medopl.com/v1" }, "sub2api"));
   if (path === "/api/gateway/groups") return fulfillJson(route, source({
     items: [
       { id: "101", name: "default", description: "", platform: "openai", rateMultiplier: 1, subscriptionType: "standard", status: "active" },
@@ -1068,11 +1068,11 @@ async function exerciseGatewayKeyLifecycle(page, state) {
   const useTechnicalDetails = useDialog.locator("details.key-use-technical-details");
   await useTechnicalDetails.locator("summary").click();
   await useTechnicalDetails.getByText("openai", { exact: true }).waitFor({ state: "visible" });
-  await waitForText(useDialog, "https://gflabtoken.cn/v1");
+  await waitForText(useDialog, "https://gateway.medopl.com/v1");
   await waitForText(useDialog, GENERAL_KEY);
   await useDialog.getByRole("button", { name: "复制配置", exact: true }).click();
   const copiedConfiguration = await page.evaluate(() => navigator.clipboard.readText());
-  for (const value of ["https://gflabtoken.cn/v1", GENERAL_KEY]) {
+  for (const value of ["https://gateway.medopl.com/v1", GENERAL_KEY]) {
     if (!copiedConfiguration.includes(value)) throw new Error(`console_browser_key_configuration_missing:${value}`);
   }
   await useDialog.getByRole("button", { name: "关闭", exact: true }).last().click();
