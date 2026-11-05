@@ -14,6 +14,15 @@ establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
 
+## Model Reload Capability Admission
+
+Serve resolves the exact deployment's approved Runtime publisher model-configuration
+interface before any Secret handover or reload intent. An absent interface, an
+unsupported protocol or an unavailable release owner leaves the existing binding
+and applied version unchanged. Isolated PostgreSQL tests exercise both admitted
+reload callers and confirm zero Secret replacements, execution calls or reload
+actions for those refusals. Installed adoption remains unverified.
+
 ## Current Capability Baseline
 
 Reconciled on 2026-11-05 against Cloud source `3773966a`; dated source and
