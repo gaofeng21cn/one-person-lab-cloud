@@ -85,6 +85,29 @@ async function main() {
   await mkdir(resolve(directory, "fabric-secrets"), { recursive: true, mode: 0o700 });
   const template = await readFile(resolve(productRoot, "deploy/portable/opl-cloud.env.example"), "utf8");
   const compose = await readFile(resolve(productRoot, "deploy/portable/compose.local-v2.yaml"), "utf8");
+  if (options["cleanup-from"]) {
+    const receipt = JSON.parse(await readFile(resolve(options["cleanup-from"]), "utf8"));
+    const readbacks = receipt?.evidence?.readbacks;
+    if (receipt?.mode !== "local-v2" || receipt?.source?.sha !== options["source-sha"] ||
+        readbacks?.installation?.cloudImage !== options["cloud-image"] ||
+        readbacks?.installation?.qualificationEmail !== "local-qualification@example.test" ||
+        !/^opl-native-[1-9][0-9]*-[1-9][0-9]*$/.test(String(options.project || ""))) {
+      throw new Error("clean_host_cleanup_receipt_invalid");
+    }
+    const workspaceId = String(readbacks?.order?.workspaceId || "");
+    if (!workspaceId) return;
+    const profileLine = (await readFile(resolve(directory, "installation.env"), "utf8")).split("\n")
+      .find((line) => line.startsWith("OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON="));
+    const profile = JSON.parse(profileLine.slice(profileLine.indexOf("=") + 1));
+    if (!/^workspace_[a-z0-9]+$/.test(workspaceId) || readbacks?.accountBinding?.accountId !== "local-host" ||
+        !profile.accountBindings.some((binding) => binding.tenantId === readbacks?.tenant?.id && binding.accountId === "local-host")) {
+      throw new Error("clean_host_cleanup_owner_mismatch");
+    }
+    const { cleanupLocalQualificationResources } = await import(pathToFileURL(resolve(productRoot, "tools/local-workspace-qualification.ts")).href);
+    const residuals = await cleanupLocalQualificationResources("local-host", workspaceId);
+    await writeFile(resolve(directory, "fixture-cleanup.json"), `${JSON.stringify({ scope: "run_owned_local_fixture", residuals })}\n`, { mode: 0o600 });
+    return;
+  }
   if (options["bind-from"]) {
     const receipt = JSON.parse(await readFile(resolve(options["bind-from"]), "utf8"));
     const installation = receipt?.evidence?.readbacks?.installation;

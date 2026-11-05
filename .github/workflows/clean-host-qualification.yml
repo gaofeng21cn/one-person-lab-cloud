@@ -206,6 +206,9 @@ jobs:
 
       - name: Remove the Local-Docker storage root
         if: ${{ always() }}
+        env:
+          PRODUCT_SHA: ${{ inputs.ref }}
+          CLOUD_IMAGE_REF: ${{ inputs.cloud_image_ref }}
         shell: bash
         run: |
           set -euo pipefail
@@ -220,6 +223,12 @@ jobs:
             docker compose --project-name "$OPL_NATIVE_PROJECT" \
               --env-file "$qualification_root/native/installation.env" \
               -f deploy/portable/compose.local-v2.yaml down --volumes --remove-orphans
+            if [ -f "$RUNNER_TEMP/local-workspace-qualification.json" ]; then
+              node "$RUNNER_TEMP/native-qualification-installer/tools/local-v2-clean-host.ts" \
+                --product-root "$PWD" --directory "$qualification_root/native" --project "$OPL_NATIVE_PROJECT" \
+                --source-sha "$PRODUCT_SHA" --cloud-image "$CLOUD_IMAGE_REF" \
+                --cleanup-from "$RUNNER_TEMP/local-workspace-qualification.json"
+            fi
           fi
           if mountpoint -q "$qualification_root/storage"; then
             sudo umount "$qualification_root/storage"

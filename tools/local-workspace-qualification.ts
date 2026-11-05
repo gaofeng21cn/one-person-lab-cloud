@@ -2222,6 +2222,27 @@ export function localV2ApplicationEntryBoundary(entryUrl, publicOrigin) {
   return { ok: true, code: "", detail: `${parsed.origin} is served by the declared origin` };
 }
 
+// A Local-Docker anonymous application has its own loopback publication rather
+// than the Console's HTTPS origin. Admit that origin only after the provider's
+// actual container, immutable image, owner labels and declared port agree.
+export function localV2AnonymousDockerOrigin({ entryUrl, workspaceId, accountId, imageRef, imageId, revision, containers }) {
+  const port = localApplicationEntryPort(entryUrl);
+  const target = (revision?.ports || []).find((value) => value.name === revision.entryPort);
+  const runtime = (containers || []).filter((container) => container?.Config?.Labels?.["opl.fabric.kind"] === "application_runtime" &&
+    container?.Config?.Labels?.["opl.component.role"] === "main");
+  const container = runtime[0];
+  const labels = container?.Config?.Labels || {};
+  const bindings = container?.NetworkSettings?.Ports?.[`${target?.port}/tcp`] || [];
+  if (!port || revision?.exposurePolicy !== "anonymous" || !target || runtime.length !== 1 ||
+      container?.State?.Running !== true || container?.Image !== imageId || !digestPattern.test(String(imageId || "")) ||
+      labels["opl.fabric.provider"] !== "local-docker" || labels["opl.workspace.id"] !== workspaceId ||
+      labels["opl.account.id"] !== accountId || labels["opl.image.ref"] !== imageRef || !labels["opl.runtime.id"] ||
+      !bindings.some((binding) => binding.HostIp === "127.0.0.1" && binding.HostPort === String(port))) {
+    throw namedQualificationError("local_v2_application_runtime_binding_invalid", "the published entry does not match the declared anonymous Local-Docker Runtime");
+  }
+  return new URL(entryUrl).origin;
+}
+
 // The Workspace owner reports a parked saga as a dependency failure; the
 // provider's own reason lives in the Fabric process log, which is the owner's
 // record of why it refused the dispatch. A qualification run reports that reason
@@ -2684,7 +2705,20 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
         boundary = { ...boundary, workspaceCode: boundary.code, code: provider.code, detail: provider.detail, providerLog: provider.line };
       }
     } else {
-      const entryBoundary = localV2LaunchReadbackBoundary(workspace, workspaceId, origin);
+      let applicationOrigin = origin;
+      if (contract.applicationAccess?.mode === "anonymous" && revision.exposurePolicy === "anonymous" &&
+          localApplicationEntryPort(workspace.accessUrl) !== 0) {
+        const ids = await exactLabelIDs("containers", readbacks.accountBinding.accountId, workspaceId);
+        const containers = ids.length ? JSON.parse((await runProcess("docker", ["inspect", ...ids])).stdout) : [];
+        const image = await imageInspection(readbacks.installation.workspaceImage);
+        applicationOrigin = localV2AnonymousDockerOrigin({ entryUrl: workspace.accessUrl, workspaceId,
+          accountId: readbacks.accountBinding.accountId, imageRef: readbacks.installation.workspaceImage,
+          imageId: image.Id, revision, containers });
+        readbacks.applicationRuntime = { imageRef: readbacks.installation.workspaceImage, imageId: image.Id,
+          runtimeId: containers.find((value) => value.Config?.Labels?.["opl.component.role"] === "main")?.Config?.Labels?.["opl.runtime.id"],
+          origin: applicationOrigin, providerBindingVerified: true };
+      }
+      const entryBoundary = localV2LaunchReadbackBoundary(workspace, workspaceId, applicationOrigin);
       if (!entryBoundary.ok) {
         boundary = entryBoundary;
         stage = "application_entry";
@@ -2692,6 +2726,10 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
         stage = "application_entry";
         try {
           const fetchEntry = dependencies.fetchEntry || (async (url) => {
+            if (applicationOrigin !== origin) {
+              const response = await fetch(url, { redirect: "manual", signal: ownerRequestSignal() });
+              return { response, text: await response.text() };
+            }
             const response = await caRequest(url, { method: "GET" }, new Headers(), undefined, readFileSync(caFile));
             return { response, text: await response.text() };
           });

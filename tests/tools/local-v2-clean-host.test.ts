@@ -5,12 +5,33 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
+import { localV2AnonymousDockerOrigin } from "../../tools/local-workspace-qualification.ts";
 
 const execute = promisify(execFile);
 const root = resolve(import.meta.dirname, "../..");
 const sourceSha = "a".repeat(40);
 const cloudImage = `ghcr.io/example/cloud@sha256:${"b".repeat(64)}`;
 const workspaceImage = `127.0.0.1:5000/qualification@sha256:${"c".repeat(64)}`;
+
+test("an anonymous application entry binds the real Docker image, owner and published port", () => {
+  const labels = { "opl.fabric.kind": "application_runtime", "opl.component.role": "main",
+    "opl.fabric.provider": "local-docker", "opl.workspace.id": "workspace_test", "opl.account.id": "local-host",
+    "opl.image.ref": workspaceImage, "opl.runtime.id": "runtime_test" };
+  const container = JSON.parse(JSON.stringify({ Image: `sha256:${"f".repeat(64)}`, State: { Running: true },
+    Config: { Labels: labels }, NetworkSettings: { Ports: { "3000/tcp": [{ HostIp: "127.0.0.1", HostPort: "32769" }] } } }));
+  const input = { entryUrl: "http://127.0.0.1:32769/", workspaceId: "workspace_test", accountId: "local-host",
+    imageRef: workspaceImage, imageId: container.Image,
+    revision: { exposurePolicy: "anonymous", entryPort: "http", ports: [{ name: "http", port: 3000 }] }, containers: [container] };
+  assert.equal(localV2AnonymousDockerOrigin(input), "http://127.0.0.1:32769");
+  for (const invalid of [
+    { ...input, workspaceId: "workspace_other" },
+    { ...input, imageId: `sha256:${"e".repeat(64)}` },
+    { ...input, entryUrl: "http://127.0.0.1:32770/" },
+    { ...input, entryUrl: "http://credential@127.0.0.1:32769/" },
+    { ...input, entryUrl: "http://example.test:32769/" },
+    { ...input, revision: { ...input.revision, exposurePolicy: "application" } },
+  ]) assert.throws(() => localV2AnonymousDockerOrigin(invalid), { code: "local_v2_application_runtime_binding_invalid" });
+});
 
 test("the CLI binds an owner-returned Tenant without rotating existing installation credentials", async () => {
   const directory = await mkdtemp(resolve(tmpdir(), "opl-native-clean-host-test-"));
