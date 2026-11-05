@@ -58,18 +58,42 @@ An isolated Linux amd64 container using the same Runtime image digest
 `sha256:f6ce30fe1b0cdf8e1c6722a4c96d893ff8286e6af718940dab5a1d778ba70b71`
 accepted the Package manifest in dry-run, but actual installation failed with
 `contract_shape_invalid` / `configured_codex_plugin_carrier_action_failed`.
-The Package declares an absolute producer-machine marketplace path. A diagnostic
-control changed only availability of that path inside the disposable container;
-the unchanged Package then installed with native `installed` / `callable`
-readback. This isolates a portability dependency, not a proposed production
-mount or a verified Cloud upload, model request or deployment.
+The Package declares an absolute producer-machine marketplace path. An initial
+diagnostic control made that path available inside a disposable container and
+obtained native `installed` / `callable` readback. A second offline comparison
+kept the working directory at the extracted `carrier` root for both attempts:
+the original failed, while a diagnostic copy changing only the selected manifest's
+`marketplace_source` to `.` installed successfully. This is ordinary working-directory
+resolution, not manifest-relative relocation or a portable Package acceptance.
+The original ZIP remains unchanged. The transport explicitly disclaims native
+installability and OCI publication; the dependency is not evidence that its
+exporter violated that transport promise or that Runtime needs a new installer.
+The Package also declares `search_evidence` at container-local
+`http://127.0.0.1:8081/v1/search-evidence`; its handoff receipt leaves availability
+unproven. Installing the native carrier does not qualify that evidence service
+or an actual Agent response.
 
 The [Cloud-owned WebUI build entry](runtime/release.md#cloud-agent-webui-build-input)
-now has source implementation with exact branch-head identity, amd64/arm64
-registry readback and publication evidence. Its execution, registry delivery and
-catalog admission remain unverified. Runtime recipes and portable Package
-references must come from their respective publishers; no existing Runtime
-record or Package bytes were changed by this source work.
+was merged in [PR #1137](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1137).
+[Run 42010915435, attempt 1](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/42010915435)
+succeeded for exact source `d58dabc2303e5dc12254e2fdad9a5aca5d36c0df`, publishing
+`ghcr.io/gaofeng21cn/opl-cloud-agent-webui`:
+
+| Published object | Immutable digest |
+| --- | --- |
+| Linux multi-platform index | `sha256:367436beaaaa8a3c037addb6518d16497e34916a9cd86f7453571971fbe2a835` |
+| Linux amd64 Build input | `sha256:5b52b16099b443e8b9eac472fed786d0880bf0eef62f39759ea22da8f65461be` |
+| Linux arm64 Build input | `sha256:3024fcab1b9ad49c0ee998ebac9b76eb23b63a67cf92926dfa820ca9830a5929` |
+
+The run's `cloud-agent-webui-d58dabc2303e5dc12254e2fdad9a5aca5d36c0df-1` artifact
+retains source, push metadata, index and image readbacks with matching checksums.
+An independent anonymous registry read matched the index digest, both child
+manifests/configs/layers and all four served WebUI source files against that
+commit. Registry transfer has not been shown necessary: anonymous retrieval
+works, while installed namespace approval and Build pull access remain unverified.
+Catalog admission, a real compatible Runtime recipe, portable Package delivery,
+effective Build policy and customer upload/build/deployment remain open. No
+existing Runtime record or original Package bytes were changed by this run.
 
 ## Native Local-Docker Release Qualification (2026-11-05)
 

@@ -121,15 +121,18 @@ evidence and its source/fixture boundaries are owned by
 records the scoped source closure and its historical review/CI. Generic WebUI
 chat changes, browser-driven sending and a new provider are outside this scope.
 
-The [November 5 customer test](status.md#custom-agent-publication-inputs-2026-11-05)
-stops before upload because effective Build defaults and compatible catalog inputs
-are unavailable. The full local IBD Package also retains a producer-machine
-marketplace path, isolated by an actual Runtime install/control pair. Complete
-Cloud WebUI publication through the [exact-source artifact entry](runtime/release.md#cloud-agent-webui-build-input),
-obtain the Runtime publisher's real fixed recipe and the Package publisher's
-portable carrier references, then admit the inputs and set the effective Build
-policy before retrying upload/build and customer delivery. Source implementation
-of the WebUI publisher does not close those installed outcomes.
+The [November 5 customer test and published WebUI inputs](status.md#custom-agent-publication-inputs-2026-11-05)
+leave customer upload pending effective Build defaults and compatible catalog
+admission. The WebUI artifact is published; do not rebuild it merely to retry
+admission or add a registry bridge without an observed retrieval requirement.
+Obtain the Runtime publisher's real fixed recipe and a Package delivery whose
+carrier references agree with its declared installation working directory. The
+successful offline relative-source control does not qualify the original
+transport, require a new Runtime installer, or make Framework's official Package
+publication channel mandatory for generic Cloud uploads. The IBD Package's
+container-local evidence service also needs an executable binding and actual
+retrieval verification. Admit the compatible inputs and set the effective Build
+policy, then retry upload/build and customer delivery with a real Agent request.
 
 Same-Candidate and installed Tencent/TKE acceptance remain open. The local
 `LOCAL_NO_CHARGE` order did not activate a paid subscription: after positive
