@@ -351,10 +351,25 @@ Workspace, and its obligations remain separate.
 
 The remaining bounded source gaps are the launch page's use of a personal wallet
 balance to gate a Tenant-funded order, and managed-Key issuance with non-empty
-model selections when the user API supplies no model-scope projection. Resolve
-each at its existing owner with its actual consumer; do not add another wallet
-or Gateway allowlist. The new-purchase source now consumes the Account policy;
-its installed adoption and eventual policy-owner migration remain below.
+model selections when the user API supplies no model-scope projection. The
+[November 5 check](status.md#existing-default-app-provisioning-closure-readback-2026-11-05)
+reproduces the latter through the actual Gateway user-API issuer and managed-Key
+owner: issuance succeeds externally, then the scope comparison leaves the order
+pending before Secret/binding delivery. Resolve each at its existing owner with
+its actual consumer; do not copy requested models into an unobserved effective
+scope, bypass authorization or add another wallet/Gateway allowlist. Verify
+non-empty selection and original-command recovery through the real issuer.
+The new-purchase source now consumes the Account policy; its installed adoption
+and eventual policy-owner migration remain below.
+
+The existing Default App still answers actual model turns and preserves its
+session/reply after page reload. This does not qualify a fresh unattended order
+or prove adoption of later source repairs. The Instance customer-readback receipt
+remains blocked on the unauthenticated entry's HTTP 302; reconcile that producer
+with the application's actual login boundary before claiming automated acceptance.
+The separately reported background-service warning is not evidence that the
+observed model turn failed. Preserve both observations without extending this
+check into unrelated App capabilities.
 
 #### Workspace purchase eligibility adoption
 
