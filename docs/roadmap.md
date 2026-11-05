@@ -121,11 +121,15 @@ evidence and its source/fixture boundaries are owned by
 records the scoped source closure and its historical review/CI. Generic WebUI
 chat changes, browser-driven sending and a new provider are outside this scope.
 
-The [November 5 customer test and published WebUI inputs](status.md#custom-agent-publication-inputs-2026-11-05)
-leave customer upload pending effective Build defaults and compatible catalog
-admission. The WebUI artifact is published; do not rebuild it merely to retry
-admission or add a registry bridge without an observed retrieval requirement.
-Obtain the Runtime publisher's real fixed recipe and a Package delivery whose
+The [customer test and admitted WebUI input](status.md#custom-agent-publication-inputs-2026-11-05)
+leave customer upload pending a compatible Runtime and effective Build defaults.
+The WebUI artifact is published and its approved version was read back through
+the protected Instance workflow; do not rebuild or register a duplicate merely
+to retry delivery, or add a registry bridge without an observed retrieval need.
+The Capability fix for the first admission's create/list timestamp discrepancy
+has local persistence evidence; installed adoption remains unverified. Exact
+read-only replay confirms the stored version but does not qualify the first
+response. Obtain the Runtime publisher's real fixed recipe and a Package delivery whose
 carrier references agree with its declared installation working directory. The
 successful offline relative-source control does not qualify the original
 transport, require a new Runtime installer, or make Framework's official Package

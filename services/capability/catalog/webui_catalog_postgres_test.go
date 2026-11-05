@@ -33,7 +33,7 @@ func publisherSchemaExamples(t *testing.T) (schema []byte, example []json.RawMes
 
 // TestWebuiCatalogBindsAndReadsBackTheExactPublisherContract proves a WebUI
 // version is admitted from the approved publisher and that the readback is the
-// exact admitted contract bytes, not a re-derived summary.
+// exact admitted contract bytes and full version, including on command replay.
 func TestWebuiCatalogBindsAndReadsBackTheExactPublisherContract(t *testing.T) {
 	db := capabilityClaimDB(t)
 	schema, examples := publisherSchemaExamples(t)
@@ -60,7 +60,8 @@ func TestWebuiCatalogBindsAndReadsBackTheExactPublisherContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	call := &api.CallContext{ActorId: "actor", RequestId: "request", SessionId: proto.String("session"), IdempotencyKey: "webui-1", Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Platform{Platform: &api.PlatformScope{}}}}
-	admitted, err := service.RegisterWebuiVersion(ctx, &api.RegisterWebuiVersionRpcRequest{Context: call, Body: &api.RegisterWebuiVersionRequest{Name: "ui", VersionLabel: "1", PublisherNamespaceId: "pub_official", PublisherContract: contract, AdmissionReceiptId: "receipt"}})
+	request := &api.RegisterWebuiVersionRpcRequest{Context: call, Body: &api.RegisterWebuiVersionRequest{Name: "ui", VersionLabel: "1", PublisherNamespaceId: "pub_official", PublisherContract: contract, AdmissionReceiptId: "receipt"}}
+	admitted, err := service.RegisterWebuiVersion(ctx, request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,6 +95,10 @@ func TestWebuiCatalogBindsAndReadsBackTheExactPublisherContract(t *testing.T) {
 	if len(page.GetItems()) != 1 {
 		t.Fatalf("webui page=%v", page)
 	}
+	t.Logf("created_at admitted=%v readback=%v", admitted.CreatedAt, page.Items[0].CreatedAt)
+	if !proto.Equal(admitted, page.Items[0]) {
+		t.Errorf("admitted WebUI differs from catalog readback:\nadmitted=%v\nreadback=%v", admitted, page.Items[0])
+	}
 	readback, err := publicjson.Marshal(page.Items[0].PublisherContract)
 	if err != nil {
 		t.Fatal(err)
@@ -103,6 +108,23 @@ func TestWebuiCatalogBindsAndReadsBackTheExactPublisherContract(t *testing.T) {
 	}
 	if page.Items[0].ArtifactDigest != contract.Image.Digest || page.Items[0].PublisherNamespaceId != contract.PublisherNamespaceId {
 		t.Fatalf("readback artifact=%s", page.Items[0])
+	}
+	replayed, err := service.RegisterWebuiVersion(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !proto.Equal(admitted, replayed) {
+		t.Errorf("command replay differs from admission:\nadmitted=%v\nreplayed=%v", admitted, replayed)
+	}
+	if !proto.Equal(replayed, page.Items[0]) {
+		t.Errorf("command replay differs from catalog readback:\nreplayed=%v\nreadback=%v", replayed, page.Items[0])
+	}
+	afterReplay, err := service.ListWebuiVersions(ctx, &api.ListWebuiVersionsRpcRequest{Context: call})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !proto.Equal(page, afterReplay) {
+		t.Fatalf("command replay changed the catalog:\nbefore=%v\nafter=%v", page, afterReplay)
 	}
 }
 
