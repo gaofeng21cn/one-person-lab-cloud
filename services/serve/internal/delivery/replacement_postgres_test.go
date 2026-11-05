@@ -613,7 +613,9 @@ func servePeerContext() context.Context {
 // command carried no call context, so every one of these three actions panicked
 // on the peer readback.
 func TestServeRuntimeLifecycleActsOnThePersistedCommand(t *testing.T) {
-	s, r, _ := reservationFixture(t)
+	s, r, cap := reservationFixture(t)
+	cap.version.RuntimeVersionId = proto.String("rv-agent")
+	s.RuntimeReleases = &runtimeControlForServe{release: agentRelease(t, modelConfigurationInterface())}
 	ctx := workspaceContext()
 	s.Resources = &resourcesForServe{confirmed: true, workspace: "ws-first", dataAttachment: "attachment-original"}
 	runtime := &runtimeForServe{}

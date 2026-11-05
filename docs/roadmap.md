@@ -364,6 +364,11 @@ each at its existing owner with its actual consumer; do not add another wallet
 or Gateway allowlist. The new-purchase source now consumes the Account policy;
 its installed adoption and eventual policy-owner migration remain below.
 
+After adopting the Serve reload admission repair, verify that a Runtime without
+a declared model-configuration interface is refused before Secret handover,
+preserving its active binding and applied version. Source owner tests establish
+this ordering; they do not establish installed adoption.
+
 #### Workspace purchase eligibility adoption
 
 New-purchase source admission consumes the existing Account eligibility owner;
