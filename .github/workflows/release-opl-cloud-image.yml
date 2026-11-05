@@ -484,7 +484,7 @@ jobs:
             .installation.repository == "gaofeng21cn/opl-instance-medopl" and .installation.status == "deployment_verified" and
             .installation.receiptDigest == $installation and .installation.runDigest == $installationRun and .installation.workflowRunId == $installationRunId and
             .qualifications.sourcePaths.status == "source_verified" and .qualifications.sourcePaths.scope == "business_source_paths" and
-            .qualifications.sourcePaths.productSha == $sha and .qualifications.sourcePaths.receiptDigest == $sourcePaths and
+            .qualifications.sourcePaths.productSha == $sha and .qualifications.sourcePaths.productTree == .source.tree and .qualifications.sourcePaths.receiptDigest == $sourcePaths and
             .qualifications.sourcePaths.paidBusinessExecuted == false and .qualifications.sourcePaths.customerReadsExecuted == false and
             (.qualifications | has("business") or has("customer") or has("instance") | not)
           ' artifacts/publication/release/opl-cloud-release.json >/dev/null

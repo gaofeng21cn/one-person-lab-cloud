@@ -102,11 +102,36 @@ test("real sealing, publication and public-readback scripts agree on source-only
     const readback = shell(readbackScript); assert.equal(readback.status, 0, readback.stderr);
     const manifestPath = join(f.root, "artifacts/publication/release/opl-cloud-release.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-    manifest.qualifications.sourcePaths.paidBusinessExecuted = true;
-    await writeFile(manifestPath, JSON.stringify(manifest));
-    const updated = shell("cd artifacts/publication/release && shasum -a 256 *.yaml opl-cloud.env.example opl-cloud-release.json > SHA256SUMS");
-    assert.equal(updated.status, 0, updated.stderr);
-    assert.notEqual(shell(publicationScript).status, 0);
-    assert.notEqual(shell(readbackScript).status, 0);
+    const provenancePath = join(f.root, "artifacts/publication/release-provenance.json");
+    const provenance = JSON.parse(await readFile(provenancePath, "utf8"));
+    const checksum = () => {
+      const result = shell("cd artifacts/publication/release && shasum -a 256 *.yaml opl-cloud.env.example opl-cloud-release.json > SHA256SUMS");
+      assert.equal(result.status, 0, result.stderr);
+    };
+    for (const patch of [
+      { qualifications: { ...manifest.qualifications, sourcePaths: { ...manifest.qualifications.sourcePaths, paidBusinessExecuted: true } } },
+      { qualifications: { ...manifest.qualifications, sourcePaths: { ...manifest.qualifications.sourcePaths, customerReadsExecuted: true } } },
+      { qualifications: { ...manifest.qualifications, sourcePaths: { ...manifest.qualifications.sourcePaths, status: "blocked" } } },
+      { qualifications: { ...manifest.qualifications, sourcePaths: { ...manifest.qualifications.sourcePaths, receiptDigest: digest("9") } } },
+      { qualifications: { ...manifest.qualifications, business: { terminalState: "settled" } } },
+      { installation: { ...manifest.installation, status: "blocked" } },
+      { installation: { ...manifest.installation, receiptDigest: digest("9") } },
+      { source: { ...manifest.source, tree: "f".repeat(40) } },
+      { candidate: { ...manifest.candidate, receiptDigest: digest("9") } },
+    ]) {
+      await writeFile(manifestPath, JSON.stringify({ ...manifest, ...patch })); checksum();
+      assert.notEqual(shell(publicationScript).status, 0, JSON.stringify(patch));
+      assert.notEqual(shell(readbackScript).status, 0, JSON.stringify(patch));
+    }
+    await writeFile(manifestPath, JSON.stringify(manifest)); checksum();
+    for (const patch of [
+      { evidenceClasses: { ...provenance.evidenceClasses, businessSourcePaths: { ...provenance.evidenceClasses.businessSourcePaths, receiptDigest: digest("9") } } },
+      { evidenceClasses: { ...provenance.evidenceClasses, instanceDeployment: { ...provenance.evidenceClasses.instanceDeployment, status: "blocked" } } },
+      { workflowSha: "0".repeat(40) },
+    ]) {
+      await writeFile(provenancePath, JSON.stringify({ ...provenance, ...patch }));
+      assert.notEqual(shell(publicationScript).status, 0);
+      assert.notEqual(shell(readbackScript).status, 0);
+    }
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });

@@ -104,8 +104,8 @@ jobs:
           jq -e --arg repository "$PRODUCT_REPOSITORY" --arg product_sha "$PRODUCT_SHA" '
             .schemaVersion == 4 and .productRepository == $repository and .source.sha == $product_sha and
             .acceptance == "installation_and_source_paths" and .installation.status == "deployment_verified" and
-            .qualifications.sourcePaths.status == "source_verified" and .qualifications.sourcePaths.productSha == $product_sha and
-            .qualifications.sourcePaths.paidBusinessExecuted == false and .qualifications.sourcePaths.customerReadsExecuted == false
+            .qualifications.sourcePaths.status == "source_verified" and .qualifications.sourcePaths.productSha == $product_sha and .qualifications.sourcePaths.productTree == .source.tree and
+            .qualifications.sourcePaths.paidBusinessExecuted == false and .qualifications.sourcePaths.customerReadsExecuted == false and (.qualifications | has("business") or has("customer") or has("instance") | not)
           ' "$manifest" >/dev/null
           jq -e --slurpfile manifest "$manifest" --arg workflow_sha "$PUBLICATION_WORKFLOW_SHA" --arg workflow_ref "$PUBLICATION_WORKFLOW_REF" '
             $manifest[0] as $m | .schemaVersion == 4 and .workflowSha == $workflow_sha and .workflowRef == $workflow_ref and
