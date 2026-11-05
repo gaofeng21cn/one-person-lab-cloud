@@ -398,20 +398,14 @@ replay identity. The
 [October 26 installation evidence](status.md#delivery-lane-reconciliation-2026-10-26)
 now binds successful Candidate construction, Deploy and read-only
 `deployment_verified`/installation verification to the exact Cloud source/tree,
-Candidate manifest and image index. The following are the remaining independent
-qualification and migration outcomes; they do not reopen #1042's completed
-customer acceptance:
+Candidate manifest and image index. Native Local-Docker qualification is now
+complete for frozen source `5e3d58dc`: the main Clean Host run `41968911003`
+returned a version-two READY receipt for the admitted image, lifecycle and zero
+remaining Workspace resources. [Status](status.md#native-local-docker-release-qualification-2026-11-05)
+retains the original evidence and the LOCAL_NO_CHARGE scope. The following are
+the remaining independent qualification and migration outcomes; they do not
+reopen #1042's completed customer acceptance:
 
-- Admit the native Local-Docker installation through its version-two receipt.
-  The complete native topology and anonymous fixture have executed application
-  access, restart continuity, owner deletion and duplicate deletion with actual
-  provider absence; [status](status.md#native-local-docker-release-qualification-2026-11-05)
-  retains the exact source and run. The new producer/consumer must still return
-  READY for one exact Candidate through the `main` Clean Host workflow before
-  publication. This `LOCAL_NO_CHARGE` profile uses the owner's not-applicable
-  refund result; live Gateway charge, model and Key evidence remains in the
-  separate protected business qualification. Retained version-one receipts keep
-  their own validator and paid-fixture facts.
 - Complete the installed use of the adopted Instance protected consumer:
   RuntimeVersion/compute/storage, authenticated Tenant/payer and a genuine
   dedicated-sandbox J0 READY receipt must be explicitly bound to the same
