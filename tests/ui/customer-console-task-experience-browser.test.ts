@@ -80,6 +80,7 @@ async function assertOverviewHierarchy(page: Page, viewport: typeof viewports[nu
   const overview = page.locator(".overview-page");
   const summary = overview.getByRole("region", { name: "账户关键指标", exact: true });
   const workspace = overview.locator(".overview-workspaces");
+  const trend = overview.getByRole("region", { name: "工作空间净扣款趋势", exact: true });
   const receipts = overview.locator(".overview-receipts");
   const announcements = overview.locator(".overview-announcements");
   const primaryAction = workspace.getByRole("button", { name: /工作空间|重试读取工作空间/ }).last();
@@ -94,8 +95,11 @@ async function assertOverviewHierarchy(page: Page, viewport: typeof viewports[nu
     return box;
   }));
   const [summaryBox, workspaceBox, receiptsBox, announcementsBox, primaryActionBox] = layout;
+  const trendBox = await trend.boundingBox();
+  assert.ok(trendBox);
 
   assert.ok(summaryBox.y + summaryBox.height <= workspaceBox.y, `${viewport.name}: summary should precede Workspace`);
+  assert.ok(workspaceBox.y + workspaceBox.height <= trendBox.y, `${viewport.name}: Workspace tasks should precede the secondary charge trend`);
   assert.ok(workspaceBox.y + workspaceBox.height <= receiptsBox.y, `${viewport.name}: Workspace should precede recent fees`);
   assert.ok(receiptsBox.y + receiptsBox.height <= announcementsBox.y || viewport.name === "desktop", `${viewport.name}: secondary regions should follow scan order`);
   assert.ok(primaryActionBox.x >= workspaceBox.x && primaryActionBox.x + primaryActionBox.width <= workspaceBox.x + workspaceBox.width, `${viewport.name}: primary command should stay inside Workspace`);
@@ -104,6 +108,10 @@ async function assertOverviewHierarchy(page: Page, viewport: typeof viewports[nu
   if (viewport.name === "desktop") {
     assert.ok(workspaceBox.width > receiptsBox.width * 1.8, "desktop: Workspace should own the full primary row");
     assert.ok(Math.abs(receiptsBox.y - announcementsBox.y) <= 1, "desktop: recent fees and messages should share the secondary row");
+  } else {
+    const bottomNav = await page.getByRole("navigation", { name: "移动端导航" }).boundingBox();
+    assert.ok(bottomNav);
+    assert.ok(workspaceBox.y + workspaceBox.height <= bottomNav.y, "mobile: the Workspace and its action should be visible above fixed navigation on arrival");
   }
 }
 
@@ -211,6 +219,34 @@ test("customer shell exposes four tasks and keeps account internals out of the c
       }
       await assertNoHorizontalOverflow(page, `${viewport.name}: account`);
 
+      await page.keyboard.press("Escape");
+      await account.waitFor({ state: "hidden" });
+      const returnTarget = viewport.name === "desktop" ? accountCommand : page.getByRole("button", { name: "打开导航", exact: true });
+      assert.equal(await returnTarget.evaluate((element) => element === document.activeElement), true, `${viewport.name}: closing account should restore focus`);
+
+      if (viewport.name === "mobile") {
+        const menu = page.getByRole("button", { name: "打开导航", exact: true });
+        await page.locator(".topbar-actions").getByRole("button", { name: "账号信息", exact: true }).click();
+        await account.waitFor({ state: "visible" });
+        await menu.click();
+        await account.waitFor({ state: "hidden" });
+        assert.equal(await menu.getAttribute("aria-expanded"), "true");
+        const sidebar = page.getByRole("complementary", { name: "产品导航" });
+        const close = sidebar.getByRole("button", { name: "关闭导航", exact: true });
+        assert.equal(await close.evaluate((element) => element === document.activeElement), true);
+        const last = sidebar.getByRole("button", { name: "账号信息", exact: true });
+        await last.focus();
+        await page.keyboard.press("Tab");
+        const brand = sidebar.getByRole("link", { name: "OPL Cloud", exact: true });
+        assert.equal(await brand.evaluate((element) => element === document.activeElement), true, "mobile: Tab should remain in the open navigation");
+        await page.keyboard.press("Shift+Tab");
+        assert.equal(await last.evaluate((element) => element === document.activeElement), true);
+        await page.keyboard.press("Escape");
+        assert.equal(await menu.getAttribute("aria-expanded"), "false");
+        assert.equal(await menu.evaluate((element) => element === document.activeElement), true);
+        await sidebar.waitFor({ state: "hidden" });
+      }
+
       assert.equal(supportRequests, 0);
       await context.close();
     }
@@ -256,7 +292,7 @@ test("customer task pages use customer language and expose task fields", { timeo
         (await apiNavigation.getByRole("link").allTextContents()).map((value) => value.trim()),
         ["服务信息", "用量", "API 密钥"]
       );
-      await page.getByText("https://gflabtoken.cn/v1", { exact: true }).waitFor({ state: "visible" });
+      await page.getByText("https://gateway.medopl.com/v1", { exact: true }).waitFor({ state: "visible" });
       await assertCustomerLanguage(page, `${viewport.name}: API overview`);
       await assertNoHorizontalOverflow(page, `${viewport.name}: API overview`);
 

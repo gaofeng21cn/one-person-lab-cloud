@@ -2255,6 +2255,26 @@ executables, addresses, database roles, peer identities, HTTP surfaces and the
 baked Console identity. It is a source and packaging contract; it is not proof
 that an installation runs the complete set.
 
+## Console Interface Refinement (2026-11-05)
+
+Against checked baseline `5e3d58dc2897648a01aa298dfa77bb02c3615aea`, the
+Console overview now presents Workspace actions before the charge trend. Shared
+surfaces use clearer text/action contrast and quieter panel styling; mobile
+Workspace names wrap in full. Navigation and account panels close each other,
+support Escape and return focus; the mobile drawer keeps keyboard navigation
+inside it while open. The preview fixture now displays
+`https://gateway.medopl.com/v1`; the product still reads its API address from
+the Gateway owner response.
+
+Focused local verification passed 20 tests with zero failures, skips or TODOs,
+including customer/operator journeys, source availability states and layout
+checks across fifteen routes at 1440, 1280, 1024 and 390 pixels. Typecheck,
+lint and the production build passed. These are local fixture/browser results;
+installed adoption remains an [acceptance outcome](roadmap.md#console-interface-adoption).
+Additional browser readback at 320, 390 and 1440 pixels passed nine scenarios,
+including copying the current API address and keeping a valid Workspace usable
+when the Cloud identity's independent wallet/history sources are unavailable.
+
 ## Browser-Facing HTTP Surface And Console Identity
 
 As checked on 2026-10-21, all operator GET callers in `console-read-api.ts`

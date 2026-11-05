@@ -120,7 +120,7 @@ function settlementDayShortLabel(date: string, index: number, total: number): st
   const day = Number(date.split("-")[2]);
   if (!Number.isFinite(day)) return "";
   const offset = total - 1 - index;
-  return offset % 2 === 0 || offset === total - 1 ? `${day}日` : "";
+  return offset % 2 === 0 || offset === total - 1 ? `${day}` : "";
 }
 
 function PageLink({ children, controller, path, className = "" }: { children: ReactNode; controller: ConsoleController; path: string; className?: string }) {
@@ -166,26 +166,6 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
         <Metric label="工作空间" note="当前账户总数" value={workspaces ? formatCount(workspaces.total) : "暂不可用"} />
       </section>
 
-      <section className="panel overview-trend" aria-label="工作空间净扣款趋势">
-        <div className="panel-title">
-          <div><h2>{cloudIdentity ? "个人历史工作空间净扣款" : "工作空间净扣款趋势"}</h2><span>近 14 天 · 开通与续费扣款、关联退款（按资金发生日）</span></div>
-          <Button onClick={() => { controller.billing.setView("receipts"); controller.navigate("/console/billing"); }} size="sm" variant="ghost">查看账单记录<ArrowRight aria-hidden size={15} /></Button>
-        </div>
-        <SourceState
-          emptyDescription="这段时间内该账户没有工作空间开通、续费扣款或关联退款。"
-          emptyTitle="近 14 天没有工作空间扣款或退款"
-          error={controller.billing.trend.error}
-          errorDescription="暂时无法确认工作空间扣款与退款，请稍后重试。"
-          loading={controller.billing.trend.loading}
-          onRetry={() => void controller.billing.refresh()}
-          source={controller.billing.trend.value}
-          unavailableDescription="暂时无法从钱包资金记录确认工作空间扣款与退款，请稍后重试。"
-          unavailableTitle="工作空间扣款趋势暂不可用"
-        >
-          {(trend) => <TrendChart trend={trend} />}
-        </SourceState>
-      </section>
-
       <div className="overview-grid">
         <section className="panel overview-workspaces">
           <div className="panel-title overview-workspace-title">
@@ -209,11 +189,31 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
           >
             {(data) => (
               <div className="overview-workspace-table table-wrap">
-                <table><thead><tr><th>工作空间</th><th>{cloudIdentity ? "交付模式" : "套餐"}</th><th>生命周期状态</th><th>已付至</th><th /></tr></thead><tbody>
+                <table><thead><tr><th>工作空间</th><th>{cloudIdentity ? "交付模式" : "套餐"}</th><th>当前状态</th><th>已付至</th><th /></tr></thead><tbody>
                   {data.items.map((workspace) => <WorkspaceSummaryRow controller={controller} key={workspace.id} workspace={workspace} />)}
                 </tbody></table>
               </div>
             )}
+          </SourceState>
+        </section>
+
+        <section className="panel overview-trend" aria-label="工作空间净扣款趋势">
+          <div className="panel-title">
+            <div><h2>{cloudIdentity ? "个人历史工作空间净扣款" : "工作空间净扣款趋势"}</h2><span>近 14 天 · 开通与续费扣款、关联退款（按资金发生日）</span></div>
+            <Button onClick={() => { controller.billing.setView("receipts"); controller.navigate("/console/billing"); }} size="sm" variant="ghost">查看账单记录<ArrowRight aria-hidden size={15} /></Button>
+          </div>
+          <SourceState
+            emptyDescription="这段时间内该账户没有工作空间开通、续费扣款或关联退款。"
+            emptyTitle="近 14 天没有工作空间扣款或退款"
+            error={controller.billing.trend.error}
+            errorDescription="暂时无法确认工作空间扣款与退款，请稍后重试。"
+            loading={controller.billing.trend.loading}
+            onRetry={() => void controller.billing.refresh()}
+            source={controller.billing.trend.value}
+            unavailableDescription="暂时无法从钱包资金记录确认工作空间扣款与退款，请稍后重试。"
+            unavailableTitle="工作空间扣款趋势暂不可用"
+          >
+            {(trend) => <TrendChart trend={trend} />}
           </SourceState>
         </section>
 
