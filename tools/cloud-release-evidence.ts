@@ -16,10 +16,10 @@
 // fails admission in the class that owns the failed field instead of being
 // collapsed into one undifferentiated evidence bundle.
 //
-// The transitional Instance qualification-decision and Workspace gates remain
-// separate, retained requirements. This module adds the Cloud-owned class; it
-// does not remove or weaken any existing gate (#929 retires the transitional
-// Instance paths only after the replacement producer is executable).
+// These full-business validators remain available for separately authorized
+// operational qualification. Current non-spending publication admission is
+// governed by the distribution contract and records source-path evidence instead.
+
 
 import { createHash } from "node:crypto";
 

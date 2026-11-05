@@ -1,24 +1,22 @@
 name: Read Back OPL Cloud Release
-
 on:
   workflow_run:
     workflows:
       - Release OPL Cloud
-    types: [completed]
+    types:
+      - completed
   workflow_dispatch:
     inputs:
       publication_run_id:
         description: Completed successful Release OPL Cloud run to verify again.
         required: true
         type: string
-
 permissions:
   contents: read
-
 jobs:
   public-readback:
     name: Read back public release independently
-    if: >-
+    if: |-
       ${{
         (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
         (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
@@ -37,7 +35,6 @@ jobs:
       EVENT_RUN_ID: ${{ github.event.workflow_run.id || '' }}
       MANUAL_RUN_ID: ${{ inputs.publication_run_id || '' }}
       IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}
-
     steps:
       - name: Resolve completed publication run and sealed artifact
         id: authority
@@ -85,15 +82,13 @@ jobs:
             echo "workflow_sha=$workflow_sha"
             echo "workflow_ref=$workflow_ref"
           } >> "$GITHUB_OUTPUT"
-
       - name: Download sealed publication checkpoint
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: ${{ steps.authority.outputs.artifact_name }}
           path: artifacts/publication
           github-token: ${{ github.token }}
           run-id: ${{ steps.authority.outputs.run_id }}
-
       - name: Validate publication identity and provenance
         env:
           PRODUCT_SHA: ${{ steps.authority.outputs.product_sha }}
@@ -106,31 +101,20 @@ jobs:
           provenance="artifacts/publication/release-provenance.json"
           test -s "$manifest"
           test -s "$provenance"
-          jq -e \
-            --arg repository "$PRODUCT_REPOSITORY" \
-            --arg product_sha "$PRODUCT_SHA" \
-            --arg workflow_sha "$PUBLICATION_WORKFLOW_SHA" \
-            --arg workflow_ref "$PUBLICATION_WORKFLOW_REF" \
-            '.schemaVersion == 3 and .productRepository == $repository and
-             .source.sha == $product_sha and
-             .qualifications.customer.repository == $repository and
-             .qualifications.customer.scope == "customer_reads" and
-             .qualifications.customer.status == "customer_reads_verified" and
-             .qualifications.customer.installationBinding == "receipt_association_only" and
-             .qualifications.customer.publicEndpointCandidateVerified == false and
-             .qualifications.customer.fullBusinessQualification == false and
-             (.qualifications.customer.receiptDigest | test("^sha256:[0-9a-f]{64}$")) and
-             .installation.status == "deployment_verified" and
-             .qualifications.instance.workspace.status == "workspace_verified"' "$manifest" >/dev/null
-          jq -e \
-            --arg repository "$PRODUCT_REPOSITORY" \
-            --arg workflow_sha "$PUBLICATION_WORKFLOW_SHA" \
-            --arg workflow_ref "$PUBLICATION_WORKFLOW_REF" \
-            '.schemaVersion == 3 and .productRepository == $repository and
-             .workflowSha == $workflow_sha and .workflowRef == $workflow_ref and
-             (.qualification.customerReceiptDigest | test("^sha256:[0-9a-f]{64}$"))' \
-            "$provenance" >/dev/null
-          test "$(jq -r .qualifications.customer.receiptDigest "$manifest")" = "$(jq -r .qualification.customerReceiptDigest "$provenance")"
+          jq -e --arg repository "$PRODUCT_REPOSITORY" --arg product_sha "$PRODUCT_SHA" '
+            .schemaVersion == 4 and .productRepository == $repository and .source.sha == $product_sha and
+            .acceptance == "installation_and_source_paths" and .installation.status == "deployment_verified" and
+            .qualifications.sourcePaths.status == "source_verified" and .qualifications.sourcePaths.productSha == $product_sha and .qualifications.sourcePaths.productTree == .source.tree and
+            .qualifications.sourcePaths.paidBusinessExecuted == false and .qualifications.sourcePaths.customerReadsExecuted == false and (.qualifications | has("business") or has("customer") or has("instance") | not)
+          ' "$manifest" >/dev/null
+          jq -e --slurpfile manifest "$manifest" --arg workflow_sha "$PUBLICATION_WORKFLOW_SHA" --arg workflow_ref "$PUBLICATION_WORKFLOW_REF" '
+            $manifest[0] as $m | .schemaVersion == 4 and .workflowSha == $workflow_sha and .workflowRef == $workflow_ref and
+            .productRepository == $m.productRepository and .releaseTag == $m.releaseTag and .acceptance == $m.acceptance and
+            .candidateReceiptDigest == $m.candidate.receiptDigest and .imageDigest == $m.candidate.image.digest and
+            .installation == $m.installation and .evidenceClasses.businessSourcePaths == $m.qualifications.sourcePaths and
+            .evidenceClasses.instanceDeployment == $m.installation and
+            .qualification.sourcePathsDigest == $m.qualifications.sourcePaths.receiptDigest
+          ' "$provenance" >/dev/null
           release_tag="$(jq -r .releaseTag "$manifest")"
           image_digest="$(jq -r .candidate.image.digest "$manifest")"
           [[ "$release_tag" =~ ^v0\.[0-9]+\.[0-9]+$ ]]
@@ -141,16 +125,13 @@ jobs:
             echo "PUBLICATION_WORKFLOW_SHA=$PUBLICATION_WORKFLOW_SHA"
             echo "PUBLICATION_WORKFLOW_REF=$PUBLICATION_WORKFLOW_REF"
           } >> "$GITHUB_ENV"
-
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
       - name: Read back GHCR without publication credentials
         shell: bash
         run: |
           set -euo pipefail
           test "$(docker buildx imagetools inspect "$IMAGE_REPOSITORY:$RELEASE_TAG" --format '{{.Manifest.Digest}}')" = "$EXPECTED_IMAGE_DIGEST"
-
       - name: Read back public GitHub Release bytes anonymously
         shell: bash
         run: |
@@ -182,7 +163,6 @@ jobs:
           done <<< "$expected_names"
           (cd artifacts/public-readback && sha256sum --check --strict SHA256SUMS)
           cmp artifacts/public-readback/opl-cloud-release.json artifacts/publication/release/opl-cloud-release.json
-
       - name: Verify public asset attestations
         env:
           GH_TOKEN: ${{ github.token }}

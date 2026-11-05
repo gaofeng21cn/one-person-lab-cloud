@@ -394,6 +394,10 @@ reader migrate together.
 
 ### Native v2 protected qualification and CP retirement (post-#1042)
 
+The non-spending publication decision makes the following live business and
+retirement outcomes independent of stable publication. They remain unverified
+until separately authorized execution supplies their native evidence.
+
 Workspace owns purchase and deletion orchestration; CloudIdentity owns the live
 session and Tenant authorization, Serve owns deployment/access, Fabric owns
 provider execution/absence, Gateway/Sub2API owns charges, refunds and Keys, and

@@ -4,6 +4,32 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-11-05: Stable Publication Uses Non-Spending Acceptance
+
+The product owner explicitly authorized Candidate registration, deployment and
+independent read-only installation verification, and chose source-path
+availability instead of cost-incurring business acceptance for the public stable
+release. This decision replaces the earlier publication requirement for a new
+paid Workspace order and its retained business/decision/Workspace receipts.
+
+Publication requires the same immutable Candidate on canonical main, complete
+successful source CI, a clean-host Local-Docker lifecycle receipt and an
+independently verified Instance installation. Business entry paths are inspected
+from that exact source and their bytes are bound to the publication evidence.
+This establishes source availability and installation; paid procurement,
+charges, renewals, refunds and customer business acceptance remain unexecuted.
+The manifest, provenance and release notes must state that distinction.
+Publication-only evidence policy may advance with the protected workflow while
+the already qualified runtime Candidate remains frozen; changing this policy
+does not rebuild or replace its image or installation assets.
+
+Existing protected business qualification, J0, customer-read and retained
+Instance evidence tools remain available for separately scoped operations. They
+are not invoked or synthesized to publish under this acceptance. Their domain
+contracts, financial authority, genuine sandbox requirements and independent
+approval boundaries are unchanged. Publication neither creates business READY
+receipts nor grants permission to mutate money or customer resources.
+
 ## 2026-10-31: Encode Native Workspace Identities In Isolated Application Origins
 
 Native `workspace_<32 lowercase hex>` identities keep their original IDs and

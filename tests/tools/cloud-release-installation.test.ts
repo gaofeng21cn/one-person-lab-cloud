@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { candidateReceiptDigest } from "../../tools/cloud-candidate-receipt.ts";
-import { validateReleaseInstallationBinding } from "../../tools/cloud-release-installation.ts";
+import { validateReleaseInstallationBinding, validateReleaseInstallationReadback } from "../../tools/cloud-release-installation.ts";
 
 const hash = (text: string) => `sha256:${createHash("sha256").update(text).digest("hex")}`;
 const digest = (seed: string) => `sha256:${seed.repeat(64)}`;
@@ -118,4 +118,11 @@ test("a native qualification decision cannot substitute an unbound installation,
   // Reformatting is valid JSON but changes the native receipt's byte digest.
   assert.throws(() => validateReleaseInstallationBinding({ ...input, deploymentText: JSON.stringify(input.deployment, null, 2) }),
     /release_installation_qualification_binding_invalid/);
+});
+
+test("installation admission independently accepts the native readback without a business decision", async () => {
+  const input = await bindingInput();
+  const { decision, ...installation } = input;
+  assert.equal(validateReleaseInstallationReadback(installation).receiptStatus, "deployment_verified");
+  assert.throws(() => validateReleaseInstallationReadback({ ...installation, deploymentText: "{}" }), /release_installation_bytes_invalid/);
 });

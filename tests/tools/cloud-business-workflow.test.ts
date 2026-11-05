@@ -9,8 +9,6 @@ import test from "node:test";
 import YAML from "yaml";
 
 const workflow = YAML.parse(await readFile(".github/workflows/cloud-business-readback.yml", "utf8"));
-const release = YAML.parse(await readFile(".github/workflows/release-opl-cloud-image.yml", "utf8"));
-const readback = YAML.parse(await readFile(".github/workflows/release-opl-cloud-public-readback.yml", "utf8"));
 const digest = (c: string) => `sha256:${c.repeat(64)}`;
 const sha = "a".repeat(40);
 const tree = "b".repeat(40);
@@ -87,7 +85,7 @@ test("Cloud customer workflow limits credentials to protected public product rea
   assert.equal(installation.with["persist-credentials"], false);
 });
 
-test("customer readback preserves its consumed artifact without running a second business purchase", () => {
+test("optional customer readback preserves its artifact without running a business purchase", () => {
   assert.deepEqual(Object.keys(workflow.on.workflow_dispatch.inputs), ["candidate_run_id", "installation_run_id"]);
   const job = workflow.jobs.readback;
   const commands = job.steps.map((value: any) => value.run || "").join("\n");
@@ -96,112 +94,7 @@ test("customer readback preserves its consumed artifact without running a second
   assert.equal(uploads.length, 1);
   assert.equal(uploads[0].with.path, "qualification-evidence/receipt.json");
   assert.match(uploads[0].with.name, /^cloud-customer-readback-/);
-  assert.match(JSON.stringify(release), /cloud-customer-readback-/);
-  assert.match(JSON.stringify(release), /gaofeng21cn\/opl-instance-medopl/);
 });
-
-test("release seals separate Cloud customer and Instance business evidence and refuses tampering", async () => {
-  const root = await mkdtemp(join(tmpdir(), "opl-customer-seal-"));
-  try {
-    await mkdir(join(root, "evidence/candidate"), { recursive: true });
-    const seal = step(release.jobs.admission, "Seal release bundle from admitted Candidate bytes").run;
-    const assets = ["compose.yaml", "compose.deployment-platform-owned.yaml", "compose.deployment-managed-tke.yaml",
-      "compose.deployment-customer-owned.yaml", "compose.fabric-local-docker.yaml", "compose.fabric-tencent-tke.yaml",
-      "compose.local-workspace.yaml", "opl-cloud.env.example"];
-    for (const asset of assets) await writeFile(join(root, "evidence/candidate", asset), `synthetic ${asset}\n`);
-    const env = {
-      PRODUCT_REPOSITORY: repository, PRODUCT_SHA: sha, PRODUCT_TREE: tree, RELEASE_TAG: "v0.9.0",
-      CANDIDATE_RUN_ID: "100", CANDIDATE_RUN_ATTEMPT: "1", CANDIDATE_RECEIPT_DIGEST: digest("c"),
-      IMAGE_REF: `ghcr.io/${repository}@${digest("d")}`, IMAGE_DIGEST: digest("d"), AMD64_DIGEST: digest("e"), ARM64_DIGEST: digest("f"),
-      LOCAL_QUALIFICATION_RUN_ID: "101", LOCAL_RECEIPT_DIGEST: digest("1"), INSTANCE_REPOSITORY: "gaofeng21cn/opl-instance-medopl",
-      INSTANCE_DEPLOYMENT_RUN_ID: "102", DEPLOYMENT_RUN_DIGEST: digest("2"), DEPLOYMENT_RECEIPT_DIGEST: digest("3"), DEPLOYMENT_AUTHORITY_SHA: sha,
-      CUSTOMER_RUN_ID: "105", CUSTOMER_RECEIPT_DIGEST: digest("4"), CUSTOMER_AUTHORITY_SHA: tree,
-      CLOUD_BUSINESS_QUALIFICATION_RUN_ID: "107", BUSINESS_RECEIPT_DIGEST: digest("a"), BUSINESS_RUN_DIGEST: digest("b"),
-      BUSINESS_AUTHORITY_SHA: "d".repeat(40),
-      BUSINESS_COMPLETED_AT: "2026-10-17T00:05:00Z",
-      INSTANCE_DECISION_RUN_ID: "103", DECISION_RUN_DIGEST: digest("5"), DECISION_RECEIPT_DIGEST: digest("6"), DECISION_AUTHORITY_SHA: sha,
-      INSTANCE_WORKSPACE_RUN_ID: "104", WORKSPACE_RECEIPT_DIGEST: digest("7"), WORKSPACE_AUTHORITY_SHA: sha, QUALIFICATION_SCOPE_DIGEST: digest("8"),
-      GITHUB_SHA: sha, GITHUB_REF: "refs/heads/main", GITHUB_RUN_ID: "106", GITHUB_OUTPUT: join(root, "outputs"),
-    };
-    let result = run(seal, root, env);
-    assert.equal(result.status, 0, result.stderr);
-    const manifestPath = join(root, "artifacts/publication/release/opl-cloud-release.json");
-    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-    const provenance = JSON.parse(await readFile(join(root, "artifacts/publication/release-provenance.json"), "utf8"));
-    assert.equal(manifest.schemaVersion, 3);
-    assert.equal(manifest.installation.repository, env.INSTANCE_REPOSITORY);
-    assert.equal(manifest.qualifications.customer.repository, repository);
-    assert.equal(manifest.qualifications.customer.scope, "customer_reads");
-    assert.equal(manifest.qualifications.customer.receiptDigest, provenance.qualification.customerReceiptDigest);
-    assert.equal(manifest.qualifications.business.receiptDigest, env.BUSINESS_RECEIPT_DIGEST);
-    assert.equal(manifest.qualifications.business.repository, env.INSTANCE_REPOSITORY);
-    assert.equal(manifest.qualifications.business.authoritySha, env.BUSINESS_AUTHORITY_SHA);
-    assert.equal(manifest.qualifications.business.terminalState, "settled");
-    assert.equal(manifest.qualifications.business.scope, "workspace_purchase");
-    assert.equal(provenance.evidenceClasses.cloudBusinessQualification.receiptDigest, env.BUSINESS_RECEIPT_DIGEST);
-    assert.equal(provenance.evidenceClasses.cloudBusinessQualification.repository, env.INSTANCE_REPOSITORY);
-    assert.equal(provenance.evidenceClasses.cloudBusinessQualification.authoritySha, env.BUSINESS_AUTHORITY_SHA);
-    assert.equal(provenance.evidenceClasses.cloudBusinessQualification.runDigest, env.BUSINESS_RUN_DIGEST);
-    assert.equal(provenance.evidenceClasses.instanceDeployment.receiptDigest, env.DEPLOYMENT_RECEIPT_DIGEST);
-    assert.equal(provenance.evidenceClasses.instanceDeployment.status, "deployment_verified");
-    assert.equal(manifest.qualifications.instance.workspace.status, "workspace_verified");
-    const expressions: Record<string, string> = {
-      "needs.admission.outputs.product_tree": tree,
-      "needs.admission.outputs.candidate_receipt_digest": env.CANDIDATE_RECEIPT_DIGEST,
-      "needs.admission.outputs.installation_receipt_digest": env.DEPLOYMENT_RECEIPT_DIGEST,
-      "needs.admission.outputs.business_receipt_digest": env.BUSINESS_RECEIPT_DIGEST,
-      "needs.admission.outputs.business_run_digest": env.BUSINESS_RUN_DIGEST,
-      "needs.admission.outputs.customer_receipt_digest": env.CUSTOMER_RECEIPT_DIGEST,
-      "needs.admission.outputs.qualification_scope_digest": env.QUALIFICATION_SCOPE_DIGEST,
-    };
-    const validate = step(release.jobs.publish, "Validate exact release bundle").run.replace(/\$\{\{ ([^}]+) \}\}/g,
-      (_: string, key: string) => { assert.ok(expressions[key], key); return expressions[key]; });
-    const validateEnv = {
-      ...env, EXPECTED_IMAGE_DIGEST: env.IMAGE_DIGEST,
-      EXPECTED_BUSINESS_RECEIPT_DIGEST: env.BUSINESS_RECEIPT_DIGEST,
-      EXPECTED_BUSINESS_RUN_DIGEST: env.BUSINESS_RUN_DIGEST,
-      EXPECTED_BUSINESS_RUN_ID: env.CLOUD_BUSINESS_QUALIFICATION_RUN_ID,
-      EXPECTED_INSTALLATION_RECEIPT_DIGEST: env.DEPLOYMENT_RECEIPT_DIGEST,
-      EXPECTED_INSTALLATION_RUN_DIGEST: env.DEPLOYMENT_RUN_DIGEST,
-      EXPECTED_INSTALLATION_RUN_ID: env.INSTANCE_DEPLOYMENT_RUN_ID,
-    };
-    result = run(validate, root, validateEnv);
-    assert.equal(result.status, 0, result.stderr);
-    const publicValidation = step(readback.jobs["public-readback"], "Validate publication identity and provenance").run;
-    result = run(publicValidation, root, { ...env, PUBLICATION_WORKFLOW_SHA: sha,
-      PUBLICATION_WORKFLOW_REF: "refs/heads/main", GITHUB_ENV: join(root, "public-env") });
-    assert.equal(result.status, 0, result.stderr);
-    // Recompute checksums to prove semantic admission, not only checksum failure.
-    for (const patch of [
-      { qualifications: { ...manifest.qualifications, customer: { ...manifest.qualifications.customer, status: "blocked" } } },
-      { qualifications: { ...manifest.qualifications, customer: { ...manifest.qualifications.customer, receiptDigest: digest("9") } } },
-      { qualifications: { ...manifest.qualifications, business: { ...manifest.qualifications.business, terminalState: "unknown" } } },
-      { qualifications: { ...manifest.qualifications, business: { ...manifest.qualifications.business, receiptDigest: digest("9") } } },
-      { qualifications: { ...manifest.qualifications, instance: { ...manifest.qualifications.instance, workspace: { status: "blocked" } } } },
-      { installation: { ...manifest.installation, status: "blocked" } },
-    ]) {
-      await writeFile(manifestPath, JSON.stringify({ ...manifest, ...patch }));
-      const checksum = run("cd artifacts/publication/release && shasum -a 256 " + [...assets, "opl-cloud-release.json"].join(" ") + " > SHA256SUMS", root);
-      assert.equal(checksum.status, 0, checksum.stderr);
-      assert.notEqual(run(validate, root, validateEnv).status, 0);
-    }
-    // The sealed provenance records the same two evidence classes; a class that
-    // does not bind the admitted digest or terminal state is refused even when
-    // the public manifest is untouched.
-    const provenancePath = join(root, "artifacts/publication/release-provenance.json");
-    await writeFile(manifestPath, JSON.stringify(manifest));
-    assert.equal(run("cd artifacts/publication/release && shasum -a 256 " + [...assets, "opl-cloud-release.json"].join(" ") + " > SHA256SUMS", root).status, 0);
-    for (const evidenceClasses of [
-      { ...provenance.evidenceClasses, cloudBusinessQualification: { ...provenance.evidenceClasses.cloudBusinessQualification, receiptDigest: digest("9") } },
-      { ...provenance.evidenceClasses, cloudBusinessQualification: { ...provenance.evidenceClasses.cloudBusinessQualification, terminalState: "unknown" } },
-      { ...provenance.evidenceClasses, instanceDeployment: { ...provenance.evidenceClasses.instanceDeployment, status: "blocked" } },
-    ]) {
-      await writeFile(provenancePath, JSON.stringify({ ...provenance, evidenceClasses }));
-      assert.notEqual(run(validate, root, validateEnv).status, 0);
-    }
-  } finally { await rm(root, { recursive: true, force: true }); }
-});
-
 
 test("workflow executes the Candidate CLI against original bundle bytes", async () => {
   const root = await mkdtemp(join(tmpdir(), "opl-customer-cli-"));

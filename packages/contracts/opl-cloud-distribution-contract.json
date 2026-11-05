@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 7,
+  "schemaVersion": 8,
   "owner": "OPL Cloud",
   "purpose": "Portable product distribution and instance handoff boundary.",
   "state": "current",
@@ -64,37 +64,11 @@
         "localInstallation": [
           "local_qualification"
         ],
-        "cloudBusinessQualification": [
-          "cloud_business_qualification"
-        ],
-        "cloudCustomerReads": [
-          "cloud_customer_reads_verified"
-        ],
         "instanceDeployment": [
           "instance_deployment_verified"
         ],
-        "instanceQualificationDecision": [
-          "instance_qualification_decision"
-        ],
-        "instanceWorkspaceVerification": [
-          "instance_workspace_verified"
-        ]
-      },
-      "cloudBusinessQualification": {
-        "owner": "gaofeng21cn/opl-instance-medopl",
-        "workflow": ".github/workflows/cloud-business-qualification.yml",
-        "environment": "production",
-        "artifact": "cloud-business-qualification",
-        "receipt": "business-qualification.json",
-        "receiptKind": "opl.workspace-qualification.purchase.v1",
-        "requiredTerminalState": "settled",
-        "maximumAgeHours": 720,
-        "binds": [
-          "receiptDigest",
-          "candidateReceiptDigest",
-          "productSha",
-          "productTree",
-          "cloudImageDigest"
+        "businessSourcePaths": [
+          "business_source_paths_verified"
         ]
       },
       "instanceDeployment": {
@@ -128,14 +102,18 @@
         "sameTagAssetReplacement": true,
         "versionBumpRequiredForPublicationFailure": false
       },
-      "customerReadback": {
-        "repository": "gaofeng21cn/one-person-lab-cloud",
-        "workflow": ".github/workflows/cloud-business-readback.yml",
-        "environment": "cloud-business-qualification",
-        "scope": "customer_reads",
-        "status": "customer_reads_verified",
-        "installationBinding": "original_instance_receipt_bytes",
-        "replacesFullBusinessQualification": false
+      "businessSourcePaths": {
+        "owner": "gaofeng21cn/one-person-lab-cloud",
+        "workflow": ".github/workflows/pull-request-ci.yml",
+        "status": "source_verified",
+        "paidBusinessExecuted": false,
+        "customerReadsExecuted": false,
+        "binds": [
+          "productSha",
+          "productTree",
+          "ciRun",
+          "entryPathHashes"
+        ]
       }
     },
     "publicReadback": {
@@ -151,7 +129,8 @@
       "imageDigest",
       "releaseAssetSha256",
       "releaseAssetProvenance"
-    ]
+    ],
+    "releaseManifestSchemaVersion": 4
   },
   "portableInstallation": {
     "entrypoint": "compose.yaml",
