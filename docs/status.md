@@ -33,7 +33,7 @@ Instance observations below retain their original revisions and limits.
 | Default App customer acceptance | [#1042](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1042) closed on 2026-11-02 after official App login, Gateway-backed model response, restart/response-loss recovery, one `$52.58` charge and no duplicate purchase or Key; the [November 5 readback](#existing-default-app-provisioning-closure-readback-2026-11-05) separately confirms current model use and page-reload persistence | This accepted Workspace does not prove every future customer is unattended, the Cloud model-configuration API is qualified or every writer has migrated |
 | Original-order closeout | [#1018's three original orders](#original-order-closeout-scope-2026-10-23) have protected resource absence, deletion-receipt and original-charge settlement evidence | Preserve their original records; completed closeout does not retire every retained CP caller or worker |
 | Serve current application and upgraded deletion | [Current selection](#serve-owned-current-application-readback-2026-11-04) comes from Serve, and [deletion follows the original reservation's successor lineage](#workspace-deletion-after-application-replacement-2026-11-04); both have source regression evidence | Installed adoption and live owner readback for these later repairs remain unverified |
-| Package, Build and Runtime catalog | Approved Default App inputs were used by #1042; Package/Build source and the [Linux Custom Agent profile](#linux-custom-agent-owner-qualification-2026-10-21) have distinct evidence | External OMA admission, hosted tenant-specific OCI publication, Custom Agent TKE acceptance and broader Runtime/provider profiles remain separate |
+| Package, Build and Runtime catalog | Approved Default App inputs were used by #1042; the [Agent publication input check](#custom-agent-publication-inputs-2026-11-05) identifies the current Publisher blocker and Package portability issue; the [Linux Custom Agent profile](#linux-custom-agent-owner-qualification-2026-10-21) retains its distinct historical inputs | Cloud WebUI publication/admission, a compatible Runtime recipe, portable Package input and effective Build policy remain prerequisites for the current customer test; hosted OCI and Custom Agent TKE acceptance remain separate |
 | Retained writer migration | [Capability withdrawals](#retained-writer-inventory-and-split-withdrawal-proposals-2026-11-03) and [implementation inventory](implementation-architecture.md#retained-writer-and-caller-inventory-2026-11-03) identify source removals, surviving callers and bounded observations | Account eligibility is consumed at source; its installed adoption and owner migration, Tenant payer-balance consumption, selected-model admission, shared CP recovery and historical duties remain separate. Source removal is not installed adoption or zero traffic |
 | Protected engineering qualification | Native consumer migration and source repairs are recorded separately from the accepted customer path | Protected payer declaration, same-Candidate J0 READY, W01 ordering and a complete protected receipt remain unproven; existing release admission is unchanged |
 
@@ -44,6 +44,32 @@ remaining outcomes belong to [roadmap](roadmap.md#current-delivery-lane-owner-co
 The current objective is one writer per fact and removal of obsolete code with
 its callers, workers, configuration and exclusive tests. Qualification is a
 separate release lane, not a blanket prerequisite for source retirement.
+
+## Custom Agent Publication Inputs (2026-11-05)
+
+The authenticated customer Publisher remained disabled after selecting the full
+IBD v0.2.0 Cloud Package, SHA-256
+`4a7cc80f37aa6172ce5f1de4ae21003db28c142428f2a9c74d7500137d618a01`.
+Public owner-facing reads returned `NOT_FOUND` for the effective Build policy,
+an empty WebUI catalog and three approved App Runtime records with no declared
+Package formats. Upload and server Package validation were not reached.
+
+An isolated Linux amd64 container using the same Runtime image digest
+`sha256:f6ce30fe1b0cdf8e1c6722a4c96d893ff8286e6af718940dab5a1d778ba70b71`
+accepted the Package manifest in dry-run, but actual installation failed with
+`contract_shape_invalid` / `configured_codex_plugin_carrier_action_failed`.
+The Package declares an absolute producer-machine marketplace path. A diagnostic
+control changed only availability of that path inside the disposable container;
+the unchanged Package then installed with native `installed` / `callable`
+readback. This isolates a portability dependency, not a proposed production
+mount or a verified Cloud upload, model request or deployment.
+
+The [Cloud-owned WebUI build entry](runtime/release.md#cloud-agent-webui-build-input)
+now has source implementation with exact branch-head identity, amd64/arm64
+registry readback and publication evidence. Its execution, registry delivery and
+catalog admission remain unverified. Runtime recipes and portable Package
+references must come from their respective publishers; no existing Runtime
+record or Package bytes were changed by this source work.
 
 ## Native Local-Docker Release Qualification (2026-11-05)
 
