@@ -38,32 +38,50 @@ separate release lane, not a blanket prerequisite for source retirement.
 
 ## Native Local-Docker Release Qualification (2026-11-05)
 
-[Clean Host run `41962716311`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/41962716311)
-executed Candidate source `3204139a4b8df601f7feeffc8a6fdfc801db3840` through
-the existing native topology: fourteen services, eleven independent databases,
-CloudIdentity/Tenant and catalog, a zero-price native order, the provider-bound
-anonymous application entry, restart/session continuity, owner-confirmed resource
-and data deletion, and a repeated deletion with unchanged Ledger evidence. These
-stages completed. That run still failed because its diagnostic producer always
-returned version-one `NOT_READY`; it is not an admitted qualification receipt.
+[PR #1131](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1131)
+merged as `e92524de` after all six checks passed for the frozen source
+`5e3d58dc2897648a01aa298dfa77bb02c3615aea`. Focused verification executed
+150 tests with zero failures, skips or TODOs. [Candidate build
+`41968022170`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/41968022170)
+succeeded for that exact source and both Linux architectures. Its portable
+bundle passed its own validator and binds image index
+`sha256:411b9948b0701c44525abedfec20d2ed2f651b25e48c8e88334cc6badf40c2c1`.
 
-The source now defines the native version-two READY receipt and its shared
-Release validator. It binds the clean source, admitted and running images,
-owner processes/stores, actual application port and image, restart continuity,
-deletion ownership/replay and remaining Workspace resources. The retained
-version-one validator remains separate. Execution of this new producer and a
-successful `main` qualification run are still required. The local profile is
-`LOCAL_NO_CHARGE`, with no claimed live charge, Gateway model response, Instance
-adoption or formal publication.
+[Main Clean Host run `41968911003`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/41968911003)
+succeeded and produced the native schema-two READY receipt for the same
+Candidate. The shared Release consumer validated the original downloaded bytes.
+All eleven owner processes and eleven stores were confirmed; the anonymous
+application returned HTTP 200; restart preserved the operation, Workspace,
+Runtime, receipt and re-established session; owner deletion confirmed resource
+and data absence; duplicate deletion kept the operation and Ledger receipts
+unchanged. Remaining Workspace containers, volumes and networks were all zero,
+and both host-storage and fixture-registry cleanup steps succeeded.
 
-The owner approved reuse of the existing publisher credential rather than a
-new token. Its sealed transfer succeeded in App run `41962800078`; Cloud
-`cloud-release` and `cloud-business-qualification` Secret metadata was read back
-on 2026-11-05. The source confines its references to protected, main-only
-owner-gated evidence jobs. Instance Actions/Contents reads succeeded in the
-source environment; Cloud consumer execution and independent customer-account
-Secrets remain unverified or absent. The reused credential has broader actual
-publisher permissions than the evidence reads require.
+The earlier [run `41962716311`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/41962716311)
+completed the native lifecycle on source `3204139a` but failed because its old
+diagnostic producer always emitted NOT_READY. That retained diagnostic was not
+converted into a READY receipt. The new producer and shared Release consumer
+use the native version-two receipt, preserving the separate version-one
+validator. The profile is `LOCAL_NO_CHARGE` and `p0Ready: false`; live Gateway
+charge/model response and Instance/business qualification remain separate.
+
+The owner approved reuse of the existing publisher credential. Its sealed
+transfer succeeded in App run `41962800078`; Cloud `cloud-release` and
+`cloud-business-qualification` Secret metadata was read back on 2026-11-05.
+Main-only owner-gated evidence jobs are its only Cloud source consumers. The
+credential has broader actual publisher permissions than the Actions/Contents
+reads require. App cleanup [PR #346](https://github.com/gaofeng21cn/one-person-lab-app/pull/346)
+merged as `c5a15c501`; canonical main no longer contains the transfer workflow,
+and both local and Actions transport envelopes were removed. Cloud consumer
+execution and independent customer-account Secrets remain unverified or absent.
+
+Formal publication still lacks this Candidate's Instance deployment and
+independent installation verification, genuine dedicated-sandbox J0, settled
+protected business qualification, customer reads, retained qualification decision
+and Workspace acceptance. The Instance billing-subject declaration is absent.
+No Instance deployment, procurement, charge, renewal or customer-resource deletion
+was performed for this release task; those mutations need their own bounded
+authorization. The public stable Release remains `v0.1.7`.
 
 ## Retained Generic Deployment Builder Removal (2026-11-05)
 
