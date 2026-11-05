@@ -170,6 +170,14 @@ claim unattended deployment or formal Product Release.
 | P1 | MAP domain contracts and evaluation gate | MAP medical domain owner/Instance | Cloud logical Connect boundary is documented; no clinical domain or qualified MAP adapter/backend combination is claimed | MAP task/adapter contract, selected OPL Connect backend, approved data classes, source/evidence model, human review states, evaluation set, release gate and institution acceptance; no medical-specific Cloud adapter is required |
 | P2 | Customer-operated payment, multi-user Workspace, HA/GPU and broader provider profiles | Product and Instance owners | Deliberately outside the current beta cut | Separate product decision, owner and qualification evidence before admission |
 
+## Console Interface Adoption
+
+The [Console interface refinement](status.md#console-interface-refinement-2026-11-05)
+has local source and fixture/browser evidence. Installed acceptance requires
+the adopted Candidate's customer and operator surfaces, real authenticated
+owner reads, and representative desktop/mobile navigation. Publication and
+Instance deployment remain with their existing owners.
+
 ## Workspace Key And Customer Read Boundaries
 
 The [October 18 Gateway external truth and rotation decision](decisions.md#2026-10-18-gateway-external-truth-cloud-mapping-and-workspace-key-rotation)

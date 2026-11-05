@@ -1000,7 +1000,7 @@ a {
   justify-content: space-between;
   gap: 12px;
   margin: 18px 0 0;
-  border-left: 3px solid var(--blue);
+  border: 1px solid var(--color-border-info);
   background: #f0fdfa;
   color: #115e59;
   padding: 10px 12px;
@@ -4119,8 +4119,8 @@ select:focus-visible,
 }
 
 .sidebar-account small {
-  color: #8aa0b3;
-  font-size: 10px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
 }
 
 .main-column {
@@ -4892,14 +4892,19 @@ select:focus-visible,
 
   .overview-workspace-table th:nth-child(3),
   .overview-workspace-table td:nth-child(3) {
-    width: 118px;
+    width: 84px;
+  }
+
+  .overview-workspace-table th:last-child,
+  .overview-workspace-table td:last-child {
+    width: 104px;
   }
 
   .overview-workspace-table td:first-child:not(.overview-table-state) {
-    max-width: 0;
+    max-width: none;
   }
 
-  /* 首列被压窄时，让名称在自身盒内省略，而不是被单元格直接裁断 */
+  /* 窄屏保留完整名称，以换行适配可用空间。 */
   .overview-workspace-table td a {
     max-width: 100%;
     min-width: 0;
@@ -4912,9 +4917,8 @@ select:focus-visible,
 
   .overview-workspace-table td:first-child a strong,
   .overview-workspace-table td:first-child a small {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   .overview-workspace-table .status-pill {
@@ -5905,10 +5909,10 @@ select:focus-visible,
 
 /* Console base theme. */
 :root {
-  --action: #0d9488;
+  --action: #0f766e;
   --action-hover: #115e59;
   --action-soft: #f0fdfa;
-  --canvas: #ffffff;
+  --canvas: #f6f8fa;
   --sidebar-surface: #f7fafc;
   --surface: #ffffff;
   --soft: #f7fafc;
