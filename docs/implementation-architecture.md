@@ -1143,6 +1143,22 @@ only read exact absence. It does not rewrite the original destroy, settle a char
 Workspace deletion receipt; the existing owners continue those obligations. Instance owns the
 protected invocation, installation admission and redacted execution receipt.
 
+Fabric's separate `GET /fabric/storage-volumes/{id}/destroy-status` reads the
+original storage destroy journal's frozen identity and phase, then observes CBS
+and the exact PV/PVC without changing the journal or resource cache. The operator
+`POST /fabric/storage-volumes/{id}/release-recycled` accepts the original account,
+Workspace and destroy operation plus `RELEASE_ORIGINAL_RECYCLED_CBS`. Its
+`storage_final_release.go` owner holds the original storage destroy lock and
+atomically claims an independent `storage_final_release` dispatch fence with a
+deterministic primary key before one provider call. Database uniqueness fences
+sends even if the original advisory-lock connection is lost. Tencent requires a freshly observed, exactly owned prepaid CBS in
+`TORECYCLE` and confirmed binding absence before the final `TerminateDisks` call.
+A replay, restart or lost response only reads the original disk; it never sends
+another final release. `TORECYCLE` remains retained data. Only exact provider
+`NOT_FOUND`, absent bindings and the existing terminal destroy evidence can
+confirm physical absence. The original Workspace deletion still owns its receipt
+and separate refund; Instance owns protected invocation and installation proof.
+
 Each Workspace operation owns renewal intent and one combined monthly debit.
 Compute and storage rows are provider facts, not independent customer renewal
 controls. The existing monthly worker wakes at the next known renewal/expiry
