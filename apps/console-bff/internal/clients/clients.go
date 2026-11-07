@@ -184,7 +184,7 @@ func Dial(config Config) (*Clients, error) {
 		clients.ledger = api.NewLedgerProductServiceClient(conn)
 	}
 	if addr := strings.TrimSpace(config.Addresses[owneridentity.Fabric]); addr != "" {
-		options, err := config.TLS.DialOptions(owneridentity.ConsoleBFF, owneridentity.Fabric.Service(), config.Tokens[owneridentity.Fabric])
+		options, err := config.TLS.DialOptions(owneridentity.ConsoleBFF, owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Fabric), config.Tokens[owneridentity.Fabric])
 		if err != nil {
 			clients.Close()
 			return nil, err

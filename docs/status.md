@@ -36,8 +36,13 @@ independent platform-admin authorization does not grant resource mutations.
 This source change requires owner PostgreSQL, BFF HTTP/gRPC, platform authorization
 and desktop/mobile browser verification against the current mainline base.
 Earlier focused evidence on `a7e793f8` is not verification of this revision.
-Generated-contract freshness passed after replay onto `5091aaae`; current
-behavior verification is recorded in the PR. No Candidate was built, no Instance
+The mainline focused gate passed with isolated PostgreSQL: 1,160 Go test/subtest
+events, 15 Node tests and 8 browser tests, with zero test failures/skips/TODOs.
+Generated-contract freshness, typechecks and whitespace passed. The first PR CI
+identified the transport-principal convention and long-label layout overflow;
+follow-up verification and exact-revision CI are recorded in the PR. The unused
+internal CP Workspace list/detail aliases are removed with the BFF adapters;
+retained public reads and independent CP obligations remain. No Candidate was built, no Instance
 was deployed and no production resource or financial action was performed.
 Installed Admin/Customer consistency still requires the exact Candidate and owner
 configuration to be adopted through Instance's protected deployment boundary.

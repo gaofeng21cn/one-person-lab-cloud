@@ -1400,7 +1400,9 @@ an independent `readOperatorResources` platform decision. Fabric validates the
 persisted ownership and admits Console BFF for this read only. BFF projects
 resource facts and evidence references without exposing execution bindings or
 application placement. No cross-owner SQL, replica state or retained CP read
-participates in this path.
+participates in this path. The now-unused internal CP Workspace list/detail
+aliases and their BFF adapters are removed together; legacy `/api/operator/workspaces`
+continues to read retained objects for its existing callers.
 
 Cloud overview replaces the retained Workspace count with Workspace's total.
 It does not reinterpret CP runtime observations as Fabric's native resource total;
