@@ -20,11 +20,25 @@ import (
 // ReadResources returns only Fabric's persisted facts. Missing provider
 // references remain not_dispatched and cannot become execution bindings.
 func (s *Service) ReadResources(ctx context.Context, r *api.ResourceReadbackRequest) (*api.ResourceReadback, error) {
-	if err := peer(ctx, owneridentity.Workspace.Service(), owneridentity.Serve.Service()); err != nil {
+	if err := peer(ctx, owneridentity.Workspace.Service(), owneridentity.Serve.Service(), owneridentity.ConsoleBFF); err != nil {
 		return nil, err
 	}
 	if err := ownerservice.ValidateCallContext(ctx, r.GetContext()); err != nil {
 		return nil, err
+	}
+	caller, _ := ownerservice.PeerOwner(ctx)
+	operatorRead := caller == owneridentity.ConsoleBFF
+	if operatorRead {
+		call := r.GetContext()
+		if strings.TrimSpace(call.GetSessionId()) == "" || call.GetAcceptedOperationGrantId() != "" {
+			return nil, status.Error(codes.Unauthenticated, "operator resource reads require an interactive session")
+		}
+		if call.GetScope().GetPlatform() == nil {
+			return nil, status.Error(codes.PermissionDenied, "operator resource reads require platform scope")
+		}
+		if strings.TrimSpace(r.GetResourceSetId()) == "" || strings.TrimSpace(r.GetWorkspaceId()) == "" || r.GetResourceActionId() != "" || r.GetOriginalProvisionIdempotencyKey() != "" {
+			return nil, status.Error(codes.InvalidArgument, "operator resource reads require an exact resource set and Workspace")
+		}
 	}
 	if r.GetOriginalProvisionIdempotencyKey() != "" {
 		return s.readOriginalResources(ctx, r)
@@ -54,7 +68,14 @@ func (s *Service) ReadResources(ctx context.Context, r *api.ResourceReadbackRequ
 	if err = tx.QueryRowContext(ctx, `SELECT tenant_id,workspace_id,observation_result,observed_at,updated_at FROM fabric.resource_sets WHERE id=$1`, setID).Scan(&tenant, &workspace, &observation, &observed, &updated); err != nil {
 		return nil, persistenceError(err)
 	}
-	if err = s.authorizeWorkspace(ctx, r.Context, workspace, tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES); err != nil {
+	if operatorRead {
+		if workspace != r.GetWorkspaceId() {
+			return nil, status.Error(codes.PermissionDenied, "resource set belongs to another Workspace")
+		}
+		if err = s.Authorize(ctx, r.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READOPERATORRESOURCES, &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, Id: &workspace}, ownerservice.ResourceScope{}); err != nil {
+			return nil, err
+		}
+	} else if err = s.authorizeWorkspace(ctx, r.Context, workspace, tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES); err != nil {
 		return nil, err
 	}
 	value, ok := api.Observation_value["OBSERVATION_"+strings.ToUpper(observation)]

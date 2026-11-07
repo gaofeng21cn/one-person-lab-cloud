@@ -73,6 +73,8 @@ var actions = map[api.AuthorizationActionEnum]actionPolicy{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SUSPENDTENANT:                         {api.OwnerEnum_OWNER_ENUM_TENANT, []string{"platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESTORETENANT:                         {api.OwnerEnum_OWNER_ENUM_TENANT, []string{"platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANTASSETCUSTODY:                 {api.OwnerEnum_OWNER_ENUM_TENANT, []string{"platform_admin"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORWORKSPACES:                {api.OwnerEnum_OWNER_ENUM_WORKSPACE, []string{"platform_admin"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACE:                  {api.OwnerEnum_OWNER_ENUM_WORKSPACE, []string{"platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTADMINOPERATIONS:                   {api.OwnerEnum_OWNER_ENUM_WORKSPACE, []string{"platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RECONCILEOPERATION:                    {api.OwnerEnum_OWNER_ENUM_WORKSPACE, []string{"platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTAUDITEVENTS:                       {api.OwnerEnum_OWNER_ENUM_TENANT, []string{"platform_admin"}},
@@ -112,6 +114,7 @@ var actions = map[api.AuthorizationActionEnum]actionPolicy{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPLANCHANGES:                       {api.OwnerEnum_OWNER_ENUM_WORKSPACE, []string{"member"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPLANCHANGE:                         {api.OwnerEnum_OWNER_ENUM_WORKSPACE, []string{"member"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CANCELPLANCHANGE:                      {api.OwnerEnum_OWNER_ENUM_WORKSPACE, []string{"admin", "owner"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READOPERATORRESOURCES:                 {api.OwnerEnum_OWNER_ENUM_FABRIC, []string{"platform_admin"}},
 }
 
 // serveUpdateActions is the implemented subset of update_workspace.

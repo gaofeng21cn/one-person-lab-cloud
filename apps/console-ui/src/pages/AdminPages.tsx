@@ -21,7 +21,7 @@ import type { AdminConsoleRoute } from "../app/console-router.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
 import { cloudIdentity } from "../app/console-identity.ts";
 import { recoverWorkspaceLaunch, getWorkspaceLaunchRecovery } from "../api/console-read-api.ts";
-import { presentWorkspaceLaunchCloseout } from "../app/workspace-experience-model.ts";
+import { presentWorkspaceLaunchCloseout, presentWorkspaceLifecycle } from "../app/workspace-experience-model.ts";
 import type {
   AnnouncementDTO,
   AnnouncementDraftRequest,
@@ -35,6 +35,7 @@ import type {
   ReadinessFact,
   SourceEnvelope,
   WalletAdjustmentRequest,
+  WorkspaceDTO,
   WorkspaceLaunchRecoveryDTO,
   WorkspaceLaunchRecoveryRequest
 } from "../api/dtos.ts";
@@ -93,6 +94,50 @@ function statusTone(status?: string): BadgeTone {
   if (["disabled", "failed"].includes(status || "")) return "danger";
   if (["manual_review", "scheduled", "processing", "queued"].includes(status || "")) return "warning";
   return "secondary";
+}
+
+function resourceKindLabel(kind?: string) {
+  return ({ compute: "计算资源", storage: "存储", attachment: "挂载", runtime: "运行环境", execution: "运行资源" } as Record<string, string>)[kind || ""] || kind || "资源类型暂不可用";
+}
+
+function resourcesUnavailable(item: OperatorWorkspaceDTO): boolean {
+  return item.resourcesReadback?.available === false
+    || item.workspace.source === "workspace" && !item.resourcesReadback;
+}
+
+function WorkspaceOwnerFacts({ item }: { item: OperatorWorkspaceDTO }) {
+  const facts = [
+    { label: "业务状态", read: (workspace: WorkspaceDTO) => presentWorkspaceLifecycle(workspace.state).label },
+    { label: "资源就绪", read: (workspace: WorkspaceDTO) => workspace.resourceReadiness
+      ? ({ pending: "处理中", ready: "已就绪", unavailable: "不可用", unknown: "待确认" } as Record<string, string>)[workspace.resourceReadiness] || "待确认"
+      : "暂不可用" },
+    { label: "应用可用", read: (workspace: WorkspaceDTO) => workspace.applicationAvailability
+      ? ({ pending: "处理中", available: "可用", unavailable: "不可用", unknown: "待确认" } as Record<string, string>)[workspace.applicationAvailability] || "待确认"
+      : "暂不可用" }
+  ];
+  return <>{facts.map(({ label, read }) => <div key={label}>
+    <dt>{label}</dt><dd><SourceOwner source={item.workspace} /><SourceValue source={item.workspace}>{read}</SourceValue></dd>
+  </div>)}</>;
+}
+
+function EmptyResourceFacts({ item }: { item: OperatorWorkspaceDTO }) {
+  const readback = item.resourcesReadback;
+  if (readback?.available) {
+    if (readback.data.absenceConfirmed) return null;
+    return <span>{readback.data.outcome === "unknown" ? "资源事实尚未核验" : "Fabric 未返回资源事实"}</span>;
+  }
+  return <span>暂无资源观测</span>;
+}
+
+function OwnershipSources({ item }: { item: OperatorWorkspaceDTO }) {
+  const cloudOwned = item.workspace.source === "workspace";
+  if (!cloudOwned) {
+    return <span className="ops-owner"><SourceValue source={item.ownerAccount}>{(data) => data.id}</SourceValue><small><SourceValue source={item.ownerUser}>{(data) => data.email}</SourceValue></small></span>;
+  }
+  return <span className="ops-owner">
+    <span><strong>Tenant</strong> <SourceOwner source={item.tenant} /><SourceValue source={item.tenant}>{(data) => data.id}</SourceValue></span>
+    <small><strong>创建者</strong> <SourceOwner source={item.createdBy} /><SourceValue source={item.createdBy}>{(data) => data.id}</SourceValue></small>
+  </span>;
 }
 
 function SourceBadge({ source }: { source: SourceEnvelope<unknown> | null | undefined }) {
@@ -237,7 +282,7 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
     { label: "OPL 账户 Gateway 汇总余额", source: overview.wallet },
     { label: "OPL 账户 Gateway Key", source: overview.keys },
     { label: "OPL 账户 Gateway API 用量", source: overview.usage },
-    { label: "Control Plane Workspace", source: overview.workspaces },
+    { label: overview.workspaces.source === "workspace" ? "Workspace" : "历史 CP Workspace", source: overview.workspaces },
     { label: "Fabric 资源", source: overview.resources },
     { label: "Ledger 计费复核", source: overview.reconciliation },
     { label: "系统健康", source: overview.health }
@@ -258,7 +303,7 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
         <div className="account-band-copy"><h2>运营总览</h2></div>
         <div className="band-metrics operator-metrics">
           <Metric label="计费账户" note={accountsTotal === null ? "来源暂不可用" : `正常 ${formatCount(accountsActive ?? 0)} · 停用 ${formatCount(accountsDisabled ?? 0)}`} value={accountsTotal === null ? "暂不可用" : formatCount(accountsTotal)} />
-          <Metric label="Workspace" note="Control Plane" value={overview?.workspaces.available ? formatCount(overview.workspaces.data.total) : "暂不可用"} />
+          <Metric label="Workspace" note={cloudIdentity ? "Workspace owner" : "历史 Control Plane"} value={overview?.workspaces.available ? formatCount(overview.workspaces.data.total) : "暂不可用"} />
           <Metric label="资源" note="Fabric 聚合" value={overview?.resources.available ? formatCount(overview.resources.data.total) : "暂不可用"} />
           <Metric label="待复核" note="Ledger / Control Plane" value={reconciliationCount === null ? "暂不可用" : formatCount(reconciliationCount)} />
         </div>
@@ -335,7 +380,7 @@ function AccountSourceSummary({ account }: { account: OperatorAccountDTO }) {
     { label: "余额", source: account.wallet },
     { label: "Key", source: account.keyCount },
     { label: "API", source: account.usage },
-    { label: "Workspace", source: account.workspaceCount }
+    { label: "历史 CP Workspace", source: account.workspaceCount }
   ];
   return <div className="account-source-summary">{sources.map(({ label, source }) => <div className="account-source-summary__item" key={label}><span>{label}</span><SourceBadge source={source} /><small>{source.source} · {formatDate(source.fetchedAt, true)}</small></div>)}</div>;
 }
@@ -385,7 +430,7 @@ function OperatorAccountMobileCard({ account, controller, openAccount }: {
         <div className="operator-object-card__wide"><dt>账户映射</dt><dd><span className="account-mapping-stack"><span><small>OPL Account</small><code>{account.accountId}</code></span><span><small>Console User</small><code>{account.consoleUserId}</code></span><span><small>Sub2API User</small><code>{account.sub2apiUserId}</code></span></span></dd></div>
         <div><dt>余额</dt><dd><AccountFact source={account.wallet}>{(wallet) => <span className="account-balance-stack"><strong>{formatUsdMicros(wallet.usdMicros)}</strong><small>{statusLabel(wallet.status)}</small></span>}</AccountFact></dd></div>
         <div><dt>API 费用</dt><dd><AccountFact source={account.usage}>{(usage) => <span className="account-cost-stack"><span><small>今日</small><strong>{formatUsdMicros(usage.todayActualCostUsdMicros)}</strong></span><span><small>累计</small><strong>{formatUsdMicros(usage.totalActualCostUsdMicros)}</strong></span></span>}</AccountFact></dd></div>
-        <div><dt>资源</dt><dd><span className="account-resource-stack"><span><small>Key</small><strong><AccountFact source={account.keyCount}>{formatCount}</AccountFact></strong></span><span><small>Workspace</small><strong><AccountFact source={account.workspaceCount}>{formatCount}</AccountFact></strong></span></span></dd></div>
+        <div><dt>资源</dt><dd><span className="account-resource-stack"><span><small>Key</small><strong><AccountFact source={account.keyCount}>{formatCount}</AccountFact></strong></span><span><small>历史 CP Workspace</small><strong><AccountFact source={account.workspaceCount}>{formatCount}</AccountFact></strong></span></span></dd></div>
         <div><dt>状态</dt><dd><span className="account-status-stack"><Badge color={statusTone(account.status)}>{statusLabel(account.status)}</Badge><Badge color={account.workspacePurchaseEnabled ? "success" : "secondary"}>{account.workspacePurchaseEnabled ? "可新购 Workspace" : "不可新购 Workspace"}</Badge></span></dd></div>
       </dl>
       <AccountActions account={account} controller={controller} openAccount={openAccount} />
@@ -485,7 +530,7 @@ function AccountDetailModal({ account, onClose }: { account: OperatorAccountDTO 
             <div><dt>钱包余额</dt><dd><SourceValue source={account.wallet}>{(data) => `${formatUsdMicros(data.usdMicros)} · ${data.status}`}</SourceValue></dd></div>
             <div><dt>Key 汇总</dt><dd><SourceValue source={account.keyCount}>{formatCount}</SourceValue></dd></div>
             <div><dt>API Usage</dt><dd><SourceValue source={account.usage}>{(data) => `今日 ${formatUsdMicros(data.todayActualCostUsdMicros)} · 累计 ${formatUsdMicros(data.totalActualCostUsdMicros)}`}</SourceValue></dd></div>
-            <div><dt>Workspace 汇总</dt><dd><SourceValue source={account.workspaceCount}>{formatCount}</SourceValue></dd></div>
+            <div><dt>历史 CP Workspace 汇总</dt><dd><SourceValue source={account.workspaceCount}>{formatCount}</SourceValue></dd></div>
           </dl></section>
           <section className="data-section account-source-detail"><h2>来源状态与读回时间</h2><AccountSourceSummary account={account} /></section>
         </div>
@@ -617,7 +662,7 @@ function AccountsPage({ controller }: { controller: ConsoleController }) {
               <td><span className="account-mapping-stack"><span><small>OPL Account</small><code>{account.accountId}</code></span><span><small>Console User</small><code>{account.consoleUserId}</code></span><span><small>Sub2API User</small><code>{account.sub2apiUserId}</code></span></span></td>
               <td><AccountFact source={account.wallet}>{(wallet) => <span className="account-balance-stack"><strong>{formatUsdMicros(wallet.usdMicros)}</strong><small>{statusLabel(wallet.status)}</small></span>}</AccountFact></td>
               <td><AccountFact source={account.usage}>{(usage) => <span className="account-cost-stack"><span><small>今日</small><strong>{formatUsdMicros(usage.todayActualCostUsdMicros)}</strong></span><span><small>累计</small><strong>{formatUsdMicros(usage.totalActualCostUsdMicros)}</strong></span></span>}</AccountFact></td>
-              <td><span className="account-resource-stack"><span><small>Key</small><strong><AccountFact source={account.keyCount}>{formatCount}</AccountFact></strong></span><span><small>Workspace</small><strong><AccountFact source={account.workspaceCount}>{formatCount}</AccountFact></strong></span></span></td>
+              <td><span className="account-resource-stack"><span><small>Key</small><strong><AccountFact source={account.keyCount}>{formatCount}</AccountFact></strong></span><span><small>历史 CP Workspace</small><strong><AccountFact source={account.workspaceCount}>{formatCount}</AccountFact></strong></span></span></td>
               <td><span className="account-status-stack"><Badge color={statusTone(account.status)}>{statusLabel(account.status)}</Badge><Badge color={account.workspacePurchaseEnabled ? "success" : "secondary"}>{account.workspacePurchaseEnabled ? "可新购 Workspace" : "不可新购 Workspace"}</Badge></span></td>
               <td className="table-actions"><AccountActions account={account} controller={controller} openAccount={openAccount} /></td>
             </tr>
@@ -811,17 +856,49 @@ function ReconciliationPage({ controller }: { controller: ConsoleController }) {
 function ResourceObservation({ resource, showReadTime = false }: { resource: OperatorResourceDTO; showReadTime?: boolean }) {
   const reason = sourceData(resource.providerErrorCode);
   return <div className="operator-resource-observation">
-    <SourceValue source={resource.status}>{observationLabel}</SourceValue>
+    <SourceOwner source={resource.status} />
+    <SourceValue source={resource.status}>{fabricObservationLabel}</SourceValue>
     {resource.status.available && reason ? <small>{observationReason(reason)}</small> : null}
     {showReadTime ? <small>读取时间：{resource.lastReadAt.available ? formatDate(resource.lastReadAt.data, true) : "暂不可用"}</small> : null}
   </div>;
 }
 
-function WorkspaceResourceObservations({ resources }: { resources: OperatorResourceDTO[] }) {
-  return resources.length ? <div className="operator-workspace-observations">{resources.map((resource, index) => <div key={index}>
-    <strong>{resource.resourceType.available ? ({ compute: "计算资源", storage: "存储", attachment: "挂载", runtime: "运行环境" } as Record<string, string>)[resource.resourceType.data] || resource.resourceType.data : "资源类型暂不可用"}</strong>
-    <ResourceObservation resource={resource} showReadTime />
-  </div>)}</div> : <span>暂无资源观测</span>;
+function SourceOwner({ source }: { source: SourceEnvelope<unknown> | undefined }) {
+  return source ? <small>来源：{source.source}</small> : null;
+}
+
+function ResourceReadback({ item }: { item: OperatorWorkspaceDTO }) {
+  const readback = item.resourcesReadback;
+  if (!readback) {
+    return item.workspace.source === "workspace"
+      ? <div className="source-value source-value--unavailable">资源读回暂不可用：Workspace 响应缺少资源读回</div>
+      : null;
+  }
+  if (readback.available === false) {
+    return <div className="source-value source-value--unavailable"><strong>资源读回暂不可用：{observationReason(readback.reasonCode)}</strong><SourceOwner source={readback} /></div>;
+  }
+  return <div className="source-value operator-resources-readback">
+    <SourceOwner source={readback} />
+    <span>Fabric 观测：{fabricObservationLabel(readback.data.outcome)}</span>
+    <small>资源版本：{readback.data.resourceVersion || "暂不可用"}</small>
+    <small>观测时间：{readback.data.observedAt ? formatDate(readback.data.observedAt, true) : "暂不可用"}</small>
+    {readback.data.absenceConfirmed ? <strong>Fabric 已确认资源不存在</strong> : null}
+  </div>;
+}
+
+function fabricObservationLabel(state: string) {
+  return ({ confirmed: "已确认", rejected: "已拒绝", not_dispatched: "尚未下发" } as Record<string, string>)[state] || observationLabel(state);
+}
+
+function WorkspaceResourceObservations({ item }: { item: OperatorWorkspaceDTO }) {
+  const unavailable = resourcesUnavailable(item);
+  return <div className="operator-workspace-observations">
+    <ResourceReadback item={item} />
+    {!unavailable ? item.resources.length ? item.resources.map((resource, index) => <div key={index}>
+      <strong>{resource.resourceType.available ? resourceKindLabel(resource.resourceType.data) : "资源类型暂不可用"}</strong>
+      <ResourceObservation resource={resource} showReadTime />
+    </div>) : <EmptyResourceFacts item={item} /> : null}
+  </div>;
 }
 
 function ResourceRow({ resource }: { resource: OperatorResourceDTO }) {
@@ -888,17 +965,22 @@ function ResourceDetail({ controller }: { controller: OperatorResourceReadContro
       <SourceState error={controller.detail.error} loading={controller.detail.loading} onRetry={() => void controller.refreshWorkspace(selected)} source={controller.detail.value} unavailableTitle="资源详情暂不可用">
         {(detail) => <>
           <dl className="data-list">
-            <div><dt>owner Account</dt><dd><SourceValue source={detail.ownerAccount}>{(data) => data.id}</SourceValue></dd></div>
-            <div><dt>owner User</dt><dd><SourceValue source={detail.ownerUser}>{(data) => `${data.email} · ${data.id}`}</SourceValue></dd></div>
+            <div><dt>归属</dt><dd><OwnershipSources item={detail} /></dd></div>
+            {detail.workspace.source === "workspace" ? <>
+              <div><dt>Account 映射</dt><dd><SourceValue source={detail.ownerAccount}>{(data) => data.id}</SourceValue></dd></div>
+              <div><dt>User 映射</dt><dd><SourceValue source={detail.ownerUser}>{(data) => `${data.email} · ${data.id}`}</SourceValue></dd></div>
+            </> : null}
             <div><dt>Workspace</dt><dd><SourceValue source={detail.workspace}>{(data) => `${data.name || data.id} · ${data.id}`}</SourceValue></dd></div>
-            <div><dt>业务状态</dt><dd><SourceValue source={detail.workspace}>{(data) => statusLabel(data.state)}</SourceValue></dd></div>
+            <WorkspaceOwnerFacts item={detail} />
             <div><dt>Ledger Receipt</dt><dd><SourceValue source={detail.receipt}>{(data) => data.receiptId}</SourceValue></dd></div>
             <div><dt>Workspace Key 累计实际费用</dt><dd><SourceValue source={detail.workspaceKeyUsage}>{(data) => `${formatUsdMicros(data.totalActualCostUsdMicros)} · ${data.keyId}`}</SourceValue></dd></div>
           </dl>
-          {detail.resources.length ? <>
-            <div className="table-wrap operator-resource-detail-table"><table className="ops-table resource-detail-cards"><thead><tr className="sr-only"><th>归属账户</th><th>归属用户</th><th>Workspace</th><th>资源类型</th><th>套餐 / 规格</th><th>provider ID</th><th>Zone</th><th>实时状态</th><th>创建时间</th><th>到期时间</th><th>最近 provider 读回</th><th>operation reference</th><th>Receipt reference</th></tr></thead><tbody>{detail.resources.map((resource, index) => <ResourceRow key={`${index}-${resource.providerId.source}-${resource.operationRef.source}`} resource={resource} />)}</tbody></table></div>
-            <div className="operator-resource-mobile-list">{detail.resources.map((resource, index) => <OperatorResourceMobileCard key={`${index}-${resource.providerId.source}-${resource.operationRef.source}`} resource={resource} />)}</div>
-          </> : <div className="empty-panel">暂无资源</div>}
+          <ResourceReadback item={detail} />
+          {resourcesUnavailable(detail) ? null
+            : detail.resources.length ? <>
+              <div className="table-wrap operator-resource-detail-table"><table className="ops-table resource-detail-cards"><thead><tr className="sr-only"><th>归属账户</th><th>归属用户</th><th>Workspace</th><th>资源类型</th><th>套餐 / 规格</th><th>provider ID</th><th>Zone</th><th>实时状态</th><th>创建时间</th><th>到期时间</th><th>最近 provider 读回</th><th>operation reference</th><th>Receipt reference</th></tr></thead><tbody>{detail.resources.map((resource, index) => <ResourceRow key={`${index}-${resource.providerId.source}-${resource.operationRef.source}`} resource={resource} />)}</tbody></table></div>
+              <div className="operator-resource-mobile-list">{detail.resources.map((resource, index) => <OperatorResourceMobileCard key={`${index}-${resource.providerId.source}-${resource.operationRef.source}`} resource={resource} />)}</div>
+            </> : <div className="empty-panel"><EmptyResourceFacts item={detail} /></div>}
         </>}
       </SourceState>
     </section>
@@ -912,13 +994,14 @@ function OperatorWorkspaceMobileCard({ controller, item }: { controller: Operato
     <article className="operator-object-card operator-workspace-mobile-card">
       <header className="operator-object-card__header">
         <span><strong>{workspace?.name || id || "Workspace 暂不可用"}</strong><small>{id || "身份暂不可用"}</small></span>
-        <SourceValue source={item.workspace}>{(value) => statusLabel(value.state)}</SourceValue>
+        <SourceValue source={item.workspace}>{(value) => presentWorkspaceLifecycle(value.state).label}</SourceValue>
       </header>
       <dl className="operator-object-card__facts">
+        <div className="operator-object-card__wide"><dt>归属</dt><dd><OwnershipSources item={item} /></dd></div>
         <div><dt>套餐 / 月费</dt><dd><SourceValue source={item.workspace}>{(value) => `${value.packageId?.toUpperCase() || "暂不可用"} · ${value.totalUsdMicros === undefined ? "暂不可用" : formatUsdMicros(value.totalUsdMicros)}`}</SourceValue></dd></div>
         <div><dt>权益截止</dt><dd><SourceValue source={item.workspace}>{(value) => value.paidThrough ? formatDate(value.paidThrough) : "暂不可用"}</SourceValue></dd></div>
-        <div><dt>业务状态</dt><dd><SourceValue source={item.workspace}>{(value) => statusLabel(value.state)}</SourceValue></dd></div>
-        <div className="operator-object-card__wide"><dt>资源现态</dt><dd><WorkspaceResourceObservations resources={item.resources} /></dd></div>
+        <WorkspaceOwnerFacts item={item} />
+        <div className="operator-object-card__wide"><dt>Fabric 观测</dt><dd><WorkspaceResourceObservations item={item} /></dd></div>
         <div className="operator-object-card__wide"><dt>Key 累计实际费用</dt><dd><SourceValue source={item.workspaceKeyUsage}>{(value) => formatUsdMicros(value.totalActualCostUsdMicros)}</SourceValue></dd></div>
       </dl>
       <div className="operator-card-actions">
@@ -937,11 +1020,11 @@ function ResourcesPage({ controller }: { controller: OperatorResourceReadControl
         <div className="panel-title"><div><h2>Workspace 资源列表</h2></div><span>当前页资源状态</span></div>
         <SourceState empty={workspaces.length === 0} emptyTitle="暂无 Workspace" error={controller.workspaces.error} loading={controller.workspaces.loading} onRetry={() => void controller.refresh()} source={controller.workspaces.value} unavailableTitle="Workspace 资源暂不可用">
           {(data) => <>
-            <div className="table-wrap operator-workspace-table"><table className="ops-table"><thead><tr><th>Workspace</th><th>归属</th><th>套餐 / 月费</th><th>权益截止</th><th>业务状态</th><th>资源现态 / 读取时间</th><th>入口</th><th>Key 累计费用</th><th>操作</th></tr></thead><tbody>{data.items.map((item, index) => {
+            <div className="table-wrap operator-workspace-table"><table className="ops-table"><thead><tr><th>Workspace</th><th>归属</th><th>套餐 / 月费</th><th>权益截止</th><th>Workspace 状态</th><th>Fabric 观测 / 读取时间</th><th>入口</th><th>Key 累计费用</th><th>操作</th></tr></thead><tbody>{data.items.map((item, index) => {
               const workspace = sourceData(item.workspace);
               const id = workspace?.id || "";
               const state = sourceData(item.workspace)?.state;
-              return <tr key={id || index} data-state={state || ""}><td><SourceValue source={item.workspace}>{(value) => `${value.name || value.id} · ${value.id}`}</SourceValue></td><td><span className="ops-owner"><SourceValue source={item.ownerAccount}>{(value) => value.id}</SourceValue><small><SourceValue source={item.ownerUser}>{(value) => value.email}</SourceValue></small></span></td><td><SourceValue source={item.workspace}>{(value) => `${value.packageId?.toUpperCase() || "暂不可用"} · ${value.totalUsdMicros === undefined ? "暂不可用" : formatUsdMicros(value.totalUsdMicros)}`}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.paidThrough ? formatDate(value.paidThrough) : "暂不可用"}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => <Badge color={statusTone(value.state)}>{statusLabel(value.state)}</Badge>}</SourceValue></td><td><WorkspaceResourceObservations resources={item.resources} /></td><td>{workspace?.url ? <a href={workspace.url} rel="noreferrer" target="_blank">打开<ExternalLink aria-hidden size={14} /></a> : "暂不可用"}</td><td><SourceValue source={item.workspaceKeyUsage}>{(value) => formatUsdMicros(value.totalActualCostUsdMicros)}</SourceValue></td><td><Button disabled={!id} onClick={() => id && void controller.selectWorkspace(id)} size="sm" variant="outline">查看资源</Button></td></tr>;
+              return <tr key={id || index} data-state={state || ""}><td><SourceValue source={item.workspace}>{(value) => `${value.name || value.id} · ${value.id}`}</SourceValue></td><td><OwnershipSources item={item} /></td><td><SourceValue source={item.workspace}>{(value) => `${value.packageId?.toUpperCase() || "暂不可用"} · ${value.totalUsdMicros === undefined ? "暂不可用" : formatUsdMicros(value.totalUsdMicros)}`}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.paidThrough ? formatDate(value.paidThrough) : "暂不可用"}</SourceValue></td><td><dl className="operator-workspace-owner-facts"><WorkspaceOwnerFacts item={item} /></dl></td><td><WorkspaceResourceObservations item={item} /></td><td>{workspace?.url ? <a href={workspace.url} rel="noreferrer" target="_blank">打开<ExternalLink aria-hidden size={14} /></a> : "暂不可用"}</td><td><SourceValue source={item.workspaceKeyUsage}>{(value) => formatUsdMicros(value.totalActualCostUsdMicros)}</SourceValue></td><td><Button disabled={!id} onClick={() => id && void controller.selectWorkspace(id)} size="sm" variant="outline">查看资源</Button></td></tr>;
             })}</tbody></table></div>
             <div className="operator-workspace-mobile-list">{data.items.map((item, index) => <OperatorWorkspaceMobileCard controller={controller} item={item} key={sourceData(item.workspace)?.id || index} />)}</div>
           </>}

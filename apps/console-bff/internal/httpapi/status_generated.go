@@ -85,6 +85,8 @@ var successStatus = map[api.AuthorizationActionEnum]int{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SUSPENDTENANT:                         202,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESTORETENANT:                         202,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANTASSETCUSTODY:                 200,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORWORKSPACES:                200,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACE:                  200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTADMINOPERATIONS:                   200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RECONCILEOPERATION:                    202,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTAUDITEVENTS:                       200,

@@ -4047,6 +4047,47 @@ paths:
         in: path
         required: true
         schema: *id003
+  /api/v2/operator/workspaces:
+    get:
+      operationId: listOperatorWorkspaces
+      summary: List Workspace-owner identities for platform administration
+      tags: [workspace]
+      x-owner: workspace
+      x-feature-id: [F17]
+      x-permission: [platform_admin]
+      x-tables: [workspace.workspaces, workspace.operations]
+      description: Workspace owns the complete set and resource-set references; BFF composes Fabric observations without querying retained Control Plane Workspace tables.
+      parameters:
+      - {name: page, in: query, schema: {type: integer, minimum: 1, maximum: 2147483647, default: 1}}
+      - {name: pageSize, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 20}}
+      responses:
+        '200':
+          description: Workspace-owner page composed with separately attributed Fabric readbacks.
+          content:
+            application/json:
+              schema: {$ref: '#/x-operator-presentation-schemas/OperatorWorkspaceSourcePage'}
+        '403': {$ref: '#/components/responses/ErrorResponse'}
+        '503': {$ref: '#/components/responses/ErrorResponse'}
+  /api/v2/operator/workspaces/{workspaceId}:
+    get:
+      operationId: getOperatorWorkspace
+      summary: Read a Workspace-owner identity with its Fabric observations
+      tags: [workspace]
+      x-owner: workspace
+      x-feature-id: [F17]
+      x-permission: [platform_admin]
+      x-tables: [workspace.workspaces, workspace.operations]
+      parameters:
+      - {name: workspaceId, in: path, required: true, schema: {$ref: '#/components/schemas/OpaqueId'}}
+      responses:
+        '200':
+          description: Owner-attributed Workspace and resource facts; missing observations remain unavailable.
+          content:
+            application/json:
+              schema: {$ref: '#/x-operator-presentation-schemas/OperatorWorkspaceSource'}
+        '403': {$ref: '#/components/responses/ErrorResponse'}
+        '404': {$ref: '#/components/responses/ErrorResponse'}
+        '503': {$ref: '#/components/responses/ErrorResponse'}
   /api/v2/admin/operations:
     get:
       operationId: listAdminOperations
@@ -11606,6 +11647,26 @@ components:
       - usesAcceptedPriceSnapshot
       description: 手动与已明确授权自动续费共享同subscription+period业务幂等身份；新用户默认manual，继承旧automatic不得降级。具体新周期金额必须与有效授权政策和accepted quote相符，不在worker暗中涨价。
         当前owner规则：以原paidThrough和billingAnchorDay计算nextBillingMonth；now>=renewedThrough拒绝RENEWAL_PERIOD_ELAPSED，不按恢复时间加整月、不替用户补买。Quote必须展示确切原起止和剩余可用窗口。
+    OperatorWorkspace:
+      type: object
+      additionalProperties: false
+      properties:
+        workspace: {$ref: '#/components/schemas/Workspace'}
+        tenantId: {type: string}
+        resourceSetId: {type: string}
+        createdBy: {type: string}
+        operationId: {type: string}
+      required: [workspace, tenantId, resourceSetId, createdBy, operationId]
+      description: Workspace-owner management read; resourceSetId is an opaque reference, not a copied Fabric state.
+    OperatorWorkspacePage:
+      type: object
+      additionalProperties: false
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/OperatorWorkspace'}}
+        total: {type: integer, minimum: 0}
+        page: {type: integer, minimum: 1}
+        pageSize: {type: integer, minimum: 1, maximum: 100}
+      required: [items, total, page, pageSize]
     AuthorizationAction:
       type: string
       enum:
@@ -11707,6 +11768,9 @@ components:
       - listWorkspaceTransactions
       - getWorkspaceTransactionTrend
       - listWorkspaces
+      - listOperatorWorkspaces
+      - getOperatorWorkspace
+      - readOperatorResources
       - login
       - logout
       - observeResources
@@ -13871,6 +13935,42 @@ x-publisher-contract-schema: contracts/publisher-contract.schema.json
 x-authorization: mTLS identities authenticate the calling service; CloudIdentity within Gateway Integration is the only user/tenant
   action authorizer. Services call AuthorizeAction and validate exact decision audience/action/resource/version; no BFF-trust
   shortcut.
+x-operator-presentation-schemas:
+  OperatorWorkspaceSource:
+    type: object
+    description: BFF presentation of Workspace identity and independently attributed Fabric observations. Unavailable facts omit data and carry reasonCode.
+    properties:
+      source: {type: string, pattern: "^workspace\\+fabric$"}
+      status: {type: string}
+      available: {type: boolean, enum: [true]}
+      fetchedAt: {type: string, format: date-time}
+      data: {type: object}
+    required: [source, status, available, fetchedAt, data]
+  OperatorWorkspaceSourcePage:
+    type: object
+    properties:
+      source: {type: string, pattern: "^workspace\\+fabric$"}
+      status: {type: string}
+      available: {type: boolean, enum: [true]}
+      fetchedAt: {type: string, format: date-time}
+      data:
+        type: object
+        properties:
+          items: {type: array, items: {type: object}}
+          total: {type: integer, minimum: 0}
+          page: {type: integer, minimum: 1}
+          pageSize: {type: integer, minimum: 1, maximum: 50}
+        required: [items, total, page, pageSize]
+    required: [source, status, available, fetchedAt, data]
+x-internal-action-policies:
+  readOperatorResources:
+    owner: fabric
+    permission: [platform_admin]
+    rpc: FabricCoordination.ReadResources
+    callers: [console_bff]
+    scope: platform
+    resource: workspace
+    description: Interactive read of one exact Workspace/resource-set pair; never authorizes mutations or original-provision/action selectors.
 x-service-action-allowlist:
   console_bff:
   - acceptInvitation
@@ -13952,6 +14052,9 @@ x-service-action-allowlist:
   - listWebuiVersions
   - listWorkspaceTransactions
   - listWorkspaces
+  - listOperatorWorkspaces
+  - getOperatorWorkspace
+  - readOperatorResources
   - login
   - logout
   - publishOfficialPackage

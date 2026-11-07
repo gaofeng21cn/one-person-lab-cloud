@@ -2312,6 +2312,46 @@
       ],
       "tables": [],
       "operationKind": null
+    },
+    {
+      "path": "/api/v2/operator/workspaces",
+      "method": "GET",
+      "operationId": "listOperatorWorkspaces",
+      "features": [
+        "F17"
+      ],
+      "owner": "workspace",
+      "request": null,
+      "response": "OperatorWorkspaceSourcePage",
+      "status": 200,
+      "permissions": [
+        "platform_admin"
+      ],
+      "tables": [
+        "workspace.workspaces",
+        "workspace.operations"
+      ],
+      "operationKind": null
+    },
+    {
+      "path": "/api/v2/operator/workspaces/{workspaceId}",
+      "method": "GET",
+      "operationId": "getOperatorWorkspace",
+      "features": [
+        "F17"
+      ],
+      "owner": "workspace",
+      "request": null,
+      "response": "OperatorWorkspaceSource",
+      "status": 200,
+      "permissions": [
+        "platform_admin"
+      ],
+      "tables": [
+        "workspace.workspaces",
+        "workspace.operations"
+      ],
+      "operationKind": null
     }
   ],
   "errorCodes": [

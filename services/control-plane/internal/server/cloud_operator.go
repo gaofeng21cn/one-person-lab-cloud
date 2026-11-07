@@ -41,12 +41,6 @@ func (app *controlPlaneServer) registerCloudOperatorRoutes(mux *http.ServeMux, s
 		{"/internal/cloud/operator/accounts", pagination, func(w http.ResponseWriter, r *http.Request) {
 			app.writeOperatorAccounts(w, r, service)
 		}},
-		{"/internal/cloud/operator/workspaces", pagination, func(w http.ResponseWriter, r *http.Request) {
-			app.writeOperatorWorkspaces(w, r, service)
-		}},
-		{"/internal/cloud/operator/workspaces/{workspaceId}", nil, func(w http.ResponseWriter, r *http.Request) {
-			app.writeOperatorWorkspaceDetail(w, r, service)
-		}},
 		{"/internal/cloud/operator/announcements", pagination, func(w http.ResponseWriter, r *http.Request) {
 			app.listOperatorAnnouncements(w, r)
 		}},

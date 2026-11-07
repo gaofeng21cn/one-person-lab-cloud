@@ -58,6 +58,7 @@ func ConfigFromEnv(getenv func(string) string) Config {
 			owneridentity.ResourceCatalog: strings.TrimSpace(getenv("OPL_RESOURCE_CATALOG_URL")),
 			owneridentity.Gateway:         strings.TrimSpace(getenv("OPL_GATEWAY_URL")),
 			owneridentity.Ledger:          strings.TrimSpace(getenv("OPL_LEDGER_URL")),
+			owneridentity.Fabric:          strings.TrimSpace(getenv("OPL_FABRIC_URL")),
 		},
 		Tokens: map[owneridentity.Owner]string{
 			owneridentity.Capability:      strings.TrimSpace(getenv("OPL_CAPABILITY_TOKEN")),
@@ -68,6 +69,7 @@ func ConfigFromEnv(getenv func(string) string) Config {
 			owneridentity.ResourceCatalog: strings.TrimSpace(getenv("OPL_RESOURCE_CATALOG_TOKEN")),
 			owneridentity.Gateway:         strings.TrimSpace(getenv("OPL_GATEWAY_TOKEN")),
 			owneridentity.Ledger:          strings.TrimSpace(getenv("OPL_LEDGER_TOKEN")),
+			owneridentity.Fabric:          strings.TrimSpace(getenv("OPL_FABRIC_TOKEN")),
 		},
 		CloudIdentityAddr:  strings.TrimSpace(getenv(CloudIdentityAddressEnv)),
 		CloudIdentityToken: strings.TrimSpace(getenv(CloudIdentityTokenEnv)),
@@ -102,6 +104,7 @@ type Clients struct {
 	catalog        api.ResourceCatalogProductServiceClient
 	gateway        api.GatewayProductServiceClient
 	ledger         api.LedgerProductServiceClient
+	fabric         api.FabricCoordinationClient
 	// gatewayCoordination is the Gateway owner's typed settlement surface. The
 	// BFF drives it for the one administrator wallet binding command whose owner
 	// (tenant) authorizes the action itself; the BFF decides nothing.
@@ -179,6 +182,20 @@ func Dial(config Config) (*Clients, error) {
 		}
 		clients.conns = append(clients.conns, conn)
 		clients.ledger = api.NewLedgerProductServiceClient(conn)
+	}
+	if addr := strings.TrimSpace(config.Addresses[owneridentity.Fabric]); addr != "" {
+		options, err := config.TLS.DialOptions(owneridentity.ConsoleBFF, owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Fabric), config.Tokens[owneridentity.Fabric])
+		if err != nil {
+			clients.Close()
+			return nil, err
+		}
+		conn, err := grpc.NewClient(addr, options...)
+		if err != nil {
+			clients.Close()
+			return nil, fmt.Errorf("dial Fabric: %w", err)
+		}
+		clients.conns = append(clients.conns, conn)
+		clients.fabric = api.NewFabricCoordinationClient(conn)
 	}
 	if addr := strings.TrimSpace(config.CloudIdentityAddr); addr != "" {
 		options, err := config.TLS.DialOptions(owneridentity.ConsoleBFF, owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Tenant), config.CloudIdentityToken)
@@ -335,3 +352,7 @@ func (c *Clients) RuntimeControlClient() api.RuntimeControlProductServiceClient 
 }
 
 func (c *Clients) LedgerClient() api.LedgerProductServiceClient { return c.ledger }
+
+// FabricClient exposes only the generated coordination client; the Fabric owner
+// admits the BFF peer for platform resource reads and refuses its mutations.
+func (c *Clients) FabricClient() api.FabricCoordinationClient { return c.fabric }

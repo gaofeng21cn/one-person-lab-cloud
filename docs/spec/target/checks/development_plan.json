@@ -4,14 +4,14 @@
   "inputSHA256": {
     "00_master_index.md": "f017516cff90b4fc5a7dc5fdb474ff6945631c849411e39ed2da251b4ceae15e",
     "01_domain_ownership_matrix.md": "7f7f8724fa0568c82cc1799e804cd5c160f8474bb430c259b9c41b2ac8bb445a",
-    "03_api_contract_complete.yaml": "342f90704738157528aa161bd9cdbca76839229f4292d593d8fa842e6c6dd453",
+    "03_api_contract_complete.yaml": "af64880b75bdb19d63a6c9fbd9afbe8f4208e35debc524ed62e77bc3f572ce35",
     "12_product_spec.md": "8c3a722f4bd65282723ce27d4c037e507677f82b9770fd29faaea959f76f058f",
-    "checks/render_development_plan.py": "611e84866af8320296953aed463455745d15130ce4fb6a5b499500b3b53bf252",
+    "checks/render_development_plan.py": "d160b61d7cde3c63bcb37eb4d24157d77835084c0c9e8fcefa924c133cfa885a",
     "checks/validate_development_plan.py": "6a45868772cc5fdc5b82d546503bcd2b7ced99c119e93502afbb3894ed851f2f",
-    "contracts/api_inventory.json": "69ef26b8457ad8e6dc637f2264240e644ca1de475d7ab0cabd4dab0cb9f8dee6",
+    "contracts/api_inventory.json": "54f70ea2e5f9b4db892684e00e688cd16f817842f620d3afc942d1947ddd637f",
     "contracts/db_inventory.json": "51b760bf0c70e291a69efb7e6300f9d63be2e57da4c8fee0beba017e35f78712",
-    "contracts/ui_inventory.json": "6258a5b4b32fcc9c5d54594cb72ba8dc0310177b5d1e1bf219bd2d8a13aa2fca",
-    "packages/contracts/proto/internal.proto": "a129fc0bb45dbd48bc9a397a61289ea222847754fa5dd67dbc752ca251762df5"
+    "contracts/ui_inventory.json": "02f94d08bc66ed28771da7ea238a9c3f8b0a6d37c823724d382aa6b9b3528f5d",
+    "packages/contracts/proto/internal.proto": "1ce6d2ece7347d8483c5e43f5bf6e4e8a595e3e2d4c321c975136e3660713902"
   },
   "sourceRoots": {
     "cloud": ".",
@@ -1354,6 +1354,7 @@
         "getAdminTenant",
         "getLoginContext",
         "getOperation",
+        "getOperatorWorkspace",
         "getPersonalGatewayKey",
         "getPersonalGatewayKeyUsageSummary",
         "getReceipt",
@@ -1366,6 +1367,7 @@
         "listAuditEvents",
         "listInvitations",
         "listMembers",
+        "listOperatorWorkspaces",
         "listPersonalGatewayGroups",
         "listPersonalGatewayKeyUsage",
         "listPersonalGatewayKeys",
@@ -2315,6 +2317,7 @@
         "getAdminTenant",
         "getBuildRuntimePolicy",
         "getOperation",
+        "getOperatorWorkspace",
         "getReceipt",
         "getTenant",
         "getTenantAssetCustody",
@@ -2324,6 +2327,7 @@
         "listAuditEvents",
         "listComputePlans",
         "listModels",
+        "listOperatorWorkspaces",
         "listPricePolicyVersions",
         "listPublisherNamespaces",
         "listQualifications",
@@ -2411,14 +2415,18 @@
       ],
       "state": "not_evaluated",
       "apiPrimary": [
+        "getOperatorWorkspace",
         "listAdminOperations",
         "listAuditEvents",
+        "listOperatorWorkspaces",
         "reconcileOperation"
       ],
       "apiConsumes": [],
       "sessionOnlyOperations": [],
       "rpcImplements": [
         "TenantProductService.ListAuditEvents",
+        "WorkspaceProductService.ListOperatorWorkspaces",
+        "WorkspaceProductService.GetOperatorWorkspace",
         "WorkspaceProductService.ListAdminOperations",
         "WorkspaceProductService.ReconcileOperation",
         "OwnerOperations.Read",
@@ -3253,8 +3261,14 @@
     "WorkspaceProductService.ListWorkspaces": [
       "W15"
     ],
+    "WorkspaceProductService.ListOperatorWorkspaces": [
+      "W24"
+    ],
     "WorkspaceProductService.GetWorkspace": [
       "W15"
+    ],
+    "WorkspaceProductService.GetOperatorWorkspace": [
+      "W24"
     ],
     "WorkspaceProductService.DeleteWorkspace": [
       "W20"
