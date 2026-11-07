@@ -26,18 +26,6 @@ func TestCloudOperatorReadsServeTheConsoleSurfaces(t *testing.T) {
 	accounts := f.request(t, http.MethodGet, "/internal/cloud/operator/accounts?page=1&pageSize=20", operator, "")
 	assertCloudOperatorEnvelope(t, accounts, "control-plane+sub2api", "available", "empty")
 	assertNoCookieMutation(t, accounts)
-
-	workspaces := f.request(t, http.MethodGet, "/internal/cloud/operator/workspaces?page=1&pageSize=20", operator, "")
-	assertCloudOperatorEnvelope(t, workspaces, "control-plane+fabric+sub2api", "available", "empty")
-	assertNoCookieMutation(t, workspaces)
-
-	// The shared detail writer answers not-found, so an unknown id cannot become
-	// an invented empty Workspace.
-	detail := f.request(t, http.MethodGet, "/internal/cloud/operator/workspaces/ws-unknown", operator, "")
-	if detail.code != http.StatusNotFound || !strings.Contains(string(detail.body), "workspace_not_found") {
-		t.Fatalf("unknown workspace detail=%d %s", detail.code, detail.body)
-	}
-	assertNoCookieMutation(t, detail)
 }
 
 // TestCloudOperatorAnnouncementsShareTheRetainedWriter proves the operator

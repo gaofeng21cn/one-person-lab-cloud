@@ -67,6 +67,12 @@ for methods in api['paths'].values():
   if action in audience_overrides:owner=audience_overrides[action]
   roles=','.join('"'+v+'"' for v in x['x-permission'])
   lines.append(f'api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_{action.upper()}:{{api.OwnerEnum_OWNER_ENUM_{owner.upper()},[]string{{{roles}}}}},')
+# Internal read-only policies share the same canonical owner/role source without
+# adding a public Fabric HTTP route or broadening accepted-operation actions.
+for action, policy in api.get('x-internal-action-policies', {}).items():
+ owner = policy['owner']
+ roles = ','.join('"'+v+'"' for v in policy['permission'])
+ lines.append(f'api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_{action.upper()}:{{api.OwnerEnum_OWNER_ENUM_{owner.upper()},[]string{{{roles}}}}},')
 lines+=['}']
 # Project only the continuation methods consumed by the current Serve update
 # chain. The canonical workflow may describe later capabilities; they do not

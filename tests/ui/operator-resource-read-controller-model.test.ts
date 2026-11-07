@@ -25,6 +25,7 @@ import {
   type OperatorResourceReadEpoch,
   type OperatorResourceScope
 } from "../../apps/console-ui/src/app/operator-resource-read-controller-model.ts";
+import { operatorResourceFallbackSource } from "../../apps/console-ui/src/app/use-operator-resource-read-controller.ts";
 
 const fetchedAt = "2026-08-27T00:00:00Z";
 
@@ -267,3 +268,35 @@ test("operator resource page navigation accepts only positive integers", () => {
   assert.equal(isValidOperatorResourcePage(0), false);
   assert.equal(isValidOperatorResourcePage(-1), false);
 });
+
+test("operator resource fallback sources distinguish Cloud composition from retained reads", () => {
+  assert.equal(operatorResourceFallbackSource("workspaces", true), "workspace+fabric");
+  assert.equal(operatorResourceFallbackSource("detail", true), "workspace+fabric");
+  assert.equal(operatorResourceFallbackSource("workspaces", false), "control-plane+fabric+sub2api");
+  assert.equal(operatorResourceFallbackSource("detail", false), "control-plane+fabric+ledger");
+});
+
+for (const cloud of [true, false]) {
+  test(`operator resource completions preserve ${cloud ? "Cloud" : "legacy"} owner envelopes and unavailable readback`, () => {
+    const scope = createOperatorResourceDetailScope({ ...epoch(), requestGeneration: 1, workspaceId: workspace.id });
+    const owner = cloud ? "workspace" : "control-plane";
+    const item: OperatorWorkspaceDTO = {
+      ...detail,
+      workspace: { ...source(workspace), source: owner },
+      ...(cloud ? {
+        tenant: { ...source({ id: "tenant-alpha" }), source: owner },
+        createdBy: { ...source({ id: "actor-alpha" }), source: owner },
+        resourcesReadback: { ...unavailable("fabric_read_unavailable"), source: "fabric" },
+        resources: []
+      } : {})
+    };
+    const result = applyOperatorResourceCompletion(createOperatorResourceReadState(), {
+      kind: "detail", activeScope: scope, responseScope: scope,
+      source: { ...source(item), source: operatorResourceFallbackSource("detail", cloud) }
+    });
+    assert.ok(result?.detail.value?.available);
+    assert.deepEqual(result.detail.value.data, item);
+    assert.equal(result.detail.value.source, operatorResourceFallbackSource("detail", cloud));
+    assert.equal(result.detail.value.data.workspace.source, owner);
+  });
+}

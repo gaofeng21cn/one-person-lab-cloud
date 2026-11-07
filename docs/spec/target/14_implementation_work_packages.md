@@ -613,7 +613,7 @@
 
 **内部协议实现/协作端口**：`WorkspaceProductService.GetOperation`
 
-**前端消费API**：`acceptInvitation`, `bindTenantWallet`, `createTenant`, `getAdminTenant`, `getLoginContext`, `getOperation`, `getPersonalGatewayKey`, `getPersonalGatewayKeyUsageSummary`, `getReceipt`, `getSelfUserExternalBinding`, `getSession`, `getTenant`, `getWorkspaceFinancialReceipt`, `inviteMember`, `listAdminOperations`, `listAuditEvents`, `listInvitations`, `listMembers`, `listPersonalGatewayGroups`, `listPersonalGatewayKeyUsage`, `listPersonalGatewayKeys`, `listQualifications`, `listReceipts`, `login`, `logout`, `reconcileOperation`, `removeMember`, `revokeInvitation`, `updateMemberRole`
+**前端消费API**：`acceptInvitation`, `bindTenantWallet`, `createTenant`, `getAdminTenant`, `getLoginContext`, `getOperation`, `getOperatorWorkspace`, `getPersonalGatewayKey`, `getPersonalGatewayKeyUsageSummary`, `getReceipt`, `getSelfUserExternalBinding`, `getSession`, `getTenant`, `getWorkspaceFinancialReceipt`, `inviteMember`, `listAdminOperations`, `listAuditEvents`, `listInvitations`, `listMembers`, `listOperatorWorkspaces`, `listPersonalGatewayGroups`, `listPersonalGatewayKeyUsage`, `listPersonalGatewayKeys`, `listQualifications`, `listReceipts`, `login`, `logout`, `reconcileOperation`, `removeMember`, `revokeInvitation`, `updateMemberRole`
 
 **验证**：
 - go -C apps/console-bff test ./...
@@ -983,7 +983,7 @@
 - Tenant子操作/访问恢复分离，技术证据仅授权详情
 - 只读资格/操作查询，不能从Console dispatch生产部署或直接改状态
 
-**前端消费API**：`bindTenantWallet`, `createComputePlan`, `createPricePolicyVersion`, `createPublisherNamespace`, `createRefundPolicyVersion`, `createRetentionPolicyVersion`, `createStoragePlan`, `createTenant`, `deleteTenant`, `getAdminTenant`, `getBuildRuntimePolicy`, `getOperation`, `getReceipt`, `getTenant`, `getTenantAssetCustody`, `getTenantLifecycleOperation`, `getWorkspaceFinancialReceipt`, `listAdminOperations`, `listAuditEvents`, `listComputePlans`, `listModels`, `listPricePolicyVersions`, `listPublisherNamespaces`, `listQualifications`, `listReceipts`, `listRefundPolicyVersions`, `listRetentionPolicyVersions`, `listRuntimeVersions`, `listStoragePlans`, `listTenants`, `listWebuiVersions`, `publishOfficialPackage`, `reconcileOperation`, `reenableTenant`, `registerRuntimeVersion`, `registerWebuiVersion`, `restoreTenant`, `revokePublisherNamespace`, `setBuildRuntimePolicy`, `setComputePlanAvailability`, `setRuntimeVersionStatus`, `setStoragePlanAvailability`, `setWebuiVersionStatus`, `suspendTenant`
+**前端消费API**：`bindTenantWallet`, `createComputePlan`, `createPricePolicyVersion`, `createPublisherNamespace`, `createRefundPolicyVersion`, `createRetentionPolicyVersion`, `createStoragePlan`, `createTenant`, `deleteTenant`, `getAdminTenant`, `getBuildRuntimePolicy`, `getOperation`, `getOperatorWorkspace`, `getReceipt`, `getTenant`, `getTenantAssetCustody`, `getTenantLifecycleOperation`, `getWorkspaceFinancialReceipt`, `listAdminOperations`, `listAuditEvents`, `listComputePlans`, `listModels`, `listOperatorWorkspaces`, `listPricePolicyVersions`, `listPublisherNamespaces`, `listQualifications`, `listReceipts`, `listRefundPolicyVersions`, `listRetentionPolicyVersions`, `listRuntimeVersions`, `listStoragePlans`, `listTenants`, `listWebuiVersions`, `publishOfficialPackage`, `reconcileOperation`, `reenableTenant`, `registerRuntimeVersion`, `registerWebuiVersion`, `restoreTenant`, `revokePublisherNamespace`, `setBuildRuntimePolicy`, `setComputePlanAvailability`, `setRuntimeVersionStatus`, `setStoragePlanAvailability`, `setWebuiVersionStatus`, `suspendTenant`
 
 **验证**：
 - npm run test:browser:operator-account
@@ -1011,9 +1011,9 @@
 - 结构化request/operation/phase、unknown、队列/重试/陈旧观察告警和脱敏日志
 - 恢复手册列精确前置/允许动作/不可逆边界，容量参数从实例配置
 
-**主实现API（沿用03的唯一Owner，不是改变数据写权）**：`listAdminOperations`, `listAuditEvents`, `reconcileOperation`
+**主实现API（沿用03的唯一Owner，不是改变数据写权）**：`getOperatorWorkspace`, `listAdminOperations`, `listAuditEvents`, `listOperatorWorkspaces`, `reconcileOperation`
 
-**内部协议实现/协作端口**：`TenantProductService.ListAuditEvents`, `WorkspaceProductService.ListAdminOperations`, `WorkspaceProductService.ReconcileOperation`, `OwnerOperations.Read`, `OwnerOperations.Reconcile`
+**内部协议实现/协作端口**：`TenantProductService.ListAuditEvents`, `WorkspaceProductService.ListOperatorWorkspaces`, `WorkspaceProductService.GetOperatorWorkspace`, `WorkspaceProductService.ListAdminOperations`, `WorkspaceProductService.ReconcileOperation`, `OwnerOperations.Read`, `OwnerOperations.Reconcile`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder

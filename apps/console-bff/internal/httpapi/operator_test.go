@@ -28,10 +28,7 @@ func TestOperatorRoutesAuthorizePlatformOperatorBeforeOwnerRead(t *testing.T) {
 		decision: allowOperatorDecision("operator-1"),
 	}
 	paths := map[string]string{
-		"/internal/cloud/operator/overview":                           "control-plane",
 		"/internal/cloud/operator/accounts":                           "control-plane+sub2api",
-		"/internal/cloud/operator/workspaces":                         "control-plane+fabric+sub2api",
-		"/internal/cloud/operator/workspaces/ws-1":                    "control-plane+fabric+ledger",
 		"/internal/cloud/operator/announcements":                      "control-plane",
 		"/internal/cloud/operator/health":                             "control-plane",
 		"/internal/cloud/operator/runtime-observations":               "control-plane+fabric",
@@ -76,10 +73,7 @@ func TestOperatorRoutesAuthorizePlatformOperatorBeforeOwnerRead(t *testing.T) {
 	handler := NewServer(readers, identity).Handler()
 
 	for _, route := range []string{
-		"/api/v2/operator/overview",
 		"/api/v2/operator/accounts?page=2&pageSize=3",
-		"/api/v2/operator/workspaces?page=1&pageSize=50",
-		"/api/v2/operator/workspaces/ws-1",
 		"/api/v2/operator/announcements?page=1&pageSize=20",
 		"/api/v2/operator/health",
 		"/api/v2/operator/runtime-observations",

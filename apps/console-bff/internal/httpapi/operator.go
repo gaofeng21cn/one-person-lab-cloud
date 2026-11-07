@@ -24,8 +24,6 @@ import (
 type OperatorReader interface {
 	OperatorOverview(context.Context, string) ([]byte, error)
 	OperatorAccounts(context.Context, string, int, int) ([]byte, error)
-	OperatorWorkspaces(context.Context, string, int, int) ([]byte, error)
-	OperatorWorkspace(context.Context, string, string) ([]byte, error)
 	OperatorAnnouncements(context.Context, string, int, int) ([]byte, error)
 	OperatorHealth(context.Context, string) ([]byte, error)
 	OperatorRuntimeObservations(context.Context, string) ([]byte, error)
@@ -51,10 +49,10 @@ const operatorPrivilegeAction = api.AuthorizationActionEnum_AUTHORIZATION_ACTION
 var errInvalidOperatorPage = errors.New("invalid operator pagination")
 
 func (s *Server) registerOperatorRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/v2/operator/overview", s.operatorReadHandler("overview", "control-plane"))
+	mux.HandleFunc("GET /api/v2/operator/overview", s.operatorReadHandler("overview", "control-plane+workspace"))
 	mux.HandleFunc("GET /api/v2/operator/accounts", s.operatorReadHandler("accounts", "control-plane+sub2api"))
-	mux.HandleFunc("GET /api/v2/operator/workspaces", s.operatorReadHandler("workspaces", "control-plane+fabric+sub2api"))
-	mux.HandleFunc("GET /api/v2/operator/workspaces/{workspaceId}", s.operatorReadHandler("workspace", "control-plane+fabric+ledger"))
+	mux.HandleFunc("GET /api/v2/operator/workspaces", s.operatorReadHandler("workspaces", "workspace+fabric"))
+	mux.HandleFunc("GET /api/v2/operator/workspaces/{workspaceId}", s.operatorReadHandler("workspace", "workspace+fabric"))
 	mux.HandleFunc("GET /api/v2/operator/announcements", s.operatorReadHandler("announcements", "control-plane"))
 	mux.HandleFunc("GET /api/v2/operator/health", s.operatorReadHandler("Health", "control-plane"))
 	mux.HandleFunc("GET /api/v2/operator/runtime-observations", s.operatorReadHandler("RuntimeObservations", "control-plane+fabric"))
@@ -68,7 +66,7 @@ func (s *Server) registerOperatorRoutes(mux *http.ServeMux) {
 
 // operatorReadHandler resolves the live CloudIdentity session, requires an
 // explicit CloudIdentity ALLOWED decision for the platform-operator action, and
-// only then reads the retained owner. The owner is reached with the browser's
+// only then reads the declared owners. Each owner is reached with the browser's
 // own session reference; the browser's actor, tenant or cookie never selects
 // another identity.
 func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
@@ -113,7 +111,7 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 				return
 			}
 		}
-		if s.operator == nil {
+		if s.operator == nil && kind != "workspaces" && kind != "workspace" && kind != "overview" {
 			writePublisherError(w, r, 503, "owner_unconfigured", "operator owner is not configured")
 			return
 		}
@@ -128,6 +126,14 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 			&api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG},
 			clients.CallContext(ctx).GetRequestId()); err != nil {
 			writePublisherIdentityError(w, r, err)
+			return
+		}
+		if kind == "overview" {
+			s.readOperatorOverview(w, r, ctx, caller)
+			return
+		}
+		if kind == "workspaces" || kind == "workspace" {
+			s.readOperatorWorkspaces(w, r, ctx, caller, workspaceID, page, pageSize)
 			return
 		}
 		raw, err := s.operatorRead(ctx, kind, caller.SessionID, workspaceID, page, pageSize, r)
@@ -151,10 +157,6 @@ func (s *Server) operatorRead(ctx context.Context, kind, session, workspaceID st
 		return s.operator.OperatorOverview(ctx, session)
 	case "accounts":
 		return s.operator.OperatorAccounts(ctx, session, page, pageSize)
-	case "workspaces":
-		return s.operator.OperatorWorkspaces(ctx, session, page, pageSize)
-	case "workspace":
-		return s.operator.OperatorWorkspace(ctx, session, workspaceID)
 	case "announcements":
 		return s.operator.OperatorAnnouncements(ctx, session, page, pageSize)
 	case "Health":

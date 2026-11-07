@@ -11,6 +11,7 @@ import type {
   SourceEnvelope
 } from "../api/dtos.ts";
 import { authorizationFailureState } from "./authorization-error.ts";
+import { cloudIdentity } from "./console-identity.ts";
 import type { OperatorResourceReadController, RemoteState } from "./console-controller-types.ts";
 import {
   applyOperatorResourceCompletion,
@@ -55,6 +56,11 @@ type ProjectionScopeMap = {
   workspaces: OperatorResourceListScope;
   detail: OperatorResourceDetailScope;
 };
+
+export function operatorResourceFallbackSource(kind: "workspaces" | "detail", cloud: boolean = cloudIdentity): string {
+  if (cloud) return "workspace+fabric";
+  return kind === "workspaces" ? "control-plane+fabric+sub2api" : "control-plane+fabric+ledger";
+}
 
 const emptyRemote = <T,>(): RemoteState<T> => ({ value: null, loading: false, error: "" });
 
@@ -285,13 +291,13 @@ export function useOperatorResourceReadController({
       "workspaces",
       scope,
       () => getOperatorWorkspaces(requestedPage, OPERATOR_RESOURCE_PAGE_SIZE),
-      "control-plane+fabric+sub2api"
+      operatorResourceFallbackSource("workspaces")
     );
     if (!requestOwnsScope(scope, session.user.id, session.csrfToken)) return;
     const next = settleOperatorResourcePage(
       { page: pageRef.current, requestPage: listRequestedPageRef.current },
       requestedPage,
-      result || unavailableSource<OperatorWorkspacePageDTO>("control-plane+fabric+sub2api")
+      result || unavailableSource<OperatorWorkspacePageDTO>(operatorResourceFallbackSource("workspaces"))
     );
     listRequestedPageRef.current = next.requestPage;
     if (next.page !== pageRef.current) {
@@ -311,7 +317,7 @@ export function useOperatorResourceReadController({
       "detail",
       scope,
       () => getOperatorWorkspace(workspaceId),
-      "control-plane+fabric+ledger"
+      operatorResourceFallbackSource("detail")
     );
   }, [currentEpoch, settle]);
 

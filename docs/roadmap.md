@@ -202,6 +202,24 @@ claim unattended deployment or formal Product Release.
 | P1 | MAP domain contracts and evaluation gate | MAP medical domain owner/Instance | Cloud logical Connect boundary is documented; no clinical domain or qualified MAP adapter/backend combination is claimed | MAP task/adapter contract, selected OPL Connect backend, approved data classes, source/evidence model, human review states, evaluation set, release gate and institution acceptance; no medical-specific Cloud adapter is required |
 | P2 | Customer-operated payment, multi-user Workspace, HA/GPU and broader provider profiles | Product and Instance owners | Deliberately outside the current beta cut | Separate product decision, owner and qualification evidence before admission |
 
+
+## Cloud Admin Workspace Read Adoption (2026-11-07)
+
+Workspace/Fabric/BFF/UI source now separates business Workspace facts from
+provider observations and removes retained CP Workspace reads from Cloud Admin
+list/detail. The overview total uses Workspace; unsupported resource aggregation
+is explicit, and Account counts identify their historical CP scope. This source
+change does not retire independent CP capabilities or merge historical records
+into native identities.
+
+Remaining acceptance: build and adopt one exact Candidate containing the updated
+contracts, authorization policy, owner implementations, BFF/UI and portable
+BFF-to-Fabric wiring. Instance must verify the configured peer and platform-admin
+session over list/detail/overview, compare one native Workspace's business fields
+with its Customer read, preserve Fabric unavailable/unknown/absence, and verify
+that no retained Workspace read or resource mutation occurs. No installed
+readback or production retirement is claimed by local tests.
+
 ## Console Interface Adoption
 
 The [Console interface refinement](status.md#console-interface-refinement-2026-11-05)

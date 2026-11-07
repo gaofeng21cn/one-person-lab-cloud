@@ -62,7 +62,8 @@ func TestGeneratedPolicyCoversAssignedOwners(t *testing.T) {
 		api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL:  5,
 		api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG: 14,
 		api.OwnerEnum_OWNER_ENUM_SERVE:            5,
-		api.OwnerEnum_OWNER_ENUM_WORKSPACE:        18,
+		api.OwnerEnum_OWNER_ENUM_WORKSPACE:        20,
+		api.OwnerEnum_OWNER_ENUM_FABRIC:           1,
 		api.OwnerEnum_OWNER_ENUM_GATEWAY:          9,
 		api.OwnerEnum_OWNER_ENUM_LEDGER:           4,
 	} {
@@ -70,8 +71,8 @@ func TestGeneratedPolicyCoversAssignedOwners(t *testing.T) {
 			t.Fatalf("owner %v has %d policy rows, expected %d", owner, counts[owner], want)
 		}
 	}
-	if len(counts) != 9 {
-		t.Fatalf("the policy names %d owners, expected 9", len(counts))
+	if len(counts) != 10 {
+		t.Fatalf("the policy names %d owners, expected 10", len(counts))
 	}
 }
 
@@ -140,6 +141,24 @@ func TestGeneratedPolicyAudienceAndRoles(t *testing.T) {
 			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ROLLBACKWORKSPACE:
 		default:
 			t.Fatalf("unexpected serve audience row: %v", action)
+		}
+	}
+}
+
+func TestOperatorReadPoliciesAreIndependentPlatformActions(t *testing.T) {
+	for action, owner := range map[string]api.OwnerEnum{
+		"LISTOPERATORWORKSPACES": api.OwnerEnum_OWNER_ENUM_WORKSPACE,
+		"GETOPERATORWORKSPACE":   api.OwnerEnum_OWNER_ENUM_WORKSPACE,
+		"READOPERATORRESOURCES":  api.OwnerEnum_OWNER_ENUM_FABRIC,
+	} {
+		policy := policyFor(t, action)
+		if policy.owner != owner || !permitted(policy, "", true) {
+			t.Fatalf("wrong operator policy %s: %+v", action, policy)
+		}
+		for _, role := range []string{"member", "admin", "owner"} {
+			if permitted(policy, role, false) {
+				t.Fatalf("tenant %s inherited %s", role, action)
+			}
 		}
 	}
 }

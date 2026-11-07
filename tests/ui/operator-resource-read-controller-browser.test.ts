@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createServer } from "vite";
+import react from "@vitejs/plugin-react";
 
 import type { Page, Route } from "playwright";
 
@@ -674,5 +676,191 @@ test("Gateway overview displays real zero OPL account totals separately from una
   } finally {
     await browser.close();
     await demo.close();
+  }
+});
+
+function cloudOperatorWorkspace(id: string): OperatorWorkspaceDTO {
+  const legacy = operatorWorkspace(id, "Native");
+  const { ownerAccountId: _account, ownerUserId: _user, ...business } = workspace(id, "Native");
+  const ownerAccount = unavailable<{ id: string }>("tenant", "retained_account_mapping_not_provided");
+  const ownerUser = unavailable<{ id: string; email: string }>("tenant", "user_profile_not_provided");
+  return {
+    ...legacy,
+    workspace: source({ ...business, state: "active", resourceReadiness: "ready", applicationAvailability: "available" }, "workspace"),
+    tenant: source({ id: `tenant-${id}` }, "workspace"),
+    createdBy: source({ id: `actor-${id}` }, "workspace"),
+    ownerAccount, ownerUser,
+    resourcesReadback: source({ resourceSetId: `set-${id}`, workspaceId: id, outcome: "unknown", absenceConfirmed: false, resourceVersion: "resource-version-17", observedAt: fetchedAt }, "fabric"),
+    resources: legacy.resources.map((resource) => ({ ...resource, ownerAccount, ownerUser, workspace: source({ id }, "workspace"), status: source("unknown", "fabric") })),
+    receipt: unavailable("ledger", "receipt_not_read"),
+    workspaceKeyUsage: unavailable("gateway", "workspace_key_usage_not_read")
+  };
+}
+
+test("Cloud resource UI preserves owner facts, unavailable reasons and confirmed absence across desktop and mobile", { timeout: 60_000 }, async () => {
+  const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
+  process.env.VITE_CONSOLE_IDENTITY = "cloud";
+  const server = await createServer({
+    configFile: false, logLevel: "silent",
+    server: { host: "127.0.0.1", port: 0 },
+    plugins: [react(), {
+      name: "cloud-operator-owner-test",
+      configureServer(vite) {
+        vite.middlewares.use(async (request, response, next) => {
+          if (request.url !== "/__cloud-operator.html") return next();
+          const html = await vite.transformIndexHtml(request.url, `<!doctype html><html><body><div id="root"></div><script type="module">
+            import React, { useEffect } from 'react'; import { createRoot } from 'react-dom/client';
+            import { AdminPages } from '/apps/console-ui/src/pages/AdminPages.tsx';
+            import { useOperatorResourceReadController } from '/apps/console-ui/src/app/use-operator-resource-read-controller.ts';
+            const session = { user: { id: 'operator', accountId: '', role: 'platform_admin', email: 'operator@example.com', status: 'active' }, isOperator: true, csrfToken: 'csrf' };
+            const currentSession = () => session;
+            const unavailableSource = (source) => ({ source, available: false, status: 'unavailable', fetchedAt: '${fetchedAt}', reasonCode: 'transport_unavailable' });
+            function Harness() {
+              const read = useOperatorResourceReadController({ active: true, currentSession, friendlyError: (error) => String(error), unavailableSource });
+              useEffect(() => { void read.load(); }, []);
+              return React.createElement(React.Fragment, null,
+                React.createElement('button', { onClick: () => read.refresh() }, '刷新测试资源'),
+                React.createElement('pre', { id: 'controller-state' }, JSON.stringify({ workspaces: read.workspaces, detail: read.detail })),
+                React.createElement(AdminPages, { route: { surface: 'admin', kind: 'admin.resources' }, controller: { operatorResourceRead: read } }));
+            }
+            createRoot(document.getElementById('root')).render(React.createElement(Harness));
+          </script></body></html>`);
+          response.setHeader("Content-Type", "text/html"); response.end(html);
+        });
+      }
+    }]
+  });
+  await server.listen();
+  const address = server.httpServer!.address();
+  if (!address || typeof address === "string") throw new Error("cloud_operator_test_address_missing");
+  const browser = await launchBrowser({ headless: true });
+  const item = cloudOperatorWorkspace("ws-native");
+  assert.ok(item.workspace.available);
+  const ownerWorkspace = item.workspace.data;
+  let listFailure = false;
+  let detailFailure = false;
+  const requests: string[] = [];
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await page.route("**/api/**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (!path.startsWith("/api/")) return route.continue();
+      requests.push(path);
+      if (path === "/api/v2/operator/workspaces") {
+        return fulfill(route, listFailure ? { error: "owner_read_failed" } : source({ items: [item], total: 1, page: 1, pageSize }, "workspace+fabric"), listFailure ? 503 : 200);
+      }
+      if (path === "/api/v2/operator/workspaces/ws-native") {
+        return fulfill(route, detailFailure ? { error: "owner_read_failed" } : source(item, "workspace+fabric"), detailFailure ? 503 : 200);
+      }
+      return fulfill(route, unavailable("control-plane", "not_read"));
+    });
+    await page.goto(`http://127.0.0.1:${address.port}/__cloud-operator.html`);
+    const row = workspaceRow(page, "ws-native");
+    await row.waitFor();
+    assert.match(await row.innerText(), /来源：workspace/);
+    assert.match(await row.innerText(), /来源：fabric/);
+    assert.match(await row.innerText(), /tenant-ws-native/);
+    assert.match(await row.innerText(), /actor-ws-native/);
+    assert.equal(await row.getAttribute("data-state"), "active");
+    await page.getByRole("columnheader", { name: "Workspace 状态", exact: true }).waitFor();
+    assert.match(await row.innerText(), /已激活/);
+    assert.match(await row.innerText(), /已就绪/);
+    assert.match(await row.innerText(), /可用/);
+    assert.match(await row.innerText(), /尚未核验/);
+    assert.match(await row.innerText(), /resource-version-17/);
+    assert.match(await row.innerText(), /观测时间/);
+    const refresh = () => page.getByRole("button", { name: "刷新测试资源", exact: true }).click();
+    const detail = page.locator('section[data-slide="A-RES-02"]');
+    const mobile = page.locator(".operator-workspace-mobile-card");
+    await selectWorkspace(page, "ws-native");
+    await detail.getByText("tenant-ws-native", { exact: true }).waitFor();
+    const ownerCases = [
+      { state: "provisioning", lifecycle: "开通中", readiness: "pending", resourceLabel: "处理中", availability: "pending", appLabel: "处理中" },
+      { state: "active", lifecycle: "已激活", readiness: "ready", resourceLabel: "已就绪", availability: "available", appLabel: "可用" },
+      { state: "updating", lifecycle: "更新中", readiness: "unknown", resourceLabel: "待确认", availability: "unknown", appLabel: "待确认" },
+      { state: "suspended", lifecycle: "已暂停", readiness: "unavailable", resourceLabel: "不可用", availability: "unavailable", appLabel: "不可用" },
+      { state: "deleting", lifecycle: "删除中", readiness: "pending", resourceLabel: "处理中", availability: "unknown", appLabel: "待确认" },
+      { state: "deleted", lifecycle: "已删除", readiness: "unavailable", resourceLabel: "不可用", availability: "unavailable", appLabel: "不可用" },
+      { state: "failed", lifecycle: "已失败", readiness: "unknown", resourceLabel: "待确认", availability: "unavailable", appLabel: "不可用" },
+      { state: "needs_attention", lifecycle: "待处理", readiness: "ready", resourceLabel: "已就绪", availability: "unknown", appLabel: "待确认" },
+      { state: "future_state", lifecycle: "待确认", readiness: "future_readiness", resourceLabel: "待确认", availability: "future_availability", appLabel: "待确认" },
+      { state: "", lifecycle: "暂不可用", readiness: undefined, resourceLabel: "暂不可用", availability: undefined, appLabel: "暂不可用" }
+    ];
+    for (const expected of ownerCases) {
+      ownerWorkspace.state = expected.state;
+      ownerWorkspace.resourceReadiness = expected.readiness;
+      ownerWorkspace.applicationAvailability = expected.availability;
+      await refresh();
+      for (const [width, height] of [[1280, 900], [390, 844]]) {
+        await page.setViewportSize({ width, height });
+        for (const surface of [width === 1280 ? row : mobile, detail]) {
+          for (const [label, value] of [["业务状态", expected.lifecycle], ["资源就绪", expected.resourceLabel], ["应用可用", expected.appLabel]]) {
+            const fact = surface.locator("dt").filter({ hasText: new RegExp(`^${label}$`) }).locator("..");
+            await fact.getByText(value, { exact: true }).waitFor();
+            assert.match(await fact.innerText(), /来源：workspace/);
+          }
+          assert.match(await surface.innerText(), /Fabric 观测：尚未核验/);
+        }
+      }
+      assert.equal(await row.getAttribute("data-state"), expected.state, "Fabric unknown cannot replace Workspace owner facts");
+    }
+    ownerWorkspace.state = "active";
+    ownerWorkspace.resourceReadiness = "ready";
+    ownerWorkspace.applicationAvailability = "available";
+    await page.setViewportSize({ width: 1280, height: 900 });
+    for (const [state, label] of [["confirmed", "已确认"], ["rejected", "已拒绝"], ["not_dispatched", "尚未下发"], ["absent", "已不存在"]]) {
+      item.resources[0].status = source(state, "fabric");
+      await refresh();
+      await row.getByText(label, { exact: true }).waitFor();
+      assert.equal(await row.getAttribute("data-state"), "active", "Fabric facts cannot replace Workspace business state");
+    }
+    item.resources = [];
+    item.resourcesReadback = unavailable("fabric", "fabric_read_unavailable");
+    await refresh();
+    await row.getByText(/fabric_read_unavailable/).waitFor();
+    assert.doesNotMatch(await row.innerText(), /暂无资源/);
+    await selectWorkspace(page, "ws-native");
+    await detail.getByText(/fabric_read_unavailable/).waitFor();
+    assert.doesNotMatch(await detail.innerText(), /暂无资源/);
+    assert.match(await detail.innerText(), /retained_account_mapping_not_provided/);
+    assert.match(await detail.innerText(), /user_profile_not_provided/);
+    assert.match(await detail.innerText(), /tenant-ws-native/);
+    assert.equal(await detail.locator(".resource-detail-row").count(), 0);
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.match(await mobile.innerText(), /tenant-ws-native/);
+    assert.match(await mobile.innerText(), /fabric_read_unavailable/);
+    assert.doesNotMatch(await mobile.innerText(), /暂无资源/);
+    item.resourcesReadback = unavailable("workspace", "resource_set_not_assigned");
+    await refresh();
+    await detail.getByText(/resource_set_not_assigned/).waitFor();
+    assert.match(await detail.innerText(), /来源：workspace/);
+    assert.doesNotMatch(await row.innerText(), /暂无资源/);
+    item.resourcesReadback = source({ resourceSetId: "set-ws-native", workspaceId: "ws-native", outcome: "unknown", absenceConfirmed: false, resourceVersion: "resource-version-18" }, "fabric");
+    await refresh();
+    await detail.getByText("资源事实尚未核验", { exact: true }).waitFor();
+    assert.equal(await row.getByText("资源事实尚未核验", { exact: true }).count(), 1);
+    assert.equal(await mobile.getByText("资源事实尚未核验", { exact: true }).count(), 1);
+    for (const surface of [row, mobile, detail]) {
+      assert.doesNotMatch(await surface.innerText(), /Fabric 未返回资源事实|暂无资源/);
+    }
+    assert.equal(await detail.getByText("Fabric 已确认资源不存在", { exact: true }).count(), 0);
+    item.resourcesReadback = source({ ...item.resourcesReadback.data, outcome: "confirmed", absenceConfirmed: true }, "fabric");
+    await refresh();
+    await detail.getByText("Fabric 已确认资源不存在", { exact: true }).waitFor();
+    detailFailure = true;
+    await refresh();
+    await detail.getByText("资源详情暂不可用", { exact: true }).waitFor();
+    await page.waitForFunction(() => JSON.parse(document.querySelector("#controller-state")!.textContent!).detail.value?.source === "workspace+fabric");
+    assert.equal(await detail.locator(".resource-detail-row").count(), 0);
+    listFailure = true;
+    await refresh();
+    await page.waitForFunction(() => JSON.parse(document.querySelector("#controller-state")!.textContent!).workspaces.value?.available === false);
+    const snapshot = await page.locator("#controller-state").textContent();
+    assert.equal(JSON.parse(snapshot!).workspaces.value.source, "workspace+fabric");
+    assert.equal(requests.some((path) => path.startsWith("/api/operator/")), false);
+  } finally {
+    if (previousIdentity === undefined) delete process.env.VITE_CONSOLE_IDENTITY;
+    else process.env.VITE_CONSOLE_IDENTITY = previousIdentity;
+    await browser.close(); await server.close();
   }
 });

@@ -593,6 +593,14 @@ message Workspace {
  optional string runtime_version_id = 17;
 }
 
+message OperatorWorkspace {
+ Workspace workspace = 1;
+ string tenant_id = 2;
+ string resource_set_id = 3;
+ string created_by = 4;
+ string operation_id = 5;
+}
+
 message CreateWorkspaceRequest {
  string name = 1;
  string quote_id = 2;
@@ -884,6 +892,13 @@ message ModelPage {
 message WorkspacePage {
  repeated Workspace items = 1;
  optional string next_cursor = 2;
+}
+
+message OperatorWorkspacePage {
+ repeated OperatorWorkspace items = 1;
+ int64 total = 2;
+ int32 page = 3;
+ int32 page_size = 4;
 }
 
 message DeploymentPage {
@@ -1781,7 +1796,18 @@ message ListWorkspacesRpcRequest {
  optional int32 query_limit = 3;
 }
 
+message ListOperatorWorkspacesRpcRequest {
+ CallContext context = 1;
+ int32 page = 2;
+ int32 page_size = 3;
+}
+
 message GetWorkspaceRpcRequest {
+ CallContext context = 1;
+ string workspace_id = 2;
+}
+
+message GetOperatorWorkspaceRpcRequest {
  CallContext context = 1;
  string workspace_id = 2;
 }
@@ -2274,7 +2300,9 @@ service ResourceCatalogProductService {
 service WorkspaceProductService {
  rpc CreateWorkspace(CreateWorkspaceRpcRequest) returns (Operation);
  rpc ListWorkspaces(ListWorkspacesRpcRequest) returns (WorkspacePage);
+ rpc ListOperatorWorkspaces(ListOperatorWorkspacesRpcRequest) returns (OperatorWorkspacePage);
  rpc GetWorkspace(GetWorkspaceRpcRequest) returns (Workspace);
+ rpc GetOperatorWorkspace(GetOperatorWorkspaceRpcRequest) returns (OperatorWorkspace);
  rpc DeleteWorkspace(DeleteWorkspaceRpcRequest) returns (Operation);
  rpc GetWorkspaceModels(GetWorkspaceModelsRpcRequest) returns (ModelConfiguration);
  rpc UpdateWorkspaceModels(UpdateWorkspaceModelsRpcRequest) returns (Operation);
@@ -3414,6 +3442,9 @@ AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES = 153;
  AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYGROUPS = 160;
  AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYKEYUSAGE = 161;
  AUTHORIZATION_ACTION_ENUM_GETPERSONALGATEWAYKEYUSAGESUMMARY = 162;
+ AUTHORIZATION_ACTION_ENUM_LISTOPERATORWORKSPACES = 163;
+ AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACE = 164;
+ AUTHORIZATION_ACTION_ENUM_READOPERATORRESOURCES = 165;
 }
 
 enum ServiceIdentityEnum {

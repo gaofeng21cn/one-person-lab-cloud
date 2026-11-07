@@ -3185,6 +3185,16 @@ tbody tr:last-child td {
   gap: 6px;
 }
 
+.account-resource-stack > span {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.account-resource-stack small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .account-status-stack {
   display: grid;
   min-width: 0;
