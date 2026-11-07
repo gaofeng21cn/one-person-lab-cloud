@@ -285,6 +285,12 @@ implementation and remaining gaps are reported separately in status/roadmap.
   allowed action, request integrity, and expiry.
 - Provider absence, ownership, and completion come from the provider authority.
   Ambiguous or conflicting facts require review before another mutation.
+- A recycled prepaid disk still contains retained data. Its explicit final release
+  binds the original destroy and exact provider identity, confirms PV/PVC absence,
+  and atomically claims a separate, uniquely identified dispatch fence before one
+  irreversible provider call. Lost lock connections cannot admit another sender.
+  Replays and uncertain replies only read back; they never rewrite the original
+  destroy or establish Workspace deletion or refund success.
 - Instance-designated system resources remain outside customer allocation and
   cleanup.
 
