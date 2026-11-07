@@ -22238,6 +22238,10 @@
         {
           "route": "/admin/qualifications",
           "title": "资格与发布证据"
+        },
+        {
+          "route": "/admin/resources",
+          "title": "Workspace resources"
         }
       ],
       "operationIds": [
@@ -22248,7 +22252,9 @@
         "listReceipts",
         "getReceipt",
         "listQualifications",
-        "getWorkspaceFinancialReceipt"
+        "getWorkspaceFinancialReceipt",
+        "listOperatorWorkspaces",
+        "getOperatorWorkspace"
       ],
       "roles": [
         "platform_admin"
@@ -22318,6 +22324,12 @@
           ],
           "submitBehavior": "服务端权限/版本重验；同一意图同Idempotency-Key；201/200元数据读取其实体，202只受理并按原Operation读回",
           "onNavigateAway": "未提交非敏感草稿按当前任务保留；敏感/危险确认不存储；已受理操作不取消"
+        },
+        {
+          "operationId": "listOperatorWorkspaces"
+        },
+        {
+          "operationId": "getOperatorWorkspace"
         }
       ],
       "scenarios": [
@@ -22649,6 +22661,36 @@
             "F17"
           ],
           "owner": "ledger"
+        },
+        {
+          "operationId": "listOperatorWorkspaces",
+          "path": "/api/v2/operator/workspaces",
+          "method": "GET",
+          "request": null,
+          "response": "OperatorWorkspaceSourcePage",
+          "status": 200,
+          "permissions": [
+            "platform_admin"
+          ],
+          "features": [
+            "F17"
+          ],
+          "owner": "workspace"
+        },
+        {
+          "operationId": "getOperatorWorkspace",
+          "path": "/api/v2/operator/workspaces/{workspaceId}",
+          "method": "GET",
+          "request": null,
+          "response": "OperatorWorkspaceSource",
+          "status": 200,
+          "permissions": [
+            "platform_admin"
+          ],
+          "features": [
+            "F17"
+          ],
+          "owner": "workspace"
         }
       ],
       "protocolFields": [

@@ -43,6 +43,7 @@ type Server struct {
 	// BFF serves still comes from the product read clients.
 	gatewayCoordination api.GatewayCoordinationClient
 	workspace           api.WorkspaceProductServiceClient
+	fabric              api.FabricCoordinationClient
 }
 
 // OwnerReader is the typed read surface the BFF needs. It is satisfied by the
@@ -111,6 +112,11 @@ func NewServer(reader OwnerReader, identity IdentityReader) *Server {
 		LedgerClient() api.LedgerProductServiceClient
 	}); ok {
 		s.ledger = p.LedgerClient()
+	}
+	if p, ok := reader.(interface {
+		FabricClient() api.FabricCoordinationClient
+	}); ok {
+		s.fabric = p.FabricClient()
 	}
 	return s
 }

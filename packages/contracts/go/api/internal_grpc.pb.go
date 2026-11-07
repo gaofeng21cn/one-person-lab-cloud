@@ -3081,7 +3081,9 @@ var ResourceCatalogProductService_ServiceDesc = grpc.ServiceDesc{
 const (
 	WorkspaceProductService_CreateWorkspace_FullMethodName                       = "/opl.cloud.api.WorkspaceProductService/CreateWorkspace"
 	WorkspaceProductService_ListWorkspaces_FullMethodName                        = "/opl.cloud.api.WorkspaceProductService/ListWorkspaces"
+	WorkspaceProductService_ListOperatorWorkspaces_FullMethodName                = "/opl.cloud.api.WorkspaceProductService/ListOperatorWorkspaces"
 	WorkspaceProductService_GetWorkspace_FullMethodName                          = "/opl.cloud.api.WorkspaceProductService/GetWorkspace"
+	WorkspaceProductService_GetOperatorWorkspace_FullMethodName                  = "/opl.cloud.api.WorkspaceProductService/GetOperatorWorkspace"
 	WorkspaceProductService_DeleteWorkspace_FullMethodName                       = "/opl.cloud.api.WorkspaceProductService/DeleteWorkspace"
 	WorkspaceProductService_GetWorkspaceModels_FullMethodName                    = "/opl.cloud.api.WorkspaceProductService/GetWorkspaceModels"
 	WorkspaceProductService_UpdateWorkspaceModels_FullMethodName                 = "/opl.cloud.api.WorkspaceProductService/UpdateWorkspaceModels"
@@ -3106,7 +3108,9 @@ const (
 type WorkspaceProductServiceClient interface {
 	CreateWorkspace(ctx context.Context, in *CreateWorkspaceRpcRequest, opts ...grpc.CallOption) (*Operation, error)
 	ListWorkspaces(ctx context.Context, in *ListWorkspacesRpcRequest, opts ...grpc.CallOption) (*WorkspacePage, error)
+	ListOperatorWorkspaces(ctx context.Context, in *ListOperatorWorkspacesRpcRequest, opts ...grpc.CallOption) (*OperatorWorkspacePage, error)
 	GetWorkspace(ctx context.Context, in *GetWorkspaceRpcRequest, opts ...grpc.CallOption) (*Workspace, error)
+	GetOperatorWorkspace(ctx context.Context, in *GetOperatorWorkspaceRpcRequest, opts ...grpc.CallOption) (*OperatorWorkspace, error)
 	DeleteWorkspace(ctx context.Context, in *DeleteWorkspaceRpcRequest, opts ...grpc.CallOption) (*Operation, error)
 	GetWorkspaceModels(ctx context.Context, in *GetWorkspaceModelsRpcRequest, opts ...grpc.CallOption) (*ModelConfiguration, error)
 	UpdateWorkspaceModels(ctx context.Context, in *UpdateWorkspaceModelsRpcRequest, opts ...grpc.CallOption) (*Operation, error)
@@ -3153,10 +3157,30 @@ func (c *workspaceProductServiceClient) ListWorkspaces(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *workspaceProductServiceClient) ListOperatorWorkspaces(ctx context.Context, in *ListOperatorWorkspacesRpcRequest, opts ...grpc.CallOption) (*OperatorWorkspacePage, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperatorWorkspacePage)
+	err := c.cc.Invoke(ctx, WorkspaceProductService_ListOperatorWorkspaces_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *workspaceProductServiceClient) GetWorkspace(ctx context.Context, in *GetWorkspaceRpcRequest, opts ...grpc.CallOption) (*Workspace, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Workspace)
 	err := c.cc.Invoke(ctx, WorkspaceProductService_GetWorkspace_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workspaceProductServiceClient) GetOperatorWorkspace(ctx context.Context, in *GetOperatorWorkspaceRpcRequest, opts ...grpc.CallOption) (*OperatorWorkspace, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperatorWorkspace)
+	err := c.cc.Invoke(ctx, WorkspaceProductService_GetOperatorWorkspace_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -3329,7 +3353,9 @@ func (c *workspaceProductServiceClient) CancelPlanChange(ctx context.Context, in
 type WorkspaceProductServiceServer interface {
 	CreateWorkspace(context.Context, *CreateWorkspaceRpcRequest) (*Operation, error)
 	ListWorkspaces(context.Context, *ListWorkspacesRpcRequest) (*WorkspacePage, error)
+	ListOperatorWorkspaces(context.Context, *ListOperatorWorkspacesRpcRequest) (*OperatorWorkspacePage, error)
 	GetWorkspace(context.Context, *GetWorkspaceRpcRequest) (*Workspace, error)
+	GetOperatorWorkspace(context.Context, *GetOperatorWorkspaceRpcRequest) (*OperatorWorkspace, error)
 	DeleteWorkspace(context.Context, *DeleteWorkspaceRpcRequest) (*Operation, error)
 	GetWorkspaceModels(context.Context, *GetWorkspaceModelsRpcRequest) (*ModelConfiguration, error)
 	UpdateWorkspaceModels(context.Context, *UpdateWorkspaceModelsRpcRequest) (*Operation, error)
@@ -3362,8 +3388,14 @@ func (UnimplementedWorkspaceProductServiceServer) CreateWorkspace(context.Contex
 func (UnimplementedWorkspaceProductServiceServer) ListWorkspaces(context.Context, *ListWorkspacesRpcRequest) (*WorkspacePage, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListWorkspaces not implemented")
 }
+func (UnimplementedWorkspaceProductServiceServer) ListOperatorWorkspaces(context.Context, *ListOperatorWorkspacesRpcRequest) (*OperatorWorkspacePage, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListOperatorWorkspaces not implemented")
+}
 func (UnimplementedWorkspaceProductServiceServer) GetWorkspace(context.Context, *GetWorkspaceRpcRequest) (*Workspace, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetWorkspace not implemented")
+}
+func (UnimplementedWorkspaceProductServiceServer) GetOperatorWorkspace(context.Context, *GetOperatorWorkspaceRpcRequest) (*OperatorWorkspace, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetOperatorWorkspace not implemented")
 }
 func (UnimplementedWorkspaceProductServiceServer) DeleteWorkspace(context.Context, *DeleteWorkspaceRpcRequest) (*Operation, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteWorkspace not implemented")
@@ -3471,6 +3503,24 @@ func _WorkspaceProductService_ListWorkspaces_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WorkspaceProductService_ListOperatorWorkspaces_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListOperatorWorkspacesRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkspaceProductServiceServer).ListOperatorWorkspaces(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkspaceProductService_ListOperatorWorkspaces_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkspaceProductServiceServer).ListOperatorWorkspaces(ctx, req.(*ListOperatorWorkspacesRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _WorkspaceProductService_GetWorkspace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetWorkspaceRpcRequest)
 	if err := dec(in); err != nil {
@@ -3485,6 +3535,24 @@ func _WorkspaceProductService_GetWorkspace_Handler(srv interface{}, ctx context.
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(WorkspaceProductServiceServer).GetWorkspace(ctx, req.(*GetWorkspaceRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkspaceProductService_GetOperatorWorkspace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetOperatorWorkspaceRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkspaceProductServiceServer).GetOperatorWorkspace(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkspaceProductService_GetOperatorWorkspace_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkspaceProductServiceServer).GetOperatorWorkspace(ctx, req.(*GetOperatorWorkspaceRpcRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3793,8 +3861,16 @@ var WorkspaceProductService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _WorkspaceProductService_ListWorkspaces_Handler,
 		},
 		{
+			MethodName: "ListOperatorWorkspaces",
+			Handler:    _WorkspaceProductService_ListOperatorWorkspaces_Handler,
+		},
+		{
 			MethodName: "GetWorkspace",
 			Handler:    _WorkspaceProductService_GetWorkspace_Handler,
+		},
+		{
+			MethodName: "GetOperatorWorkspace",
+			Handler:    _WorkspaceProductService_GetOperatorWorkspace_Handler,
 		},
 		{
 			MethodName: "DeleteWorkspace",

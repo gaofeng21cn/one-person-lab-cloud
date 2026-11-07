@@ -982,10 +982,22 @@ export interface OperatorResourceDTO {
   receiptRef: SourceEnvelope<string>;
 }
 
+export interface OperatorResourcesReadbackDTO {
+  resourceSetId: string;
+  workspaceId: string;
+  outcome: string;
+  absenceConfirmed: boolean;
+  resourceVersion: string;
+  observedAt?: string;
+}
+
 export interface OperatorWorkspaceDTO {
   workspace: SourceEnvelope<WorkspaceDTO>;
   ownerAccount: SourceEnvelope<{ id: string }>;
   ownerUser: SourceEnvelope<{ id: string; email: string }>;
+  tenant?: SourceEnvelope<{ id: string }>;
+  createdBy?: SourceEnvelope<{ id: string }>;
+  resourcesReadback?: SourceEnvelope<OperatorResourcesReadbackDTO>;
   resources: OperatorResourceDTO[];
   receipt: SourceEnvelope<WorkspaceBillingReceiptDTO>;
   workspaceKeyUsage: SourceEnvelope<OperatorUsageCostDTO & { keyId: string }>;

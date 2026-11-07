@@ -14,6 +14,34 @@ establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
 
+
+## Cloud Admin Workspace Owner Reads (2026-11-07)
+
+On source base `5091aaaee6755ce20b6410e0efa429e166af68ca`, the Cloud Admin
+Workspace list and detail now read Workspace's platform-authorized operator RPCs
+and Fabric's exact Workspace/resource-set readback. Customer and Admin use the
+same Workspace business decoder. Fabric observations do not replace business
+lifecycle or application availability. The resource-set reference comes from the
+original create operation; an unrelated active model operation cannot select it.
+The BFF stores no resource state and never retries against retained CP Workspace
+APIs. Missing owners, unknown observations and confirmed absence remain distinct.
+
+The Cloud overview Workspace total also reads Workspace. The former CP runtime
+observation count is not a native Fabric resource total, so that aggregate is
+explicitly unavailable until its owner supplies it. Account-page Workspace
+counts are labeled historical CP records; Account and Tenant are not joined by
+an inferred identity. Portable configuration admits the BFF-to-Fabric read peer;
+independent platform-admin authorization does not grant resource mutations.
+
+This source change requires owner PostgreSQL, BFF HTTP/gRPC, platform authorization
+and desktop/mobile browser verification against the current mainline base.
+Earlier focused evidence on `a7e793f8` is not verification of this revision.
+Generated-contract freshness passed after replay onto `5091aaae`; current
+behavior verification is recorded in the PR. No Candidate was built, no Instance
+was deployed and no production resource or financial action was performed.
+Installed Admin/Customer consistency still requires the exact Candidate and owner
+configuration to be adopted through Instance's protected deployment boundary.
+
 ## Model Reload Capability Admission
 
 Serve resolves the exact deployment's approved Runtime publisher model-configuration

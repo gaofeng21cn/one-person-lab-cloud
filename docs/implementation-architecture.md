@@ -1388,6 +1388,27 @@ Workspaces inside their confirmed subscription period; Serve refuses missing,
 unverified or unreadable verdicts before reading a route. This source change
 does not activate Local no-charge terms or certify production peer wiring.
 
+### Cloud Admin Workspace reads (2026-11-07)
+
+`/api/v2/operator/workspaces` and its detail route in Console BFF call
+`WorkspaceProductService.ListOperatorWorkspaces/GetOperatorWorkspace`.
+Workspace owns the platform-authorized enumeration, tenant/creator identity and
+business DTO, sharing the Customer decoder. Its original create operation owns
+the resource-set reference; `active_operation_id` is not a resource selector.
+BFF calls Fabric `ReadResources` with that exact Workspace/resource-set pair and
+an independent `readOperatorResources` platform decision. Fabric validates the
+persisted ownership and admits Console BFF for this read only. BFF projects
+resource facts and evidence references without exposing execution bindings or
+application placement. No cross-owner SQL, replica state or retained CP read
+participates in this path.
+
+Cloud overview replaces the retained Workspace count with Workspace's total.
+It does not reinterpret CP runtime observations as Fabric's native resource total;
+the unavailable aggregate remains explicit. Account counts retain their CP
+record scope and are labeled historical; no Account-to-Tenant identity is
+inferred. Other unmigrated operator capabilities retain their existing owners.
+Source and installed evidence remain separate in status and roadmap.
+
 ### Retained writer and caller inventory (2026-11-03)
 
 This is the writer/caller inventory at Cloud baseline

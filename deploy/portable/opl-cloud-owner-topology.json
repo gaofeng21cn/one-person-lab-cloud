@@ -500,6 +500,8 @@
     "OPL_PUBLIC_URL",
     "OPL_CONTROL_PLANE_URL",
     "OPL_CONTROL_PLANE_TOKEN",
+    "OPL_FABRIC_URL",
+    "OPL_FABRIC_TOKEN",
     "OPL_LEDGER_URL",
     "OPL_LEDGER_TOKEN"
    ],
@@ -913,6 +915,14 @@
     "target": "build",
     "addressEnv": "OPL_BUILD_URL",
     "tokenEnv": "OPL_BUILD_TOKEN",
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
+   },
+   {
+    "caller": "console_bff",
+    "target": "fabric",
+    "addressEnv": "OPL_FABRIC_URL",
+    "tokenEnv": "OPL_FABRIC_TOKEN",
     "activation": "configured",
     "configuredAddressSemantics": "trimmed-nonempty"
    },
