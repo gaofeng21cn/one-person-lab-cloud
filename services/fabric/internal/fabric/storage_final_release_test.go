@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"reflect"
 	"strings"
 	"sync"
@@ -138,7 +139,7 @@ func testStorageFinalReleaseRestart(t *testing.T, store OperationStore, reopen f
 	service := NewServiceWithOperationStore(provider, store)
 	provider.release = func(ctx context.Context, request StorageVolume) (string, error) {
 		fence := storageFinalReleaseChild(t, store, volume.ID)
-		if fence.Status != string(StorageFinalReleaseStatusStarted) || !reflect.DeepEqual(volume, request) {
+		if fence.ID != stableID("fop-storage-final-release-dispatch", volume.ID) || fence.Status != string(StorageFinalReleaseStatusStarted) || !reflect.DeepEqual(volume, request) {
 			t.Fatal("send did not retain frozen resource and durable started fence")
 		}
 		return "lost-release-request", errors.New("lost provider response")
@@ -387,6 +388,7 @@ func TestStorageFinalReleaseStartedFenceAndHashConflict(t *testing.T) {
 			volume, input := storageFinalReleaseFixture(t, store)
 			provider := newStorageFinalReleaseTestProvider(t, volume)
 			operation := newOperation(storageFinalReleaseAction, "storage_final_release", volume.ID, volume.AccountID, volume.WorkspaceID, volume.ID, hashInput(input), time.Now().UTC())
+			operation.CallerService, operation.Provider = "operator", volume.Provider
 			operation.RedactedProviderPayload = map[string]any{"originalDestroyOperationId": input.DestroyOperationID, "dispatchAttempted": true}
 			if conflict {
 				operation.RequestHash = "foreign"
@@ -406,6 +408,7 @@ type storageFinalReleaseWriteStore struct {
 	OperationStore
 	writes atomic.Int32
 	append func(context.Context, FabricOperation) error
+	claim  func(context.Context, FabricOperation) (FabricOperation, bool, error)
 }
 
 func (store *storageFinalReleaseWriteStore) Append(ctx context.Context, operation FabricOperation) error {
@@ -417,6 +420,17 @@ func (store *storageFinalReleaseWriteStore) Append(ctx context.Context, operatio
 		return store.append(ctx, operation)
 	}
 	return store.OperationStore.Append(ctx, operation)
+}
+
+func (store *storageFinalReleaseWriteStore) ClaimRuntime(ctx context.Context, operation FabricOperation) (FabricOperation, bool, error) {
+	store.writes.Add(1)
+	if err := ctx.Err(); err != nil {
+		return FabricOperation{}, false, err
+	}
+	if store.claim != nil {
+		return store.claim(ctx, operation)
+	}
+	return store.OperationStore.ClaimRuntime(ctx, operation)
 }
 
 func TestStorageFinalReleaseCancellationPersistsOutcomeAndFence(t *testing.T) {
@@ -474,7 +488,9 @@ func TestStorageFinalReleaseCancellationPersistsOutcomeAndFence(t *testing.T) {
 func TestStorageFinalReleaseFenceWriteFailureNeverSends(t *testing.T) {
 	memory := NewMemoryOperationStore()
 	volume, input := storageFinalReleaseFixture(t, memory)
-	store := &storageFinalReleaseWriteStore{OperationStore: memory, append: func(context.Context, FabricOperation) error { return errors.New("write refused") }}
+	store := &storageFinalReleaseWriteStore{OperationStore: memory, claim: func(context.Context, FabricOperation) (FabricOperation, bool, error) {
+		return FabricOperation{}, false, errors.New("claim refused")
+	}}
 	provider := newStorageFinalReleaseTestProvider(t, volume)
 	result, err := NewServiceWithOperationStore(provider, store).ReleaseRecycledStorageVolume(t.Context(), volume.ID, input)
 	if err == nil || result.DispatchAttempted || provider.calls.Load() != 0 || len(memory.operation) != 2 {
@@ -559,16 +575,14 @@ func TestStorageFinalReleaseDurableFenceSurvivesWriteResponseLoss(t *testing.T) 
 			memory := NewMemoryOperationStore()
 			volume, input := storageFinalReleaseFixture(t, memory)
 			store := &storageFinalReleaseWriteStore{OperationStore: memory}
-			store.append = func(ctx context.Context, operation FabricOperation) error {
-				if operation.Status == string(StorageFinalReleaseStatusStarted) {
-					if err := memory.Append(ctx, operation); err != nil {
-						return err
-					}
-					if failure == "fence-reply-lost" {
-						return errors.New("fence reply lost after commit")
-					}
-					return nil
+			store.claim = func(ctx context.Context, operation FabricOperation) (FabricOperation, bool, error) {
+				persisted, claimed, err := memory.ClaimRuntime(ctx, operation)
+				if err == nil && failure == "fence-reply-lost" {
+					return FabricOperation{}, false, errors.New("fence reply lost after commit")
 				}
+				return persisted, claimed, err
+			}
+			store.append = func(context.Context, FabricOperation) error {
 				return errors.New("outcome write unavailable")
 			}
 			provider := newStorageFinalReleaseTestProvider(t, volume)
@@ -716,6 +730,7 @@ func testStorageFinalReleaseUnknownPersistedFields(t *testing.T, newStore func(*
 				operation.RedactedProviderPayload["resource"].(map[string]any)["unexpectedField"] = true
 			} else {
 				operation = newOperation(storageFinalReleaseAction, "storage_final_release", volume.ID, volume.AccountID, volume.WorkspaceID, volume.ID, hashInput(input), time.Now().UTC())
+				operation.CallerService, operation.Provider = "operator", volume.Provider
 				operation.RedactedProviderPayload = map[string]any{"originalDestroyOperationId": input.DestroyOperationID, "dispatchAttempted": true, "unexpectedField": true}
 			}
 			operation.ID, operation.Status, operation.CreatedAt = "unknown-field-record", string(StorageFinalReleaseStatusStarted), time.Now().UTC()
@@ -738,6 +753,182 @@ func testStorageFinalReleaseUnknownPersistedFields(t *testing.T, newStore func(*
 			after, err := store.List(t.Context())
 			if err != nil || !reflect.DeepEqual(before, after) {
 				t.Fatalf("rejection changed persistent journal: %v", err)
+			}
+		})
+	}
+}
+
+func TestPostgresStorageFinalReleaseLostAdvisorySessionSendsOnce(t *testing.T) {
+	databaseURL := fabricTestDatabaseURL(t)
+	applicationName := "storage-final-release-lock-" + stableID(databaseURL)[:12]
+	lockDatabaseURL := databaseURL + " application_name=" + applicationName
+	if parsed, err := url.Parse(databaseURL); err == nil && parsed.Scheme != "" {
+		query := parsed.Query()
+		query.Set("application_name", applicationName)
+		parsed.RawQuery = query.Encode()
+		lockDatabaseURL = parsed.String()
+	}
+	first, err := newTestPostgresOperationStore(lockDatabaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = first.client.Close() })
+	second, err := newTestPostgresOperationStore(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = second.client.Close() })
+	frozen, input := storageFinalReleaseFixture(t, first)
+	before := storageFinalReleaseOriginalJournal(t, first)
+	providerA := newStorageFinalReleaseTestProvider(t, frozen)
+	providerB := newStorageFinalReleaseTestProvider(t, frozen)
+	serviceA, serviceB := NewServiceWithOperationStore(providerA, first), NewServiceWithOperationStore(providerB, second)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	entered, resume := make(chan struct{}), make(chan struct{})
+	var resumeOnce sync.Once
+	defer resumeOnce.Do(func() { close(resume) })
+	read, paused := providerA.provision, false
+	providerA.provision = func(ctx context.Context, request provisionerRequest) (provisionerResponse, error) {
+		response, err := read(ctx, request)
+		if !paused {
+			paused = true
+			close(entered)
+			select {
+			case <-resume:
+			case <-ctx.Done():
+				return response, ctx.Err()
+			}
+		}
+		return response, err
+	}
+	type outcome struct {
+		result StorageFinalReleaseResult
+		err    error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		result, err := serviceA.ReleaseRecycledStorageVolume(ctx, frozen.ID, input)
+		done <- outcome{result, err}
+	}()
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal("first service did not reach its fresh read")
+	}
+	var killed bool
+	err = first.db.QueryRowContext(ctx, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name=$1 AND pid IN (SELECT pid FROM pg_locks WHERE locktype='advisory')`, applicationName).Scan(&killed)
+	if err != nil || !killed {
+		t.Fatalf("terminate own test advisory session: killed=%v err=%v", killed, err)
+	}
+	resultB, errB := serviceB.ReleaseRecycledStorageVolume(ctx, frozen.ID, input)
+	if errB == nil || !resultB.DispatchAttempted || providerB.calls.Load() != 1 {
+		t.Fatalf("second service result=%+v err=%v calls=%d", resultB, errB, providerB.calls.Load())
+	}
+	resumeOnce.Do(func() { close(resume) })
+	var resultA outcome
+	select {
+	case resultA = <-done:
+	case <-ctx.Done():
+		t.Fatal("first service did not finish after lock loss")
+	}
+	operations, err := first.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	starts := 0
+	for _, operation := range operations {
+		if operation.ResourceKind == "storage_final_release" && operation.Status == string(StorageFinalReleaseStatusStarted) {
+			starts++
+		}
+	}
+	if providerA.calls.Load() != 0 || providerB.calls.Load() != 1 || starts != 1 {
+		t.Fatalf("lost-lock dispatches: first=%d second=%d started=%d firstErr=%v", providerA.calls.Load(), providerB.calls.Load(), starts, resultA.err)
+	}
+	if resultA.err != nil || !resultA.result.DispatchAttempted || resultA.result.Status != StorageFinalReleaseStatusPending || resultA.result.OperationID != resultB.OperationID {
+		t.Fatalf("losing claim must be read-only: result=%+v err=%v", resultA.result, resultA.err)
+	}
+	if !reflect.DeepEqual(before, storageFinalReleaseOriginalJournal(t, first)) {
+		t.Fatal("lock loss rewrote original destroy journal")
+	}
+}
+
+func TestStorageFinalReleaseLosingClaimOnlyReads(t *testing.T) {
+	for _, absent := range []bool{false, true} {
+		t.Run(fmt.Sprint(absent), func(t *testing.T) {
+			memory := NewMemoryOperationStore()
+			frozen, input := storageFinalReleaseFixture(t, memory)
+			store := &storageFinalReleaseWriteStore{OperationStore: memory}
+			provider := newStorageFinalReleaseTestProvider(t, frozen)
+			store.claim = func(ctx context.Context, operation FabricOperation) (FabricOperation, bool, error) {
+				if operation.ID != stableID("fop-storage-final-release-dispatch", frozen.ID) || operation.Status != string(StorageFinalReleaseStatusStarted) || operation.CreatedAt.IsZero() {
+					t.Fatalf("dispatch claim has no stable identity: %+v", operation)
+				}
+				// Another invocation wins after this invocation's initial read.
+				persisted, _, err := memory.ClaimRuntime(ctx, operation)
+				provider.absent.Store(absent)
+				return persisted, false, err
+			}
+			result, err := NewServiceWithOperationStore(provider, store).ReleaseRecycledStorageVolume(t.Context(), frozen.ID, input)
+			if err != nil || !result.DispatchAttempted || result.AbsenceConfirmed != absent || provider.calls.Load() != 0 || provider.reads.Load() != 2 || store.writes.Load() != 1 {
+				t.Fatalf("loser result=%+v err=%v sends=%d reads=%d writes=%d", result, err, provider.calls.Load(), provider.reads.Load(), store.writes.Load())
+			}
+			want := StorageFinalReleaseStatusPending
+			if absent {
+				want = StorageFinalReleaseStatusSucceeded
+			}
+			if result.Status != want || storageFinalReleaseChild(t, memory, frozen.ID).Status != string(StorageFinalReleaseStatusStarted) {
+				t.Fatalf("loser appended an outcome: %+v", result)
+			}
+		})
+	}
+}
+
+func TestStorageFinalReleaseLosingClaimRejectsConflictingRecord(t *testing.T) {
+	for _, field := range []string{"action", "resource", "kind", "account", "workspace", "operation", "idempotency", "hash", "provider", "caller", "status", "destroy-payload", "missing-attempt", "unknown-payload"} {
+		t.Run(field, func(t *testing.T) {
+			memory := NewMemoryOperationStore()
+			frozen, input := storageFinalReleaseFixture(t, memory)
+			store := &storageFinalReleaseWriteStore{OperationStore: memory}
+			store.claim = func(ctx context.Context, operation FabricOperation) (FabricOperation, bool, error) {
+				persisted, _, err := memory.ClaimRuntime(ctx, operation)
+				persisted = storageFinalReleaseJSONOperation(t, persisted)
+				switch field {
+				case "action":
+					persisted.Action = "foreign"
+				case "resource":
+					persisted.ResourceID = "foreign"
+				case "kind":
+					persisted.ResourceKind = "foreign"
+				case "account":
+					persisted.AccountID = "foreign"
+				case "workspace":
+					persisted.WorkspaceID = "foreign"
+				case "operation":
+					persisted.OperationID = "foreign"
+				case "idempotency":
+					persisted.IdempotencyKey = "foreign"
+				case "hash":
+					persisted.RequestHash = "foreign"
+				case "provider":
+					persisted.Provider = "foreign"
+				case "caller":
+					persisted.CallerService = "foreign"
+				case "status":
+					persisted.Status = "unknown"
+				case "destroy-payload":
+					persisted.RedactedProviderPayload["originalDestroyOperationId"] = "foreign"
+				case "missing-attempt":
+					delete(persisted.RedactedProviderPayload, "dispatchAttempted")
+				case "unknown-payload":
+					persisted.RedactedProviderPayload["unexpectedField"] = true
+				}
+				return persisted, false, err
+			}
+			provider := newStorageFinalReleaseTestProvider(t, frozen)
+			result, err := NewServiceWithOperationStore(provider, store).ReleaseRecycledStorageVolume(t.Context(), frozen.ID, input)
+			if err == nil || result.DispatchAttempted || provider.calls.Load() != 0 || store.writes.Load() != 1 || len(memory.operation) != 3 {
+				t.Fatalf("conflicting claim accepted: result=%+v err=%v sends=%d writes=%d", result, err, provider.calls.Load(), store.writes.Load())
 			}
 		})
 	}

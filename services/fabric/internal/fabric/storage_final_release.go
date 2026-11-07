@@ -96,10 +96,24 @@ func (s *Service) readFrozenStorageDestroyStatus(ctx context.Context, frozen Sto
 	return observed, nil
 }
 
-// ReleaseRecycledStorageVolume fences one explicit final-release send under the
-// original destroy lock. A durable child entry makes every later invocation
-// read-only, even after a crash before send or a lost provider response. The
-// original destroy remains responsible for local finalization and its receipt.
+func storageFinalReleaseDispatchAttempted(previous, expected FabricOperation, destroyOperationID string) (bool, error) {
+	var payload storageFinalReleaseJournalPayload
+	if previous.Action != expected.Action || previous.ResourceID != expected.ResourceID || previous.RequestHash != expected.RequestHash || previous.OperationID != expected.OperationID || previous.ResourceKind != expected.ResourceKind || previous.AccountID != expected.AccountID || previous.WorkspaceID != expected.WorkspaceID || previous.IdempotencyKey != expected.IdempotencyKey || previous.Provider != expected.Provider || previous.CallerService != expected.CallerService ||
+		!decodeStrictJSON(mustJSON(previous.RedactedProviderPayload), &payload) || payload.OriginalDestroyOperationID != destroyOperationID || payload.DispatchAttempted == nil {
+		return false, fmt.Errorf("storage_final_release_original_destroy_mismatch")
+	}
+	switch StorageFinalReleaseStatus(previous.Status) {
+	case StorageFinalReleaseStatusStarted, StorageFinalReleaseStatusFailed, StorageFinalReleaseStatusSucceeded:
+		return *payload.DispatchAttempted, nil
+	default:
+		return false, fmt.Errorf("storage_final_release_original_destroy_mismatch")
+	}
+}
+
+// ReleaseRecycledStorageVolume atomically claims one explicit final-release
+// send. The stable dispatch primary key remains exclusive even if the original
+// destroy lock's connection is lost. Every losing claim is read-only; the
+// original destroy still owns local finalization and its receipt.
 func (s *Service) ReleaseRecycledStorageVolume(ctx context.Context, id string, input StorageFinalReleaseInput) (StorageFinalReleaseResult, error) {
 	var out StorageFinalReleaseResult
 	if input.Confirmation != StorageFinalReleaseConfirmation || strings.TrimSpace(input.AccountID) == "" || strings.TrimSpace(input.WorkspaceID) == "" || strings.TrimSpace(input.DestroyOperationID) == "" {
@@ -122,14 +136,14 @@ func (s *Service) ReleaseRecycledStorageVolume(ctx context.Context, id string, i
 			return err
 		}
 		operation := newOperation(storageFinalReleaseAction, "storage_final_release", id, input.AccountID, input.WorkspaceID, id, hashInput(input), s.now())
+		operation.CallerService, operation.Provider = "operator", frozen.Provider
 		attempted := false
 		if fenced {
-			var payload storageFinalReleaseJournalPayload
-			if previous.Action != operation.Action || previous.ResourceID != id || previous.RequestHash != operation.RequestHash || previous.OperationID != operation.OperationID || previous.ResourceKind != operation.ResourceKind || previous.AccountID != input.AccountID || previous.WorkspaceID != input.WorkspaceID || previous.IdempotencyKey != operation.IdempotencyKey ||
-				!decodeStrictJSON(mustJSON(previous.RedactedProviderPayload), &payload) || payload.OriginalDestroyOperationID != destroy.OperationID || payload.DispatchAttempted == nil {
-				return fmt.Errorf("storage_final_release_original_destroy_mismatch")
+			attempted, err = storageFinalReleaseDispatchAttempted(previous, operation, destroy.OperationID)
+			if err != nil {
+				return err
 			}
-			attempted, operation = *payload.DispatchAttempted, previous
+			operation = previous
 		}
 		out = StorageFinalReleaseResult{OperationID: operation.OperationID, Status: StorageFinalReleaseStatusPending, DispatchAttempted: attempted}
 		observed, err := s.readFrozenStorageDestroyStatus(ctx, frozen)
@@ -150,12 +164,34 @@ func (s *Service) ReleaseRecycledStorageVolume(ctx context.Context, id string, i
 			if !ok {
 				return fmt.Errorf("storage_final_release_unavailable")
 			}
-			operation.CallerService, operation.Provider = "operator", frozen.Provider
+			operation.ID = stableID("fop-storage-final-release-dispatch", id)
+			operation.Status, operation.CreatedAt = string(StorageFinalReleaseStatusStarted), s.now()
 			operation.RedactedProviderPayload = map[string]any{"originalDestroyOperationId": destroy.OperationID, "dispatchAttempted": true}
-			if err := s.recordOperation(ctx, operation, string(StorageFinalReleaseStatusStarted), nil, nil); err != nil {
+			persisted, claimed, err := s.runtimeOperations.ClaimRuntime(ctx, operation)
+			if err != nil {
 				return err
 			}
-			out.DispatchAttempted = true
+			attempted, err := storageFinalReleaseDispatchAttempted(persisted, operation, destroy.OperationID)
+			if err != nil || claimed && !attempted {
+				return errors.Join(fmt.Errorf("storage_final_release_dispatch_claim_invalid"), err)
+			}
+			operation = persisted
+			out.OperationID, out.DispatchAttempted = operation.OperationID, attempted
+			if !claimed {
+				// Lock ownership may have changed during the fresh read. Only the
+				// atomic winner may send; a loser must not append another outcome.
+				observed, err := s.readFrozenStorageDestroyStatus(ctx, frozen)
+				if err != nil {
+					return err
+				}
+				if observed.BindingPresent == nil || *observed.BindingPresent {
+					return fmt.Errorf("storage_final_release_binding_absence_required")
+				}
+				if storageDestroyReadbackConfirmsAbsence(observed) {
+					out.Status, out.AbsenceConfirmed = StorageFinalReleaseStatusSucceeded, true
+				}
+				return nil
+			}
 			requestID, mutationErr := provider.ReleaseRecycledStorageVolume(context.WithValue(ctx, workspaceStorageDeleteOwnerContextKey{}, cloneStorageVolume(frozen)), cloneStorageVolume(frozen))
 			operation.ProviderRequestID = requestID
 			observed, readErr := s.readFrozenStorageDestroyStatus(ctx, frozen)
