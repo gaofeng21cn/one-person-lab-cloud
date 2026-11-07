@@ -157,17 +157,6 @@ export async function startConsoleDemoServer({ port = 5197, log = true } = {}) {
     throw new Error("console_demo_address_missing");
   }
   const origin = `http://${HOST}:${address.port}`;
-  // Compile the SPA before the browser owns this fixture. Browser shards start
-  // several isolated Vite servers concurrently; without an explicit readiness
-  // read, the first /login request can spend the whole browser timeout in the
-  // transform pipeline and look like an authentication failure.
-  const warmup = await fetch(`${origin}/login`);
-  await warmup.arrayBuffer();
-  if (!warmup.ok) {
-    server.close();
-    await vite.close();
-    throw new Error(`console_demo_warmup_failed:${warmup.status}`);
-  }
   if (log) {
     process.stdout.write([
       "OPL Console localhost demo",
