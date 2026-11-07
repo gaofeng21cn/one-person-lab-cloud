@@ -49,6 +49,22 @@ was deployed and no production resource or financial action was performed.
 Installed Admin/Customer consistency still requires the exact Candidate and owner
 configuration to be adopted through Instance's protected deployment boundary.
 
+## Workspace 1042 storage deletion (2026-11-07)
+
+Protected Instance readback `42371451925`, from Instance source
+`0476e1dc7623f1d7b210cacc2907ce7029cad215`, observed the exact original
+CBS in `TORECYCLE` with all identity comparisons passing. The original deletion
+remains `needs_attention` at `storage_deletion`; resource/data absence and refund
+remain unconfirmed. The ordinary storage view lacked binding and destroy-phase
+proof, so this observation is not deletion success.
+
+The Fabric source adds journal-bound destroy-status readback and a separately
+fenced explicit recycled-storage final release. Source checks, a new immutable
+Candidate, protected installation, final provider absence and continuation of the
+original Workspace deletion are distinct evidence layers. Installed adoption and
+physical deletion are not established by this source change. Remaining acceptance
+is tracked in [roadmap](roadmap.md#workspace-1042-original-deletion).
+
 ## Model Reload Capability Admission
 
 Serve resolves the exact deployment's approved Runtime publisher model-configuration

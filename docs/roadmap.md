@@ -23,6 +23,21 @@ Use the following order when a source, document and receipt disagree:
 A passing test, generated contract, merged PR or queued workflow proves only its
 own layer. It does not close an Instance or production outcome.
 
+## Workspace 1042 original deletion
+
+Fabric owns final release of the original recycled CBS; Instance owns protected
+installation and execution, Workspace owns the original deletion and separate
+refund. The [current observation](status.md#workspace-1042-storage-deletion-2026-11-07)
+is retained data in `TORECYCLE`, not provider absence.
+
+Acceptance requires a Candidate containing the journal-bound status and explicit
+storage-final-release owner, protected installation proof for that same Candidate,
+fresh original-disk and PV/PVC readback, the independent one-send final-release
+fence, and fresh exact provider absence. Continue the original Workspace deletion
+through remaining resources and its deletion receipt. Confirm its refund through
+the original charge and refund owner separately; preserve unknown outcomes and
+historical attempts throughout. Source tests and PR merge do not close this gap.
+
 ## PR CI Cache Reuse And Parallel Verification
 
 Cloud development tools own this outcome. #970 merged the grouped exhaustive
