@@ -134,55 +134,89 @@ func TestOperatorOverviewNeverFallsBackToControlPlaneCountWhenWorkspaceUnavailab
 	}
 }
 
-func TestOperatorOverviewPreservesControlPlaneUnavailableAndFailureSemantics(t *testing.T) {
-	t.Run("valid unavailable is forwarded without workspace read", func(t *testing.T) {
-		identity := &operatorIdentity{}
-		workspace := &operatorOverviewWorkspaceClient{page: &api.OperatorWorkspacePage{Page: 1, PageSize: 1, Total: 10}}
-		raw := []byte(`{"source":"control-plane","status":"unavailable","available":false,"reasonCode":"owner_unavailable","fetchedAt":"2026-11-07T00:00:00Z"}`)
-		server := &Server{operator: &operatorOverviewReader{raw: raw}, identity: identity, workspace: workspace}
-		response := operatorOverviewResponse(t, server, identity)
-		if response.Code != http.StatusOK || response.Body.String() != string(raw) {
-			t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
-		}
-		if len(workspace.requests) != 0 {
-			t.Fatalf("workspace was read: %v", workspace.requests)
-		}
-	})
+func TestOperatorOverviewKeepsWorkspaceCountIndependentOfRetainedProjectionOutage(t *testing.T) {
+	for name, reader := range map[string]*operatorOverviewReader{
+		"unconfigured":          nil,
+		"unavailable envelope":  {raw: []byte(`{"source":"control-plane","status":"unavailable","available":false,"reasonCode":"retained_projection_unavailable","fetchedAt":"2026-11-07T00:00:00Z"}`)},
+		"unavailable transport": {err: status.Error(codes.Unavailable, "control plane unavailable")},
+		"deadline":              {err: status.Error(codes.DeadlineExceeded, "control plane deadline")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			identity := &operatorIdentity{}
+			workspace := &operatorOverviewWorkspaceClient{page: &api.OperatorWorkspacePage{Page: 1, PageSize: 1, Total: 10}}
+			server := &Server{identity: identity, workspace: workspace}
+			if reader != nil {
+				server.operator = reader
+			}
+			response := httptest.NewRecorder()
+			server.Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/operator/overview"))
+			if response.Code != http.StatusOK {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+			var envelope map[string]any
+			if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+				t.Fatal(err)
+			}
+			data := envelope["data"].(map[string]any)
+			count := data["workspaces"].(map[string]any)
+			if envelope["available"] != true || count["source"] != "workspace" || count["data"].(map[string]any)["total"] != float64(10) || len(workspace.requests) != 1 {
+				t.Fatalf("independent Workspace facts=%v requests=%v", envelope, workspace.requests)
+			}
+			for _, field := range []string{"accounts", "wallet", "keys", "usage", "reconciliation", "health", "resources"} {
+				fact := data[field].(map[string]any)
+				if fact["available"] != false || fact["data"] != nil || fact["reasonCode"] == nil {
+					t.Fatalf("%s outage became a fact: %v", field, fact)
+				}
+			}
+			if reader != nil && reader.err == nil && data["accounts"].(map[string]any)["reasonCode"] != "retained_projection_unavailable" {
+				t.Fatalf("owner reason lost: %v", data)
+			}
+		})
+	}
+}
 
-	t.Run("transport error", func(t *testing.T) {
-		identity := &operatorIdentity{}
-		reader := &operatorOverviewReader{err: status.Error(codes.Unavailable, "control plane unavailable")}
-		server := &Server{operator: reader, identity: identity, workspace: &operatorOverviewWorkspaceClient{}}
-		response := operatorOverviewResponse(t, server, identity)
-		if response.Code != http.StatusServiceUnavailable {
-			t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
-		}
-	})
-
-	t.Run("invalid envelope", func(t *testing.T) {
-		identity := &operatorIdentity{}
-		workspace := &operatorOverviewWorkspaceClient{}
-		server := &Server{operator: &operatorOverviewReader{raw: []byte(`{"source":"wrong","status":"available","available":true,"fetchedAt":"2026-11-07T00:00:00Z","data":{}}`)}, identity: identity, workspace: workspace}
-		response := operatorOverviewResponse(t, server, identity)
-		if response.Code != http.StatusBadGateway {
-			t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
-		}
-		if len(workspace.requests) != 0 {
-			t.Fatalf("workspace was read: %v", workspace.requests)
-		}
-	})
+func TestOperatorOverviewRejectsInvalidRetainedProjection(t *testing.T) {
+	identity := &operatorIdentity{}
+	workspace := &operatorOverviewWorkspaceClient{}
+	server := &Server{operator: &operatorOverviewReader{raw: []byte(`{"source":"wrong","status":"available","available":true,"fetchedAt":"2026-11-07T00:00:00Z","data":{}}`)}, identity: identity, workspace: workspace}
+	response := operatorOverviewResponse(t, server, identity)
+	if response.Code != http.StatusBadGateway || len(workspace.requests) != 0 {
+		t.Fatalf("status=%d body=%s requests=%v", response.Code, response.Body.String(), workspace.requests)
+	}
 }
 
 func TestOperatorOverviewDoesNotHideWorkspaceAuthorizationFailure(t *testing.T) {
-	identity := &operatorIdentity{denied: true}
-	server := &Server{
-		operator:  &operatorOverviewReader{raw: operatorOverviewCPEnvelope(`{"workspaces":{"total":999}}`)},
-		identity:  identity,
-		workspace: &operatorOverviewWorkspaceClient{page: &api.OperatorWorkspacePage{Page: 1, PageSize: 1, Total: 7}},
+	for name, reader := range map[string]*operatorOverviewReader{
+		"CP available":   {raw: operatorOverviewCPEnvelope(`{"workspaces":{"total":999}}`)},
+		"CP unavailable": {err: status.Error(codes.Unavailable, "retained projection unavailable")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			identity := &operatorIdentity{denied: true}
+			workspace := &operatorOverviewWorkspaceClient{page: &api.OperatorWorkspacePage{Page: 1, PageSize: 1, Total: 7}}
+			server := &Server{operator: reader, identity: identity, workspace: workspace}
+			response := operatorOverviewResponse(t, server, identity)
+			if response.Code != http.StatusForbidden || len(workspace.requests) != 0 {
+				t.Fatalf("status=%d body=%s requests=%v", response.Code, response.Body.String(), workspace.requests)
+			}
+		})
 	}
-	response := operatorOverviewResponse(t, server, identity)
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+}
+
+func TestOperatorOverviewRetainsControlPlaneAuthorizationFailures(t *testing.T) {
+	for _, code := range []codes.Code{codes.PermissionDenied, codes.Unauthenticated} {
+		t.Run(code.String(), func(t *testing.T) {
+			identity := &operatorIdentity{}
+			workspace := &operatorOverviewWorkspaceClient{}
+			server := &Server{operator: &operatorOverviewReader{err: status.Error(code, "retained owner denied")}, identity: identity, workspace: workspace}
+			response := operatorOverviewResponse(t, server, identity)
+			want := http.StatusForbidden
+			if code == codes.Unauthenticated {
+				want = http.StatusUnauthorized
+			}
+			if response.Code != want || len(workspace.requests) != 0 {
+				t.Fatalf("status=%d body=%s requests=%v", response.Code, response.Body.String(), workspace.requests)
+			}
+		})
 	}
 }
 

@@ -1405,6 +1405,8 @@ aliases and their BFF adapters are removed together; legacy `/api/operator/works
 continues to read retained objects for its existing callers.
 
 Cloud overview replaces the retained Workspace count with Workspace's total.
+A retained projection outage marks its own fields unavailable and cannot hide the
+independently authorized Workspace count; neither source supplies substitute facts.
 It does not reinterpret CP runtime observations as Fabric's native resource total;
 the unavailable aggregate remains explicit. Account counts retain their CP
 record scope and are labeled historical; no Account-to-Tenant identity is

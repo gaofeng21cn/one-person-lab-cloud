@@ -20,29 +20,9 @@ const operatorOverviewMaxSafeInteger = int64(9007199254740991)
 // separate from operator.go so route registration and the existing platform
 // operator gate can be changed independently.
 func (s *Server) readOperatorOverview(w http.ResponseWriter, r *http.Request, ctx context.Context, caller Caller) {
-	raw, err := s.operator.OperatorOverview(ctx, caller.SessionID)
+	data, err := s.readRetainedOperatorOverview(ctx, caller.SessionID)
 	if err != nil {
 		writeOwnerCallFailure(w, r, err)
-		return
-	}
-	if !validOperatorEnvelope(raw, "control-plane") {
-		writePublisherError(w, r, http.StatusBadGateway, "invalid_owner_response", "invalid operator owner response")
-		return
-	}
-
-	var envelope map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &envelope); err != nil {
-		writePublisherError(w, r, http.StatusBadGateway, "invalid_owner_response", "invalid operator owner response")
-		return
-	}
-	if string(envelope["status"]) == `"unavailable"` {
-		writeRawOperatorOverview(w, raw)
-		return
-	}
-
-	var data map[string]json.RawMessage
-	if dataRaw := envelope["data"]; len(dataRaw) == 0 || json.Unmarshal(dataRaw, &data) != nil || data == nil {
-		writePublisherError(w, r, http.StatusBadGateway, "invalid_owner_response", "invalid operator owner response")
 		return
 	}
 
@@ -59,9 +39,50 @@ func (s *Server) readOperatorOverview(w http.ResponseWriter, r *http.Request, ct
 	data["workspaces"] = mustMarshalOperatorOverviewValue(workspaceEnvelope)
 	data["resources"] = mustMarshalOperatorOverviewValue(operatorSource("fabric", nil, "owner_aggregate_not_available", ""))
 
-	envelope["source"] = mustMarshalOperatorOverviewValue("control-plane+workspace")
-	envelope["data"] = mustMarshalOperatorOverviewValue(data)
-	writeRawOperatorOverview(w, mustMarshalOperatorOverviewValue(envelope))
+	writeRawOperatorOverview(w, mustMarshalOperatorOverviewValue(operatorSource("control-plane+workspace", data, "", "")))
+}
+
+// A retained projection outage belongs to its own fields. It cannot suppress
+// an independently authorized Workspace owner read or substitute a zero count.
+func (s *Server) readRetainedOperatorOverview(ctx context.Context, sessionID string) (map[string]json.RawMessage, error) {
+	unavailable := func(reason string) map[string]json.RawMessage {
+		data := make(map[string]json.RawMessage)
+		for field, source := range map[string]string{
+			"accounts": "control-plane", "wallet": "sub2api", "keys": "sub2api",
+			"usage": "sub2api", "reconciliation": "control-plane", "health": "control-plane",
+		} {
+			data[field] = mustMarshalOperatorOverviewValue(operatorSource(source, nil, reason, ""))
+		}
+		return data
+	}
+	if s.operator == nil {
+		return unavailable("control_plane_owner_unconfigured"), nil
+	}
+	raw, err := s.operator.OperatorOverview(ctx, sessionID)
+	if err != nil {
+		if code := status.Code(err); code == codes.Unavailable || code == codes.DeadlineExceeded {
+			return unavailable("control_plane_owner_unavailable"), nil
+		}
+		return nil, err
+	}
+	if !validOperatorEnvelope(raw, "control-plane") {
+		return nil, status.Error(codes.DataLoss, "invalid operator owner response")
+	}
+	var envelope struct {
+		Status     string                     `json:"status"`
+		ReasonCode string                     `json:"reasonCode"`
+		Data       map[string]json.RawMessage `json:"data"`
+	}
+	if json.Unmarshal(raw, &envelope) != nil {
+		return nil, status.Error(codes.DataLoss, "invalid operator owner response")
+	}
+	if envelope.Status == "unavailable" {
+		return unavailable(envelope.ReasonCode), nil
+	}
+	if envelope.Data == nil {
+		return nil, status.Error(codes.DataLoss, "invalid operator owner response")
+	}
+	return envelope.Data, nil
 }
 
 func (s *Server) authorizeOperatorWorkspaceOverview(ctx context.Context, caller Caller) (context.Context, error) {

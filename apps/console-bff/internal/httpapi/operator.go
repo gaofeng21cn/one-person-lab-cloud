@@ -111,7 +111,7 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 				return
 			}
 		}
-		if s.operator == nil && kind != "workspaces" && kind != "workspace" {
+		if s.operator == nil && kind != "workspaces" && kind != "workspace" && kind != "overview" {
 			writePublisherError(w, r, 503, "owner_unconfigured", "operator owner is not configured")
 			return
 		}

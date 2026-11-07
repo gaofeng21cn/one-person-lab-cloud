@@ -26,7 +26,9 @@ original create operation; an unrelated active model operation cannot select it.
 The BFF stores no resource state and never retries against retained CP Workspace
 APIs. Missing owners, unknown observations and confirmed absence remain distinct.
 
-The Cloud overview Workspace total also reads Workspace. The former CP runtime
+The Cloud overview Workspace total also reads Workspace, including when the
+retained CP projection is unavailable; its affected fields retain explicit failure
+reasons independently. The former CP runtime
 observation count is not a native Fabric resource total, so that aggregate is
 explicitly unavailable until its owner supplies it. Account-page Workspace
 counts are labeled historical CP records; Account and Tenant are not joined by
