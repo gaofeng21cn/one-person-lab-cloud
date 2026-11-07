@@ -4,11 +4,11 @@ Owner: `opl-cloud`
 Purpose: `replaceable_current_evidence_snapshot`
 State: `current_snapshot`
 Reviewed source baseline: `3773966a31e2a5d6630038decfa0a812c1488830` on `main`
-Snapshot reconciliation date: 2026-11-05
+Snapshot reconciliation date: 2026-11-06
 
 Each observation below retains its original source, run and environment; the
 reviewed source baseline does not requalify those receipts. The latest retained
-runtime/source evidence is dated 2026-11-05. Source tests, Candidate construction,
+runtime/source evidence is dated 2026-11-06. Source tests, Candidate construction,
 Instance installation and customer acceptance prove separate layers; none alone
 establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
@@ -30,6 +30,15 @@ original Workspace deletion are distinct evidence layers. Installed adoption and
 physical deletion are not established by this source change. Remaining acceptance
 is tracked in [roadmap](roadmap.md#workspace-1042-original-deletion).
 
+## Model Reload Capability Admission
+
+Serve resolves the exact deployment's approved Runtime publisher model-configuration
+interface before any Secret handover or reload intent. An absent interface, an
+unsupported protocol or an unavailable release owner leaves the existing binding
+and applied version unchanged. Isolated PostgreSQL tests exercise both admitted
+reload callers and confirm zero Secret replacements, execution calls or reload
+actions for those refusals. Installed adoption remains unverified.
+
 ## Current Capability Baseline
 
 Reconciled on 2026-11-05 against Cloud source `3773966a`; dated source and
@@ -37,10 +46,10 @@ Instance observations below retain their original revisions and limits.
 
 | Scope | Established evidence | Remaining boundary |
 | --- | --- | --- |
-| Default App customer acceptance | [#1042](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1042) closed on 2026-11-02 after official App login, Gateway-backed model response, restart/response-loss recovery, one `$52.58` charge and no duplicate purchase or Key; [original observations](#native-runtime-admission-and-serve-upgrade-authorization-2026-11-01) | This accepted Workspace does not prove every future customer is unattended, the Cloud model-configuration API is qualified or every writer has migrated |
+| Default App customer acceptance | [#1042](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1042) closed on 2026-11-02 after official App login, Gateway-backed model response, restart/response-loss recovery, one `$52.58` charge and no duplicate purchase or Key; the [November 5 readback](#existing-default-app-provisioning-closure-readback-2026-11-05) separately confirms current model use and page-reload persistence | This accepted Workspace does not prove every future customer is unattended, the Cloud model-configuration API is qualified or every writer has migrated |
 | Original-order closeout | [#1018's three original orders](#original-order-closeout-scope-2026-10-23) have protected resource absence, deletion-receipt and original-charge settlement evidence | Preserve their original records; completed closeout does not retire every retained CP caller or worker |
 | Serve current application and upgraded deletion | [Current selection](#serve-owned-current-application-readback-2026-11-04) comes from Serve, and [deletion follows the original reservation's successor lineage](#workspace-deletion-after-application-replacement-2026-11-04); both have source regression evidence | Installed adoption and live owner readback for these later repairs remain unverified |
-| Package, Build and Runtime catalog | Approved Default App inputs were used by #1042; Package/Build source and the [Linux Custom Agent profile](#linux-custom-agent-owner-qualification-2026-10-21) have distinct evidence | External OMA admission, hosted tenant-specific OCI publication, Custom Agent TKE acceptance and broader Runtime/provider profiles remain separate |
+| Package, Build and Runtime catalog | Approved Default App inputs were used by #1042; the [Agent publication input check](#custom-agent-publication-inputs-2026-11-05) identifies the current Publisher blocker and Package portability issue; the [Linux Custom Agent profile](#linux-custom-agent-owner-qualification-2026-10-21) retains its distinct historical inputs | The Cloud WebUI is published and admitted; a compatible Runtime recipe, portable Package input and effective Build policy remain prerequisites for the current customer test; hosted OCI and Custom Agent TKE acceptance remain separate |
 | Retained writer migration | [Capability withdrawals](#retained-writer-inventory-and-split-withdrawal-proposals-2026-11-03) and [implementation inventory](implementation-architecture.md#retained-writer-and-caller-inventory-2026-11-03) identify source removals, surviving callers and bounded observations | Account eligibility is consumed at source; its installed adoption and owner migration, Tenant payer-balance consumption, selected-model admission, shared CP recovery and historical duties remain separate. Source removal is not installed adoption or zero traffic |
 | Protected engineering qualification | Native consumer migration and source repairs are recorded separately from the accepted customer path | Protected payer declaration, same-Candidate J0 READY, W01 ordering and a complete protected receipt remain unproven; existing release admission is unchanged |
 
@@ -52,34 +61,174 @@ The current objective is one writer per fact and removal of obsolete code with
 its callers, workers, configuration and exclusive tests. Qualification is a
 separate release lane, not a blanket prerequisite for source retirement.
 
+## Custom Agent Publication Inputs (2026-11-05)
+
+The authenticated customer Publisher remained disabled after selecting the full
+IBD v0.2.0 Cloud Package, SHA-256
+`4a7cc80f37aa6172ce5f1de4ae21003db28c142428f2a9c74d7500137d618a01`.
+Public owner-facing reads returned `NOT_FOUND` for the effective Build policy,
+an empty WebUI catalog and three approved App Runtime records with no declared
+Package formats. Upload and server Package validation were not reached.
+
+An isolated Linux amd64 container using the same Runtime image digest
+`sha256:f6ce30fe1b0cdf8e1c6722a4c96d893ff8286e6af718940dab5a1d778ba70b71`
+accepted the Package manifest in dry-run, but actual installation failed with
+`contract_shape_invalid` / `configured_codex_plugin_carrier_action_failed`.
+The Package declares an absolute producer-machine marketplace path. An initial
+diagnostic control made that path available inside a disposable container and
+obtained native `installed` / `callable` readback. A second offline comparison
+kept the working directory at the extracted `carrier` root for both attempts:
+the original failed, while a diagnostic copy changing only the selected manifest's
+`marketplace_source` to `.` installed successfully. This is ordinary working-directory
+resolution, not manifest-relative relocation or a portable Package acceptance.
+The original ZIP remains unchanged. The transport explicitly disclaims native
+installability and OCI publication; the dependency is not evidence that its
+exporter violated that transport promise or that Runtime needs a new installer.
+The Package also declares `search_evidence` at container-local
+`http://127.0.0.1:8081/v1/search-evidence`; its handoff receipt leaves availability
+unproven. Installing the native carrier does not qualify that evidence service
+or an actual Agent response.
+
+The [Cloud-owned WebUI build entry](runtime/release.md#cloud-agent-webui-build-input)
+was merged in [PR #1137](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1137).
+[Run 42010915435, attempt 1](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/42010915435)
+succeeded for exact source `d58dabc2303e5dc12254e2fdad9a5aca5d36c0df`, publishing
+`ghcr.io/gaofeng21cn/opl-cloud-agent-webui`:
+
+| Published object | Immutable digest |
+| --- | --- |
+| Linux multi-platform index | `sha256:367436beaaaa8a3c037addb6518d16497e34916a9cd86f7453571971fbe2a835` |
+| Linux amd64 Build input | `sha256:5b52b16099b443e8b9eac472fed786d0880bf0eef62f39759ea22da8f65461be` |
+| Linux arm64 Build input | `sha256:3024fcab1b9ad49c0ee998ebac9b76eb23b63a67cf92926dfa820ca9830a5929` |
+
+The run's `cloud-agent-webui-d58dabc2303e5dc12254e2fdad9a5aca5d36c0df-1` artifact
+retains source, push metadata, index and image readbacks with matching checksums.
+An independent anonymous registry read matched the index digest, both child
+manifests/configs/layers and all four served WebUI source files against that
+commit. Registry transfer has not been shown necessary: anonymous retrieval
+works; installed Build pull access remains unverified.
+
+On November 6 (Asia/Shanghai), the protected Instance main workflow admitted the
+exact WebUI publisher namespace in [run 42091540145](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/42091540145).
+The version `2026.11.05-d58dabc-amd64` binds the published amd64 digest above.
+[Run 42092204127](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/42092204127)
+created it with HTTP 201 and read one approved customer-visible version, but
+retained a blocked receipt because the complete create/list projections differed.
+An exact replay in [run 42092686735](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/42092686735)
+confirmed `already_effective`, all contract/catalog checks and zero new WebUI
+versions. The blocked attempt remains evidence; replay does not erase it.
+A real Linux/PostgreSQL regression reproduced the discrepancy: admission and
+command replay returned nanosecond `created_at`, while the persisted list read
+returned PostgreSQL's microsecond value. Capability now returns `created_at`
+from `INSERT ... RETURNING` before recording the command result. Full-version
+admission/list/replay equality and unchanged replay catalogs pass locally;
+focused verification executed 51 tests with no failures or skips. Installed
+adoption of this source fix remains unverified.
+
+The latest successful official App WebUI publication, [run 39921425320](https://github.com/gaofeng21cn/one-person-lab-app/actions/runs/39921425320),
+was also inspected at its four actual artifacts with matching download and
+receipt hashes. Those artifacts bind Runtime image build inputs and image
+identity, but contain no Cloud `buildRecipe`, Package-format declaration or
+recipe archive. This finding is limited to that publication's artifacts, not
+an assertion about every image file or unpublished Runtime input.
+A real compatible Runtime recipe, portable Package delivery, effective Build
+policy and customer upload/build/deployment remain open. These admission runs
+changed neither existing Runtime records nor Workspace, provider or financial
+state; the original Package bytes remain unchanged.
+
 ## Native Local-Docker Release Qualification (2026-11-05)
 
-[Clean Host run `41962716311`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/41962716311)
-executed Candidate source `3204139a4b8df601f7feeffc8a6fdfc801db3840` through
-the existing native topology: fourteen services, eleven independent databases,
-CloudIdentity/Tenant and catalog, a zero-price native order, the provider-bound
-anonymous application entry, restart/session continuity, owner-confirmed resource
-and data deletion, and a repeated deletion with unchanged Ledger evidence. These
-stages completed. That run still failed because its diagnostic producer always
-returned version-one `NOT_READY`; it is not an admitted qualification receipt.
+[PR #1131](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1131)
+merged as `e92524de` after all six checks passed for the frozen source
+`5e3d58dc2897648a01aa298dfa77bb02c3615aea`. Focused verification executed
+150 tests with zero failures, skips or TODOs. [Candidate build
+`41968022170`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/41968022170)
+succeeded for that exact source and both Linux architectures. Its portable
+bundle passed its own validator and binds image index
+`sha256:411b9948b0701c44525abedfec20d2ed2f651b25e48c8e88334cc6badf40c2c1`.
 
-The source now defines the native version-two READY receipt and its shared
-Release validator. It binds the clean source, admitted and running images,
-owner processes/stores, actual application port and image, restart continuity,
-deletion ownership/replay and remaining Workspace resources. The retained
-version-one validator remains separate. Execution of this new producer and a
-successful `main` qualification run are still required. The local profile is
-`LOCAL_NO_CHARGE`, with no claimed live charge, Gateway model response, Instance
-adoption or formal publication.
+[Main Clean Host run `41968911003`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/41968911003)
+succeeded and produced the native schema-two READY receipt for the same
+Candidate. The shared Release consumer validated the original downloaded bytes.
+All eleven owner processes and eleven stores were confirmed; the anonymous
+application returned HTTP 200; restart preserved the operation, Workspace,
+Runtime, receipt and re-established session; owner deletion confirmed resource
+and data absence; duplicate deletion kept the operation and Ledger receipts
+unchanged. Remaining Workspace containers, volumes and networks were all zero,
+and both host-storage and fixture-registry cleanup steps succeeded.
 
-The owner approved reuse of the existing publisher credential rather than a
-new token. Its sealed transfer succeeded in App run `41962800078`; Cloud
-`cloud-release` and `cloud-business-qualification` Secret metadata was read back
-on 2026-11-05. The source confines its references to protected, main-only
-owner-gated evidence jobs. Instance Actions/Contents reads succeeded in the
-source environment; Cloud consumer execution and independent customer-account
-Secrets remain unverified or absent. The reused credential has broader actual
-publisher permissions than the evidence reads require.
+The earlier [run `41962716311`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/41962716311)
+completed the native lifecycle on source `3204139a` but failed because its old
+diagnostic producer always emitted NOT_READY. That retained diagnostic was not
+converted into a READY receipt. The new producer and shared Release consumer
+use the native version-two receipt, preserving the separate version-one
+validator. The profile is `LOCAL_NO_CHARGE` and `p0Ready: false`; live Gateway
+charge/model response and Instance/business qualification remain separate.
+
+The owner approved reuse of the existing publisher credential. Its sealed
+transfer succeeded in App run `41962800078`; Cloud `cloud-release` and
+`cloud-business-qualification` Secret metadata was read back on 2026-11-05.
+Main-only owner-gated evidence jobs are its only Cloud source consumers. The
+credential has broader actual publisher permissions than the Actions/Contents
+reads require. App cleanup [PR #346](https://github.com/gaofeng21cn/one-person-lab-app/pull/346)
+merged as `c5a15c501`; canonical main no longer contains the transfer workflow,
+and both local and Actions transport envelopes were removed. Release admission
+subsequently consumed the original Instance evidence with the protected Secret.
+Separate customer-read execution remains unclaimed.
+
+The owner subsequently authorized Candidate registration/deployment and chose
+source-path availability instead of cost-incurring business acceptance. Instance
+registration PR #682 merged as `d39d6c8`; deployment run `41971059395` succeeded
+for the frozen Candidate, followed by successful independent read-only
+installation run `41971608915`. The revised publication contract requires actual
+local/Instance installation and exact-source CI/path hashes. Paid business and
+customer-read execution are explicitly unclaimed.
+
+Public stable [v0.1.8](https://github.com/gaofeng21cn/one-person-lab-cloud/releases/tag/v0.1.8)
+was published by [run `41974595669`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/41974595669)
+and independently verified by [public readback `41974709759`](https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/41974709759).
+Latest and the tag resolve to the frozen Product source; both image architectures,
+all ten assets, checksums and the signed provenance match the admitted Candidate.
+The manifest declares installation/source-path acceptance and no paid business
+or customer-read execution.
+
+## Existing Default App Provisioning Closure Readback (2026-11-05)
+
+This source audit is bound to merged Cloud #1127,
+`082b98371cb321ac2a0db3edcc88b9096e9b0186`; the installed Candidate at that observation was
+`4f131caa41324f027c1fee48d6ae5e5356e7e3c4`. No fresh purchase, deployment or
+provider mutation was performed. The existing designated #1042 Workspace was
+read through the Instance-owned [customer readback run 41949644043](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41949644043).
+Its original receipt is **blocked**, not accepted: customer login, Workspace
+list/detail, Serve deployment and access APIs all returned HTTP 200, while the
+unauthenticated application-entry request returned HTTP 302 and failed the
+producer's `accessEntryServed` check. All business/provider/Workspace mutation
+counters are zero. This result does not establish an application outage or
+justify weakening that producer's acceptance rule.
+
+The actual application browser session separately opened the official App,
+completed one model turn returning `OPL_CLOSURE_20261105_OK`, and retained that
+reply and the session after page reload. This is existing-Workspace model and
+browser-persistence evidence, not a new-order, Runtime-restart, deletion/refund
+or latest-source adoption result. The App's runtime overview separately reported
+its background service not ready; the successful model turn does not qualify
+that separate background capability. The expired Console browser session had
+redirected to login, while the protected customer login succeeded.
+
+Targeted owner checks at the source above passed 53 Go tests/subtests with zero
+failures/skips across BFF, Workspace, Gateway Integration, Fabric, Serve and
+Ledger, using isolated PostgreSQL where required. They cover original-operation
+recovery, unknown-charge readback, retained Key/reservation identity, whole-runtime
+readiness, deployment replay and receipt restart. Their downstream doubles do
+not establish one live cross-owner paid purchase. An isolated real-issuer/owner
+reproduction also confirmed the existing selected-model gap: a non-empty Agent
+selection receives an external Key but fails the resolved-model comparison,
+leaving the command pending without Secret delivery or a binding. Replaying
+uses the same external idempotency key; the simulated Gateway returned one Key.
+The empty-model Default App control completed and replayed without another
+issuance. These reproduction assertions passed because they detected the bug;
+they are not a fixed-Agent acceptance result. Remaining native new-order gaps
+and installed adoption stay in [customer lifecycle convergence](roadmap.md#customer-lifecycle-owner-convergence).
 
 ## Retained Generic Deployment Builder Removal (2026-11-05)
 
@@ -2270,6 +2419,26 @@ is the Cloud-owned input for an Instance manifest. It names owner identities,
 executables, addresses, database roles, peer identities, HTTP surfaces and the
 baked Console identity. It is a source and packaging contract; it is not proof
 that an installation runs the complete set.
+
+## Console Interface Refinement (2026-11-05)
+
+Against checked baseline `5e3d58dc2897648a01aa298dfa77bb02c3615aea`, the
+Console overview now presents Workspace actions before the charge trend. Shared
+surfaces use clearer text/action contrast and quieter panel styling; mobile
+Workspace names wrap in full. Navigation and account panels close each other,
+support Escape and return focus; the mobile drawer keeps keyboard navigation
+inside it while open. The preview fixture now displays
+`https://gateway.medopl.com/v1`; the product still reads its API address from
+the Gateway owner response.
+
+Focused local verification passed 20 tests with zero failures, skips or TODOs,
+including customer/operator journeys, source availability states and layout
+checks across fifteen routes at 1440, 1280, 1024 and 390 pixels. Typecheck,
+lint and the production build passed. These are local fixture/browser results;
+installed adoption remains an [acceptance outcome](roadmap.md#console-interface-adoption).
+Additional browser readback at 320, 390 and 1440 pixels passed nine scenarios,
+including copying the current API address and keeping a valid Workspace usable
+when the Cloud identity's independent wallet/history sources are unavailable.
 
 ## Browser-Facing HTTP Surface And Console Identity
 

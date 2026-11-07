@@ -136,6 +136,23 @@ evidence and its source/fixture boundaries are owned by
 records the scoped source closure and its historical review/CI. Generic WebUI
 chat changes, browser-driven sending and a new provider are outside this scope.
 
+The [customer test and admitted WebUI input](status.md#custom-agent-publication-inputs-2026-11-05)
+leave customer upload pending a compatible Runtime and effective Build defaults.
+The WebUI artifact is published and its approved version was read back through
+the protected Instance workflow; do not rebuild or register a duplicate merely
+to retry delivery, or add a registry bridge without an observed retrieval need.
+The Capability fix for the first admission's create/list timestamp discrepancy
+has local persistence evidence; installed adoption remains unverified. Exact
+read-only replay confirms the stored version but does not qualify the first
+response. Obtain the Runtime publisher's real fixed recipe and a Package delivery whose
+carrier references agree with its declared installation working directory. The
+successful offline relative-source control does not qualify the original
+transport, require a new Runtime installer, or make Framework's official Package
+publication channel mandatory for generic Cloud uploads. The IBD Package's
+container-local evidence service also needs an executable binding and actual
+retrieval verification. Admit the compatible inputs and set the effective Build
+policy, then retry upload/build and customer delivery with a real Agent request.
+
 Same-Candidate and installed Tencent/TKE acceptance remain open. The local
 `LOCAL_NO_CHARGE` order did not activate a paid subscription: after positive
 checks, customer deletion was refused with 422. Real resource absence, Ledger
@@ -184,6 +201,14 @@ claim unattended deployment or formal Product Release.
 | P1 | Backup, restore, alert and data-exit contracts | Cloud owners; Instance operates them | Owner boundaries are described; production schedules and receivers are external | Isolated restore identity/readback, stable active/recovered signals, stop-purchase boundary and export/delete receipts |
 | P1 | MAP domain contracts and evaluation gate | MAP medical domain owner/Instance | Cloud logical Connect boundary is documented; no clinical domain or qualified MAP adapter/backend combination is claimed | MAP task/adapter contract, selected OPL Connect backend, approved data classes, source/evidence model, human review states, evaluation set, release gate and institution acceptance; no medical-specific Cloud adapter is required |
 | P2 | Customer-operated payment, multi-user Workspace, HA/GPU and broader provider profiles | Product and Instance owners | Deliberately outside the current beta cut | Separate product decision, owner and qualification evidence before admission |
+
+## Console Interface Adoption
+
+The [Console interface refinement](status.md#console-interface-refinement-2026-11-05)
+has local source and fixture/browser evidence. Installed acceptance requires
+the adopted Candidate's customer and operator surfaces, real authenticated
+owner reads, and representative desktop/mobile navigation. Publication and
+Instance deployment remain with their existing owners.
 
 ## Workspace Key And Customer Read Boundaries
 
@@ -366,10 +391,30 @@ Workspace, and its obligations remain separate.
 
 The remaining bounded source gaps are the launch page's use of a personal wallet
 balance to gate a Tenant-funded order, and managed-Key issuance with non-empty
-model selections when the user API supplies no model-scope projection. Resolve
-each at its existing owner with its actual consumer; do not add another wallet
-or Gateway allowlist. The new-purchase source now consumes the Account policy;
-its installed adoption and eventual policy-owner migration remain below.
+model selections when the user API supplies no model-scope projection. The
+[November 5 check](status.md#existing-default-app-provisioning-closure-readback-2026-11-05)
+reproduces the latter through the actual Gateway user-API issuer and managed-Key
+owner: issuance succeeds externally, then the scope comparison leaves the order
+pending before Secret/binding delivery. Resolve each at its existing owner with
+its actual consumer; do not copy requested models into an unobserved effective
+scope, bypass authorization or add another wallet/Gateway allowlist. Verify
+non-empty selection and original-command recovery through the real issuer.
+The new-purchase source now consumes the Account policy; its installed adoption
+and eventual policy-owner migration remain below.
+
+The existing Default App still answers actual model turns and preserves its
+session/reply after page reload. This does not qualify a fresh unattended order
+or prove adoption of later source repairs. The Instance customer-readback receipt
+remains blocked on the unauthenticated entry's HTTP 302; reconcile that producer
+with the application's actual login boundary before claiming automated acceptance.
+The separately reported background-service warning is not evidence that the
+observed model turn failed. Preserve both observations without extending this
+check into unrelated App capabilities.
+
+After adopting the Serve reload admission repair, verify that a Runtime without
+a declared model-configuration interface is refused before Secret handover,
+preserving its active binding and applied version. Source owner tests establish
+this ordering; they do not establish installed adoption.
 
 #### Workspace purchase eligibility adoption
 
@@ -385,6 +430,11 @@ reader migrate together.
 
 
 ### Native v2 protected qualification and CP retirement (post-#1042)
+
+Public stable v0.1.8 completed the non-spending installation and source-path
+publication acceptance. The following live business and retirement outcomes are
+independent of that completed publication. They remain unverified
+until separately authorized execution supplies their native evidence.
 
 Workspace owns purchase and deletion orchestration; CloudIdentity owns the live
 session and Tenant authorization, Serve owns deployment/access, Fabric owns
@@ -413,20 +463,14 @@ replay identity. The
 [October 26 installation evidence](status.md#delivery-lane-reconciliation-2026-10-26)
 now binds successful Candidate construction, Deploy and read-only
 `deployment_verified`/installation verification to the exact Cloud source/tree,
-Candidate manifest and image index. The following are the remaining independent
-qualification and migration outcomes; they do not reopen #1042's completed
-customer acceptance:
+Candidate manifest and image index. Native Local-Docker qualification is now
+complete for frozen source `5e3d58dc`: the main Clean Host run `41968911003`
+returned a version-two READY receipt for the admitted image, lifecycle and zero
+remaining Workspace resources. [Status](status.md#native-local-docker-release-qualification-2026-11-05)
+retains the original evidence and the LOCAL_NO_CHARGE scope. The following are
+the remaining independent qualification and migration outcomes; they do not
+reopen #1042's completed customer acceptance:
 
-- Admit the native Local-Docker installation through its version-two receipt.
-  The complete native topology and anonymous fixture have executed application
-  access, restart continuity, owner deletion and duplicate deletion with actual
-  provider absence; [status](status.md#native-local-docker-release-qualification-2026-11-05)
-  retains the exact source and run. The new producer/consumer must still return
-  READY for one exact Candidate through the `main` Clean Host workflow before
-  publication. This `LOCAL_NO_CHARGE` profile uses the owner's not-applicable
-  refund result; live Gateway charge, model and Key evidence remains in the
-  separate protected business qualification. Retained version-one receipts keep
-  their own validator and paid-fixture facts.
 - Complete the installed use of the adopted Instance protected consumer:
   RuntimeVersion/compute/storage, authenticated Tenant/payer and a genuine
   dedicated-sandbox J0 READY receipt must be explicitly bound to the same

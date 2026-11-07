@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const repository = fileURLToPath(new URL("../../", import.meta.url));
 const workflows = [
+  "build-cloud-agent-webui.yml",
   "build-opl-cloud-candidate.yml",
   "clean-host-qualification.yml",
   "cloud-business-readback.yml",
@@ -69,5 +70,28 @@ test("a second build workflow is refused even when it looks like the Candidate",
     assert.match(result.stderr, /build-opl-cloud-candidate-bridge\.yml/);
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("WebUI input publication cannot widen into Product source or protected Instance execution", async () => {
+  const changes = [
+    ["git archive \"$PRODUCT_SHA\" webui/cloud-agent", "git archive \"$PRODUCT_SHA\""],
+    ["runs-on: ubuntu-latest", "runs-on: self-hosted"],
+    ["    timeout-minutes: 15", "    environment: production\n    timeout-minutes: 15"],
+    ["github.sha == inputs.product_sha", "github.sha != inputs.product_sha"]
+  ];
+  for (const [before, after] of changes) {
+    const directory = await boundaryFixture();
+    try {
+      const path = join(directory, ".github/workflows/build-cloud-agent-webui.yml");
+      const source = await readFile(path, "utf8");
+      assert.ok(source.includes(before));
+      await writeFile(path, source.replace(before, after));
+      const result = validate(directory);
+      assert.equal(result.status, 1, result.stdout);
+      assert.match(result.stderr, /Cloud Agent WebUI workflow authority boundary is invalid/);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   }
 });

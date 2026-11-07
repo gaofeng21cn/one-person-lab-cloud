@@ -16,21 +16,18 @@ function digest(value: string) {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
-// Native receipts must be validated by their producing revisions before this
-// cross-owner binding is evaluated. Installation proves identity and health;
-// the separate native qualification and Workspace gates remain mandatory.
-export function validateReleaseInstallationBinding(input: {
+// The producing Instance revision validates its native receipt first. This
+// binding proves installation identity and health, independently of purchases.
+export function validateReleaseInstallationReadback(input: {
   candidate: unknown;
   deployment: unknown;
   deploymentText: string;
   deploymentRun: unknown;
   deploymentRunId: string;
-  decision: unknown;
 }) {
   const { cloudRuntimeChildDigest, ...identity } = candidateInstallationIdentity(input.candidate);
   const deployment = record(input.deployment);
   const run = record(input.deploymentRun);
-  const decision = record(input.decision);
   if (!RUN_ID.test(input.deploymentRunId) || String(run.id) !== input.deploymentRunId ||
       record(run.repository).full_name !== INSTANCE_REPOSITORY || run.path !== ".github/workflows/deployment-verify.yml" ||
       run.event !== "workflow_dispatch" || run.head_branch !== "main" || run.status !== "completed" ||
@@ -44,24 +41,12 @@ export function validateReleaseInstallationBinding(input: {
   }
   if (deployment.status !== "deployment_verified" || deployment.operationMode !== "deployment_verification" ||
       deployment.environment !== "production" || deployment.stage !== "complete" || deployment.errorCode !== "none" ||
-      Object.entries(identity).some(([key, value]) => deployment[key] !== value || decision[key] !== value) ||
+      Object.entries(identity).some(([key, value]) => deployment[key] !== value) ||
       deployment.cloudRuntimeChildDigest !== cloudRuntimeChildDigest) {
     throw new Error("release_installation_candidate_invalid");
   }
   const receiptDigest = digest(input.deploymentText);
   const runDigest = digest(`github-actions-run:v1\0${input.deploymentRunId}`);
-  const runtime = record(deployment.runtimeConfig);
-  const scope = record(decision.qualificationScope);
-  if (record(decision.deploymentVerification).receiptDigest !== receiptDigest ||
-      record(decision.deploymentVerification).runDigest !== runDigest ||
-      decision.workspaceImageRef !== deployment.workspaceImageRef ||
-      decision.workspaceImageDigest !== deployment.workspaceImageDigest ||
-      scope.workspaceImageDigest !== deployment.workspaceImageDigest ||
-      scope.deploymentMode !== runtime.deploymentMode || scope.provider !== runtime.fabricProvider ||
-      scope.providerProfileDigest !== runtime.providerProfileDigest ||
-      scope.targetClusterDigest !== runtime.targetClusterDigest || scope.region !== runtime.region) {
-    throw new Error("release_installation_qualification_binding_invalid");
-  }
   return {
     evidenceClass: "instance_deployment",
     repository: INSTANCE_REPOSITORY,
@@ -77,4 +62,30 @@ export function validateReleaseInstallationBinding(input: {
       cloudImageDigest: identity.cloudImageDigest
     }
   };
+}
+
+// Retained full business qualification consumers additionally bind their own
+// decision and Workspace scope. They do not substitute for installation proof.
+export function validateReleaseInstallationBinding(input: Parameters<typeof validateReleaseInstallationReadback>[0] & { decision: unknown }) {
+  const installation = validateReleaseInstallationReadback(input);
+  const deployment = record(input.deployment);
+  const decision = record(input.decision);
+  const identity = Object.entries(candidateInstallationIdentity(input.candidate)).filter(([key]) => key !== "cloudRuntimeChildDigest");
+  if (identity.some(([key, value]) => decision[key] !== value)) {
+    throw new Error("release_installation_candidate_invalid");
+  }
+  const { receiptDigest, runDigest } = installation;
+  const runtime = record(deployment.runtimeConfig);
+  const scope = record(decision.qualificationScope);
+  if (record(decision.deploymentVerification).receiptDigest !== receiptDigest ||
+      record(decision.deploymentVerification).runDigest !== runDigest ||
+      decision.workspaceImageRef !== deployment.workspaceImageRef ||
+      decision.workspaceImageDigest !== deployment.workspaceImageDigest ||
+      scope.workspaceImageDigest !== deployment.workspaceImageDigest ||
+      scope.deploymentMode !== runtime.deploymentMode || scope.provider !== runtime.fabricProvider ||
+      scope.providerProfileDigest !== runtime.providerProfileDigest ||
+      scope.targetClusterDigest !== runtime.targetClusterDigest || scope.region !== runtime.region) {
+    throw new Error("release_installation_qualification_binding_invalid");
+  }
+  return installation;
 }

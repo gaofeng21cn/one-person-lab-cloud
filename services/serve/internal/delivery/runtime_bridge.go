@@ -245,6 +245,15 @@ func (s *Service) reloadRuntime(ctx context.Context, command *api.RuntimeReloadC
 	reload.Context = command.GetContext()
 	reload.ModelConfigurationVersion = command.GetTargetVersion()
 	reload.ModelSelections = command.GetSelections()
+	// Resolve the frozen publisher interface before the Secret handover: a
+	// runtime that cannot apply models must keep its existing credential binding.
+	modelConfiguration, err := s.frozenModelConfiguration(ctx, nextOwnerCall(reload.GetContext()), reload)
+	if err != nil {
+		return nil, err
+	}
+	if !modelConfiguration.Declared {
+		return nil, status.Errorf(codes.FailedPrecondition, "%s: the frozen Runtime Release declares no publisher model configuration interface", ReasonModelConfigurationUnavailable)
+	}
 	// Serve performs the managed-key handover itself when this runtime declares the
 	// Gateway credential: the reload carries only the Workspace handover input, and
 	// Serve alone asks Fabric to confirm the replacement against the exact

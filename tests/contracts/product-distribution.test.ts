@@ -70,21 +70,13 @@ test("Cloud Release promotes an admitted Candidate and isolates public mutation"
   const publishCommands = publish.steps.map((step) => step.run || "").join("\n");
   const readbackCommands = readback.steps.map((step) => step.run || "").join("\n");
   const downloadStep = readback.steps.find((step) => step.uses?.startsWith("actions/download-artifact@"));
-  const instanceGate = admission.steps.find((step) => step.id === "instance");
   assert.match(admissionCommands, /cloud-candidate-receipt\.ts validate-bundle/);
-  assert.match(
-    admissionCommands,
-    /GH_TOKEN="\$INSTANCE_TOKEN" gh api "repos\/\$INSTANCE_REPOSITORY\/actions\/runs\/\$CLOUD_BUSINESS_QUALIFICATION_RUN_ID"/,
-  );
-  const businessDownload = admission.steps.find(
-    (step: any) => step.name === "Download exact Cloud business qualification",
-  );
-  assert.equal(businessDownload.with.repository, "gaofeng21cn/opl-instance-medopl");
-  assert.equal(businessDownload.with["github-token"], "${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}");
-  assert.match(admissionCommands, /qualification-decision\.mjs.*gate/s);
-  assert.match(admissionCommands, /fresh-workspace-readback\.mjs.*validate/s);
-  assert.match(instanceGate.run, /--github-output "\$gate_output"/);
-  assert.doesNotMatch(instanceGate.run, /\$\{\{ steps\.instance\.outputs/);
+  const installationDownload = admission.steps.find((step: any) => step.name === "Download exact Instance installation verification");
+  assert.equal(installationDownload.with.repository, "gaofeng21cn/opl-instance-medopl");
+  assert.equal(installationDownload.with["github-token"], "${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}");
+  assert.match(admissionCommands, /verifyReleaseSourcePaths/);
+  assert.match(admissionCommands, /validateReleaseInstallationReadback/);
+  assert.doesNotMatch(admissionCommands, /workspace_verified|terminalState: "settled"/);
   assert.doesNotMatch(admissionCommands, /docker buildx build/);
   assert.match(publishCommands, /docker buildx imagetools create/);
   assert.match(publishCommands, /published_digest.*EXPECTED_IMAGE_DIGEST/s);
@@ -125,27 +117,15 @@ test("Cloud distribution contract makes same-tag recovery explicit", async () =>
   const contract = JSON.parse(await readFile("packages/contracts/opl-cloud-distribution-contract.json", "utf8"));
   const publication = contract.distribution.publication;
 
-  assert.equal(contract.schemaVersion, 7);
+  assert.equal(contract.schemaVersion, 8);
   assert.equal(publication.promotionMode, "qualified_candidate_digest_without_rebuild");
   assert.deepEqual(publication.requiredEvidence, {
-    candidate: ["candidate"],
-    localInstallation: ["local_qualification"],
-    cloudBusinessQualification: ["cloud_business_qualification"],
-    cloudCustomerReads: ["cloud_customer_reads_verified"],
-    instanceDeployment: ["instance_deployment_verified"],
-    instanceQualificationDecision: ["instance_qualification_decision"],
-    instanceWorkspaceVerification: ["instance_workspace_verified"]
+    candidate: ["candidate"], localInstallation: ["local_qualification"],
+    instanceDeployment: ["instance_deployment_verified"], businessSourcePaths: ["business_source_paths_verified"]
   });
-  assert.deepEqual(publication.cloudBusinessQualification, {
-    owner: "gaofeng21cn/opl-instance-medopl",
-    workflow: ".github/workflows/cloud-business-qualification.yml",
-    environment: "production",
-    artifact: "cloud-business-qualification",
-    receipt: "business-qualification.json",
-    receiptKind: "opl.workspace-qualification.purchase.v1",
-    requiredTerminalState: "settled",
-    maximumAgeHours: 720,
-    binds: ["receiptDigest", "candidateReceiptDigest", "productSha", "productTree", "cloudImageDigest"]
+  assert.deepEqual(publication.businessSourcePaths, {
+    owner: "gaofeng21cn/one-person-lab-cloud", workflow: ".github/workflows/pull-request-ci.yml", status: "source_verified",
+    paidBusinessExecuted: false, customerReadsExecuted: false, binds: ["productSha", "productTree", "ciRun", "entryPathHashes"]
   });
   assert.deepEqual(publication.instanceDeployment, {
     owner: "gaofeng21cn/opl-instance-medopl",
@@ -232,7 +212,7 @@ test("Candidate promotion gate agrees with the Candidate branch-source rule", as
 
   // Only the Candidate run is source-keyed. Every other evidence run keeps its
   // main-dispatched requirement.
-  for (const authorityFile of ["local-run.json", "business-run.json", "instance-deployment-run.json", "instance-decision-run.json", "instance-workspace-run.json"]) {
+  for (const authorityFile of ["local-run.json", "instance-deployment-run.json"]) {
     assert.match(
       bashFunctionBody(evidenceScript, calleeOf(evidenceScript, authorityFile)),
       /\.head_branch == "main"/,
@@ -355,31 +335,17 @@ test("Candidate promotion gate refuses every run that is not the promoted source
 });
 
 
-test("Release requires Cloud business qualification and Instance deployment evidence as separate classes", async () => {
+test("Release requires real installations and exact-source CI without a paid acceptance claim", async () => {
   const release = YAML.parse(await readFile(".github/workflows/release-opl-cloud-image.yml", "utf8"));
   const inputs = release.on.workflow_dispatch.inputs;
+  assert.deepEqual(Object.keys(inputs), ["version", "ref", "candidate_run_id", "local_qualification_run_id", "instance_deployment_verification_run_id", "source_verification_run_id"]);
+  assert.ok(Object.values(inputs).every((input: any) => input.required === true));
   const installation = release.jobs.admission.steps.find((step: any) => step.id === "installation");
-  const evidenceClasses = release.jobs.admission.steps.find((step: any) => step.id === "evidence_classes");
-
-  assert.equal(inputs.cloud_business_qualification_run_id?.required, true,
-    "a deployment_verified or Instance qualification receipt cannot stand in for the Cloud business class");
-  assert.equal(inputs.instance_deployment_verification_run_id?.required, true,
-    "a qualification decision's deployment digest is not an independently validated installation receipt");
-  assert.equal(inputs.instance_qualification_decision_run_id?.required, true,
-    "the retained Instance qualification-decision gate stays required");
-  assert.equal(inputs.instance_workspace_verification_run_id?.required, true,
-    "the retained Instance Workspace gate stays required");
-  assert.ok(installation, "installation admission must stay distinct from business qualification");
-  assert.match(installation.run, /deployment-verification-receipt\.mjs.*validate/s);
-  assert.doesNotMatch(installation.run, /cloud-release-evidence|fresh-workspace-readback/);
-  assert.ok(evidenceClasses, "the typed evidence pair must be admitted by its own step");
-  assert.match(evidenceClasses.env.EVIDENCE_VALIDATOR, /cloud-release-evidence\.ts$/);
-  assert.match(evidenceClasses.env.BUSINESS_RECEIPT, /evidence\/business\/business-qualification\.json$/);
-  assert.match(evidenceClasses.env.DEPLOYMENT_RECEIPT, /evidence\/instance-deployment\/evidence\.json$/);
-  assert.match(evidenceClasses.run, /validateReleaseAdmissionEvidence/);
-  const commands = release.jobs.admission.steps.map((step: any) => step.run || "").join("\n");
-  assert.match(commands, /actions\/runs\/\$CLOUD_BUSINESS_QUALIFICATION_RUN_ID/);
-  assert.match(commands, /\.github\/workflows\/cloud-business-qualification\.yml/);
-  assert.match(commands, /qualification-decision\.mjs.*gate/s);
-  assert.match(commands, /fresh-workspace-readback\.mjs.*validate/s);
+  assert.match(installation.run, /deployment-verification-receipt.mjs.*validate/);
+  assert.match(installation.run, /validateReleaseInstallationReadback/);
+  const source = release.jobs.admission.steps.find((step: any) => step.id === "source_paths");
+  assert.match(source.run, /verifyReleaseSourcePaths/);
+  const publish = release.jobs.publish.steps.find((step: any) => step.name === "Validate exact release bundle");
+  assert.match(publish.run, /paidBusinessExecuted == false/);
+  assert.match(publish.run, /customerReadsExecuted == false/);
 });

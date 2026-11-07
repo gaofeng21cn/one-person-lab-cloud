@@ -17,14 +17,14 @@
   --gray-900: #142536;
   --gray-1000: #0c2030;
 
-  /* OPL Cloud blue ramp (soft to deep navy). */
+  /* OPL Cloud primary ramp (soft mint to deep teal). */
   --blue-25: #f0fdfa;
   --blue-50: #ccfbf1;
   --blue-100: #99f6e4;
   --blue-200: #5eead4;
   --blue-300: #2dd4bf;
   --blue-400: #14b8a6;
-  --blue-500: #0d9488;
+  --blue-500: #0f766e;
   --blue-600: #115e59;
   --blue-700: #134e4a;
   --blue-800: #042f2e;
@@ -72,7 +72,7 @@
   --color-border-strong: #b8c6d2;
   --color-ring: rgb(22 100 160 / 24%);
 
-  --color-background-primary-solid: #0d9488;
+  --color-background-primary-solid: #0f766e;
   --color-background-primary-solid-hover: #115e59;
   --color-background-primary-soft: #f0fdfa;
   --color-background-primary-soft-hover: #ccfbf1;

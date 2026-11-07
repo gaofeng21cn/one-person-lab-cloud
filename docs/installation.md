@@ -1,41 +1,33 @@
 # Install OPL Cloud
 
 OPL Cloud publishes portable product artifacts; a concrete Instance owns its
-deployment, domain, Secrets, provider profile, rollback, and acceptance. This
-page distinguishes the currently downloadable Product Release from the newer
-Candidate format in source. Do not combine files from those two formats.
+deployment, domain, Secrets, provider profile, rollback, and acceptance. Use
+one admitted Release and its own manifest, checksums and installation assets. Candidate construction and formal publication have distinct formats.
 
-## Public Product Release: v0.1.7
+## Public Product Release: v0.1.8
 
-`v0.1.7` is the only public Product Release. It binds:
+Download [OPL Cloud v0.1.8](https://github.com/gaofeng21cn/one-person-lab-cloud/releases/tag/v0.1.8).
+The stable Release binds Product source `5e3d58dc2897648a01aa298dfa77bb02c3615aea` and the Linux
+amd64/arm64 image index `sha256:411b9948b0701c44525abedfec20d2ed2f651b25e48c8e88334cc6badf40c2c1`. Its ten assets are:
 
-- product SHA `a59bde68397528186a5220f73195fa1f3eda311b`;
-- multi-architecture GHCR digest
-  `sha256:e64504731f8b61c0864cf59faa647a1150e8a2a5eada34b26faf3a5487d28e8f`;
-- exactly five downloadable assets:
-  `compose.yaml`, `compose.local-workspace.yaml`,
-  `opl-cloud.env.example`, `opl-cloud-release.json`, and `SHA256SUMS`.
+- `compose.yaml` and the three `compose.deployment-*.yaml` overlays;
+- `compose.fabric-local-docker.yaml` and `compose.fabric-tencent-tke.yaml`;
+- `compose.local-workspace.yaml`, `opl-cloud.env.example`,
+  `opl-cloud-release.json` and `SHA256SUMS`.
 
-Earlier public tags and artifacts are no longer available and are not rollback
-targets. `v0.1.7` predates the current deployment/Fabric overlay split; files
-such as `compose.deployment-*.yaml` and `compose.fabric-*.yaml` do not belong to
-this Release.
+The schema-four manifest records actual clean-host Local-Docker lifecycle and
+independent Instance installation evidence, plus exact-source CI and business
+entry-path hashes. Paid business operations and customer-read acceptance were
+not executed for this release. The public assets, immutable image digest and
+GitHub attestation were independently read back after publication.
 
-### Requirements
+### Download and verify
 
-- Docker Engine and Docker Compose v2 on `linux/amd64` or `linux/arm64`;
-- a reachable Sub2API installation and an active administrator identity;
-- a TLS reverse proxy when exposing the Console beyond localhost;
-- for the optional Local-Docker Workspace path, an immutable Workspace image
-  and a supported Linux Docker host. This older Release does not contain the
-  current project-quota storage contract or current provider-profile split.
-
-### Verify the assets
-
-Download all five assets from the same `v0.1.7` GitHub Release, then verify the
-checksums before reading values from the manifest:
+Download all ten assets from the same Release. With GitHub CLI:
 
 ```bash
+gh release download v0.1.8 --repo gaofeng21cn/one-person-lab-cloud --dir opl-cloud-v0.1.8
+cd opl-cloud-v0.1.8
 if command -v sha256sum >/dev/null; then
   sha256sum --check --strict SHA256SUMS
 else
@@ -43,62 +35,48 @@ else
 fi
 ```
 
-The four files named in `SHA256SUMS` must match. Also verify that
-`opl-cloud-release.json` names `v0.1.7`, the product SHA above, and the same
-immutable GHCR digest. The GitHub API asset digests are independent public
-readback for the downloaded bytes.
+The nine files named in `SHA256SUMS` must match. Confirm the manifest's tag,
+source and immutable image index above. Installation requires Linux Docker
+Engine/Compose v2, an explicit deployment/Fabric profile, separate service and
+database credentials, a supported Workspace image and the chosen backend's
+configuration. The Local-Docker provider also requires the declared project-quota
+storage and provider profile described below.
 
-### Start the control services
+### Install the declared control-service profile
 
-Create `.env` from `opl-cloud.env.example`, replace every placeholder, and keep
-all database passwords, service tokens, capability keys, and password seeds
-independent. Then start only the base file:
-
-```bash
-docker compose --env-file .env -f compose.yaml pull
-docker compose --env-file .env -f compose.yaml up -d
-docker compose --env-file .env -f compose.yaml ps
-curl --fail http://127.0.0.1:8787/api/healthz
-```
-
-This starts PostgreSQL, Ledger, Fabric, and Control Plane as separate processes.
-Only Control Plane is published to the host. `/api/healthz` is a Control Plane
-liveness check; it does not prove Fabric provider readiness, Workspace creation,
-provider delivery, billing correctness, or Instance readiness.
-
-The services require verified PostgreSQL TLS or, when TLS is explicitly
-disabled, an RFC1918 address. If the default Docker subnet conflicts with
-another network, change `OPL_DOCKER_SUBNET` and `OPL_POSTGRES_HOST` together.
-
-### Optional v0.1.7 Local-Docker path
-
-The fifth asset, `compose.local-workspace.yaml`, grants Docker access only to
-Fabric, selects `local-docker`, and enables the Launch worker. Set
-`OPL_WORKSPACE_IMAGE` to an immutable `repository@sha256:...` reference, then
-start both files:
+Create `.env` from this Release's environment template and replace every
+placeholder with installation-owned values. Select one deployment overlay and
+one Fabric overlay. For the platform-owned Local-Docker profile:
 
 ```bash
-docker compose --env-file .env \
-  -f compose.yaml \
-  -f compose.local-workspace.yaml pull
-docker compose --env-file .env \
-  -f compose.yaml \
-  -f compose.local-workspace.yaml up -d
+docker compose --env-file .env -f compose.yaml \
+  -f compose.deployment-platform-owned.yaml \
+  -f compose.fabric-local-docker.yaml -f compose.local-workspace.yaml pull
+docker compose --env-file .env -f compose.yaml \
+  -f compose.deployment-platform-owned.yaml \
+  -f compose.fabric-local-docker.yaml -f compose.local-workspace.yaml up -d
 ```
 
-This is the historical `v0.1.7` Local-Docker path. It is not the current source
-Candidate path and must not be supplemented with newer overlays copied from
-`main`.
+This portable base profile installs PostgreSQL, Control Plane, Fabric and Ledger.
+The complete owner-backed installation additionally supplies the processes,
+stores, peer identities and routes declared by the topology contract. The exact
+source includes the [native Local-v2 topology](../deploy/portable/compose.local-v2.yaml),
+used by the clean-host qualification; Instance supplies its own concrete
+manifests, protected Secrets, domains and deployment approval.
 
-## Current Candidate Format
+The previous [v0.1.7](https://github.com/gaofeng21cn/one-person-lab-cloud/releases/tag/v0.1.7)
+has its historical five-file format. Use each version's own files and manifest.
+
+## Current Distribution Formats
 
 Current source constructs a Candidate with nine portable assets plus
 `opl-cloud-candidate.json` and `SHA256SUMS`: one base Compose file, three
 deployment overlays, two Fabric overlays, one Local-Workspace overlay, an
 environment template and `opl-cloud-owner-topology.json`. The Candidate receipt
-contract and builder own this exact set. The formal Product Release contract
-still lists its separate ten-file promotion format with
-`opl-cloud-release.json`; neither set describes the five public `v0.1.7` assets.
+contract and builder own this exact set. The Product Release promotes eight
+installation assets plus
+`opl-cloud-release.json` and `SHA256SUMS`. The Candidate topology contract stays
+in its Candidate bundle; it is not an additional public Release asset.
 Deployment mode and Fabric provider are independent selections. Pair the base
 `compose.yaml` with the selected deployment overlay and exactly one Fabric
 overlay: `compose.fabric-local-docker.yaml` or `compose.fabric-tencent-tke.yaml`.
@@ -106,7 +84,7 @@ The current `compose.local-workspace.yaml` enables Workspace workers and supplie
 local PostgreSQL storage; it does not select a Fabric provider or replace its
 overlay.
 
-Create `.env` from the same Candidate's bundled `opl-cloud.env.example`. For
+Create `.env` from the same Release or Candidate bundle's `opl-cloud.env.example`. For
 source development, its source is `deploy/portable/opl-cloud.env.example`; the
 root `.env.example` is not a replacement. Compose uses `.env` for interpolation;
 a value there is not automatically passed into a service container. The current
@@ -115,7 +93,7 @@ sets it and supplies the provider configuration and mounts. Current Fabric
 rejects an absent provider with `OPL_FABRIC_PROVIDER is required`. On a clean
 Compose startup, this prevents Control Plane from starting because it depends
 on Fabric being healthy. This current-source requirement does not apply to the
-historical `v0.1.7` base file above.
+historical `v0.1.7` base file.
 
 Fabric's `/healthz` is a liveness check, while `/fabric/readiness` calls the
 provider's readiness checks. The Local-Docker provider validates its Secret
@@ -141,8 +119,7 @@ does not provide isolation. Login and live-session validation consume the
 Gateway store for the User↔Sub2API User and User↔OCI Destination mappings, so
 Gateway DB is required even when settlement and Key operations are not selected
 for development. Supply these values through the installation's protected
-configuration. This requirement does not change the historical v0.1.7 procedure
-above or establish that an Instance has adopted the source change.
+configuration. This requirement does not change the historical v0.1.7 installation contract or establish that an Instance has adopted the source change.
 
 Fabric keeps its HTTP provider bridge and owner RPC boundary in the same process.
 The optional RPC surface uses `OPL_FABRIC_ADDR` (default `:8187`),
@@ -405,9 +382,9 @@ Consequences an operator must plan for:
 For an admitted Product Release, set `OPL_CLOUD_IMAGE` to the immutable digest
 in that Release manifest, then run `docker compose pull` and
 `docker compose up -d` with exactly that Release's files. Rollback uses the same
-procedure with another available admitted Release. Because only `v0.1.7` is
-currently public, there is no earlier public rollback target. Mutable `latest`
-and `stable` tags are not publication or rollback evidence.
+procedure with another available admitted Release. Confirm schema/data compatibility for the selected installation before a
+rollback; published historical bytes alone do not qualify that migration.
+Mutable `latest` and `stable` tags are not publication or rollback evidence.
 
 Serve application access requires the Workspace peer read: set
 `OPL_WORKSPACE_ADDR` and `OPL_WORKSPACE_TOKEN`, and include `serve` in
