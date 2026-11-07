@@ -478,6 +478,29 @@ func newFabricMux(service *fabric.Service) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, volume)
 	})
+	mux.HandleFunc("GET /fabric/storage-volumes/{id}/destroy-status", func(w http.ResponseWriter, r *http.Request) {
+		volume, err := service.ReadStorageDestroyStatus(r.Context(), strings.TrimSpace(r.PathValue("id")))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, volume)
+	})
+	mux.HandleFunc("POST /fabric/storage-volumes/{id}/release-recycled", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Idempotency-Key") == "" {
+			writeError(w, http.StatusBadRequest, "missing Idempotency-Key")
+			return
+		}
+		var input fabric.StorageFinalReleaseInput
+		decoder := json.NewDecoder(r.Body)
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&input) != nil || decoder.Decode(new(any)) != io.EOF {
+			writeError(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+		result, err := service.ReleaseRecycledStorageVolume(r.Context(), strings.TrimSpace(r.PathValue("id")), input)
+		writeResult(w, result, err)
+	})
 	mux.HandleFunc("POST /fabric/storage-volumes/{id}/renew", func(w http.ResponseWriter, r *http.Request) {
 		key := r.Header.Get("Idempotency-Key")
 		if key == "" {
@@ -910,7 +933,7 @@ func isFabricMutation(r *http.Request) bool {
 		return false
 	}
 	switch parts[1] + "/" + parts[3] {
-	case "compute-allocations/release-recycled", "compute-allocations/renew", "compute-allocations/destroy", "storage-volumes/renew", "storage-volumes/destroy", "storage-attachments/detach", "workspace-runtimes/repair", "workspace-runtimes/destroy", "workspace-runtimes/gateway-secret", "workspace-runtimes/image-replacements", "workspace-application-runtimes/readback", "workspace-application-runtimes/lifecycle", "workspace-application-runtimes/lifecycle-readback", "workspace-application-runtimes/credentials", "workspace-application-runtimes/preflight", "workspace-application-runtimes/gateway-secret-cleanup":
+	case "compute-allocations/release-recycled", "compute-allocations/renew", "compute-allocations/destroy", "storage-volumes/renew", "storage-volumes/destroy", "storage-volumes/release-recycled", "storage-attachments/detach", "workspace-runtimes/repair", "workspace-runtimes/destroy", "workspace-runtimes/gateway-secret", "workspace-runtimes/image-replacements", "workspace-application-runtimes/readback", "workspace-application-runtimes/lifecycle", "workspace-application-runtimes/lifecycle-readback", "workspace-application-runtimes/credentials", "workspace-application-runtimes/preflight", "workspace-application-runtimes/gateway-secret-cleanup":
 		return true
 	default:
 		return false
@@ -1025,6 +1048,9 @@ func fabricMutationScopeForRequest(ctx context.Context, resolver fabricMutationS
 			scope.Action = "renew_storage_volume"
 		case "destroy":
 			scope.Action = "destroy_storage_volume"
+		case "release-recycled":
+			scope.Caller = "operator"
+			scope.Action = "release_recycled_storage_volume"
 		}
 	case len(parts) == 4 && parts[0] == "fabric" && parts[1] == "storage-attachments" && parts[2] != "" && parts[3] == "detach":
 		scope.ResourceKind, scope.ResourceID, scope.Action = "storage_attachment", parts[2], "detach_storage_attachment"
