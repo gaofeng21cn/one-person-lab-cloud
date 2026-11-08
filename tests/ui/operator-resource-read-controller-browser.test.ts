@@ -747,10 +747,10 @@ test("Cloud resource UI preserves owner facts, unavailable reasons and confirmed
       if (!path.startsWith("/api/")) return route.continue();
       requests.push(path);
       if (path === "/api/v2/operator/workspaces") {
-        return fulfill(route, listFailure ? { error: "owner_read_failed" } : source({ items: [item], total: 1, page: 1, pageSize }, "workspace+fabric"), listFailure ? 503 : 200);
+        return fulfill(route, listFailure ? { error: "owner_read_failed" } : source({ items: [item], total: 1, page: 1, pageSize }, "workspace+fabric+serve"), listFailure ? 503 : 200);
       }
       if (path === "/api/v2/operator/workspaces/ws-native") {
-        return fulfill(route, detailFailure ? { error: "owner_read_failed" } : source(item, "workspace+fabric"), detailFailure ? 503 : 200);
+        return fulfill(route, detailFailure ? { error: "owner_read_failed" } : source(item, "workspace+fabric+serve"), detailFailure ? 503 : 200);
       }
       return fulfill(route, unavailable("control-plane", "not_read"));
     });
@@ -850,13 +850,13 @@ test("Cloud resource UI preserves owner facts, unavailable reasons and confirmed
     detailFailure = true;
     await refresh();
     await detail.getByText("资源详情暂不可用", { exact: true }).waitFor();
-    await page.waitForFunction(() => JSON.parse(document.querySelector("#controller-state")!.textContent!).detail.value?.source === "workspace+fabric");
+    await page.waitForFunction(() => JSON.parse(document.querySelector("#controller-state")!.textContent!).detail.value?.source === "workspace+fabric+serve");
     assert.equal(await detail.locator(".resource-detail-row").count(), 0);
     listFailure = true;
     await refresh();
     await page.waitForFunction(() => JSON.parse(document.querySelector("#controller-state")!.textContent!).workspaces.value?.available === false);
     const snapshot = await page.locator("#controller-state").textContent();
-    assert.equal(JSON.parse(snapshot!).workspaces.value.source, "workspace+fabric");
+    assert.equal(JSON.parse(snapshot!).workspaces.value.source, "workspace+fabric+serve");
     assert.equal(requests.some((path) => path.startsWith("/api/operator/")), false);
   } finally {
     if (previousIdentity === undefined) delete process.env.VITE_CONSOLE_IDENTITY;

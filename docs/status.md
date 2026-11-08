@@ -49,6 +49,35 @@ was deployed and no production resource or financial action was performed.
 Installed Admin/Customer consistency still requires the exact Candidate and owner
 configuration to be adopted through Instance's protected deployment boundary.
 
+## Cloud Admin Serve Read Admission (2026-11-08)
+
+[PR #1142](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1142),
+integrated against mainline base `0b6d90df88d6e901e3b9e4db70fae036529b586b`,
+adds two Serve-owned internal operator reads. CloudIdentity generates their
+platform-admin role, platform scope and exact Workspace resource constraints
+from the canonical API policy. BFF Admin composition and Serve both validate
+the dedicated actions; Customer permissions and Tenant isolation are unchanged.
+The application fields still come from Serve's one selection/access read model.
+The BFF reports combined Workspace/Fabric/Serve provenance and preserves owner
+denials rather than converting them to unknown application availability.
+
+Isolated PostgreSQL regression first reproduced missing RPCs and accepted
+malformed operator authorization. After repair, the CloudIdentity suite passed
+440 test/subtest events and Serve's `livebuild` suite passed 373, each with zero
+failures or skips. The Serve chain executes real CloudIdentity login/session,
+policy and authorization-context revalidation over gRPC, with only the external
+Gateway authentication boundary simulated. BFF authenticated wire tests cover
+Admin list/detail, multiple Workspaces and both BFF/owner refusal paths. Final
+focused verification against the stated base passed 1,082 Go test/subtest
+events, 15 model tests and eight browser tests, with zero failures, skips or
+TODOs; contract/plan freshness and TypeScript checks also passed. Exact source
+revision, remaining checks and CI results are retained in the PR.
+
+This is source and isolated-fixture evidence. No application login, credential
+reveal, platform deployment mutation, Candidate build or Instance adoption is
+qualified by this read change. Installed acceptance remains in
+[roadmap](roadmap.md#cloud-admin-workspace-read-adoption-2026-11-07).
+
 ## Workspace 1042 storage deletion (2026-11-07)
 
 Protected Instance readback `42371451925`, from Instance source

@@ -35,6 +35,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	bff "opl-cloud/apps/console-bff"
@@ -65,8 +66,9 @@ const (
 
 // The actor ids the simulated Gateway issues for each known local subject.
 const (
-	liveMemberActor  = "201"
-	liveForeignActor = "202"
+	liveMemberActor   = "201"
+	liveForeignActor  = "202"
+	liveOperatorActor = "203"
 )
 
 // liveOwnerDB provisions one owner's isolated database through its real
@@ -103,6 +105,8 @@ func liveGateway(t *testing.T) *httptest.Server {
 			return 201, true
 		case "other-member@example.test":
 			return 202, true
+		case "operator@example.test":
+			return 203, true
 		case "directory@example.test":
 			return 900, true
 		default:
@@ -123,6 +127,8 @@ func liveGateway(t *testing.T) *httptest.Server {
 				email = "serve-member@example.test"
 			case "/api/v1/admin/users/202":
 				email = "other-member@example.test"
+			case "/api/v1/admin/users/203":
+				email = "operator@example.test"
 			default:
 				w.WriteHeader(http.StatusNotFound)
 				return
@@ -198,7 +204,7 @@ func newLiveIdentityChain(t *testing.T, ctx context.Context, dsn string) *liveId
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := identity.New(db, gateway, bytes.Repeat([]byte("k"), 32), nil, time.Hour)
+	service, err := identity.New(db, gateway, bytes.Repeat([]byte("k"), 32), []string{liveOperatorActor}, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +241,7 @@ func newLiveIdentityChain(t *testing.T, ctx context.Context, dsn string) *liveId
 	t.Cleanup(client.Close)
 
 	chain := &liveIdentityChain{client: client, db: db, address: listener.Addr().String(), service: service, cookies: map[string]string{}}
-	for name, email := range map[string]string{"serve": "serve-member@example.test", "other": "other-member@example.test"} {
+	for name, email := range map[string]string{"serve": "serve-member@example.test", "other": "other-member@example.test", "operator": "operator@example.test"} {
 		_, challenge, err := client.LoginContext(ctx)
 		if err != nil {
 			t.Fatalf("login challenge for %s: %v", name, err)
@@ -503,6 +509,138 @@ func TestLiveServeReadChain(t *testing.T) {
 		}
 		access, err := client.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call, WorkspaceId: "ws-attempt"})
 		assertAccessUnavailable(t, access, err)
+	})
+
+	t.Run("operator_tenantless_reads_owner_truth", func(t *testing.T) {
+		operator := bffReadCall(t, ctx, chain, "operator", "live-operator")
+		session, err := chain.client.Session(ctx, chain.cookies["operator"])
+		if err != nil || session.GetTenantId() != "" || session.Role != nil || operator.GetScope().GetPlatform() == nil {
+			t.Fatalf("operator borrowed Tenant membership: %v / %v", session, err)
+		}
+		for _, action := range []api.AuthorizationActionEnum{
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORDEPLOYMENTS,
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACEACCESS,
+		} {
+			t.Run(action.String(), func(t *testing.T) {
+				decision, err := chain.client.Authorize(ctx, serveReadAuthorization(operator, action, "ws-served", "live-operator-"+action.String()))
+				if err != nil || decision.GetResult() != api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED || decision.GetAuthorizationContextId() == "" {
+					t.Fatalf("operator admission for %s = %v / %v", action, decision, err)
+				}
+				call := proto.Clone(operator).(*api.CallContext)
+				call.AuthorizationContextId = decision.GetAuthorizationContextId()
+				if action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORDEPLOYMENTS {
+					page, err := client.ListOperatorDeployments(ctx, &api.ListDeploymentsRpcRequest{Context: call, WorkspaceId: "ws-served"})
+					if err != nil || len(page.GetItems()) != 2 || page.GetCurrentDeployment().GetId() != "dep-active" || page.GetLatestAttempt().GetId() != "dep-active" {
+						t.Fatalf("operator owner history = %v / %v", page, err)
+					}
+				} else {
+					access, err := client.GetOperatorWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call, WorkspaceId: "ws-served"})
+					if err != nil || access.GetDeploymentId() != "dep-active" || access.GetUrl() != "https://ws-served.example/app" || !access.GetApplicationCredentialsAvailable() {
+						t.Fatalf("operator owner access = %v / %v", access, err)
+					}
+				}
+			})
+		}
+		empty, err := client.ListOperatorDeployments(ctx, &api.ListDeploymentsRpcRequest{Context: operator, WorkspaceId: "ws-never-delivered"})
+		if err != nil || len(empty.GetItems()) != 0 || empty.GetCurrentDeployment() != nil || empty.GetLatestAttempt() != nil {
+			t.Fatalf("operator undelivered history = %v / %v", empty, err)
+		}
+		access, err := client.GetOperatorWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: operator, WorkspaceId: "ws-never-delivered"})
+		assertAccessUnavailable(t, access, err)
+		// A tenantless operator has no Customer member permission. A platform scope
+		// must never silently substitute the operator action at a Customer endpoint.
+		if page, err := client.ListDeployments(ctx, &api.ListDeploymentsRpcRequest{Context: operator, WorkspaceId: "ws-served"}); page != nil || status.Code(err) != codes.PermissionDenied {
+			t.Fatalf("Customer list denial became operator success: %v / %v", page, err)
+		}
+		if access, err := client.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: operator, WorkspaceId: "ws-served"}); access != nil || status.Code(err) != codes.PermissionDenied {
+			t.Fatalf("Customer access denial became operator success: %v / %v", access, err)
+		}
+	})
+
+	t.Run("operator_refuses_tenant_and_cross_tenant_callers", func(t *testing.T) {
+		for _, name := range []string{"serve", "other"} {
+			t.Run(name, func(t *testing.T) {
+				tenant := bffReadCall(t, ctx, chain, name, "live-operator-refusal-"+name)
+				for _, platform := range []bool{false, true} {
+					call := proto.Clone(tenant).(*api.CallContext)
+					if platform {
+						call.Scope = &api.AuthorizationScope{Scope: &api.AuthorizationScope_Platform{Platform: &api.PlatformScope{}}}
+					}
+					if page, err := client.ListOperatorDeployments(ctx, &api.ListDeploymentsRpcRequest{Context: call, WorkspaceId: "ws-served"}); page != nil || status.Code(err) != codes.PermissionDenied {
+						t.Fatalf("%s platform=%v read operator history: %v / %v", name, platform, page, err)
+					}
+					if access, err := client.GetOperatorWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call, WorkspaceId: "ws-served"}); access != nil || status.Code(err) != codes.PermissionDenied {
+						t.Fatalf("%s platform=%v read operator access: %v / %v", name, platform, access, err)
+					}
+				}
+			})
+		}
+	})
+
+	t.Run("operator_authorization_context_cannot_be_repurposed", func(t *testing.T) {
+		for _, action := range []api.AuthorizationActionEnum{
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORDEPLOYMENTS,
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACEACCESS,
+		} {
+			t.Run(action.String(), func(t *testing.T) {
+				original := bffReadCall(t, ctx, chain, "operator", "live-operator-context")
+				decision, err := chain.client.Authorize(ctx, serveReadAuthorization(original, action, "ws-served", "live-operator-context"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				original.AuthorizationContextId = decision.GetAuthorizationContextId()
+				other := bffReadCall(t, ctx, chain, "serve", "live-context-other-session")
+				for _, test := range []struct {
+					name       string
+					mutate     func(*api.CallContext)
+					workspace  string
+					swapAction bool
+				}{
+					{name: "resource", workspace: "ws-pending"},
+					{name: "padded-resource", workspace: " ws-served "},
+					{name: "action", workspace: "ws-served", swapAction: true},
+					{name: "actor", workspace: "ws-served", mutate: func(c *api.CallContext) { c.ActorId = liveMemberActor }},
+					{name: "session", workspace: "ws-served", mutate: func(c *api.CallContext) { c.SessionId = other.SessionId }},
+					{name: "scope", workspace: "ws-served", mutate: func(c *api.CallContext) { c.Scope = other.Scope }},
+					{name: "unknown-context", workspace: "ws-served", mutate: func(c *api.CallContext) { c.AuthorizationContextId = "auth-does-not-exist" }},
+				} {
+					t.Run(test.name, func(t *testing.T) {
+						call := proto.Clone(original).(*api.CallContext)
+						if test.mutate != nil {
+							test.mutate(call)
+						}
+						list := action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORDEPLOYMENTS
+						if test.swapAction {
+							list = !list
+						}
+						var err error
+						if list {
+							page, readErr := client.ListOperatorDeployments(ctx, &api.ListDeploymentsRpcRequest{Context: call, WorkspaceId: test.workspace})
+							if page != nil {
+								t.Fatalf("tampered context returned history: %v", page)
+							}
+							err = readErr
+						} else {
+							access, readErr := client.GetOperatorWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call, WorkspaceId: test.workspace})
+							if access != nil {
+								t.Fatalf("tampered context returned access: %v", access)
+							}
+							err = readErr
+						}
+						want := codes.PermissionDenied
+						if test.name == "padded-resource" {
+							want = codes.InvalidArgument
+						}
+						if test.name == "unknown-context" {
+							want = codes.Unauthenticated
+						}
+						if status.Code(err) != want {
+							t.Fatalf("tampered operator %s = %v, want %s", test.name, err, want)
+						}
+					})
+				}
+			})
+		}
 	})
 
 	t.Run("revoked_session_is_refused", func(t *testing.T) {

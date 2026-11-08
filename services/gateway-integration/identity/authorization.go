@@ -76,6 +76,13 @@ func (s *Service) AuthorizeAction(ctx context.Context, r *api.AuthorizationReque
 	if caller != owneridentity.ConsoleBFF && caller != audience {
 		return nil, denied()
 	}
+	if p, internalRead := internalReadPolicies[r.Action]; internalRead {
+		// Internal operator reads require a live session and the exact resource
+		// shape declared by the canonical policy, never an accepted obligation.
+		if p.scope != "platform" || r.Scope.GetPlatform() == nil || r.Resource.GetKind() != p.resource || strings.TrimSpace(r.Resource.GetId()) == "" || r.GetSessionId() == "" {
+			return nil, denied()
+		}
+	}
 	if r.GetAcceptedOperationGrantId() != "" {
 		if caller == owneridentity.ConsoleBFF {
 			return nil, denied()

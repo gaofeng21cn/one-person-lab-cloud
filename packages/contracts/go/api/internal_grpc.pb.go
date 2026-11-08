@@ -3942,11 +3942,13 @@ var WorkspaceProductService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	ServeProductService_ListDeployments_FullMethodName        = "/opl.cloud.api.ServeProductService/ListDeployments"
-	ServeProductService_GetDeployment_FullMethodName          = "/opl.cloud.api.ServeProductService/GetDeployment"
-	ServeProductService_UpdateWorkspaceVersion_FullMethodName = "/opl.cloud.api.ServeProductService/UpdateWorkspaceVersion"
-	ServeProductService_RollbackWorkspace_FullMethodName      = "/opl.cloud.api.ServeProductService/RollbackWorkspace"
-	ServeProductService_GetWorkspaceAccess_FullMethodName     = "/opl.cloud.api.ServeProductService/GetWorkspaceAccess"
+	ServeProductService_ListDeployments_FullMethodName            = "/opl.cloud.api.ServeProductService/ListDeployments"
+	ServeProductService_ListOperatorDeployments_FullMethodName    = "/opl.cloud.api.ServeProductService/ListOperatorDeployments"
+	ServeProductService_GetDeployment_FullMethodName              = "/opl.cloud.api.ServeProductService/GetDeployment"
+	ServeProductService_UpdateWorkspaceVersion_FullMethodName     = "/opl.cloud.api.ServeProductService/UpdateWorkspaceVersion"
+	ServeProductService_RollbackWorkspace_FullMethodName          = "/opl.cloud.api.ServeProductService/RollbackWorkspace"
+	ServeProductService_GetWorkspaceAccess_FullMethodName         = "/opl.cloud.api.ServeProductService/GetWorkspaceAccess"
+	ServeProductService_GetOperatorWorkspaceAccess_FullMethodName = "/opl.cloud.api.ServeProductService/GetOperatorWorkspaceAccess"
 )
 
 // ServeProductServiceClient is the client API for ServeProductService service.
@@ -3954,10 +3956,12 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ServeProductServiceClient interface {
 	ListDeployments(ctx context.Context, in *ListDeploymentsRpcRequest, opts ...grpc.CallOption) (*DeploymentPage, error)
+	ListOperatorDeployments(ctx context.Context, in *ListDeploymentsRpcRequest, opts ...grpc.CallOption) (*DeploymentPage, error)
 	GetDeployment(ctx context.Context, in *GetDeploymentRpcRequest, opts ...grpc.CallOption) (*Deployment, error)
 	UpdateWorkspaceVersion(ctx context.Context, in *UpdateWorkspaceVersionRpcRequest, opts ...grpc.CallOption) (*Operation, error)
 	RollbackWorkspace(ctx context.Context, in *RollbackWorkspaceRpcRequest, opts ...grpc.CallOption) (*Operation, error)
 	GetWorkspaceAccess(ctx context.Context, in *GetWorkspaceAccessRpcRequest, opts ...grpc.CallOption) (*WorkspaceAccess, error)
+	GetOperatorWorkspaceAccess(ctx context.Context, in *GetWorkspaceAccessRpcRequest, opts ...grpc.CallOption) (*WorkspaceAccess, error)
 }
 
 type serveProductServiceClient struct {
@@ -3972,6 +3976,16 @@ func (c *serveProductServiceClient) ListDeployments(ctx context.Context, in *Lis
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DeploymentPage)
 	err := c.cc.Invoke(ctx, ServeProductService_ListDeployments_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *serveProductServiceClient) ListOperatorDeployments(ctx context.Context, in *ListDeploymentsRpcRequest, opts ...grpc.CallOption) (*DeploymentPage, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeploymentPage)
+	err := c.cc.Invoke(ctx, ServeProductService_ListOperatorDeployments_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -4018,15 +4032,27 @@ func (c *serveProductServiceClient) GetWorkspaceAccess(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *serveProductServiceClient) GetOperatorWorkspaceAccess(ctx context.Context, in *GetWorkspaceAccessRpcRequest, opts ...grpc.CallOption) (*WorkspaceAccess, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WorkspaceAccess)
+	err := c.cc.Invoke(ctx, ServeProductService_GetOperatorWorkspaceAccess_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ServeProductServiceServer is the server API for ServeProductService service.
 // All implementations must embed UnimplementedServeProductServiceServer
 // for forward compatibility.
 type ServeProductServiceServer interface {
 	ListDeployments(context.Context, *ListDeploymentsRpcRequest) (*DeploymentPage, error)
+	ListOperatorDeployments(context.Context, *ListDeploymentsRpcRequest) (*DeploymentPage, error)
 	GetDeployment(context.Context, *GetDeploymentRpcRequest) (*Deployment, error)
 	UpdateWorkspaceVersion(context.Context, *UpdateWorkspaceVersionRpcRequest) (*Operation, error)
 	RollbackWorkspace(context.Context, *RollbackWorkspaceRpcRequest) (*Operation, error)
 	GetWorkspaceAccess(context.Context, *GetWorkspaceAccessRpcRequest) (*WorkspaceAccess, error)
+	GetOperatorWorkspaceAccess(context.Context, *GetWorkspaceAccessRpcRequest) (*WorkspaceAccess, error)
 	mustEmbedUnimplementedServeProductServiceServer()
 }
 
@@ -4040,6 +4066,9 @@ type UnimplementedServeProductServiceServer struct{}
 func (UnimplementedServeProductServiceServer) ListDeployments(context.Context, *ListDeploymentsRpcRequest) (*DeploymentPage, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListDeployments not implemented")
 }
+func (UnimplementedServeProductServiceServer) ListOperatorDeployments(context.Context, *ListDeploymentsRpcRequest) (*DeploymentPage, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListOperatorDeployments not implemented")
+}
 func (UnimplementedServeProductServiceServer) GetDeployment(context.Context, *GetDeploymentRpcRequest) (*Deployment, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetDeployment not implemented")
 }
@@ -4051,6 +4080,9 @@ func (UnimplementedServeProductServiceServer) RollbackWorkspace(context.Context,
 }
 func (UnimplementedServeProductServiceServer) GetWorkspaceAccess(context.Context, *GetWorkspaceAccessRpcRequest) (*WorkspaceAccess, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetWorkspaceAccess not implemented")
+}
+func (UnimplementedServeProductServiceServer) GetOperatorWorkspaceAccess(context.Context, *GetWorkspaceAccessRpcRequest) (*WorkspaceAccess, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetOperatorWorkspaceAccess not implemented")
 }
 func (UnimplementedServeProductServiceServer) mustEmbedUnimplementedServeProductServiceServer() {}
 func (UnimplementedServeProductServiceServer) testEmbeddedByValue()                             {}
@@ -4087,6 +4119,24 @@ func _ServeProductService_ListDeployments_Handler(srv interface{}, ctx context.C
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ServeProductServiceServer).ListDeployments(ctx, req.(*ListDeploymentsRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ServeProductService_ListOperatorDeployments_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListDeploymentsRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ServeProductServiceServer).ListOperatorDeployments(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ServeProductService_ListOperatorDeployments_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ServeProductServiceServer).ListOperatorDeployments(ctx, req.(*ListDeploymentsRpcRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -4163,6 +4213,24 @@ func _ServeProductService_GetWorkspaceAccess_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ServeProductService_GetOperatorWorkspaceAccess_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetWorkspaceAccessRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ServeProductServiceServer).GetOperatorWorkspaceAccess(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ServeProductService_GetOperatorWorkspaceAccess_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ServeProductServiceServer).GetOperatorWorkspaceAccess(ctx, req.(*GetWorkspaceAccessRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ServeProductService_ServiceDesc is the grpc.ServiceDesc for ServeProductService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -4173,6 +4241,10 @@ var ServeProductService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListDeployments",
 			Handler:    _ServeProductService_ListDeployments_Handler,
+		},
+		{
+			MethodName: "ListOperatorDeployments",
+			Handler:    _ServeProductService_ListOperatorDeployments_Handler,
 		},
 		{
 			MethodName: "GetDeployment",
@@ -4189,6 +4261,10 @@ var ServeProductService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetWorkspaceAccess",
 			Handler:    _ServeProductService_GetWorkspaceAccess_Handler,
+		},
+		{
+			MethodName: "GetOperatorWorkspaceAccess",
+			Handler:    _ServeProductService_GetOperatorWorkspaceAccess_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

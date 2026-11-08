@@ -73,6 +73,13 @@ for action, policy in api.get('x-internal-action-policies', {}).items():
  owner = policy['owner']
  roles = ','.join('"'+v+'"' for v in policy['permission'])
  lines.append(f'api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_{action.upper()}:{{api.OwnerEnum_OWNER_ENUM_{owner.upper()},[]string{{{roles}}}}},')
+lines+=['}', '', '// Internal read constraints come from the same canonical policy as their roles.',
+        'type internalReadPolicy struct { scope string; resource api.AuthorizationResourceKind }',
+        'var internalReadPolicies = map[api.AuthorizationActionEnum]internalReadPolicy{']
+for action, policy in api.get('x-internal-action-policies', {}).items():
+ if policy['scope'] != 'platform' or policy['resource'] != 'workspace':
+  raise ValueError(f'Unsupported internal read scope/resource: {action}')
+ lines.append(f'api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_{action.upper()}:{{"platform",api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE}},')
 lines+=['}']
 # Project only the continuation methods consumed by the current Serve update
 # chain. The canonical workflow may describe later capabilities; they do not

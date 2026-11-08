@@ -95,12 +95,12 @@
     <header>
       <div>
         <h1>OPL Cloud：Workspace SSOT 迁移图</h1>
-        <p class="lede">这页回答两个问题：Customer 和 Admin 的 Workspace 业务链现在经过谁；Control Plane 还剩哪些保留链路，哪些才是真正需要继续迁移或清退的工作。</p>
+        <p class="lede">这页解释 Customer 与 Admin 如何组合 Workspace、Fabric 和 Serve 的独立事实。当前实现、验证证据与未完成验收分别链接其权威文档。</p>
       </div>
-      <div class="meta">基于当前 main<br><code>ccab537cd36ad0e7e2f8fe64a6a761658be07982</code><br>审计日期：2026-11-08</div>
+      <div class="meta">解释性导航<br>不记录分支进度或运行时验收</div>
     </header>
 
-    <div class="banner"><strong>先看结论：</strong>Cloud 原生 Workspace 的 Admin/Customer 主读路径已经统一到 Workspace owner；Fabric 负责物理资源现态，Serve 负责应用部署/可用性。Control Plane 仍是 legacy 和历史操作的保留 owner，不能直接整体删除。审计基线 <code>ccab537</code> 中，Admin 的 <code>applicationAvailability</code> 仍直接取 Workspace DTO；本分支已改为复用 Customer 的 Serve readback 组合逻辑。该源码修复尚未合并或完成 Instance 运行时采用验证。</div>
+    <div class="banner"><strong>阅读方式：</strong>图中说明事实来源与调用方向。<a href="architecture.md#independent-facts-and-completion">架构</a>拥有领域分工；<a href="implementation-architecture.md#cloud-admin-workspace-reads-2026-11-07">实现架构</a>说明实际入口；<a href="status.md">status</a>保存验证证据；<a href="roadmap.md#cloud-admin-workspace-read-adoption-2026-11-07">roadmap</a>保存剩余验收。</div>
 
     <section>
       <h2>1. 业务链：一个 Workspace，多个事实 owner</h2>
@@ -110,7 +110,7 @@
           <div class="arrow">→</div>
           <div class="node owner"><h3>Console BFF <span class="tag green">组合</span></h3><p>鉴权、调用 owner、校验身份和 scope，再组合多个独立事实。</p><p>不持久化 Workspace 状态，不把 CP 读失败当 fallback。</p></div>
           <div class="arrow">→</div>
-          <div class="node owner"><h3>Workspace owner <span class="tag green">SSOT</span></h3><p>Workspace identity、Tenant membership、entitlement、生命周期、资源计划、resource set 引用。</p><p>Customer 列表/详情和 Cloud Admin Workspace 列表/详情都从这里读业务 DTO。</p></div>
+          <div class="node owner"><h3>Workspace owner <span class="tag green">SSOT</span></h3><p>Workspace identity、Tenant 引用、entitlement、生命周期、资源计划、resource set 引用。</p><p>Customer 列表/详情和 Cloud Admin Workspace 列表/详情都从这里读业务 DTO。</p></div>
         </div>
         <div class="flow" style="margin-top:16px">
           <div class="node observe"><h3>Fabric <span class="tag amber">物理事实</span></h3><p>Compute / Storage / Attachment / Runtime 等 provider resource 的当前观察、绑定和删除读回。</p><p>不能决定 Workspace entitlement，也不能决定 Agent readiness。</p></div>
@@ -123,35 +123,34 @@
     </section>
 
     <section>
-      <h2>2. 现在的边界</h2>
+      <h2>2. 事实与权限的边界</h2>
       <div class="panel owner-table">
-        <div class="owner-row"><div>Workspace lifecycle</div><div><span class="check">已统一</span><br>Workspace owner 是业务状态 owner。</div><div>Admin 的生命周期字段应标记 <code>source=workspace</code>。</div></div>
-        <div class="owner-row"><div>Current resources</div><div><span class="check">已分离</span><br>Fabric 通过 Workspace 的 resourceSetId 做精确 readback。</div><div>不能用 CP 的历史 projection 替代 Fabric 当前观察。</div></div>
-        <div class="owner-row"><div>Application availability</div><div><span class="hold">基线缺口；本分支源码已修</span><br>Admin 与 Customer 详情现复用同一 Serve readback 组合规则。</div><div>仍需 PR 当前 revision CI；合并后若要声明已安装，需由 Instance 对同一 Workspace 做 Admin/Customer 运行时比对。</div></div>
-        <div class="owner-row"><div>Resource readiness</div><div><span class="hold">需澄清命名</span><br>Workspace 的 fulfillment/开通读回。</div><div>不是 Fabric 当前物理资源 condition，UI 不应把两者混成同一个实时状态。</div></div>
-        <div class="owner-row"><div>Control Plane</div><div><span class="hold">保留迁移源</span><br>legacy identity、历史订单和未迁移能力仍使用。</div><div>不是 Cloud 原生 Workspace 的 fallback，也不是当前目标的第二 writer。</div></div>
+        <div class="owner-row"><div>Workspace</div><div>身份、Tenant、业务生命周期、资源计划和 resource set 引用。</div><div>不推断当前应用部署与入口。</div></div>
+        <div class="owner-row"><div>Fabric</div><div>指定 Workspace/resource set 的物理资源观察。</div><div>资源存在不等于应用就绪。</div></div>
+        <div class="owner-row"><div>Serve</div><div>当前 deployment、readiness 与 access metadata。</div><div>Admin 与 Customer 读取同一事实；分别采用平台 operator 与 Tenant 权限。</div></div>
+        <div class="owner-row"><div>CloudIdentity</div><div>会话、角色、action、scope 和精确资源授权。</div><div>BFF 获取决定，各 owner 独立重验；应用自身登录不由只读权限授予。</div></div>
+        <div class="owner-row"><div>Control Plane</div><div>保留对象和历史义务由原 owner 处理。</div><div>具体 caller 与退休条件见实现架构的保留链路清单。</div></div>
       </div>
     </section>
 
     <section>
-      <h2>3. 还需要清什么</h2>
-      <div class="backlog">
-        <div class="item"><div><h3>合入 Admin 的 Serve readback 修复</h3><p>本分支已让 Admin BFF 复用 Customer 详情的 Serve 组合逻辑。Workspace 仍提供生命周期/履约事实；Serve 上游读失败保持 unknown，无部署/入口时按 Serve 规则返回 unavailable，不从 Workspace 字段兜底。</p></div><span class="tag amber">源码已改，待 CI/合并</span></div>
-        <div class="item"><div><h3>把资源两个时间维度说清楚</h3><p>保留 Workspace 的“开通/履约读回”和 Fabric 的“当前物理观察”，但在 DTO/UI 文案中区分名称，避免把历史 fulfillment 当作实时 provider 状态。</p></div><span class="tag amber">边界澄清</span></div>
-        <div class="item"><div><h3>清退 legacy Workspace 执行链</h3><p>逐项处理旧 Launch 的 recovery、renewal/expiry、delete/refund、旧应用部署/凭据/镜像维护。先盘点实际 callers、in-flight operations 和持久化 obligations，再删除 command、worker、config、adapter 与 exclusive tests。</p></div><span class="tag purple">需要迁移证据</span></div>
-        <div class="item"><div><h3>迁移 Gateway / Account / wallet 旧能力</h3><p>个人 Key、账户激活、管理员充值、旧 eligibility 和 recovery 仍有 Control Plane caller。它们不能被 Workspace 迁移顺手删除；要分别确认新 owner、caller withdrawal 和历史读者。</p></div><span class="tag purple">独立能力</span></div>
-        <div class="item"><div><h3>清理 legacy pricing 与历史 Console 适配器</h3><p>新 Workspace 走 Resource Catalog quote；旧 package pricing、账单、公告、ACK、identity transport 仍属于保留链。只有确认没有外部/已部署 caller 后，才能移除旧 wrapper 和专属测试。</p></div><span class="tag purple">独立能力</span></div>
-        <div class="item"><div><h3>补齐部署与发布证据，不把它误当代码清退</h3><p>当前 Candidate 构建已成功，但 exact-SHA PR CI、完整 P0 readiness、Instance 同 Candidate 部署验证仍未闭环。这是发布/安装验收，不等于 Control Plane 代码可以删除。</p></div><span class="tag amber">发布边界</span></div>
+      <h2>3. 权威入口</h2>
+      <div class="panel">
+        <p><a href="spec/target/03_api_contract_complete.yaml">API 与授权合同</a>：各 owner action、权限和 scope。</p>
+        <p><a href="implementation-architecture.md#cloud-admin-workspace-reads-2026-11-07">Admin Workspace 实现链</a>：当前 source 路径及消费者。</p>
+        <p><a href="implementation-architecture.md#retained-writer-and-caller-inventory-2026-11-03">保留 writer/caller 清单</a>：迁移源与现存义务。</p>
+        <p><a href="status.md">验证证据</a>与<a href="roadmap.md">未完成验收</a>：代码、CI、Candidate 与 Instance 各层事实。</p>
       </div>
     </section>
 
     <section>
       <div class="grid grid-2">
         <div class="panel">
-          <h2>4. Admin 资源页当前会显示什么</h2>
+          <h2>4. 页面事实如何归因</h2>
           <p><span class="tag green">Workspace</span> 业务状态、Tenant、创建者、资源计划引用。</p>
           <p style="margin-top:8px"><span class="tag amber">Fabric</span> resource set、resource kind/state、provider reference、observation time、deletion/absence facts。</p>
-          <p style="margin-top:8px"><span class="tag">Unavailable</span> 旧 Account/User 映射、receipt、Key usage、package/spec、zone、创建/过期时间等未由新 owner 提供的字段。</p>
+          <p style="margin-top:8px"><span class="tag amber">Serve</span> deployment 选择、应用可用性和匹配该 deployment 的入口。</p>
+          <p style="margin-top:8px"><span class="tag">Unavailable</span> 未由对应 owner 提供的字段保留不可用原因；不借用其他 owner 的字段填充。</p>
         </div>
         <div class="panel">
           <h2>5. 不应该做的事</h2>
@@ -164,12 +163,12 @@
       <h2>6. 判定顺序</h2>
       <div class="panel">
         <div class="legend"><span><i class="dot green"></i>已迁移/已验证</span><span><i class="dot amber"></i>边界或证据仍需补齐</span><span><i class="dot purple"></i>Control Plane 保留能力，需逐项清退</span><span><i class="dot blue"></i>BFF 只组合，不成为 owner</span></div>
-        <div class="callout good" style="margin-top:14px"><strong>正确顺序：</strong>先修 Admin 的 Serve readback 来源 → 再按 capability 盘点 CP callers、持久化 obligations 和外部部署流量 → 迁移真实 caller → 保留历史数据/回放读者 → 删除旧 writer/worker/config/test → 最后重新做 owner readback 和发布验收。</div>
+        <div class="callout good" style="margin-top:14px"><strong>正确顺序：</strong>先识别事实 owner 与权限 → 读取对应 owner → 保持各层事实独立 → 区分源码、安装与运行时证据。具体迁移和验收只在权威文档维护。</div>
       </div>
     </section>
 
     <footer>
-      权威参考：<code>docs/architecture.md</code>、<code>docs/implementation-architecture.md</code>、<code>docs/status.md</code>、<code>docs/roadmap.md</code>。本页是解释性导航，不替代上述文档、API contract、测试或运行时 receipt。
+      权威参考：<code>docs/architecture.md</code>、<code>docs/implementation-architecture.md</code>、<code>docs/status.md</code>、<code>docs/roadmap.md</code>。本页仅提供图示与导航。当前状态、待办、CI 与运行时证据请沿上述链接读取。
     </footer>
   </main>
 </body>

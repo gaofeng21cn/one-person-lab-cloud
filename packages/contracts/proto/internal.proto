@@ -2323,10 +2323,12 @@ service WorkspaceProductService {
 
 service ServeProductService {
  rpc ListDeployments(ListDeploymentsRpcRequest) returns (DeploymentPage);
+ rpc ListOperatorDeployments(ListDeploymentsRpcRequest) returns (DeploymentPage);
  rpc GetDeployment(GetDeploymentRpcRequest) returns (Deployment);
  rpc UpdateWorkspaceVersion(UpdateWorkspaceVersionRpcRequest) returns (Operation);
  rpc RollbackWorkspace(RollbackWorkspaceRpcRequest) returns (Operation);
  rpc GetWorkspaceAccess(GetWorkspaceAccessRpcRequest) returns (WorkspaceAccess);
+ rpc GetOperatorWorkspaceAccess(GetWorkspaceAccessRpcRequest) returns (WorkspaceAccess);
 }
 
 service GatewayProductService {
@@ -3445,6 +3447,8 @@ AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES = 153;
  AUTHORIZATION_ACTION_ENUM_LISTOPERATORWORKSPACES = 163;
  AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACE = 164;
  AUTHORIZATION_ACTION_ENUM_READOPERATORRESOURCES = 165;
+ AUTHORIZATION_ACTION_ENUM_LISTOPERATORDEPLOYMENTS = 166;
+ AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACEACCESS = 167;
 }
 
 enum ServiceIdentityEnum {

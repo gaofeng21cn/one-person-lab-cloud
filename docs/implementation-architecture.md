@@ -1425,6 +1425,19 @@ participates in this path. The now-unused internal CP Workspace list/detail
 aliases and their BFF adapters are removed together; legacy `/api/operator/workspaces`
 continues to read retained objects for its existing callers.
 
+Admin application fields use Serve's `ListOperatorDeployments` and
+`GetOperatorWorkspaceAccess` RPCs, authorized as the dedicated platform actions
+`listOperatorDeployments` and `getOperatorWorkspaceAccess`. Their internal policies
+are declared in the canonical API contract and generated into CloudIdentity;
+they require a live platform-admin session and one exact Workspace resource.
+Serve revalidates the same action/context and shares its existing selection,
+history snapshot and access decoder with Customer reads. Customer member actions
+and Tenant isolation remain separate. BFF shares availability composition only,
+uses a separate authorization context for each source/Workspace, and reports
+`workspace+fabric+serve` provenance. Owner denials remain denials; unresolved
+Serve observations remain unknown. Access metadata grants neither application
+login, credential reveal nor deployment mutations.
+
 Cloud overview replaces the retained Workspace count with Workspace's total.
 A retained projection outage marks its own fields unavailable and cannot hide the
 independently authorized Workspace count; neither source supplies substitute facts.

@@ -114,7 +114,21 @@ var actions = map[api.AuthorizationActionEnum]actionPolicy{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPLANCHANGES:                       {api.OwnerEnum_OWNER_ENUM_WORKSPACE, []string{"member"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPLANCHANGE:                         {api.OwnerEnum_OWNER_ENUM_WORKSPACE, []string{"member"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CANCELPLANCHANGE:                      {api.OwnerEnum_OWNER_ENUM_WORKSPACE, []string{"admin", "owner"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORDEPLOYMENTS:               {api.OwnerEnum_OWNER_ENUM_SERVE, []string{"platform_admin"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACEACCESS:            {api.OwnerEnum_OWNER_ENUM_SERVE, []string{"platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READOPERATORRESOURCES:                 {api.OwnerEnum_OWNER_ENUM_FABRIC, []string{"platform_admin"}},
+}
+
+// Internal read constraints come from the same canonical policy as their roles.
+type internalReadPolicy struct {
+	scope    string
+	resource api.AuthorizationResourceKind
+}
+
+var internalReadPolicies = map[api.AuthorizationActionEnum]internalReadPolicy{
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORDEPLOYMENTS:    {"platform", api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACEACCESS: {"platform", api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READOPERATORRESOURCES:      {"platform", api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE},
 }
 
 // serveUpdateActions is the implemented subset of update_workspace.

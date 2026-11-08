@@ -31,6 +31,20 @@ type applicationEntryReader interface {
 	WorkspaceAccess(ctx context.Context, workspaceID string) (*api.WorkspaceAccess, error)
 }
 
+type operatorApplicationEntryReader interface {
+	OperatorDeployments(context.Context, string, string, int32) (*api.DeploymentPage, error)
+	OperatorWorkspaceAccess(context.Context, string) (*api.WorkspaceAccess, error)
+}
+
+// Each entry names one exact read capability and its own typed transport. The
+// two fixed callers share only composition; they do not inherit one another's authority.
+type workspaceApplicationReads struct {
+	deploymentsAction api.AuthorizationActionEnum
+	accessAction      api.AuthorizationActionEnum
+	deployments       func(context.Context, string, string, int32) (*api.DeploymentPage, error)
+	access            func(context.Context, string) (*api.WorkspaceAccess, error)
+}
+
 // workspaceApplication returns the composed Workspace read: the Workspace owner's
 // own facts unchanged, plus the application availability and access entry Serve
 // confirms. A layer the BFF could not confirm is reported as the contract's
@@ -48,29 +62,60 @@ func (s *Server) workspaceApplication(ctx context.Context, caller Caller, worksp
 }
 
 func (s *Server) composeWorkspaceApplication(ctx context.Context, caller Caller, workspace *api.Workspace) (*api.Workspace, error) {
+	reads := workspaceApplicationReads{}
+	if serve, ok := s.reader.(applicationEntryReader); ok {
+		reads = workspaceApplicationReads{
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS,
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS,
+			serve.Deployments, serve.WorkspaceAccess,
+		}
+	}
+	return s.composeWorkspaceApplicationReadback(ctx, caller, workspace, reads)
+}
+
+func (s *Server) composeOperatorWorkspaceApplication(ctx context.Context, caller Caller, workspace *api.Workspace) (*api.Workspace, error) {
+	reads := workspaceApplicationReads{}
+	if serve, ok := s.reader.(operatorApplicationEntryReader); ok {
+		reads = workspaceApplicationReads{
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORDEPLOYMENTS,
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACEACCESS,
+			serve.OperatorDeployments, serve.OperatorWorkspaceAccess,
+		}
+	}
+	return s.composeWorkspaceApplicationReadback(ctx, caller, workspace, reads)
+}
+
+func (s *Server) composeWorkspaceApplicationReadback(ctx context.Context, caller Caller, workspace *api.Workspace, reads workspaceApplicationReads) (*api.Workspace, error) {
 	workspaceID := workspace.GetId()
 	// Only Serve can confirm the derived application fields.
 	workspace.ApplicationAvailability = api.WorkspaceApplicationAvailabilityEnum_WORKSPACE_APPLICATION_AVAILABILITY_ENUM_UNKNOWN
 	workspace.AccessUrl = nil
-	serve, ok := s.reader.(applicationEntryReader)
-	if !ok {
+	if reads.deployments == nil {
 		// A deployment without the Serve read surface cannot compose the derived
 		// fields at all; the Workspace owner's own readback stands unchanged rather
 		// than being replaced by a guess.
 		return workspace, nil
 	}
+	// Composition may read several Workspaces. A source-specific authorization
+	// context must not replace the caller's Workspace context or leak into the next row.
+	call := proto.Clone(clients.CallContext(ctx)).(*api.CallContext)
+	call.AuthorizationContextId = ""
+	ctx = clients.WithCallContext(ctx, call)
 	// The derived facts come from Serve's own records, so each read is authorized
 	// as its own Serve action for this exact Workspace. A denied action is a real
 	// authorization boundary and surfaces as such; it is never answered with an
 	// invented availability.
 	if err := RequireAuthorizedAction(ctx, s.identity, caller, owneridentity.Serve,
-		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS,
+		reads.deploymentsAction,
 		&api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, Id: proto.String(workspaceID)},
 		clients.CallContext(ctx).GetRequestId()); err != nil {
 		return nil, err
 	}
-	page, err := serve.Deployments(ctx, workspaceID, "", 1)
+	page, err := reads.deployments(ctx, workspaceID, "", 1)
 	if err != nil {
+		if status.Code(err) == codes.PermissionDenied || status.Code(err) == codes.Unauthenticated {
+			return nil, err
+		}
 		// Serve's readback is not available, so its layer is genuinely unknown for
 		// this response. The contract has no per-source reason field on Workspace,
 		// and /api/v2/delivery/{workspaceId} reports the owner failure itself.
@@ -107,13 +152,15 @@ func (s *Server) composeWorkspaceApplication(ctx context.Context, caller Caller,
 		return workspace, nil
 	}
 	if err := RequireAuthorizedAction(ctx, s.identity, caller, owneridentity.Serve,
-		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS,
+		reads.accessAction,
 		&api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, Id: proto.String(workspaceID)},
 		clients.CallContext(ctx).GetRequestId()); err != nil {
 		return nil, err
 	}
-	entry, err := serve.WorkspaceAccess(ctx, workspaceID)
+	entry, err := reads.access(ctx, workspaceID)
 	switch {
+	case status.Code(err) == codes.PermissionDenied || status.Code(err) == codes.Unauthenticated:
+		return nil, err
 	case err != nil && applicationAccessUnavailable(err):
 		// Serve answered that this application has no confirmed supported access
 		// entry: the deployment is current, but it cannot be opened, so the
