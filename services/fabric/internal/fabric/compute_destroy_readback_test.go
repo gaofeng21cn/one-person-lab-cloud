@@ -106,6 +106,24 @@ func TestTencentComputeDestroyStatusStaysRetryableWhileCvmTerminates(t *testing.
 	}
 }
 
+func TestTencentComputeDestroyStatusCarriesRecycledCVMEligibilityFacts(t *testing.T) {
+	allocation := computeDestroyReadbackAllocation("compute-cvm-recycled", tencentComputeDestroyPhaseAttempted, "1")
+	response := computeDestroyStatusResponse(provisionerRequest{
+		Region: allocation.ProviderData["region"],
+		Pool: provisionerPool{NodePoolID: allocation.NodePoolID},
+		Allocation: provisionerAllocation{InstanceID: allocation.InstanceID, MachineName: allocation.MachineName, NodeName: allocation.NodeName, PrivateIP: allocation.PrivateIP, MachineType: "NativeCVM"},
+	}, false, "NOT_FOUND", "SHUTDOWN")
+	response.ProviderData["isolatedSource"] = "MANMADE"
+	provider := tencentComputeDestroyStatusProvider(t, response)
+	readback, err := provider.ReadComputeDestroyStatus(context.Background(), allocation)
+	if err != nil {
+		t.Fatalf("readback err=%v", err)
+	}
+	if !ComputeFinalReleaseEligible(readback) {
+		t.Fatalf("recycled CVM facts were not preserved: %#v", readback)
+	}
+}
+
 func TestTencentComputeDestroyStatusStaysRetryableWhileMachinePresent(t *testing.T) {
 	allocation := computeDestroyReadbackAllocation("compute-machine-present", tencentComputeDestroyPhaseAttempted, "1")
 	provider := NewTencentProvider()

@@ -65,6 +65,23 @@ original Workspace deletion are distinct evidence layers. Installed adoption and
 physical deletion are not established by this source change. Remaining acceptance
 is tracked in [roadmap](roadmap.md#workspace-1042-original-deletion).
 
+## Workspace 1042 recycled CVM deletion path (2026-11-08)
+
+Cloud Fabric source now advances the original Workspace `DeleteResources`
+operation through a fenced NativeCVM final release when a fresh provider read
+confirms the TKE Machine is absent and the exact prepaid CVM is `SHUTDOWN /
+MANMADE`. The original Fabric destroy journal supplies the operation identity;
+Workspace retains deletion, receipt and refund ownership. Fabric coordination
+requires a new post-release readback and the original destroy's successful
+cleanup/ownership finalization before reporting absence. Regression tests cover
+lost replies, process restart, database-atomic claims without lock exclusion,
+stale isolation evidence and the real deletion dispatcher. Detailed executed
+checks and their limits are recorded in the implementation PR.
+
+This is source-level evidence only. No Candidate was built or installed, and no
+provider mutation or deletion was run against the Workspace. The original
+deletion, physical resource absence and separate refund remain unconfirmed.
+
 ## Model Reload Capability Admission
 
 Serve resolves the exact deployment's approved Runtime publisher model-configuration

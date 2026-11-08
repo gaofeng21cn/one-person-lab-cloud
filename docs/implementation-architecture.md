@@ -1133,15 +1133,20 @@ It remains readable after the Workspace projection is removed so a pending
 Ledger Receipt is not displayed as completion. Compute absence reads remain
 scheduled until the owner confirms absence, without repeating destroy.
 
-Fabric's explicit `POST /fabric/compute-allocations/{id}/release-recycled` entry accepts an
-operator capability, original account/Workspace/destroy operation and fixed irreversible-release
-confirmation. `compute_final_release.go` persists a separate resource-scoped dispatch fence in
-its existing operation store under the destroy/pool locks. The Tencent adapter requires the exact
-Machine to be absent and the original CVM to be prepaid, `SHUTDOWN / MANMADE`, with matching
-zone, instance type, private IP and ownership tags before one `TerminateInstances` call. Replays
-only read exact absence. It does not rewrite the original destroy, settle a charge or generate a
-Workspace deletion receipt; the existing owners continue those obligations. Instance owns the
-protected invocation, installation admission and redacted execution receipt.
+Workspace's existing `DeleteResources` operation invokes Fabric's internal
+`ReleaseRecycledComputeAllocationForDeletion` when a fresh readback shows the
+exact TKE Machine absent and original CVM `SHUTDOWN / MANMADE`. Fabric derives
+the original destroy operation and owner identity from its journal; the Tencent
+adapter rechecks prepaid status, zone, instance type, private IP and ownership
+tags before one `TerminateInstances` call. `compute_final_release.go` persists
+the resource-scoped one-send fence under the destroy/pool locks, with a
+deterministic primary-key claim that survives loss of lock exclusion. Replays
+only read exact absence. The readback after release is the absence proof; the
+original destroy must also finish local cleanup and release machine ownership
+before coordination confirms compute deletion. The operation remains Workspace's original deletion, receipt and
+refund chain; Instance owns installation configuration and deployment evidence,
+not Workspace deletion execution. The explicit operator endpoint remains a
+separate controlled entry to the same fenced Fabric capability.
 
 Fabric's separate `GET /fabric/storage-volumes/{id}/destroy-status` reads the
 original storage destroy journal's frozen identity and phase, then observes CBS
