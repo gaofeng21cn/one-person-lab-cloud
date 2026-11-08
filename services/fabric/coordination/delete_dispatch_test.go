@@ -154,6 +154,226 @@ func (p *deletionProviderFixture) calls() (storageDestroy, storageReadback, comp
 	return p.storageDestroyCalls, p.storageReadbackCalls, p.computeDestroyCalls, p.computeReadbackCalls
 }
 
+type workspaceRecycledStorageProvider struct {
+	*fabric.LocalDockerProvider
+	absent               bool
+	releaseResponseLost  bool
+	sends                int
+	created              fabric.StorageVolume
+	destroyCalls         int
+	storageReadbackCalls int
+}
+
+func (p *workspaceRecycledStorageProvider) CreateStorageVolume(_ context.Context, input fabric.StorageVolumeInput) (fabric.StorageVolume, error) {
+	volume := fabric.StorageVolume{
+		ID: input.ID, OperationID: input.IdempotencyKey, AccountID: input.AccountID, WorkspaceID: input.WorkspaceID,
+		Status: "ready", Provider: "tencent-tke", ProviderResourceID: "disk-" + input.ID, ProviderRequestID: "create-cbs-request",
+		SizeGB: input.SizeGB, StorageClass: "cbs-static", DiskType: "CLOUD_BSSD", RenewFlag: "NOTIFY_AND_MANUAL_RENEW",
+		Deadline: "2026-12-01T00:00:00Z", Zone: input.Zone, CreatedAt: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC),
+		ProviderData: map[string]string{"region": "ap-guangzhou", "pvName": "opl-" + input.ID + "-pv", "pvcName": "opl-" + input.ID + "-data", "diskType": "CLOUD_BSSD", "zone": input.Zone},
+		CostTags:     map[string]string{"opl_account_id": input.AccountID, "opl_workspace_id": input.WorkspaceID, "opl_resource_id": input.ID, "opl_operation_id": input.OperationID},
+	}
+	volume.CostTags["opl_operation_id"] = input.OperationID
+	p.created = cloneStorageVolumeForTest(volume)
+	return volume, nil
+}
+
+func (p *workspaceRecycledStorageProvider) DestroyStorageVolume(_ context.Context, volume fabric.StorageVolume) (fabric.StorageVolume, error) {
+	p.destroyCalls++
+	volume = cloneStorageVolumeForTest(volume)
+	if p.absent {
+		volume.Status, volume.CBSStatus, volume.DestroyState = "external_deleted", "NOT_FOUND", ""
+		volume.ProviderData["storageDestroyPhase"] = "absence_confirmed"
+		volume.ProviderData["storageDestroyMutationCount"] = "0"
+		volume.ProviderData["status"], volume.ProviderData["cbsStatus"] = "external_deleted", "NOT_FOUND"
+		return volume, nil
+	}
+	volume.Status, volume.CBSStatus, volume.DestroyState = "destroying", "TORECYCLE", "unconfirmed_send"
+	volume.ProviderData["storageDestroyPhase"] = "terminate_attempted"
+	volume.ProviderData["storageDestroyMutationCount"] = "1"
+	return volume, errors.New("CBS remains in recycle state")
+}
+
+func (p *workspaceRecycledStorageProvider) ReadStorageVolumeStatus(_ context.Context, volume fabric.StorageVolume) (fabric.StorageVolume, error) {
+	p.storageReadbackCalls++
+	volume = cloneStorageVolumeForTest(volume)
+	if volume.ProviderData == nil {
+		volume.ProviderData = map[string]string{}
+	}
+	present := false
+	volume.BindingPresent = &present
+	volume.ProviderData["storageVolumeId"] = volume.ProviderResourceID
+	volume.ProviderData["describeCbsRequestId"] = "fresh-cbs-readback"
+	volume.ProviderData["storageDestroyMutationCount"] = "1"
+	if p.absent {
+		volume.Status, volume.CBSStatus = "external_deleted", "NOT_FOUND"
+		volume.ProviderData["status"], volume.ProviderData["cbsStatus"] = "external_deleted", "NOT_FOUND"
+		volume.ProviderData["storageDestroyPhase"] = "absence_confirmed"
+	} else {
+		volume.Status, volume.CBSStatus = "pending", "TORECYCLE"
+		volume.ProviderData["status"] = "pending"
+		volume.ProviderData["cbsStatus"] = "TORECYCLE"
+		volume.ProviderData["storageDestroyPhase"] = "terminate_attempted"
+	}
+	return volume, nil
+}
+
+func (p *workspaceRecycledStorageProvider) ReleaseRecycledStorageVolume(_ context.Context, _ fabric.StorageVolume) (string, error) {
+	p.sends++
+	if p.releaseResponseLost {
+		return "workspace-cbs-final-release-lost", errors.New("final release response lost")
+	}
+	p.absent = true
+	return "workspace-cbs-final-release", nil
+}
+
+func cloneStorageVolumeForTest(volume fabric.StorageVolume) fabric.StorageVolume {
+	volume.ProviderData = maps.Clone(volume.ProviderData)
+	volume.CostTags = maps.Clone(volume.CostTags)
+	return volume
+}
+
+func TestWorkspaceDeletionOwnsStorageFinalReleaseFence(t *testing.T) {
+	const workspaceID, computeID, storageID = "workspace-cbs-final-release", "compute-cbs-final-release", "storage-cbs-final-release"
+	provider := &workspaceRecycledStorageProvider{LocalDockerProvider: fabric.NewLocalDockerProvider()}
+	store := fabric.NewMemoryOperationStore()
+	compute := deletionComputeAllocation(computeID, workspaceID)
+	compute.AccountID, compute.Provider, compute.Zone = "account", "tencent-tke", "ap-guangzhou-3"
+	compute.CostTags = map[string]string{"opl_account_id": "account", "opl_workspace_id": workspaceID, "opl_resource_id": computeID, "opl_operation_id": "create-compute"}
+	appendSeedOperation(t, store, "create_compute_allocation", "compute_allocation", compute)
+	service := fabric.NewServiceWithOperationStore(provider, store)
+	volume, err := service.CreateStorageVolume(context.Background(), fabric.StorageVolumeInput{
+		ID: storageID, AccountID: "account", WorkspaceID: workspaceID, ComputeID: computeID, Zone: compute.Zone,
+		SizeGB: 10, IdempotencyKey: "create-storage:" + storageID,
+	})
+	if err != nil {
+		t.Fatalf("create storage through Fabric service: %v", err)
+	}
+	provider.created = volume
+	dispatcher := coordination.NewLocalDispatcher(service, fabric.NewLocalDockerProvider())
+	intent := deletionIntent(workspaceID, computeID, storageID)
+	intent.AccountID = "account"
+	fact, err := dispatcher.DeleteResource(context.Background(), intent, coordination.DeletionKindStorage)
+	if err != nil || fact.State != coordination.DeletionStateAbsent || fact.ProviderStatus != "external_deleted" {
+		t.Fatalf("first Workspace deletion fact=%+v err=%v created=%+v", fact, err, provider.created)
+	}
+	if provider.sends != 1 || provider.destroyCalls != 1 {
+		t.Fatalf("first pass final releases=%d provider destroy sends=%d, want exactly 1 each", provider.sends, provider.destroyCalls)
+	}
+
+	operations, err := store.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var originalDestroy, finalRelease fabric.FabricOperation
+	for _, operation := range operations {
+		switch operation.Action {
+		case "destroy_storage_volume":
+			originalDestroy = operation
+		case "release_recycled_storage_volume":
+			finalRelease = operation
+		}
+	}
+	if originalDestroy.OperationID == "" || originalDestroy.Status != "succeeded" {
+		t.Fatalf("original destroy journal=%+v, want the original Workspace destroy to finalize after absence readback", originalDestroy)
+	}
+	if finalRelease.Status != "succeeded" || finalRelease.CallerService != "workspace" ||
+		finalRelease.RedactedProviderPayload["originalDestroyOperationId"] != originalDestroy.OperationID {
+		t.Fatalf("final-release journal=%+v, want successful Workspace fence bound to original destroy", finalRelease)
+	}
+
+	final, err := dispatcher.DeleteResource(context.Background(), intent, coordination.DeletionKindStorage)
+	if err != nil || final.State != coordination.DeletionStateAbsent || final.ProviderStatus != "external_deleted" {
+		t.Fatalf("finalized Workspace deletion fact=%+v err=%v", final, err)
+	}
+	if provider.sends != 1 {
+		t.Fatalf("replayed Workspace deletion sent final release %d times", provider.sends)
+	}
+}
+
+func TestWorkspaceDeletionRebuildReconcilesLostFinalReleaseWithoutResend(t *testing.T) {
+	const workspaceID, computeID, storageID = "workspace-cbs-final-release-rebuild", "compute-cbs-final-release-rebuild", "storage-cbs-final-release-rebuild"
+	provider := &workspaceRecycledStorageProvider{LocalDockerProvider: fabric.NewLocalDockerProvider(), releaseResponseLost: true}
+	store := fabric.NewMemoryOperationStore()
+	compute := deletionComputeAllocation(computeID, workspaceID)
+	compute.AccountID, compute.Provider, compute.Zone = "account", "tencent-tke", "ap-guangzhou-3"
+	compute.CostTags = map[string]string{"opl_account_id": "account", "opl_workspace_id": workspaceID, "opl_resource_id": computeID, "opl_operation_id": "create-compute"}
+	appendSeedOperation(t, store, "create_compute_allocation", "compute_allocation", compute)
+	service := fabric.NewServiceWithOperationStore(provider, store)
+	volume, err := service.CreateStorageVolume(context.Background(), fabric.StorageVolumeInput{
+		ID: storageID, AccountID: "account", WorkspaceID: workspaceID, ComputeID: computeID, Zone: compute.Zone,
+		SizeGB: 10, IdempotencyKey: "create-storage:" + storageID,
+	})
+	if err != nil {
+		t.Fatalf("create storage through Fabric service: %v", err)
+	}
+	provider.created = volume
+	intent := deletionIntent(workspaceID, computeID, storageID)
+	intent.AccountID = "account"
+	dispatcher := coordination.NewLocalDispatcher(service, fabric.NewLocalDockerProvider())
+	if _, err := dispatcher.DeleteResource(context.Background(), intent, coordination.DeletionKindStorage); err == nil {
+		t.Fatal("lost final-release response was reported as a completed deletion")
+	}
+	if provider.sends != 1 || provider.absent {
+		t.Fatalf("first pass sends=%d absent=%v, want one uncertain send with CBS still recycled", provider.sends, provider.absent)
+	}
+	originalDestroy, finalRelease := workspaceStorageOperations(t, store, storageID)
+	if originalDestroy.OperationID == "" || finalRelease.Status != "failed" || finalRelease.CallerService != "workspace" {
+		t.Fatalf("first pass journals destroy=%+v finalRelease=%+v", originalDestroy, finalRelease)
+	}
+
+	// Rebuild the owner service from the same durable journal. The retry must use
+	// the original destroy operation and the failed final-release fence, so it
+	// may only read the provider and never send a second release.
+	rebuilt := fabric.NewServiceWithOperationStore(provider, store)
+	rebuiltDispatcher := coordination.NewLocalDispatcher(rebuilt, fabric.NewLocalDockerProvider())
+	pending, err := rebuiltDispatcher.DeleteResource(context.Background(), intent, coordination.DeletionKindStorage)
+	if err != nil || pending.State != coordination.DeletionStatePending {
+		t.Fatalf("rebuilt pending fact=%+v err=%v", pending, err)
+	}
+	if provider.sends != 1 {
+		t.Fatalf("replayed Workspace deletion sent final release %d times", provider.sends)
+	}
+	gotDestroy, gotFinalRelease := workspaceStorageOperations(t, store, storageID)
+	if gotDestroy.OperationID != originalDestroy.OperationID || gotFinalRelease.OperationID != finalRelease.OperationID {
+		t.Fatalf("replay changed operation identity: destroy %q->%q final release %q->%q", originalDestroy.OperationID, gotDestroy.OperationID, finalRelease.OperationID, gotFinalRelease.OperationID)
+	}
+
+	provider.absent = true
+	completed, err := rebuiltDispatcher.DeleteResource(context.Background(), intent, coordination.DeletionKindStorage)
+	if err != nil || completed.State != coordination.DeletionStateAbsent || completed.ProviderStatus != "external_deleted" {
+		t.Fatalf("absence readback did not complete deletion: fact=%+v err=%v", completed, err)
+	}
+	if provider.sends != 1 {
+		t.Fatalf("completion replay sent final release %d times", provider.sends)
+	}
+	gotDestroy, _ = workspaceStorageOperations(t, store, storageID)
+	if gotDestroy.OperationID != originalDestroy.OperationID || gotDestroy.Status != "succeeded" {
+		t.Fatalf("original destroy did not converge in place: %+v", gotDestroy)
+	}
+}
+
+func workspaceStorageOperations(t *testing.T, store *fabric.MemoryOperationStore, storageID string) (fabric.FabricOperation, fabric.FabricOperation) {
+	t.Helper()
+	operations, err := store.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var destroy, finalRelease fabric.FabricOperation
+	for _, operation := range operations {
+		if operation.ResourceID != storageID {
+			continue
+		}
+		switch operation.Action {
+		case "destroy_storage_volume":
+			destroy = operation
+		case "release_recycled_storage_volume":
+			finalRelease = operation
+		}
+	}
+	return destroy, finalRelease
+}
+
 // deletionReadbackSystem is one real dispatcher over one real Fabric service
 // whose only replaced boundary is the typed provider fixture. The concrete
 // provider argument only satisfies the dispatcher constructor; DeleteResource

@@ -45,6 +45,17 @@ type recycledStorageReleaser interface {
 	ReleaseRecycledStorageVolume(context.Context, StorageVolume) (string, error)
 }
 
+// StorageFinalReleaseEligible accepts only a fresh readback proving the exact
+// owned CBS is recycled and no longer bound to a workload.
+func StorageFinalReleaseEligible(volume StorageVolume) bool {
+	_, observedAtErr := time.Parse(time.RFC3339Nano, volume.ObservedAt)
+	return observedAtErr == nil && volume.ReadbackID != "" && volume.Provider == "tencent-tke" && strings.HasPrefix(volume.ProviderResourceID, "disk-") &&
+		volume.BindingPresent != nil && !*volume.BindingPresent && volume.CBSStatus == "TORECYCLE" &&
+		volume.ProviderData["storageDestroyPhase"] == storageDestroyPhaseTerminateAttempted && volume.ProviderData["storageDestroyMutationCount"] == "1" &&
+		volume.ProviderData["cbsStatus"] == "TORECYCLE" && volume.ProviderData["storageVolumeId"] == volume.ProviderResourceID &&
+		strings.TrimSpace(volume.ProviderData["describeCbsRequestId"]) != ""
+}
+
 // ReadStorageDestroyStatus observes the frozen original destroy, including its
 // phase and ownership context. It never hydrates or updates the resource cache,
 // appends a journal entry, or continues binding deletion.
@@ -98,7 +109,7 @@ func (s *Service) readFrozenStorageDestroyStatus(ctx context.Context, frozen Sto
 
 func storageFinalReleaseDispatchAttempted(previous, expected FabricOperation, destroyOperationID string) (bool, error) {
 	var payload storageFinalReleaseJournalPayload
-	if previous.Action != expected.Action || previous.ResourceID != expected.ResourceID || previous.RequestHash != expected.RequestHash || previous.OperationID != expected.OperationID || previous.ResourceKind != expected.ResourceKind || previous.AccountID != expected.AccountID || previous.WorkspaceID != expected.WorkspaceID || previous.IdempotencyKey != expected.IdempotencyKey || previous.Provider != expected.Provider || previous.CallerService != expected.CallerService ||
+	if previous.Action != expected.Action || previous.ResourceID != expected.ResourceID || previous.RequestHash != expected.RequestHash || previous.OperationID != expected.OperationID || previous.ResourceKind != expected.ResourceKind || previous.AccountID != expected.AccountID || previous.WorkspaceID != expected.WorkspaceID || previous.IdempotencyKey != expected.IdempotencyKey || previous.Provider != expected.Provider || (previous.CallerService != "operator" && previous.CallerService != "workspace") ||
 		!decodeStrictJSON(mustJSON(previous.RedactedProviderPayload), &payload) || payload.OriginalDestroyOperationID != destroyOperationID || payload.DispatchAttempted == nil {
 		return false, fmt.Errorf("storage_final_release_original_destroy_mismatch")
 	}
@@ -115,6 +126,27 @@ func storageFinalReleaseDispatchAttempted(previous, expected FabricOperation, de
 // destroy lock's connection is lost. Every losing claim is read-only; the
 // original destroy still owns local finalization and its receipt.
 func (s *Service) ReleaseRecycledStorageVolume(ctx context.Context, id string, input StorageFinalReleaseInput) (StorageFinalReleaseResult, error) {
+	return s.releaseRecycledStorageVolume(ctx, id, input, "operator")
+}
+
+// ReleaseRecycledStorageVolumeForDeletion binds final release to the original
+// Workspace destroy journal; callers cannot supply a replacement destroy ID.
+func (s *Service) ReleaseRecycledStorageVolumeForDeletion(ctx context.Context, id, accountID, workspaceID string) (StorageFinalReleaseResult, error) {
+	destroy, found, err := s.resourceOperations.LatestResourceOperation(ctx, "storage_volume", id)
+	if err != nil {
+		return StorageFinalReleaseResult{}, err
+	}
+	if !found || destroy.AccountID != accountID || destroy.WorkspaceID != workspaceID {
+		return StorageFinalReleaseResult{}, fmt.Errorf("storage_final_release_original_destroy_mismatch")
+	}
+	return s.releaseRecycledStorageVolume(ctx, id, StorageFinalReleaseInput{
+		AccountID: accountID, WorkspaceID: workspaceID,
+		DestroyOperationID: destroy.OperationID,
+		Confirmation:       StorageFinalReleaseConfirmation,
+	}, "workspace")
+}
+
+func (s *Service) releaseRecycledStorageVolume(ctx context.Context, id string, input StorageFinalReleaseInput, callerService string) (StorageFinalReleaseResult, error) {
 	var out StorageFinalReleaseResult
 	if input.Confirmation != StorageFinalReleaseConfirmation || strings.TrimSpace(input.AccountID) == "" || strings.TrimSpace(input.WorkspaceID) == "" || strings.TrimSpace(input.DestroyOperationID) == "" {
 		return out, fmt.Errorf("storage_final_release_authorization_required")
@@ -136,7 +168,7 @@ func (s *Service) ReleaseRecycledStorageVolume(ctx context.Context, id string, i
 			return err
 		}
 		operation := newOperation(storageFinalReleaseAction, "storage_final_release", id, input.AccountID, input.WorkspaceID, id, hashInput(input), s.now())
-		operation.CallerService, operation.Provider = "operator", frozen.Provider
+		operation.CallerService, operation.Provider = callerService, frozen.Provider
 		attempted := false
 		if fenced {
 			attempted, err = storageFinalReleaseDispatchAttempted(previous, operation, destroy.OperationID)
@@ -157,7 +189,8 @@ func (s *Service) ReleaseRecycledStorageVolume(ctx context.Context, id string, i
 		if !absent && !fenced {
 			// Validate the complete fresh precondition BEFORE creating the fence.
 			// A refused or incomplete read must not consume the one authorized send.
-			if observed.CBSStatus != "TORECYCLE" || observed.ProviderData["cbsStatus"] != "TORECYCLE" || observed.ProviderData["storageVolumeId"] != frozen.ProviderResourceID || strings.TrimSpace(observed.ProviderData["describeCbsRequestId"]) == "" {
+			if observed.ProviderData["storageDestroyPhase"] != storageDestroyPhaseTerminateAttempted || observed.ProviderData["storageDestroyMutationCount"] != "1" ||
+				observed.CBSStatus != "TORECYCLE" || observed.ProviderData["cbsStatus"] != "TORECYCLE" || observed.ProviderData["storageVolumeId"] != frozen.ProviderResourceID || strings.TrimSpace(observed.ProviderData["describeCbsRequestId"]) == "" {
 				return fmt.Errorf("storage_final_release_recycled_cbs_required")
 			}
 			provider, ok := s.storageProvider.(recycledStorageReleaser)
@@ -210,7 +243,7 @@ func (s *Service) ReleaseRecycledStorageVolume(ctx context.Context, id string, i
 		}
 		if absent {
 			out.Status, out.AbsenceConfirmed = StorageFinalReleaseStatusSucceeded, true
-			operation.CallerService, operation.Provider, operation.ErrorCode = "operator", frozen.Provider, ""
+			operation.CallerService, operation.Provider, operation.ErrorCode = callerService, frozen.Provider, ""
 			operation.RedactedProviderPayload = map[string]any{"originalDestroyOperationId": destroy.OperationID, "dispatchAttempted": out.DispatchAttempted}
 			return s.recordOperation(ctx, operation, string(StorageFinalReleaseStatusSucceeded), nil, nil)
 		}

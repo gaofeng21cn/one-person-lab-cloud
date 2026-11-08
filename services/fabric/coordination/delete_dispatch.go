@@ -121,10 +121,11 @@ func deleteAttachmentFromOwnSurface(ctx context.Context, service *fabric.Service
 	return fact, nil
 }
 
-// deleteStorageFromOwnSurface destroys the prepaid volume and then re-reads the
-// provider's own volume facts. Absence is reported only from that readback; a
-// destroy call returning, an unfinished recycle state or an unreadable volume
-// stays pending or unknown.
+// deleteStorageFromOwnSurface destroys the prepaid volume, completes the
+// provider-owned recycled-disk release when its fresh readback qualifies, and
+// then re-reads the provider's own volume facts. Absence is reported only from
+// that readback; an unfinished recycle state or unreadable volume stays pending
+// or unknown.
 func deleteStorageFromOwnSurface(ctx context.Context, service *fabric.Service, in ResourceDeletionIntent) (ResourceDeletionFact, error) {
 	fact := ResourceDeletionFact{Kind: DeletionKindStorage, ResourceID: in.StorageID}
 	destroyErr := error(nil)
@@ -134,9 +135,27 @@ func deleteStorageFromOwnSurface(ctx context.Context, service *fabric.Service, i
 		}
 		destroyErr = err
 	}
-	readback, err := service.ReadStorageVolume(ctx, in.StorageID)
+	var readback fabric.StorageVolume
+	var err error
+	if destroyErr != nil {
+		readback, err = service.ReadStorageDestroyStatus(ctx, in.StorageID)
+	} else {
+		readback, err = service.ReadStorageVolume(ctx, in.StorageID)
+	}
 	if err != nil {
 		return fact, errors.Join(destroyErr, err)
+	}
+	if destroyErr != nil && fabric.StorageFinalReleaseEligible(readback) {
+		if _, err = service.ReleaseRecycledStorageVolumeForDeletion(ctx, in.StorageID, in.AccountID, in.WorkspaceID); err != nil {
+			return fact, errors.Join(destroyErr, err)
+		}
+		if _, err = service.DestroyStorageVolume(ctx, in.StorageID); err != nil && !errors.Is(err, fabric.ErrWorkspaceLaunchPending) {
+			return fact, err
+		}
+		readback, err = service.ReadStorageDestroyStatus(ctx, in.StorageID)
+		if err != nil {
+			return fact, err
+		}
 	}
 	fact.ProviderReference = readback.ProviderResourceID
 	fact.ProviderStatus = readback.Status
