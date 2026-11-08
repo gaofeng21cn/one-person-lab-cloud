@@ -844,6 +844,95 @@ func TestLocalDispatcherComputeFinalReleaseLostResponseAndRestartReadOnly(t *tes
 	}
 }
 
+func TestLocalDispatcherComputeFinalReleaseLostResponseAndRestartConcurrentReadOnly(t *testing.T) {
+	lostResponse := errors.New("final release response lost")
+	fixture := &deletionProviderFixture{
+		computeReadback: func(input fabric.ComputeAllocation) (fabric.ComputeAllocation, error) {
+			return computeFinalReleaseDeletionReadback(input, false), nil
+		},
+	}
+	system, allocation, original := newComputeFinalReleaseDeletionSystem(t, fixture)
+	fixture.computeRelease = func(input fabric.ComputeAllocation) (string, error) {
+		if !reflect.DeepEqual(input, allocation) {
+			t.Errorf("final release did not use the original allocation: %+v", input)
+		}
+		return "", lostResponse
+	}
+	// Every persisted started destroy attempt needs a terminal journal outcome.
+	// Waiting only for the latest outcome can leave another recovery worker
+	// running after the concurrent requests, including on an assertion failure.
+	waitForDestroyWorkers := func() {
+		t.Helper()
+		waitForDeletionCondition(t, 5*time.Second, "all original compute destroy recovery outcomes", func() bool {
+			operations, err := system.store.List(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			started, finished := 0, 0
+			for _, operation := range operations {
+				if operation.Action != original.Action || operation.ResourceID != allocation.ID {
+					continue
+				}
+				switch operation.Status {
+				case "started":
+					started++
+				case "failed", "succeeded":
+					finished++
+				}
+			}
+			return started > 0 && finished >= started
+		})
+	}
+	t.Cleanup(waitForDestroyWorkers)
+	intent := deletionIntent(allocation.WorkspaceID, allocation.ID, "")
+	intent.AccountID = allocation.AccountID
+	first, err := system.dispatcher.DeleteResource(context.Background(), intent, coordination.DeletionKindCompute)
+	if !errors.Is(err, lostResponse) || first.State == coordination.DeletionStateAbsent || fixture.releaseCalls() != 1 {
+		t.Fatalf("lost response fact=%+v err=%v release calls=%d", first, err, fixture.releaseCalls())
+	}
+	waitForDestroyWorkers()
+	assertComputeFinalReleaseJournal(t, system.store, original, "failed")
+
+	service := fabric.NewServiceWithOperationStore(fixture, system.store)
+	dispatchers := []coordination.ResourceDispatcher{
+		coordination.NewLocalDispatcher(service, fabric.NewLocalDockerProvider()),
+		coordination.NewLocalDispatcher(service, fabric.NewLocalDockerProvider()),
+	}
+	type result struct {
+		fact coordination.ResourceDeletionFact
+		err  error
+	}
+	const concurrency = 6
+	results := make(chan result, concurrency)
+	start := make(chan struct{})
+	var requests sync.WaitGroup
+	for index := 0; index < concurrency; index++ {
+		requests.Add(1)
+		go func(dispatcher coordination.ResourceDispatcher) {
+			defer requests.Done()
+			<-start
+			fact, err := dispatcher.DeleteResource(context.Background(), intent, coordination.DeletionKindCompute)
+			results <- result{fact: fact, err: err}
+		}(dispatchers[index%len(dispatchers)])
+	}
+	close(start)
+	requests.Wait()
+	waitForDestroyWorkers()
+	close(results)
+	for result := range results {
+		fact := result.fact
+		if result.err != nil || fact.State != coordination.DeletionStatePending || fact.ProviderStatus != "destroying" || fact.DestroyState != "pending_retry" ||
+			fact.ProviderReference != allocation.InstanceID || fact.EvidenceRef == "" || fact.ObservedAt.IsZero() {
+			t.Errorf("concurrent restarted read-only retry fact=%+v err=%v", fact, result.err)
+		}
+	}
+	assertComputeFinalReleaseJournal(t, system.store, original, "failed")
+	_, _, destroys, _ := fixture.calls()
+	if destroys != 0 || fixture.releaseCalls() != 1 {
+		t.Fatalf("concurrent restart destroy calls=%d final release calls=%d", destroys, fixture.releaseCalls())
+	}
+}
+
 func TestLocalDispatcherComputeFinalReleaseRejectsFailedFreshReadback(t *testing.T) {
 	fixture := &deletionProviderFixture{
 		computeReadback: func(input fabric.ComputeAllocation) (fabric.ComputeAllocation, error) {
