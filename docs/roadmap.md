@@ -25,18 +25,22 @@ own layer. It does not close an Instance or production outcome.
 
 ## Workspace 1042 original deletion
 
-Fabric owns final release of the original recycled CBS; Instance owns protected
-installation and execution, Workspace owns the original deletion and separate
-refund. The [current observation](status.md#workspace-1042-storage-deletion-2026-11-07)
-is retained data in `TORECYCLE`, not provider absence.
+Workspace owns the original deletion operation, deletion receipt and separate
+refund; Fabric owns provider readback and the fenced final release of accepted
+compute/storage resources. Instance owns installation configuration and
+deployment evidence, not the deletion execution path. The
+[current observation](status.md#workspace-1042-storage-deletion-2026-11-07) is
+retained data in `TORECYCLE`, not provider absence.
 
-Acceptance requires a Candidate containing the journal-bound status and explicit
-storage-final-release owner, protected installation proof for that same Candidate,
-fresh original-disk and PV/PVC readback, the independent one-send final-release
-fence, and fresh exact provider absence. Continue the original Workspace deletion
-through remaining resources and its deletion receipt. Confirm its refund through
-the original charge and refund owner separately; preserve unknown outcomes and
-historical attempts throughout. Source tests and PR merge do not close this gap.
+Acceptance requires Candidate source containing journal-bound storage status,
+fresh original-disk and PV/PVC readback, the independent one-send storage
+final-release fence and exact provider absence. For recycled CVM, the original
+Workspace DELETE now invokes Fabric's fenced final-release capability only after
+fresh TKE/CVM eligibility readback; no Instance deletion entry is required.
+Continue the original Workspace deletion through remaining resources and its
+deletion receipt. Confirm refund through the original charge and refund owner
+separately; preserve unknown outcomes and historical attempts throughout. Source
+tests and PR merge do not establish installed adoption or production deletion.
 
 ## PR CI Cache Reuse And Parallel Verification
 

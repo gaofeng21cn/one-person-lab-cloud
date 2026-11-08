@@ -1005,6 +1005,21 @@ func ComputeDeletionAbsent(allocation ComputeAllocation) bool {
 	}
 }
 
+// ComputeDeletionFinalized reads the original destroy owner's terminal journal.
+// Provider absence alone does not prove local cleanup and ownership release.
+func (s *Service) ComputeDeletionFinalized(ctx context.Context, allocationID string) (bool, error) {
+	operation, found, err := s.latestComputeDestroyOperation(ctx, allocationID)
+	if err != nil || !found || operation.Status != "succeeded" {
+		return false, err
+	}
+	var allocation ComputeAllocation
+	if !decodeOperationResource(operation, &allocation) || allocation.ID != allocationID ||
+		allocation.AccountID != operation.AccountID || allocation.WorkspaceID != operation.WorkspaceID {
+		return false, fmt.Errorf("compute_destroy_finalization_identity_mismatch")
+	}
+	return ComputeDeletionAbsent(allocation), nil
+}
+
 func isExternallyDeletedComputeStatus(status string) bool {
 	switch status {
 	case "external_deleted", "deleted", "missing":

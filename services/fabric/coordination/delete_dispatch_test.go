@@ -2,7 +2,11 @@ package coordination_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
+	"maps"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -62,11 +66,13 @@ type deletionProviderFixture struct {
 	storageReadback func(fabric.StorageVolume) (fabric.StorageVolume, error)
 	computeDestroy  func(fabric.ComputeAllocation) (fabric.ComputeAllocation, error)
 	computeReadback func(fabric.ComputeAllocation) (fabric.ComputeAllocation, error)
+	computeRelease  func(fabric.ComputeAllocation) (string, error)
 
 	storageDestroyCalls  int
 	storageReadbackCalls int
 	computeDestroyCalls  int
 	computeReadbackCalls int
+	computeReleaseCalls  int
 }
 
 func (p *deletionProviderFixture) DestroyStorageVolume(_ context.Context, volume fabric.StorageVolume) (fabric.StorageVolume, error) {
@@ -111,6 +117,23 @@ func (p *deletionProviderFixture) ReadComputeDestroyStatus(_ context.Context, al
 		return fabric.ComputeAllocation{}, errors.New("fixture compute readback is not configured")
 	}
 	return hook(allocation)
+}
+
+func (p *deletionProviderFixture) ReleaseRecycledComputeAllocation(_ context.Context, allocation fabric.ComputeAllocation) (string, error) {
+	p.mu.Lock()
+	p.computeReleaseCalls++
+	hook := p.computeRelease
+	p.mu.Unlock()
+	if hook == nil {
+		return "", errors.New("fixture compute final release is not configured")
+	}
+	return hook(allocation)
+}
+
+func (p *deletionProviderFixture) releaseCalls() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.computeReleaseCalls
 }
 
 func (p *deletionProviderFixture) setStorageReadback(hook func(fabric.StorageVolume) (fabric.StorageVolume, error)) {
@@ -561,6 +584,303 @@ func TestLocalDispatcherComputeDeletionRetryReusesTheDispatchClaimWithoutSecondM
 	_, _, computeDestroy, _ := fixture.calls()
 	if computeDestroy != 1 {
 		t.Fatalf("compute destroy calls=%d, want exactly 1", computeDestroy)
+	}
+}
+
+// The persisted identity matches computeDestroyPhaseResource in Fabric's owner
+// suite. A started original destroy must recover by readback, never by sending
+// another DestroyComputeAllocation before the separate final-release action.
+func newComputeFinalReleaseDeletionSystem(t *testing.T, fixture *deletionProviderFixture) (*deletionReadbackSystem, fabric.ComputeAllocation, fabric.FabricOperation) {
+	t.Helper()
+	allocation := fabric.ComputeAllocation{
+		ID: "compute-durable-delete", OperationID: "op-create-durable-delete", AccountID: "acct-durable-delete", WorkspaceID: "ws-durable-delete", PackageID: "basic",
+		Status: "running", Provider: "tencent-tke", ProviderResourceID: "ins-durable-delete", ProviderRequestID: "req-create-durable-delete",
+		PoolID: "pool-basic-2c4g", NodePoolID: "np-basic", InstanceID: "ins-durable-delete", CVMInstanceID: "ins-durable-delete",
+		MachineName: "machine-durable-delete", NodeName: "node-durable-delete", PrivateIP: "10.0.0.18", InstanceType: "SA5.MEDIUM4", Zone: "ap-guangzhou-3",
+		CVMStatus: "RUNNING", ChargeType: "PREPAID", RenewFlag: "NOTIFY_AND_MANUAL_RENEW", Deadline: "2026-09-20T00:00:00Z", ServiceName: "opl-compute-durable-delete",
+		NodeSelector: map[string]any{"kubernetes.io/hostname": "node-durable-delete"},
+		ProviderData: map[string]string{
+			"clusterId": "cls-alpha", "region": "ap-guangzhou", "machineName": "machine-durable-delete", "instanceType": "SA5.MEDIUM4", "cpu": "2", "memoryGb": "4", "zone": "ap-guangzhou-3",
+			"machineType": "NativeCVM", "cvmApplicable": "true",
+		},
+		CostTags: map[string]string{
+			"opl_account_id": "acct-durable-delete", "opl_workspace_id": "ws-durable-delete", "opl_resource_id": "compute-durable-delete", "opl_operation_id": "op-create-durable-delete",
+		},
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	store := fabric.NewMemoryOperationStore()
+	appendSeedOperation(t, store, "create_compute_allocation", "compute_allocation", allocation)
+	allocation.Status = "destroying"
+	allocation.ProviderData = maps.Clone(allocation.ProviderData)
+	allocation.ProviderData["computeDestroyPhase"] = "dispatch_authorized_uncertain"
+	now := time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC)
+	// Use the owner's canonical operation identity so later Destroy retries
+	// remain the same original operation across service reconstruction.
+	destroyID := sha256.Sum256([]byte(allocation.ID + ":compute_allocation:destroy_compute_allocation"))
+	original := fabric.FabricOperation{
+		ID: "fop-original-compute-destroy", OperationID: fmt.Sprintf("op_destroy_compute_allocation_%x", destroyID[:6]), CallerService: "control-plane",
+		Action: "destroy_compute_allocation", ResourceKind: "compute_allocation", ResourceID: allocation.ID,
+		AccountID: allocation.AccountID, WorkspaceID: allocation.WorkspaceID, Provider: allocation.Provider, ProviderRequestID: allocation.ProviderRequestID,
+		Status: "started", StartedAt: now, CreatedAt: now, RedactedProviderPayload: map[string]any{"resource": allocation},
+	}
+	if err := store.Append(context.Background(), original); err != nil {
+		t.Fatalf("seed original compute destroy: %v", err)
+	}
+	service := fabric.NewServiceWithOperationStore(fixture, store)
+	return &deletionReadbackSystem{fixture: fixture, store: store, dispatcher: coordination.NewLocalDispatcher(service, fabric.NewLocalDockerProvider())}, allocation, original
+}
+
+func computeFinalReleaseDeletionReadback(allocation fabric.ComputeAllocation, absent bool) fabric.ComputeAllocation {
+	allocation.ProviderData = maps.Clone(allocation.ProviderData)
+	present := false
+	allocation.MachinePresent = &present
+	allocation.Status, allocation.CVMStatus, allocation.TKEStatus = "destroying", "SHUTDOWN", "NOT_FOUND"
+	allocation.DestroyState = "pending_retry"
+	allocation.ProviderRequestID = "req-recycled-compute-readback"
+	allocation.ProviderData["machinePresent"], allocation.ProviderData["tkeStatus"] = "false", "NOT_FOUND"
+	allocation.ProviderData["cvmStatus"], allocation.ProviderData["isolatedSource"] = "SHUTDOWN", "MANMADE"
+	allocation.ProviderData["describeClusterMachinesReq"] = "req-read-machine-absent"
+	allocation.ProviderData["verifyMachineDeletedReqId"] = "req-read-machine-absent"
+	allocation.ProviderData["describeCvmRequestId"] = "req-read-cvm"
+	if absent {
+		allocation.Status, allocation.CVMStatus, allocation.DestroyState = "external_deleted", "NOT_FOUND", ""
+		allocation.ProviderRequestID = "req-final-compute-absence"
+		allocation.ProviderData["cvmStatus"] = "NOT_FOUND"
+		allocation.ProviderData["computeDestroyPhase"] = "cloud_absence_confirmed"
+	}
+	return allocation
+}
+
+func assertComputeFinalReleaseJournal(t *testing.T, store *fabric.MemoryOperationStore, original fabric.FabricOperation, wantStatus string) {
+	t.Helper()
+	operations, err := store.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalFound, finalFound := false, false
+	for _, operation := range operations {
+		if operation.ID == original.ID {
+			originalFound = true
+			if !reflect.DeepEqual(operation, original) {
+				t.Fatal("final release changed the persisted original destroy")
+			}
+		}
+		if operation.Action != "release_recycled_compute_allocation" {
+			continue
+		}
+		if operation.ResourceID != original.ResourceID || operation.AccountID != original.AccountID || operation.WorkspaceID != original.WorkspaceID ||
+			operation.CallerService != "workspace" || operation.RedactedProviderPayload["originalDestroyOperationId"] != original.OperationID {
+			t.Fatalf("final release lost the original destroy binding: %+v", operation)
+		}
+		if operation.Status == wantStatus {
+			finalFound = true
+		}
+	}
+	if !originalFound || !finalFound {
+		t.Fatalf("original destroy found=%v, final release status %q found=%v", originalFound, wantStatus, finalFound)
+	}
+}
+
+func waitForComputeFinalReleaseDestroyRecovery(t *testing.T, store *fabric.MemoryOperationStore, resourceID string) {
+	t.Helper()
+	waitForDeletionCondition(t, 5*time.Second, "compute destroy recovery outcome", func() bool {
+		operations, err := store.List(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for index := len(operations) - 1; index >= 0; index-- {
+			operation := operations[index]
+			if operation.Action == "destroy_compute_allocation" && operation.ResourceID == resourceID {
+				return operation.Status == "failed" || operation.Status == "succeeded"
+			}
+		}
+		return false
+	})
+}
+
+// This provider fixture replaces the private Tencent cleanup boundary. Model
+// its completed cleanup/ownership outcome explicitly in the original destroy
+// journal; final release alone must never fabricate this owner completion.
+func appendComputeFinalReleaseDestroyFinalization(t *testing.T, store *fabric.MemoryOperationStore, original fabric.FabricOperation, allocation fabric.ComputeAllocation) {
+	t.Helper()
+	finalized := original
+	finalized.ID = original.ID + "-finalized"
+	finalized.Status = "succeeded"
+	finalized.CreatedAt = time.Now().UTC()
+	finalized.FinishedAt = finalized.CreatedAt
+	absent := computeFinalReleaseDeletionReadback(allocation, true)
+	finalized.ProviderRequestID = absent.ProviderRequestID
+	finalized.RedactedProviderPayload = map[string]any{"resource": absent}
+	if err := store.Append(context.Background(), finalized); err != nil {
+		t.Fatalf("record original destroy finalization: %v", err)
+	}
+}
+
+func TestLocalDispatcherComputeFinalReleaseConfirmsFreshAbsenceOnlyAfterDestroyFinalization(t *testing.T) {
+	var mu sync.Mutex
+	absent, readsAfterRelease := false, 0
+	fixture := &deletionProviderFixture{}
+	system, allocation, original := newComputeFinalReleaseDeletionSystem(t, fixture)
+	fixture.computeReadback = func(input fabric.ComputeAllocation) (fabric.ComputeAllocation, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if absent {
+			readsAfterRelease++
+		}
+		return computeFinalReleaseDeletionReadback(input, absent), nil
+	}
+	fixture.computeRelease = func(input fabric.ComputeAllocation) (string, error) {
+		assertComputeFinalReleaseJournal(t, system.store, original, "started")
+		if !reflect.DeepEqual(input, allocation) {
+			t.Errorf("final release did not use the frozen original allocation: %+v", input)
+		}
+		mu.Lock()
+		absent = true
+		mu.Unlock()
+		return "req-final-release", nil
+	}
+	intent := deletionIntent(allocation.WorkspaceID, allocation.ID, "")
+	intent.AccountID = allocation.AccountID
+	fact, err := system.dispatcher.DeleteResource(context.Background(), intent, coordination.DeletionKindCompute)
+	if err != nil || fact.State != coordination.DeletionStatePending || fact.ProviderStatus != "external_deleted" || fact.DestroyState != "" ||
+		fact.ProviderReference != allocation.InstanceID || fact.EvidenceRef == "" || fact.ObservedAt.IsZero() {
+		t.Fatalf("fresh absence before original destroy finalization fact=%+v err=%v", fact, err)
+	}
+	// One read confirms the release inside Fabric; another is the dispatcher's
+	// fresh read. The initial SHUTDOWN read cannot have proved absence.
+	mu.Lock()
+	reads := readsAfterRelease
+	mu.Unlock()
+	if reads < 2 || fixture.releaseCalls() != 1 {
+		t.Fatalf("post-release readbacks=%d release calls=%d", reads, fixture.releaseCalls())
+	}
+	assertComputeFinalReleaseJournal(t, system.store, original, "succeeded")
+	waitForComputeFinalReleaseDestroyRecovery(t, system.store, allocation.ID)
+	if destroyOperationRecorded(t, system.store, original.Action, allocation.ID) {
+		t.Fatal("final release fabricated original destroy finalization")
+	}
+	appendComputeFinalReleaseDestroyFinalization(t, system.store, original, allocation)
+	final, err := system.dispatcher.DeleteResource(context.Background(), intent, coordination.DeletionKindCompute)
+	if err != nil || final.State != coordination.DeletionStateAbsent || final.ProviderStatus != "external_deleted" || final.DestroyState != "" ||
+		final.ProviderReference != allocation.InstanceID || final.EvidenceRef == "" || final.EvidenceRef == fact.EvidenceRef ||
+		final.ObservedAt.IsZero() || final.ObservedAt.Before(fact.ObservedAt) {
+		t.Fatalf("fresh absence after original destroy finalization fact=%+v err=%v", final, err)
+	}
+	assertComputeFinalReleaseJournal(t, system.store, original, "succeeded")
+	_, _, destroys, _ := fixture.calls()
+	if destroys != 0 || fixture.releaseCalls() != 1 {
+		t.Fatalf("original destroy calls=%d final release calls=%d", destroys, fixture.releaseCalls())
+	}
+}
+
+func TestLocalDispatcherComputeFinalReleaseLostResponseAndRestartReadOnly(t *testing.T) {
+	var mu sync.Mutex
+	absent := false
+	lostResponse := errors.New("final release response lost")
+	fixture := &deletionProviderFixture{}
+	system, allocation, original := newComputeFinalReleaseDeletionSystem(t, fixture)
+	fixture.computeReadback = func(input fabric.ComputeAllocation) (fabric.ComputeAllocation, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		return computeFinalReleaseDeletionReadback(input, absent), nil
+	}
+	fixture.computeRelease = func(input fabric.ComputeAllocation) (string, error) {
+		assertComputeFinalReleaseJournal(t, system.store, original, "started")
+		if !reflect.DeepEqual(input, allocation) {
+			t.Errorf("final release did not use the frozen original allocation: %+v", input)
+		}
+		return "", lostResponse
+	}
+	intent := deletionIntent(allocation.WorkspaceID, allocation.ID, "")
+	intent.AccountID = allocation.AccountID
+	first, err := system.dispatcher.DeleteResource(context.Background(), intent, coordination.DeletionKindCompute)
+	if !errors.Is(err, lostResponse) || first.State == coordination.DeletionStateAbsent || fixture.releaseCalls() != 1 {
+		t.Fatalf("lost response fact=%+v err=%v release calls=%d", first, err, fixture.releaseCalls())
+	}
+	assertComputeFinalReleaseJournal(t, system.store, original, "failed")
+	waitForComputeFinalReleaseDestroyRecovery(t, system.store, allocation.ID)
+
+	// Retry through two dispatchers sharing a freshly constructed Service. The
+	// durable resource fence, rather than a dispatcher-local flag, owns dispatch.
+	service := fabric.NewServiceWithOperationStore(fixture, system.store)
+	dispatchers := []coordination.ResourceDispatcher{
+		coordination.NewLocalDispatcher(service, fabric.NewLocalDockerProvider()),
+		coordination.NewLocalDispatcher(service, fabric.NewLocalDockerProvider()),
+	}
+	for _, dispatcher := range dispatchers {
+		fact, err := dispatcher.DeleteResource(context.Background(), intent, coordination.DeletionKindCompute)
+		if err != nil || fact.State != coordination.DeletionStatePending || fact.ProviderStatus != "destroying" || fact.DestroyState != "pending_retry" ||
+			fact.ProviderReference != allocation.InstanceID || fact.EvidenceRef == "" || fact.ObservedAt.IsZero() {
+			t.Fatalf("restarted read-only retry fact=%+v err=%v", fact, err)
+		}
+		waitForComputeFinalReleaseDestroyRecovery(t, system.store, allocation.ID)
+	}
+	if fixture.releaseCalls() != 1 {
+		t.Fatalf("lost-response restart repeated final release %d times", fixture.releaseCalls())
+	}
+	mu.Lock()
+	absent = true
+	mu.Unlock()
+	pending, err := dispatchers[0].DeleteResource(context.Background(), intent, coordination.DeletionKindCompute)
+	if err != nil || pending.State != coordination.DeletionStatePending || pending.ProviderStatus != "external_deleted" || pending.DestroyState != "" ||
+		pending.ProviderReference != allocation.InstanceID || pending.EvidenceRef == "" || pending.ObservedAt.IsZero() {
+		t.Fatalf("fresh absence before original destroy finalization fact=%+v err=%v", pending, err)
+	}
+	waitForComputeFinalReleaseDestroyRecovery(t, system.store, allocation.ID)
+	if destroyOperationRecorded(t, system.store, original.Action, allocation.ID) {
+		t.Fatal("lost-response recovery fabricated original destroy finalization")
+	}
+	appendComputeFinalReleaseDestroyFinalization(t, system.store, original, allocation)
+	restarted := coordination.NewLocalDispatcher(fabric.NewServiceWithOperationStore(fixture, system.store), fabric.NewLocalDockerProvider())
+	final, err := restarted.DeleteResource(context.Background(), intent, coordination.DeletionKindCompute)
+	if err != nil || final.State != coordination.DeletionStateAbsent || final.ProviderStatus != "external_deleted" || final.DestroyState != "" ||
+		final.ProviderReference != allocation.InstanceID || final.EvidenceRef == "" || final.ObservedAt.IsZero() {
+		t.Fatalf("finalized absence after restart fact=%+v err=%v", final, err)
+	}
+	assertComputeFinalReleaseJournal(t, system.store, original, "failed")
+	_, _, destroys, _ := fixture.calls()
+	if destroys != 0 || fixture.releaseCalls() != 1 {
+		t.Fatalf("restart destroy calls=%d final release calls=%d", destroys, fixture.releaseCalls())
+	}
+}
+
+func TestLocalDispatcherComputeFinalReleaseRejectsFailedFreshReadback(t *testing.T) {
+	fixture := &deletionProviderFixture{
+		computeReadback: func(input fabric.ComputeAllocation) (fabric.ComputeAllocation, error) {
+			return computeFinalReleaseDeletionReadback(input, false), nil
+		},
+	}
+	system, allocation, original := newComputeFinalReleaseDeletionSystem(t, fixture)
+	freshReadError := errors.New("fresh compute absence readback unavailable")
+	fixture.computeRelease = func(fabric.ComputeAllocation) (string, error) {
+		assertComputeFinalReleaseJournal(t, system.store, original, "started")
+		var mu sync.Mutex
+		read := false
+		fixture.setComputeReadback(func(input fabric.ComputeAllocation) (fabric.ComputeAllocation, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			if read {
+				return fabric.ComputeAllocation{}, freshReadError
+			}
+			// The final-release owner holds its pool lock while consuming this
+			// confirmation. Every subsequent read, including the dispatcher's
+			// fresh read, fails instead of reusing that confirmation.
+			read = true
+			return computeFinalReleaseDeletionReadback(input, true), nil
+		})
+		return "req-final-release", nil
+	}
+	intent := deletionIntent(allocation.WorkspaceID, allocation.ID, "")
+	intent.AccountID = allocation.AccountID
+	fact, err := system.dispatcher.DeleteResource(context.Background(), intent, coordination.DeletionKindCompute)
+	if !errors.Is(err, freshReadError) || fact.State == coordination.DeletionStateAbsent {
+		t.Fatalf("failed fresh readback fact=%+v err=%v", fact, err)
+	}
+	assertComputeFinalReleaseJournal(t, system.store, original, "succeeded")
+	waitForComputeFinalReleaseDestroyRecovery(t, system.store, allocation.ID)
+	_, _, destroys, _ := fixture.calls()
+	if destroys != 0 || fixture.releaseCalls() != 1 {
+		t.Fatalf("destroy calls=%d final release calls=%d", destroys, fixture.releaseCalls())
 	}
 }
 

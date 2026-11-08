@@ -1211,8 +1211,14 @@ func (p *TencentProvider) ReadComputeDestroyStatus(ctx context.Context, allocati
 	observed := cloneComputeAllocation(allocation)
 	observed.MachinePresent = response.MachinePresent
 	observed.TKEStatus = response.TKEStatus
-	if strings.TrimSpace(response.CVMStatus) != "" {
-		observed.CVMStatus = response.CVMStatus
+	observed.ProviderRequestID = response.ProviderRequestID
+	observed.CVMStatus = response.CVMStatus
+	// Eligibility uses only this observation, never retained evidence.
+	for _, key := range []string{"isolatedSource", "machinePresent", "tkeStatus", "cvmStatus", "describeClusterMachinesReq", "describeCvmRequestId"} {
+		delete(observed.ProviderData, key)
+		if value, present := response.ProviderData[key]; present {
+			observed.ProviderData[key] = value
+		}
 	}
 	if response.MachinePresent == nil || *response.MachinePresent {
 		observed.DestroyState = tencentComputeDestroyRetryState(allocation)
@@ -1369,7 +1375,7 @@ func isTencentComputeDeleteEvidenceKey(key string) bool {
 	switch key {
 	case "machinePresent", "tkeStatus", "cvmStatus", "deleteMethod", "scaleDown", "deleteMode",
 		"describeNodePoolRequestId", "modifySelfProvisioningReqId", "verifyMachineDeletedReqId", "describeCvmRequestId",
-		tencentComputeDestroyPhaseKey, tencentComputeDestroyMutationCountKey, "syncResult", "describeClusterMachinesReq":
+		tencentComputeDestroyPhaseKey, tencentComputeDestroyMutationCountKey, "syncResult", "describeClusterMachinesReq", "isolatedSource":
 		return true
 	default:
 		return false

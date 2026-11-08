@@ -3,6 +3,7 @@ package fabric
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -13,9 +14,16 @@ func finalReleaseFixture(t *testing.T, store OperationStore) (ComputeAllocation,
 	a := canonicalTencentComputeDestroyFixture()
 	a.Status = "destroying"
 	a.DestroyState = StorageDestroyStateUnconfirmedSend
+	created := newOperation("create_compute_allocation", "compute_allocation", a.ID, a.AccountID, a.WorkspaceID, "", hashInput(map[string]string{"id": a.ID}), time.Now().UTC())
+	created.Status = "succeeded"
+	created.ID = "fabricop_compute_creation_original"
+	fillOperationResource(&created, a)
+	if err := store.Append(t.Context(), created); err != nil {
+		t.Fatal(err)
+	}
 	op := newOperation("destroy_compute_allocation", "compute_allocation", a.ID, a.AccountID, a.WorkspaceID, "", hashInput(map[string]string{"id": a.ID}), time.Now().UTC())
 	op.Status = "started"
-	op.ID = "destroy-original"
+	op.ID = "fabricop_destroy_original"
 	op.CreatedAt = op.StartedAt
 	fillOperationResource(&op, a)
 	if err := store.Append(t.Context(), op); err != nil {
@@ -43,7 +51,7 @@ func finalReleaseProvider(t *testing.T, absent *bool, calls *int) *TencentProvid
 			status = "external_deleted"
 		}
 		return provisionerResponse{OK: true, Status: status, ProviderRequestID: "read-provider", InstanceID: r.Allocation.InstanceID, MachinePresent: &present, TKEStatus: "NOT_FOUND", CVMStatus: state, ProviderData: map[string]string{
-			"clusterId": r.Pool.ClusterID, "region": r.Region, "nodePoolId": r.Pool.NodePoolID, "machineName": r.Allocation.MachineName, "nodeName": r.Allocation.NodeName, "privateIp": r.Allocation.PrivateIP, "machineType": "NativeCVM", "cvmApplicable": "true", "machinePresent": "false", "tkeStatus": "NOT_FOUND", "cvmStatus": state, "syncResult": "missing", "describeClusterMachinesReq": "read-machine", "describeCvmRequestId": "read-cvm",
+			"clusterId": r.Pool.ClusterID, "region": r.Region, "nodePoolId": r.Pool.NodePoolID, "machineName": r.Allocation.MachineName, "nodeName": r.Allocation.NodeName, "privateIp": r.Allocation.PrivateIP, "machineType": "NativeCVM", "cvmApplicable": "true", "machinePresent": "false", "tkeStatus": "NOT_FOUND", "cvmStatus": state, "isolatedSource": "MANMADE", "syncResult": "missing", "describeClusterMachinesReq": "read-machine", "describeCvmRequestId": "read-cvm",
 		}}, nil
 	}
 	return p
@@ -131,6 +139,7 @@ func TestFinalReleaseStartedFenceNeverRedispatches(t *testing.T) {
 	calls, absent := 0, false
 	s := NewServiceWithOperationStore(finalReleaseProvider(t, &absent, &calls), store)
 	op := newOperation(computeFinalReleaseAction, "compute_final_release", a.ID, a.AccountID, a.WorkspaceID, a.ID, hashInput(input), time.Now().UTC())
+	op.RedactedProviderPayload = map[string]any{"originalDestroyOperationId": input.DestroyOperationID}
 	if err := s.recordOperation(t.Context(), op, "started", nil, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -138,6 +147,82 @@ func TestFinalReleaseStartedFenceNeverRedispatches(t *testing.T) {
 	got, err := reopened.ReleaseRecycledComputeAllocation(t.Context(), a.ID, input)
 	if err != nil || !got.DispatchAttempted || got.AbsenceConfirmed || calls != 0 {
 		t.Fatalf("got=%+v err=%v calls=%d", got, err, calls)
+	}
+}
+
+func TestFinalReleaseWaitsForExactRecycledCVMStateBeforeClaimingFence(t *testing.T) {
+	store := NewMemoryOperationStore()
+	a, _ := finalReleaseFixture(t, store)
+	calls := 0
+	state := "RUNNING"
+	p := NewTencentProvider()
+	p.provision = func(_ context.Context, r provisionerRequest) (provisionerResponse, error) {
+		if r.Action == computeFinalReleaseAction {
+			calls++
+			return provisionerResponse{OK: true, ProviderRequestID: "release"}, nil
+		}
+		if r.Action != "read_compute_destroy_status" {
+			return provisionerResponse{}, fmt.Errorf("unexpected action %s", r.Action)
+		}
+		present := false
+		cvmStatus := state
+		status := "present"
+		if state == "NOT_FOUND" {
+			cvmStatus, status = "NOT_FOUND", "external_deleted"
+		}
+		return provisionerResponse{OK: true, Status: status, ProviderRequestID: "read", InstanceID: r.Allocation.InstanceID, MachinePresent: &present, TKEStatus: "NOT_FOUND", CVMStatus: cvmStatus, ProviderData: map[string]string{
+			"clusterId": r.Pool.ClusterID, "region": r.Region, "nodePoolId": r.Pool.NodePoolID,
+			"machineName": r.Allocation.MachineName, "nodeName": r.Allocation.NodeName, "privateIp": r.Allocation.PrivateIP,
+			"machineType": "NativeCVM", "cvmApplicable": "true", "machinePresent": "false", "tkeStatus": "NOT_FOUND",
+			"cvmStatus": cvmStatus, "isolatedSource": "MANMADE", "syncResult": map[bool]string{true: "missing", false: "found"}[state == "NOT_FOUND"],
+			"describeClusterMachinesReq": "read-machine", "describeCvmRequestId": "read-cvm",
+		}}, nil
+	}
+	s := NewServiceWithOperationStore(p, store)
+	result, err := s.ReleaseRecycledComputeAllocationForDeletion(t.Context(), a.ID, a.AccountID, a.WorkspaceID)
+	if !errors.Is(err, ErrComputeFinalReleaseNotEligible) || result.DispatchAttempted || result.AbsenceConfirmed || calls != 0 {
+		t.Fatalf("ineligible state result=%+v err=%v calls=%d", result, err, calls)
+	}
+	state = "SHUTDOWN"
+	result, err = s.ReleaseRecycledComputeAllocationForDeletion(t.Context(), a.ID, a.AccountID, a.WorkspaceID)
+	if err == nil || !result.DispatchAttempted || result.AbsenceConfirmed || calls != 1 {
+		t.Fatalf("eligible state result=%+v err=%v calls=%d", result, err, calls)
+	}
+	state = "NOT_FOUND"
+	result, err = s.ReleaseRecycledComputeAllocationForDeletion(t.Context(), a.ID, a.AccountID, a.WorkspaceID)
+	if err != nil || !result.AbsenceConfirmed || calls != 1 {
+		t.Fatalf("confirmed state result=%+v err=%v calls=%d", result, err, calls)
+	}
+}
+
+func TestWorkspaceFinalReleaseReusesItsFrozenDestroyJournalAfterAReplayedDestroy(t *testing.T) {
+	store := NewMemoryOperationStore()
+	a, _ := finalReleaseFixture(t, store)
+	calls, absent := 0, false
+	p := finalReleaseProvider(t, &absent, &calls)
+	s := NewServiceWithOperationStore(p, store)
+	first, err := s.ReleaseRecycledComputeAllocationForDeletion(t.Context(), a.ID, a.AccountID, a.WorkspaceID)
+	if err == nil || !first.DispatchAttempted || calls != 1 {
+		t.Fatalf("first result=%+v err=%v calls=%d", first, err, calls)
+	}
+	original, found, err := s.latestComputeDestroyOperation(t.Context(), a.ID)
+	if err != nil || !found {
+		t.Fatalf("original destroy found=%v err=%v", found, err)
+	}
+	retry := original
+	retry.ID, retry.Status = "fabricop_destroy_replayed_failure", "failed"
+	if err := store.Append(t.Context(), retry); err != nil {
+		t.Fatal(err)
+	}
+	restarted := NewServiceWithOperationStore(p, store)
+	second, err := restarted.ReleaseRecycledComputeAllocationForDeletion(t.Context(), a.ID, a.AccountID, a.WorkspaceID)
+	if err != nil || !second.DispatchAttempted || second.AbsenceConfirmed || calls != 1 {
+		t.Fatalf("replay result=%+v err=%v calls=%d", second, err, calls)
+	}
+	absent = true
+	third, err := restarted.ReleaseRecycledComputeAllocationForDeletion(t.Context(), a.ID, a.AccountID, a.WorkspaceID)
+	if err != nil || !third.AbsenceConfirmed || calls != 1 {
+		t.Fatalf("absence result=%+v err=%v calls=%d", third, err, calls)
 	}
 }
 func TestFinalReleaseUsesOriginalLaunchOwnershipForMissingTags(t *testing.T) {
@@ -159,7 +244,7 @@ func TestFinalReleaseUsesOriginalLaunchOwnershipForMissingTags(t *testing.T) {
 				}
 			}
 			op := newOperation("destroy_compute_allocation", "compute_allocation", a.ID, a.AccountID, a.WorkspaceID, "", hashInput(map[string]string{"id": a.ID}), time.Now().UTC())
-			op.ID = "original-destroy"
+			op.ID = "fabricop_original_destroy"
 			op.Status = "started"
 			op.CreatedAt = op.StartedAt
 			fillOperationResource(&op, a)
