@@ -84,6 +84,7 @@ cannot yet follow is an explicit roadmap gap, not a competing SSOT.
 
 ## Active Navigation
 
+- [Workspace SSOT migration map (explanatory overview)](./ssot-migration-map.html)
 - [Unified current SSOT entry](./status.md#current-capability-baseline)
 - [Open outcomes and acceptance](./roadmap.md#priority-outcomes)
 - [Capability design review](./architecture.md#capability-design-review)

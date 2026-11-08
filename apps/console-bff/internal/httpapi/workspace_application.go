@@ -44,6 +44,11 @@ func (s *Server) workspaceApplication(ctx context.Context, caller Caller, worksp
 	if workspace == nil || workspace.GetId() != workspaceID {
 		return nil, errOwnerUnconfigured
 	}
+	return s.composeWorkspaceApplication(ctx, caller, workspace)
+}
+
+func (s *Server) composeWorkspaceApplication(ctx context.Context, caller Caller, workspace *api.Workspace) (*api.Workspace, error) {
+	workspaceID := workspace.GetId()
 	// Only Serve can confirm the derived application fields.
 	workspace.ApplicationAvailability = api.WorkspaceApplicationAvailabilityEnum_WORKSPACE_APPLICATION_AVAILABILITY_ENUM_UNKNOWN
 	workspace.AccessUrl = nil

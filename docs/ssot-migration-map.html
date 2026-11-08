@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OPL Cloud SSOT 迁移图</title>
+  <style>
+    :root {
+      --ink: #17202a;
+      --muted: #5f6b76;
+      --line: #cbd5df;
+      --paper: #f7f9fb;
+      --panel: #ffffff;
+      --blue: #175cd3;
+      --blue-soft: #eaf2ff;
+      --green: #087443;
+      --green-soft: #e8f7ef;
+      --amber: #9a6700;
+      --amber-soft: #fff5d9;
+      --red: #b42318;
+      --red-soft: #fff0ee;
+      --purple: #6941c6;
+      --purple-soft: #f1edff;
+      --shadow: 0 8px 24px rgba(23, 32, 42, .07);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font: 15px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 38px 24px 64px; }
+    header { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; margin-bottom: 28px; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: clamp(28px, 4vw, 44px); line-height: 1.1; letter-spacing: 0; max-width: 740px; }
+    h2 { font-size: 22px; line-height: 1.2; margin-bottom: 14px; }
+    h3 { font-size: 16px; line-height: 1.25; margin-bottom: 7px; }
+    .lede { color: var(--muted); max-width: 760px; margin-top: 13px; }
+    .meta { color: var(--muted); font-size: 13px; text-align: right; white-space: nowrap; }
+    .banner { border-left: 4px solid var(--blue); background: var(--blue-soft); padding: 14px 16px; margin-bottom: 28px; }
+    .banner strong { color: var(--blue); }
+    section { margin-top: 34px; }
+    .panel { background: var(--panel); border: 1px solid #e3e8ee; box-shadow: var(--shadow); padding: 20px; }
+    .grid { display: grid; gap: 16px; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .flow { display: grid; grid-template-columns: 1fr 40px 1.15fr 40px 1fr; align-items: center; gap: 8px; }
+    .node { min-height: 128px; padding: 15px; border: 1px solid var(--line); background: #fff; }
+    .node h3 { display: flex; justify-content: space-between; gap: 8px; }
+    .node p { color: var(--muted); font-size: 13px; }
+    .node.primary { border-color: #9abcf6; background: var(--blue-soft); }
+    .node.owner { border-color: #8bd1a9; background: var(--green-soft); }
+    .node.observe { border-color: #efc36b; background: var(--amber-soft); }
+    .node.retained { border-color: #c8b6f4; background: var(--purple-soft); }
+    .arrow { text-align: center; color: var(--blue); font-size: 26px; font-weight: 700; }
+    .tag { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .02em; background: #eef1f4; color: var(--muted); white-space: nowrap; }
+    .tag.green { background: #d8f3e3; color: var(--green); }
+    .tag.amber { background: #ffebba; color: var(--amber); }
+    .tag.red { background: #ffd9d4; color: var(--red); }
+    .tag.purple { background: #e4dafd; color: var(--purple); }
+    .owner-table { display: grid; gap: 8px; }
+    .owner-row { display: grid; grid-template-columns: 170px 1fr 1fr; gap: 12px; padding: 11px 0; border-top: 1px solid #edf0f3; }
+    .owner-row:first-child { border-top: 0; padding-top: 0; }
+    .owner-row > :first-child { font-weight: 700; }
+    .owner-row > :nth-child(2), .owner-row > :nth-child(3) { color: var(--muted); font-size: 13px; }
+    .callout { padding: 14px 16px; border-left: 4px solid var(--amber); background: var(--amber-soft); }
+    .callout.danger { border-left-color: var(--red); background: var(--red-soft); }
+    .callout.good { border-left-color: var(--green); background: var(--green-soft); }
+    .backlog { display: grid; gap: 12px; counter-reset: item; }
+    .item { display: grid; grid-template-columns: 32px 1fr auto; gap: 12px; align-items: start; padding: 14px; border: 1px solid #e3e8ee; background: #fff; }
+    .item::before { counter-increment: item; content: counter(item); width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: #edf1f5; color: var(--muted); font-weight: 800; }
+    .item p { color: var(--muted); font-size: 13px; }
+    .item code, code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+    .check { color: var(--green); font-weight: 700; }
+    .open { color: var(--red); font-weight: 700; }
+    .hold { color: var(--amber); font-weight: 700; }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; color: var(--muted); font-size: 13px; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: var(--line); }
+    .dot.blue { background: var(--blue); } .dot.green { background: var(--green); } .dot.amber { background: var(--amber); } .dot.purple { background: var(--purple); }
+    footer { margin-top: 38px; color: var(--muted); font-size: 12px; }
+    @media (max-width: 820px) {
+      header { display: block; } .meta { text-align: left; margin-top: 12px; }
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: 1fr; }
+      .arrow { transform: rotate(90deg); height: 28px; }
+      .owner-row { grid-template-columns: 1fr; gap: 4px; }
+      .item { grid-template-columns: 32px 1fr; } .item > .tag { grid-column: 2; justify-self: start; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <div>
+        <h1>OPL Cloud：Workspace SSOT 迁移图</h1>
+        <p class="lede">这页回答两个问题：Customer 和 Admin 的 Workspace 业务链现在经过谁；Control Plane 还剩哪些保留链路，哪些才是真正需要继续迁移或清退的工作。</p>
+      </div>
+      <div class="meta">基于当前 main<br><code>ccab537cd36ad0e7e2f8fe64a6a761658be07982</code><br>审计日期：2026-11-08</div>
+    </header>
+
+    <div class="banner"><strong>先看结论：</strong>Cloud 原生 Workspace 的 Admin/Customer 主读路径已经统一到 Workspace owner；Fabric 负责物理资源现态，Serve 负责应用部署/可用性。Control Plane 仍是 legacy 和历史操作的保留 owner，不能直接整体删除。审计基线 <code>ccab537</code> 中，Admin 的 <code>applicationAvailability</code> 仍直接取 Workspace DTO；本分支已改为复用 Customer 的 Serve readback 组合逻辑。该源码修复尚未合并或完成 Instance 运行时采用验证。</div>
+
+    <section>
+      <h2>1. 业务链：一个 Workspace，多个事实 owner</h2>
+      <div class="panel">
+        <div class="flow">
+          <div class="node primary"><h3>Customer / Admin <span class="tag">读</span></h3><p>浏览器只选择入口和展示 source envelope，不拥有业务状态。</p><p>Cloud identity 走 <code>/api/v2/*</code>；legacy identity 才走保留的 <code>/api/*</code>。</p></div>
+          <div class="arrow">→</div>
+          <div class="node owner"><h3>Console BFF <span class="tag green">组合</span></h3><p>鉴权、调用 owner、校验身份和 scope，再组合多个独立事实。</p><p>不持久化 Workspace 状态，不把 CP 读失败当 fallback。</p></div>
+          <div class="arrow">→</div>
+          <div class="node owner"><h3>Workspace owner <span class="tag green">SSOT</span></h3><p>Workspace identity、Tenant membership、entitlement、生命周期、资源计划、resource set 引用。</p><p>Customer 列表/详情和 Cloud Admin Workspace 列表/详情都从这里读业务 DTO。</p></div>
+        </div>
+        <div class="flow" style="margin-top:16px">
+          <div class="node observe"><h3>Fabric <span class="tag amber">物理事实</span></h3><p>Compute / Storage / Attachment / Runtime 等 provider resource 的当前观察、绑定和删除读回。</p><p>不能决定 Workspace entitlement，也不能决定 Agent readiness。</p></div>
+          <div class="arrow">→</div>
+          <div class="node observe"><h3>Serve <span class="tag amber">应用事实</span></h3><p>当前 deployment、current selection、runtime readiness、access route、application availability。</p><p>Admin 与 Customer 对“应用可用”应使用同一 Serve readback。</p></div>
+          <div class="arrow">→</div>
+          <div class="node observe"><h3>Ledger / Gateway <span class="tag amber">外部事实</span></h3><p>Ledger：receipt、reconciliation、provenance。</p><p>Gateway/Sub2API：wallet、effective Key、Group、usage、routing。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. 现在的边界</h2>
+      <div class="panel owner-table">
+        <div class="owner-row"><div>Workspace lifecycle</div><div><span class="check">已统一</span><br>Workspace owner 是业务状态 owner。</div><div>Admin 的生命周期字段应标记 <code>source=workspace</code>。</div></div>
+        <div class="owner-row"><div>Current resources</div><div><span class="check">已分离</span><br>Fabric 通过 Workspace 的 resourceSetId 做精确 readback。</div><div>不能用 CP 的历史 projection 替代 Fabric 当前观察。</div></div>
+        <div class="owner-row"><div>Application availability</div><div><span class="hold">基线缺口；本分支源码已修</span><br>Admin 与 Customer 详情现复用同一 Serve readback 组合规则。</div><div>仍需 PR 当前 revision CI；合并后若要声明已安装，需由 Instance 对同一 Workspace 做 Admin/Customer 运行时比对。</div></div>
+        <div class="owner-row"><div>Resource readiness</div><div><span class="hold">需澄清命名</span><br>Workspace 的 fulfillment/开通读回。</div><div>不是 Fabric 当前物理资源 condition，UI 不应把两者混成同一个实时状态。</div></div>
+        <div class="owner-row"><div>Control Plane</div><div><span class="hold">保留迁移源</span><br>legacy identity、历史订单和未迁移能力仍使用。</div><div>不是 Cloud 原生 Workspace 的 fallback，也不是当前目标的第二 writer。</div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>3. 还需要清什么</h2>
+      <div class="backlog">
+        <div class="item"><div><h3>合入 Admin 的 Serve readback 修复</h3><p>本分支已让 Admin BFF 复用 Customer 详情的 Serve 组合逻辑。Workspace 仍提供生命周期/履约事实；Serve 上游读失败保持 unknown，无部署/入口时按 Serve 规则返回 unavailable，不从 Workspace 字段兜底。</p></div><span class="tag amber">源码已改，待 CI/合并</span></div>
+        <div class="item"><div><h3>把资源两个时间维度说清楚</h3><p>保留 Workspace 的“开通/履约读回”和 Fabric 的“当前物理观察”，但在 DTO/UI 文案中区分名称，避免把历史 fulfillment 当作实时 provider 状态。</p></div><span class="tag amber">边界澄清</span></div>
+        <div class="item"><div><h3>清退 legacy Workspace 执行链</h3><p>逐项处理旧 Launch 的 recovery、renewal/expiry、delete/refund、旧应用部署/凭据/镜像维护。先盘点实际 callers、in-flight operations 和持久化 obligations，再删除 command、worker、config、adapter 与 exclusive tests。</p></div><span class="tag purple">需要迁移证据</span></div>
+        <div class="item"><div><h3>迁移 Gateway / Account / wallet 旧能力</h3><p>个人 Key、账户激活、管理员充值、旧 eligibility 和 recovery 仍有 Control Plane caller。它们不能被 Workspace 迁移顺手删除；要分别确认新 owner、caller withdrawal 和历史读者。</p></div><span class="tag purple">独立能力</span></div>
+        <div class="item"><div><h3>清理 legacy pricing 与历史 Console 适配器</h3><p>新 Workspace 走 Resource Catalog quote；旧 package pricing、账单、公告、ACK、identity transport 仍属于保留链。只有确认没有外部/已部署 caller 后，才能移除旧 wrapper 和专属测试。</p></div><span class="tag purple">独立能力</span></div>
+        <div class="item"><div><h3>补齐部署与发布证据，不把它误当代码清退</h3><p>当前 Candidate 构建已成功，但 exact-SHA PR CI、完整 P0 readiness、Instance 同 Candidate 部署验证仍未闭环。这是发布/安装验收，不等于 Control Plane 代码可以删除。</p></div><span class="tag amber">发布边界</span></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="grid grid-2">
+        <div class="panel">
+          <h2>4. Admin 资源页当前会显示什么</h2>
+          <p><span class="tag green">Workspace</span> 业务状态、Tenant、创建者、资源计划引用。</p>
+          <p style="margin-top:8px"><span class="tag amber">Fabric</span> resource set、resource kind/state、provider reference、observation time、deletion/absence facts。</p>
+          <p style="margin-top:8px"><span class="tag">Unavailable</span> 旧 Account/User 映射、receipt、Key usage、package/spec、zone、创建/过期时间等未由新 owner 提供的字段。</p>
+        </div>
+        <div class="panel">
+          <h2>5. 不应该做的事</h2>
+          <div class="callout danger"><strong>不要：</strong>把 CP 的 Workspace projection 重新接成 Cloud Workspace fallback；把 Fabric 状态写进 Workspace；让 BFF 自己保存第二份 current status；因为 Candidate/Local qualification 成功就直接删除 CP；把 legacy 兼容路径和 Cloud 原生路径混成一个响应。</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>6. 判定顺序</h2>
+      <div class="panel">
+        <div class="legend"><span><i class="dot green"></i>已迁移/已验证</span><span><i class="dot amber"></i>边界或证据仍需补齐</span><span><i class="dot purple"></i>Control Plane 保留能力，需逐项清退</span><span><i class="dot blue"></i>BFF 只组合，不成为 owner</span></div>
+        <div class="callout good" style="margin-top:14px"><strong>正确顺序：</strong>先修 Admin 的 Serve readback 来源 → 再按 capability 盘点 CP callers、持久化 obligations 和外部部署流量 → 迁移真实 caller → 保留历史数据/回放读者 → 删除旧 writer/worker/config/test → 最后重新做 owner readback 和发布验收。</div>
+      </div>
+    </section>
+
+    <footer>
+      权威参考：<code>docs/architecture.md</code>、<code>docs/implementation-architecture.md</code>、<code>docs/status.md</code>、<code>docs/roadmap.md</code>。本页是解释性导航，不替代上述文档、API contract、测试或运行时 receipt。
+    </footer>
+  </main>
+</body>
+</html>

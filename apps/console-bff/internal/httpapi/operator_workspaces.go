@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"net/http"
 	"strings"
@@ -52,6 +53,10 @@ func (s *Server) readOperatorWorkspaces(w http.ResponseWriter, r *http.Request, 
 		}
 		data, err := s.operatorWorkspaceView(ctx, caller, item)
 		if err != nil {
+			if errors.Is(err, ErrAuthorizationRequired) || errors.Is(err, ErrSessionRequired) {
+				writePublisherIdentityError(w, r, err)
+				return
+			}
 			writeOwnerCallFailure(w, r, err)
 			return
 		}
@@ -78,6 +83,10 @@ func (s *Server) readOperatorWorkspaces(w http.ResponseWriter, r *http.Request, 
 		seen[wid] = true
 		data, err := s.operatorWorkspaceView(ctx, caller, item)
 		if err != nil {
+			if errors.Is(err, ErrAuthorizationRequired) || errors.Is(err, ErrSessionRequired) {
+				writePublisherIdentityError(w, r, err)
+				return
+			}
 			writeOwnerCallFailure(w, r, err)
 			return
 		}
@@ -121,6 +130,10 @@ func (s *Server) operatorWorkspaceView(ctx context.Context, caller Caller, item 
 	workspace := item.GetWorkspace()
 	if workspace.GetId() == "" || operatorTime(workspace.GetCreatedAt()) == "" || operatorTime(workspace.GetUpdatedAt()) == "" || item.GetTenantId() == "" {
 		return nil, status.Error(codes.DataLoss, "invalid Workspace owner identity")
+	}
+	workspace, err := s.composeWorkspaceApplication(ctx, caller, workspace)
+	if err != nil {
+		return nil, err
 	}
 	raw, err := publicjson.Marshal(workspace)
 	if err != nil {
