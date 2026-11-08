@@ -111,6 +111,8 @@ func (p *storageReleaseHTTPProvider) ReadStorageVolumeStatus(_ context.Context, 
 	volume.ProviderData["status"] = storageProviderPending
 	volume.ProviderData["cbsStatus"] = storageCBSRecycled
 	volume.ProviderData["storageVolumeId"] = volume.ProviderResourceID
+	volume.ProviderData["storageDestroyPhase"] = "terminate_attempted"
+	volume.ProviderData["storageDestroyMutationCount"] = "1"
 	if p.releases > 0 {
 		volume.Status, volume.CBSStatus, volume.DestroyState = storageProviderAbsent, storageCBSAbsent, ""
 		volume.ProviderData["status"] = storageProviderAbsent

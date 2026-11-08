@@ -257,7 +257,7 @@ func TestStorageFinalReleaseRejectsAuthorizationAndFrozenIdentity(t *testing.T) 
 }
 
 func TestStorageFinalReleaseStrictPreconditionsDoNotConsumeFence(t *testing.T) {
-	for _, invalid := range []string{"missing-binding", "present-binding", "unattached", "attached", "missing-cbs", "conflicting-cbs", "missing-describe", "foreign-resource", "foreign-region", "read-error", "partial-absence"} {
+	for _, invalid := range []string{"missing-binding", "present-binding", "unattached", "attached", "missing-cbs", "conflicting-cbs", "missing-describe", "wrong-phase", "wrong-mutation-count", "foreign-resource", "foreign-region", "read-error", "partial-absence"} {
 		t.Run(invalid, func(t *testing.T) {
 			store := NewMemoryOperationStore()
 			volume, input := storageFinalReleaseFixture(t, store)
@@ -276,6 +276,10 @@ func TestStorageFinalReleaseStrictPreconditionsDoNotConsumeFence(t *testing.T) {
 					response.ProviderData["cbsStatus"] = "UNATTACHED"
 				case "missing-describe":
 					delete(response.ProviderData, "describeCbsRequestId")
+				case "wrong-phase":
+					response.ProviderData["storageDestroyPhase"] = storageDestroyPhaseDispatchAuthorized
+				case "wrong-mutation-count":
+					response.ProviderData["storageDestroyMutationCount"] = "0"
 				case "foreign-resource":
 					response.StorageVolumeID = "disk-foreign"
 				case "foreign-region":
