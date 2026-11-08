@@ -166,12 +166,33 @@ func deleteComputeFromOwnSurface(ctx context.Context, service *fabric.Service, i
 	if err != nil {
 		return fact, err
 	}
+	if fabric.ComputeFinalReleaseEligible(readback) {
+		if _, err := service.ReleaseRecycledComputeAllocationForDeletion(ctx, in.ComputeID, in.AccountID, in.WorkspaceID); err != nil && !errors.Is(err, fabric.ErrComputeFinalReleaseNotEligible) {
+			return fact, err
+		}
+		// The final-release owner must be followed by a fresh destroy-status
+		// read. The release call itself is not an absence proof.
+		readback, err = service.ReadComputeDestroyStatus(ctx, in.ComputeID)
+		if err != nil {
+			return fact, err
+		}
+	}
 	fact.ProviderReference = firstNonBlank(readback.ProviderResourceID, readback.CVMInstanceID, readback.InstanceID, readback.MachineName)
 	fact.ProviderStatus = readback.Status
 	fact.DestroyState = readback.DestroyState
 	fact.EvidenceRef = readback.ReadbackID
 	fact.ObservedAt = deletionObservedAt(readback.ObservedAt)
 	if fabric.ComputeDeletionAbsent(readback) {
+		if readback.Provider == "tencent-tke" {
+			finalized, err := service.ComputeDeletionFinalized(ctx, in.ComputeID)
+			if err != nil {
+				return fact, err
+			}
+			if !finalized {
+				fact.State = DeletionStatePending
+				return fact, nil
+			}
+		}
 		fact.State = DeletionStateAbsent
 		return fact, nil
 	}

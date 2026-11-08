@@ -778,14 +778,14 @@ func (s *Service) RenewComputeAllocation(ctx context.Context, allocationID, idem
 
 func (s *Service) DestroyComputeAllocation(ctx context.Context, allocationID string) (ComputeAllocation, error) {
 	s.mu.Lock()
-	existing := s.computes[allocationID]
+	existing := cloneComputeAllocation(s.computes[allocationID])
 	s.mu.Unlock()
 	if existing.ID == "" || existing.Provider == "tencent-tke" && len(existing.CostTags) == 0 {
 		if err := s.hydrateMissingResourceState(ctx); err != nil {
 			return ComputeAllocation{}, err
 		}
 		s.mu.Lock()
-		existing = s.computes[allocationID]
+		existing = cloneComputeAllocation(s.computes[allocationID])
 		s.mu.Unlock()
 	}
 	if existing.ID == "" {
@@ -837,7 +837,7 @@ func (s *Service) DestroyComputeAllocation(ctx context.Context, allocationID str
 			return err
 		}
 		s.mu.Lock()
-		s.computes[allocationID] = allocation
+		s.computes[allocationID] = cloneComputeAllocation(allocation)
 		s.destroying[allocationID] = true
 		s.mu.Unlock()
 		startWorker = true
@@ -849,7 +849,7 @@ func (s *Service) DestroyComputeAllocation(ctx context.Context, allocationID str
 	if startWorker {
 		go s.finishDestroyComputeAllocation(operation, allocation, dispatchAuthorized)
 	}
-	return allocation, nil
+	return cloneComputeAllocation(allocation), nil
 }
 
 func (s *Service) finishDestroyComputeAllocation(operation FabricOperation, existing ComputeAllocation, dispatchAuthorized bool) {
@@ -867,7 +867,7 @@ func (s *Service) finishDestroyComputeAllocation(operation FabricOperation, exis
 			return nil
 		}
 		s.mu.Lock()
-		current := s.computes[existing.ID]
+		current := cloneComputeAllocation(s.computes[existing.ID])
 		s.mu.Unlock()
 		var providerErr error
 		phase := current.ProviderData[tencentComputeDestroyPhaseKey]
@@ -917,13 +917,13 @@ func (s *Service) finishDestroyComputeAllocation(operation FabricOperation, exis
 			allocation.Status = "destroying"
 		}
 		s.mu.Lock()
-		s.computes[existing.ID] = allocation
+		s.computes[existing.ID] = cloneComputeAllocation(allocation)
 		s.mu.Unlock()
 		_ = s.recordOperation(ctx, operation, "failed", allocation, err)
 	} else {
 		_ = s.recordOperation(ctx, operation, "succeeded", allocation, nil)
 		s.mu.Lock()
-		s.computes[existing.ID] = allocation
+		s.computes[existing.ID] = cloneComputeAllocation(allocation)
 		s.mu.Unlock()
 	}
 	s.mu.Lock()
@@ -1003,6 +1003,21 @@ func ComputeDeletionAbsent(allocation ComputeAllocation) bool {
 	default:
 		return false
 	}
+}
+
+// ComputeDeletionFinalized reads the original destroy owner's terminal journal.
+// Provider absence alone does not prove local cleanup and ownership release.
+func (s *Service) ComputeDeletionFinalized(ctx context.Context, allocationID string) (bool, error) {
+	operation, found, err := s.latestComputeDestroyOperation(ctx, allocationID)
+	if err != nil || !found || operation.Status != "succeeded" {
+		return false, err
+	}
+	var allocation ComputeAllocation
+	if !decodeOperationResource(operation, &allocation) || allocation.ID != allocationID ||
+		allocation.AccountID != operation.AccountID || allocation.WorkspaceID != operation.WorkspaceID {
+		return false, fmt.Errorf("compute_destroy_finalization_identity_mismatch")
+	}
+	return ComputeDeletionAbsent(allocation), nil
 }
 
 func isExternallyDeletedComputeStatus(status string) bool {

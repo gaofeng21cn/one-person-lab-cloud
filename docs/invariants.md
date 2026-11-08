@@ -291,6 +291,12 @@ implementation and remaining gaps are reported separately in status/roadmap.
   irreversible provider call. Lost lock connections cannot admit another sender.
   Replays and uncertain replies only read back; they never rewrite the original
   destroy or establish Workspace deletion or refund success.
+- Recycled NativeCVM final release stays within the original Cloud Workspace
+  deletion through Fabric. Fresh Machine absence and `SHUTDOWN / MANMADE`
+  observations precede the uniquely claimed one-send fence; the provider adapter
+  validates exact prepaid ownership before termination. Missing current evidence
+  cannot reuse cached eligibility. Provider absence and original destroy cleanup
+  are both required before confirming the compute deletion.
 - Instance-designated system resources remain outside customer allocation and
   cleanup.
 

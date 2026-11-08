@@ -2,12 +2,15 @@ package fabric
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 )
 
 const ComputeFinalReleaseConfirmation = "RELEASE_ORIGINAL_RECYCLED_CVM"
 const computeFinalReleaseAction = "release_recycled_compute_allocation"
+
+var ErrComputeFinalReleaseNotEligible = errors.New("compute_final_release_not_eligible")
 
 // ComputeFinalReleaseInput authorizes one irreversible provider step of an
 // already accepted destroy. It never changes the original destroy journal.
@@ -29,11 +32,63 @@ type recycledComputeReleaser interface {
 	ReleaseRecycledComputeAllocation(context.Context, ComputeAllocation) (string, error)
 }
 
+// ReleaseRecycledComputeAllocationForDeletion derives the exact original
+// destroy operation from Fabric's journal. Workspace deletion supplies only
+// the resource owner identity; it cannot manufacture a destroy operation ID or
+// bypass the resource-scoped final-release fence.
+func (s *Service) ReleaseRecycledComputeAllocationForDeletion(ctx context.Context, id, accountID, workspaceID string) (ComputeFinalReleaseResult, error) {
+	if err := s.hydrateMissingResourceState(ctx); err != nil {
+		return ComputeFinalReleaseResult{}, err
+	}
+	destroy, found, err := s.latestComputeDestroyOperation(ctx, id)
+	if err != nil {
+		return ComputeFinalReleaseResult{}, err
+	}
+	if !found || destroy.AccountID != accountID || destroy.WorkspaceID != workspaceID {
+		return ComputeFinalReleaseResult{}, fmt.Errorf("compute_final_release_original_destroy_mismatch")
+	}
+	return s.releaseRecycledComputeAllocation(ctx, id, ComputeFinalReleaseInput{
+		AccountID: accountID, WorkspaceID: workspaceID,
+		DestroyOperationID: destroy.OperationID,
+		Confirmation:       ComputeFinalReleaseConfirmation,
+	}, "workspace")
+}
+
+// ComputeFinalReleaseEligible is deliberately narrower than a generic
+// destroy-status readback. It identifies only the recycled NativeCVM state
+// whose TKE Machine is gone while the original prepaid CVM remains in the
+// provider's recyclable SHUTDOWN/MANMADE state.
+func ComputeFinalReleaseEligible(allocation ComputeAllocation) bool {
+	return allocation.Provider == "tencent-tke" && allocation.ProviderData["machineType"] == "NativeCVM" &&
+		allocation.ProviderData["cvmApplicable"] == "true" && allocation.MachinePresent != nil && !*allocation.MachinePresent &&
+		allocation.TKEStatus == "NOT_FOUND" && allocation.CVMStatus == "SHUTDOWN" &&
+		allocation.ProviderData["isolatedSource"] == "MANMADE" && allocation.ProviderData["machinePresent"] == "false" &&
+		allocation.ProviderData["tkeStatus"] == "NOT_FOUND" && allocation.ProviderData["cvmStatus"] == "SHUTDOWN" &&
+		allocation.ProviderRequestID != "" && allocation.ProviderData["describeClusterMachinesReq"] != "" && allocation.ProviderData["describeCvmRequestId"] != ""
+}
+
+func computeFinalReleaseAbsent(observed ComputeAllocation) bool {
+	return validTencentComputeAbsenceEvidence(observed) && observed.MachinePresent != nil && !*observed.MachinePresent &&
+		observed.TKEStatus == "NOT_FOUND" && observed.CVMStatus == "NOT_FOUND"
+}
+
+func validComputeFinalReleaseFence(previous, expected FabricOperation, destroyOperationID string) bool {
+	bound, ok := previous.RedactedProviderPayload["originalDestroyOperationId"].(string)
+	return ok && bound == destroyOperationID && previous.Action == expected.Action && previous.ResourceKind == expected.ResourceKind &&
+		previous.ResourceID == expected.ResourceID && previous.AccountID == expected.AccountID && previous.WorkspaceID == expected.WorkspaceID &&
+		previous.RequestHash == expected.RequestHash && previous.OperationID == expected.OperationID &&
+		(previous.Status == "started" || previous.Status == "failed" || previous.Status == "succeeded")
+}
+
 // ReleaseRecycledComputeAllocation persists a dispatch fence before the single
 // final-release call. Every subsequent request, including after process loss,
 // only reads exact absence. The original Delete remains responsible for local
 // resource finalization, its deletion receipt and settlement.
 func (s *Service) ReleaseRecycledComputeAllocation(ctx context.Context, id string, input ComputeFinalReleaseInput) (ComputeFinalReleaseResult, error) {
+	return s.releaseRecycledComputeAllocation(ctx, id, input, "operator")
+}
+
+func (s *Service) releaseRecycledComputeAllocation(ctx context.Context, id string, input ComputeFinalReleaseInput, callerService string) (ComputeFinalReleaseResult, error) {
 	var out ComputeFinalReleaseResult
 	if input.Confirmation != ComputeFinalReleaseConfirmation || input.AccountID == "" || input.WorkspaceID == "" || input.DestroyOperationID == "" {
 		return out, fmt.Errorf("compute_final_release_authorization_required")
@@ -90,45 +145,67 @@ func (s *Service) ReleaseRecycledComputeAllocation(ctx context.Context, id strin
 				return err
 			}
 			operation := newOperation(computeFinalReleaseAction, "compute_final_release", id, input.AccountID, input.WorkspaceID, id, hashInput(input), s.now())
+			operation.CallerService = callerService
+			operation.RedactedProviderPayload = map[string]any{"originalDestroyOperationId": input.DestroyOperationID}
 			attempted := false
 			for _, previous := range operations {
 				if previous.Action != computeFinalReleaseAction || previous.ResourceID != id {
 					continue
 				}
-				if previous.RequestHash != operation.RequestHash {
+				if !validComputeFinalReleaseFence(previous, operation, input.DestroyOperationID) {
 					return fmt.Errorf("compute_final_release_original_destroy_mismatch")
 				}
 				attempted = true
 				operation = previous
 			}
 			out = ComputeFinalReleaseResult{OperationID: operation.OperationID, Status: "pending", DispatchAttempted: attempted}
-			read := func() (bool, error) {
+			read := func() (ComputeAllocation, error) {
 				observed, err := reader.ReadComputeDestroyStatus(ctx, cloneComputeAllocation(allocation))
 				if err != nil {
-					return false, err
+					return ComputeAllocation{}, err
 				}
 				if !sameComputeDestroyStableIdentity(allocation, observed) {
-					return false, fmt.Errorf("compute_final_release_identity_mismatch")
+					return ComputeAllocation{}, fmt.Errorf("compute_final_release_identity_mismatch")
 				}
-				return validTencentComputeAbsenceEvidence(observed) && observed.MachinePresent != nil && !*observed.MachinePresent && observed.TKEStatus == "NOT_FOUND" && observed.CVMStatus == "NOT_FOUND", nil
+				return observed, nil
 			}
-			absent, err := read()
+			observed, err := read()
 			if err != nil {
 				return err
 			}
+			absent := computeFinalReleaseAbsent(observed)
+			if !absent && !attempted && !ComputeFinalReleaseEligible(observed) {
+				return ErrComputeFinalReleaseNotEligible
+			}
 			if !absent && !attempted {
-				operation.CallerService = "operator"
-				operation.RedactedProviderPayload = map[string]any{"originalDestroyOperationId": input.DestroyOperationID}
-				// No retry can pass this durable fence even if the process dies before
-				// receiving the provider response or recording its outcome.
-				if err = s.recordOperation(ctx, operation, "started", nil, nil); err != nil {
-					return err
+				// The primary key is the final fence if an advisory-lock connection
+				// is lost. Only the atomic claim winner may dispatch.
+				operation.ID = stableID("fop-compute-final-release-dispatch", id)
+				operation.Status, operation.CreatedAt = "started", s.now()
+				persisted, claimed, claimErr := s.runtimeOperations.ClaimRuntime(ctx, operation)
+				if claimErr != nil {
+					return claimErr
 				}
+				if !validComputeFinalReleaseFence(persisted, operation, input.DestroyOperationID) || claimed && persisted.Status != "started" {
+					return fmt.Errorf("compute_final_release_dispatch_claim_invalid")
+				}
+				operation = persisted
 				out.DispatchAttempted = true
+				if !claimed {
+					observed, err = read()
+					if err != nil {
+						return err
+					}
+					if computeFinalReleaseAbsent(observed) {
+						out.Status, out.AbsenceConfirmed = "succeeded", true
+					}
+					return nil
+				}
 				requestID, mutationErr := provider.ReleaseRecycledComputeAllocation(ctx, cloneComputeAllocation(allocation))
 				operation.ProviderRequestID = requestID
 				operation.Provider = allocation.Provider
-				absent, err = read()
+				observed, err = read()
+				absent = err == nil && computeFinalReleaseAbsent(observed)
 				if err != nil || !absent {
 					if mutationErr == nil {
 						mutationErr = fmt.Errorf("compute_final_release_unconfirmed")
@@ -143,6 +220,9 @@ func (s *Service) ReleaseRecycledComputeAllocation(ctx context.Context, id strin
 			}
 			if absent {
 				out.Status, out.AbsenceConfirmed = "succeeded", true
+				if !out.DispatchAttempted {
+					return nil
+				}
 				operation.ErrorCode = ""
 				return s.recordOperation(ctx, operation, "succeeded", nil, nil)
 			}
