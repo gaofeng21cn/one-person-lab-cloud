@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"net/http"
 	"strings"
@@ -52,10 +53,14 @@ func (s *Server) readOperatorWorkspaces(w http.ResponseWriter, r *http.Request, 
 		}
 		data, err := s.operatorWorkspaceView(ctx, caller, item)
 		if err != nil {
+			if errors.Is(err, ErrAuthorizationRequired) || errors.Is(err, ErrSessionRequired) {
+				writePublisherIdentityError(w, r, err)
+				return
+			}
 			writeOwnerCallFailure(w, r, err)
 			return
 		}
-		writeJSON(w, 200, operatorSource("workspace+fabric", data, "", ""))
+		writeJSON(w, 200, operatorSource("workspace+fabric+serve", data, "", ""))
 		return
 	}
 	result, err := s.workspace.ListOperatorWorkspaces(ctx, &api.ListOperatorWorkspacesRpcRequest{Context: clients.CallContext(ctx), Page: int32(page), PageSize: int32(size)})
@@ -78,12 +83,16 @@ func (s *Server) readOperatorWorkspaces(w http.ResponseWriter, r *http.Request, 
 		seen[wid] = true
 		data, err := s.operatorWorkspaceView(ctx, caller, item)
 		if err != nil {
+			if errors.Is(err, ErrAuthorizationRequired) || errors.Is(err, ErrSessionRequired) {
+				writePublisherIdentityError(w, r, err)
+				return
+			}
 			writeOwnerCallFailure(w, r, err)
 			return
 		}
 		items = append(items, data)
 	}
-	envelope := operatorSource("workspace+fabric", map[string]any{"items": items, "total": result.Total, "page": page, "pageSize": size}, "", "")
+	envelope := operatorSource("workspace+fabric+serve", map[string]any{"items": items, "total": result.Total, "page": page, "pageSize": size}, "", "")
 	if len(items) == 0 {
 		envelope["status"] = "empty"
 	}
@@ -121,6 +130,10 @@ func (s *Server) operatorWorkspaceView(ctx context.Context, caller Caller, item 
 	workspace := item.GetWorkspace()
 	if workspace.GetId() == "" || operatorTime(workspace.GetCreatedAt()) == "" || operatorTime(workspace.GetUpdatedAt()) == "" || item.GetTenantId() == "" {
 		return nil, status.Error(codes.DataLoss, "invalid Workspace owner identity")
+	}
+	workspace, err := s.composeOperatorWorkspaceApplication(ctx, caller, workspace)
+	if err != nil {
+		return nil, err
 	}
 	raw, err := publicjson.Marshal(workspace)
 	if err != nil {

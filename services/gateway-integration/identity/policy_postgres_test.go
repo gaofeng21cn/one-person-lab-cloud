@@ -9,6 +9,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/services/internal/ownerservice"
 )
 
 // authorizeAt calls the real CloudIdentityAuthorizeAction as the Console BFF, the
@@ -27,6 +28,141 @@ func authorizeAt(t *testing.T, system memberSystem, session *api.Session, cookie
 	}
 	_, err := system.auth.AuthorizeAction(t.Context(), &api.AuthorizationRequest{Scope: scope, ActorId: session.ActorId, SessionId: proto.String(ref), AudienceOwner: audience, Action: action, Resource: resource, RequestId: requestID})
 	return err
+}
+
+func TestOperatorInternalReadPolicyPostgres(t *testing.T) {
+	system := newMemberSystem(t)
+	if _, err := system.db.ExecContext(t.Context(), `INSERT INTO tenant.tenants(id,name) VALUES('tenant-policy','Policy');INSERT INTO tenant.tenant_members(id,tenant_id,actor_id,role) VALUES('policy-member','tenant-policy','701','member'),('policy-admin','tenant-policy','702','admin'),('policy-owner','tenant-policy','703','owner')`); err != nil {
+		t.Fatal(err)
+	}
+	platformCookie, platform := memberLogin(t, system.client, "platform@example.test")
+	if platform.GetTenantId() != "" {
+		t.Fatalf("platform administrator must be tenantless: %q", platform.GetTenantId())
+	}
+	for _, tc := range []struct {
+		action api.AuthorizationActionEnum
+		owner  api.OwnerEnum
+	}{
+		{api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORDEPLOYMENTS, api.OwnerEnum_OWNER_ENUM_SERVE},
+		{api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACEACCESS, api.OwnerEnum_OWNER_ENUM_SERVE},
+		{api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READOPERATORRESOURCES, api.OwnerEnum_OWNER_ENUM_FABRIC},
+	} {
+		t.Run(tc.action.String(), func(t *testing.T) {
+			request := &api.AuthorizationRequest{
+				Scope:   &api.AuthorizationScope{Scope: &api.AuthorizationScope_Platform{Platform: &api.PlatformScope{}}},
+				ActorId: platform.ActorId, SessionId: proto.String(owneridentity.SessionReference(platformCookie)),
+				AudienceOwner: tc.owner, Action: tc.action,
+				Resource:  &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, Id: proto.String("workspace-exact")},
+				RequestId: "operator-internal-read",
+			}
+			decision, err := system.auth.AuthorizeAction(t.Context(), request)
+			if err != nil {
+				t.Fatalf("tenantless platform administrator was refused: %v", err)
+			}
+			if err := owneridentity.ValidateDecision(request, decision, time.Now()); err != nil {
+				t.Fatalf("operator read decision cannot be consumed: %v", err)
+			}
+			for _, malformed := range []struct {
+				name   string
+				change func(*api.AuthorizationRequest)
+			}{
+				{"tenant-scope", func(r *api.AuthorizationRequest) {
+					r.Scope.Scope = &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-policy"}}
+				}},
+				{"empty-tenant-scope", func(r *api.AuthorizationRequest) {
+					r.Scope.Scope = &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{}}
+				}},
+				{"missing-scope", func(r *api.AuthorizationRequest) { r.Scope = nil }},
+				{"empty-scope", func(r *api.AuthorizationRequest) { r.Scope = &api.AuthorizationScope{} }},
+				{"wrong-resource-kind", func(r *api.AuthorizationRequest) {
+					r.Resource.Kind = api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT
+				}},
+				{"missing-resource", func(r *api.AuthorizationRequest) { r.Resource = nil }},
+				{"missing-resource-id", func(r *api.AuthorizationRequest) { r.Resource.Id = nil }},
+				{"empty-resource-id", func(r *api.AuthorizationRequest) { r.Resource.Id = proto.String("") }},
+				{"blank-resource-id", func(r *api.AuthorizationRequest) { r.Resource.Id = proto.String(" \t\n") }},
+				{"wrong-audience", func(r *api.AuthorizationRequest) { r.AudienceOwner = api.OwnerEnum_OWNER_ENUM_WORKSPACE }},
+				{"missing-session", func(r *api.AuthorizationRequest) { r.SessionId = nil }},
+				{"wrong-actor", func(r *api.AuthorizationRequest) { r.ActorId = "701" }},
+			} {
+				t.Run(malformed.name, func(t *testing.T) {
+					bad := proto.Clone(request).(*api.AuthorizationRequest)
+					malformed.change(bad)
+					if _, err := system.auth.AuthorizeAction(t.Context(), bad); status.Code(err) != codes.PermissionDenied {
+						t.Fatalf("malformed operator read must be denied: %v", err)
+					}
+				})
+			}
+			t.Run("exact-context", func(t *testing.T) {
+				recheck := proto.Clone(request).(*api.AuthorizationRequest)
+				recheck.AuthorizationContextId = decision.AuthorizationContextId
+				got, err := system.auth.AuthorizeAction(t.Context(), recheck)
+				if err != nil {
+					t.Fatalf("exact operator context was refused: %v", err)
+				}
+				if got.GetAuthorizationContextId() != decision.GetAuthorizationContextId() {
+					t.Fatal("operator read did not reuse its original context")
+				}
+				recheck.Resource.Id = proto.String("workspace-other")
+				if _, err := system.auth.AuthorizeAction(t.Context(), recheck); status.Code(err) != codes.PermissionDenied {
+					t.Fatalf("operator context authorized another exact Workspace: %v", err)
+				}
+			})
+			for _, role := range []string{"member", "admin", "owner"} {
+				t.Run("tenant-"+role, func(t *testing.T) {
+					cookie, session := memberLogin(t, system.client, role+"@example.test")
+					for _, tenantID := range []string{"tenant-policy", ""} {
+						if err := authorizeAt(t, system, session, cookie, tc.owner, tc.action, request.Resource.Kind, request.Resource.GetId(), tenantID, "operator-read-"+role); status.Code(err) != codes.PermissionDenied {
+							t.Fatalf("tenant %s reached operator read with tenant %q: %v", role, tenantID, err)
+						}
+					}
+				})
+			}
+		})
+	}
+	for _, role := range []string{"member", "admin", "owner"} {
+		t.Run("customer-"+role, func(t *testing.T) {
+			cookie, session := memberLogin(t, system.client, role+"@example.test")
+			for _, action := range []api.AuthorizationActionEnum{
+				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS,
+				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETDEPLOYMENT,
+				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS,
+			} {
+				for _, tenantID := range []string{"tenant-policy", "tenant-b"} {
+					err := authorizeAt(t, system, session, cookie, api.OwnerEnum_OWNER_ENUM_SERVE, action, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, "workspace-exact", tenantID, "customer-read-"+role)
+					if tenantID == "tenant-policy" && err != nil || tenantID != "tenant-policy" && status.Code(err) != codes.PermissionDenied {
+						t.Fatalf("%s customer read %s under tenant %q: %v", role, action, tenantID, err)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestOperatorInternalReadsRejectAcceptedGrantsPostgres(t *testing.T) {
+	f := serveGrantSystem(t)
+	grant := f.issue(t)
+	for _, tc := range []struct {
+		action api.AuthorizationActionEnum
+		owner  api.OwnerEnum
+		peer   owneridentity.Service
+	}{
+		{api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORDEPLOYMENTS, api.OwnerEnum_OWNER_ENUM_SERVE, owneridentity.Serve.Service()},
+		{api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACEACCESS, api.OwnerEnum_OWNER_ENUM_SERVE, owneridentity.Serve.Service()},
+		{api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READOPERATORRESOURCES, api.OwnerEnum_OWNER_ENUM_FABRIC, owneridentity.Fabric.Service()},
+	} {
+		t.Run(tc.action.String(), func(t *testing.T) {
+			request := &api.AuthorizationRequest{
+				Scope: grant.Scope, ActorId: grant.ActorId, AcceptedOperationGrantId: &grant.Id,
+				AudienceOwner: tc.owner, Action: tc.action,
+				Resource:  proto.Clone(f.decision.Resource).(*api.AuthorizationResource),
+				RequestId: "operator-read-with-accepted-grant",
+			}
+			if _, err := f.s.AuthorizeAction(ownerservice.WithPeerOwner(t.Context(), tc.peer), request); status.Code(err) != codes.PermissionDenied {
+				t.Fatalf("accepted obligation substituted for an interactive operator session: %v", err)
+			}
+		})
+	}
 }
 
 // TestPolicyPlatformPermissionAndTenantIsolationPostgres proves the generated

@@ -270,8 +270,8 @@ test("operator resource page navigation accepts only positive integers", () => {
 });
 
 test("operator resource fallback sources distinguish Cloud composition from retained reads", () => {
-  assert.equal(operatorResourceFallbackSource("workspaces", true), "workspace+fabric");
-  assert.equal(operatorResourceFallbackSource("detail", true), "workspace+fabric");
+  assert.equal(operatorResourceFallbackSource("workspaces", true), "workspace+fabric+serve");
+  assert.equal(operatorResourceFallbackSource("detail", true), "workspace+fabric+serve");
   assert.equal(operatorResourceFallbackSource("workspaces", false), "control-plane+fabric+sub2api");
   assert.equal(operatorResourceFallbackSource("detail", false), "control-plane+fabric+ledger");
 });

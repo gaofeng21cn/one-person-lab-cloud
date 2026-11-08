@@ -473,12 +473,16 @@ for t in db:
 # Internal RPC implementation assignments are interface groups, never new service deployments.
 service_tasks={'ClaimUsageReadback':[8,9,15,17], 'CapabilityCoordination':[7,8,9], 'BuildCoordination':[9], 'OwnerOperations':[2,24], 'OwnerCommitReadback':[2], 'WorkspaceAuthorizationReadback':[18], 'WorkspaceAccessReadback':[18], 'CloudIdentityAuthorization':[3], 'CatalogCoordination':[15], 'WorkspaceAdmission':[15], 'GatewayCoordination':[4], 'FabricCoordination':[11,12], 'ServeAgentCoordination':[17], 'ServeRuntimeAdapter':[17], 'ServeAccessControl':[17], 'TenantWorkspaceCoordination':[21], 'LedgerCoordination':[5], 'DomainInbox':[2,5,9,15,19,21], 'WorkspacePlanChangeReadback':[19], 'FabricPlanTransitionReadback':[11,12], 'GatewayPlanChangeSettlement':[4,19], 'ServePlanChangeControl':[17,19], 'LedgerPlanChangeEvidence':[5,19]}
 method_primary={op['operationId'][0].upper()+op['operationId'][1:]:next(w['id'] for w in W if op['operationId'] in w['apiPrimary']) for op in api}
+# Operator reads have internal policies and concrete consumers, not public REST
+# operations. They are implemented by the existing Serve work package.
+internal_product_tasks={'ServeProductService.ListOperatorDeployments':[17], 'ServeProductService.GetOperatorWorkspaceAccess':[17]}
 rpc_assignments={}
 for m in re.finditer(r'service\s+(\w+)\s*\{(.*?)\}',(C/'packages/contracts/proto/internal.proto').read_text(),re.S):
  service=m[1]
  for method in re.findall(r'rpc\s+(\w+)',m[2]):
   key=service+'.'+method
-  if service.endswith('ProductService') or key=='GatewayCoordination.GetSelfUserExternalBinding':ids=[method_primary[method]]
+  if key in internal_product_tasks:ids=[f'W{i:02d}' for i in internal_product_tasks[key]]
+  elif service.endswith('ProductService') or key=='GatewayCoordination.GetSelfUserExternalBinding':ids=[method_primary[method]]
   else:ids=[f'W{i:02d}' for i in service_tasks[service]]
   rpc_assignments[key]=ids
   for wid in ids:W[int(wid[1:])].setdefault('rpcImplements',[]).append(key)

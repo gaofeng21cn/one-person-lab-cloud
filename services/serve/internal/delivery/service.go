@@ -425,6 +425,38 @@ func (s *Service) authorizeWorkspaceAt(ctx context.Context, q rowQueryer, call *
 
 // ListDeployments returns the Serve-owned delivery attempts for one Workspace.
 func (s *Service) ListDeployments(ctx context.Context, r *api.ListDeploymentsRpcRequest) (*api.DeploymentPage, error) {
+	return s.listDeployments(ctx, r, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS)
+}
+
+// ListOperatorDeployments reads the same Serve snapshot under the dedicated
+// platform permission. Customer permissions never change with caller scope.
+func (s *Service) ListOperatorDeployments(ctx context.Context, r *api.ListDeploymentsRpcRequest) (*api.DeploymentPage, error) {
+	if err := validateOperatorReadContext(ctx, r.GetContext(), r.GetWorkspaceId()); err != nil {
+		return nil, err
+	}
+	return s.listDeployments(ctx, r, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORDEPLOYMENTS)
+}
+
+// validateOperatorReadContext admits only a verified platform caller and an
+// exact resource identity. Authorization and persistence must use the same ID.
+func validateOperatorReadContext(ctx context.Context, call *api.CallContext, workspaceID string) error {
+	if call == nil || workspaceID == "" || workspaceID != strings.TrimSpace(workspaceID) {
+		return status.Error(codes.InvalidArgument, "authenticated call context and exact workspace are required")
+	}
+	if err := ownerservice.ValidateCallContext(ctx, call); err != nil {
+		return err
+	}
+	peer, _ := ownerservice.PeerOwner(ctx)
+	if peer != owneridentity.ConsoleBFF {
+		return status.Error(codes.PermissionDenied, "operator read requires Console BFF peer")
+	}
+	if call.GetScope().GetPlatform() == nil {
+		return status.Error(codes.PermissionDenied, "operator read requires platform scope")
+	}
+	return nil
+}
+
+func (s *Service) listDeployments(ctx context.Context, r *api.ListDeploymentsRpcRequest, action api.AuthorizationActionEnum) (*api.DeploymentPage, error) {
 	if r.GetContext() == nil || strings.TrimSpace(r.GetWorkspaceId()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "authenticated call context and workspace are required")
 	}
@@ -437,7 +469,7 @@ func (s *Service) ListDeployments(ctx context.Context, r *api.ListDeploymentsRpc
 	}
 	defer tx.Rollback()
 	// Tenant attribution, history and selection all read the same owner snapshot.
-	if err := s.authorizeWorkspaceAt(ctx, tx, r.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS, r.GetWorkspaceId(), true); err != nil {
+	if err := s.authorizeWorkspaceAt(ctx, tx, r.GetContext(), action, r.GetWorkspaceId(), true); err != nil {
 		return nil, err
 	}
 	n := limit(r.GetQueryLimit())
@@ -535,14 +567,30 @@ func (s *Service) GetWorkspaceAccess(ctx context.Context, r *api.GetWorkspaceAcc
 	if err := s.authorizeRead(ctx, r.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS, r.GetWorkspaceId()); err != nil {
 		return nil, err
 	}
-	deploymentID, mode, ready, url, err := s.currentAgentAccess(ctx, r.GetWorkspaceId())
+	return s.workspaceAccess(ctx, r.GetWorkspaceId())
+}
+
+// GetOperatorWorkspaceAccess retains Serve's current runtime/access truth and
+// revalidates the dedicated action with the original platform CallContext.
+func (s *Service) GetOperatorWorkspaceAccess(ctx context.Context, r *api.GetWorkspaceAccessRpcRequest) (*api.WorkspaceAccess, error) {
+	if err := validateOperatorReadContext(ctx, r.GetContext(), r.GetWorkspaceId()); err != nil {
+		return nil, err
+	}
+	if err := s.authorizeRead(ctx, r.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACEACCESS, r.GetWorkspaceId()); err != nil {
+		return nil, err
+	}
+	return s.workspaceAccess(ctx, r.GetWorkspaceId())
+}
+
+func (s *Service) workspaceAccess(ctx context.Context, workspaceID string) (*api.WorkspaceAccess, error) {
+	deploymentID, mode, ready, url, err := s.currentAgentAccess(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
 	if !ready || (mode != api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_APPLICATION_LOGIN && mode != api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_ANONYMOUS) {
 		return nil, appAccessUnavailable()
 	}
-	access := &api.WorkspaceAccess{WorkspaceId: r.GetWorkspaceId(), DeploymentId: deploymentID}
+	access := &api.WorkspaceAccess{WorkspaceId: workspaceID, DeploymentId: deploymentID}
 	access.AuthenticationMode = mode
 	available := mode == api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_APPLICATION_LOGIN
 	access.ApplicationCredentialsAvailable = &available

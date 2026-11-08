@@ -58,7 +58,7 @@ type ProjectionScopeMap = {
 };
 
 export function operatorResourceFallbackSource(kind: "workspaces" | "detail", cloud: boolean = cloudIdentity): string {
-  if (cloud) return "workspace+fabric";
+  if (cloud) return "workspace+fabric+serve";
   return kind === "workspaces" ? "control-plane+fabric+sub2api" : "control-plane+fabric+ledger";
 }
 

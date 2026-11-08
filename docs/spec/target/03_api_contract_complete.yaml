@@ -4056,13 +4056,13 @@ paths:
       x-feature-id: [F17]
       x-permission: [platform_admin]
       x-tables: [workspace.workspaces, workspace.operations]
-      description: Workspace owns the complete set and resource-set references; BFF composes Fabric observations without querying retained Control Plane Workspace tables.
+      description: Workspace owns the complete set and resource-set references; BFF composes independently authorized Fabric observations and Serve application availability/access facts without querying retained Control Plane Workspace tables.
       parameters:
       - {name: page, in: query, schema: {type: integer, minimum: 1, maximum: 2147483647, default: 1}}
       - {name: pageSize, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 20}}
       responses:
         '200':
-          description: Workspace-owner page composed with separately attributed Fabric readbacks.
+          description: Workspace-owner page composed with separately authorized Fabric and Serve readbacks.
           content:
             application/json:
               schema: {$ref: '#/x-operator-presentation-schemas/OperatorWorkspaceSourcePage'}
@@ -4071,7 +4071,7 @@ paths:
   /api/v2/operator/workspaces/{workspaceId}:
     get:
       operationId: getOperatorWorkspace
-      summary: Read a Workspace-owner identity with its Fabric observations
+      summary: Read a Workspace-owner identity with Fabric and Serve observations
       tags: [workspace]
       x-owner: workspace
       x-feature-id: [F17]
@@ -4081,7 +4081,7 @@ paths:
       - {name: workspaceId, in: path, required: true, schema: {$ref: '#/components/schemas/OpaqueId'}}
       responses:
         '200':
-          description: Owner-attributed Workspace and resource facts; missing observations remain unavailable.
+          description: Workspace identity, Fabric resources and Serve-derived application facts; missing observations remain unavailable or unknown.
           content:
             application/json:
               schema: {$ref: '#/x-operator-presentation-schemas/OperatorWorkspaceSource'}
@@ -11771,6 +11771,8 @@ components:
       - listOperatorWorkspaces
       - getOperatorWorkspace
       - readOperatorResources
+      - listOperatorDeployments
+      - getOperatorWorkspaceAccess
       - login
       - logout
       - observeResources
@@ -13938,9 +13940,9 @@ x-authorization: mTLS identities authenticate the calling service; CloudIdentity
 x-operator-presentation-schemas:
   OperatorWorkspaceSource:
     type: object
-    description: BFF presentation of Workspace identity and independently attributed Fabric observations. Unavailable facts omit data and carry reasonCode.
+    description: BFF presentation of Workspace identity, Fabric observations and Serve-derived application availability/access metadata. Serve alone supplies the derived fields of the Workspace presentation; BFF stores no duplicate state. Unavailable source facts omit data and carry reasonCode.
     properties:
-      source: {type: string, pattern: "^workspace\\+fabric$"}
+      source: {type: string, pattern: "^workspace\\+fabric\\+serve$"}
       status: {type: string}
       available: {type: boolean, enum: [true]}
       fetchedAt: {type: string, format: date-time}
@@ -13949,7 +13951,7 @@ x-operator-presentation-schemas:
   OperatorWorkspaceSourcePage:
     type: object
     properties:
-      source: {type: string, pattern: "^workspace\\+fabric$"}
+      source: {type: string, pattern: "^workspace\\+fabric\\+serve$"}
       status: {type: string}
       available: {type: boolean, enum: [true]}
       fetchedAt: {type: string, format: date-time}
@@ -13963,6 +13965,22 @@ x-operator-presentation-schemas:
         required: [items, total, page, pageSize]
     required: [source, status, available, fetchedAt, data]
 x-internal-action-policies:
+  listOperatorDeployments:
+    owner: serve
+    permission: [platform_admin]
+    rpc: ServeProductService.ListOperatorDeployments
+    callers: [console_bff]
+    scope: platform
+    resource: workspace
+    description: Read deployment history and authoritative current/latest selection for one exact Workspace; no deployment mutation or application login/credential grant.
+  getOperatorWorkspaceAccess:
+    owner: serve
+    permission: [platform_admin]
+    rpc: ServeProductService.GetOperatorWorkspaceAccess
+    callers: [console_bff]
+    scope: platform
+    resource: workspace
+    description: Read the selected deployment's readiness and access metadata for one exact Workspace; does not reveal credentials, sign into the application or authorize management writes.
   readOperatorResources:
     owner: fabric
     permission: [platform_admin]
@@ -14055,6 +14073,8 @@ x-service-action-allowlist:
   - listOperatorWorkspaces
   - getOperatorWorkspace
   - readOperatorResources
+  - listOperatorDeployments
+  - getOperatorWorkspaceAccess
   - login
   - logout
   - publishOfficialPackage

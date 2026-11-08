@@ -61,7 +61,7 @@ func TestGeneratedPolicyCoversAssignedOwners(t *testing.T) {
 		api.OwnerEnum_OWNER_ENUM_TENANT:           18,
 		api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL:  5,
 		api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG: 14,
-		api.OwnerEnum_OWNER_ENUM_SERVE:            5,
+		api.OwnerEnum_OWNER_ENUM_SERVE:            7,
 		api.OwnerEnum_OWNER_ENUM_WORKSPACE:        20,
 		api.OwnerEnum_OWNER_ENUM_FABRIC:           1,
 		api.OwnerEnum_OWNER_ENUM_GATEWAY:          9,
@@ -137,6 +137,8 @@ func TestGeneratedPolicyAudienceAndRoles(t *testing.T) {
 		case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS,
 			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETDEPLOYMENT,
 			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS,
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORDEPLOYMENTS,
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACEACCESS,
 			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATEWORKSPACEVERSION,
 			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ROLLBACKWORKSPACE:
 		default:
@@ -147,9 +149,11 @@ func TestGeneratedPolicyAudienceAndRoles(t *testing.T) {
 
 func TestOperatorReadPoliciesAreIndependentPlatformActions(t *testing.T) {
 	for action, owner := range map[string]api.OwnerEnum{
-		"LISTOPERATORWORKSPACES": api.OwnerEnum_OWNER_ENUM_WORKSPACE,
-		"GETOPERATORWORKSPACE":   api.OwnerEnum_OWNER_ENUM_WORKSPACE,
-		"READOPERATORRESOURCES":  api.OwnerEnum_OWNER_ENUM_FABRIC,
+		"LISTOPERATORWORKSPACES":     api.OwnerEnum_OWNER_ENUM_WORKSPACE,
+		"GETOPERATORWORKSPACE":       api.OwnerEnum_OWNER_ENUM_WORKSPACE,
+		"LISTOPERATORDEPLOYMENTS":    api.OwnerEnum_OWNER_ENUM_SERVE,
+		"GETOPERATORWORKSPACEACCESS": api.OwnerEnum_OWNER_ENUM_SERVE,
+		"READOPERATORRESOURCES":      api.OwnerEnum_OWNER_ENUM_FABRIC,
 	} {
 		policy := policyFor(t, action)
 		if policy.owner != owner || !permitted(policy, "", true) {

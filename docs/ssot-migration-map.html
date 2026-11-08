@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OPL Cloud SSOT 迁移图</title>
+  <style>
+    :root {
+      --ink: #17202a;
+      --muted: #5f6b76;
+      --line: #cbd5df;
+      --paper: #f7f9fb;
+      --panel: #ffffff;
+      --blue: #175cd3;
+      --blue-soft: #eaf2ff;
+      --green: #087443;
+      --green-soft: #e8f7ef;
+      --amber: #9a6700;
+      --amber-soft: #fff5d9;
+      --red: #b42318;
+      --red-soft: #fff0ee;
+      --purple: #6941c6;
+      --purple-soft: #f1edff;
+      --shadow: 0 8px 24px rgba(23, 32, 42, .07);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font: 15px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 38px 24px 64px; }
+    header { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; margin-bottom: 28px; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: clamp(28px, 4vw, 44px); line-height: 1.1; letter-spacing: 0; max-width: 740px; }
+    h2 { font-size: 22px; line-height: 1.2; margin-bottom: 14px; }
+    h3 { font-size: 16px; line-height: 1.25; margin-bottom: 7px; }
+    .lede { color: var(--muted); max-width: 760px; margin-top: 13px; }
+    .meta { color: var(--muted); font-size: 13px; text-align: right; white-space: nowrap; }
+    .banner { border-left: 4px solid var(--blue); background: var(--blue-soft); padding: 14px 16px; margin-bottom: 28px; }
+    .banner strong { color: var(--blue); }
+    section { margin-top: 34px; }
+    .panel { background: var(--panel); border: 1px solid #e3e8ee; box-shadow: var(--shadow); padding: 20px; }
+    .grid { display: grid; gap: 16px; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .flow { display: grid; grid-template-columns: 1fr 40px 1.15fr 40px 1fr; align-items: center; gap: 8px; }
+    .node { min-height: 128px; padding: 15px; border: 1px solid var(--line); background: #fff; }
+    .node h3 { display: flex; justify-content: space-between; gap: 8px; }
+    .node p { color: var(--muted); font-size: 13px; }
+    .node.primary { border-color: #9abcf6; background: var(--blue-soft); }
+    .node.owner { border-color: #8bd1a9; background: var(--green-soft); }
+    .node.observe { border-color: #efc36b; background: var(--amber-soft); }
+    .node.retained { border-color: #c8b6f4; background: var(--purple-soft); }
+    .arrow { text-align: center; color: var(--blue); font-size: 26px; font-weight: 700; }
+    .tag { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .02em; background: #eef1f4; color: var(--muted); white-space: nowrap; }
+    .tag.green { background: #d8f3e3; color: var(--green); }
+    .tag.amber { background: #ffebba; color: var(--amber); }
+    .tag.red { background: #ffd9d4; color: var(--red); }
+    .tag.purple { background: #e4dafd; color: var(--purple); }
+    .owner-table { display: grid; gap: 8px; }
+    .owner-row { display: grid; grid-template-columns: 170px 1fr 1fr; gap: 12px; padding: 11px 0; border-top: 1px solid #edf0f3; }
+    .owner-row:first-child { border-top: 0; padding-top: 0; }
+    .owner-row > :first-child { font-weight: 700; }
+    .owner-row > :nth-child(2), .owner-row > :nth-child(3) { color: var(--muted); font-size: 13px; }
+    .callout { padding: 14px 16px; border-left: 4px solid var(--amber); background: var(--amber-soft); }
+    .callout.danger { border-left-color: var(--red); background: var(--red-soft); }
+    .callout.good { border-left-color: var(--green); background: var(--green-soft); }
+    .backlog { display: grid; gap: 12px; counter-reset: item; }
+    .item { display: grid; grid-template-columns: 32px 1fr auto; gap: 12px; align-items: start; padding: 14px; border: 1px solid #e3e8ee; background: #fff; }
+    .item::before { counter-increment: item; content: counter(item); width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: #edf1f5; color: var(--muted); font-weight: 800; }
+    .item p { color: var(--muted); font-size: 13px; }
+    .item code, code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+    .check { color: var(--green); font-weight: 700; }
+    .open { color: var(--red); font-weight: 700; }
+    .hold { color: var(--amber); font-weight: 700; }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; color: var(--muted); font-size: 13px; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: var(--line); }
+    .dot.blue { background: var(--blue); } .dot.green { background: var(--green); } .dot.amber { background: var(--amber); } .dot.purple { background: var(--purple); }
+    footer { margin-top: 38px; color: var(--muted); font-size: 12px; }
+    @media (max-width: 820px) {
+      header { display: block; } .meta { text-align: left; margin-top: 12px; }
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: 1fr; }
+      .arrow { transform: rotate(90deg); height: 28px; }
+      .owner-row { grid-template-columns: 1fr; gap: 4px; }
+      .item { grid-template-columns: 32px 1fr; } .item > .tag { grid-column: 2; justify-self: start; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <div>
+        <h1>OPL Cloud：Workspace SSOT 迁移图</h1>
+        <p class="lede">这页解释 Customer 与 Admin 如何组合 Workspace、Fabric 和 Serve 的独立事实。当前实现、验证证据与未完成验收分别链接其权威文档。</p>
+      </div>
+      <div class="meta">解释性导航<br>不记录分支进度或运行时验收</div>
+    </header>
+
+    <div class="banner"><strong>阅读方式：</strong>图中说明事实来源与调用方向。<a href="architecture.md#independent-facts-and-completion">架构</a>拥有领域分工；<a href="implementation-architecture.md#cloud-admin-workspace-reads-2026-11-07">实现架构</a>说明实际入口；<a href="status.md">status</a>保存验证证据；<a href="roadmap.md#cloud-admin-workspace-read-adoption-2026-11-07">roadmap</a>保存剩余验收。</div>
+
+    <section>
+      <h2>1. 业务链：一个 Workspace，多个事实 owner</h2>
+      <div class="panel">
+        <div class="flow">
+          <div class="node primary"><h3>Customer / Admin <span class="tag">读</span></h3><p>浏览器只选择入口和展示 source envelope，不拥有业务状态。</p><p>Cloud identity 走 <code>/api/v2/*</code>；legacy identity 才走保留的 <code>/api/*</code>。</p></div>
+          <div class="arrow">→</div>
+          <div class="node owner"><h3>Console BFF <span class="tag green">组合</span></h3><p>鉴权、调用 owner、校验身份和 scope，再组合多个独立事实。</p><p>不持久化 Workspace 状态，不把 CP 读失败当 fallback。</p></div>
+          <div class="arrow">→</div>
+          <div class="node owner"><h3>Workspace owner <span class="tag green">SSOT</span></h3><p>Workspace identity、Tenant 引用、entitlement、生命周期、资源计划、resource set 引用。</p><p>Customer 列表/详情和 Cloud Admin Workspace 列表/详情都从这里读业务 DTO。</p></div>
+        </div>
+        <div class="flow" style="margin-top:16px">
+          <div class="node observe"><h3>Fabric <span class="tag amber">物理事实</span></h3><p>Compute / Storage / Attachment / Runtime 等 provider resource 的当前观察、绑定和删除读回。</p><p>不能决定 Workspace entitlement，也不能决定 Agent readiness。</p></div>
+          <div class="arrow">→</div>
+          <div class="node observe"><h3>Serve <span class="tag amber">应用事实</span></h3><p>当前 deployment、current selection、runtime readiness、access route、application availability。</p><p>Admin 与 Customer 对“应用可用”应使用同一 Serve readback。</p></div>
+          <div class="arrow">→</div>
+          <div class="node observe"><h3>Ledger / Gateway <span class="tag amber">外部事实</span></h3><p>Ledger：receipt、reconciliation、provenance。</p><p>Gateway/Sub2API：wallet、effective Key、Group、usage、routing。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. 事实与权限的边界</h2>
+      <div class="panel owner-table">
+        <div class="owner-row"><div>Workspace</div><div>身份、Tenant、业务生命周期、资源计划和 resource set 引用。</div><div>不推断当前应用部署与入口。</div></div>
+        <div class="owner-row"><div>Fabric</div><div>指定 Workspace/resource set 的物理资源观察。</div><div>资源存在不等于应用就绪。</div></div>
+        <div class="owner-row"><div>Serve</div><div>当前 deployment、readiness 与 access metadata。</div><div>Admin 与 Customer 读取同一事实；分别采用平台 operator 与 Tenant 权限。</div></div>
+        <div class="owner-row"><div>CloudIdentity</div><div>会话、角色、action、scope 和精确资源授权。</div><div>BFF 获取决定，各 owner 独立重验；应用自身登录不由只读权限授予。</div></div>
+        <div class="owner-row"><div>Control Plane</div><div>保留对象和历史义务由原 owner 处理。</div><div>具体 caller 与退休条件见实现架构的保留链路清单。</div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>3. 权威入口</h2>
+      <div class="panel">
+        <p><a href="spec/target/03_api_contract_complete.yaml">API 与授权合同</a>：各 owner action、权限和 scope。</p>
+        <p><a href="implementation-architecture.md#cloud-admin-workspace-reads-2026-11-07">Admin Workspace 实现链</a>：当前 source 路径及消费者。</p>
+        <p><a href="implementation-architecture.md#retained-writer-and-caller-inventory-2026-11-03">保留 writer/caller 清单</a>：迁移源与现存义务。</p>
+        <p><a href="status.md">验证证据</a>与<a href="roadmap.md">未完成验收</a>：代码、CI、Candidate 与 Instance 各层事实。</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="grid grid-2">
+        <div class="panel">
+          <h2>4. 页面事实如何归因</h2>
+          <p><span class="tag green">Workspace</span> 业务状态、Tenant、创建者、资源计划引用。</p>
+          <p style="margin-top:8px"><span class="tag amber">Fabric</span> resource set、resource kind/state、provider reference、observation time、deletion/absence facts。</p>
+          <p style="margin-top:8px"><span class="tag amber">Serve</span> deployment 选择、应用可用性和匹配该 deployment 的入口。</p>
+          <p style="margin-top:8px"><span class="tag">Unavailable</span> 未由对应 owner 提供的字段保留不可用原因；不借用其他 owner 的字段填充。</p>
+        </div>
+        <div class="panel">
+          <h2>5. 不应该做的事</h2>
+          <div class="callout danger"><strong>不要：</strong>把 CP 的 Workspace projection 重新接成 Cloud Workspace fallback；把 Fabric 状态写进 Workspace；让 BFF 自己保存第二份 current status；因为 Candidate/Local qualification 成功就直接删除 CP；把 legacy 兼容路径和 Cloud 原生路径混成一个响应。</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>6. 判定顺序</h2>
+      <div class="panel">
+        <div class="legend"><span><i class="dot green"></i>已迁移/已验证</span><span><i class="dot amber"></i>边界或证据仍需补齐</span><span><i class="dot purple"></i>Control Plane 保留能力，需逐项清退</span><span><i class="dot blue"></i>BFF 只组合，不成为 owner</span></div>
+        <div class="callout good" style="margin-top:14px"><strong>正确顺序：</strong>先识别事实 owner 与权限 → 读取对应 owner → 保持各层事实独立 → 区分源码、安装与运行时证据。具体迁移和验收只在权威文档维护。</div>
+      </div>
+    </section>
+
+    <footer>
+      权威参考：<code>docs/architecture.md</code>、<code>docs/implementation-architecture.md</code>、<code>docs/status.md</code>、<code>docs/roadmap.md</code>。本页仅提供图示与导航。当前状态、待办、CI 与运行时证据请沿上述链接读取。
+    </footer>
+  </main>
+</body>
+</html>

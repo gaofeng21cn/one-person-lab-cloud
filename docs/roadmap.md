@@ -224,6 +224,14 @@ with its Customer read, preserve Fabric unavailable/unknown/absence, and verify
 that no retained Workspace read or resource mutation occurs. No installed
 readback or production retirement is claimed by local tests.
 
+The same Candidate must include Serve's dedicated platform-admin read RPCs and
+the generated CloudIdentity policy. Compare Admin and Customer application
+availability/access metadata for the same selected deployment, including no
+deployment and readiness changes. Verify tenantless platform-admin login and
+reads, Tenant-role refusal on operator reads and unchanged Customer isolation.
+This read acceptance does not qualify application login, credential reveal,
+version update or rollback for platform administration.
+
 ## Console Interface Adoption
 
 The [Console interface refinement](status.md#console-interface-refinement-2026-11-05)

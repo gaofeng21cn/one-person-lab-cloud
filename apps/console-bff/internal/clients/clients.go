@@ -273,6 +273,21 @@ func (c *Clients) WorkspaceAccess(ctx context.Context, workspaceID string) (*api
 	return c.serve.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: CallContext(ctx), WorkspaceId: workspaceID})
 }
 
+// OperatorDeployments uses Serve's separate platform read, never a tenant action.
+func (c *Clients) OperatorDeployments(ctx context.Context, workspaceID, cursor string, limit int32) (*api.DeploymentPage, error) {
+	if c.serve == nil {
+		return nil, fmt.Errorf("serve: %w", ErrUpstreamUnconfigured)
+	}
+	return c.serve.ListOperatorDeployments(ctx, &api.ListDeploymentsRpcRequest{Context: CallContext(ctx), WorkspaceId: workspaceID, QueryCursor: &cursor, QueryLimit: &limit})
+}
+
+func (c *Clients) OperatorWorkspaceAccess(ctx context.Context, workspaceID string) (*api.WorkspaceAccess, error) {
+	if c.serve == nil {
+		return nil, fmt.Errorf("serve: %w", ErrUpstreamUnconfigured)
+	}
+	return c.serve.GetOperatorWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: CallContext(ctx), WorkspaceId: workspaceID})
+}
+
 // Build reads one Build job from the Build owner.
 func (c *Clients) Build(ctx context.Context, buildID string) (*api.BuildJob, error) {
 	if c.build == nil {
