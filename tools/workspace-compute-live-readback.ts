@@ -118,7 +118,7 @@ function observe(body: unknown, workspaceId: string, computeId: string): Observa
 }
 function validateObservation(value: unknown): Observation {
   const o = exact(value, ["machineType", "machinePresent", "allocationStatus", "tkeStatus", "cvmStatus", "isolatedSource", "observedAt", "readbackIdDigest", "providerRequestIdDigest", "machineRequestIdDigest", "cvmRequestIdDigest"]);
-  if (!["NativeCVM", "Native", "CXM"].includes(String(o.machineType)) || typeof o.machinePresent !== "boolean" || !instant(o.observedAt) ||
+  if (typeof o.machineType !== "string" || !["NativeCVM", "Native", "CXM"].includes(o.machineType) || typeof o.machinePresent !== "boolean" || !instant(o.observedAt) ||
       [o.readbackIdDigest, o.providerRequestIdDigest, o.machineRequestIdDigest].some(v => !digest(v)) ||
       !(o.cvmRequestIdDigest === null || digest(o.cvmRequestIdDigest))) fail();
   const allocation = validateCell(o.allocationStatus, ["external_deleted"]), tke = validateCell(o.tkeStatus, ["NOT_FOUND"]);
