@@ -113,6 +113,70 @@ test("binds the original bytes through the live decoder and preserves blocked an
   }
 });
 
+test("persisted JSON receipt rejects non-string machineType through handoff", async t => {
+  for (const machineType of [
+    ["NativeCVM"], ["Native"], ["CXM"], [["NativeCVM"]], [], ["NativeCVM", "Native"],
+    null, true, false, 0, 1, {}, { machineType: "NativeCVM" },
+  ]) {
+    await t.test(`machineType=${JSON.stringify(machineType)}`, () => {
+      const source = input(true);
+      const persisted = change(receipt(true), "observation.machineType", machineType);
+      invalid(() => validateWorkspaceComputeReadbackHandoff({ ...source, receiptText: JSON.stringify(persisted) }));
+    });
+  }
+});
+
+test("persisted JSON receipt rejects contradictory NativeCVM absence evidence through handoff", async t => {
+  const absent = receipt(true);
+  Object.assign(absent.observation!, {
+    machinePresent: false,
+    allocationStatus: { value: "external_deleted", digest: hash("external_deleted") },
+    tkeStatus: { value: "NOT_FOUND", digest: hash("NOT_FOUND") },
+  });
+  for (const machineType of ["NativeCVM", ["NativeCVM"]]) {
+    for (const [name, cvmStatus, cvmRequestIdDigest] of [
+      ["SHUTDOWN with CVM request", { value: "SHUTDOWN", digest: hash("SHUTDOWN") }, digest("9")],
+      ["unknown without CVM request", { value: null, digest: hash("unknown") }, null],
+      ["NOT_FOUND without CVM request", { value: "NOT_FOUND", digest: hash("NOT_FOUND") }, null],
+    ] as const) {
+      await t.test(`machineType=${JSON.stringify(machineType)}: ${name}`, () => {
+        let persisted = change(absent, "observation.machineType", machineType);
+        persisted = change(persisted, "observation.cvmStatus", cvmStatus);
+        persisted = change(persisted, "observation.cvmRequestIdDigest", cvmRequestIdDigest);
+        invalid(() => validateWorkspaceComputeReadbackHandoff({ ...input(true), receiptText: JSON.stringify(persisted) }));
+      });
+    }
+  }
+});
+
+test("persisted JSON receipt preserves legal machineType strings and still-present diagnostics through handoff", async t => {
+  for (const machineType of ["NativeCVM", "Native", "CXM"]) {
+    for (const state of ["still-present SHUTDOWN", "still-present unknown without CVM request", "absent"]) {
+      await t.test(`${machineType}: ${state}`, () => {
+        const persisted = change(receipt(true), "observation.machineType", machineType);
+        if (state === "absent") {
+          Object.assign(persisted.observation!, {
+            machinePresent: false,
+            allocationStatus: { value: "external_deleted", digest: hash("external_deleted") },
+            tkeStatus: { value: "NOT_FOUND", digest: hash("NOT_FOUND") },
+            cvmStatus: machineType === "NativeCVM" ? { value: "NOT_FOUND", digest: hash("NOT_FOUND") } : { value: null, digest: null },
+            cvmRequestIdDigest: machineType === "NativeCVM" ? digest("9") : null,
+          });
+        } else if (state === "still-present unknown without CVM request") {
+          Object.assign(persisted.observation!, {
+            cvmStatus: { value: null, digest: hash("unknown") }, cvmRequestIdDigest: null,
+          });
+        }
+        const receiptText = JSON.stringify(persisted);
+        const result = validateWorkspaceComputeReadbackHandoff({ ...input(true), receiptText });
+        assert.equal(result.receiptStatus, "observed");
+        assert.equal(result.errorCode, "none");
+        assert.equal(result.receiptDigest, hash(receiptText));
+      });
+    }
+  }
+});
+
 test("receipt self-reported provenance cannot replace independently fetched run, attempt or actor authority", () => {
   const patches: [string, unknown][] = [
     ["id", 23], ["id", "22"], ["id", Number.MAX_SAFE_INTEGER + 1], ["run_attempt", 1], ["run_attempt", "2"],
