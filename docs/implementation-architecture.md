@@ -7,6 +7,36 @@ App Shells consume Cloud-facing projections through
 App/Framework contracts. Cloud service and database authority stays in the
 owning Cloud service.
 
+## Agent Reads And Quote Review
+
+The Console BFF exposes `/api/v2/mcp` using the official MCP Go SDK's stateless
+Streamable HTTP transport. Its six read tools cover compute/storage catalog
+pages, Workspace list/detail, an existing quote and an original Workspace
+operation. Each HTTP request resolves the current CloudIdentity session; each
+tool dispatches a fixed in-process GET through the existing BFF route and its
+owner authorization. Neither initialization nor a previous tool call retains
+actor authority. Tools accept object IDs and bounded pagination, never an
+arbitrary path, actor, cookie or authorization header. Quote creation remains
+the existing POST command, with its CSRF/idempotency guards.
+
+Read results contain the original public owner JSON, source path, observation
+time and a SHA-256 revision over canonical JSON bytes. An optional
+`expectedRevision` refuses changed bytes. Quote reads also return a same-origin
+`reviewPath`, bound to the exact quote ID and revision. Reopening that path
+re-reads Catalog under the browser's current session and refuses a different
+revision; expiry is evaluated at the new read. The server-rendered review
+preserves integer USD micros, escapes owner text and shows the original terms.
+It has no purchase or approval mutation. Console continues to own the existing
+purchase interaction, and Workspace owns its operation and idempotency.
+
+This endpoint consumes the existing CloudIdentity browser session and requires
+the instance's same-origin `Origin` header. A trusted carrier can call it only
+while holding that authorized session outside model/UI tool arguments. Cloud
+does not currently expose an MCP OAuth/token-exchange flow or install a
+cross-host credential bridge. The read tools remain fully structured without
+UI support; installed cross-host access is tracked in the
+[roadmap](roadmap.md#agent-read-carrier-adoption).
+
 ## Application Origin Identity
 
 Serve's `delivery/routeorigin.go` and the retained Control Plane origin entry

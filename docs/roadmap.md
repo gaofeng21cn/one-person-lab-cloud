@@ -23,6 +23,20 @@ Use the following order when a source, document and receipt disagree:
 A passing test, generated contract, merged PR or queued workflow proves only its
 own layer. It does not close an Instance or production outcome.
 
+## Agent read carrier adoption
+
+Cloud owns the authenticated, stateless read-only MCP endpoint and exact quote
+review described in [implementation architecture](implementation-architecture.md#agent-reads-and-quote-review).
+The source path reuses CloudIdentity sessions and existing owner-authorized GET
+routes. Instance adoption and a trusted cross-host session/Connect transport
+remain unverified. There is no public MCP OAuth/token-exchange flow, and copying
+browser cookies into model inputs or connector configuration is not an adoption
+path. Complete this outcome by selecting the existing credential/session owner
+for the intended carrier, exercising discovery and reads without re-entering
+credentials, proving revocation on the next call, and opening the exact quote
+review under the same account. No charge or deployment is needed for this read
+acceptance; purchasing remains a separately authorized Workspace operation.
+
 ## Workspace 1042 original deletion
 
 Workspace owns the original deletion operation, deletion receipt and separate

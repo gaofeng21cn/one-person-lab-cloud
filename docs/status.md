@@ -14,6 +14,22 @@ establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
 
+## Agent read and quote review source (2026-11-09)
+
+The BFF's standard MCP read endpoint and same-origin quote review are implemented
+against source base `059f7e03b861a25672aee1614caef903d4b01da1`. Official MCP client
+HTTP fixtures exercise discovery, current-session owner authorization, revoked
+and changed-actor refusal, exact quote identity/revision, reopen, expiry,
+large integer money, structured results without UI and unknown original
+operation readback. Owner services are synthetic in this evidence; no customer
+resource or financial action is performed. Focused verification passed the BFF
+module tests, generated-contract freshness and product boundary checks. Chromium
+rendering of HTML captured from the real review handler passed at 1280 px and
+390 px widths without horizontal overflow; the page contains no scripts or
+mutation controls. This does not establish a deployed
+Instance or an automatically connected cross-host carrier. The remaining
+adoption outcome stays in the [roadmap](roadmap.md#agent-read-carrier-adoption).
+
 
 ## Cloud Admin Workspace Owner Reads (2026-11-07)
 

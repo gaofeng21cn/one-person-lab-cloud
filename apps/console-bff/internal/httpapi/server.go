@@ -145,6 +145,7 @@ func (s *Server) Handler() http.Handler {
 	})
 	mux.HandleFunc("GET /api/v2/delivery/{workspaceId}", s.handleDelivery)
 	mux.HandleFunc("GET /api/v2/operations/{owner}/{operationId}", s.handleOperation)
+	s.registerAgentReadRoutes(mux)
 	return mux
 }
 
