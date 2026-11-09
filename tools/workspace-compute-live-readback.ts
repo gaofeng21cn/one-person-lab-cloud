@@ -15,7 +15,12 @@ const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 const WORKFLOW = ".github/workflows/cloud-workspace-compute-readback.yml";
 export const COMPUTE_READBACK_STATUS = Object.freeze({ OBSERVED: "observed", BLOCKED: "blocked" } as const);
 export const COMPUTE_READBACK_ERROR = Object.freeze({
-  INPUT: "compute_live_input_invalid", BINDING: "compute_live_binding_invalid",
+  INPUT: "compute_live_input_invalid",
+  BINDING: "compute_live_binding_invalid", // Retained for previously persisted receipts.
+  WORKSPACE_ACCESS: "compute_live_workspace_access_unavailable",
+  WORKSPACE_BINDING: "compute_live_workspace_binding_invalid",
+  FABRIC_ACCESS: "compute_live_fabric_access_unavailable",
+  FABRIC_BINDING: "compute_live_fabric_binding_invalid",
   ACCESS: "compute_live_access_unavailable", IMAGE: "compute_live_image_mismatch",
   HTTP: "compute_live_owner_http_failed", RESPONSE: "compute_live_owner_response_invalid",
   NONE: "none", INVALID: "workspace_compute_live_readback_invalid",
@@ -156,10 +161,20 @@ export async function runWorkspaceComputeLiveReadback(input: {
   };
   try {
     let binding;
+    let bindingError: ErrorCode = COMPUTE_READBACK_ERROR.WORKSPACE_BINDING;
     try {
-      const workspace = decodeWorkspaceComputeBinding(await access.select("workspace", workspaceComputeBindingSql(input.workspaceId, input.workspaceOperationId)), input.workspaceId, input.workspaceOperationId);
-      binding = decodeFabricComputeBinding(await access.select("fabric", fabricComputeBindingSql(workspace)), workspace);
-    } catch { fail(COMPUTE_READBACK_ERROR.BINDING); }
+      const workspaceSql = workspaceComputeBindingSql(input.workspaceId, input.workspaceOperationId);
+      bindingError = COMPUTE_READBACK_ERROR.WORKSPACE_ACCESS;
+      const workspaceRows = await access.select("workspace", workspaceSql);
+      bindingError = COMPUTE_READBACK_ERROR.WORKSPACE_BINDING;
+      const workspace = decodeWorkspaceComputeBinding(workspaceRows, input.workspaceId, input.workspaceOperationId);
+      bindingError = COMPUTE_READBACK_ERROR.FABRIC_BINDING;
+      const fabricSql = fabricComputeBindingSql(workspace);
+      bindingError = COMPUTE_READBACK_ERROR.FABRIC_ACCESS;
+      const fabricRows = await access.select("fabric", fabricSql);
+      bindingError = COMPUTE_READBACK_ERROR.FABRIC_BINDING;
+      binding = decodeFabricComputeBinding(fabricRows, workspace);
+    } catch { fail(bindingError); }
     receipt.fabricOperationIdDigest = identity("cloud-launch-readback:operation:v1", binding.fabricOperationId);
     receipt.computeIdDigest = identity("compute-readback:compute:v1", binding.computeId);
     const image = record(candidate.cloudImage);
@@ -217,6 +232,9 @@ export function validateWorkspaceComputeLiveReadbackReceipt(value: unknown): Wor
       r.installation === null && r.httpStatus !== null ||
       r.installation !== null && (r.fabricOperationIdDigest === null || r.computeIdDigest === null || r.httpStatus === null)) fail();
   if ((r.fabricOperationIdDigest === null) !== (r.computeIdDigest === null)) fail();
+  if ([COMPUTE_READBACK_ERROR.BINDING, COMPUTE_READBACK_ERROR.WORKSPACE_ACCESS,
+    COMPUTE_READBACK_ERROR.WORKSPACE_BINDING, COMPUTE_READBACK_ERROR.FABRIC_ACCESS,
+    COMPUTE_READBACK_ERROR.FABRIC_BINDING].includes(r.errorCode as never) && r.computeIdDigest !== null) fail();
   if (!observed && r.errorCode !== COMPUTE_READBACK_ERROR.HTTP &&
       (r.installation !== null || r.httpStatus !== null || r.failure !== null)) fail();
   return r as WorkspaceComputeLiveReadbackReceipt;

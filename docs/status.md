@@ -137,7 +137,7 @@ and unbound. Refund remains unknown. Observation `42548117239` supplies no valid
 compute probe for this Workspace and cannot prove CVM absence.
 
 [Historical business imports](evidence/workspace-deletion/2026-11-09-1042/manifest.json)
-retain exact bytes and source provenance from the unmerged Instance #702 head;
+retain exact bytes and source provenance from the original Instance #702 head;
 they are not new Cloud producer executions. Final business evidence custody,
 diagnostic rules and validators belong to Cloud. Instance keeps installation
 and deployment evidence; #702's proposed tree now retains only the Candidate
@@ -147,11 +147,28 @@ Fabric resource/action binding, a protected evidence handoff consumer and a
 Cloud artifact receipt validator. The provider request is the existing Fabric
 read-only destroy-status GET; production transport remains confined to the
 Instance protected runner, whose adapter owns no deletion status or receipt
-schema. Source and isolated fixtures prove only those code paths. Current-main
-focused verification and the exact test count are recorded in PR #1146. Neither
-the protected workflow nor this Workspace's CVM state has been read in this
-source change. The original deletion, provider absence, and refund remain
-unconfirmed; no mutation or resume is implied.
+schema.
+
+The protected diagnostic ran on November 9 at 21:10 CST (Instance run
+`42623089230`, installation source `d9fca9c29fc0a8ff2bdf6c6649272289956a4b97`,
+Cloud diagnostic source `3731b0f2c94b01c4ae9816172a28ec2f355daf8d`). Cloud custody
+run `42627703955` independently accepted its exact original bytes at 21:41 CST.
+The [retained receipt](evidence/workspace-deletion/2026-11-09-compute-readback/receipt.json)
+is **blocked**, with `compute_live_binding_invalid`; installation, HTTP status
+and provider observation are null. The
+[custody provenance](evidence/workspace-deletion/2026-11-09-compute-readback/provenance.json)
+binds both actual runs and the Cloud artifact. Neither successful workflow
+means a successful compute observation: the diagnostic stopped before Fabric GET.
+
+The Cloud producer now distinguishes Workspace access, Workspace decoding,
+Fabric access and Fabric decoding with fixed error codes. Historical receipts
+retain their original broad error code. The real Instance connector, read-only
+serializable transaction, full isolated PostgreSQL owner migrations and Cloud
+SQL/decoders passed a synthetic end-to-end verification; this does not determine
+the production failure. A protected execution with the admitted revised source
+is still needed to locate that failure. The original deletion, provider absence
+and refund remain unconfirmed; no resource mutation or resume occurred in this
+diagnostic.
 
 ## Workspace 1042 storage deletion (2026-11-07)
 

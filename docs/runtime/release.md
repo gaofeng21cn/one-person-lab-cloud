@@ -92,7 +92,11 @@ receipt retains both revisions, the Instance run/attempt and image digests.
 `observed` means the owner returned a valid readback, including still-present
 resources; it does not mean Workspace deletion, journal finalization or refund
 completion. `blocked` retains a fixed safe error token and error digest when an
-owner error was obtained, or a fixed access/binding failure when it was not.
+owner error was obtained. Before a provider request, it distinguishes Workspace
+database access, Workspace identity decoding, Fabric database access and Fabric
+identity decoding using fixed codes; older receipts retain the original combined
+binding-failure code. Neither form includes raw SQL, connection errors or owner
+identities.
 
 Instance uploads only `receipt.json` as a three-day handoff artifact named
 `cloud-workspace-compute-readback-handoff-<run>-<attempt>`. Cloud's
@@ -106,7 +110,7 @@ Instance or connects to the production private network.
 
 Source implementation and local transport/decoder tests do not establish that
 these protected entries are merged, installed or executed. Adoption requires
-merging their owner PRs, running the Instance readback once for the original
+merging their owner PRs, running the Instance readback for the original
 operation, then importing that exact run through Cloud. A diagnostic source or
 transport failure is resolved at that boundary before another resource command.
 

@@ -51,13 +51,17 @@ deployment evidence, not the deletion execution path. The
 confirms CBS absence but keeps compute readback unavailable, the original
 operation in `needs_attention` and the refund unconfirmed.
 
-The exact Candidate is installed and independently deployment-verified. Adopt
-the [Cloud-owned live compute diagnostic](runtime/release.md#live-compute-readback)
-and its companion protected Instance access adapter. The source must be merged
-in both owners before production execution; it can observe the installed image
-without another Candidate build. Read the original compute once through its
-existing Fabric GET, verify the pinned installation before and after the read,
-and import the actual Instance run and redacted receipt into Cloud custody.
+The exact Candidate is installed and independently deployment-verified. The
+[Cloud-owned live compute diagnostic](runtime/release.md#live-compute-readback)
+and its companion protected Instance access adapter are merged. Their first
+protected run and Cloud custody import completed, but the diagnostic stopped
+before Fabric GET with an ambiguous binding error. Admit the revised Cloud
+diagnostic after merge and repeat the bounded read to distinguish Workspace
+access/decoding from Fabric access/decoding. This observes the installed image
+without another Candidate build. Once the original binding validates, read
+the compute through the existing Fabric GET, verify the pinned installation
+before and after the read, and import the actual run and receipt into Cloud
+custody.
 The log diagnostic remains available for exact-operation historical errors.
 Keep Instance deployment receipts separate and preserve the Cloud business
 imports' original producer and schema. No second Instance deletion entry is

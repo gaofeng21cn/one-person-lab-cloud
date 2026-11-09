@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "purpose": "blocked_compute_diagnostic_custody",
+  "evidenceCustodian": "gaofeng21cn/one-person-lab-cloud",
+  "producerRun": {
+    "repository": "gaofeng21cn/opl-instance-medopl",
+    "id": 42623089230,
+    "run_attempt": 1,
+    "path": ".github/workflows/cloud-workspace-compute-readback.yml",
+    "event": "workflow_dispatch",
+    "head_branch": "main",
+    "head_sha": "d9fca9c29fc0a8ff2bdf6c6649272289956a4b97",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-11-09T13:10:07Z",
+    "updated_at": "2026-11-09T13:10:30Z",
+    "html_url": "https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/42623089230"
+  },
+  "custodyRun": {
+    "repository": "gaofeng21cn/one-person-lab-cloud",
+    "id": 42627703955,
+    "run_attempt": 1,
+    "path": ".github/workflows/workspace-compute-readback-handoff.yml",
+    "event": "workflow_dispatch",
+    "head_branch": "main",
+    "head_sha": "3731b0f2c94b01c4ae9816172a28ec2f355daf8d",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-11-09T13:41:37Z",
+    "updated_at": "2026-11-09T13:41:55Z",
+    "html_url": "https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/42627703955"
+  },
+  "artifact": {
+    "id": 13679795923,
+    "name": "workspace-compute-readback-42623089230-42627703955-1"
+  },
+  "files": [
+    {
+      "file": "receipt.json",
+      "sha256": "80703cac57760ec33a36793c3b06a3c95ebe4787e8b7aa2a76faf9817ddd8104",
+      "bytes": 1639
+    },
+    {
+      "file": "binding.json",
+      "sha256": "58e9298152201897f203fa2ef8116142be36229819be15832af03c118151f861",
+      "bytes": 1613
+    }
+  ],
+  "interpretation": "Exact bytes from the Cloud custody artifact. Workflow success establishes diagnostic execution and custody validation only. The blocked receipt does not distinguish database access from binding decoding, contains no Fabric GET/provider observation, and establishes neither resource absence, deletion completion nor refund completion."
+}

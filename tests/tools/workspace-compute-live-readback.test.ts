@@ -111,11 +111,37 @@ test("non-200 owner failures preserve safe phase tokens and digest unknown messa
   }
 });
 
-test("binding failure prevents all transport and keeps unknown evidence", async () => {
-  const f = fixture(); f.access.select = async () => [JSON.stringify({ error: "private-customer" })];
-  const r = await runWorkspaceComputeLiveReadback(input(), f.access);
-  assert.equal(r.status, STATUS.BLOCKED); assert.equal(r.errorCode, ERROR.BINDING); assert.equal(r.computeIdDigest, null);
-  assert.equal(r.installation, null); assert.equal(r.observation, null); assert.deepEqual(f.calls, []);
+test("owner access and decoder failures remain distinguishable without exporting diagnostics", async () => {
+  for (const [owner, errorCode] of [
+    ["workspace", ERROR.WORKSPACE_ACCESS], ["fabric", ERROR.FABRIC_ACCESS],
+  ] as const) {
+    const f = fixture();
+    f.access.select = async selected => {
+      f.calls.push(`select:${selected}`);
+      if (selected === owner) throw new Error("private-database-error token=never-export");
+      return [JSON.stringify(selected === "workspace" ? workspaceRow() : fabricRow())];
+    };
+    const r = await runWorkspaceComputeLiveReadback(input(), f.access);
+    assert.equal(r.status, STATUS.BLOCKED); assert.equal(r.errorCode, errorCode); assert.equal(r.computeIdDigest, null);
+    assert.equal(r.installation, null); assert.equal(r.observation, null);
+    assert.deepEqual(f.calls, owner === "workspace" ? ["select:workspace"] : ["select:workspace", "select:fabric"]);
+    assert.doesNotMatch(JSON.stringify(r), /private-database-error|never-export/);
+  }
+  for (const [owner, errorCode] of [
+    ["workspace", ERROR.WORKSPACE_BINDING], ["fabric", ERROR.FABRIC_BINDING],
+  ] as const) {
+    const f = fixture();
+    f.access.select = async selected => {
+      f.calls.push(`select:${selected}`);
+      const value = selected === owner ? { malformed: "private-customer" } : selected === "workspace" ? workspaceRow() : fabricRow();
+      return [JSON.stringify(value)];
+    };
+    const r = await runWorkspaceComputeLiveReadback(input(), f.access);
+    assert.equal(r.status, STATUS.BLOCKED); assert.equal(r.errorCode, errorCode); assert.equal(r.computeIdDigest, null);
+    assert.equal(r.installation, null); assert.equal(r.observation, null);
+    assert.deepEqual(f.calls, owner === "workspace" ? ["select:workspace"] : ["select:workspace", "select:fabric"]);
+    assert.doesNotMatch(JSON.stringify(r), /private-customer/);
+  }
 });
 
 test("transport, repin or cleanup failures discard the response and never expose environment diagnostics", async () => {
