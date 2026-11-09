@@ -35,15 +35,36 @@ rollback and read-only installed-state observation. Installation evidence and
 product/business qualification evidence are separate classes and must bind the
 same immutable Candidate.
 
-Instance may host the one protected executor for a Cloud-owned operation when
-Cloud retains the contract, decision, receipt schema and consumer. The executor
-uses the Instance production environment, provider boundary and artifact
-custody; it does not become a second business authority.
+Instance may supply the protected execution environment and bounded access
+adapter for Cloud-owned code. Cloud retains the contract, decision, receipt
+schema, validator, consumer and final business evidence custody. Existing
+Instance-produced artifacts retain their historical provenance during migration;
+they do not authorize another business writer or a second canonical archive.
 
 A read-only path is not automatically an Instance path. A path that reads a
 customer balance, Workspace lifecycle, managed Key, Package delivery or launch
 operation is a business evidence path even when it has no mutation; it belongs
 to the Cloud owner that publishes those facts.
+
+## Workspace Deletion Custody Update (2026-11-09)
+
+The current owner decision keeps final Workspace deletion, refund and diagnostic
+business evidence in Cloud. Instance retains installation/deployment receipts
+and protected access configuration. A bounded access adapter may supply input
+to Cloud-owned code; it must not add deletion decisions, its own error policy,
+business schemas or a second canonical evidence archive. The workflow tables
+below retain their observed historical baseline; their remaining artifact
+handoffs are migration gaps, not permission to extend Instance business ownership.
+
+Cloud now has a bounded dispatcher diagnostic producer/validator and CLI, with
+[operation rules](../runtime/release.md#workspace-deletion-diagnostics-and-evidence-custody).
+The actual protected adapter and Cloud artifact handoff are still open. The
+[eight original business receipts and Candidate input](../evidence/workspace-deletion/2026-11-09-1042/manifest.json)
+are exact historical imports from the unmerged Instance #702 head. Their original
+schema, producing runs and validator revisions remain authoritative; relocation
+is not a new execution or deletion confirmation. The broad installed-state
+observation is not promoted into compute absence evidence. Existing workflows
+and release gates are unchanged until producer and consumer migration is real.
 
 ## Measurement
 

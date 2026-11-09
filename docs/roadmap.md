@@ -29,18 +29,26 @@ Workspace owns the original deletion operation, deletion receipt and separate
 refund; Fabric owns provider readback and the fenced final release of accepted
 compute/storage resources. Instance owns installation configuration and
 deployment evidence, not the deletion execution path. The
-[current observation](status.md#workspace-1042-storage-deletion-2026-11-07) is
-retained data in `TORECYCLE`, not provider absence.
+[November 9 retained observation](status.md#workspace-1042-deployed-deletion-and-evidence-custody-2026-11-09)
+confirms CBS absence but keeps compute readback unavailable, the original
+operation in `needs_attention` and the refund unconfirmed.
 
-Acceptance requires Candidate source containing journal-bound storage status,
-fresh original-disk and PV/PVC readback, the independent one-send storage
-final-release fence and exact provider absence. For recycled CVM, the original
-Workspace DELETE now invokes Fabric's fenced final-release capability only after
-fresh TKE/CVM eligibility readback; no Instance deletion entry is required.
-Continue the original Workspace deletion through remaining resources and its
-deletion receipt. Confirm refund through the original charge and refund owner
-separately; preserve unknown outcomes and historical attempts throughout. Source
-tests and PR merge do not establish installed adoption or production deletion.
+The exact Candidate is installed and independently deployment-verified. Continue
+with the Cloud-owned dispatcher diagnostic: protected access must bind the live
+operation, Pod/owner chain and Candidate image, supply a bounded timestamped
+excerpt to Cloud code, and retain the redacted result in Cloud. The local CLI
+and fixtures do not supply that protected adapter or evidence handoff. Keep
+Instance deployment receipts separate and migrate the unmerged business imports
+without changing their original producer or schema. No second Instance deletion
+entry is required.
+
+Once the exact compute failure is known, repair its Cloud owner and verify the
+real consumer before a new Candidate/adoption step. Continue the original
+Workspace operation through provider-confirmed compute absence and its deletion
+receipt. Confirm refund through the original charge and refund owner separately;
+preserve unknown outcomes and historical attempts throughout. Diagnosis,
+Candidate installation and CBS absence cannot independently establish deletion
+or refund success.
 
 ## PR CI Cache Reuse And Parallel Verification
 

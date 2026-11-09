@@ -5,10 +5,11 @@ Purpose: `replaceable_current_evidence_snapshot`
 State: `current_snapshot`
 Reviewed source baseline: `3773966a31e2a5d6630038decfa0a812c1488830` on `main`
 Snapshot reconciliation date: 2026-11-06
+Scoped Workspace deletion update: 2026-11-09 (source `06bb8308b994a5865470df2bbaaa89cba363750c`)
 
 Each observation below retains its original source, run and environment; the
-reviewed source baseline does not requalify those receipts. The latest retained
-runtime/source evidence is dated 2026-11-06. Source tests, Candidate construction,
+reviewed source baseline does not requalify those receipts. The Workspace deletion
+section includes the separately dated November 9 evidence. Source tests, Candidate construction,
 Instance installation and customer acceptance prove separate layers; none alone
 establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
@@ -77,6 +78,36 @@ This is source and isolated-fixture evidence. No application login, credential
 reveal, platform deployment mutation, Candidate build or Instance adoption is
 qualified by this read change. Installed acceptance remains in
 [roadmap](roadmap.md#cloud-admin-workspace-read-adoption-2026-11-07).
+
+## Workspace 1042 deployed deletion and evidence custody (2026-11-09)
+
+Cloud Candidate build `42545677086` produced source
+`06bb8308b994a5865470df2bbaaa89cba363750c`; its **Candidate receipt digest** is
+`sha256:c8f776ad69950d04f34bef75785cf307b14753b1e5df2b15aa23275ed3066bff`.
+The distinct image index digest is
+`sha256:19bbabb29b9dca7378c4ec3b3e723d9ae8bdf42591e74dcdedfa0bd26812cc4e`.
+Instance registration #701, deployment `42547057993` and independent verification
+`42547422357` supply installation evidence for that Candidate. They do not
+establish customer deletion success.
+
+The retained readback `42547440206` records the original deletion in
+`needs_attention` at `storage_deletion`, with `pendingAttempts=15`. One original
+resume `42547755464` was accepted with HTTP 202. Readback `42547900574` then
+records `pendingAttempts=16`, compute `readback_unavailable` and the same
+unfinished deletion. Both storage readbacks confirm the exact CBS is `NOT_FOUND`
+and unbound. Refund remains unknown. Observation `42548117239` supplies no valid
+compute probe for this Workspace and cannot prove CVM absence.
+
+[Historical business imports](evidence/workspace-deletion/2026-11-09-1042/manifest.json)
+retain exact bytes and source provenance from the unmerged Instance #702 head;
+they are not new Cloud producer executions. Final business evidence custody,
+diagnostic rules and validators belong to Cloud. Instance keeps installation
+and deployment evidence; #702 must be narrowed accordingly before integration.
+The Cloud diagnostic CLI now has a pure producer and strict receipt validator;
+its source verification is recorded in the delivery PR. Protected adapter/image
+binding, Cloud artifact handoff and an actual matching runtime diagnostic remain
+unexecuted. No new runtime read, provider mutation, resume or refund is implied
+by this source/evidence-custody change.
 
 ## Workspace 1042 storage deletion (2026-11-07)
 

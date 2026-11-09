@@ -1,0 +1,325 @@
+{
+  "schemaVersion": 2,
+  "receiptType": "workspace_fabric_deletion_facts_readback",
+  "status": "complete",
+  "errorCode": "none",
+  "observedAt": "2026-11-09T01:53:31.025Z",
+  "decodeProductSha": "5e74460122867611b94698b83575dc6e441d1a19",
+  "workspaceIdentityDigest": "sha256:f9daf7338d1f75a4575a3a816ab7f6db49d9218eb9b48175c4da32f6601d347c",
+  "operationIdentityDigest": "sha256:ddd434fc36cf92a04e469ec4681d88d610795f003a2139c47e5918f253aecb55",
+  "resourceSetIdentityDigest": "sha256:ce9124601b7310b54ed416e889cf6c421324f10432e638ebcdd16d63225362de",
+  "fabricOperationIdentityDigest": "sha256:7b1af5e88db2d55c4df1dd6c44b9213c8a1a404f9f79f36f5f5354f85d7a3228",
+  "checks": {
+    "workspaceOperationBound": true,
+    "resourceSetBound": true,
+    "fabricOperationBound": true,
+    "fabricFactsReadable": true,
+    "domainJournalReadable": true
+  },
+  "observed": {
+    "workspace": {
+      "operationStatus": "needs_attention",
+      "operationStage": "storage_deletion",
+      "ownerErrorCode": "DEPENDENCY_UNAVAILABLE",
+      "observationResult": "unknown",
+      "pendingStep": "read_resources",
+      "pendingAttempts": 16,
+      "absenceConfirmed": false,
+      "resourceKinds": [
+        {
+          "kind": "compute",
+          "state": "pending",
+          "providerReferencePresent": true,
+          "receiptPresent": false
+        },
+        {
+          "kind": "execution",
+          "state": "confirmed",
+          "providerReferencePresent": false,
+          "receiptPresent": false
+        },
+        {
+          "kind": "gateway_secret_binding",
+          "state": "absent",
+          "providerReferencePresent": false,
+          "receiptPresent": true
+        },
+        {
+          "kind": "network",
+          "state": "confirmed",
+          "providerReferencePresent": true,
+          "receiptPresent": false
+        },
+        {
+          "kind": "storage",
+          "state": "absent",
+          "providerReferencePresent": true,
+          "receiptPresent": true
+        },
+        {
+          "kind": "storage_attachment",
+          "state": "absent",
+          "providerReferencePresent": false,
+          "receiptPresent": true
+        },
+        {
+          "kind": "workspace_runtime",
+          "state": "absent",
+          "providerReferencePresent": false,
+          "receiptPresent": true
+        }
+      ],
+      "deleteOperationPresent": true,
+      "deleteOperationStatus": "awaiting_confirmation",
+      "retirementPresent": true,
+      "deletionReceiptPresent": false,
+      "refundStatus": null,
+      "keyCloseoutOutcome": null
+    },
+    "fabric": {
+      "observationResult": "confirmed",
+      "observedAt": "2026-11-08T01:51:25.751658+08:00",
+      "updatedAt": "2026-10-27T11:29:37.568761+08:00",
+      "operation": {
+        "status": "awaiting_confirmation",
+        "stage": {
+          "value": "compute_deletion",
+          "digest": "sha256:693bb0c99dcf49b166728d6d99751a2a8438dcffe2e8385d6fa2b2a3e5356431"
+        },
+        "errorCode": {
+          "value": "DEPENDENCY_UNAVAILABLE",
+          "digest": "sha256:de6cac49f134bdaa36cfe1c2ebe97ca85778fcf43c43a954fcf0d51513e9c218"
+        },
+        "observationResult": "unknown",
+        "updatedAt": "2026-11-09T09:51:56.016084+08:00"
+      },
+      "resources": [
+        {
+          "kind": "compute",
+          "observationResult": "confirmed",
+          "providerReferencePresent": true,
+          "evidencePresent": false,
+          "observedAt": "2026-10-27T11:29:44.558112+08:00",
+          "deletedAt": null
+        },
+        {
+          "kind": "execution",
+          "observationResult": "confirmed",
+          "providerReferencePresent": false,
+          "evidencePresent": false,
+          "observedAt": null,
+          "deletedAt": null
+        },
+        {
+          "kind": "network",
+          "observationResult": "confirmed",
+          "providerReferencePresent": true,
+          "evidencePresent": false,
+          "observedAt": "2026-10-27T11:29:44.558112+08:00",
+          "deletedAt": null
+        },
+        {
+          "kind": "storage",
+          "observationResult": "confirmed",
+          "providerReferencePresent": true,
+          "evidencePresent": false,
+          "observedAt": "2026-10-27T11:29:44.558112+08:00",
+          "deletedAt": null
+        }
+      ],
+      "deletionActions": [
+        {
+          "kind": "compute",
+          "observationResult": "unknown",
+          "errorState": {
+            "value": "unknown",
+            "digest": "sha256:bc577c3cac0ed69fd0841d6d4cebf5e3dd21201a09196431121faaf4ea9a769e"
+          },
+          "providerStatus": {
+            "value": "readback_unavailable",
+            "digest": "sha256:7d8cee97e9719ed07bf708898afb5de581a2a2245556d75dc4eac7742ec3c538"
+          },
+          "evidencePresent": false,
+          "updatedAt": "2026-11-09T09:51:56.016084+08:00"
+        },
+        {
+          "kind": "gateway_secret_binding",
+          "observationResult": "confirmed",
+          "errorState": {
+            "value": null,
+            "digest": null
+          },
+          "providerStatus": {
+            "value": null,
+            "digest": "sha256:4dca30b1801c86968933e573aae1cf005ebab3492ef1a28547c1444a3f6ae9f3"
+          },
+          "evidencePresent": true,
+          "updatedAt": "2026-11-07T15:23:29.547026+08:00"
+        },
+        {
+          "kind": "storage",
+          "observationResult": "confirmed",
+          "errorState": {
+            "value": null,
+            "digest": null
+          },
+          "providerStatus": {
+            "value": "external_deleted",
+            "digest": "sha256:41f238c64ea6348c2d2f385e41e485fbcdfd8aa876efcdaaf87783bba7429353"
+          },
+          "evidencePresent": true,
+          "updatedAt": "2026-11-08T00:17:14.228206+08:00"
+        },
+        {
+          "kind": "storage_attachment",
+          "observationResult": "confirmed",
+          "errorState": {
+            "value": null,
+            "digest": null
+          },
+          "providerStatus": {
+            "value": null,
+            "digest": "sha256:74010e7485c50044325add225f0dd5c2312264f9239a385a0b98ceb547af6e37"
+          },
+          "evidencePresent": true,
+          "updatedAt": "2026-11-07T15:23:29.547026+08:00"
+        },
+        {
+          "kind": "workspace_runtime",
+          "observationResult": "confirmed",
+          "errorState": {
+            "value": null,
+            "digest": null
+          },
+          "providerStatus": {
+            "value": null,
+            "digest": "sha256:4dca30b1801c86968933e573aae1cf005ebab3492ef1a28547c1444a3f6ae9f3"
+          },
+          "evidencePresent": true,
+          "updatedAt": "2026-11-07T15:23:29.547026+08:00"
+        }
+      ]
+    },
+    "storageJournal": [
+      {
+        "identityDigest": "sha256:686a3bba7856c433ac21d9bd1e117dcdd708160b45f8b77c62f51b56dd431136",
+        "status": {
+          "value": "started",
+          "digest": "sha256:daf9b7980a1ab313df57843a980223a003eca64dcf3fe7e314ab728365994224"
+        },
+        "errorCode": {
+          "value": null,
+          "digest": null
+        },
+        "retryable": false,
+        "startedAt": "2026-11-07T15:22:38.585065+08:00",
+        "finishedAt": null,
+        "createdAt": "2026-11-07T15:22:38.585069+08:00",
+        "resourcePresent": true,
+        "resourceStatus": {
+          "value": "destroying",
+          "digest": "sha256:11f8ba4c1834e5165ae16cda9b6cd8b70a8d2d688de6df6360b00991afdb197d"
+        },
+        "cbsStatus": {
+          "value": "UNATTACHED",
+          "digest": "sha256:3aff8045db840336c3479b40d857a4f26dd9ff712a1f72a292ca7b80cffc9645"
+        },
+        "destroyState": {
+          "value": null,
+          "digest": null
+        },
+        "phase": {
+          "value": "dispatch_authorized_uncertain",
+          "digest": "sha256:c37f7421d5d32e181e986296f4850e7ea841010ec884f3371486642585c27891"
+        },
+        "mutationCount": 0,
+        "bindingPresent": null,
+        "providerReferencePresent": true,
+        "providerDiskIdPresent": true,
+        "describeRequestPresent": true,
+        "terminateRequestPresent": false,
+        "readbackPresent": false,
+        "observedAt": null,
+        "identityFacts": {
+          "resourceOperationDigest": "sha256:6bbe41bac83780a378a9ebe6e30932432ebf3663546369489cc33875f37cbb21",
+          "taggedOperationDigest": "sha256:88b6b2f963df19b96e108d68f893c935f2cbee1f06b35091e22a57cc704baeec",
+          "operationTagMatches": false,
+          "costTagKeysExact": true,
+          "accountTagMatches": true,
+          "workspaceTagMatches": true,
+          "resourceTagMatches": true,
+          "requiredIdentitiesPresent": true,
+          "providerMatches": true,
+          "sizePositive": true,
+          "zonePresent": true,
+          "diskTypePresent": true,
+          "pvNamePresent": true,
+          "pvcNamePresent": true,
+          "regionCanonical": true
+        }
+      },
+      {
+        "identityDigest": "sha256:8f72d22174056b81cb9b2f08ddce4aab38b06e0ff29d37f3a2750a0abbacae82",
+        "status": {
+          "value": "succeeded",
+          "digest": "sha256:e86d855cebb87bfb0bbdf6cbca721de024a83b5eaa9a693ec18c9158a299117f"
+        },
+        "errorCode": {
+          "value": null,
+          "digest": null
+        },
+        "retryable": false,
+        "startedAt": "2026-11-07T15:22:38.585065+08:00",
+        "finishedAt": "2026-11-08T00:17:14.702041+08:00",
+        "createdAt": "2026-11-08T00:17:14.702041+08:00",
+        "resourcePresent": true,
+        "resourceStatus": {
+          "value": "external_deleted",
+          "digest": "sha256:41f238c64ea6348c2d2f385e41e485fbcdfd8aa876efcdaaf87783bba7429353"
+        },
+        "cbsStatus": {
+          "value": "NOT_FOUND",
+          "digest": "sha256:d8d481172b08d9d16f76e8c685b6699f23834bf69632e9ffb0a2f44682da7cd3"
+        },
+        "destroyState": {
+          "value": null,
+          "digest": null
+        },
+        "phase": {
+          "value": "absence_confirmed",
+          "digest": "sha256:eb8df136a5c4a9731ebd673299ec6ad4d63e04260e9efa74f2cda1ffba7d80b5"
+        },
+        "mutationCount": 0,
+        "bindingPresent": false,
+        "providerReferencePresent": true,
+        "providerDiskIdPresent": true,
+        "describeRequestPresent": true,
+        "terminateRequestPresent": false,
+        "readbackPresent": false,
+        "observedAt": null,
+        "identityFacts": {
+          "resourceOperationDigest": "sha256:6bbe41bac83780a378a9ebe6e30932432ebf3663546369489cc33875f37cbb21",
+          "taggedOperationDigest": "sha256:88b6b2f963df19b96e108d68f893c935f2cbee1f06b35091e22a57cc704baeec",
+          "operationTagMatches": false,
+          "costTagKeysExact": true,
+          "accountTagMatches": true,
+          "workspaceTagMatches": true,
+          "resourceTagMatches": true,
+          "requiredIdentitiesPresent": true,
+          "providerMatches": true,
+          "sizePositive": true,
+          "zonePresent": true,
+          "diskTypePresent": true,
+          "pvNamePresent": true,
+          "pvcNamePresent": true,
+          "regionCanonical": true
+        }
+      }
+    ]
+  },
+  "mutationCounts": {
+    "databaseWrites": 0,
+    "providerMutations": 0,
+    "kubernetesMutations": 0
+  }
+}

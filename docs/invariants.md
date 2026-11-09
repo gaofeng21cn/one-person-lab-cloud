@@ -23,6 +23,10 @@ current implementation documentation.
   environment, Secrets, deployment, deployment rollback, installation acceptance
   and deployment receipts. Cloud's product owners retain customer operations
   and business qualification with separately protected execution and evidence.
+- Cloud owns final customer deletion/diagnostic evidence custody and its receipt
+  schema and validator. Instance access adapters do not define business state or
+  retain a second canonical business evidence set. Original producer provenance
+  survives any evidence custody migration.
 - Each authoritative fact has one writer. Other modules consume it through a
   typed public contract or an owner readback.
 

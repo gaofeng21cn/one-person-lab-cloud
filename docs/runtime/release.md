@@ -9,6 +9,52 @@ rollback and deployment receipts. Production-private access runs only through
 - Product/Instance ownership: [Architecture](../architecture.md)
 - Current evidence: [Status](../status.md)
 
+## Workspace Deletion Diagnostics And Evidence Custody
+
+Cloud owns Workspace deletion and refund coordination, Fabric provider readback,
+its diagnostic producer/validator and the final business evidence. Instance owns
+installation configuration, protected environment access, deployment, rollback
+and their installation receipts. A protected adapter supplies bounded private
+input to Cloud-owned code; it does not define deletion status, error policy or
+business receipt schemas. Keep private logs local to that protected execution
+and publish only the Cloud-validated redacted output to Cloud evidence custody.
+Do not grant Cloud runners direct production-private network access.
+
+`tools/workspace-fabric-dispatch-error-readback.ts` accepts a Candidate receipt,
+exact Workspace/Workspace-operation/Fabric-operation binding, Fabric operation
+UTC update time and a SHA-256-bound log excerpt. It recognizes the existing
+compute dispatcher log format using the `kubectl logs --timestamps` UTC prefix
+within 60 seconds of the bound update time. Go's timezone-free log prefix is not
+an observation clock. The output contains only identity digests, Candidate
+identity, observation times and fixed Cloud error tokens or error digests.
+`matched` means a recognized diagnostic was found; it proves neither resource
+absence nor deletion or refund success. No exact match stays `unknown`; an
+unrecognized error stays `blocked`.
+
+```sh
+node tools/workspace-fabric-dispatch-error-readback.ts run \
+  --input "$RUNNER_TEMP/dispatch-input.json" \
+  --output "$RUNNER_TEMP/dispatch-receipt.json"
+node tools/workspace-fabric-dispatch-error-readback.ts validate \
+  --receipt "$RUNNER_TEMP/dispatch-receipt.json"
+```
+
+The input JSON has exactly `candidate`, `binding`,
+`fabricOperationUpdatedAt` and `excerpt`; `binding` has `workspaceId`,
+`workspaceOperationId` and `fabricOperationId`; `excerpt` has `text`, `sha256`,
+`startedAt` and `completedAt`. The CLI refuses symlink input and oversized files,
+creates its output mode `0600` without overwriting an earlier attempt, and emits
+only a fixed error on failure. `run` retains valid blocked/unknown receipts and
+returns nonzero; `validate` checks structure, not a successful diagnosis.
+
+This source entry has no deployed protected adapter or Cloud artifact handoff
+by itself. Before runtime use, that handoff must bind the live operation,
+Candidate image and Pod/owner chain before and after the read, retain the
+producing revision/run and place the final evidence in Cloud. An uploaded
+caller-supplied excerpt alone is not authenticated runtime evidence. Historical
+imports keep their original bytes, schema, producer and run provenance; moving
+custody never relabels them as a new successful Cloud execution.
+
 ## Cloud Agent WebUI Build Input
 
 The Cloud-owned independent Agent WebUI has its own exact-source artifact build:
