@@ -76,6 +76,9 @@ func (s *Service) AuthorizeAction(ctx context.Context, r *api.AuthorizationReque
 	if caller != owneridentity.ConsoleBFF && caller != audience {
 		return nil, denied()
 	}
+	if isAgentSession(r.GetSessionId()) && !agentReadAction(r) {
+		return nil, denied()
+	}
 	if p, internalRead := internalReadPolicies[r.Action]; internalRead {
 		// Internal operator reads require a live session and the exact resource
 		// shape declared by the canonical policy, never an accepted obligation.
@@ -89,11 +92,14 @@ func (s *Service) AuthorizeAction(ctx context.Context, r *api.AuthorizationReque
 		}
 		return s.authorizeGrant(ctx, r)
 	}
-	session, version, admin, e := s.session(ctx, r.GetSessionId())
+	session, version, admin, e := s.authorizationSession(ctx, r.GetSessionId())
 	if e != nil {
 		return nil, e
 	}
 	if session.ActorId != r.ActorId || (r.ExpectedPermissionVersion != nil && r.GetExpectedPermissionVersion() != version) {
+		return nil, denied()
+	}
+	if isAgentSession(r.GetSessionId()) && !scopeMatchesSession(session, r.Scope) {
 		return nil, denied()
 	}
 	if personalGatewayAction(r.Action) {

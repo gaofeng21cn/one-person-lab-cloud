@@ -15,6 +15,28 @@ establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
 
+## Short-lived Agent connection source (2026-11-09)
+
+On source base `b4bff4b056d75362a890ebda8f33201447c328ca`, CloudIdentity adds
+short-lived, read-scoped credentials under the existing Tenant owner. The real
+owner RPCs and isolated PostgreSQL migrations verify issuance, hash-only
+persistence, frozen Tenant, one-hour/parent expiry, current role and actor
+checks, revocation, replica readback, and rejection of browser-session or direct
+session-only RPC misuse. The fixed owner action closure covers the six MCP tools
+and Workspace detail's Serve reads. Six owner behavior tests and the migration
+isolation suite passed with synthetic Gateway data and no skipped cases.
+
+The BFF accepts Bearer only for MCP, resolves it again at each fixed GET, and
+preserves the restricted reference for receiving-owner authorization. Six BFF
+tests (34 cases including subtests) passed, including transport isolation,
+mid-call revocation, CSRF/origin guards and secret-free metadata. The browser
+connection page's download, metadata and revoke controls passed headless Chrome
+interaction at 1280 px and 390 px without horizontal overflow or page errors.
+Only the authenticated download contains the credential; it is absent from the
+page DOM and MCP output. The Cloud helper owns local custody, while Framework
+uses opaque references. Full cross-component qualification and Instance adoption
+are tracked separately in the [roadmap](roadmap.md#agent-read-carrier-adoption).
+
 ## Agent read and quote review source (2026-11-09)
 
 The BFF's standard MCP read endpoint and same-origin quote review are implemented

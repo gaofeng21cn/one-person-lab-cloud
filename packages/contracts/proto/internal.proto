@@ -2215,6 +2215,10 @@ service TenantProductService {
  rpc Login(LoginRpcRequest) returns (Session);
  rpc GetSession(GetSessionRpcRequest) returns (Session);
  rpc Logout(LogoutRpcRequest) returns (google.protobuf.Empty);
+ rpc IssueAgentCredential(IssueAgentCredentialRpcRequest) returns (IssuedAgentCredential);
+ rpc ResolveAgentCredential(ResolveAgentCredentialRequest) returns (ResolvedAgentCredential);
+ rpc ListAgentCredentials(ListAgentCredentialsRpcRequest) returns (AgentCredentialPage);
+ rpc RevokeAgentCredential(RevokeAgentCredentialRpcRequest) returns (google.protobuf.Empty);
  rpc GetTenant(GetTenantRpcRequest) returns (Tenant);
  rpc ListMembers(ListMembersRpcRequest) returns (MemberPage);
  rpc ListInvitations(ListInvitationsRpcRequest) returns (InvitationPage);
@@ -4663,3 +4667,25 @@ enum PersonalGatewayKeyKindEnum {
  PERSONAL_GATEWAY_KEY_KIND_ENUM_GENERAL = 1;
  PERSONAL_GATEWAY_KEY_KIND_ENUM_WORKSPACE = 2;
 }
+
+// CloudIdentity owns these short-lived, parent-session-bound MCP credentials.
+// Only the authenticated BFF may issue/list/revoke them for a browser caller.
+// Secrets are returned once to a trusted download, never to a model or owner.
+message AgentCredential {
+ string id = 1;
+ string label = 2;
+ optional string tenant_id = 3;
+ string audience = 4;
+ google.protobuf.Timestamp issued_at = 5;
+ google.protobuf.Timestamp expires_at = 6;
+ optional google.protobuf.Timestamp revoked_at = 7;
+}
+message IssueAgentCredentialRpcRequest { CallContext context = 1; string label = 2; }
+message IssuedAgentCredential { AgentCredential metadata = 1; string credential = 2; }
+message ResolveAgentCredentialRequest { string credential = 1; string audience = 2; }
+// The reference is not a bearer. Owners revalidate its fixed read scope and live
+// parent on every authorization, without receiving the browser cookie or secret.
+message ResolvedAgentCredential { string session_reference = 1; Session session = 2; AgentCredential metadata = 3; }
+message ListAgentCredentialsRpcRequest { CallContext context = 1; }
+message AgentCredentialPage { repeated AgentCredential items = 1; }
+message RevokeAgentCredentialRpcRequest { CallContext context = 1; string credential_id = 2; }

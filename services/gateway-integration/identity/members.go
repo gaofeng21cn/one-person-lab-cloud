@@ -535,8 +535,9 @@ func (s *Service) AcceptInvitation(ctx context.Context, r *api.AcceptInvitationR
 			return persistence(e)
 		}
 		// The invitee's live sessions now belong to the Tenant so the next
-		// session read reflects the accepted membership without a re-login.
-		if _, e := tx.ExecContext(ctx, `UPDATE tenant.sessions SET tenant_id=$1,updated_at=now() WHERE actor_id=$2 AND revoked_at IS NULL`, tid, c.ActorId); e != nil {
+		// browser session read reflects the membership without a re-login. Agent
+		// credentials retain their original scope and fail closed after this change.
+		if _, e := tx.ExecContext(ctx, `UPDATE tenant.sessions SET tenant_id=$1,updated_at=now() WHERE actor_id=$2 AND revoked_at IS NULL AND id NOT LIKE 'agent:%'`, tid, c.ActorId); e != nil {
 			return persistence(e)
 		}
 		out.Id, out.ActorId, out.Role, out.Status, out.CreatedAt = memberID, c.ActorId, roleEnum(role), api.MemberStatusEnum_MEMBER_STATUS_ENUM_ACTIVE, timestamppb.New(created)

@@ -146,7 +146,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v2/delivery/{workspaceId}", s.handleDelivery)
 	mux.HandleFunc("GET /api/v2/operations/{owner}/{operationId}", s.handleOperation)
 	s.registerAgentReadRoutes(mux)
-	return mux
+	s.registerAgentCredentialRoutes(mux)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if len(r.Header.Values("Authorization")) != 0 && r.URL.Path != "/api/v2/mcp" {
+			writePublisherIdentityError(w, r, ErrSessionRequired)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) handleDelivery(w http.ResponseWriter, r *http.Request) {
