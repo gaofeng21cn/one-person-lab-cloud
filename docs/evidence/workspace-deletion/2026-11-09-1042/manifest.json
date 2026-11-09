@@ -1,0 +1,344 @@
+{
+  "schemaVersion": 1,
+  "purpose": "historical_import",
+  "evidenceCustodian": "gaofeng21cn/one-person-lab-cloud",
+  "source": {
+    "repository": "gaofeng21cn/opl-instance-medopl",
+    "sha": "48470a56b508500cd90c986923f23fd9cdefb7a5",
+    "pullRequest": 702
+  },
+  "provenancePurpose": "Preserve original Instance-produced Workspace deletion observations and their exact Candidate binding for Cloud-owned diagnosis.",
+  "interpretation": "Original bytes, schemas, timestamps, producers, workflow provenance and claims are retained. This archival import is not a new Cloud producer execution and does not establish resource absence, completed deletion, completed refund, or current production state.",
+  "candidateBinding": {
+    "productSha": "06bb8308b994a5865470df2bbaaa89cba363750c",
+    "productTree": "79d5bd94b31d75e011061e5062118c591b7f4b3a",
+    "candidateReceiptDigest": "sha256:c8f776ad69950d04f34bef75785cf307b14753b1e5df2b15aa23275ed3066bff",
+    "imageIndexDigest": "sha256:19bbabb29b9dca7378c4ec3b3e723d9ae8bdf42591e74dcdedfa0bd26812cc4e",
+    "receiptFile": "2026-11-09-storage-delete-candidate-42545677086.json"
+  },
+  "identityBindingValidation": {
+    "workspace": "Each Workspace digest was checked against the user-designated Workspace using its original schema domain.",
+    "deletion": "Facts and live-readback operationIdentityDigest and native observed.deletionOperationIdentityDigest match the user-designated deletion operation.",
+    "originalOrder": "Native originalOperationIdentityDigest identifies the create_workspace order, not the deletion operation; plan/resume original-order and plan digests match.",
+    "fabricOperation": "Fabric operation digests match across the Fabric and live-storage observations."
+  },
+  "originalValidatorSources": [
+    {
+      "repository": "gaofeng21cn/opl-instance-medopl",
+      "sha": "48470a56b508500cd90c986923f23fd9cdefb7a5",
+      "path": "tools/workspace-deletion-facts.mjs",
+      "contentSha256": "f1441584c2b612bbb6da8eb2cc027986580e57203f27d7907a66ea16132441c3"
+    },
+    {
+      "repository": "gaofeng21cn/opl-instance-medopl",
+      "sha": "48470a56b508500cd90c986923f23fd9cdefb7a5",
+      "path": "tools/workspace-fabric-deletion-facts.mjs",
+      "contentSha256": "d41a5d937f292e1f11d83b43f3654b508937301736964d9ebd4099d41aa79164"
+    },
+    {
+      "repository": "gaofeng21cn/opl-instance-medopl",
+      "sha": "48470a56b508500cd90c986923f23fd9cdefb7a5",
+      "path": "tools/workspace-native-delete.mjs",
+      "contentSha256": "b0b9f0deb726fff11eb427b28bbcbfc9c0e34d095fedbae122f602235813fb86"
+    },
+    {
+      "repository": "gaofeng21cn/opl-instance-medopl",
+      "sha": "48470a56b508500cd90c986923f23fd9cdefb7a5",
+      "path": "tools/workspace-storage-deletion-live-readback.mjs",
+      "contentSha256": "4bd6421b45381f1462ef58e730b1050eb3053bfc9ebc76a37cefd4851b79168b"
+    },
+    {
+      "repository": "gaofeng21cn/opl-instance-medopl",
+      "sha": "48470a56b508500cd90c986923f23fd9cdefb7a5",
+      "path": "tools/validate-receipt-redaction.mjs",
+      "contentSha256": "0024900ab9c6e370e2189a2769b0fa841e2c88ba5ea28a15b86e3eeffcfd2011"
+    }
+  ],
+  "cloudCandidateValidator": {
+    "repository": "gaofeng21cn/one-person-lab-cloud",
+    "path": "tools/cloud-candidate-receipt.ts",
+    "contentSha256": "af7e42978761f2a857b7d15638b6f214fc49ef8252c67023522984d022922137"
+  },
+  "files": [
+    {
+      "file": "2026-11-09-workspace-1042-deletion-facts-42547440206.json",
+      "purpose": "historical_import",
+      "source": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "sha": "48470a56b508500cd90c986923f23fd9cdefb7a5",
+        "path": "receipts/2026-11-09-workspace-1042-deletion-facts-42547440206.json",
+        "gitBlobSha": "93caf289995e5d9db86c148d004568595e4ffcf0",
+        "pullRequest": 702
+      },
+      "content": {
+        "sha256": "0ab3b4b8fe9bca578616a07da7a693ac0a90e2e06a35843dd54c408cc17686f8",
+        "bytes": 2262
+      },
+      "originalProducer": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "runId": "42547440206",
+        "runAttempt": "1",
+        "workflowPath": ".github/workflows/workspace-deletion-facts-readback.yml",
+        "workflowSourceSha": "95a38deda105cc8548aa954ff6bfa2f963fe9f0b"
+      },
+      "validation": {
+        "schemaValidator": "tools/workspace-deletion-facts.mjs#validateDeletionFactsReceipt",
+        "schemaAccepted": true,
+        "legacyRedactionFindingCount": 0,
+        "additionalPrivacyFindingCount": 0
+      }
+    },
+    {
+      "file": "2026-11-09-workspace-1042-fabric-deletion-facts-42547440206.json",
+      "purpose": "historical_import",
+      "source": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "sha": "48470a56b508500cd90c986923f23fd9cdefb7a5",
+        "path": "receipts/2026-11-09-workspace-1042-fabric-deletion-facts-42547440206.json",
+        "gitBlobSha": "ed284642d397d7dde3247d8f6eeec9bbc304a5c6",
+        "pullRequest": 702
+      },
+      "content": {
+        "sha256": "55abaa6765094bf51f2c81d5d5cf055be637741482da6aa783a8f3c6ae731add",
+        "bytes": 11199
+      },
+      "originalProducer": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "runId": "42547440206",
+        "runAttempt": "1",
+        "workflowPath": ".github/workflows/workspace-deletion-facts-readback.yml",
+        "workflowSourceSha": "95a38deda105cc8548aa954ff6bfa2f963fe9f0b"
+      },
+      "validation": {
+        "schemaValidator": "tools/workspace-fabric-deletion-facts.mjs#validateFabricDeletionFactsReceipt",
+        "schemaAccepted": true,
+        "legacyRedactionFindingCount": 0,
+        "additionalPrivacyFindingCount": 0
+      }
+    },
+    {
+      "file": "2026-11-09-workspace-1042-native-resume-42547755464.json",
+      "purpose": "historical_import",
+      "source": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "sha": "48470a56b508500cd90c986923f23fd9cdefb7a5",
+        "path": "receipts/2026-11-09-workspace-1042-native-resume-42547755464.json",
+        "gitBlobSha": "c34a3925919c9a6eed03b36c0a16c5dc4bcf9885",
+        "pullRequest": 702
+      },
+      "content": {
+        "sha256": "17d63311d4dd1228072fcd922bda9e331669ef696a2fdfc483ef4e8435dea78f",
+        "bytes": 2193
+      },
+      "originalProducer": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "runId": "42547755464",
+        "runAttempt": "1",
+        "workflowPath": ".github/workflows/workspace-native-delete.yml",
+        "workflowSourceSha": "95a38deda105cc8548aa954ff6bfa2f963fe9f0b"
+      },
+      "validation": {
+        "schemaValidator": "tools/workspace-native-delete.mjs#validateNativeDeleteReceipt",
+        "schemaAccepted": true,
+        "legacyRedactionFindingCount": 0,
+        "additionalPrivacyFindingCount": 0
+      }
+    },
+    {
+      "file": "2026-11-09-workspace-1042-native-resume-plan-42547652175.json",
+      "purpose": "historical_import",
+      "source": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "sha": "48470a56b508500cd90c986923f23fd9cdefb7a5",
+        "path": "receipts/2026-11-09-workspace-1042-native-resume-plan-42547652175.json",
+        "gitBlobSha": "91451813efec1f6a0fa5694285771b6538e0ac18",
+        "pullRequest": 702
+      },
+      "content": {
+        "sha256": "a4e4686ff4339b575d2ecedca7cf5178b95fbcb9c551449e42847f8d35963bc8",
+        "bytes": 2188
+      },
+      "originalProducer": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "runId": "42547652175",
+        "runAttempt": "1",
+        "workflowPath": ".github/workflows/workspace-native-delete.yml",
+        "workflowSourceSha": "95a38deda105cc8548aa954ff6bfa2f963fe9f0b"
+      },
+      "validation": {
+        "schemaValidator": "tools/workspace-native-delete.mjs#validateNativeDeleteReceipt",
+        "schemaAccepted": true,
+        "legacyRedactionFindingCount": 0,
+        "additionalPrivacyFindingCount": 0
+      }
+    },
+    {
+      "file": "2026-11-09-workspace-1042-post-resume-deletion-facts-42547900574.json",
+      "purpose": "historical_import",
+      "source": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "sha": "48470a56b508500cd90c986923f23fd9cdefb7a5",
+        "path": "receipts/2026-11-09-workspace-1042-post-resume-deletion-facts-42547900574.json",
+        "gitBlobSha": "8101c27950d9e6ea54fb107e288b1194a8263dc2",
+        "pullRequest": 702
+      },
+      "content": {
+        "sha256": "e0e77329701a546e07f2da017f36aadbb8cc0cb8d6da14693782d219e36b5001",
+        "bytes": 2262
+      },
+      "originalProducer": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "runId": "42547900574",
+        "runAttempt": "1",
+        "workflowPath": ".github/workflows/workspace-deletion-facts-readback.yml",
+        "workflowSourceSha": "95a38deda105cc8548aa954ff6bfa2f963fe9f0b"
+      },
+      "validation": {
+        "schemaValidator": "tools/workspace-deletion-facts.mjs#validateDeletionFactsReceipt",
+        "schemaAccepted": true,
+        "legacyRedactionFindingCount": 0,
+        "additionalPrivacyFindingCount": 0
+      }
+    },
+    {
+      "file": "2026-11-09-workspace-1042-post-resume-fabric-facts-42547900574.json",
+      "purpose": "historical_import",
+      "source": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "sha": "48470a56b508500cd90c986923f23fd9cdefb7a5",
+        "path": "receipts/2026-11-09-workspace-1042-post-resume-fabric-facts-42547900574.json",
+        "gitBlobSha": "b32ab441d4a6957d0853cb9301cc2cee6d83f2c6",
+        "pullRequest": 702
+      },
+      "content": {
+        "sha256": "8cd4a2fc006271d98cb066cf9c52e1fafe4ad390b0ee7ad361e1f802c9f8491b",
+        "bytes": 11206
+      },
+      "originalProducer": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "runId": "42547900574",
+        "runAttempt": "1",
+        "workflowPath": ".github/workflows/workspace-deletion-facts-readback.yml",
+        "workflowSourceSha": "95a38deda105cc8548aa954ff6bfa2f963fe9f0b"
+      },
+      "validation": {
+        "schemaValidator": "tools/workspace-fabric-deletion-facts.mjs#validateFabricDeletionFactsReceipt",
+        "schemaAccepted": true,
+        "legacyRedactionFindingCount": 0,
+        "additionalPrivacyFindingCount": 0
+      }
+    },
+    {
+      "file": "2026-11-09-workspace-1042-post-resume-storage-live-readback-42547900574.json",
+      "purpose": "historical_import",
+      "source": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "sha": "48470a56b508500cd90c986923f23fd9cdefb7a5",
+        "path": "receipts/2026-11-09-workspace-1042-post-resume-storage-live-readback-42547900574.json",
+        "gitBlobSha": "d92e7ac45c5caeb1deab5f308da1020db183730d",
+        "pullRequest": 702
+      },
+      "content": {
+        "sha256": "1aa9260c7fa0a9b4652cba52ea070385b45e30a89d924f107c88166646cd8778",
+        "bytes": 3127
+      },
+      "originalProducer": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "runId": "42547900574",
+        "runAttempt": "1",
+        "workflowPath": ".github/workflows/workspace-deletion-facts-readback.yml",
+        "workflowSourceSha": "95a38deda105cc8548aa954ff6bfa2f963fe9f0b"
+      },
+      "validation": {
+        "schemaValidator": "tools/workspace-storage-deletion-live-readback.mjs#validateLiveStorageReceipt",
+        "schemaAccepted": true,
+        "legacyRedactionFindingCount": 0,
+        "additionalPrivacyFindingCount": 0
+      }
+    },
+    {
+      "file": "2026-11-09-workspace-1042-storage-live-readback-42547440206.json",
+      "purpose": "historical_import",
+      "source": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "sha": "48470a56b508500cd90c986923f23fd9cdefb7a5",
+        "path": "receipts/2026-11-09-workspace-1042-storage-live-readback-42547440206.json",
+        "gitBlobSha": "363da3fe4172d757d2a3caa3b0dc52152fe0b33d",
+        "pullRequest": 702
+      },
+      "content": {
+        "sha256": "91172c830bff8b3bb7065dca6ca711ad0311dd3b048c1644c565051fe0112187",
+        "bytes": 3127
+      },
+      "originalProducer": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "runId": "42547440206",
+        "runAttempt": "1",
+        "workflowPath": ".github/workflows/workspace-deletion-facts-readback.yml",
+        "workflowSourceSha": "95a38deda105cc8548aa954ff6bfa2f963fe9f0b"
+      },
+      "validation": {
+        "schemaValidator": "tools/workspace-storage-deletion-live-readback.mjs#validateLiveStorageReceipt",
+        "schemaAccepted": true,
+        "legacyRedactionFindingCount": 0,
+        "additionalPrivacyFindingCount": 0
+      }
+    },
+    {
+      "file": "2026-11-09-storage-delete-candidate-42545677086.json",
+      "purpose": "historical_import",
+      "source": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "sha": "48470a56b508500cd90c986923f23fd9cdefb7a5",
+        "path": "receipts/2026-11-09-storage-delete-candidate-42545677086.json",
+        "gitBlobSha": "452f5d98f77a22e419c58eeebfcf39029e11a60b",
+        "pullRequest": 702
+      },
+      "content": {
+        "sha256": "0e8707600182c468b9f0e50e3195305a1face1205e0f686aabe99773e55b48f7",
+        "bytes": 2031
+      },
+      "originalProducer": {
+        "repository": "gaofeng21cn/one-person-lab-cloud",
+        "runId": "42545677086",
+        "runAttempt": "1",
+        "workflowPath": ".github/workflows/build-opl-cloud-candidate.yml",
+        "workflowSourceSha": "06bb8308b994a5865470df2bbaaa89cba363750c"
+      },
+      "validation": {
+        "schemaValidator": "tools/cloud-candidate-receipt.ts#validateCloudCandidateReceipt",
+        "schemaAccepted": true,
+        "legacyRedactionFindingCount": 0,
+        "additionalPrivacyFindingCount": 0
+      }
+    }
+  ],
+  "exclusions": [
+    {
+      "sourcePath": "receipts/2026-11-09-storage-delete-deployment-42547057993.json",
+      "action": "not_copied",
+      "reason": "Deployment or installation evidence remains in Instance."
+    },
+    {
+      "sourcePath": "receipts/2026-11-09-storage-delete-deployment-verification-42547422357.json",
+      "action": "not_copied",
+      "reason": "Deployment or installation evidence remains in Instance."
+    },
+    {
+      "sourcePath": "receipts/2026-11-09-storage-delete-installation-admission-42547057993.json",
+      "action": "not_copied",
+      "reason": "Deployment or installation evidence remains in Instance."
+    },
+    {
+      "sourcePath": "receipts/2026-11-09-storage-delete-installation-verification-42547422357.json",
+      "action": "not_copied",
+      "reason": "Deployment or installation evidence remains in Instance."
+    },
+    {
+      "sourcePath": "receipts/2026-11-09-storage-delete-state-observation-42548117239.json",
+      "action": "not_copied",
+      "reason": "Broad business-state observation excluded from this bounded import."
+    }
+  ],
+  "validationScope": "Original-schema validation, exact Git blob/content hashes, byte equality, Cloud Candidate validation, original-domain identity binding and bounded privacy checks. No new runtime observation or workflow execution."
+}

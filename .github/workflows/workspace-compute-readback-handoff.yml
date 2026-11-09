@@ -1,0 +1,180 @@
+name: Receive Workspace Compute Readback
+
+on:
+  workflow_dispatch:
+    inputs:
+      instance_run_id:
+        description: Completed successful Instance readback workflow run.
+        required: true
+        type: string
+      workspace_id:
+        description: Exact original Workspace identity.
+        required: true
+        type: string
+      workspace_operation_id:
+        description: Exact original Workspace deletion operation identity.
+        required: true
+        type: string
+      candidate_receipt_b64:
+        description: Base64 of the exact expected Cloud Candidate receipt.
+        required: true
+        type: string
+      diagnostic_source_sha:
+        description: Full Cloud diagnostic source SHA reachable from canonical main.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  admission:
+    # Reuse the existing Release admission secret boundary, without private access.
+    environment: cloud-release
+    if: ${{ github.ref == 'refs/heads/main' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    env:
+      INSTANCE_RUN_ID: ${{ inputs.instance_run_id }}
+      WORKSPACE_ID: ${{ inputs.workspace_id }}
+      WORKSPACE_OPERATION_ID: ${{ inputs.workspace_operation_id }}
+      CANDIDATE_RECEIPT_B64: ${{ inputs.candidate_receipt_b64 }}
+      DIAGNOSTIC_SOURCE_SHA: ${{ inputs.diagnostic_source_sha }}
+      CLOUD_CONSUMER_SHA: ${{ github.sha }}
+    steps:
+      - name: Checkout exact Cloud main consumer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: gaofeng21cn/one-person-lab-cloud
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24"
+
+      - name: Admit source, Candidate and independently fetched Instance evidence
+        id: evidence
+        env:
+          INSTANCE_TOKEN: ${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { mkdir, writeFile, appendFile } from 'node:fs/promises';
+          import { join } from 'node:path';
+          import { decodeCandidateReceipt } from './tools/cloud-candidate-receipt.ts';
+          try {
+            const env = process.env;
+            const sha = /^[0-9a-f]{40}$/;
+            if (!/^[1-9][0-9]*$/.test(env.INSTANCE_RUN_ID || '') ||
+                !/^workspace_[a-f0-9]{8,}$/.test(env.WORKSPACE_ID || '') ||
+                !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(env.WORKSPACE_OPERATION_ID || '') ||
+                !sha.test(env.DIAGNOSTIC_SOURCE_SHA || '') || !sha.test(env.CLOUD_CONSUMER_SHA || '') ||
+                !env.INSTANCE_TOKEN || !env.CANDIDATE_RECEIPT_B64 || env.CANDIDATE_RECEIPT_B64.length > 1048576) throw 0;
+            const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+            if (git('rev-parse', 'HEAD') !== env.CLOUD_CONSUMER_SHA) throw 0;
+            git('merge-base', '--is-ancestor', env.CLOUD_CONSUMER_SHA, 'refs/remotes/origin/main');
+            git('merge-base', '--is-ancestor', env.DIAGNOSTIC_SOURCE_SHA, 'refs/remotes/origin/main');
+            const candidate = decodeCandidateReceipt(env.CANDIDATE_RECEIPT_B64);
+            const repository = 'gaofeng21cn/opl-instance-medopl';
+            const endpoint = `https://api.github.com/repos/${repository}/actions/runs/${env.INSTANCE_RUN_ID}`;
+            const get = async url => {
+              const response = await fetch(url, {
+                method: 'GET', redirect: 'error', signal: AbortSignal.timeout(30000),
+                headers: { Authorization: `Bearer ${env.INSTANCE_TOKEN}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
+              });
+              if (!response.ok) throw 0;
+              return response.json();
+            };
+            const positive = value => Number.isSafeInteger(value) && value > 0;
+            const run = await get(endpoint);
+            if (!positive(run.id) || String(run.id) !== env.INSTANCE_RUN_ID || !positive(run.run_attempt) ||
+                run.repository?.full_name !== repository || run.path !== '.github/workflows/cloud-workspace-compute-readback.yml' ||
+                run.event !== 'workflow_dispatch' || run.head_branch !== 'main' || run.status !== 'completed' ||
+                run.conclusion !== 'success' || !sha.test(run.head_sha || '')) throw 0;
+            // Read every page so duplicate names cannot hide after the first page.
+            const artifacts = [];
+            let total;
+            for (let page = 1; ; page++) {
+              const result = await get(`${endpoint}/artifacts?per_page=100&page=${page}`);
+              if (!Number.isSafeInteger(result.total_count) || result.total_count < 1 || result.total_count > 10000 ||
+                  !Array.isArray(result.artifacts) || result.artifacts.length > 100 ||
+                  (total !== undefined && result.total_count !== total)) throw 0;
+              total = result.total_count;
+              artifacts.push(...result.artifacts);
+              if (artifacts.length >= total) break;
+              if (result.artifacts.length !== 100) throw 0;
+            }
+            if (artifacts.length !== total || new Set(artifacts.map(a => a.id)).size !== total) throw 0;
+            const matches = artifacts.filter(a => a.name === `cloud-workspace-compute-readback-handoff-${run.id}-${run.run_attempt}`);
+            if (matches.length !== 1) throw 0;
+            const artifact = matches[0];
+            if (!positive(artifact.id) || artifact.expired !== false || artifact.workflow_run?.id !== run.id ||
+                artifact.workflow_run?.head_sha !== run.head_sha || artifact.workflow_run?.head_branch !== 'main') throw 0;
+            const directory = join(env.RUNNER_TEMP, 'compute-readback-input');
+            await mkdir(directory, { mode: 0o700 });
+            await writeFile(join(directory, 'metadata.json'), JSON.stringify({
+              candidate, run, expectedWorkspaceId: env.WORKSPACE_ID,
+              expectedWorkspaceOperationId: env.WORKSPACE_OPERATION_ID,
+              expectedDiagnosticSourceSha: env.DIAGNOSTIC_SOURCE_SHA,
+            }), { flag: 'wx', mode: 0o600 });
+            await appendFile(env.GITHUB_OUTPUT, `artifact_id=${artifact.id}\n`);
+          } catch {
+            console.error('workspace_compute_readback_handoff_invalid');
+            process.exitCode = 1;
+          }
+          NODE
+
+      - name: Download exact admitted Instance artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          artifact-ids: ${{ steps.evidence.outputs.artifact_id }}
+          merge-multiple: true
+          repository: gaofeng21cn/opl-instance-medopl
+          run-id: ${{ env.INSTANCE_RUN_ID }}
+          github-token: ${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}
+          path: ${{ runner.temp }}/compute-readback-download
+
+      - name: Validate original receipt bytes and retain Cloud binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { constants } from 'node:fs';
+          import { copyFile, mkdir, readdir } from 'node:fs/promises';
+          import { join } from 'node:path';
+          import { main } from './tools/workspace-compute-readback-handoff.ts';
+          try {
+            const root = process.env.RUNNER_TEMP;
+            const source = join(root, 'compute-readback-download');
+            const entries = await readdir(source, { withFileTypes: true });
+            if (entries.length !== 1 || entries[0].name !== 'receipt.json' || !entries[0].isFile()) throw 0;
+            const evidence = join(root, 'compute-readback-evidence');
+            await mkdir(evidence, { mode: 0o700 });
+            // Copy before validation: the retained original bytes are the input.
+            await copyFile(join(source, 'receipt.json'), join(evidence, 'receipt.json'), constants.COPYFILE_EXCL);
+            await main(['import', '--input', join(root, 'compute-readback-input', 'metadata.json'),
+              '--receipt', join(evidence, 'receipt.json'), '--output', join(evidence, 'binding.json')]);
+          } catch {
+            console.error('workspace_compute_readback_handoff_invalid');
+            process.exitCode = 1;
+          }
+          NODE
+
+      # A valid blocked diagnosis is retained. No status asserts deletion/refund completion.
+      - name: Preserve final business evidence in Cloud
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: workspace-compute-readback-${{ env.INSTANCE_RUN_ID }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/compute-readback-evidence/receipt.json
+            ${{ runner.temp }}/compute-readback-evidence/binding.json
+          if-no-files-found: error
+          retention-days: 90

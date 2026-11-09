@@ -96,7 +96,8 @@ test("reused release credential is confined to protected main-only evidence jobs
   const uses: string[] = [];
   const expected = new Map([
     ["release-opl-cloud-image.yml:admission", "cloud-release"],
-    ["cloud-business-readback.yml:readback", "cloud-business-qualification"]
+    ["cloud-business-readback.yml:readback", "cloud-business-qualification"],
+    ["workspace-compute-readback-handoff.yml:admission", "cloud-release"]
   ]);
   for (const file of (await readdir(".github/workflows")).filter((name) => name.endsWith(".yml"))) {
     const workflow = YAML.parse(await readFile(`.github/workflows/${file}`, "utf8"));

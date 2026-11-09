@@ -100,6 +100,15 @@ Domain agents        domain strategy, quality verdict and delivery authority
 
 ## Repository And Instance Topology
 
+Cloud retains customer deletion/recovery decisions, Fabric resource readback,
+refund coordination, diagnostic schemas and final business evidence custody.
+Instance owns deployment and its protected installation environment; a thin
+access adapter may supply bounded private input to Cloud-owned code without
+acquiring customer lifecycle or evidence authority. Deployment receipts remain
+Instance evidence. Historical business imports retain their original producer
+and are never reclassified as current Cloud execution.
+
+
 ```text
 opl-cloud
   product architecture, whitepaper, roadmap
