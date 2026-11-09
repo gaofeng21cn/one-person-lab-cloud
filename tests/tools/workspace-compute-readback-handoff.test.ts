@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 import test, { type TestContext } from "node:test";
 import { parse as parseYaml } from "yaml";
 import { candidateInstallationIdentity, decodeCandidateReceipt } from "../../tools/cloud-candidate-receipt.ts";
-import { validateWorkspaceComputeLiveReadbackReceipt, type WorkspaceComputeLiveReadbackReceipt } from "../../tools/workspace-compute-live-readback.ts";
+import { COMPUTE_READBACK_ERROR as ERROR, validateWorkspaceComputeLiveReadbackReceipt, type WorkspaceComputeLiveReadbackReceipt } from "../../tools/workspace-compute-live-readback.ts";
 import { main, validateWorkspaceComputeReadbackHandoff } from "../../tools/workspace-compute-readback-handoff.ts";
 
 const INVALID = "workspace_compute_readback_handoff_invalid";
@@ -110,6 +110,57 @@ test("binds the original bytes through the live decoder and preserves blocked an
     const compact = JSON.stringify(JSON.parse(source.receiptText));
     assert.notEqual(result.receiptDigest, validateWorkspaceComputeReadbackHandoff({ ...source, receiptText: compact }).receiptDigest);
     assert.doesNotMatch(JSON.stringify(result), /delete(?:d|_complete)|refund|private-token|workspace_12345678|operation_delete_1/u);
+  }
+});
+
+const bindingFailureCodes = [
+  ERROR.WORKSPACE_ACCESS, ERROR.WORKSPACE_BINDING,
+  ERROR.FABRIC_ACCESS, ERROR.FABRIC_BINDING, ERROR.BINDING,
+] as const;
+
+test("CLI roundtrips all blocked binding phases and historical binding receipts", async t => {
+  for (const errorCode of bindingFailureCodes) {
+    await t.test(errorCode, async t => {
+      const files = await cliFiles(await temporary(t));
+      const persisted = change(receipt(), "errorCode", errorCode);
+      const original = `${JSON.stringify(persisted, null, 2)}\n`;
+      await writeFile(files.receiptPath, original);
+      const imported = await main(cliArgs(files));
+      const retained = JSON.parse(await readFile(files.outputPath, "utf8"));
+      assert.deepEqual(retained, imported);
+      assert.equal(retained.receiptStatus, "blocked");
+      assert.equal(retained.errorCode, errorCode);
+      assert.equal(retained.receiptDigest, hash(original));
+      const retainedReceipt = await readFile(files.receiptPath, "utf8");
+      assert.equal(retainedReceipt, original);
+      assert.deepEqual(validateWorkspaceComputeLiveReadbackReceipt(JSON.parse(retainedReceipt)), persisted);
+      assert.deepEqual(validateWorkspaceComputeReadbackHandoff({ ...input(), receiptText: retainedReceipt }), retained);
+    });
+  }
+});
+
+test("binding phase and historical failures reject forged bound identities and observed state through handoff", async t => {
+  for (const errorCode of bindingFailureCodes) {
+    const blocked = change(receipt(), "errorCode", errorCode);
+    const forgeries = [
+      ["Fabric identity", change(blocked, "fabricOperationIdDigest", digest("1"))],
+      ["compute identity", change(blocked, "computeIdDigest", digest("2"))],
+      ["both bound identities", { ...blocked, fabricOperationIdDigest: digest("1"), computeIdDigest: digest("2") }],
+      ["observed status", change(blocked, "status", "observed")],
+      ["complete observed evidence", change(receipt(true), "errorCode", errorCode)],
+    ] as const;
+    for (const [name, persisted] of forgeries) {
+      await t.test(`${errorCode}: ${name}`, () => {
+        invalid(() => validateWorkspaceComputeReadbackHandoff({ ...input(), receiptText: JSON.stringify(persisted) }));
+      });
+    }
+  }
+});
+
+test("persisted blocked and observed receipts reject unknown phase codes through handoff", () => {
+  for (const observed of [false, true]) {
+    const persisted = change(receipt(observed), "errorCode", "compute_live_unknown_phase");
+    invalid(() => validateWorkspaceComputeReadbackHandoff({ ...input(observed), receiptText: JSON.stringify(persisted) }));
   }
 });
 
