@@ -102,9 +102,14 @@ compute probe for this Workspace and cannot prove CVM absence.
 retain exact bytes and source provenance from the unmerged Instance #702 head;
 they are not new Cloud producer executions. Final business evidence custody,
 diagnostic rules and validators belong to Cloud. Instance keeps installation
-and deployment evidence; #702 must be narrowed accordingly before integration.
-The Cloud diagnostic CLI now has a pure producer and strict receipt validator;
-its source verification is recorded in the delivery PR. Protected adapter/image
+and deployment evidence; #702's proposed tree now retains only the Candidate
+installation input and four installation/deployment receipts. Its original
+commit remains the import provenance. The Cloud diagnostic CLI has a pure
+producer and strict receipt validator; focused verification against main source
+`059f7e03b861a25672aee1614caef903d4b01da1` passed 44 executed tests with zero
+failures/skips/TODOs, the product boundary, development-tool typecheck, unbound
+identifier and whitespace checks. The new production tool also passed direct
+strict TypeScript compilation. Delivery is tracked in Cloud #1146. Protected adapter/image
 binding, Cloud artifact handoff and an actual matching runtime diagnostic remain
 unexecuted. No new runtime read, provider mutation, resume or refund is implied
 by this source/evidence-custody change.
