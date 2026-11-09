@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
-import { createServer } from "vite";
+import { createServer, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
 
 import type { Page, Route } from "playwright";
@@ -697,11 +700,25 @@ function cloudOperatorWorkspace(id: string): OperatorWorkspaceDTO {
   };
 }
 
-test("Cloud resource UI preserves owner facts, unavailable reasons and confirmed absence across desktop and mobile", { timeout: 60_000 }, async () => {
+test("Cloud resource UI preserves owner facts, unavailable reasons and confirmed absence across desktop and mobile", { timeout: 60_000 }, async (t) => {
   const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
   process.env.VITE_CONSOLE_IDENTITY = "cloud";
-  const server = await createServer({
-    configFile: false, logLevel: "silent",
+  t.after(() => {
+    if (previousIdentity === undefined) delete process.env.VITE_CONSOLE_IDENTITY;
+    else process.env.VITE_CONSOLE_IDENTITY = previousIdentity;
+  });
+  // This React-only fixture must not replace the parallel demo servers' optimized dependencies.
+  const cacheDir = await mkdtemp(join(tmpdir(), "opl-operator-resource-vite-"));
+  let server: ViteDevServer | undefined;
+  t.after(async () => {
+    try {
+      await server?.close();
+    } finally {
+      await rm(cacheDir, { recursive: true, force: true });
+    }
+  });
+  server = await createServer({
+    configFile: false, cacheDir, logLevel: "silent",
     server: { host: "127.0.0.1", port: 0 },
     plugins: [react(), {
       name: "cloud-operator-owner-test",
@@ -742,6 +759,14 @@ test("Cloud resource UI preserves owner facts, unavailable reasons and confirmed
   const requests: string[] = [];
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    const browserErrors: string[] = [];
+    page.on("pageerror", (error) => browserErrors.push(error.stack || error.message));
+    page.on("requestfailed", (request) => browserErrors.push(`${request.url()}: ${request.failure()?.errorText}`));
+    page.on("response", (response) => {
+      if (response.status() >= 400 && !new URL(response.url()).pathname.startsWith("/api/")) {
+        browserErrors.push(`${response.status()} ${response.url()}`);
+      }
+    });
     await page.route("**/api/**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       if (!path.startsWith("/api/")) return route.continue();
@@ -756,7 +781,12 @@ test("Cloud resource UI preserves owner facts, unavailable reasons and confirmed
     });
     await page.goto(`http://127.0.0.1:${address.port}/__cloud-operator.html`);
     const row = workspaceRow(page, "ws-native");
-    await row.waitFor();
+    try {
+      await row.waitFor();
+    } catch (error) {
+      t.diagnostic(`Operator fixture browser errors: ${JSON.stringify(browserErrors)}`);
+      throw error;
+    }
     assert.match(await row.innerText(), /来源：workspace/);
     assert.match(await row.innerText(), /来源：fabric/);
     assert.match(await row.innerText(), /tenant-ws-native/);
@@ -859,8 +889,6 @@ test("Cloud resource UI preserves owner facts, unavailable reasons and confirmed
     assert.equal(JSON.parse(snapshot!).workspaces.value.source, "workspace+fabric+serve");
     assert.equal(requests.some((path) => path.startsWith("/api/operator/")), false);
   } finally {
-    if (previousIdentity === undefined) delete process.env.VITE_CONSOLE_IDENTITY;
-    else process.env.VITE_CONSOLE_IDENTITY = previousIdentity;
-    await browser.close(); await server.close();
+    await browser.close();
   }
 });

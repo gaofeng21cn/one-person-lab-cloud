@@ -1,5 +1,30 @@
 # OPL Console
 
+## Agent-assisted read and review
+
+The authenticated Console BFF provides read-only MCP tools at `/api/v2/mcp`.
+`cloud_list_compute_plans`, `cloud_list_storage_plans` and
+`cloud_list_workspaces` take an optional `cursor` and a page `limit` from 1 to
+100. `cloud_get_quote`, `cloud_get_workspace` and
+`cloud_get_workspace_operation` take an exact `id` and an optional
+`expectedRevision` from the previous read. Results keep the owner's JSON and
+observation time, including unknown operation outcomes. No tool starts or
+retries a purchase, renews, deletes, changes a balance or reveals credentials.
+
+An existing quote read returns its `reviewPath` on the same Cloud origin.
+Opening it in an authenticated browser displays that exact quote's amount,
+application, plans, models, period, expiry and terms. Reopening performs a fresh
+authorized read; a changed quote returns `stale_revision` and requires a new
+Agent read. Closing the view changes no operation. Use the existing Console
+Workspace flow for purchase confirmation and read the original operation after
+an uncertain response.
+
+The endpoint uses CloudIdentity's existing session and same-origin boundary.
+Hosts must keep session material inside their trusted transport, never in
+prompts or tool inputs. It is not an independently logged-in public MCP
+connector; source and installed-carrier evidence are separate. Implementation
+details belong to [Agent reads](implementation-architecture.md#agent-reads-and-quote-review).
+
 Owner: `one-person-lab-cloud`
 Purpose: `console_target_reference`
 State: `active_target_reference`
