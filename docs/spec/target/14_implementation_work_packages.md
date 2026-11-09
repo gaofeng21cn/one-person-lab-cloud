@@ -266,7 +266,7 @@
 
 **主实现表（字段唯一来源02，不在此复制字段定义）**：`tenant.tenants`, `tenant.tenant_members`, `tenant.tenant_repository_bindings`, `tenant.invitations`, `tenant.sessions`, `tenant.audit_events`, `tenant.authorization_contexts`, `tenant.accepted_operation_grants`
 
-**内部协议实现/协作端口**：`TenantProductService.GetLoginContext`, `TenantProductService.Login`, `TenantProductService.GetSession`, `TenantProductService.Logout`, `TenantProductService.GetTenant`, `TenantProductService.ListMembers`, `TenantProductService.ListInvitations`, `TenantProductService.InviteMember`, `TenantProductService.AcceptInvitation`, `TenantProductService.RevokeInvitation`, `TenantProductService.UpdateMemberRole`, `TenantProductService.RemoveMember`, `CloudIdentityAuthorization.AuthorizeAction`, `CloudIdentityAuthorization.GetAuthorizationContext`, `CloudIdentityAuthorization.IssueAcceptedOperationGrant`
+**内部协议实现/协作端口**：`TenantProductService.GetLoginContext`, `TenantProductService.Login`, `TenantProductService.GetSession`, `TenantProductService.Logout`, `TenantProductService.IssueAgentCredential`, `TenantProductService.ResolveAgentCredential`, `TenantProductService.ListAgentCredentials`, `TenantProductService.RevokeAgentCredential`, `TenantProductService.GetTenant`, `TenantProductService.ListMembers`, `TenantProductService.ListInvitations`, `TenantProductService.InviteMember`, `TenantProductService.AcceptInvitation`, `TenantProductService.RevokeInvitation`, `TenantProductService.UpdateMemberRole`, `TenantProductService.RemoveMember`, `CloudIdentityAuthorization.AuthorizeAction`, `CloudIdentityAuthorization.GetAuthorizationContext`, `CloudIdentityAuthorization.IssueAcceptedOperationGrant`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder

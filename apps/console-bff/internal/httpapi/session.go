@@ -52,6 +52,14 @@ type IdentityReader interface {
 // CloudIdentity. A missing cookie is a client error; an unknown or expired session
 // is reported by CloudIdentity and surfaces unchanged.
 func RequireSession(ctx context.Context, identity IdentityReader, request *http.Request) (Caller, error) {
+	if credential, ok := ctx.Value(agentCredentialContextKey{}).(string); ok {
+		return resolveAgentCaller(ctx, identity, credential)
+	}
+	// Bearers are accepted only by the MCP transport, which supplies the private
+	// in-process context above. They never select a browser REST identity.
+	if request.Header.Get("Authorization") != "" {
+		return Caller{}, ErrSessionRequired
+	}
 	if identity == nil {
 		return Caller{}, fmt.Errorf("CloudIdentity is not configured: %w", ErrSessionRequired)
 	}

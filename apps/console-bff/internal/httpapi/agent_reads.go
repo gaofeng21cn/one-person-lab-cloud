@@ -24,9 +24,18 @@ func (s *Server) registerAgentReadRoutes(mux *http.ServeMux) {
 	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 	mux.Handle("/api/v2/mcp", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
-		if r.Header.Get("Sec-Fetch-Site") == "cross-site" || !sameOrigin(r) {
+		bearer := len(r.Header.Values("Authorization")) != 0
+		if r.Header.Get("Sec-Fetch-Site") == "cross-site" || ((!bearer || r.Header.Get("Origin") != "") && !sameOrigin(r)) {
 			writePublisherError(w, r, 403, "origin_rejected", "same-origin request required")
 			return
+		}
+		if bearer {
+			credential, err := agentBearer(r)
+			if err != nil {
+				writePublisherIdentityError(w, r, err)
+				return
+			}
+			r = r.WithContext(context.WithValue(r.Context(), agentCredentialContextKey{}, credential))
 		}
 		if _, err := RequireSession(r.Context(), s.identity, r); err != nil {
 			writePublisherIdentityError(w, r, err)
@@ -143,6 +152,10 @@ func readAgentOwner(routes http.Handler, request *http.Request, path string) (ag
 	r.Header = request.Header.Clone()
 	r.Header.Del("Content-Type")
 	r.Header.Del("Content-Length")
+	if _, ok := r.Context().Value(agentCredentialContextKey{}).(string); ok {
+		r.Header.Del("Authorization")
+		r.Header.Del("Cookie")
+	}
 	response := &agentReadWriter{header: make(http.Header)}
 	routes.ServeHTTP(response, r)
 	if response.status != http.StatusOK {

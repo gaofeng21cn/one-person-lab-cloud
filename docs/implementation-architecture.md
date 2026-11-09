@@ -29,12 +29,34 @@ preserves integer USD micros, escapes owner text and shows the original terms.
 It has no purchase or approval mutation. Console continues to own the existing
 purchase interaction, and Workspace owns its operation and idempotency.
 
-This endpoint consumes the existing CloudIdentity browser session and requires
-the instance's same-origin `Origin` header. A trusted carrier can call it only
-while holding that authorized session outside model/UI tool arguments. Cloud
-does not currently expose an MCP OAuth/token-exchange flow or install a
-cross-host credential bridge. The read tools remain fully structured without
-UI support; installed cross-host access is tracked in the
+CloudIdentity also issues short-lived credentials for a trusted external carrier.
+The authenticated browser page `/api/v2/agent/connections` downloads a credential
+once and exposes safe connection metadata and revocation. Issuance, listing and
+revocation use `/api/v2/auth/agent-credentials`; writes require the current
+browser cookie, same origin and session CSRF. The Cloud-owned
+[connection helper](runtime/cloud-connect.md) imports the download and injects
+the secret into MCP transport. Framework receives only an opaque credential
+reference and public owner readback.
+
+CloudIdentity stores the secret's hash in its existing Tenant database. A
+subordinate session preserves the existing authorization-context foreign key;
+its `agent:` reference is not a browser cookie. Each credential freezes its
+Tenant, permits only the six MCP tools' eight owner read actions, and expires
+within one hour or at the parent browser session's earlier expiry. Workspace
+detail's closure includes Serve `ListDeployments` and `GetWorkspaceAccess`.
+Every owner authorization rechecks the credential, parent session, current
+Tenant/member permission and external actor status. Revocation, logout,
+expired sessions, changed Tenant and disabled actors refuse the next call.
+Ordinary session-only RPCs reject subordinate references.
+
+Only `/api/v2/mcp` accepts the Bearer. An external carrier may omit `Origin`;
+an Origin supplied by a browser must still match. Mixed cookie/Bearer requests
+and Bearers on ordinary REST routes are refused. Each fixed internal GET
+receives private request context and resolves the credential again, without
+forwarding the Bearer or browser cookie to an owner. The browser quote review
+continues to require its own live login. This is a bounded parent-session
+connection, not OAuth or a renewable personal access token. Instance adoption
+and installed-host acceptance remain separate outcomes in the
 [roadmap](roadmap.md#agent-read-carrier-adoption).
 
 ## Application Origin Identity

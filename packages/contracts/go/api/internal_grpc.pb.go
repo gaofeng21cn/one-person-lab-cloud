@@ -24,6 +24,10 @@ const (
 	TenantProductService_Login_FullMethodName                       = "/opl.cloud.api.TenantProductService/Login"
 	TenantProductService_GetSession_FullMethodName                  = "/opl.cloud.api.TenantProductService/GetSession"
 	TenantProductService_Logout_FullMethodName                      = "/opl.cloud.api.TenantProductService/Logout"
+	TenantProductService_IssueAgentCredential_FullMethodName        = "/opl.cloud.api.TenantProductService/IssueAgentCredential"
+	TenantProductService_ResolveAgentCredential_FullMethodName      = "/opl.cloud.api.TenantProductService/ResolveAgentCredential"
+	TenantProductService_ListAgentCredentials_FullMethodName        = "/opl.cloud.api.TenantProductService/ListAgentCredentials"
+	TenantProductService_RevokeAgentCredential_FullMethodName       = "/opl.cloud.api.TenantProductService/RevokeAgentCredential"
 	TenantProductService_GetTenant_FullMethodName                   = "/opl.cloud.api.TenantProductService/GetTenant"
 	TenantProductService_ListMembers_FullMethodName                 = "/opl.cloud.api.TenantProductService/ListMembers"
 	TenantProductService_ListInvitations_FullMethodName             = "/opl.cloud.api.TenantProductService/ListInvitations"
@@ -53,6 +57,10 @@ type TenantProductServiceClient interface {
 	Login(ctx context.Context, in *LoginRpcRequest, opts ...grpc.CallOption) (*Session, error)
 	GetSession(ctx context.Context, in *GetSessionRpcRequest, opts ...grpc.CallOption) (*Session, error)
 	Logout(ctx context.Context, in *LogoutRpcRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	IssueAgentCredential(ctx context.Context, in *IssueAgentCredentialRpcRequest, opts ...grpc.CallOption) (*IssuedAgentCredential, error)
+	ResolveAgentCredential(ctx context.Context, in *ResolveAgentCredentialRequest, opts ...grpc.CallOption) (*ResolvedAgentCredential, error)
+	ListAgentCredentials(ctx context.Context, in *ListAgentCredentialsRpcRequest, opts ...grpc.CallOption) (*AgentCredentialPage, error)
+	RevokeAgentCredential(ctx context.Context, in *RevokeAgentCredentialRpcRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetTenant(ctx context.Context, in *GetTenantRpcRequest, opts ...grpc.CallOption) (*Tenant, error)
 	ListMembers(ctx context.Context, in *ListMembersRpcRequest, opts ...grpc.CallOption) (*MemberPage, error)
 	ListInvitations(ctx context.Context, in *ListInvitationsRpcRequest, opts ...grpc.CallOption) (*InvitationPage, error)
@@ -116,6 +124,46 @@ func (c *tenantProductServiceClient) Logout(ctx context.Context, in *LogoutRpcRe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, TenantProductService_Logout_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tenantProductServiceClient) IssueAgentCredential(ctx context.Context, in *IssueAgentCredentialRpcRequest, opts ...grpc.CallOption) (*IssuedAgentCredential, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(IssuedAgentCredential)
+	err := c.cc.Invoke(ctx, TenantProductService_IssueAgentCredential_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tenantProductServiceClient) ResolveAgentCredential(ctx context.Context, in *ResolveAgentCredentialRequest, opts ...grpc.CallOption) (*ResolvedAgentCredential, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResolvedAgentCredential)
+	err := c.cc.Invoke(ctx, TenantProductService_ResolveAgentCredential_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tenantProductServiceClient) ListAgentCredentials(ctx context.Context, in *ListAgentCredentialsRpcRequest, opts ...grpc.CallOption) (*AgentCredentialPage, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AgentCredentialPage)
+	err := c.cc.Invoke(ctx, TenantProductService_ListAgentCredentials_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tenantProductServiceClient) RevokeAgentCredential(ctx context.Context, in *RevokeAgentCredentialRpcRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, TenantProductService_RevokeAgentCredential_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -320,6 +368,10 @@ type TenantProductServiceServer interface {
 	Login(context.Context, *LoginRpcRequest) (*Session, error)
 	GetSession(context.Context, *GetSessionRpcRequest) (*Session, error)
 	Logout(context.Context, *LogoutRpcRequest) (*emptypb.Empty, error)
+	IssueAgentCredential(context.Context, *IssueAgentCredentialRpcRequest) (*IssuedAgentCredential, error)
+	ResolveAgentCredential(context.Context, *ResolveAgentCredentialRequest) (*ResolvedAgentCredential, error)
+	ListAgentCredentials(context.Context, *ListAgentCredentialsRpcRequest) (*AgentCredentialPage, error)
+	RevokeAgentCredential(context.Context, *RevokeAgentCredentialRpcRequest) (*emptypb.Empty, error)
 	GetTenant(context.Context, *GetTenantRpcRequest) (*Tenant, error)
 	ListMembers(context.Context, *ListMembersRpcRequest) (*MemberPage, error)
 	ListInvitations(context.Context, *ListInvitationsRpcRequest) (*InvitationPage, error)
@@ -360,6 +412,18 @@ func (UnimplementedTenantProductServiceServer) GetSession(context.Context, *GetS
 }
 func (UnimplementedTenantProductServiceServer) Logout(context.Context, *LogoutRpcRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Logout not implemented")
+}
+func (UnimplementedTenantProductServiceServer) IssueAgentCredential(context.Context, *IssueAgentCredentialRpcRequest) (*IssuedAgentCredential, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method IssueAgentCredential not implemented")
+}
+func (UnimplementedTenantProductServiceServer) ResolveAgentCredential(context.Context, *ResolveAgentCredentialRequest) (*ResolvedAgentCredential, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ResolveAgentCredential not implemented")
+}
+func (UnimplementedTenantProductServiceServer) ListAgentCredentials(context.Context, *ListAgentCredentialsRpcRequest) (*AgentCredentialPage, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListAgentCredentials not implemented")
+}
+func (UnimplementedTenantProductServiceServer) RevokeAgentCredential(context.Context, *RevokeAgentCredentialRpcRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RevokeAgentCredential not implemented")
 }
 func (UnimplementedTenantProductServiceServer) GetTenant(context.Context, *GetTenantRpcRequest) (*Tenant, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTenant not implemented")
@@ -507,6 +571,78 @@ func _TenantProductService_Logout_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(TenantProductServiceServer).Logout(ctx, req.(*LogoutRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TenantProductService_IssueAgentCredential_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(IssueAgentCredentialRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantProductServiceServer).IssueAgentCredential(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantProductService_IssueAgentCredential_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantProductServiceServer).IssueAgentCredential(ctx, req.(*IssueAgentCredentialRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TenantProductService_ResolveAgentCredential_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResolveAgentCredentialRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantProductServiceServer).ResolveAgentCredential(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantProductService_ResolveAgentCredential_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantProductServiceServer).ResolveAgentCredential(ctx, req.(*ResolveAgentCredentialRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TenantProductService_ListAgentCredentials_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAgentCredentialsRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantProductServiceServer).ListAgentCredentials(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantProductService_ListAgentCredentials_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantProductServiceServer).ListAgentCredentials(ctx, req.(*ListAgentCredentialsRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TenantProductService_RevokeAgentCredential_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeAgentCredentialRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantProductServiceServer).RevokeAgentCredential(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantProductService_RevokeAgentCredential_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantProductServiceServer).RevokeAgentCredential(ctx, req.(*RevokeAgentCredentialRpcRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -875,6 +1011,22 @@ var TenantProductService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Logout",
 			Handler:    _TenantProductService_Logout_Handler,
+		},
+		{
+			MethodName: "IssueAgentCredential",
+			Handler:    _TenantProductService_IssueAgentCredential_Handler,
+		},
+		{
+			MethodName: "ResolveAgentCredential",
+			Handler:    _TenantProductService_ResolveAgentCredential_Handler,
+		},
+		{
+			MethodName: "ListAgentCredentials",
+			Handler:    _TenantProductService_ListAgentCredentials_Handler,
+		},
+		{
+			MethodName: "RevokeAgentCredential",
+			Handler:    _TenantProductService_RevokeAgentCredential_Handler,
 		},
 		{
 			MethodName: "GetTenant",

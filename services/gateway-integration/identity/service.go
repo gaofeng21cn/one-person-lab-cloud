@@ -252,6 +252,13 @@ func (s *Service) activeSubject(ctx context.Context, actor string) error {
 	return nil
 }
 func (s *Service) session(ctx context.Context, ref string) (*api.Session, int64, bool, error) {
+	if isAgentSession(ref) {
+		return nil, 0, false, denied()
+	}
+	return s.storedSession(ctx, ref)
+}
+
+func (s *Service) storedSession(ctx context.Context, ref string) (*api.Session, int64, bool, error) {
 	out := &api.Session{}
 	var tenant, role sql.NullString
 	var expires time.Time
@@ -283,6 +290,9 @@ func (s *Service) GetSession(ctx context.Context, r *api.GetSessionRpcRequest) (
 		return nil, e
 	}
 	raw := r.GetContext().GetSessionId()
+	if isAgentSession(raw) || strings.HasPrefix(raw, agentCredentialPrefix) {
+		return nil, denied()
+	}
 	out, _, _, e := s.session(ctx, owneridentity.SessionReference(raw))
 	if e != nil {
 		return nil, e

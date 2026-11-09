@@ -20,6 +20,7 @@ func NewPublisherHandler(capability api.CapabilityProductServiceClient, runtimeC
 type IdentityClient interface {
 	IdentityReader
 	httpapi.LoginReader
+	httpapi.AgentCredentialReader
 	Close()
 }
 

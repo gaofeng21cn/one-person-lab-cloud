@@ -19,11 +19,16 @@ Agent read. Closing the view changes no operation. Use the existing Console
 Workspace flow for purchase confirmation and read the original operation after
 an uncertain response.
 
-The endpoint uses CloudIdentity's existing session and same-origin boundary.
-Hosts must keep session material inside their trusted transport, never in
-prompts or tool inputs. It is not an independently logged-in public MCP
-connector; source and installed-carrier evidence are separate. Implementation
-details belong to [Agent reads](implementation-architecture.md#agent-reads-and-quote-review).
+To connect an external Agent, sign in to Cloud and open
+`/api/v2/agent/connections`. Name the connection, download its one-time
+credential JSON, and import it with the [Cloud connection helper](runtime/cloud-connect.md).
+The page lists connection metadata and can revoke a connection. Access lasts
+at most one hour and ends when the original Cloud session ends; the next call
+also rechecks current membership and account status. Keep the downloaded file
+out of chat and tool arguments. The helper owns secret custody, while Framework
+uses an opaque reference. The browser quote review uses the browser's own login.
+Implementation details belong to
+[Agent reads](implementation-architecture.md#agent-reads-and-quote-review).
 
 Owner: `one-person-lab-cloud`
 Purpose: `console_target_reference`
