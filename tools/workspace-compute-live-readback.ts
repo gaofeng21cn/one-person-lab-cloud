@@ -123,7 +123,8 @@ function validateObservation(value: unknown): Observation {
       !(o.cvmRequestIdDigest === null || digest(o.cvmRequestIdDigest))) fail();
   const allocation = validateCell(o.allocationStatus, ["external_deleted"]), tke = validateCell(o.tkeStatus, ["NOT_FOUND"]);
   const cvm = validateCell(o.cvmStatus, ["NOT_FOUND", "SHUTDOWN"]);
-  validateCell(o.isolatedSource, ["MANMADE"]);
+  const isolated = validateCell(o.isolatedSource, ["MANMADE"]);
+  if (o.machineType !== "NativeCVM" && (cvm.digest !== null || o.cvmRequestIdDigest !== null || isolated.digest !== null)) fail();
   if (allocation.digest === null || tke.digest === null || o.machineType === "NativeCVM" && o.machinePresent === false && (cvm.digest === null || o.cvmRequestIdDigest === null)) fail();
   if (allocation.value === "external_deleted" && (o.machinePresent !== false || tke.value !== "NOT_FOUND" ||
       o.machineType === "NativeCVM" && cvm.value !== "NOT_FOUND")) fail();

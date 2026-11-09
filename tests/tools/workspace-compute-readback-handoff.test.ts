@@ -151,27 +151,52 @@ test("persisted JSON receipt rejects contradictory NativeCVM absence evidence th
 
 test("persisted JSON receipt preserves legal machineType strings and still-present diagnostics through handoff", async t => {
   for (const machineType of ["NativeCVM", "Native", "CXM"]) {
-    for (const state of ["still-present SHUTDOWN", "still-present unknown without CVM request", "absent"]) {
+    const states = machineType === "NativeCVM"
+      ? ["machine-present", "CVM-SHUTDOWN", "absent"]
+      : ["machine-present", "absent"];
+    for (const state of states) {
       await t.test(`${machineType}: ${state}`, () => {
         const persisted = change(receipt(true), "observation.machineType", machineType);
-        if (state === "absent") {
+        Object.assign(persisted.observation!, {
+          cvmStatus: { value: null, digest: null }, cvmRequestIdDigest: null,
+          isolatedSource: { value: null, digest: null },
+        });
+        if (state !== "machine-present") {
           Object.assign(persisted.observation!, {
             machinePresent: false,
-            allocationStatus: { value: "external_deleted", digest: hash("external_deleted") },
+            allocationStatus: state === "absent"
+              ? { value: "external_deleted", digest: hash("external_deleted") }
+              : { value: null, digest: hash("active") },
             tkeStatus: { value: "NOT_FOUND", digest: hash("NOT_FOUND") },
-            cvmStatus: machineType === "NativeCVM" ? { value: "NOT_FOUND", digest: hash("NOT_FOUND") } : { value: null, digest: null },
-            cvmRequestIdDigest: machineType === "NativeCVM" ? digest("9") : null,
           });
-        } else if (state === "still-present unknown without CVM request") {
-          Object.assign(persisted.observation!, {
-            cvmStatus: { value: null, digest: hash("unknown") }, cvmRequestIdDigest: null,
-          });
+          if (machineType === "NativeCVM") {
+            const cvmStatus = state === "absent" ? "NOT_FOUND" : "SHUTDOWN";
+            persisted.observation!.cvmStatus = { value: cvmStatus, digest: hash(cvmStatus) };
+            persisted.observation!.cvmRequestIdDigest = digest("9");
+            if (state === "CVM-SHUTDOWN") persisted.observation!.isolatedSource = { value: "MANMADE", digest: hash("MANMADE") };
+          }
         }
         const receiptText = JSON.stringify(persisted);
         const result = validateWorkspaceComputeReadbackHandoff({ ...input(true), receiptText });
         assert.equal(result.receiptStatus, "observed");
         assert.equal(result.errorCode, "none");
         assert.equal(result.receiptDigest, hash(receiptText));
+      });
+    }
+  }
+});
+
+test("TKE-only receipt types reject CVM evidence through handoff", async t => {
+  for (const machineType of ["Native", "CXM"]) {
+    for (const field of ["cvmStatus", "cvmRequestIdDigest", "isolatedSource"] as const) {
+      await t.test(`${machineType}: ${field}`, () => {
+        const persisted = change(receipt(true), "observation.machineType", machineType);
+        Object.assign(persisted.observation!, {
+          cvmStatus: { value: null, digest: null }, cvmRequestIdDigest: null,
+          isolatedSource: { value: null, digest: null },
+        });
+        const invalidReceipt = change(persisted, `observation.${field}`, receipt(true).observation![field]);
+        invalid(() => validateWorkspaceComputeReadbackHandoff({ ...input(true), receiptText: JSON.stringify(invalidReceipt) }));
       });
     }
   }
