@@ -56,9 +56,13 @@ business schemas or a second canonical evidence archive. The workflow tables
 below retain their observed historical baseline; their remaining artifact
 handoffs are migration gaps, not permission to extend Instance business ownership.
 
-Cloud now has a bounded dispatcher diagnostic producer/validator and CLI, with
-[operation rules](../runtime/release.md#workspace-deletion-diagnostics-and-evidence-custody).
-The actual protected adapter and Cloud artifact handoff are still open. The
+Cloud has bounded dispatcher and live-compute diagnostic producers/validators,
+with [operation rules](../runtime/release.md#workspace-deletion-diagnostics-and-evidence-custody).
+The live-compute source separates a companion protected Instance transport
+adapter from Cloud's SQL, receipt schema, projection and final artifact consumer.
+Both owner entries still require merge and actual execution before this handoff
+is runtime evidence; no existing business mutation caller is moved by a source
+only diagnostic addition. The
 [eight original business receipts and Candidate input](../evidence/workspace-deletion/2026-11-09-1042/manifest.json)
 are exact historical imports from the unmerged Instance #702 head. Their original
 schema, producing runs and validator revisions remain authoritative; relocation

@@ -13,6 +13,8 @@ const OPERATION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 const MAX_EXCERPT_BYTES = 1024 * 1024;
 const SAFE_ERRORS = new Set([
   "compute_allocation_not_found",
+  "tencent_read_compute_destroy_machine_failed",
+  "tencent_read_compute_destroy_cvm_failed",
   "compute_destroy_status_readback_unavailable",
   "compute_destroy_status_readback_mismatch",
   "compute_readback_history_unavailable",
@@ -117,6 +119,14 @@ function digest(value: unknown): value is string {
   return typeof value === "string" && DIGEST.test(value);
 }
 
+// Shared by the log diagnostic and the live owner read. Never expose the raw
+// provider message: it may contain cloud identifiers, addresses or credentials.
+export function projectComputeReadbackError(rawError: string): { errorToken: string | null; errorDigest: string } {
+  if (!rawError || Buffer.byteLength(rawError, "utf8") > MAX_EXCERPT_BYTES) fail();
+  const errorToken = [...SAFE_ERRORS].find(code => rawError === code || rawError.startsWith(`${code}:`)) ?? null;
+  return { errorToken, errorDigest: hash(rawError) };
+}
+
 export function produceWorkspaceFabricDispatchErrorReadback(input: {
   candidate: unknown;
   binding: unknown;
@@ -148,8 +158,7 @@ export function produceWorkspaceFabricDispatchErrorReadback(input: {
     if (!inOperationWindow(observedAt, input.fabricOperationUpdatedAt)) continue;
     const rawError = parsed[3];
     if (!rawError) fail();
-    const errorToken = [...SAFE_ERRORS].find(code => rawError === code || rawError.startsWith(`${code}: `)) ?? null;
-    matches.push({ observedAt, errorToken, errorDigest: hash(rawError) });
+    matches.push({ observedAt, ...projectComputeReadbackError(rawError) });
   }
 
   const receipt: WorkspaceFabricDispatchErrorReceipt = {

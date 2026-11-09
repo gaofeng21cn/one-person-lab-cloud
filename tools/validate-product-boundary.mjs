@@ -14,7 +14,8 @@ const allowedWorkflows = new Set([
   "release-opl-cloud-image.yml",
   "release-opl-cloud-public-readback.yml",
   "whitepaper.yml",
-  "warm-ci-caches.yml"
+  "warm-ci-caches.yml",
+  "workspace-compute-readback-handoff.yml"
 ]);
 
 const workflows = (await readdir(workflowRoot)).filter((name) => name.endsWith(".yml"));
@@ -35,7 +36,8 @@ if (unexpectedWorkflows.length > 0) {
 // its exact protected environment; never expose it to Candidate or PR jobs.
 const credentialEnvironments = {
   "release-opl-cloud-image.yml:admission": "cloud-release",
-  "cloud-business-readback.yml:readback": "cloud-business-qualification"
+  "cloud-business-readback.yml:readback": "cloud-business-qualification",
+  "workspace-compute-readback-handoff.yml:admission": "cloud-release"
 };
 for (const name of workflows) {
   const workflow = YAML.parse(await readFile(new URL(name, workflowRoot), "utf8"));

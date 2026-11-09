@@ -18,7 +18,8 @@ const workflows = [
   "release-opl-cloud-image.yml",
   "release-opl-cloud-public-readback.yml",
   "whitepaper.yml",
-  "warm-ci-caches.yml"
+  "warm-ci-caches.yml",
+  "workspace-compute-readback-handoff.yml"
 ];
 const inputs = [
   "compose.yaml",
@@ -90,6 +91,44 @@ test("WebUI input publication cannot widen into Product source or protected Inst
       const result = validate(directory);
       assert.equal(result.status, 1, result.stdout);
       assert.match(result.stderr, /Cloud Agent WebUI workflow authority boundary is invalid/);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+});
+
+
+test("an unregistered workflow is refused even when copied from the admitted read-only receiver", async () => {
+  const directory = await boundaryFixture();
+  try {
+    await cp(
+      join(directory, ".github/workflows/workspace-compute-readback-handoff.yml"),
+      join(directory, ".github/workflows/unregistered-readback.yml")
+    );
+    const result = validate(directory);
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stderr, /unexpected Cloud workflow: unregistered-readback\.yml/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("the admitted receiver still requires the exact existing Release secret environment and owner gate", async () => {
+  for (const [before, after] of [
+    ["environment: cloud-release", "environment: production"],
+    ["github.ref == 'refs/heads/main'", "github.ref_type == 'branch'"],
+    ["github.actor == github.triggering_actor", "true"],
+    ["github.actor == 'RenDeHuang'", "github.actor == 'unapproved'"],
+  ]) {
+    const directory = await boundaryFixture();
+    try {
+      const path = join(directory, ".github/workflows/workspace-compute-readback-handoff.yml");
+      const source = await readFile(path, "utf8");
+      assert.ok(source.includes(before));
+      await writeFile(path, source.replace(before, after));
+      const result = validate(directory);
+      assert.equal(result.status, 1, result.stdout);
+      assert.match(result.stderr, /Cloud publisher credential requires its protected environment and owner gate: workspace-compute-readback-handoff\.yml:admission/);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

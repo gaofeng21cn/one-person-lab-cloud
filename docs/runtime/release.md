@@ -55,6 +55,61 @@ caller-supplied excerpt alone is not authenticated runtime evidence. Historical
 imports keep their original bytes, schema, producer and run provenance; moving
 custody never relabels them as a new successful Cloud execution.
 
+### Live Compute Readback
+
+`tools/workspace-compute-live-readback.ts` owns the live compute diagnostic and
+strict receipt decoder. It binds the original Workspace `delete_workspace`
+operation to its accepted resource set, original Fabric `resource_delete`
+operation, unique compute resource and original compute delete action. The
+Workspace and Fabric databases are queried separately through read-only
+connections. The Instance adapter supplies transport, installation identity and
+protected Secret access; SQL, binding decisions and business projections remain
+Cloud source.
+
+The only provider-facing request is the existing Fabric
+`GET /fabric/compute-allocations/{id}/destroy-status`. Its owning Service may
+hydrate its in-memory resource map from retained history, but this read does not
+write a deletion journal, mutate a provider resource or resume the Workspace.
+The Tencent adapter reads the persisted Machine type. For `NativeCVM`, it first
+reads the exact TKE Machine and, only after Machine absence, the original CVM
+through `DescribeInstances`. A Machine still present does not imply a CVM query.
+A recycled `SHUTDOWN`/`MANMADE` CVM remains present. Native/CXM reads retain their
+TKE-only scope. Unknown states and failed reads never establish absence.
+
+The companion Instance source entry is
+`.github/workflows/cloud-workspace-compute-readback.yml`. It runs only from
+Instance `main` in protected `production`, admits a full immutable Cloud
+`diagnostic_source_sha` already reachable from canonical Cloud `main`, and binds
+the already installed Candidate image to a unique Ready Fabric Pod through its
+Deployment/ReplicaSet/Pod owner UIDs. Before and after the GET it verifies the
+same installation identity; it closes the port-forward before returning a
+result. Raw responses and credentials stay in protected execution memory.
+
+Diagnostic source and installed product source have separate identities: the
+new tool can observe the installed Candidate without rebuilding the product
+image. It cannot run from an unmerged diagnostic branch in production. The
+receipt retains both revisions, the Instance run/attempt and image digests.
+`observed` means the owner returned a valid readback, including still-present
+resources; it does not mean Workspace deletion, journal finalization or refund
+completion. `blocked` retains a fixed safe error token and error digest when an
+owner error was obtained, or a fixed access/binding failure when it was not.
+
+Instance uploads only `receipt.json` as a three-day handoff artifact named
+`cloud-workspace-compute-readback-handoff-<run>-<attempt>`. Cloud's
+`.github/workflows/workspace-compute-readback-handoff.yml` independently reads
+the producing GitHub run and exact artifact. The Cloud consumer validates the
+Candidate, original Workspace/operation digests, diagnostic SHA, actual Instance
+revision, workflow path, `main`, run and attempt before retaining the receipt
+and binding metadata in a 90-day Cloud artifact. Failed diagnostic receipts
+remain failed diagnostic evidence after import. No Cloud workflow dispatches
+Instance or connects to the production private network.
+
+Source implementation and local transport/decoder tests do not establish that
+these protected entries are merged, installed or executed. Adoption requires
+merging their owner PRs, running the Instance readback once for the original
+operation, then importing that exact run through Cloud. A diagnostic source or
+transport failure is resolved at that boundary before another resource command.
+
 ## Cloud Agent WebUI Build Input
 
 The Cloud-owned independent Agent WebUI has its own exact-source artifact build:

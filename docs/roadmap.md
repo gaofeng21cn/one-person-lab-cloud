@@ -33,14 +33,17 @@ deployment evidence, not the deletion execution path. The
 confirms CBS absence but keeps compute readback unavailable, the original
 operation in `needs_attention` and the refund unconfirmed.
 
-The exact Candidate is installed and independently deployment-verified. Continue
-with the Cloud-owned dispatcher diagnostic: protected access must bind the live
-operation, Pod/owner chain and Candidate image, supply a bounded timestamped
-excerpt to Cloud code, and retain the redacted result in Cloud. The local CLI
-and fixtures do not supply that protected adapter or evidence handoff. Keep
-Instance deployment receipts separate and integrate the Cloud business imports
-without changing their original producer or schema. No second Instance deletion
-entry is required.
+The exact Candidate is installed and independently deployment-verified. Adopt
+the [Cloud-owned live compute diagnostic](runtime/release.md#live-compute-readback)
+and its companion protected Instance access adapter. The source must be merged
+in both owners before production execution; it can observe the installed image
+without another Candidate build. Read the original compute once through its
+existing Fabric GET, verify the pinned installation before and after the read,
+and import the actual Instance run and redacted receipt into Cloud custody.
+The log diagnostic remains available for exact-operation historical errors.
+Keep Instance deployment receipts separate and preserve the Cloud business
+imports' original producer and schema. No second Instance deletion entry is
+required. Neither local tests nor a successful custody import complete deletion.
 
 Once the exact compute failure is known, repair its Cloud owner and verify the
 real consumer before a new Candidate/adoption step. Continue the original
