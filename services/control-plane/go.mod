@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/lib/pq v1.12.3
-	github.com/mattn/go-sqlite3 v1.14.52
+	github.com/mattn/go-sqlite3 v1.14.53
 	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
 	opl-cloud/packages/contracts/go v0.0.0
