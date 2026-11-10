@@ -80,6 +80,7 @@ export function computeDestroyJournalSql(computeId: string): string {
     SELECT operation_id FROM fabric_operations WHERE
       (resource_id=${id} OR redacted_provider_payload::jsonb->'resource'->'id'=to_jsonb(${id}::text))
       AND action IN ('destroy_compute_allocation','release_recycled_compute_allocation')
+      AND status IN ('started','failed','succeeded')
   ) ORDER BY created_at,id LIMIT 101`;
 }
 

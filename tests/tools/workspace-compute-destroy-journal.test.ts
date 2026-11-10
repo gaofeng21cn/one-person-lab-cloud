@@ -100,6 +100,7 @@ test("SQL is read-only and projects all journal binding and request evidence", (
   assert.match(sql, /deleteRequests/u);
   assert.match(sql, /computeDestroyPhase/u);
   assert.match(sql, /deleteMutationCount/u);
+  assert.match(sql, /status IN \('started','failed','succeeded'\)/u);
   assert.match(sql, /LIMIT 101/u);
   assert.doesNotMatch(sql, /\b(?:INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE)\b/u);
 });
@@ -114,6 +115,15 @@ test("empty journal remains unknown and does not fabricate an account or destroy
     workspaceIdDigest: digest(`console-customer-workspace-readback:workspace:v1\0${workspaceId}`),
     computeIdDigest: digest(`compute-readback:compute:v1\0${computeId}`),
   });
+});
+
+test("rejected journal rows stay outside the decoder contract", () => {
+  const rejected = destroyRow({
+    status: "rejected", errorCode: "compute_allocation_not_found", retryable: false,
+    workspaceId: "", accountId: "", resource: null, finishedAt: "2026-11-10T01:01:00Z",
+  });
+  assert.throws(() => decode(rejected), /invalid/u);
+  assert.doesNotThrow(() => decode(destroyRow()));
 });
 
 test("started rows with an empty error code are accepted without treating missing count as zero", () => {
