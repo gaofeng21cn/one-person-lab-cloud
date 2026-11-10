@@ -385,3 +385,57 @@ test("provider audit cannot publish on a changed installation or unbound origina
     assert.equal(r.status,STATUS.BLOCKED);assert.equal(published,0);
   }
 });
+
+
+test("audit opt-in preserves live evidence when the original journal has no lifecycle", async () => {
+  const f = fixture(), select = f.access.select;
+  let domainReads = 0, providerReads = 0, publishes = 0;
+  f.access.select = async (owner, sql) => {
+    if (owner === "fabric_domain") { domainReads++; return []; }
+    return select(owner, sql);
+  };
+  const r = await runWorkspaceComputeLiveReadback(input(), f.access, {
+    async lookUpEvents() { providerReads++; throw new Error("unbound lifecycle must not query provider"); },
+    async publish() { publishes++; },
+  });
+  assert.equal(r.status, STATUS.OBSERVED); assert.equal(r.errorCode, ERROR.NONE);
+  assert.equal(r.journal?.status, "unknown"); assert.ok(r.observation); assert.ok(r.installation);
+  assert.equal(domainReads, 1); assert.equal(providerReads, 0); assert.equal(publishes, 0);
+  assert.equal(f.calls.at(-1), "repin-and-close");
+});
+
+test("audit custody binds complete submillisecond journal timestamps", async () => {
+  const f = fixture(), select = f.access.select, base = journalRow();
+  const action = "detach_prepaid_compute_allocation";
+  const startedAt = "2026-11-11T01:32:31.000000123Z", finishedAt = "2026-11-11T01:32:31.883456789Z";
+  const resource = { ...base.resource, machineName: "machine_fixture", providerData: { machineType: PROVIDER.MACHINE, region: "na-siliconvalley", clusterId: "cls_fixture" } };
+  const rows = [
+    { ...base, resource },
+    { ...base, id: "fop_detach_start", operationId: "op_detach_original", action, resourceKind: "compute_prepaid_retirement", status: "started", errorCode: "", providerRequestId: "", startedAt, finishedAt: null, createdAt: startedAt, phase: null, resource: null, originalDestroyOperationId: base.operationId },
+    { ...base, id: "fop_detach_failed", operationId: "op_detach_original", action, resourceKind: "compute_prepaid_retirement", status: "failed", errorCode: "compute_prepaid_detach_dispatch_unconfirmed", providerRequestId: "", startedAt, finishedAt, createdAt: finishedAt, phase: null, resource: null, originalDestroyOperationId: base.operationId },
+  ];
+  f.access.select = async (owner, sql) => {
+    if (owner !== "fabric_domain") return select(owner, sql);
+    return rows.map(row => {
+      if (sql.includes("'retryable'")) return JSON.stringify({ ...row, resource: row.resource === null ? null : base.resource });
+      const { retryable, phase, mutationCount, deleteRequests, ...raw } = row;
+      return JSON.stringify(raw);
+    });
+  };
+  let child: unknown;
+  const r = await runWorkspaceComputeLiveReadback(input(), f.access, {
+    async lookUpEvents() { return { Response: { NextToken: "", Events: [], ListOver: true, TotalCount: 0, RequestId: "query_fixture" } }; },
+    async publish(value) { child = value; },
+  });
+  assert.equal(r.status, STATUS.OBSERVED); assert.ok(child);
+  const args = { candidate: input().candidate, receiptText: JSON.stringify(r), auditReceiptText: JSON.stringify(child),
+    run: { id: Number(provenance.runId), run_attempt: Number(provenance.runAttempt), repository: { full_name: provenance.instanceRepository },
+      path: provenance.workflowPath, event: "workflow_dispatch", head_branch: "main", head_sha: provenance.instanceSha, status: "completed", conclusion: "success" },
+    expectedWorkspaceId: workspaceId, expectedWorkspaceOperationId: workspaceOperationId, expectedDiagnosticSourceSha: provenance.diagnosticSourceSha };
+  assert.equal(validateWorkspaceComputeProviderAuditHandoff(args).errorCode, "no_matching_event");
+  for (const [key, value] of [["startedAt", startedAt.replace("000000123", "000000999")], ["failedAt", finishedAt.replace("883456789", "883456999")]]) {
+    const altered = structuredClone(child) as { stage: Record<string, string> };
+    altered.stage[key] = value;
+    assert.throws(() => validateWorkspaceComputeProviderAuditHandoff({ ...args, auditReceiptText: JSON.stringify(altered) }), /handoff_invalid/);
+  }
+});

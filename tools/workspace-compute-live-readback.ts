@@ -274,7 +274,9 @@ export async function runWorkspaceComputeLiveReadback(input: {
       if (journal.accountIdDigest && journal.accountIdDigest !== observation.accountIdDigest) {
         fail(COMPUTE_READBACK_ERROR.JOURNAL_BINDING);
       }
-      const audit = providerAudit ? await runComputeProviderRequestAudit({
+      // Audit requires an observed original lifecycle; an empty journal remains
+      // valid independent live evidence and cannot enter the audit boundary.
+      const audit = providerAudit && journal.status === "observed" ? await runComputeProviderRequestAudit({
         candidate, provenance: p, binding, journal,
         select: (sql: string) => access.select("fabric_domain", sql),
         lookUpEvents: providerAudit.lookUpEvents,

@@ -104,7 +104,7 @@ export function validateWorkspaceComputeProviderAuditHandoff(input: HandoffInput
       if (starts.length !== 1 || failures.length !== 1 || [...starts, ...failures].some(r =>
           r.action !== audit.scope || r.operationIdDigest !== audit.stage!.operationIdDigest ||
           r.requestHashDigest !== audit.stage!.requestHashDigest || r.originalDestroyOperationIdDigest !== audit.owner.destroyOperationIdDigest) ||
-          Date.parse(starts[0].startedAt) !== Date.parse(audit.stage.startedAt) || Date.parse(failures[0].finishedAt!) !== Date.parse(audit.stage.failedAt)) fail();
+          starts[0].startedAt !== audit.stage.startedAt || failures[0].finishedAt !== audit.stage.failedAt) fail();
     }
     return { schemaVersion: 1, kind: "opl_cloud_compute_provider_request_audit_handoff", evidenceRepository: CLOUD_REPOSITORY,
       evidenceClass: "workspace_compute_provider_request_audit", scope: audit.scope, receiptDigest: hash(auditReceiptText),
