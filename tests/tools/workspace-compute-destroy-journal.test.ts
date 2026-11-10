@@ -159,6 +159,39 @@ test("missing mutation count stays unknown even when provider request evidence e
   assert.equal(Object.hasOwn(record, "dispatchConfirmed"), false);
 });
 
+test("original provider deletion failures retain only fixed codes and full error digests", () => {
+  for (const code of ["compute_machine_delete_unverified", "compute_cvm_delete_unverified", "compute_cvm_delete_identity_mismatch",
+    "tencent_verify_compute_machine_delete_failed", "tencent_verify_cvm_delete_failed"]) {
+    const raw = `${code}:provider detail token=never-export ins-private`;
+    const journal = decode(destroyRow({ errorCode: raw }));
+    assert.equal(recordOf(journal).errorToken, code);
+    assert.equal(recordOf(journal).errorDigest, digest(raw));
+    assert.doesNotMatch(JSON.stringify(journal), /never-export|ins-private|provider detail/);
+    validateComputeDestroyJournal(journal);
+  }
+});
+
+test("Tencent deletion rejection classes follow the SDK envelope without exposing message or request", () => {
+  for (const [sdkCode, token] of [
+    ["InvalidParameterValue", "tencent_compute_delete_invalid_parameter_value"],
+    ["InvalidParameterValue.PrivateSubcode", "tencent_compute_delete_invalid_parameter_value"],
+    ["UnsupportedOperation", "tencent_compute_delete_unsupported_operation"],
+    ["UnsupportedOperation.PrivateSubcode", "tencent_compute_delete_unsupported_operation"],
+    ["InternalError", "compute_machine_delete_unverified"],
+  ]) {
+    const raw = `compute_machine_delete_unverified:[TencentCloudSDKError] Code=${sdkCode}, Message=ins-private token=never-export, RequestId=private-request`;
+    const journal = decode(destroyRow({ errorCode: raw }));
+    assert.equal(recordOf(journal).errorToken, token);
+    assert.equal(recordOf(journal).errorDigest, digest(raw));
+    assert.doesNotMatch(JSON.stringify(journal), /PrivateSubcode|ins-private|never-export|private-request/);
+    validateComputeDestroyJournal(journal);
+  }
+  for (const message of ["InvalidParameterValue", "UnsupportedOperation"]) {
+    const journal = decode(destroyRow({ errorCode: `compute_machine_delete_unverified:${message}` }));
+    assert.equal(recordOf(journal).errorToken, "compute_machine_delete_unverified");
+  }
+});
+
 test("final release carries a digest of its exact original destroy operation", () => {
   const journal = decode(destroyRow(), finalReleaseRow());
   const release = recordOf(journal, 1);

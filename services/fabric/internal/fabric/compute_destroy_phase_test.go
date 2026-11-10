@@ -3,6 +3,7 @@ package fabric
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -20,6 +21,7 @@ type phasedComputeDestroyProvider struct {
 	testProvider
 	destroyCalls  atomic.Int32
 	readbackCalls atomic.Int32
+	finalizeCalls atomic.Int32
 	destroyResult ComputeAllocation
 	destroyErr    error
 	readback      ComputeAllocation
@@ -37,6 +39,7 @@ func (p *phasedComputeDestroyProvider) ReadComputeDestroyStatus(_ context.Contex
 }
 
 func (p *phasedComputeDestroyProvider) finalizeComputeDestroyAfterAbsence(_ context.Context, allocation ComputeAllocation) (ComputeAllocation, error) {
+	p.finalizeCalls.Add(1)
 	return cloneComputeAllocation(allocation), nil
 }
 
@@ -138,6 +141,64 @@ func TestTencentComputeLegacyStartedWithoutPhaseUsesReadbackOnly(t *testing.T) {
 	}
 }
 
+func TestTencentComputeDestroyRecoveryRejectsStableIdentityAndDeletionFenceLoss(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*ComputeAllocation)
+	}{
+		{"machine identity", func(c *ComputeAllocation) { c.MachineName += "-other" }},
+		{"instance identity", func(c *ComputeAllocation) { c.InstanceID += "-other" }},
+		{"workspace identity", func(c *ComputeAllocation) { c.WorkspaceID += "-other" }},
+		{"account tag", func(c *ComputeAllocation) { c.CostTags["opl_account_id"] += "-other" }},
+		{"stable provider field changed", func(c *ComputeAllocation) { c.ProviderData["clusterId"] += "-other" }},
+		{"stable provider field removed", func(c *ComputeAllocation) { delete(c.ProviderData, "region") }},
+		{"unknown provider field added", func(c *ComputeAllocation) { c.ProviderData["unknownDeleteEvidence"] = "true" }},
+		{"dispatch phase removed", func(c *ComputeAllocation) { delete(c.ProviderData, tencentComputeDestroyPhaseKey) }},
+		{"mutation count removed", func(c *ComputeAllocation) { delete(c.ProviderData, tencentComputeDestroyMutationCountKey) }},
+		{"delete method removed", func(c *ComputeAllocation) { delete(c.ProviderData, "deleteMethod") }},
+		{"delete verification removed", func(c *ComputeAllocation) { delete(c.ProviderData, "verifyMachineDeletedReqId") }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			store := NewMemoryOperationStore()
+			resource := computeDestroyPhaseResource()
+			seedComputeDestroyPhaseResource(t, store, resource)
+			persisted := cloneComputeAllocation(resource)
+			persisted.Status = "destroying"
+			persisted.ProviderData[tencentComputeDestroyPhaseKey] = tencentComputeDestroyPhaseAttempted
+			persisted.ProviderData[tencentComputeDestroyMutationCountKey] = "1"
+			persisted.ProviderData["deleteMethod"] = "DeleteClusterMachines"
+			persisted.ProviderData["verifyMachineDeletedReqId"] = "req-delete-machine-present"
+			persisted.ProviderData["cvmStatus"] = "RUNNING"
+			persisted.ProviderData["describeCvmRequestId"] = "req-delete-cvm-present"
+			appendStartedComputeDestroy(t, store, persisted)
+
+			observed := cloneComputeAllocation(persisted)
+			// A genuine Machine-present read drops the old CVM observations.
+			// Losing identity or durable deletion evidence at the same time is
+			// still a conflict, not an ordinary convergence wait.
+			delete(observed.ProviderData, "cvmStatus")
+			delete(observed.ProviderData, "describeCvmRequestId")
+			test.mutate(&observed)
+			provider := &phasedComputeDestroyProvider{readback: observed}
+			service := NewServiceWithOperationStore(provider, store)
+			if _, err := service.DestroyComputeAllocation(ctx, resource.ID); err != nil {
+				t.Fatal(err)
+			}
+			waitForComputeDestroyPhaseOperationCount(t, service, resource.ID, "failed", 1)
+			latest, found, err := service.latestComputeDestroyOperation(ctx, resource.ID)
+			if err != nil || !found || latest.ErrorCode != "compute_destroy_recovery_identity_mismatch" {
+				t.Fatalf("untrusted readback must remain an identity conflict: errorCode=%q found=%v err=%v", latest.ErrorCode, found, err)
+			}
+			current, ok := service.GetComputeAllocation(ctx, resource.ID)
+			if !ok || !reflect.DeepEqual(current, persisted) || !reflect.DeepEqual(provider.readback, observed) || ComputeDeletionAbsent(current) ||
+				provider.destroyCalls.Load() != 0 || provider.readbackCalls.Load() != 1 || provider.finalizeCalls.Load() != 0 {
+				t.Fatalf("rejected recovery changed authority: current=%#v destroys=%d reads=%d finalizes=%d", current, provider.destroyCalls.Load(), provider.readbackCalls.Load(), provider.finalizeCalls.Load())
+			}
+		})
+	}
+}
+
 func TestTencentComputeDestroyAttemptSurvivesRetryAndRestartWithoutSecondMutation(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemoryOperationStore()
@@ -226,6 +287,9 @@ func TestTencentComputeDestroyAttemptSurvivesRetryAndRestartWithoutSecondMutatio
 	if !ok || failed.ProviderData["computeDestroyPhase"] != "delete_attempted_uncertain" || destroyCalls.Load() != 1 || readbackCalls.Load() != 0 || !dispatchPersisted.Load() {
 		t.Fatalf("first failed destroy=%#v ok=%v destroyCalls=%d readbackCalls=%d", failed, ok, destroyCalls.Load(), readbackCalls.Load())
 	}
+	if failed.ProviderData["cvmStatus"] != "RUNNING" || failed.ProviderData["describeCvmRequestId"] != "req-delete-cvm-present" {
+		t.Fatal("missing retained CVM observations needed to reproduce Machine-present recovery")
+	}
 
 	restarted := NewServiceWithOperationStore(provider, store)
 	restored, ok := restarted.GetComputeAllocation(ctx, resource.ID)
@@ -239,6 +303,16 @@ func TestTencentComputeDestroyAttemptSurvivesRetryAndRestartWithoutSecondMutatio
 	if destroyCalls.Load() != 1 || readbackCalls.Load() != 1 {
 		t.Fatalf("still-present recovery destroyCalls=%d readbackCalls=%d", destroyCalls.Load(), readbackCalls.Load())
 	}
+	latest, found, err := restarted.latestComputeDestroyOperation(ctx, resource.ID)
+	if err != nil || !found || latest.ErrorCode != "compute_destroy_recovery_unconfirmed" {
+		t.Fatalf("Machine-present observation refresh must remain unconfirmed, not an identity conflict: errorCode=%q found=%v err=%v", latest.ErrorCode, found, err)
+	}
+	current, ok := restarted.GetComputeAllocation(ctx, resource.ID)
+	ownership, ownershipErr := store.MachineOwnership(ctx, resource.ID)
+	if !ok || !reflect.DeepEqual(current, failed) || ComputeDeletionAbsent(current) || kubectlCalls.Load() != 0 ||
+		ownershipErr != nil || ownership.Status != "active" || ownership.ReleasedAt != nil {
+		t.Fatalf("present recovery changed retained authority: current=%#v ownership=%#v ownershipErr=%v cleanupCalls=%d", current, ownership, ownershipErr, kubectlCalls.Load())
+	}
 
 	readbackState.Store(computeDestroyReadbackIdentityDrift)
 	if _, err := restarted.DestroyComputeAllocation(ctx, resource.ID); err != nil {
@@ -248,6 +322,10 @@ func TestTencentComputeDestroyAttemptSurvivesRetryAndRestartWithoutSecondMutatio
 	afterDrift, _ := restarted.GetComputeAllocation(ctx, resource.ID)
 	if destroyCalls.Load() != 1 || readbackCalls.Load() != 2 || !sameComputeDestroyStableIdentity(resource, afterDrift) || afterDrift.ProviderData["computeDestroyPhase"] != "delete_attempted_uncertain" {
 		t.Fatalf("identity drift changed authority: current=%#v destroyCalls=%d readbackCalls=%d", afterDrift, destroyCalls.Load(), readbackCalls.Load())
+	}
+	latest, found, err = restarted.latestComputeDestroyOperation(ctx, resource.ID)
+	if err != nil || !found || latest.ErrorCode != "compute_destroy_recovery_unconfirmed:" || !reflect.DeepEqual(afterDrift, failed) {
+		t.Fatalf("real provider identity drift must still be rejected: errorCode=%q found=%v err=%v", latest.ErrorCode, found, err)
 	}
 
 	readbackState.Store(computeDestroyReadbackUnknown)
@@ -266,7 +344,7 @@ func TestTencentComputeDestroyAttemptSurvivesRetryAndRestartWithoutSecondMutatio
 	}
 	waitForComputeDestroyPhaseOperationCount(t, restarted, resource.ID, "failed", 5)
 	confirmed, ok := restarted.GetComputeAllocation(ctx, resource.ID)
-	ownership, ownershipErr := store.MachineOwnership(ctx, resource.ID)
+	ownership, ownershipErr = store.MachineOwnership(ctx, resource.ID)
 	if !ok || confirmed.ProviderData["computeDestroyPhase"] != "cloud_absence_confirmed" || !validTencentComputeAbsenceEvidence(confirmed) ||
 		destroyCalls.Load() != 1 || readbackCalls.Load() != 4 || kubectlCalls.Load() != 1 || ownershipErr != nil || ownership.Status != "active" {
 		t.Fatalf("confirmed=%#v ok=%v destroyCalls=%d readbackCalls=%d kubectlCalls=%d ownership=%#v ownershipErr=%v", confirmed, ok, destroyCalls.Load(), readbackCalls.Load(), kubectlCalls.Load(), ownership, ownershipErr)

@@ -59,19 +59,20 @@ and Key closeout remain unknown.
 The installed product is Candidate build `42793047780` from product SHA
 `15ba29256aebf127f825a4bbb0ea174eb90d560e`, deployed by Instance run
 `42797408687`. Original-operation resume `42752312426` returned HTTP 202; it
-did not complete deletion. Live readback `42816339601` was successfully
-imported to Cloud custody by run `42816823961`, but neither a successful
+did not complete deletion. Journal/live readback `42829091870` was successfully
+imported to Cloud custody by run `42829929632`, but neither a successful
 readback nor custody import proves resource absence.
 
-The remaining diagnostic is a Cloud-owned read-only Fabric domain journal
-projection plus an Instance-owned protected database transport. Cloud owns
-SQL, binding, schema, redaction and business interpretation; Instance supplies
-only the Fabric-domain Secret reference and transport. This source is not yet
-merged or run. Merge the Cloud and Instance changes, then run the protected
-`main` diagnostic and retain its exact receipt in Cloud custody. The already
-installed Candidate can be observed without rebuilding it. Use the journal to
-repair and continue the **same original deletion operation**; do not create a
-second operation or infer send state from a provider request ID. Keep resource
+The Cloud journal diagnostic and Instance read-only transport are merged and
+executed. The original compute destroy reached `delete_attempted_uncertain`;
+later recovery attempts report `compute_destroy_recovery_identity_mismatch`.
+Repair transient observation comparison in the Fabric recovery consumer and
+preserve strict stable identity, phase and mutation fences. Diagnose the original
+provider failure independently: correcting recovery comparison does not itself
+release the present Machine or authorize another provider send. Qualify any
+Fabric runtime change locally before one Candidate/adoption step. Continue the
+**same original deletion operation**; do not create a second operation or infer
+send state from a provider request ID. Keep resource
 absence, the Cloud deletion receipt, refund and Key closeout as separate
 acceptance facts. Preserve the original historical imports and v1 receipts;
 they are not rewritten as v2 journal evidence.
