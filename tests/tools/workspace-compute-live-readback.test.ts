@@ -111,7 +111,7 @@ test("non-200 owner failures preserve safe phase tokens and digest unknown messa
   }
 });
 
-test("owner access and decoder failures remain distinguishable without exporting diagnostics", async () => {
+test("owner database access, SQLSTATE and decoder failures remain distinguishable without exporting diagnostics", async () => {
   for (const [owner, errorCode] of [
     ["workspace", ERROR.WORKSPACE_ACCESS], ["fabric", ERROR.FABRIC_ACCESS],
   ] as const) {
@@ -127,6 +127,32 @@ test("owner access and decoder failures remain distinguishable without exporting
     assert.deepEqual(f.calls, owner === "workspace" ? ["select:workspace"] : ["select:workspace", "select:fabric"]);
     assert.doesNotMatch(JSON.stringify(r), /private-database-error|never-export/);
   }
+  for (const [owner, stderr, errorCode] of [
+    ["workspace", "ERROR: 42501: permission denied for relation private_table", "compute_live_workspace_database_permission_denied"],
+    ["workspace", "ERROR: 42P01: relation private_table does not exist", "compute_live_workspace_database_schema_unavailable"],
+    ["fabric", "ERROR: 25006: cannot execute DELETE in a read-only transaction", "compute_live_fabric_database_sqlstate_25006"],
+    ["fabric", 'psql: error: could not translate host name "private-db" to address: Name or service not known', "compute_live_fabric_database_dns_unavailable"],
+    ["workspace", 'ERROR: 42501: permission denied for relation "ssl_timeout"', "compute_live_workspace_database_permission_denied"],
+    ["workspace", 'psql: error: invalid target_session_attrs value: "read-only"', "compute_live_workspace_database_target_session_attrs_invalid"],
+    ["workspace", "unrecognized error containing timeout SSL private-db", "compute_live_workspace_database_psql_exit_1"],
+  ] as const) {
+    const f = fixture();
+    f.access.select = async selected => {
+      f.calls.push(`select:${selected}`);
+      if (selected === owner) {
+        const error = new Error("compute_access_database_failed");
+        error.cause = { kind: "opl_compute_database_transport_failure", phase: "psql", clientCode: null,
+          exitCode: 1, signal: null, stderr };
+        throw error;
+      }
+      return [JSON.stringify(selected === "workspace" ? workspaceRow() : fabricRow())];
+    };
+    const r = await runWorkspaceComputeLiveReadback(input(), f.access);
+    assert.equal(r.status, STATUS.BLOCKED); assert.equal(r.errorCode, errorCode);
+    assert.equal(r.computeIdDigest, null); assert.equal(r.observation, null);
+    assert.deepEqual(f.calls, owner === "workspace" ? ["select:workspace"] : ["select:workspace", "select:fabric"]);
+    assert.doesNotMatch(JSON.stringify(r), /private-db|permission denied|private_table|DELETE/);
+  }
   for (const [owner, errorCode] of [
     ["workspace", ERROR.WORKSPACE_BINDING], ["fabric", ERROR.FABRIC_BINDING],
   ] as const) {
@@ -141,6 +167,35 @@ test("owner access and decoder failures remain distinguishable without exporting
     assert.equal(r.installation, null); assert.equal(r.observation, null);
     assert.deepEqual(f.calls, owner === "workspace" ? ["select:workspace"] : ["select:workspace", "select:fabric"]);
     assert.doesNotMatch(JSON.stringify(r), /private-customer/);
+  }
+});
+
+test("database phase and client diagnostics stay bounded, owner-scoped and non-authoritative", async () => {
+  const base = { kind: "opl_compute_database_transport_failure", phase: "psql", clientCode: null, exitCode: null, signal: null, stderr: null };
+  for (const [cause, errorCode] of [
+    [{ ...base, phase: "private_file", clientCode: "ENOENT" }, "compute_live_workspace_database_private_file_missing"],
+    [{ ...base, phase: "private_file", clientCode: "EACCES" }, "compute_live_workspace_database_private_file_unreadable"],
+    [{ ...base, phase: "connection_url", clientCode: "database_url_parameter_invalid" }, "compute_live_workspace_database_url_parameter_invalid"],
+    [{ ...base, phase: "connection_url", clientCode: "database_url_invalid" }, "compute_live_workspace_database_url_invalid"],
+    [{ ...base, clientCode: "postgresql_client_required" }, "compute_live_workspace_database_client_required"],
+    [{ ...base, clientCode: "EACCES" }, "compute_live_workspace_database_client_spawn_failed"],
+    [{ ...base, signal: "SIGTERM" }, "compute_live_workspace_database_client_interrupted"],
+    [{ ...base, exitCode: 2, stderr: "unknown private-database-error" }, "compute_live_workspace_database_psql_exit_2"],
+    [{ ...base, clientCode: "unknown private-database-error" }, "compute_live_workspace_database_unclassified"],
+    [{ ...base, kind: "unknown" }, ERROR.WORKSPACE_ACCESS],
+    [{ ...base, phase: ["psql"] }, ERROR.WORKSPACE_ACCESS],
+    [{ ...base, extra: "private-database-error" }, ERROR.WORKSPACE_ACCESS],
+    [{ ...base, stderr: "x".repeat(1024 * 1024 + 1) }, ERROR.WORKSPACE_ACCESS],
+    [{ ...base, stderr: "中".repeat(400000) }, ERROR.WORKSPACE_ACCESS],
+    [{ ...base, exitCode: "1" }, ERROR.WORKSPACE_ACCESS],
+  ] as const) {
+    const f = fixture();
+    f.access.select = async () => { throw new Error("compute_access_database_failed", { cause }); };
+    const r = await runWorkspaceComputeLiveReadback(input(), f.access);
+    assert.equal(r.errorCode, errorCode); assert.equal(r.status, STATUS.BLOCKED);
+    assert.equal(r.observation, null); assert.equal(r.installation, null); assert.equal(r.computeIdDigest, null);
+    assert.doesNotMatch(JSON.stringify(r), /private-database-error|ENOENT|EACCES|SIGTERM/);
+    assert.deepEqual(f.calls, []);
   }
 });
 
