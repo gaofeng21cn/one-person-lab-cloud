@@ -6,6 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { candidateReceipt } from "../helpers/protected-qualification-fixture.ts";
+import { validateWorkspaceComputeReadbackHandoff } from "../../tools/workspace-compute-readback-handoff.ts";
 import {
   COMPUTE_READBACK_ERROR as ERROR, COMPUTE_READBACK_STATUS as STATUS,
   runWorkspaceComputeLiveReadback, validateWorkspaceComputeLiveReadbackReceipt,
@@ -41,12 +42,21 @@ function observation() {
     instanceId: "ins-private", machineName: "private-machine", privateIp: "10.8.9.10", costTags: { private: "do-not-export" },
     providerData: { machineType: PROVIDER.MACHINE, cvmApplicable: "true", describeClusterMachinesReq: "private-tke-request", describeCvmRequestId: "private-cvm-request", isolatedSource: "", private: "token=never-export" } };
 }
+function journalRow() {
+  return { id: "fop_destroy_1", operationId: "op_destroy_original", resourceId: computeId, workspaceId, accountId: "private-account",
+    action: "destroy_compute_allocation", resourceKind: "compute_allocation", status: "failed",
+    errorCode: "compute_destroy_recovery_unconfirmed: private-provider-detail", retryable: true,
+    providerRequestId: "private-delete-request", requestHash: "private-request-hash", startedAt: "2026-11-09T09:50:00Z",
+    finishedAt: "2026-11-09T09:51:00Z", createdAt: "2026-11-09T09:51:00Z", phase: "dispatch_authorized_uncertain", mutationCount: null,
+    resource: { id: computeId, workspaceId, accountId: "private-account", provider: PROVIDER.NAME }, originalDestroyOperationId: null,
+    deleteRequests: { deleteMethod: null, scaleDown: null, deleteMode: null, describeClusterMachinesReq: null, describeNodePoolRequestId: null, modifySelfProvisioningReqId: null, verifyMachineDeletedReqId: null } };
+}
 function fixture(response: { status: number; body: unknown } = { status: HTTP.OK, body: observation() }) {
   const calls: string[] = [];
   const access: ComputeReadbackAccess = {
     async select(owner, sql) {
       calls.push(`select:${owner}`); assert.match(sql, /^SELECT /); assert.doesNotMatch(sql, /\b(?:UPDATE|INSERT|DELETE|DROP|ALTER)\b/);
-      return [JSON.stringify(owner === "workspace" ? workspaceRow() : fabricRow())];
+      return [JSON.stringify(owner === "workspace" ? workspaceRow() : owner === "fabric" ? fabricRow() : journalRow())];
     },
     async withFabric(image, consume) {
       calls.push("open");
@@ -64,12 +74,76 @@ test("binds original deletion to one live GET and exports only owner facts and r
   assert.equal(r.status, STATUS.OBSERVED); assert.equal(r.errorCode, ERROR.NONE);
   assert.equal(r.observation?.machinePresent, false); assert.equal(r.observation?.cvmStatus.value, PROVIDER.ABSENT);
   assert.equal(r.observation?.allocationStatus.value, PROVIDER.DELETED); assert.ok(r.installation);
-  assert.deepEqual(f.calls, ["select:workspace", "select:fabric", "open", `/fabric/compute-allocations/${computeId}/destroy-status`, "repin-and-close"]);
+  assert.equal(r.schemaVersion, 2); assert.equal(r.journal?.records[0].phase, "dispatch_authorized_uncertain");
+  assert.equal(r.journal?.records[0].mutationCount, null);
+  assert.deepEqual(f.calls, ["select:workspace", "select:fabric", "open", "select:fabric_domain", `/fabric/compute-allocations/${computeId}/destroy-status`, "repin-and-close"]);
   const text = JSON.stringify(r);
-  for (const secret of [workspaceId, workspaceOperationId, tenantId, computeId, fabricOperationId, "ins-private", "10.8.9.10", "private-account", "private-provider-request", "never-export", "private-pod-uid"]) assert.equal(text.includes(secret), false, secret);
+  for (const secret of [workspaceId, workspaceOperationId, tenantId, computeId, fabricOperationId, "ins-private", "10.8.9.10", "private-account", "private-provider-request", "private-delete-request", "private-request-hash", "private-provider-detail", "never-export", "private-pod-uid"]) assert.equal(text.includes(secret), false, secret);
   assert.deepEqual(validateWorkspaceComputeLiveReadbackReceipt(JSON.parse(text)), r);
   assert.equal(r.provenance.diagnosticSourceSha, provenance.diagnosticSourceSha);
   assert.notEqual(r.provenance.diagnosticSourceSha, r.candidate.productSha);
+});
+
+test("v2 custody preserves exact journal bytes and rejects detached journal identity or missing evidence", async () => {
+  const receipt = await runWorkspaceComputeLiveReadback(input(), fixture().access);
+  const handoff = (value: unknown) => validateWorkspaceComputeReadbackHandoff({
+    candidate: input().candidate, receiptText: `${JSON.stringify(value)}\n`,
+    run: { id: Number(provenance.runId), run_attempt: Number(provenance.runAttempt),
+      repository: { full_name: provenance.instanceRepository }, path: provenance.workflowPath,
+      event: "workflow_dispatch", head_branch: "main", head_sha: provenance.instanceSha, status: "completed", conclusion: "success",
+      actor: { login: "RenDeHuang" }, triggering_actor: { login: "RenDeHuang" } },
+    expectedWorkspaceId: workspaceId, expectedWorkspaceOperationId: workspaceOperationId, expectedDiagnosticSourceSha: provenance.diagnosticSourceSha,
+  });
+  assert.equal(handoff(receipt).receiptStatus, STATUS.OBSERVED);
+  for (const change of [
+    (r: Record<string, unknown>) => { r.journal = null; },
+    (r: Record<string, unknown>) => { delete r.journal; },
+    (r: Record<string, unknown>) => { (r.journal as Record<string, unknown>).computeIdDigest = `sha256:${"f".repeat(64)}`; },
+    (r: Record<string, unknown>) => { (r.journal as Record<string, unknown>).workspaceIdDigest = `sha256:${"f".repeat(64)}`; },
+    (r: Record<string, unknown>) => { (r.journal as Record<string, unknown>).accountIdDigest = `sha256:${"f".repeat(64)}`; },
+    (r: Record<string, unknown>) => { r.schemaVersion = 1; },
+    (r: Record<string, unknown>) => { r.status = STATUS.BLOCKED; r.errorCode = ERROR.JOURNAL_BINDING; r.observation = null; r.installation = null; r.httpStatus = null; },
+  ]) {
+    const altered = structuredClone(receipt); change(altered as unknown as Record<string, unknown>);
+    assert.throws(() => handoff(altered), /workspace_compute_readback_handoff_invalid/);
+  }
+});
+
+test("domain database and journal failures stay distinct and never fall through to a provider request", async () => {
+  for (const [result, expected] of [
+    ["transport", "compute_live_fabric_domain_database_permission_denied"],
+    ["malformed", ERROR.JOURNAL_BINDING], ["conflict", ERROR.JOURNAL_BINDING], ["overflow", ERROR.JOURNAL_BINDING],
+  ] as const) {
+    const f = fixture(), select = f.access.select;
+    f.access.select = async (owner, sql) => {
+      if (owner !== "fabric_domain") return select(owner, sql);
+      f.calls.push(`select:${owner}`);
+      if (result === "transport") throw new Error("private-error", { cause: {
+        kind: "opl_compute_database_transport_failure", phase: "psql", clientCode: null,
+        exitCode: 1, signal: null, stderr: "ERROR: 42501: private-database-query",
+      } });
+      if (result === "malformed") return ['{"private":"never-export"}'];
+      if (result === "conflict") return [JSON.stringify({ ...journalRow(), workspaceId: "workspace_foreign" })];
+      return Array.from({ length: 101 }, (_, i) => JSON.stringify({ ...journalRow(), id: `fop_${i}` }));
+    };
+    const r = await runWorkspaceComputeLiveReadback(input(), f.access);
+    assert.equal(r.status, STATUS.BLOCKED); assert.equal(r.errorCode, expected); assert.equal(r.journal, null);
+    assert.ok(r.computeIdDigest); assert.equal(r.observation, null);
+    assert.deepEqual(f.calls, ["select:workspace", "select:fabric", "open", "select:fabric_domain"]);
+    assert.doesNotMatch(JSON.stringify(r), /private-error|never-export|private-database-query|workspace_foreign/);
+  }
+});
+
+test("unknown journal is retained independently and account drift cannot attach journal evidence", async () => {
+  const f = fixture(), select = f.access.select;
+  f.access.select = async (owner, sql) => owner === "fabric_domain" ? [] : select(owner, sql);
+  const empty = await runWorkspaceComputeLiveReadback(input(), f.access);
+  assert.equal(empty.status, STATUS.OBSERVED); assert.equal(empty.journal?.status, "unknown");
+  const body = observation(); body.accountId = "foreign-account";
+  const drift = await runWorkspaceComputeLiveReadback(input(), fixture({ status: HTTP.OK, body }).access);
+  assert.equal(drift.errorCode, ERROR.JOURNAL_BINDING); assert.equal(drift.journal, null); assert.equal(drift.observation, null);
+  const error = await runWorkspaceComputeLiveReadback(input(), fixture({ status: HTTP.ERROR, body: { error: ERROR_TOKEN.CVM } }).access);
+  assert.equal(error.status, STATUS.BLOCKED); assert.equal(error.journal?.status, "observed"); assert.equal(error.observation, null);
 });
 
 test("CVM SHUTDOWN/MANMADE remains a present provider fact and is never changed into absence", async () => {
@@ -86,7 +160,7 @@ test("present Machine does not fabricate a CVM query or absence", async () => {
   const r = await runWorkspaceComputeLiveReadback(input(), fixture({ status: HTTP.OK, body }).access);
   assert.equal(r.status, STATUS.OBSERVED); assert.equal(r.observation?.machinePresent, true);
   assert.deepEqual(r.observation?.cvmStatus, { value: null, digest: null }); assert.equal(r.observation?.cvmRequestIdDigest, null);
-  assert.equal(r.observation?.tkeStatus.value, null); assert.ok(r.observation?.tkeStatus.digest);
+  assert.equal(r.observation?.tkeStatus.value, PROVIDER.RUNNING); assert.ok(r.observation?.tkeStatus.digest);
 });
 
 test("TKE-only persisted types retain their own scope without claiming a CVM read", async () => {
@@ -205,7 +279,7 @@ test("transport, repin or cleanup failures discard the response and never expose
     f.access.withFabric = async (image, consume) => { if (stage === "after") await original(image, consume); throw new Error("private-kubeconfig token=never-export"); };
     const r = await runWorkspaceComputeLiveReadback(input(), f.access);
     assert.equal(r.status, STATUS.BLOCKED); assert.equal(r.errorCode, ERROR.ACCESS); assert.equal(r.observation, null);
-    assert.equal(r.installation, null); assert.equal(r.httpStatus, null); assert.doesNotMatch(JSON.stringify(r), /never-export|kubeconfig/);
+    assert.equal(r.installation, null); assert.equal(r.journal, null); assert.equal(r.httpStatus, null); assert.doesNotMatch(JSON.stringify(r), /never-export|kubeconfig/);
   }
 });
 

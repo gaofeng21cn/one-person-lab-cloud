@@ -8,6 +8,7 @@ import {
   workspaceComputeBindingSql, decodeWorkspaceComputeBinding,
   fabricComputeBindingSql, decodeFabricComputeBinding,
 } from "./workspace-compute-readback-binding.ts";
+import { computeDestroyJournalSql, decodeComputeDestroyJournal, validateComputeDestroyJournal, type ComputeDestroyJournal } from "./workspace-compute-destroy-journal.ts";
 
 const SHA = /^[0-9a-f]{40}$/;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
@@ -21,11 +22,12 @@ export const COMPUTE_READBACK_ERROR = Object.freeze({
   WORKSPACE_BINDING: "compute_live_workspace_binding_invalid",
   FABRIC_ACCESS: "compute_live_fabric_access_unavailable",
   FABRIC_BINDING: "compute_live_fabric_binding_invalid",
+  JOURNAL_BINDING: "compute_live_journal_binding_invalid",
   ACCESS: "compute_live_access_unavailable", IMAGE: "compute_live_image_mismatch",
   HTTP: "compute_live_owner_http_failed", RESPONSE: "compute_live_owner_response_invalid",
   NONE: "none", INVALID: "workspace_compute_live_readback_invalid",
 } as const);
-type DatabaseOwner = "workspace" | "fabric";
+type DatabaseOwner = "workspace" | "fabric" | "fabric_domain";
 const DATABASE_FAILURE_KINDS = [
   "url_invalid", "url_parameter_invalid", "private_file_missing", "private_file_unreadable",
   "client_required", "client_spawn_failed", "client_interrupted", "target_session_attrs_invalid",
@@ -46,7 +48,7 @@ export type ComputeReadbackPin = {
   imageIndexDigest: string; platformDigest: string; runtimeDigest: string;
 };
 export type ComputeReadbackAccess = {
-  select(owner: "workspace" | "fabric", sql: string): Promise<string[]>;
+  select(owner: DatabaseOwner, sql: string): Promise<string[]>;
   withFabric<T>(image: { indexRef: string; indexDigest: string; platforms: Array<{ platform: string; digest: string }> },
     consume: (session: { get(path: string): Promise<{ status: number; body: unknown }> }) => Promise<T>): Promise<{ pin: ComputeReadbackPin; value: T }>;
 };
@@ -54,7 +56,7 @@ type Cell = { value: string | null; digest: string | null };
 type Observation = {
   machineType: "NativeCVM" | "Native" | "CXM"; machinePresent: boolean;
   allocationStatus: Cell; tkeStatus: Cell; cvmStatus: Cell; isolatedSource: Cell;
-  observedAt: string; readbackIdDigest: string; providerRequestIdDigest: string;
+  observedAt: string; accountIdDigest?: string; readbackIdDigest: string; providerRequestIdDigest: string;
   machineRequestIdDigest: string; cvmRequestIdDigest: string | null;
 };
 type Installation = {
@@ -62,7 +64,7 @@ type Installation = {
   imageIndexDigest: string; platformDigest: string; runtimeDigest: string;
 };
 export type WorkspaceComputeLiveReadbackReceipt = {
-  schemaVersion: 1; kind: "opl_cloud_workspace_compute_live_readback";
+  kind: "opl_cloud_workspace_compute_live_readback";
   scope: "compute_destroy_status"; status: typeof COMPUTE_READBACK_STATUS[keyof typeof COMPUTE_READBACK_STATUS];
   errorCode: ErrorCode; candidate: CandidateIdentity; provenance: ComputeReadbackProvenance;
   workspaceIdDigest: string; workspaceOperationIdDigest: string;
@@ -70,7 +72,7 @@ export type WorkspaceComputeLiveReadbackReceipt = {
   startedAt: string; completedAt: string; installation: Installation | null;
   httpStatus: number | null; failure: { errorToken: string | null; errorDigest: string } | null;
   observation: Observation | null;
-};
+} & ({ schemaVersion: 1; journal?: never } | { schemaVersion: 2; journal: ComputeDestroyJournal | null });
 function fail(code: ErrorCode = COMPUTE_READBACK_ERROR.INVALID): never { throw new Error(code); }
 function record(v: unknown): Record<string, unknown> {
   if (!v || typeof v !== "object" || Array.isArray(v)) fail();
@@ -83,7 +85,8 @@ function exact(v: unknown, keys: readonly string[]) {
 }
 function text(v: unknown): v is string { return typeof v === "string" && v.length > 0 && v.length <= 4096; }
 function databaseErrorCode(owner: DatabaseOwner, error: unknown): ErrorCode {
-  const unavailable = owner === "workspace" ? COMPUTE_READBACK_ERROR.WORKSPACE_ACCESS : COMPUTE_READBACK_ERROR.FABRIC_ACCESS;
+  const unavailable = owner === "workspace" ? COMPUTE_READBACK_ERROR.WORKSPACE_ACCESS :
+    owner === "fabric" ? COMPUTE_READBACK_ERROR.FABRIC_ACCESS : "compute_live_fabric_domain_database_unclassified";
   const value = error instanceof Error ? error.cause : null;
   if (!value || typeof value !== "object" || Array.isArray(value)) return unavailable;
   const cause = value as Record<string, unknown>;
@@ -123,7 +126,7 @@ function databaseErrorCode(owner: DatabaseOwner, error: unknown): ErrorCode {
 function isErrorCode(value: unknown): value is ErrorCode {
   if (typeof value !== "string") return false;
   if (Object.values(COMPUTE_READBACK_ERROR).includes(value as never)) return true;
-  const match = /^compute_live_(?:workspace|fabric)_database_(.+)$/.exec(value);
+  const match = /^compute_live_(?:workspace|fabric|fabric_domain)_database_(.+)$/.exec(value);
   return match !== null && (DATABASE_FAILURE_KINDS.includes(match[1] as never) ||
     /^(?:sqlstate_[A-Z0-9]{5}|psql_exit_[1-9][0-9]{0,2})$/.test(match[1]));
 }
@@ -166,9 +169,10 @@ function observe(body: unknown, workspaceId: string, computeId: string): Observa
       Object.values(data).some(v => typeof v !== "string" || v.length > 4096)) fail(COMPUTE_READBACK_ERROR.RESPONSE);
   const o: Observation = {
     machineType: data.machineType as Observation["machineType"], machinePresent: r.machinePresent,
-    allocationStatus: cell(r.status, ["external_deleted"]), tkeStatus: cell(r.tkeStatus, ["NOT_FOUND"]),
+    allocationStatus: cell(r.status, ["destroying", "external_deleted"]), tkeStatus: cell(r.tkeStatus, ["RUNNING", "NOT_FOUND"]),
     cvmStatus: cell(r.cvmStatus, ["NOT_FOUND", "SHUTDOWN"]), isolatedSource: cell(data.isolatedSource, ["MANMADE"]),
-    observedAt: r.observedAt, readbackIdDigest: identity("compute-readback:readback:v1", r.readbackId),
+    observedAt: r.observedAt, accountIdDigest: identity("compute-destroy-journal:account:v1", r.accountId as string),
+    readbackIdDigest: identity("compute-readback:readback:v1", r.readbackId),
     providerRequestIdDigest: identity("compute-readback:request:v1", r.providerRequestId),
     machineRequestIdDigest: identity("compute-readback:request:v1", data.describeClusterMachinesReq as string),
     cvmRequestIdDigest: text(data.describeCvmRequestId) ? identity("compute-readback:request:v1", data.describeCvmRequestId) : null,
@@ -176,12 +180,15 @@ function observe(body: unknown, workspaceId: string, computeId: string): Observa
   validateObservation(o);
   return o;
 }
-function validateObservation(value: unknown): Observation {
-  const o = exact(value, ["machineType", "machinePresent", "allocationStatus", "tkeStatus", "cvmStatus", "isolatedSource", "observedAt", "readbackIdDigest", "providerRequestIdDigest", "machineRequestIdDigest", "cvmRequestIdDigest"]);
+function validateObservation(value: unknown, version: 1 | 2 = 2): Observation {
+  const keys = ["machineType", "machinePresent", "allocationStatus", "tkeStatus", "cvmStatus", "isolatedSource", "observedAt", "readbackIdDigest", "providerRequestIdDigest", "machineRequestIdDigest", "cvmRequestIdDigest"];
+  const o = exact(value, version === 2 ? [...keys, "accountIdDigest"] : keys);
   if (typeof o.machineType !== "string" || !["NativeCVM", "Native", "CXM"].includes(o.machineType) || typeof o.machinePresent !== "boolean" || !instant(o.observedAt) ||
       [o.readbackIdDigest, o.providerRequestIdDigest, o.machineRequestIdDigest].some(v => !digest(v)) ||
+      version === 2 && !digest(o.accountIdDigest) ||
       !(o.cvmRequestIdDigest === null || digest(o.cvmRequestIdDigest))) fail();
-  const allocation = validateCell(o.allocationStatus, ["external_deleted"]), tke = validateCell(o.tkeStatus, ["NOT_FOUND"]);
+  const allocation = validateCell(o.allocationStatus, version === 2 ? ["destroying", "external_deleted"] : ["external_deleted"]);
+  const tke = validateCell(o.tkeStatus, version === 2 ? ["RUNNING", "NOT_FOUND"] : ["NOT_FOUND"]);
   const cvm = validateCell(o.cvmStatus, ["NOT_FOUND", "SHUTDOWN"]);
   const isolated = validateCell(o.isolatedSource, ["MANMADE"]);
   if (o.machineType !== "NativeCVM" && (cvm.digest !== null || o.cvmRequestIdDigest !== null || isolated.digest !== null)) fail();
@@ -207,12 +214,12 @@ export async function runWorkspaceComputeLiveReadback(input: {
   const candidate = validateCloudCandidateReceipt(input.candidate), c = candidateInstallationIdentity(candidate);
   const p = provenance(input.provenance);
   const receipt: WorkspaceComputeLiveReadbackReceipt = {
-    schemaVersion: 1, kind: "opl_cloud_workspace_compute_live_readback", scope: "compute_destroy_status",
+    schemaVersion: 2, kind: "opl_cloud_workspace_compute_live_readback", scope: "compute_destroy_status",
     status: COMPUTE_READBACK_STATUS.BLOCKED, errorCode: COMPUTE_READBACK_ERROR.ACCESS,
     candidate: c, provenance: p, workspaceIdDigest: identity("console-customer-workspace-readback:workspace:v1", input.workspaceId),
     workspaceOperationIdDigest: identity("cloud-launch-readback:operation:v1", input.workspaceOperationId),
     fabricOperationIdDigest: null, computeIdDigest: null, startedAt: new Date().toISOString(), completedAt: new Date().toISOString(),
-    installation: null, httpStatus: null, failure: null, observation: null,
+    installation: null, httpStatus: null, failure: null, observation: null, journal: null,
   };
   try {
     let binding;
@@ -240,6 +247,12 @@ export async function runWorkspaceComputeLiveReadback(input: {
     const image = record(candidate.cloudImage);
     const result = await access.withFabric({ indexRef: image.indexRef as string, indexDigest: image.indexDigest as string,
       platforms: image.platforms as Array<{ platform: string; digest: string }> }, async session => {
+      let journalRows: string[];
+      try { journalRows = await access.select("fabric_domain", computeDestroyJournalSql(binding.computeId)); }
+      catch (e) { fail(databaseErrorCode("fabric_domain", e)); }
+      let journal: ComputeDestroyJournal;
+      try { journal = decodeComputeDestroyJournal(journalRows, { computeId: binding.computeId, workspaceId: input.workspaceId }); }
+      catch { fail(COMPUTE_READBACK_ERROR.JOURNAL_BINDING); }
       const response = await session.get(`/fabric/compute-allocations/${encodeURIComponent(binding.computeId)}/destroy-status`);
       if (!Number.isInteger(response.status) || response.status < 100 || response.status > 599) fail(COMPUTE_READBACK_ERROR.RESPONSE);
       // Delay publishing any response until the host rechecks Pod/image identity
@@ -247,11 +260,16 @@ export async function runWorkspaceComputeLiveReadback(input: {
       if (response.status !== 200) {
         const body = exact(response.body, ["error"]);
         if (!text(body.error)) fail(COMPUTE_READBACK_ERROR.RESPONSE);
-        return { httpStatus: response.status, failure: projectComputeReadbackError(body.error), observation: null };
+        return { httpStatus: response.status, failure: projectComputeReadbackError(body.error), observation: null, journal };
       }
-      return { httpStatus: response.status, failure: null, observation: observe(response.body, input.workspaceId, binding.computeId) };
+      const observation = observe(response.body, input.workspaceId, binding.computeId);
+      if (journal.accountIdDigest && journal.accountIdDigest !== observation.accountIdDigest) {
+        fail(COMPUTE_READBACK_ERROR.JOURNAL_BINDING);
+      }
+      return { httpStatus: response.status, failure: null, observation, journal };
     });
     receipt.installation = installation(result.pin, c);
+    receipt.journal = result.value.journal;
     receipt.httpStatus = result.value.httpStatus; receipt.failure = result.value.failure; receipt.observation = result.value.observation;
     receipt.errorCode = receipt.observation ? COMPUTE_READBACK_ERROR.NONE : COMPUTE_READBACK_ERROR.HTTP;
     receipt.status = receipt.observation ? COMPUTE_READBACK_STATUS.OBSERVED : COMPUTE_READBACK_STATUS.BLOCKED;
@@ -263,8 +281,10 @@ export async function runWorkspaceComputeLiveReadback(input: {
   return validateWorkspaceComputeLiveReadbackReceipt(receipt);
 }
 export function validateWorkspaceComputeLiveReadbackReceipt(value: unknown): WorkspaceComputeLiveReadbackReceipt {
-  const r = exact(value, ["schemaVersion", "kind", "scope", "status", "errorCode", "candidate", "provenance", "workspaceIdDigest", "workspaceOperationIdDigest", "fabricOperationIdDigest", "computeIdDigest", "startedAt", "completedAt", "installation", "httpStatus", "failure", "observation"]);
-  if (r.schemaVersion !== 1 || r.kind !== "opl_cloud_workspace_compute_live_readback" || r.scope !== "compute_destroy_status" ||
+  const keys = ["schemaVersion", "kind", "scope", "status", "errorCode", "candidate", "provenance", "workspaceIdDigest", "workspaceOperationIdDigest", "fabricOperationIdDigest", "computeIdDigest", "startedAt", "completedAt", "installation", "httpStatus", "failure", "observation"];
+  const initial = record(value);
+  const r = exact(value, initial.schemaVersion === 2 ? [...keys, "journal"] : keys);
+  if ((r.schemaVersion !== 1 && r.schemaVersion !== 2) || r.kind !== "opl_cloud_workspace_compute_live_readback" || r.scope !== "compute_destroy_status" ||
       !Object.values(COMPUTE_READBACK_STATUS).includes(r.status as never) || !isErrorCode(r.errorCode) ||
       !digest(r.workspaceIdDigest) || !digest(r.workspaceOperationIdDigest) || !(r.fabricOperationIdDigest === null || digest(r.fabricOperationIdDigest)) ||
       !(r.computeIdDigest === null || digest(r.computeIdDigest)) || !instant(r.startedAt) || !instant(r.completedAt) || Date.parse(r.completedAt) < Date.parse(r.startedAt)) fail();
@@ -282,9 +302,21 @@ export function validateWorkspaceComputeLiveReadbackReceipt(value: unknown): Wor
     const f = exact(r.failure, ["errorToken", "errorDigest"]);
     if (!digest(f.errorDigest) || !(f.errorToken === null || typeof f.errorToken === "string" && projectComputeReadbackError(f.errorToken).errorToken === f.errorToken)) fail();
   }
-  if (r.observation !== null) validateObservation(r.observation);
+  if (r.observation !== null) validateObservation(r.observation, r.schemaVersion as 1 | 2);
+  if (r.schemaVersion === 2 && r.journal !== null) {
+    const journal = validateComputeDestroyJournal(r.journal) as ComputeDestroyJournal;
+    const observedAccountIdDigest = r.observation === null ? null : (r.observation as Observation).accountIdDigest ?? null;
+    if (r.fabricOperationIdDigest === null || r.computeIdDigest === null ||
+        journal.workspaceIdDigest !== r.workspaceIdDigest || journal.computeIdDigest !== r.computeIdDigest ||
+        observedAccountIdDigest !== null && journal.accountIdDigest !== null && journal.accountIdDigest !== observedAccountIdDigest ||
+        [COMPUTE_READBACK_ERROR.BINDING, COMPUTE_READBACK_ERROR.WORKSPACE_ACCESS, COMPUTE_READBACK_ERROR.WORKSPACE_BINDING,
+          COMPUTE_READBACK_ERROR.FABRIC_ACCESS, COMPUTE_READBACK_ERROR.FABRIC_BINDING, COMPUTE_READBACK_ERROR.JOURNAL_BINDING].includes(r.errorCode as never) ||
+        /^compute_live_(?:workspace|fabric|fabric_domain)_database_/.test(String(r.errorCode))) fail();
+  }
+  if (r.schemaVersion === 1 && (r.errorCode === COMPUTE_READBACK_ERROR.JOURNAL_BINDING || /^compute_live_fabric_domain_/.test(String(r.errorCode)))) fail();
   const observed = r.status === COMPUTE_READBACK_STATUS.OBSERVED;
   if (observed !== (r.observation !== null) || observed !== (r.errorCode === COMPUTE_READBACK_ERROR.NONE) ||
+      r.schemaVersion === 2 && (observed || r.errorCode === COMPUTE_READBACK_ERROR.HTTP) && r.journal === null ||
       observed && (r.httpStatus !== 200 || r.failure !== null) ||
       r.observation !== null && (r.installation === null || r.fabricOperationIdDigest === null || r.computeIdDigest === null) ||
       r.failure !== null && (r.errorCode !== COMPUTE_READBACK_ERROR.HTTP || r.httpStatus === null || r.httpStatus === 200 || r.installation === null) ||
@@ -295,7 +327,8 @@ export function validateWorkspaceComputeLiveReadbackReceipt(value: unknown): Wor
   if ([COMPUTE_READBACK_ERROR.BINDING, COMPUTE_READBACK_ERROR.WORKSPACE_ACCESS,
     COMPUTE_READBACK_ERROR.WORKSPACE_BINDING, COMPUTE_READBACK_ERROR.FABRIC_ACCESS,
     COMPUTE_READBACK_ERROR.FABRIC_BINDING].includes(r.errorCode as never) && r.computeIdDigest !== null ||
-      /^compute_live_(?:workspace|fabric)_database_/.test(String(r.errorCode)) && r.computeIdDigest !== null) fail();
+      /^compute_live_(?:workspace|fabric)_database_/.test(String(r.errorCode)) && r.computeIdDigest !== null ||
+      (/^compute_live_fabric_domain_database_/.test(String(r.errorCode)) || r.errorCode === COMPUTE_READBACK_ERROR.JOURNAL_BINDING) && r.computeIdDigest === null) fail();
   if (!observed && r.errorCode !== COMPUTE_READBACK_ERROR.HTTP &&
       (r.installation !== null || r.httpStatus !== null || r.failure !== null)) fail();
   return r as WorkspaceComputeLiveReadbackReceipt;

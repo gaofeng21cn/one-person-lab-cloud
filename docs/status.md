@@ -4,12 +4,12 @@ Owner: `opl-cloud`
 Purpose: `replaceable_current_evidence_snapshot`
 State: `current_snapshot`
 Reviewed source baseline: `3773966a31e2a5d6630038decfa0a812c1488830` on `main`
-Snapshot reconciliation date: 2026-11-06
-Scoped Workspace deletion update: 2026-11-09 (source `06bb8308b994a5865470df2bbaaa89cba363750c`)
+Snapshot reconciliation date: 2026-11-10
+Scoped Workspace deletion update: 2026-11-10 (installed product source `41286b76860424ca5a71432d4ccc2552189bf32f`)
 
 Each observation below retains its original source, run and environment; the
 reviewed source baseline does not requalify those receipts. The Workspace deletion
-section includes the separately dated November 9 evidence. Source tests, Candidate construction,
+section includes the separately dated November 9 and November 10 evidence. Source tests, Candidate construction,
 Instance installation and customer acceptance prove separate layers; none alone
 establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
@@ -176,6 +176,52 @@ which the Service previously mistook for stable identity drift. The read-only
 comparison excludes only current observation fields; resource identity and
 persisted deletion fences remain checked. This source change has no installed
 Candidate or production acceptance evidence yet.
+
+## Workspace 1042 compute journal follow-up (2026-11-10)
+
+The earlier installed product was Cloud source
+`41286b76860424ca5a71432d4ccc2552189bf32f`, Candidate build `42743118164`,
+image index `sha256:27b46a91b6dd1d9dae7c5e9e8d445b2514f2d269970b30cf7b92db2ef4eb0245`
+and Instance deployment `42749044008`. This diagnostic reads that installation;
+it does not require rebuilding the Candidate.
+
+One resume of the **original** Workspace deletion, run `42752312426`, returned
+HTTP 202 with `resumed=true`. That is an accepted asynchronous request, not
+deletion success. Instance facts readback `42752591649` still reports
+`needs_attention` at `storage_deletion`, `pendingAttempts=17`, compute
+`unknown`/`unconfirmed_send`, and the storage, storage attachment, Workspace
+runtime and gateway-secret binding absent. The deletion receipt is still absent.
+Refund and Key closeout remain unknown.
+
+The protected live compute readback `42753045955` is a valid observation of the
+current owner state: the Machine is present, allocation status is `destroying`,
+and TKE status is `RUNNING`. Because the Machine is present, no CVM query was
+made. This does not prove that the original delete request was or was not sent,
+and it does not prove resource absence. Cloud custody run `42753407250`
+successfully retained this readback; custody success is not deletion success.
+
+A newer installed Candidate is build `42793047780`, product source
+`15ba29256aebf127f825a4bbb0ea174eb90d560e`, image index
+`sha256:cd8d7a62e84763f4c4bf1d9b7993d63fed0348e278bf2a168a54b3d8e47846ca`,
+deployed by Instance run `42797408687`. A fresh read on November 10
+(`42816339601`, Cloud custody `42816823961`) again
+observed the Machine present and TKE `RUNNING`; CVM was not queried. The exact
+Workspace operation, Candidate image and protected installation were bound by
+the receipt and handoff. This newer read supersedes the earlier current-state
+observation, but still contains no original compute destroy-journal phase.
+The matching CBS journal separately records `NOT_FOUND`; its dispatch phase is
+not evidence about the CVM operation.
+
+The next journal diagnostic is source work, not yet merged or run. Cloud owns
+the domain-journal SQL, schema, binding, redaction, projection and receipt
+validator. Instance contributes only the independent Fabric-domain database
+Secret source and protected read-only transport; it does not make business
+decisions. Keep the historical v1 receipt decoder strict and distinguish the
+new v2 receipt. After both owner changes are merged, run the protected `main`
+diagnostic and import its exact evidence into Cloud custody. Then repair and
+continue the same original deletion from the journal facts. Do not create a new
+deletion operation or infer a safe resend from `providerRequestPresent`. The
+prior November 9 evidence and immutable imported receipts remain unchanged.
 
 ## Workspace 1042 storage deletion (2026-11-07)
 

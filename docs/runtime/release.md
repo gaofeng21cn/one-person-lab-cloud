@@ -114,6 +114,39 @@ merging their owner PRs, running the Instance readback for the original
 operation, then importing that exact run through Cloud. A diagnostic source or
 transport failure is resolved at that boundary before another resource command.
 
+### Compute Destroy Journal Readback
+
+The live endpoint reports current provider state; it does not expose the
+persisted Fabric domain operation journal. The Cloud-owned
+`tools/workspace-compute-destroy-journal.ts` adds a separate read-only journal
+projection, bound to the already selected compute and Workspace. Cloud owns the
+SQL, row binding, schema, redaction and receipt validation. The Instance
+adapter only locates the Fabric domain database Secret reference from the
+actual Fabric Deployment and transports a read-only query through the protected
+runner; it owns no SQL, business fields or deletion-state interpretation. This
+domain database is distinct from Fabric coordination storage. Before the domain
+query and around the GET, the transport compares the private URL against the
+exact pinned Fabric container's `DATABASE_URL` environment; Secret rotation
+cannot silently pair a new database with a still-running old container. Only
+that single variable is read in memory, and neither value enters a receipt.
+
+The journal is diagnostic evidence, not a delete command. Missing rows, missing
+mutation counts and provider request identifiers do not prove that a provider
+mutation was or was not sent. Final-release records must bind to the original
+destroy operation. Unknown or conflicting evidence remains unknown/blocked;
+the journal cannot establish resource absence, refund completion or Key
+closeout. Keep v1 receipts on their original strict decoder and validate v2
+receipts against the complete journal schema; do not relabel historical
+receipts.
+
+The journal source and independent Instance database-transport change are not
+yet merged or run through protected `main`. After both owner PRs are merged,
+run the protected diagnostic against the already installed Candidate and
+import its receipt into Cloud custody. No Candidate rebuild is needed for this
+source-only diagnostic. Use the exact journal evidence to select a repair for
+the original deletion operation; do not create a replacement operation or
+infer send state from the live readback alone.
+
 ## Cloud Agent WebUI Build Input
 
 The Cloud-owned independent Agent WebUI has its own exact-source artifact build:
