@@ -85,8 +85,9 @@ func runComputeDestroyProvisionerHelper() int {
 	state, _ := os.ReadFile(os.Getenv(computeDestroyProvisionerStateFileEnv))
 	stateValue := strings.TrimSpace(string(state))
 	absent := stateValue == "absent"
-	tkeAPI := &fakeNativeTkeAPI{nodePoolId: request.Pool.NodePoolId, replicas: 1}
-	cvmAPI := &fakeNativeCvmAPI{tags: maps.Clone(request.Tags)}
+	// This subprocess fixture exercises retained generic postpaid deletion.
+	tkeAPI := &fakeNativeTkeAPI{instanceChargeType: "POSTPAID_BY_HOUR", nodePoolId: request.Pool.NodePoolId, replicas: 1}
+	cvmAPI := &fakeNativeCvmAPI{instanceChargeType: "POSTPAID_BY_HOUR", tags: maps.Clone(request.Tags)}
 	if absent {
 		tkeAPI.deletedMachineNames = map[string]bool{request.Allocation.MachineName: true}
 		cvmAPI.empty = true
@@ -6768,8 +6769,9 @@ func TestTencentSDKClientMutationRejectsUnownedNodePoolWithoutMutation(t *testin
 }
 
 func TestTencentSDKClientDestroyAllocationDeletesNamedMachine(t *testing.T) {
-	tkeAPI := &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 2}
+	tkeAPI := &fakeNativeTkeAPI{instanceChargeType: "POSTPAID_BY_HOUR", nodePoolId: "np-basic", replicas: 2}
 	client := newFakeTencentSDKClient(tkeAPI)
+	client.nativeCvmClient.(*fakeNativeCvmAPI).instanceChargeType = "POSTPAID_BY_HOUR"
 
 	response := client.DestroyComputeAllocation(Request{
 		AccountId: "pi-alpha", Region: "ap-guangzhou",
@@ -6965,11 +6967,12 @@ func TestTencentSDKClientDestroyValidatesMachineOwnershipBeforeMutation(t *testi
 		{name: "unknown machine provider", configure: func(api *fakeNativeTkeAPI) { api.machineType = "Unknown" }, allocation: ComputeAllocationInput{MachineName: "node-basic-1", NodeName: "10.0.0.11", PrivateIp: "10.0.0.11", InstanceId: "ins-basic-1"}},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			tkeAPI := &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 1, enableAutoscaling: true, autoRepair: true}
+			tkeAPI := &fakeNativeTkeAPI{instanceChargeType: "POSTPAID_BY_HOUR", nodePoolId: "np-basic", replicas: 1, enableAutoscaling: true, autoRepair: true}
 			if testCase.configure != nil {
 				testCase.configure(tkeAPI)
 			}
 			client := newFakeTencentSDKClient(tkeAPI)
+			client.nativeCvmClient.(*fakeNativeCvmAPI).instanceChargeType = "POSTPAID_BY_HOUR"
 			allocation := testCase.allocation
 			allocation.MachineType = "NativeCVM"
 			response := client.DestroyComputeAllocation(Request{
@@ -6989,8 +6992,8 @@ func TestTencentSDKClientDestroyValidatesMachineOwnershipBeforeMutation(t *testi
 
 func TestTencentSDKClientDestroyValidatesNativeCVMBeforePoolMutation(t *testing.T) {
 	callOrder := []string{}
-	tkeAPI := &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 1, enableAutoscaling: true, autoRepair: true, callLog: &callOrder}
-	cvmAPI := &fakeNativeCvmAPI{callLog: &callOrder}
+	tkeAPI := &fakeNativeTkeAPI{instanceChargeType: "POSTPAID_BY_HOUR", nodePoolId: "np-basic", replicas: 1, enableAutoscaling: true, autoRepair: true, callLog: &callOrder}
+	cvmAPI := &fakeNativeCvmAPI{instanceChargeType: "POSTPAID_BY_HOUR", callLog: &callOrder}
 	tkeAPI.onDelete = func() { cvmAPI.empty = true }
 	client := &tencentSDKClient{region: "ap-guangzhou", clusterId: "cls-123", nativeTkeClient: tkeAPI, nativeCvmClient: cvmAPI}
 
@@ -7076,8 +7079,8 @@ func TestTencentSDKClientDestroyNativeCVMRequiresAuthoritativeCVMAbsence(t *test
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			tkeAPI := &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 1}
-			cvmAPI := &fakeNativeCvmAPI{}
+			tkeAPI := &fakeNativeTkeAPI{instanceChargeType: "POSTPAID_BY_HOUR", nodePoolId: "np-basic", replicas: 1}
+			cvmAPI := &fakeNativeCvmAPI{instanceChargeType: "POSTPAID_BY_HOUR"}
 			if test.configure != nil {
 				test.configure(tkeAPI, cvmAPI)
 			}
@@ -7095,8 +7098,9 @@ func TestTencentSDKClientDestroyNativeCVMRequiresAuthoritativeCVMAbsence(t *test
 }
 
 func TestTencentSDKClientDestroyAcceptsDeleteResponseLossOnlyAfterExactAbsence(t *testing.T) {
-	tkeAPI := &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 1, deleteMachinesErr: errors.New("response lost")}
+	tkeAPI := &fakeNativeTkeAPI{instanceChargeType: "POSTPAID_BY_HOUR", nodePoolId: "np-basic", replicas: 1, deleteMachinesErr: errors.New("response lost")}
 	client := newFakeTencentSDKClient(tkeAPI)
+	client.nativeCvmClient.(*fakeNativeCvmAPI).instanceChargeType = "POSTPAID_BY_HOUR"
 	response := client.DestroyComputeAllocation(Request{
 		Region:     "ap-guangzhou",
 		Pool:       ComputePoolInput{ClusterId: "cls-123", NodePoolId: "np-basic"},
@@ -7111,8 +7115,8 @@ func TestTencentSDKClientDestroyAcceptsDeleteResponseLossOnlyAfterExactAbsence(t
 }
 
 func TestTencentSDKClientDestroyResponseLossFailsWhileExactMachineStillExists(t *testing.T) {
-	tkeAPI := &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 1, retainDeletedMachines: true, deleteMachinesErr: errors.New("response lost")}
-	cvmAPI := &fakeNativeCvmAPI{}
+	tkeAPI := &fakeNativeTkeAPI{instanceChargeType: "POSTPAID_BY_HOUR", nodePoolId: "np-basic", replicas: 1, retainDeletedMachines: true, deleteMachinesErr: errors.New("response lost")}
+	cvmAPI := &fakeNativeCvmAPI{instanceChargeType: "POSTPAID_BY_HOUR"}
 	client := &tencentSDKClient{region: "ap-guangzhou", clusterId: "cls-123", nativeTkeClient: tkeAPI, nativeCvmClient: cvmAPI}
 	request := Request{
 		Region:     "ap-guangzhou",
@@ -7130,8 +7134,9 @@ func TestTencentSDKClientDestroyResponseLossFailsWhileExactMachineStillExists(t 
 }
 
 func TestTencentSDKClientDestroyVerifyFailureReturnsDurableDeleteAttemptEvidence(t *testing.T) {
-	tkeAPI := &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 1, describeMachineErr: errors.New("verify unavailable"), describeMachineErrAt: 3}
+	tkeAPI := &fakeNativeTkeAPI{instanceChargeType: "POSTPAID_BY_HOUR", nodePoolId: "np-basic", replicas: 1, describeMachineErr: errors.New("verify unavailable"), describeMachineErrAt: 3}
 	client := newFakeTencentSDKClient(tkeAPI)
+	client.nativeCvmClient.(*fakeNativeCvmAPI).instanceChargeType = "POSTPAID_BY_HOUR"
 	request := Request{
 		Region:     "ap-guangzhou",
 		Pool:       ComputePoolInput{ClusterId: "cls-123", NodePoolId: "np-basic"},
@@ -7186,7 +7191,7 @@ func TestTencentProvisionerDeleteAttemptPersistsThroughFabricServiceRestart(t *t
 		Status: "running", Provider: "tencent-tke", ProviderResourceID: "ins-basic-1", ProviderRequestID: "req-create-compute",
 		PoolID: "pool-basic-2c4g", NodePoolID: "np-basic", InstanceID: "ins-basic-1", CVMInstanceID: "ins-basic-1",
 		MachineName: "node-basic-1", NodeName: "10.0.0.11", PrivateIP: "10.0.0.11", InstanceType: "SA5.MEDIUM4", Zone: "ap-guangzhou-3",
-		CVMStatus: "RUNNING", ChargeType: "PREPAID", RenewFlag: "NOTIFY_AND_MANUAL_RENEW", Deadline: "2026-09-20T00:00:00Z", ServiceName: "opl-compute-alpha",
+		CVMStatus: "RUNNING", ChargeType: "POSTPAID_BY_HOUR", ServiceName: "opl-compute-alpha",
 		NodeSelector: map[string]any{"kubernetes.io/hostname": "10.0.0.11"},
 		ProviderData: map[string]string{
 			"clusterId": "cls-123", "region": "ap-guangzhou", "machineName": "node-basic-1", "instanceType": "SA5.MEDIUM4",
@@ -7301,8 +7306,8 @@ func computeDestroyProvisionerDeleteCount(t *testing.T, path string) int {
 }
 
 func TestTencentSDKClientDestroyRetryAfterResponseLossReconcilesWithoutSecondMutation(t *testing.T) {
-	tkeAPI := &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 1, retainDeletedMachines: true, deleteMachinesErr: errors.New("response lost")}
-	cvmAPI := &fakeNativeCvmAPI{}
+	tkeAPI := &fakeNativeTkeAPI{instanceChargeType: "POSTPAID_BY_HOUR", nodePoolId: "np-basic", replicas: 1, retainDeletedMachines: true, deleteMachinesErr: errors.New("response lost")}
+	cvmAPI := &fakeNativeCvmAPI{instanceChargeType: "POSTPAID_BY_HOUR"}
 	request := Request{
 		Region:     "ap-guangzhou",
 		Pool:       ComputePoolInput{ClusterId: "cls-123", NodePoolId: "np-basic"},
@@ -7467,8 +7472,8 @@ func TestTencentSDKClientStorageReadAndDestroyRejectRegionDriftBeforeProviderCal
 }
 
 func TestTencentSDKClientDestroyRetryRequiresNativeCVMAbsenceWithoutSecondMutation(t *testing.T) {
-	tkeAPI := &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 1, deletedMachineNames: map[string]bool{"node-basic-1": true}}
-	cvmAPI := &fakeNativeCvmAPI{}
+	tkeAPI := &fakeNativeTkeAPI{instanceChargeType: "POSTPAID_BY_HOUR", nodePoolId: "np-basic", replicas: 1, deletedMachineNames: map[string]bool{"node-basic-1": true}}
+	cvmAPI := &fakeNativeCvmAPI{instanceChargeType: "POSTPAID_BY_HOUR"}
 	response := (&tencentSDKClient{region: "ap-guangzhou", clusterId: "cls-123", nativeTkeClient: tkeAPI, nativeCvmClient: cvmAPI}).DestroyComputeAllocation(Request{
 		Region:     "ap-guangzhou",
 		Pool:       ComputePoolInput{ClusterId: "cls-123", NodePoolId: "np-basic"},
@@ -7496,8 +7501,9 @@ func TestTencentSDKClientDestroyLegacyResponseLossReconcilesMachineAbsenceWithou
 }
 
 func TestTencentSDKClientDestroyWaitsForMachineAbsence(t *testing.T) {
-	tkeAPI := &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 2, retainDeletedMachines: true}
+	tkeAPI := &fakeNativeTkeAPI{instanceChargeType: "POSTPAID_BY_HOUR", nodePoolId: "np-basic", replicas: 2, retainDeletedMachines: true}
 	client := newFakeTencentSDKClient(tkeAPI)
+	client.nativeCvmClient.(*fakeNativeCvmAPI).instanceChargeType = "POSTPAID_BY_HOUR"
 	response := client.DestroyComputeAllocation(Request{
 		Region:     "ap-guangzhou",
 		Pool:       ComputePoolInput{ClusterId: "cls-123", NodePoolId: "np-basic"},
@@ -7509,8 +7515,9 @@ func TestTencentSDKClientDestroyWaitsForMachineAbsence(t *testing.T) {
 }
 
 func TestTencentSDKClientDestroyAllocationDisablesNodePoolSelfProvisioningBeforeDelete(t *testing.T) {
-	tkeAPI := &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 2, enableAutoscaling: true, autoRepair: true}
+	tkeAPI := &fakeNativeTkeAPI{instanceChargeType: "POSTPAID_BY_HOUR", nodePoolId: "np-basic", replicas: 2, enableAutoscaling: true, autoRepair: true}
 	client := newFakeTencentSDKClient(tkeAPI)
+	client.nativeCvmClient.(*fakeNativeCvmAPI).instanceChargeType = "POSTPAID_BY_HOUR"
 
 	response := client.DestroyComputeAllocation(Request{
 		AccountId: "pi-alpha", Region: "ap-guangzhou",
@@ -7550,8 +7557,9 @@ func TestTencentSDKClientDestroyAllocationDisablesNodePoolSelfProvisioningBefore
 }
 
 func TestTencentSDKClientDestroyMachineAllocationAlwaysScalesDownAndTerminates(t *testing.T) {
-	tkeAPI := &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 1}
+	tkeAPI := &fakeNativeTkeAPI{instanceChargeType: "POSTPAID_BY_HOUR", nodePoolId: "np-basic", replicas: 1}
 	client := newFakeTencentSDKClient(tkeAPI)
+	client.nativeCvmClient.(*fakeNativeCvmAPI).instanceChargeType = "POSTPAID_BY_HOUR"
 
 	response := client.DestroyComputeAllocation(Request{
 		AccountId: "pi-alpha", Region: "ap-guangzhou",

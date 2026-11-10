@@ -295,6 +295,12 @@ implementation and remaining gaps are reported separately in status/roadmap.
   irreversible provider call. Lost lock connections cannot admit another sender.
   Replays and uncertain replies only read back; they never rewrite the original
   destroy or establish Workspace deletion or refund success.
+- Prepaid NativeCVM removal stays within the original Cloud Workspace deletion.
+  TKE Machine detachment uses retain mode; only fresh Machine absence permits
+  retirement of the exact active prepaid CVM. Each step binds the original
+  destroy and exact ownership to its own database-atomic, permanent one-send
+  fence. An uncertain reply never authorizes another send of the same step.
+  The generic TKE terminate mode cannot destroy prepaid instances.
 - Recycled NativeCVM final release stays within the original Cloud Workspace
   deletion through Fabric. Fresh Machine absence and `SHUTDOWN / MANMADE`
   observations precede the uniquely claimed one-send fence; the provider adapter

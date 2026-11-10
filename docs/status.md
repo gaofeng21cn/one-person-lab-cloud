@@ -230,9 +230,21 @@ identity, deletion evidence and mutation fences remain checked; a present
 Machine remains unconfirmed and no provider deletion is re-dispatched. The
 diagnostic also preserves fixed original provider failure codes and the two
 bounded Tencent SDK rejection classes, excluding messages and request identities.
-Installed adoption of this source repair is not established. The original
-provider failure, physical resource absence, Workspace receipt and separate
-refund remain unresolved. No new delete or refund was issued during diagnosis.
+Installed adoption of this source repair is not established. Protected readback
+`42839427156` and Cloud custody `42840134972` classify the original failure as
+`compute_machine_delete_unverified`; the original SDK rejection reason remains
+unknown. Independently, the provider contract restricts TKE terminate mode to
+postpaid CVMs, while the original resource uses prepaid billing. No new delete or
+refund was issued during diagnosis.
+
+Fabric source now adds separately fenced prepaid Machine detachment (retain
+mode) and active-CVM retirement before the existing recycled final release. The
+generic Machine destroy refuses prepaid terminate mode without sending it.
+All steps stay bound to the original Workspace deletion and Fabric destroy;
+unknown replies never reset a fence. Source verification, Candidate construction,
+installation, physical absence, original destroy finalization, Workspace receipt
+and separate refund remain distinct acceptance layers. This source change has
+not yet been installed and does not establish deletion or refund success.
 
 ## Workspace 1042 storage deletion (2026-11-07)
 

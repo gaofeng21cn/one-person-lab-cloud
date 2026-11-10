@@ -205,6 +205,18 @@ test("final release with a foreign original destroy operation is rejected", () =
   assert.throws(() => decode(destroyRow(), finalReleaseRow({ originalDestroyOperationId: "op_foreign_destroy" })), /invalid/u);
 });
 
+test("prepaid detach and retirement fences bind the same original destroy without claiming resource absence", () => {
+  for (const action of ["detach_prepaid_compute_allocation", "retire_prepaid_compute_allocation"]) {
+    const stage = finalReleaseRow({ action, resourceKind: "compute_prepaid_retirement" });
+    const journal = decode(destroyRow(), stage);
+    assert.equal(recordOf(journal, 1).action, action);
+    assert.equal(recordOf(journal, 1).originalDestroyOperationIdDigest, journal.destroyOperationIdDigest);
+    assert.equal(Object.hasOwn(recordOf(journal, 1), "absenceConfirmed"), false);
+    assert.throws(() => decode(destroyRow(), { ...stage, originalDestroyOperationId: "op_foreign" }), /invalid/u);
+    assert.throws(() => decode(destroyRow(), { ...stage, resourceKind: "compute_allocation" }), /invalid/u);
+  }
+});
+
 test("multiple destroy operation IDs are an identity conflict", () => {
   assert.throws(() => decode(
     destroyRow(),
