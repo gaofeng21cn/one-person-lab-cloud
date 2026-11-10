@@ -25,7 +25,17 @@ export const COMPUTE_READBACK_ERROR = Object.freeze({
   HTTP: "compute_live_owner_http_failed", RESPONSE: "compute_live_owner_response_invalid",
   NONE: "none", INVALID: "workspace_compute_live_readback_invalid",
 } as const);
-type ErrorCode = typeof COMPUTE_READBACK_ERROR[keyof typeof COMPUTE_READBACK_ERROR];
+type DatabaseOwner = "workspace" | "fabric";
+const DATABASE_FAILURE_KINDS = [
+  "url_invalid", "url_parameter_invalid", "private_file_missing", "private_file_unreadable",
+  "client_required", "client_spawn_failed", "client_interrupted", "target_session_attrs_invalid",
+  "dns_unavailable", "connection_refused", "connection_timeout", "authentication_failed",
+  "permission_denied", "schema_unavailable", "unclassified",
+] as const;
+type DatabaseErrorCode = `compute_live_${DatabaseOwner}_database_${
+  typeof DATABASE_FAILURE_KINDS[number] | `sqlstate_${string}` | `psql_exit_${string}`
+}`;
+type ErrorCode = typeof COMPUTE_READBACK_ERROR[keyof typeof COMPUTE_READBACK_ERROR] | DatabaseErrorCode;
 type CandidateIdentity = ReturnType<typeof candidateInstallationIdentity>;
 export type ComputeReadbackProvenance = {
   diagnosticSourceSha: string; instanceRepository: "gaofeng21cn/opl-instance-medopl";
@@ -72,6 +82,51 @@ function exact(v: unknown, keys: readonly string[]) {
   return r;
 }
 function text(v: unknown): v is string { return typeof v === "string" && v.length > 0 && v.length <= 4096; }
+function databaseErrorCode(owner: DatabaseOwner, error: unknown): ErrorCode {
+  const unavailable = owner === "workspace" ? COMPUTE_READBACK_ERROR.WORKSPACE_ACCESS : COMPUTE_READBACK_ERROR.FABRIC_ACCESS;
+  const value = error instanceof Error ? error.cause : null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return unavailable;
+  const cause = value as Record<string, unknown>;
+  const keys = ["kind", "phase", "clientCode", "exitCode", "signal", "stderr"];
+  if (Object.keys(cause).length !== keys.length || keys.some(key => !Object.hasOwn(cause, key)) ||
+      cause.kind !== "opl_compute_database_transport_failure" || typeof cause.phase !== "string" || !["private_file", "connection_url", "psql"].includes(cause.phase) ||
+      [cause.clientCode, cause.signal, cause.stderr].some(v => v !== null && (typeof v !== "string" || Buffer.byteLength(v, "utf8") > 1024 * 1024)) ||
+      !(cause.exitCode === null || Number.isInteger(cause.exitCode) && Number(cause.exitCode) >= 0 && Number(cause.exitCode) <= 999)) return unavailable;
+  const prefix = `compute_live_${owner}_database_` as const;
+  if (cause.phase === "private_file") return `${prefix}${cause.clientCode === "ENOENT" ? "private_file_missing" : "private_file_unreadable"}`;
+  if (cause.phase === "connection_url") {
+    if (cause.clientCode === "database_url_invalid") return `${prefix}url_invalid`;
+    if (cause.clientCode === "database_url_parameter_invalid") return `${prefix}url_parameter_invalid`;
+    return `${prefix}unclassified`;
+  }
+  if (cause.clientCode === "postgresql_client_required" || cause.clientCode === "ENOENT") return `${prefix}client_required`;
+  if (cause.clientCode === "EACCES" || cause.clientCode === "ENOEXEC") return `${prefix}client_spawn_failed`;
+  if (cause.signal !== null) return `${prefix}client_interrupted`;
+  const stderr = typeof cause.stderr === "string" ? cause.stderr : "";
+  // Extract PostgreSQL's verbose protocol field before considering libpq text.
+  // Words appearing in a relation name or statement must not become diagnoses.
+  const states = [...stderr.matchAll(/^(?:psql:[^\r\n]*?:[0-9]+: )?(?:ERROR|FATAL|PANIC):[ \t]+([A-Z0-9]{5}):[^\r\n]*$/gm)];
+  if (states.length === 1) {
+    const sqlstate = states[0][1];
+    if (sqlstate === "42501") return `${prefix}permission_denied`;
+    if (sqlstate === "42P01" || sqlstate === "42703") return `${prefix}schema_unavailable`;
+    return `${prefix}sqlstate_${sqlstate}`;
+  }
+  if (/^psql: error: invalid target_session_attrs value: "[^"\r\n]+"$/m.test(stderr)) return `${prefix}target_session_attrs_invalid`;
+  if (/^psql: error: could not translate host name "[^"\r\n]+" to address: [^\r\n]+$/m.test(stderr)) return `${prefix}dns_unavailable`;
+  if (/^psql: error: connection to server at [^\r\n]+ failed: Connection refused$/m.test(stderr)) return `${prefix}connection_refused`;
+  if (/^psql: error: connection to server at [^\r\n]+ failed: (?:timeout expired|connection timed out)$/m.test(stderr)) return `${prefix}connection_timeout`;
+  if (/^psql: error: connection to server at [^\r\n]+ failed: FATAL:  password authentication failed for user "[^"\r\n]+"$/m.test(stderr)) return `${prefix}authentication_failed`;
+  if (Number.isInteger(cause.exitCode) && Number(cause.exitCode) > 0) return `${prefix}psql_exit_${cause.exitCode}`;
+  return `${prefix}unclassified`;
+}
+function isErrorCode(value: unknown): value is ErrorCode {
+  if (typeof value !== "string") return false;
+  if (Object.values(COMPUTE_READBACK_ERROR).includes(value as never)) return true;
+  const match = /^compute_live_(?:workspace|fabric)_database_(.+)$/.exec(value);
+  return match !== null && (DATABASE_FAILURE_KINDS.includes(match[1] as never) ||
+    /^(?:sqlstate_[A-Z0-9]{5}|psql_exit_[1-9][0-9]{0,2})$/.test(match[1]));
+}
 function hash(v: string): string { return `sha256:${createHash("sha256").update(v).digest("hex")}`; }
 function identity(domain: string, v: string) { return hash(`${domain}\0${v}`); }
 function digest(v: unknown): v is string { return typeof v === "string" && DIGEST.test(v); }
@@ -171,10 +226,15 @@ export async function runWorkspaceComputeLiveReadback(input: {
       bindingError = COMPUTE_READBACK_ERROR.FABRIC_BINDING;
       const fabricSql = fabricComputeBindingSql(workspace);
       bindingError = COMPUTE_READBACK_ERROR.FABRIC_ACCESS;
-      const fabricRows = await access.select("fabric", fabricSql);
+      let fabricRows: string[];
+      try { fabricRows = await access.select("fabric", fabricSql); }
+      catch (e) { bindingError = databaseErrorCode("fabric", e); fail(bindingError); }
       bindingError = COMPUTE_READBACK_ERROR.FABRIC_BINDING;
       binding = decodeFabricComputeBinding(fabricRows, workspace);
-    } catch { fail(bindingError); }
+    } catch (e) {
+      if (bindingError === COMPUTE_READBACK_ERROR.WORKSPACE_ACCESS) fail(databaseErrorCode("workspace", e));
+      fail(bindingError);
+    }
     receipt.fabricOperationIdDigest = identity("cloud-launch-readback:operation:v1", binding.fabricOperationId);
     receipt.computeIdDigest = identity("compute-readback:compute:v1", binding.computeId);
     const image = record(candidate.cloudImage);
@@ -196,7 +256,7 @@ export async function runWorkspaceComputeLiveReadback(input: {
     receipt.errorCode = receipt.observation ? COMPUTE_READBACK_ERROR.NONE : COMPUTE_READBACK_ERROR.HTTP;
     receipt.status = receipt.observation ? COMPUTE_READBACK_STATUS.OBSERVED : COMPUTE_READBACK_STATUS.BLOCKED;
   } catch (e) {
-    receipt.errorCode = e instanceof Error && Object.values(COMPUTE_READBACK_ERROR).includes(e.message as ErrorCode) ? e.message as ErrorCode : COMPUTE_READBACK_ERROR.ACCESS;
+    receipt.errorCode = e instanceof Error && isErrorCode(e.message) ? e.message : COMPUTE_READBACK_ERROR.ACCESS;
     receipt.observation = null; receipt.failure = null; receipt.httpStatus = null; receipt.installation = null;
   }
   receipt.completedAt = new Date().toISOString();
@@ -205,7 +265,7 @@ export async function runWorkspaceComputeLiveReadback(input: {
 export function validateWorkspaceComputeLiveReadbackReceipt(value: unknown): WorkspaceComputeLiveReadbackReceipt {
   const r = exact(value, ["schemaVersion", "kind", "scope", "status", "errorCode", "candidate", "provenance", "workspaceIdDigest", "workspaceOperationIdDigest", "fabricOperationIdDigest", "computeIdDigest", "startedAt", "completedAt", "installation", "httpStatus", "failure", "observation"]);
   if (r.schemaVersion !== 1 || r.kind !== "opl_cloud_workspace_compute_live_readback" || r.scope !== "compute_destroy_status" ||
-      !Object.values(COMPUTE_READBACK_STATUS).includes(r.status as never) || !Object.values(COMPUTE_READBACK_ERROR).includes(r.errorCode as never) ||
+      !Object.values(COMPUTE_READBACK_STATUS).includes(r.status as never) || !isErrorCode(r.errorCode) ||
       !digest(r.workspaceIdDigest) || !digest(r.workspaceOperationIdDigest) || !(r.fabricOperationIdDigest === null || digest(r.fabricOperationIdDigest)) ||
       !(r.computeIdDigest === null || digest(r.computeIdDigest)) || !instant(r.startedAt) || !instant(r.completedAt) || Date.parse(r.completedAt) < Date.parse(r.startedAt)) fail();
   provenance(r.provenance);
@@ -234,7 +294,8 @@ export function validateWorkspaceComputeLiveReadbackReceipt(value: unknown): Wor
   if ((r.fabricOperationIdDigest === null) !== (r.computeIdDigest === null)) fail();
   if ([COMPUTE_READBACK_ERROR.BINDING, COMPUTE_READBACK_ERROR.WORKSPACE_ACCESS,
     COMPUTE_READBACK_ERROR.WORKSPACE_BINDING, COMPUTE_READBACK_ERROR.FABRIC_ACCESS,
-    COMPUTE_READBACK_ERROR.FABRIC_BINDING].includes(r.errorCode as never) && r.computeIdDigest !== null) fail();
+    COMPUTE_READBACK_ERROR.FABRIC_BINDING].includes(r.errorCode as never) && r.computeIdDigest !== null ||
+      /^compute_live_(?:workspace|fabric)_database_/.test(String(r.errorCode)) && r.computeIdDigest !== null) fail();
   if (!observed && r.errorCode !== COMPUTE_READBACK_ERROR.HTTP &&
       (r.installation !== null || r.httpStatus !== null || r.failure !== null)) fail();
   return r as WorkspaceComputeLiveReadbackReceipt;
