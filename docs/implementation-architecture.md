@@ -1218,6 +1218,15 @@ refund chain; Instance owns installation configuration and deployment evidence,
 not Workspace deletion execution. The explicit operator endpoint remains a
 separate controlled entry to the same fenced Fabric capability.
 
+Cloud's optional provider-request audit runs inside the same protected compute
+readback scope. It binds only the original prepaid-detach journal to its frozen
+Tencent target and bounded UTC window, then calls CloudAudit `LookUpEvents`
+through Instance's fixed read-only transport. The auxiliary diagnostic keeps
+safe error classes and digests and is published only after the pinned
+installation is checked again and the transport closes. Cloud custody validates
+both its original bytes and parent receipt. This adds no v2 journal fields or
+runtime retry authority; incomplete or unattributed evidence stays unknown.
+
 Fabric's separate `GET /fabric/storage-volumes/{id}/destroy-status` reads the
 original storage destroy journal's frozen identity and phase, then observes CBS
 and the exact PV/PVC without changing the journal or resource cache. The operator

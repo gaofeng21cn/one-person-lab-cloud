@@ -243,8 +243,37 @@ generic Machine destroy refuses prepaid terminate mode without sending it.
 All steps stay bound to the original Workspace deletion and Fabric destroy;
 unknown replies never reset a fence. Source verification, Candidate construction,
 installation, physical absence, original destroy finalization, Workspace receipt
-and separate refund remain distinct acceptance layers. This source change has
-not yet been installed and does not establish deletion or refund success.
+and separate refund remain distinct acceptance layers. That source change is now
+installed as recorded in the November 11 readback below; the uncertain prepaid-detachment result still does not establish deletion
+or refund success.
+
+## Workspace 1042 prepaid-detachment readback (2026-11-11)
+
+Cloud #1160 and Instance #710 are merged. Candidate `42859752971` uses Product
+`d803ab030bc7a5a10cc60a4b0f9a342227b010d5` and image index
+`sha256:3332f1e414636e4d751b1cfaa1aad3e10f9ef2f25c7e4dbbfeb24fd52c892fac`.
+Instance deployment `42864431407` completed successfully after the first attempt
+`42861645555` stopped before cluster mutation on an undeclared exact Candidate.
+The registry addition kept the existing finance-policy ABI and the same image.
+
+Read-only resume plan `42864930045` bound the original parked Workspace deletion.
+Resume `42865942833` issued one owner request and returned `resumed=true`; its
+receipt still reports `needs_attention` at `storage_deletion`, not completion.
+Protected readback `42866553995`, retained by Cloud custody `42867327990`, supplies
+the [exact journal/live receipt](evidence/workspace-deletion/2026-11-11-prepaid-detach/receipt.json).
+Recovery now reports `compute_destroy_recovery_unconfirmed` instead of the old
+false identity mismatch. The new prepaid-detach fence reached started and then
+`compute_prepaid_detach_dispatch_unconfirmed` at 01:32:31 CST on November 11.
+The Machine remains present with TKE `RUNNING`; this live read did not query CVM.
+No retirement or final-release record exists. Missing mutation counts stay unknown.
+
+The SDK projected this call's uncertain reply without its provider error detail.
+Source adds a narrowly scoped read-only CloudAudit lookup for that frozen target,
+action and short time window. Query errors retain safe classes and digests.
+Target-matching audit events remain diagnostics, not attribution to the fence or
+proof of no side effects. Original Workspace completion, the deletion receipt,
+refund and Key closeout remain open. No retry or reset of the uncertain fence is
+authorized by the readback or this diagnostic source.
 
 ## Workspace 1042 storage deletion (2026-11-07)
 

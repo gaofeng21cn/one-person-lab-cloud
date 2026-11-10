@@ -473,7 +473,7 @@ test("workflow uses only admitted main code, read-only API/artifact ports and fi
   const upload = steps.find((step: { uses?: string }) => step.uses?.startsWith("actions/upload-artifact@"));
   assert.equal(upload.with["retention-days"], 90);
   assert.equal(upload.with.name, "workspace-compute-readback-${{ env.INSTANCE_RUN_ID }}-${{ github.run_id }}-${{ github.run_attempt }}");
-  assert.equal(upload.with.path.trim(), "${{ runner.temp }}/compute-readback-evidence/receipt.json\n${{ runner.temp }}/compute-readback-evidence/binding.json");
+  assert.equal(upload.with.path.trim(), "${{ runner.temp }}/compute-readback-evidence/receipt.json\n${{ runner.temp }}/compute-readback-evidence/binding.json\n${{ runner.temp }}/compute-readback-evidence/provider-audit.json\n${{ runner.temp }}/compute-readback-evidence/provider-audit-binding.json");
   assert.equal(upload.if, undefined); // Invalid imports never reach publication.
   const directory = await temporary(t);
   const result = await workflowAdmission(directory, [run(), { total_count: 1, artifacts: [artifact()] }]);
