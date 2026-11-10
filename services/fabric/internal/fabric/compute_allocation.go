@@ -962,7 +962,7 @@ func (s *Service) reconcileTencentComputeDestroy(ctx context.Context, persisted 
 	if readErr != nil {
 		return persisted, fmt.Errorf("compute_destroy_recovery_unconfirmed: %w", readErr)
 	}
-	if !sameComputeDestroyStableIdentity(persisted, readback) {
+	if !sameComputeDestroyReadbackStableIdentity(persisted, readback) {
 		return persisted, fmt.Errorf("compute_destroy_recovery_identity_mismatch")
 	}
 	if !isExternallyDeletedComputeStatus(readback.Status) {

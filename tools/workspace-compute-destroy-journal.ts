@@ -11,6 +11,9 @@ const SAFE_ERRORS = new Set([
   "compute_destroy_status_readback_unavailable", "compute_destroy_status_readback_mismatch",
   "compute_destroy_finalization_identity_mismatch", "compute_final_release_not_eligible", "compute_final_release_unconfirmed",
   "tencent_read_compute_destroy_machine_failed", "tencent_read_compute_destroy_cvm_failed",
+  "compute_machine_delete_unverified", "compute_cvm_delete_unverified", "compute_cvm_delete_identity_mismatch",
+  "tencent_verify_compute_machine_delete_failed", "tencent_verify_cvm_delete_failed",
+  "tencent_compute_delete_invalid_parameter_value", "tencent_compute_delete_unsupported_operation",
 ]);
 
 export type ComputeDestroyJournalRecord = {
@@ -52,6 +55,15 @@ function instant(value: unknown): value is string {
     Number(match[3].slice(1, 3)) <= 23 && Number(match[3].slice(4, 6)) <= 59);
 }
 function nullableText(value: unknown): value is string | null { return value === null || typeof value === "string" && value.length <= 4096; }
+
+function errorToken(error: string): string | null {
+  // Tencent's SDK Error() has this fixed envelope. Export only the two known
+  // rejection classes needed to diagnose the original delete, never its
+  // subcode, Message, RequestId or arbitrary provider text.
+  const sdk = /^compute_machine_delete_unverified:\[TencentCloudSDKError\] Code=(InvalidParameterValue|UnsupportedOperation)(?:\.[A-Za-z0-9_]+)*, Message=/.exec(error);
+  if (sdk) return sdk[1] === "InvalidParameterValue" ? "tencent_compute_delete_invalid_parameter_value" : "tencent_compute_delete_unsupported_operation";
+  return [...SAFE_ERRORS].find(token => error === token || error.startsWith(`${token}:`)) ?? null;
+}
 
 export function computeDestroyJournalSql(computeId: string): string {
   if (typeof computeId !== "string" || !ID.test(computeId)) fail();
@@ -112,7 +124,7 @@ function decodeRow(value: unknown, expected: { computeId: string; workspaceId: s
     requestEvidenceDigests: Object.fromEntries(Object.entries(requests).map(([key, value]) => [key,
       typeof value === "string" && value !== "" ? identity("compute-readback:request:v1", value) : null])) as ComputeDestroyJournalRecord["requestEvidenceDigests"],
     action: row.action as ComputeDestroyJournalRecord["action"], status: row.status as ComputeDestroyJournalRecord["status"],
-    errorToken: errorCode ? [...SAFE_ERRORS].find(token => errorCode === token || errorCode.startsWith(`${token}:`)) ?? null : null,
+    errorToken: errorCode ? errorToken(errorCode) : null,
     errorDigest: errorCode ? hash(errorCode) : null, retryable: row.retryable,
     phase: row.phase as ComputeDestroyJournalRecord["phase"],
     mutationCount: row.mutationCount === null ? null : Number(row.mutationCount),

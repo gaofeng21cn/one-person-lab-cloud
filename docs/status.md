@@ -212,16 +212,27 @@ observation, but still contains no original compute destroy-journal phase.
 The matching CBS journal separately records `NOT_FOUND`; its dispatch phase is
 not evidence about the CVM operation.
 
-The next journal diagnostic is source work, not yet merged or run. Cloud owns
-the domain-journal SQL, schema, binding, redaction, projection and receipt
-validator. Instance contributes only the independent Fabric-domain database
-Secret source and protected read-only transport; it does not make business
-decisions. Keep the historical v1 receipt decoder strict and distinguish the
-new v2 receipt. After both owner changes are merged, run the protected `main`
-diagnostic and import its exact evidence into Cloud custody. Then repair and
-continue the same original deletion from the journal facts. Do not create a new
-deletion operation or infer a safe resend from `providerRequestPresent`. The
-prior November 9 evidence and immutable imported receipts remain unchanged.
+Cloud #1157 and Instance #708 are merged. Protected run `42829091870` used
+Cloud diagnostic source `0bcbfcb04f70d61ea57342c4ab2c3093deee4e67`, Instance
+source `a1a4bf030d7c2f2183fbe60daf4e0668c70c0754` and the same installed
+Candidate. Cloud custody `42829929632` independently retained the exact
+[v2 receipt](evidence/workspace-deletion/2026-11-10-compute-journal/receipt.json),
+binding and run provenance. The journal's original destroy reached
+`delete_attempted_uncertain` on November 8. Later attempts retain that same
+operation and fail with `compute_destroy_recovery_identity_mismatch`. Missing
+mutation counts remain unknown. The current Machine is still present with TKE
+`RUNNING`; CVM was not queried and no final-release operation is recorded.
+
+Source regression reproduces transient CVM observations disappearing during a
+Machine-present recovery as a false identity conflict. The recovery consumer now
+uses the same observation-aware identity comparison as GET. Stable resource
+identity, deletion evidence and mutation fences remain checked; a present
+Machine remains unconfirmed and no provider deletion is re-dispatched. The
+diagnostic also preserves fixed original provider failure codes and the two
+bounded Tencent SDK rejection classes, excluding messages and request identities.
+Installed adoption of this source repair is not established. The original
+provider failure, physical resource absence, Workspace receipt and separate
+refund remain unresolved. No new delete or refund was issued during diagnosis.
 
 ## Workspace 1042 storage deletion (2026-11-07)
 

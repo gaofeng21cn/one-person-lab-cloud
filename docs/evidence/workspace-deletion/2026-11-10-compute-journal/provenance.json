@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "purpose": "original_compute_destroy_journal_custody",
+  "evidenceCustodian": "gaofeng21cn/one-person-lab-cloud",
+  "producerRun": {
+    "repository": "gaofeng21cn/opl-instance-medopl",
+    "id": 42829091870,
+    "run_attempt": 1,
+    "path": ".github/workflows/cloud-workspace-compute-readback.yml",
+    "event": "workflow_dispatch",
+    "head_branch": "main",
+    "head_sha": "a1a4bf030d7c2f2183fbe60daf4e0668c70c0754",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-11-10T13:56:04Z",
+    "updated_at": "2026-11-10T13:56:28Z",
+    "html_url": "https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/42829091870"
+  },
+  "custodyRun": {
+    "repository": "gaofeng21cn/one-person-lab-cloud",
+    "id": 42829929632,
+    "run_attempt": 1,
+    "path": ".github/workflows/workspace-compute-readback-handoff.yml",
+    "event": "workflow_dispatch",
+    "head_branch": "main",
+    "head_sha": "0bcbfcb04f70d61ea57342c4ab2c3093deee4e67",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-11-10T14:01:28Z",
+    "updated_at": "2026-11-10T14:01:47Z",
+    "html_url": "https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/42829929632"
+  },
+  "artifact": {
+    "id": 13770897294,
+    "name": "workspace-compute-readback-42829091870-42829929632-1"
+  },
+  "files": [
+    {
+      "file": "receipt.json",
+      "sha256": "52e3b6daba730fc11ad9548444092845f1b87665e4c48cb74c88b6eb6d320c58",
+      "bytes": 28765
+    },
+    {
+      "file": "binding.json",
+      "sha256": "04d9104b81b39cb4c59c983eb726dcaf6e88f238a9a56eefcba2035740c33588",
+      "bytes": 1590
+    }
+  ],
+  "interpretation": "Exact bytes from the Cloud custody artifact. The original compute destroy has attempted-uncertain history, followed by recovery identity mismatches. Missing mutation counts remain unknown. The live Machine remains present; no CVM query was made. This is neither a resource absence, a deletion receipt nor a refund confirmation."
+}
