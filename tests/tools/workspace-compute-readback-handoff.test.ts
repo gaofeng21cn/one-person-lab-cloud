@@ -117,6 +117,10 @@ const bindingFailureCodes = [
   ERROR.WORKSPACE_ACCESS, ERROR.WORKSPACE_BINDING,
   ERROR.FABRIC_ACCESS, ERROR.FABRIC_BINDING, ERROR.BINDING,
 ] as const;
+const databaseFailureCodes = [
+  "compute_live_workspace_database_permission_denied", "compute_live_workspace_database_schema_unavailable",
+  "compute_live_fabric_database_sqlstate_25006", "compute_live_fabric_database_psql_exit_1",
+] as const;
 
 test("CLI roundtrips all blocked binding phases and historical binding receipts", async t => {
   for (const errorCode of bindingFailureCodes) {
@@ -139,8 +143,30 @@ test("CLI roundtrips all blocked binding phases and historical binding receipts"
   }
 });
 
+test("CLI roundtrips safe database transport classifications and rejects malformed variants", async t => {
+  for (const errorCode of databaseFailureCodes) {
+    await t.test(errorCode, async t => {
+      const files = await cliFiles(await temporary(t));
+      const persisted = change(receipt(), "errorCode", errorCode);
+      const original = `${JSON.stringify(persisted, null, 2)}\n`;
+      await writeFile(files.receiptPath, original);
+      const imported = await main(cliArgs(files));
+      assert.equal(imported.errorCode, errorCode);
+      assert.equal(imported.receiptDigest, hash(original));
+    });
+  }
+  for (const errorCode of [
+    "compute_live_workspace_database_sqlstate_4250", "compute_live_fabric_database_psql_exit_0",
+    "compute_live_workspace_database_permission_denied:secret", "compute_live_gateway_database_query_failed",
+  ]) {
+    await t.test(`rejects ${errorCode}`, () => {
+      invalid(() => validateWorkspaceComputeReadbackHandoff({ ...input(), receiptText: JSON.stringify(change(receipt(), "errorCode", errorCode)) }));
+    });
+  }
+});
+
 test("binding phase and historical failures reject forged bound identities and observed state through handoff", async t => {
-  for (const errorCode of bindingFailureCodes) {
+  for (const errorCode of [...bindingFailureCodes, ...databaseFailureCodes]) {
     const blocked = change(receipt(), "errorCode", errorCode);
     const forgeries = [
       ["Fabric identity", change(blocked, "fabricOperationIdDigest", digest("1"))],
