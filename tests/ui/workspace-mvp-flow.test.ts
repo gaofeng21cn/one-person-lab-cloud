@@ -513,6 +513,10 @@ test("Cloud Workspace detail first deletion confirms once and displays the origi
         assert.deepEqual(request.postDataJSON(), { confirmationName: workspace.name, acknowledgeDataDestruction: true });
         assert.equal(request.headers()["x-csrf-token"], session.csrfToken);
         assert.match(request.headers()["idempotency-key"], /^workspace-delete:/);
+        if (writes === 2) {
+          operation.status = "awaiting_confirmation";
+          operation.stage = "storage_deletion";
+        }
         deletion = {
           workspaceId: workspace.id, operationId: operation.operationId,
           resourceDeletionStatus: "pending", dataDeletionStatus: "pending",
@@ -584,6 +588,13 @@ test("Cloud Workspace detail first deletion confirms once and displays the origi
     assert.doesNotMatch(await page.locator(".workspace-delete-panel").innerText(), /不会退款/,
       "a resource problem must not overwrite the owner's independent refund fact");
 
+    const resumeButton = page.getByRole("button", { name: "重新核对并继续删除", exact: true });
+    await resumeButton.waitFor({ state: "visible" });
+    page.once("dialog", (dialog) => { void dialog.accept(); });
+    await resumeButton.click();
+    await page.getByRole("heading", { name: "正在重试删除", exact: true }).waitFor();
+    assert.equal(writes, 2, "recovery must replay the original owner delete without a new operation");
+
     deletion = { ...deletion, resourceDeletionStatus: "confirmed", dataDeletionStatus: "confirmed" };
     operation.status = "awaiting_confirmation";
     operation.stage = "refund";
@@ -614,7 +625,7 @@ test("Cloud Workspace detail first deletion confirms once and displays the origi
     await progress.getByText("已确认", { exact: true }).waitFor();
     await progress.getByText("退款已完成", { exact: true }).waitFor();
     assert.equal(page.url(), detailUrl);
-    assert.equal(writes, 1, "refund polling must never resubmit DELETE");
+    assert.equal(writes, 2, "refund polling must not resubmit DELETE after the explicit recovery replay");
     assert.ok(requests.filter((request) => request.includes("/operations/")).every((request) => request === `GET /api/v2/operations/workspace/${operation.operationId}`));
     assert.deepEqual(audit, { pageErrors: [], legacyRequests: [], externalRequests: [] });
   } finally {

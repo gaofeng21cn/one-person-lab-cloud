@@ -175,8 +175,9 @@ export function useWorkspaceDeleteController({
   };
 
   const deleteCurrentWorkspace = async () => {
+    const canResumeAttention = cloudIdentity && readback.operation?.status === "manual_review";
     if (!session || !workspace || workspace.id !== activeWorkspaceId || busy || loading
-      || readback.workspaceId !== activeWorkspaceId || readback.operation || issue === "unconfirmed") return;
+      || readback.workspaceId !== activeWorkspaceId || readback.operation && !canResumeAttention || issue === "unconfirmed") return;
     const refundNotice = cloudIdentity
       ? "资源删除与退款分别确认；符合原单退款政策时自动处理，退款结果以原单回读为准。"
       : "删除和退款是独立操作；删除完成不代表退款完成，退款结果以原单回读为准。";
