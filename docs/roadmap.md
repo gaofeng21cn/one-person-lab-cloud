@@ -63,6 +63,9 @@ the compute through the existing Fabric GET, verify the pinned installation
 before and after the read, and import the actual run and receipt into Cloud
 custody.
 The log diagnostic remains available for exact-operation historical errors.
+Source now separates changing compute observation fields from stable resource
+identity. Candidate adoption and a fresh owner read are still required before
+that fix can establish the installed result.
 Keep Instance deployment receipts separate and preserve the Cloud business
 imports' original producer and schema. No second Instance deletion entry is
 required. Neither local tests nor a successful custody import complete deletion.

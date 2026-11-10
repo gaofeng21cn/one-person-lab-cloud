@@ -524,7 +524,7 @@ func (s *Service) ReadComputeDestroyStatus(ctx context.Context, allocationID str
 	if err != nil {
 		return readback, err
 	}
-	if !sameComputeDestroyStableIdentity(existing, readback) {
+	if !sameComputeDestroyReadbackStableIdentity(existing, readback) {
 		return readback, fmt.Errorf("compute_destroy_status_readback_mismatch")
 	}
 	// An unfinished deletion keeps its classification so the owning Control Plane
@@ -537,6 +537,21 @@ func (s *Service) ReadComputeDestroyStatus(ctx context.Context, allocationID str
 	readback.ObservedAt = s.now().Format(time.RFC3339Nano)
 	readback.ReadbackID = stableID("compute-destroy-readback", allocationID, readback.ObservedAt)
 	return readback, nil
+}
+
+// A read may stop observing a dynamic fact (for example, CVM is not read while
+// its TKE Machine is present). Compare only the stable identity here, while
+// retaining the shared replay/mutation checks for every durable deletion field.
+func sameComputeDestroyReadbackStableIdentity(previous, observed ComputeAllocation) bool {
+	if previous.Provider != "tencent-tke" {
+		return sameComputeDestroyStableIdentity(previous, observed)
+	}
+	previous, observed = cloneComputeAllocation(previous), cloneComputeAllocation(observed)
+	for _, key := range tencentComputeDestroyObservationKeys {
+		delete(previous.ProviderData, key)
+		delete(observed.ProviderData, key)
+	}
+	return sameComputeDestroyStableIdentity(previous, observed)
 }
 
 // Read-only ownership reconstruction requires the unique original Launch and

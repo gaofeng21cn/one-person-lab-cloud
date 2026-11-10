@@ -109,8 +109,8 @@ func TestTencentComputeDestroyStatusStaysRetryableWhileCvmTerminates(t *testing.
 func TestTencentComputeDestroyStatusCarriesRecycledCVMEligibilityFacts(t *testing.T) {
 	allocation := computeDestroyReadbackAllocation("compute-cvm-recycled", tencentComputeDestroyPhaseAttempted, "1")
 	response := computeDestroyStatusResponse(provisionerRequest{
-		Region: allocation.ProviderData["region"],
-		Pool: provisionerPool{NodePoolID: allocation.NodePoolID},
+		Region:     allocation.ProviderData["region"],
+		Pool:       provisionerPool{NodePoolID: allocation.NodePoolID},
 		Allocation: provisionerAllocation{InstanceID: allocation.InstanceID, MachineName: allocation.MachineName, NodeName: allocation.NodeName, PrivateIP: allocation.PrivateIP, MachineType: "NativeCVM"},
 	}, false, "NOT_FOUND", "SHUTDOWN")
 	response.ProviderData["isolatedSource"] = "MANMADE"
@@ -139,6 +139,71 @@ func TestTencentComputeDestroyStatusStaysRetryableWhileMachinePresent(t *testing
 	}
 	if readback.DestroyState != contractsComputeDestroyState(t, false) {
 		t.Fatalf("state=%q", readback.DestroyState)
+	}
+}
+
+func TestComputeDestroyStatusRefreshesObservationWithoutStaleCVMFacts(t *testing.T) {
+	allocation := computeDestroyReadbackAllocation("compute-refresh-observation", tencentComputeDestroyPhaseAttempted, "1")
+	allocation.ProviderData["cvmStatus"] = "SHUTDOWN"
+	allocation.ProviderData["describeCvmRequestId"] = "previous-cvm-request"
+	allocation.ProviderData["isolatedSource"] = "MANMADE"
+	provider := NewTencentProvider()
+	provider.provision = func(_ context.Context, request provisionerRequest) (provisionerResponse, error) {
+		if request.Action != "read_compute_destroy_status" {
+			t.Fatal("readback attempted a mutation")
+		}
+		// The real provisioner returns here without a CVM read while the TKE
+		// Machine is still present. Previous CVM facts must not become current.
+		return computeDestroyStatusResponse(request, true, "RUNNING", ""), nil
+	}
+	service := NewService(provider)
+	service.computes[allocation.ID] = cloneComputeAllocation(allocation)
+	readback, err := service.ReadComputeDestroyStatus(context.Background(), allocation.ID)
+	if err != nil {
+		t.Fatalf("fresh observation rejected: %v", err)
+	}
+	if readback.MachinePresent == nil || !*readback.MachinePresent || readback.TKEStatus != "RUNNING" || readback.CVMStatus != "" ||
+		readback.DestroyState != contracts.WorkspaceDeleteOutcomeUnconfirmedSend || readback.ObservedAt == "" || readback.ReadbackID == "" {
+		t.Fatalf("fresh facts or owner stamp missing: %#v", readback)
+	}
+	for _, key := range []string{"cvmStatus", "describeCvmRequestId", "isolatedSource"} {
+		if _, exists := readback.ProviderData[key]; exists {
+			t.Fatalf("stale observation retained: %s", key)
+		}
+	}
+	if !reflect.DeepEqual(service.computes[allocation.ID], allocation) {
+		t.Fatal("readback changed retained compute state")
+	}
+}
+
+func TestComputeDestroyReadbackStillRejectsStableIdentityAndDeletionFenceLoss(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*ComputeAllocation)
+	}{
+		{"machine identity", func(c *ComputeAllocation) { c.MachineName += "-other" }},
+		{"account tag", func(c *ComputeAllocation) { c.CostTags["opl_account_id"] += "-other" }},
+		{"stable provider field", func(c *ComputeAllocation) { delete(c.ProviderData, "clusterId") }},
+		{"dispatch phase", func(c *ComputeAllocation) { delete(c.ProviderData, tencentComputeDestroyPhaseKey) }},
+		{"mutation count", func(c *ComputeAllocation) { delete(c.ProviderData, tencentComputeDestroyMutationCountKey) }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			allocation := computeDestroyReadbackAllocation("compute-readback-identity", tencentComputeDestroyPhaseAttempted, "1")
+			allocation.ProviderData["cvmStatus"] = "SHUTDOWN"
+			observed := cloneComputeAllocation(allocation)
+			delete(observed.ProviderData, "cvmStatus")
+			test.mutate(&observed)
+			provider := &phasedComputeDestroyProvider{readback: observed}
+			service := NewService(provider)
+			service.computes[allocation.ID] = cloneComputeAllocation(allocation)
+			readback, err := service.ReadComputeDestroyStatus(context.Background(), allocation.ID)
+			if err == nil || readback.ObservedAt != "" || readback.ReadbackID != "" || provider.destroyCalls.Load() != 0 {
+				t.Fatalf("unverified readback accepted: err=%v readback=%#v", err, readback)
+			}
+			if !reflect.DeepEqual(service.computes[allocation.ID], allocation) {
+				t.Fatal("rejected readback changed retained state")
+			}
+		})
 	}
 }
 
@@ -213,6 +278,29 @@ func TestTencentComputeDestroyStatusKeepsIdentityDriftAndSdkFailureFailing(t *te
 			t.Fatalf("sdk failure readback=%#v err=%v", readback, err)
 		}
 	})
+}
+
+func TestTencentComputeDestroyStatusPreservesFailedSDKReadWithoutAdmittingFacts(t *testing.T) {
+	const privateMessage = "private provider detail"
+	for _, code := range []string{"tencent_sdk_client_missing", "compute_provider_config_identity_mismatch", "tencent_read_compute_destroy_machine_failed", "tencent_read_compute_destroy_cvm_failed"} {
+		t.Run(code, func(t *testing.T) {
+			allocation := computeDestroyReadbackAllocation("compute-sdk-failure", tencentComputeDestroyPhaseAttempted, "1")
+			// The SDK's client/config/Machine failures carry no full resource
+			// identity. They are failures, never provider identity observations.
+			response := provisionerResponse{OK: false, ErrorCode: code, Message: privateMessage, MutationCount: 0}
+			provider := tencentComputeDestroyStatusProvider(t, response)
+			readback, err := provider.ReadComputeDestroyStatus(context.Background(), allocation)
+			if err == nil || err.Error() != code+":"+privateMessage || !reflect.DeepEqual(readback, allocation) || validTencentComputeAbsenceEvidence(readback) {
+				t.Fatalf("SDK failure was masked or admitted: err=%v", err)
+			}
+			response.MutationCount = 1
+			provider = tencentComputeDestroyStatusProvider(t, response)
+			readback, err = provider.ReadComputeDestroyStatus(context.Background(), allocation)
+			if err == nil || err.Error() != "compute_destroy_status_readback_mismatch" || !reflect.DeepEqual(readback, allocation) {
+				t.Fatalf("non-read response bypassed the mutation guard: err=%v", err)
+			}
+		})
+	}
 }
 
 // contractsComputeDestroyState names the expected classification for a readback

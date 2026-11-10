@@ -170,6 +170,13 @@ is still needed to locate that failure. The original deletion, provider absence
 and refund remain unconfirmed; no resource mutation or resume occurred in this
 diagnostic.
 
+Source regression coverage now reproduces and fixes a separate destroy-status
+failure: a fresh Machine-present observation removes old CVM observation keys,
+which the Service previously mistook for stable identity drift. The read-only
+comparison excludes only current observation fields; resource identity and
+persisted deletion fences remain checked. This source change has no installed
+Candidate or production acceptance evidence yet.
+
 ## Workspace 1042 storage deletion (2026-11-07)
 
 Protected Instance readback `42371451925`, from Instance source

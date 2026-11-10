@@ -22,6 +22,8 @@ const ERROR_TOKEN = Object.freeze({
   STATUS_MISMATCH: "compute_destroy_status_readback_mismatch",
   ALLOCATION_MISSING: "compute_allocation_not_found",
   OWNERSHIP_MISSING: "compute_readback_ownership_missing",
+  SDK_CLIENT_MISSING: "tencent_sdk_client_missing",
+  PROVIDER_CONFIG_MISMATCH: "compute_provider_config_identity_mismatch",
 } as const);
 const EXIT = Object.freeze({ SUCCESS: 0, FAILURE: 1 } as const);
 const toolPath = fileURLToPath(new URL("../../tools/workspace-fabric-dispatch-error-readback.ts", import.meta.url));
@@ -93,6 +95,20 @@ test("unknown raw errors are digested and block the receipt", () => {
   assert.doesNotMatch(JSON.stringify(receipt), /top-secret|never-persist-this|credential|provider returned/);
   assert.throws(() => validateWorkspaceFabricDispatchErrorReadbackReceipt({ ...receipt, status: STATUS.MATCHED }));
 });
+
+for (const token of [ERROR_TOKEN.SDK_CLIENT_MISSING, ERROR_TOKEN.PROVIDER_CONFIG_MISMATCH]) {
+  test(`projects failed SDK read token ${token} without its private message`, () => {
+    const raw = `${token}: credential=private-sdk-message`;
+    const receipt = produceWorkspaceFabricDispatchErrorReadback(input(line(fabricOperationId, raw)));
+    assert.equal(receipt.status, STATUS.MATCHED);
+    assert.equal(receipt.matches[0].errorToken, token);
+    assert.equal(receipt.matches[0].errorDigest, `sha256:${createHash("sha256").update(raw).digest("hex")}`);
+    assert.doesNotMatch(JSON.stringify(receipt), /private-sdk-message|credential/);
+    const unrecognized = produceWorkspaceFabricDispatchErrorReadback(input(line(fabricOperationId, `${token}_other`)));
+    assert.equal(unrecognized.status, STATUS.BLOCKED);
+    assert.equal(unrecognized.matches[0].errorToken, null);
+  });
+}
 
 test("no exact operation match remains unknown without inventing an error", () => {
   const receipt = produceWorkspaceFabricDispatchErrorReadback(input(line(otherFabricOperationId, ERROR_TOKEN.ALLOCATION_MISSING)));

@@ -859,6 +859,14 @@ diagnostics: `MANMADE` is manual retirement, `EXPIRE` expiry isolation, `ARREAR`
 arrears isolation, and `NOTISOLATED` no isolation. Missing evidence remains
 unknown. Reads never recreate membership, buy replacement compute, or destroy
 the remaining CVM.
+The destroy-status read compares stable resource identity independently of its
+six current observation fields. A Machine-present read removes previous CVM
+status, request and isolation facts when it does not read CVM again; this is not
+identity drift. Retained dispatch phase and mutation-count fields remain part
+of the strict identity comparison, and the read does not persist its projection.
+Failed SDK reads retain their error before successful-response identity checks;
+the zero-mutation guard still applies to every response. Protected diagnostic
+receipts expose only allowlisted error tokens and hashes, not provider messages.
 
 `GET /fabric/runtime-observations` inventories physical Runtime controllers
 before matching persisted Fabric ownership. Binding claims remain visible for
