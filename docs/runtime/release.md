@@ -132,20 +132,21 @@ that single variable is read in memory, and neither value enters a receipt.
 
 The journal is diagnostic evidence, not a delete command. Missing rows, missing
 mutation counts and provider request identifiers do not prove that a provider
-mutation was or was not sent. Final-release records must bind to the original
-destroy operation. Unknown or conflicting evidence remains unknown/blocked;
+mutation was or was not sent. Final-release, prepaid-detachment and prepaid-retirement records must bind to
+the same original destroy operation. These are bounded action additions within
+the v2 journal receipt, with no new fields or schema version. Unknown or conflicting evidence remains unknown/blocked;
 the journal cannot establish resource absence, refund completion or Key
 closeout. Keep v1 receipts on their original strict decoder and validate v2
 receipts against the complete journal schema; do not relabel historical
 receipts.
 
-The journal source and independent Instance database-transport change are not
-yet merged or run through protected `main`. After both owner PRs are merged,
-run the protected diagnostic against the already installed Candidate and
-import its receipt into Cloud custody. No Candidate rebuild is needed for this
-source-only diagnostic. Use the exact journal evidence to select a repair for
-the original deletion operation; do not create a replacement operation or
-infer send state from the live readback alone.
+Cloud #1157 and Instance #708 merged the journal source and protected database
+transport; their executed readback and Cloud custody evidence are recorded in
+[status](../status.md#workspace-1042-compute-journal-follow-up-2026-11-10).
+Source-only diagnostic changes can observe an already installed Candidate
+without rebuilding it. Fabric runtime repairs require a qualified Candidate
+and Instance adoption. Continue the same original deletion operation after
+adoption; do not infer send state from the live readback alone.
 
 ## Cloud Agent WebUI Build Input
 

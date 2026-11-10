@@ -3586,6 +3586,25 @@ func (client *tencentSDKClient) DestroyComputeAllocation(request Request, env ma
 			ProviderData: map[string]string{"machineType": machineType, "cvmApplicable": strconv.FormatBool(cvmApplicable)},
 		}
 	}
+	if machineType == "NativeCVM" {
+		// Prepaid retirement has two separately fenced provider actions. The
+		// generic path must not terminate or reconfigure their shared NodePool.
+		chargeType := stringValue(pool.Native.InstanceChargeType)
+		if chargeType == "PREPAID" {
+			return Response{
+				Ok: false, ErrorCode: "compute_prepaid_retirement_required",
+				Message:    "Prepaid compute requires the separate detach_prepaid_compute_allocation and retire_prepaid_compute_allocation actions.",
+				InstanceId: request.Allocation.InstanceId, ProviderRequestId: describeRequestId, Retryable: false, MutationCount: 0,
+			}
+		}
+		if chargeType != "POSTPAID_BY_HOUR" {
+			return Response{
+				Ok: false, ErrorCode: "compute_destroy_charge_type_unverified",
+				Message:    "Generic NativeCVM destruction requires an explicit live POSTPAID_BY_HOUR billing type.",
+				InstanceId: request.Allocation.InstanceId, ProviderRequestId: describeRequestId, Retryable: false, MutationCount: 0,
+			}
+		}
+	}
 	deleteAttempts := intFromEnv(env, "TENCENT_TKE_NODE_DELETE_ATTEMPTS", 30)
 	if deleteAttempts < 1 {
 		deleteAttempts = 1
@@ -6253,6 +6272,22 @@ func handleWithClient(request Request, env map[string]string, client TencentClie
 			return Response{Ok: false, ErrorCode: "storage_final_release_unavailable", MutationCount: 0}
 		}
 		return releaser.ReleaseRecycledStorageVolume(request, env)
+	case detachPrepaidComputeAction:
+		detacher, ok := client.(interface {
+			DetachPrepaidComputeAllocation(Request, map[string]string) Response
+		})
+		if !ok || request.DryRun {
+			return Response{Ok: false, ErrorCode: "compute_prepaid_detach_unavailable", MutationCount: 0}
+		}
+		return detacher.DetachPrepaidComputeAllocation(request, env)
+	case retirePrepaidComputeAction:
+		retirer, ok := client.(interface {
+			RetirePrepaidComputeAllocation(Request, map[string]string) Response
+		})
+		if !ok || request.DryRun {
+			return Response{Ok: false, ErrorCode: "compute_prepaid_retire_unavailable", MutationCount: 0}
+		}
+		return retirer.RetirePrepaidComputeAllocation(request, env)
 	case "release_recycled_compute_allocation":
 		releaser, ok := client.(interface {
 			ReleaseRecycledComputeAllocation(Request, map[string]string) Response
@@ -6275,7 +6310,8 @@ func isLiveMutation(request Request) bool {
 	if request.DryRun {
 		return false
 	}
-	return request.Action == "bootstrap_compute_node_pools" || request.Action == "create_compute_allocation" || request.Action == "tag_compute_machine" || request.Action == "claim_compute_machine" ||
+	return request.Action == detachPrepaidComputeAction || request.Action == retirePrepaidComputeAction ||
+		request.Action == "bootstrap_compute_node_pools" || request.Action == "create_compute_allocation" || request.Action == "tag_compute_machine" || request.Action == "claim_compute_machine" ||
 		request.Action == storageFinalReleaseAction || request.Action == "destroy_compute_allocation" || request.Action == "release_recycled_compute_allocation" || request.Action == "renew_compute_allocation" || request.Action == "create_storage_volume" || request.Action == "destroy_storage_volume" || request.Action == "renew_storage_volume"
 }
 

@@ -185,6 +185,15 @@ func deleteComputeFromOwnSurface(ctx context.Context, service *fabric.Service, i
 	if err != nil {
 		return fact, err
 	}
+	if fabric.ComputePrepaidRetirementEligible(readback) {
+		if _, err := service.RetirePrepaidComputeAllocationForDeletion(ctx, in.ComputeID, in.AccountID, in.WorkspaceID); err != nil {
+			return fact, err
+		}
+		readback, err = service.ReadComputeDestroyStatus(ctx, in.ComputeID)
+		if err != nil {
+			return fact, err
+		}
+	}
 	if fabric.ComputeFinalReleaseEligible(readback) {
 		if _, err := service.ReleaseRecycledComputeAllocationForDeletion(ctx, in.ComputeID, in.AccountID, in.WorkspaceID); err != nil && !errors.Is(err, fabric.ErrComputeFinalReleaseNotEligible) {
 			return fact, err

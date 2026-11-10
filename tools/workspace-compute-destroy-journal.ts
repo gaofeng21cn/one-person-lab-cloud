@@ -4,6 +4,12 @@ const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$(?![\s\S])/;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const PHASES = ["dispatch_authorized_uncertain", "delete_attempted_uncertain", "cloud_absence_confirmed"] as const;
 const STATUSES = ["started", "failed", "succeeded"] as const;
+const ACTIONS = {
+  destroy_compute_allocation: "compute_allocation",
+  release_recycled_compute_allocation: "compute_final_release",
+  detach_prepaid_compute_allocation: "compute_prepaid_retirement",
+  retire_prepaid_compute_allocation: "compute_prepaid_retirement",
+} as const;
 const SAFE_ERRORS = new Set([
   "compute_allocation_not_found",
   "compute_destroy_recovery_unconfirmed", "compute_destroy_recovery_identity_mismatch",
@@ -14,10 +20,17 @@ const SAFE_ERRORS = new Set([
   "compute_machine_delete_unverified", "compute_cvm_delete_unverified", "compute_cvm_delete_identity_mismatch",
   "tencent_verify_compute_machine_delete_failed", "tencent_verify_cvm_delete_failed",
   "tencent_compute_delete_invalid_parameter_value", "tencent_compute_delete_unsupported_operation",
+  "compute_prepaid_retirement_required", "compute_prepaid_retirement_unconfirmed",
+  "compute_destroy_charge_type_unverified", "compute_prepaid_retirement_unavailable",
+  "compute_prepaid_detach_unavailable", "compute_prepaid_retire_unavailable",
+  "compute_prepaid_retirement_identity_mismatch", "compute_prepaid_retirement_readback_mismatch",
+  "compute_prepaid_retirement_dispatch_claim_invalid", "compute_prepaid_retirement_original_destroy_mismatch",
+  "compute_prepaid_detach_identity_or_state_mismatch", "compute_prepaid_detach_dispatch_unconfirmed",
+  "compute_prepaid_retire_identity_or_state_mismatch", "compute_prepaid_retire_dispatch_unconfirmed",
 ]);
 
 export type ComputeDestroyJournalRecord = {
-  recordIdDigest: string; operationIdDigest: string; action: "destroy_compute_allocation" | "release_recycled_compute_allocation";
+  recordIdDigest: string; operationIdDigest: string; action: keyof typeof ACTIONS;
   originalDestroyOperationIdDigest: string | null; phaseDigest: string | null;
   requestEvidenceDigests: {
     deleteMethod: string | null; scaleDown: string | null; deleteMode: string | null;
@@ -91,7 +104,7 @@ export function computeDestroyJournalSql(computeId: string): string {
   )::text FROM fabric_operations WHERE status <> 'rejected' AND operation_id IN (
     SELECT operation_id FROM fabric_operations WHERE
       (resource_id=${id} OR redacted_provider_payload::jsonb->'resource'->'id'=to_jsonb(${id}::text))
-      AND action IN ('destroy_compute_allocation','release_recycled_compute_allocation')
+      AND action IN ('destroy_compute_allocation','release_recycled_compute_allocation','detach_prepaid_compute_allocation','retire_prepaid_compute_allocation')
       AND status IN ('started','failed','succeeded')
   ) ORDER BY created_at,id LIMIT 101`;
 }
@@ -100,8 +113,8 @@ function decodeRow(value: unknown, expected: { computeId: string; workspaceId: s
   const row = exact(value, ["id", "operationId", "resourceId", "workspaceId", "accountId", "action", "resourceKind", "status", "errorCode", "retryable", "providerRequestId", "requestHash", "startedAt", "finishedAt", "createdAt", "phase", "mutationCount", "resource", "originalDestroyOperationId", "deleteRequests"]);
   if (typeof row.id !== "string" || !ID.test(row.id) || typeof row.operationId !== "string" || !ID.test(row.operationId) ||
       row.resourceId !== expected.computeId || row.workspaceId !== expected.workspaceId || typeof row.accountId !== "string" || !ID.test(row.accountId) ||
-      typeof row.action !== "string" || !["destroy_compute_allocation", "release_recycled_compute_allocation"].includes(row.action) ||
-      row.resourceKind !== (row.action === "destroy_compute_allocation" ? "compute_allocation" : "compute_final_release") ||
+      typeof row.action !== "string" || !Object.hasOwn(ACTIONS, row.action) ||
+      row.resourceKind !== ACTIONS[row.action as keyof typeof ACTIONS] ||
       !STATUSES.includes(row.status as never) || !(row.errorCode === "" || nullableText(row.errorCode)) || typeof row.retryable !== "boolean" ||
       !nullableText(row.providerRequestId) || !nullableText(row.requestHash) || !instant(row.startedAt) ||
       !(row.finishedAt === null || instant(row.finishedAt)) || !instant(row.createdAt) ||
@@ -109,7 +122,7 @@ function decodeRow(value: unknown, expected: { computeId: string; workspaceId: s
       !(row.mutationCount === null || typeof row.mutationCount === "string" && /^(?:0|[1-9][0-9]*)$/.test(row.mutationCount) && Number.isSafeInteger(Number(row.mutationCount)))) fail();
   const resource = row.resource === null ? null : exact(row.resource, ["id", "workspaceId", "accountId", "provider"]);
   if (resource !== null && (resource.id !== row.resourceId || resource.workspaceId !== row.workspaceId || resource.accountId !== row.accountId || typeof resource.provider !== "string")) fail();
-  if (row.action === "destroy_compute_allocation" && resource === null || row.action === "release_recycled_compute_allocation" && (typeof row.originalDestroyOperationId !== "string" || !ID.test(row.originalDestroyOperationId)) ||
+  if (row.action === "destroy_compute_allocation" && resource === null || row.action !== "destroy_compute_allocation" && (typeof row.originalDestroyOperationId !== "string" || !ID.test(row.originalDestroyOperationId)) ||
       row.action === "destroy_compute_allocation" && row.originalDestroyOperationId !== null) fail();
   const requests = exact(row.deleteRequests, ["deleteMethod", "scaleDown", "deleteMode", "describeClusterMachinesReq", "describeNodePoolRequestId", "modifySelfProvisioningReqId", "verifyMachineDeletedReqId"]);
   if (Object.values(requests).some(value => !(value === null || typeof value === "string" && value.length <= 4096))) fail();
@@ -146,7 +159,7 @@ export function decodeComputeDestroyJournal(rows: unknown, expected: { computeId
   const destroys = decoded.filter(item => item.action === "destroy_compute_allocation");
   const operationIds = new Set(destroys.map(item => item.operationIdDigest));
   if (operationIds.size > 1) fail();
-  if (destroys.length > 0 && decoded.some(item => item.action === "release_recycled_compute_allocation" && item.originalDestroyOperationIdDigest !== destroys[0].operationIdDigest)) fail();
+  if (destroys.length > 0 && decoded.some(item => item.action !== "destroy_compute_allocation" && item.originalDestroyOperationIdDigest !== destroys[0].operationIdDigest)) fail();
   const sorted = decoded.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.recordIdDigest.localeCompare(b.recordIdDigest))
     .map(({ accountIdDigest: _accountIdDigest, ...item }) => item);
   return validateComputeDestroyJournal({ status: destroys.length ? "observed" : "unknown", records: sorted,
@@ -165,7 +178,7 @@ export function validateComputeDestroyJournal(value: unknown): ComputeDestroyJou
   const records = journal.records.map(item => {
     const row = exact(item, ["recordIdDigest", "operationIdDigest", "action", "originalDestroyOperationIdDigest", "phaseDigest", "requestEvidenceDigests", "status", "errorToken", "errorDigest", "retryable", "phase", "mutationCount", "providerRequestPresent", "providerRequestDigest", "requestHashDigest", "startedAt", "finishedAt", "createdAt"]);
     if (![row.recordIdDigest, row.operationIdDigest].every(item => typeof item === "string" && DIGEST.test(item)) ||
-        typeof row.action !== "string" || !["destroy_compute_allocation", "release_recycled_compute_allocation"].includes(row.action) ||
+        typeof row.action !== "string" || !Object.hasOwn(ACTIONS, row.action) ||
         !(row.originalDestroyOperationIdDigest === null || typeof row.originalDestroyOperationIdDigest === "string" && DIGEST.test(row.originalDestroyOperationIdDigest)) ||
         (row.action === "destroy_compute_allocation" ? row.originalDestroyOperationIdDigest !== null : row.originalDestroyOperationIdDigest === null) ||
         !(row.phaseDigest === null || typeof row.phaseDigest === "string" && DIGEST.test(row.phaseDigest)) || !STATUSES.includes(row.status as never) ||
@@ -189,6 +202,6 @@ export function validateComputeDestroyJournal(value: unknown): ComputeDestroyJou
   const operations = new Set(destroys.map(item => item.operationIdDigest));
   if (new Set(records.map(item => item.recordIdDigest)).size !== records.length || operations.size > 1 || (destroys[0]?.operationIdDigest ?? null) !== journal.destroyOperationIdDigest ||
       (journal.status === "observed") !== (destroys.length > 0) || (records.length > 0) !== (journal.accountIdDigest !== null) ||
-      records.some(item => item.action === "release_recycled_compute_allocation" && item.originalDestroyOperationIdDigest !== journal.destroyOperationIdDigest)) fail();
+      records.some(item => item.action !== "destroy_compute_allocation" && item.originalDestroyOperationIdDigest !== journal.destroyOperationIdDigest)) fail();
   return journal as unknown as ComputeDestroyJournal;
 }

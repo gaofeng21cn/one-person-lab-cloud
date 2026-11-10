@@ -1193,7 +1193,17 @@ It remains readable after the Workspace projection is removed so a pending
 Ledger Receipt is not displayed as completion. Compute absence reads remain
 scheduled until the owner confirms absence, without repeating destroy.
 
-Workspace's existing `DeleteResources` operation invokes Fabric's internal
+Workspace's existing `DeleteResources` operation first invokes Fabric's internal
+`RetirePrepaidComputeAllocationForDeletion` for an owned active prepaid NativeCVM.
+The Tencent adapter removes the exact TKE Machine with
+`DeleteClusterMachines.InstanceDeleteMode=retain`, then requires fresh Machine
+absence before `TerminateInstances` retires the exact active CVM. Each action has
+a separate permanent atomic dispatch claim bound to the original destroy and
+stable resource identity. Lost replies and restarts only reconcile that action;
+they do not resend it. The generic Machine destroy refuses prepaid NativeCVM
+before its unsupported terminate-mode mutation. Unknown billing stays refused.
+
+The same operation invokes Fabric's internal
 `ReleaseRecycledComputeAllocationForDeletion` when a fresh readback shows the
 exact TKE Machine absent and original CVM `SHUTDOWN / MANMADE`. Fabric derives
 the original destroy operation and owner identity from its journal; the Tencent

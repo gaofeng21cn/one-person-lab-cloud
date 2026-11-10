@@ -66,11 +66,15 @@ readback nor custody import proves resource absence.
 The Cloud journal diagnostic and Instance read-only transport are merged and
 executed. The original compute destroy reached `delete_attempted_uncertain`;
 later recovery attempts report `compute_destroy_recovery_identity_mismatch`.
-Repair transient observation comparison in the Fabric recovery consumer and
-preserve strict stable identity, phase and mutation fences. Diagnose the original
-provider failure independently: correcting recovery comparison does not itself
-release the present Machine or authorize another provider send. Qualify any
-Fabric runtime change locally before one Candidate/adoption step. Continue the
+The observation-aware recovery repair is merged in #1159 but is not installed.
+The original failure is classified as `compute_machine_delete_unverified`; its
+precise SDK rejection remains unknown. The provider contract independently
+requires retain-mode Machine detachment for prepaid CVMs. Qualify the added
+original-operation detachment and retirement stages locally, including exact
+provider ownership, permanent per-action dispatch fences, real PostgreSQL
+concurrency and the deletion dispatcher, before one Candidate/adoption step.
+Read back each stage and require fresh physical absence plus original destroy
+finalization; a recycled CVM remains present. Continue the
 **same original deletion operation**; do not create a second operation or infer
 send state from a provider request ID. Keep resource
 absence, the Cloud deletion receipt, refund and Key closeout as separate
