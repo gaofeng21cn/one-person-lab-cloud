@@ -15,6 +15,8 @@ const SAFE_ERRORS = new Set([
   "compute_allocation_not_found",
   "tencent_read_compute_destroy_machine_failed",
   "tencent_read_compute_destroy_cvm_failed",
+  "tencent_sdk_client_missing",
+  "compute_provider_config_identity_mismatch",
   "compute_destroy_status_readback_unavailable",
   "compute_destroy_status_readback_mismatch",
   "compute_readback_history_unavailable",

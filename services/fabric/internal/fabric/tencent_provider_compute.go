@@ -1180,6 +1180,10 @@ func tencentComputeDestroyRetryState(allocation ComputeAllocation) string {
 	}
 }
 
+var tencentComputeDestroyObservationKeys = [...]string{
+	"isolatedSource", "machinePresent", "tkeStatus", "cvmStatus", "describeClusterMachinesReq", "describeCvmRequestId",
+}
+
 func (p *TencentProvider) ReadComputeDestroyStatus(ctx context.Context, allocation ComputeAllocation) (ComputeAllocation, error) {
 	if failure := tencentComputeDestroyStableIdentityFailure(allocation); failure != "" {
 		return allocation, failure
@@ -1200,11 +1204,14 @@ func (p *TencentProvider) ReadComputeDestroyStatus(ctx context.Context, allocati
 	if err != nil {
 		return allocation, err
 	}
-	if !validTencentComputeDestroyStatusIdentityResponse(response, allocation) {
+	if response.MutationCount != 0 {
 		return allocation, fmt.Errorf("compute_destroy_status_readback_mismatch")
 	}
 	if !response.OK {
 		return allocation, provisionerError(response)
+	}
+	if !validTencentComputeDestroyStatusIdentityResponse(response, allocation) {
+		return allocation, fmt.Errorf("compute_destroy_status_readback_mismatch")
 	}
 	// The readback always reports the facts it observed: a caller must never have
 	// to infer machine or CVM presence from a status string.
@@ -1214,7 +1221,7 @@ func (p *TencentProvider) ReadComputeDestroyStatus(ctx context.Context, allocati
 	observed.ProviderRequestID = response.ProviderRequestID
 	observed.CVMStatus = response.CVMStatus
 	// Eligibility uses only this observation, never retained evidence.
-	for _, key := range []string{"isolatedSource", "machinePresent", "tkeStatus", "cvmStatus", "describeClusterMachinesReq", "describeCvmRequestId"} {
+	for _, key := range tencentComputeDestroyObservationKeys {
 		delete(observed.ProviderData, key)
 		if value, present := response.ProviderData[key]; present {
 			observed.ProviderData[key] = value
