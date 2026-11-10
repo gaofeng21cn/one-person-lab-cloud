@@ -101,6 +101,7 @@ test("SQL is read-only and projects all journal binding and request evidence", (
   assert.match(sql, /computeDestroyPhase/u);
   assert.match(sql, /deleteMutationCount/u);
   assert.match(sql, /status IN \('started','failed','succeeded'\)/u);
+  assert.match(sql, /FROM fabric_operations WHERE status <> 'rejected' AND operation_id IN/u);
   assert.match(sql, /LIMIT 101/u);
   assert.doesNotMatch(sql, /\b(?:INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE)\b/u);
 });
@@ -123,6 +124,7 @@ test("rejected journal rows stay outside the decoder contract", () => {
     workspaceId: "", accountId: "", resource: null, finishedAt: "2026-11-10T01:01:00Z",
   });
   assert.throws(() => decode(rejected), /invalid/u);
+  assert.throws(() => decode(destroyRow({ status: "rejected" })), /invalid/u);
   assert.doesNotThrow(() => decode(destroyRow()));
 });
 

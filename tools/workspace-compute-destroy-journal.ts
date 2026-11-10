@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$(?![\s\S])/;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const PHASES = ["dispatch_authorized_uncertain", "delete_attempted_uncertain", "cloud_absence_confirmed"] as const;
-const STATUSES = ["started", "failed", "succeeded", "rejected"] as const;
+const STATUSES = ["started", "failed", "succeeded"] as const;
 const SAFE_ERRORS = new Set([
   "compute_allocation_not_found",
   "compute_destroy_recovery_unconfirmed", "compute_destroy_recovery_identity_mismatch",
@@ -76,7 +76,7 @@ export function computeDestroyJournalSql(computeId: string): string {
       'describeNodePoolRequestId',redacted_provider_payload::jsonb->'resource'->'providerData'->'describeNodePoolRequestId',
       'modifySelfProvisioningReqId',redacted_provider_payload::jsonb->'resource'->'providerData'->'modifySelfProvisioningReqId',
       'verifyMachineDeletedReqId',redacted_provider_payload::jsonb->'resource'->'providerData'->'verifyMachineDeletedReqId')
-  )::text FROM fabric_operations WHERE operation_id IN (
+  )::text FROM fabric_operations WHERE status <> 'rejected' AND operation_id IN (
     SELECT operation_id FROM fabric_operations WHERE
       (resource_id=${id} OR redacted_provider_payload::jsonb->'resource'->'id'=to_jsonb(${id}::text))
       AND action IN ('destroy_compute_allocation','release_recycled_compute_allocation')
