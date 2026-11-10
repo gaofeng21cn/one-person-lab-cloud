@@ -179,7 +179,7 @@ Candidate or production acceptance evidence yet.
 
 ## Workspace 1042 compute journal follow-up (2026-11-10)
 
-The installed product is Cloud source
+The earlier installed product was Cloud source
 `41286b76860424ca5a71432d4ccc2552189bf32f`, Candidate build `42743118164`,
 image index `sha256:27b46a91b6dd1d9dae7c5e9e8d445b2514f2d269970b30cf7b92db2ef4eb0245`
 and Instance deployment `42749044008`. This diagnostic reads that installation;
@@ -199,6 +199,18 @@ and TKE status is `RUNNING`. Because the Machine is present, no CVM query was
 made. This does not prove that the original delete request was or was not sent,
 and it does not prove resource absence. Cloud custody run `42753407250`
 successfully retained this readback; custody success is not deletion success.
+
+A newer installed Candidate is build `42793047780`, product source
+`15ba29256aebf127f825a4bbb0ea174eb90d560e`, image index
+`sha256:cd8d7a62e84763f4c4bf1d9b7993d63fed0348e278bf2a168a54b3d8e47846ca`,
+deployed by Instance run `42797408687`. A fresh read on November 10
+(`42816339601`, Cloud custody `42816823961`) again
+observed the Machine present and TKE `RUNNING`; CVM was not queried. The exact
+Workspace operation, Candidate image and protected installation were bound by
+the receipt and handoff. This newer read supersedes the earlier current-state
+observation, but still contains no original compute destroy-journal phase.
+The matching CBS journal separately records `NOT_FOUND`; its dispatch phase is
+not evidence about the CVM operation.
 
 The next journal diagnostic is source work, not yet merged or run. Cloud owns
 the domain-journal SQL, schema, binding, redaction, projection and receipt

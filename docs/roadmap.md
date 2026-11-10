@@ -56,11 +56,11 @@ shows the original operation remains `needs_attention`; compute remains
 resource families are absent, while the deletion receipt is missing and refund
 and Key closeout remain unknown.
 
-The installed product is Candidate build `42743118164` from product SHA
-`41286b76860424ca5a71432d4ccc2552189bf32f`, deployed by Instance run
-`42749044008`. Original-operation resume `42752312426` returned HTTP 202; it
-did not complete deletion. Live readback `42753045955` was successfully
-imported to Cloud custody by run `42753407250`, but neither a successful
+The installed product is Candidate build `42793047780` from product SHA
+`15ba29256aebf127f825a4bbb0ea174eb90d560e`, deployed by Instance run
+`42797408687`. Original-operation resume `42752312426` returned HTTP 202; it
+did not complete deletion. Live readback `42816339601` was successfully
+imported to Cloud custody by run `42816823961`, but neither a successful
 readback nor custody import proves resource absence.
 
 The remaining diagnostic is a Cloud-owned read-only Fabric domain journal
