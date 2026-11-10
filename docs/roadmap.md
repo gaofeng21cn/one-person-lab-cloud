@@ -48,35 +48,33 @@ refund; Fabric owns provider readback and the fenced final release of accepted
 compute/storage resources. Instance owns installation configuration and
 deployment evidence, not the deletion execution path. The
 [November 9 retained observation](status.md#workspace-1042-deployed-deletion-and-evidence-custody-2026-11-09)
-confirms CBS absence but keeps compute readback unavailable, the original
-operation in `needs_attention` and the refund unconfirmed.
+confirms storage absence but predates the current compute observation. The
+November 10 evidence in [status](status.md#workspace-1042-compute-journal-follow-up-2026-11-10)
+shows the original operation remains `needs_attention`; compute remains
+`unknown`/`unconfirmed_send`; the live Machine is present with allocation
+`destroying` and TKE `RUNNING`. The live read did not query CVM. The other four
+resource families are absent, while the deletion receipt is missing and refund
+and Key closeout remain unknown.
 
-The exact Candidate is installed and independently deployment-verified. The
-[Cloud-owned live compute diagnostic](runtime/release.md#live-compute-readback)
-and its companion protected Instance access adapter are merged. Their first
-protected run and Cloud custody import completed, but the diagnostic stopped
-before Fabric GET with an ambiguous binding error. Admit the revised Cloud
-diagnostic after merge and repeat the bounded read to distinguish Workspace
-access/decoding from Fabric access/decoding. This observes the installed image
-without another Candidate build. Once the original binding validates, read
-the compute through the existing Fabric GET, verify the pinned installation
-before and after the read, and import the actual run and receipt into Cloud
-custody.
-The log diagnostic remains available for exact-operation historical errors.
-Source now separates changing compute observation fields from stable resource
-identity. Candidate adoption and a fresh owner read are still required before
-that fix can establish the installed result.
-Keep Instance deployment receipts separate and preserve the Cloud business
-imports' original producer and schema. No second Instance deletion entry is
-required. Neither local tests nor a successful custody import complete deletion.
+The installed product is Candidate build `42743118164` from product SHA
+`41286b76860424ca5a71432d4ccc2552189bf32f`, deployed by Instance run
+`42749044008`. Original-operation resume `42752312426` returned HTTP 202; it
+did not complete deletion. Live readback `42753045955` was successfully
+imported to Cloud custody by run `42753407250`, but neither a successful
+readback nor custody import proves resource absence.
 
-Once the exact compute failure is known, repair its Cloud owner and verify the
-real consumer before a new Candidate/adoption step. Continue the original
-Workspace operation through provider-confirmed compute absence and its deletion
-receipt. Confirm refund through the original charge and refund owner separately;
-preserve unknown outcomes and historical attempts throughout. Diagnosis,
-Candidate installation and CBS absence cannot independently establish deletion
-or refund success.
+The remaining diagnostic is a Cloud-owned read-only Fabric domain journal
+projection plus an Instance-owned protected database transport. Cloud owns
+SQL, binding, schema, redaction and business interpretation; Instance supplies
+only the Fabric-domain Secret reference and transport. This source is not yet
+merged or run. Merge the Cloud and Instance changes, then run the protected
+`main` diagnostic and retain its exact receipt in Cloud custody. The already
+installed Candidate can be observed without rebuilding it. Use the journal to
+repair and continue the **same original deletion operation**; do not create a
+second operation or infer send state from a provider request ID. Keep resource
+absence, the Cloud deletion receipt, refund and Key closeout as separate
+acceptance facts. Preserve the original historical imports and v1 receipts;
+they are not rewritten as v2 journal evidence.
 
 ## PR CI Cache Reuse And Parallel Verification
 
