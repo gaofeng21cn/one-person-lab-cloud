@@ -9,6 +9,7 @@ import {
   fabricComputeBindingSql, decodeFabricComputeBinding,
 } from "./workspace-compute-readback-binding.ts";
 import { computeDestroyJournalSql, decodeComputeDestroyJournal, validateComputeDestroyJournal, type ComputeDestroyJournal } from "./workspace-compute-destroy-journal.ts";
+import { runComputeProviderRequestAudit, validateComputeProviderRequestAuditReceipt } from "./workspace-compute-provider-audit.ts";
 
 const SHA = /^[0-9a-f]{40}$/;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
@@ -206,13 +207,20 @@ function installation(v: ComputeReadbackPin, c: CandidateIdentity): Installation
     replicaSetUidDigest: identity("compute-readback:replica-set:v1", v.replicaSetUid),
     imageIndexDigest: v.imageIndexDigest, platformDigest: v.platformDigest, runtimeDigest: v.runtimeDigest };
 }
+export type ComputeProviderRequestAuditAccess = {
+  lookUpEvents(body: Record<string, unknown>, region: string): Promise<unknown>;
+  publish(receipt: unknown): Promise<void>;
+};
+
 export async function runWorkspaceComputeLiveReadback(input: {
   candidate: unknown; workspaceId: string; workspaceOperationId: string; provenance: ComputeReadbackProvenance;
-}, access: ComputeReadbackAccess): Promise<WorkspaceComputeLiveReadbackReceipt> {
+}, access: ComputeReadbackAccess, providerAudit?: ComputeProviderRequestAuditAccess): Promise<WorkspaceComputeLiveReadbackReceipt> {
   exact(input, ["candidate", "workspaceId", "workspaceOperationId", "provenance"]);
   if (typeof input.workspaceId !== "string" || !/^workspace_[a-f0-9]{8,}$/.test(input.workspaceId) || typeof input.workspaceOperationId !== "string" || !ID.test(input.workspaceOperationId)) fail(COMPUTE_READBACK_ERROR.INPUT);
   const candidate = validateCloudCandidateReceipt(input.candidate), c = candidateInstallationIdentity(candidate);
   const p = provenance(input.provenance);
+  if (providerAudit && (typeof providerAudit.lookUpEvents !== "function" || typeof providerAudit.publish !== "function")) fail(COMPUTE_READBACK_ERROR.INPUT);
+  let auditReceipt: unknown;
   const receipt: WorkspaceComputeLiveReadbackReceipt = {
     schemaVersion: 2, kind: "opl_cloud_workspace_compute_live_readback", scope: "compute_destroy_status",
     status: COMPUTE_READBACK_STATUS.BLOCKED, errorCode: COMPUTE_READBACK_ERROR.ACCESS,
@@ -266,9 +274,19 @@ export async function runWorkspaceComputeLiveReadback(input: {
       if (journal.accountIdDigest && journal.accountIdDigest !== observation.accountIdDigest) {
         fail(COMPUTE_READBACK_ERROR.JOURNAL_BINDING);
       }
-      return { httpStatus: response.status, failure: null, observation, journal };
+      // Audit requires an observed original lifecycle; an empty journal remains
+      // valid independent live evidence and cannot enter the audit boundary.
+      const audit = providerAudit && journal.status === "observed" ? await runComputeProviderRequestAudit({
+        candidate, provenance: p, binding, journal,
+        select: (sql: string) => access.select("fabric_domain", sql),
+        lookUpEvents: providerAudit.lookUpEvents,
+      }) : undefined;
+      return { httpStatus: response.status, failure: null, observation, journal, audit };
     });
     receipt.installation = installation(result.pin, c);
+    // Keep auxiliary provider data private until the same Pod/image owner chain
+    // has been rechecked and its protected transport closed.
+    auditReceipt = result.value.audit;
     receipt.journal = result.value.journal;
     receipt.httpStatus = result.value.httpStatus; receipt.failure = result.value.failure; receipt.observation = result.value.observation;
     receipt.errorCode = receipt.observation ? COMPUTE_READBACK_ERROR.NONE : COMPUTE_READBACK_ERROR.HTTP;
@@ -278,7 +296,11 @@ export async function runWorkspaceComputeLiveReadback(input: {
     receipt.observation = null; receipt.failure = null; receipt.httpStatus = null; receipt.installation = null;
   }
   receipt.completedAt = new Date().toISOString();
-  return validateWorkspaceComputeLiveReadbackReceipt(receipt);
+  const validated = validateWorkspaceComputeLiveReadbackReceipt(receipt);
+  if (auditReceipt !== undefined && providerAudit && validated.status === COMPUTE_READBACK_STATUS.OBSERVED) {
+    await providerAudit.publish(validateComputeProviderRequestAuditReceipt(auditReceipt));
+  }
+  return validated;
 }
 export function validateWorkspaceComputeLiveReadbackReceipt(value: unknown): WorkspaceComputeLiveReadbackReceipt {
   const keys = ["schemaVersion", "kind", "scope", "status", "errorCode", "candidate", "provenance", "workspaceIdDigest", "workspaceOperationIdDigest", "fabricOperationIdDigest", "computeIdDigest", "startedAt", "completedAt", "installation", "httpStatus", "failure", "observation"];

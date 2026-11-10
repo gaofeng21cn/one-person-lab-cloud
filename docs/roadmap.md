@@ -56,30 +56,24 @@ shows the original operation remains `needs_attention`; compute remains
 resource families are absent, while the deletion receipt is missing and refund
 and Key closeout remain unknown.
 
-The installed product is Candidate build `42793047780` from product SHA
-`15ba29256aebf127f825a4bbb0ea174eb90d560e`, deployed by Instance run
-`42797408687`. Original-operation resume `42752312426` returned HTTP 202; it
-did not complete deletion. Journal/live readback `42829091870` was successfully
-imported to Cloud custody by run `42829929632`, but neither a successful
-readback nor custody import proves resource absence.
+The current installed product is Candidate `42859752971`, Product SHA
+`d803ab030bc7a5a10cc60a4b0f9a342227b010d5`, adopted by Instance `42864431407`.
+The original-operation resume `42865942833` was accepted but parked again.
+Readback `42866553995` and Cloud custody `42867327990` show that recovery identity
+comparison is repaired; the new detach action is fenced and ended
+`compute_prepaid_detach_dispatch_unconfirmed`. The Machine remains `RUNNING`, no
+live-readback CVM query or later stage is recorded, and missing mutation counts
+remain unknown.
 
-The Cloud journal diagnostic and Instance read-only transport are merged and
-executed. The original compute destroy reached `delete_attempted_uncertain`;
-later recovery attempts report `compute_destroy_recovery_identity_mismatch`.
-The observation-aware recovery repair is merged in #1159 but is not installed.
-The original failure is classified as `compute_machine_delete_unverified`; its
-precise SDK rejection remains unknown. The provider contract independently
-requires retain-mode Machine detachment for prepaid CVMs. Qualify the added
-original-operation detachment and retirement stages locally, including exact
-provider ownership, permanent per-action dispatch fences, real PostgreSQL
-concurrency and the deletion dispatcher, before one Candidate/adoption step.
-Read back each stage and require fresh physical absence plus original destroy
-finalization; a recycled CVM remains present. Continue the
-**same original deletion operation**; do not create a second operation or infer
-send state from a provider request ID. Keep resource
-absence, the Cloud deletion receipt, refund and Key closeout as separate
-acceptance facts. Preserve the original historical imports and v1 receipts;
-they are not rewritten as v2 journal evidence.
+Obtain the provider result of that one original detach through a bounded
+read-only audit lookup using the frozen target and journal times. Preserve
+schema, binding or access failures and ambiguous/unattributed events as unknown;
+a failed API response is not automatically proof of no side effects. Do not reset
+or replay its fence. Qualify any subsequent provider-contract repair locally and
+keep the same Candidate whenever its bytes remain valid. Continue the **same
+original Workspace deletion operation**. Resource absence, original destroy
+finalization, the Cloud deletion receipt, refund and Key closeout remain separate
+acceptance facts. Historical imports keep their original bytes and provenance.
 
 ## PR CI Cache Reuse And Parallel Verification
 

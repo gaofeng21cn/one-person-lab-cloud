@@ -155,13 +155,20 @@ jobs:
             const root = process.env.RUNNER_TEMP;
             const source = join(root, 'compute-readback-download');
             const entries = await readdir(source, { withFileTypes: true });
-            if (entries.length !== 1 || entries[0].name !== 'receipt.json' || !entries[0].isFile()) throw 0;
+            const names = entries.map(e => e.name).sort();
+            if (entries.some(e => !e.isFile()) || !names.includes('receipt.json') || names.length > 2 || names.some(n => !['receipt.json', 'provider-audit.json'].includes(n))) throw 0;
             const evidence = join(root, 'compute-readback-evidence');
             await mkdir(evidence, { mode: 0o700 });
             // Copy before validation: the retained original bytes are the input.
             await copyFile(join(source, 'receipt.json'), join(evidence, 'receipt.json'), constants.COPYFILE_EXCL);
             await main(['import', '--input', join(root, 'compute-readback-input', 'metadata.json'),
               '--receipt', join(evidence, 'receipt.json'), '--output', join(evidence, 'binding.json')]);
+            if (names.includes('provider-audit.json')) {
+              await copyFile(join(source, 'provider-audit.json'), join(evidence, 'provider-audit.json'), constants.COPYFILE_EXCL);
+              await main(['import-provider-audit', '--input', join(root, 'compute-readback-input', 'metadata.json'),
+                '--parent-receipt', join(evidence, 'receipt.json'), '--receipt', join(evidence, 'provider-audit.json'),
+                '--output', join(evidence, 'provider-audit-binding.json')]);
+            }
           } catch {
             console.error('workspace_compute_readback_handoff_invalid');
             process.exitCode = 1;
@@ -176,5 +183,7 @@ jobs:
           path: |
             ${{ runner.temp }}/compute-readback-evidence/receipt.json
             ${{ runner.temp }}/compute-readback-evidence/binding.json
+            ${{ runner.temp }}/compute-readback-evidence/provider-audit.json
+            ${{ runner.temp }}/compute-readback-evidence/provider-audit-binding.json
           if-no-files-found: error
           retention-days: 90

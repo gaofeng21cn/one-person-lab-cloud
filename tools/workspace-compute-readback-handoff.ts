@@ -3,8 +3,9 @@ import { constants } from "node:fs";
 import { lstat, open } from "node:fs/promises";
 import { dirname, join, parse, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { candidateInstallationIdentity } from "./cloud-candidate-receipt.ts";
+import { candidateInstallationIdentity, canonicalJson } from "./cloud-candidate-receipt.ts";
 import { validateWorkspaceComputeLiveReadbackReceipt } from "./workspace-compute-live-readback.ts";
+import { validateComputeProviderRequestAuditReceipt } from "./workspace-compute-provider-audit.ts";
 
 const INVALID = "workspace_compute_readback_handoff_invalid";
 const MAX_BYTES = 1024 * 1024;
@@ -82,6 +83,36 @@ export function validateWorkspaceComputeReadbackHandoff(input: HandoffInput) {
   } catch { fail(); }
 }
 
+// The independently fetched run authenticates both original byte streams. The
+// auxiliary audit stays a diagnosis; it never grants another provider send.
+export function validateWorkspaceComputeProviderAuditHandoff(input: HandoffInput & { auditReceiptText: string }) {
+  try {
+    const { auditReceiptText, ...parentInput } = exact(input, [...INPUT_KEYS, "receiptText", "auditReceiptText"]);
+    const parentBinding = validateWorkspaceComputeReadbackHandoff(parentInput as HandoffInput);
+    if (typeof auditReceiptText !== "string" || Buffer.byteLength(auditReceiptText) > MAX_BYTES) fail();
+    const parent = validateWorkspaceComputeLiveReadbackReceipt(JSON.parse(parentInput.receiptText as string));
+    const audit = validateComputeProviderRequestAuditReceipt(JSON.parse(auditReceiptText));
+    if (parent.status !== "observed" || parent.schemaVersion !== 2 || !parent.journal ||
+        canonicalJson(audit.candidate) !== canonicalJson(parent.candidate) ||
+        canonicalJson(audit.provenance) !== canonicalJson(parent.provenance) ||
+        audit.owner.workspaceIdDigest !== parent.workspaceIdDigest || audit.owner.workspaceOperationIdDigest !== parent.workspaceOperationIdDigest ||
+        audit.owner.fabricOperationIdDigest !== parent.fabricOperationIdDigest || audit.owner.computeIdDigest !== parent.computeIdDigest ||
+        audit.owner.accountIdDigest !== parent.journal.accountIdDigest || audit.owner.destroyOperationIdDigest !== parent.journal.destroyOperationIdDigest) fail();
+    if (audit.stage) {
+      const starts = parent.journal.records.filter(r => r.recordIdDigest === audit.stage!.startedRecordIdDigest && r.status === "started");
+      const failures = parent.journal.records.filter(r => r.recordIdDigest === audit.stage!.failedRecordIdDigest && r.status === "failed");
+      if (starts.length !== 1 || failures.length !== 1 || [...starts, ...failures].some(r =>
+          r.action !== audit.scope || r.operationIdDigest !== audit.stage!.operationIdDigest ||
+          r.requestHashDigest !== audit.stage!.requestHashDigest || r.originalDestroyOperationIdDigest !== audit.owner.destroyOperationIdDigest) ||
+          starts[0].startedAt !== audit.stage.startedAt || failures[0].finishedAt !== audit.stage.failedAt) fail();
+    }
+    return { schemaVersion: 1, kind: "opl_cloud_compute_provider_request_audit_handoff", evidenceRepository: CLOUD_REPOSITORY,
+      evidenceClass: "workspace_compute_provider_request_audit", scope: audit.scope, receiptDigest: hash(auditReceiptText),
+      parentReceiptDigest: parentBinding.receiptDigest, receiptStatus: audit.status, errorCode: audit.errorCode,
+      identity: parentBinding.identity, owner: audit.owner, stage: audit.stage, provenance: parentBinding.provenance };
+  } catch { fail(); }
+}
+
 async function noSymlinks(path: string) {
   const absolute = resolve(path);
   let cursor = parse(absolute).root;
@@ -112,16 +143,19 @@ async function readText(path: string) {
 
 export async function main(args = process.argv.slice(2)) {
   try {
-    if (args.length !== 7 || args[0] !== "import") fail();
+    const audit = args[0] === "import-provider-audit";
+    if ((!audit && (args.length !== 7 || args[0] !== "import")) || (audit && args.length !== 9)) fail();
     const options = new Map<string, string>();
     for (let i = 1; i < args.length; i += 2) {
-      if (!["--input", "--receipt", "--output"].includes(args[i]) || options.has(args[i]) ||
+      if (!["--input", "--receipt", "--output", ...(audit ? ["--parent-receipt"] : [])].includes(args[i]) || options.has(args[i]) ||
           !args[i + 1] || args[i + 1].startsWith("--")) fail();
       options.set(args[i], resolve(args[i + 1]));
     }
-    if (options.size !== 3 || new Set(options.values()).size !== 3) fail();
+    if (options.size !== (audit ? 4 : 3) || new Set(options.values()).size !== options.size) fail();
     const input = exact(JSON.parse(await readText(options.get("--input")!)), INPUT_KEYS);
-    const binding = validateWorkspaceComputeReadbackHandoff({
+    const binding = audit ? validateWorkspaceComputeProviderAuditHandoff({
+      ...input, receiptText: await readText(options.get("--parent-receipt")!), auditReceiptText: await readText(options.get("--receipt")!),
+    } as HandoffInput & { auditReceiptText: string }) : validateWorkspaceComputeReadbackHandoff({
       ...input, receiptText: await readText(options.get("--receipt")!),
     } as HandoffInput);
     const output = options.get("--output")!;

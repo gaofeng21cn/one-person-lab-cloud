@@ -148,6 +148,32 @@ without rebuilding it. Fabric runtime repairs require a qualified Candidate
 and Instance adoption. Continue the same original deletion operation after
 adoption; do not infer send state from the live readback alone.
 
+### Original Provider Request Audit
+
+The existing protected compute-readback entry has an optional
+`include_provider_audit` flag, disabled by default. Cloud source owns a read-only
+SQL projection of the original destroy and its failed prepaid-detach fence,
+matching their full timestamps and digests to the validated journal. Only that
+frozen cluster, Machine, region and a short window around the one failed call
+admit `LookUpEvents` for `DeleteClusterMachines`. The CloudAudit control API uses
+`ap-guangzhou`; event matching retains the frozen resource region. Pagination is bounded; an
+incomplete, ambiguous or schema-invalid result remains unknown or blocked.
+Provider query errors preserve safe classes and hashes without raw messages.
+
+Instance supplies the approved provider credential transport for the fixed
+CloudAudit read API after exact Cloud-source and Candidate admission. Cloud owns
+all event matching, response interpretation and redaction. The same pinned
+Fabric owner chain is checked before and after the read, and the transport must
+close before the auxiliary receipt is published. The ordinary v2 journal receipt
+is unchanged. The separate `provider-audit.json` and its validated parent binding
+are retained in Cloud custody alongside the original receipt bytes.
+
+A uniquely matching target event does not identify the journal fence's caller by
+itself. Even a provider error does not establish absence or authorize another
+send. This diagnostic never deletes, retires, refunds, changes IAM, or clears a
+fence. Diagnostic-source and transport adoption require their owner CI and merges;
+this source-only query does not require a new product image.
+
 ## Cloud Agent WebUI Build Input
 
 The Cloud-owned independent Agent WebUI has its own exact-source artifact build:

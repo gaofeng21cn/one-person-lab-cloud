@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { candidateReceipt } from "../helpers/protected-qualification-fixture.ts";
-import { validateWorkspaceComputeReadbackHandoff } from "../../tools/workspace-compute-readback-handoff.ts";
+import { main as importComputeEvidence, validateWorkspaceComputeReadbackHandoff, validateWorkspaceComputeProviderAuditHandoff } from "../../tools/workspace-compute-readback-handoff.ts";
 import {
   COMPUTE_READBACK_ERROR as ERROR, COMPUTE_READBACK_STATUS as STATUS,
   runWorkspaceComputeLiveReadback, validateWorkspaceComputeLiveReadbackReceipt,
@@ -341,4 +341,101 @@ test("CLI validates downloaded receipt bytes and rejects symlink and oversized i
     assert.equal(large.status, 1); assert.equal(large.stderr.trim(), ERROR.INVALID);
     assert.ok((await readFile(path)).length > 1024 * 1024);
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("optional provider audit publishes only after the pinned owner transport closes and leaves parent v2 unchanged", async () => {
+  const f=fixture(), published: unknown[]=[];
+  const r=await runWorkspaceComputeLiveReadback(input(),f.access,{
+    async lookUpEvents(){throw new Error("missing phase must not query provider");},
+    async publish(value){assert.equal(f.calls.at(-1),"repin-and-close");published.push(value);},
+  });
+  assert.equal(r.status,STATUS.OBSERVED,JSON.stringify({errorCode:r.errorCode,calls:f.calls,published}));assert.equal(r.schemaVersion,2);
+  assert.equal(Object.hasOwn(r,"providerAudit"),false);assert.equal(published.length,1);
+  assert.equal((published[0] as {status:string}).status,"blocked");
+  const args={candidate:input().candidate,receiptText:JSON.stringify(r),auditReceiptText:JSON.stringify(published[0]),
+    run:{id:Number(provenance.runId),run_attempt:Number(provenance.runAttempt),repository:{full_name:provenance.instanceRepository},
+      path:provenance.workflowPath,event:"workflow_dispatch",head_branch:"main",head_sha:provenance.instanceSha,status:"completed",conclusion:"success"},
+    expectedWorkspaceId:workspaceId,expectedWorkspaceOperationId:workspaceOperationId,expectedDiagnosticSourceSha:provenance.diagnosticSourceSha};
+  const bound=validateWorkspaceComputeProviderAuditHandoff(args);
+  assert.equal(bound.receiptStatus,"blocked");
+  const directory=await realpath(await mkdtemp(join(tmpdir(),"compute-audit-custody-")));
+  try{
+    const {receiptText,auditReceiptText,...metadata}=args;
+    const inputPath=join(directory,"input.json"),parentPath=join(directory,"receipt.json"),childPath=join(directory,"provider-audit.json"),outputPath=join(directory,"binding.json");
+    await writeFile(inputPath,JSON.stringify(metadata));await writeFile(parentPath,receiptText);await writeFile(childPath,auditReceiptText);
+    const imported=await importComputeEvidence(["import-provider-audit","--input",inputPath,"--parent-receipt",parentPath,"--receipt",childPath,"--output",outputPath]);
+    assert.deepEqual(imported,bound);assert.equal((await stat(outputPath)).mode&0o777,0o600);
+    assert.equal(await readFile(childPath,"utf8"),auditReceiptText);
+  }finally{await rm(directory,{recursive:true,force:true});}
+
+  for(const path of ["workspaceIdDigest","accountIdDigest","destroyOperationIdDigest"]){
+    const foreign=structuredClone(published[0]) as {owner:Record<string,string>};foreign.owner[path]=`sha256:${"f".repeat(64)}`;
+    assert.throws(()=>validateWorkspaceComputeProviderAuditHandoff({...args,auditReceiptText:JSON.stringify(foreign)}),/handoff_invalid/);
+  }
+});
+
+test("provider audit cannot publish on a changed installation or unbound original operation",async()=>{
+  for(const mode of ["pin_changed","binding_missing"]){
+    const f=fixture();let published=0;
+    if(mode==="pin_changed"){
+      const original=f.access.withFabric;
+      f.access.withFabric=async(image,consume)=>{const result=await original(image,consume);result.pin.imageIndexDigest=`sha256:${"f".repeat(64)}`;return result;};
+    }else{const select=f.access.select;f.access.select=async(owner,sql)=>owner==="workspace"?[]:select(owner,sql);}
+    const r=await runWorkspaceComputeLiveReadback(input(),f.access,{async lookUpEvents(){throw new Error("must not query");},async publish(){published++;}});
+    assert.equal(r.status,STATUS.BLOCKED);assert.equal(published,0);
+  }
+});
+
+
+test("audit opt-in preserves live evidence when the original journal has no lifecycle", async () => {
+  const f = fixture(), select = f.access.select;
+  let domainReads = 0, providerReads = 0, publishes = 0;
+  f.access.select = async (owner, sql) => {
+    if (owner === "fabric_domain") { domainReads++; return []; }
+    return select(owner, sql);
+  };
+  const r = await runWorkspaceComputeLiveReadback(input(), f.access, {
+    async lookUpEvents() { providerReads++; throw new Error("unbound lifecycle must not query provider"); },
+    async publish() { publishes++; },
+  });
+  assert.equal(r.status, STATUS.OBSERVED); assert.equal(r.errorCode, ERROR.NONE);
+  assert.equal(r.journal?.status, "unknown"); assert.ok(r.observation); assert.ok(r.installation);
+  assert.equal(domainReads, 1); assert.equal(providerReads, 0); assert.equal(publishes, 0);
+  assert.equal(f.calls.at(-1), "repin-and-close");
+});
+
+test("audit custody binds complete submillisecond journal timestamps", async () => {
+  const f = fixture(), select = f.access.select, base = journalRow();
+  const action = "detach_prepaid_compute_allocation";
+  const startedAt = "2026-11-11T01:32:31.000000123Z", finishedAt = "2026-11-11T01:32:31.883456789Z";
+  const resource = { ...base.resource, machineName: "machine_fixture", providerData: { machineType: PROVIDER.MACHINE, region: "na-siliconvalley", clusterId: "cls_fixture" } };
+  const rows = [
+    { ...base, resource },
+    { ...base, id: "fop_detach_start", operationId: "op_detach_original", action, resourceKind: "compute_prepaid_retirement", status: "started", errorCode: "", providerRequestId: "", startedAt, finishedAt: null, createdAt: startedAt, phase: null, resource: null, originalDestroyOperationId: base.operationId },
+    { ...base, id: "fop_detach_failed", operationId: "op_detach_original", action, resourceKind: "compute_prepaid_retirement", status: "failed", errorCode: "compute_prepaid_detach_dispatch_unconfirmed", providerRequestId: "", startedAt, finishedAt, createdAt: finishedAt, phase: null, resource: null, originalDestroyOperationId: base.operationId },
+  ];
+  f.access.select = async (owner, sql) => {
+    if (owner !== "fabric_domain") return select(owner, sql);
+    return rows.map(row => {
+      if (sql.includes("'retryable'")) return JSON.stringify({ ...row, resource: row.resource === null ? null : base.resource });
+      const { retryable, phase, mutationCount, deleteRequests, ...raw } = row;
+      return JSON.stringify(raw);
+    });
+  };
+  let child: unknown;
+  const r = await runWorkspaceComputeLiveReadback(input(), f.access, {
+    async lookUpEvents() { return { Response: { NextToken: "", Events: [], ListOver: true, TotalCount: 0, RequestId: "query_fixture" } }; },
+    async publish(value) { child = value; },
+  });
+  assert.equal(r.status, STATUS.OBSERVED); assert.ok(child);
+  const args = { candidate: input().candidate, receiptText: JSON.stringify(r), auditReceiptText: JSON.stringify(child),
+    run: { id: Number(provenance.runId), run_attempt: Number(provenance.runAttempt), repository: { full_name: provenance.instanceRepository },
+      path: provenance.workflowPath, event: "workflow_dispatch", head_branch: "main", head_sha: provenance.instanceSha, status: "completed", conclusion: "success" },
+    expectedWorkspaceId: workspaceId, expectedWorkspaceOperationId: workspaceOperationId, expectedDiagnosticSourceSha: provenance.diagnosticSourceSha };
+  assert.equal(validateWorkspaceComputeProviderAuditHandoff(args).errorCode, "no_matching_event");
+  for (const [key, value] of [["startedAt", startedAt.replace("000000123", "000000999")], ["failedAt", finishedAt.replace("883456789", "883456999")]]) {
+    const altered = structuredClone(child) as { stage: Record<string, string> };
+    altered.stage[key] = value;
+    assert.throws(() => validateWorkspaceComputeProviderAuditHandoff({ ...args, auditReceiptText: JSON.stringify(altered) }), /handoff_invalid/);
+  }
 });
