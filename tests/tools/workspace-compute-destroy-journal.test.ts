@@ -103,7 +103,6 @@ test("SQL is read-only and projects all journal binding and request evidence", (
   assert.match(sql, /LIMIT 101/u);
   assert.doesNotMatch(sql, /\b(?:INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE)\b/u);
 });
-
 test("empty journal remains unknown and does not fabricate an account or destroy operation", () => {
   const journal = decodeComputeDestroyJournal([], { computeId, workspaceId }) as unknown as Record<string, unknown>;
   assert.deepEqual(journal, {
