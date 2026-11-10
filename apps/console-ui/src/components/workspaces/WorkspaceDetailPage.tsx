@@ -265,7 +265,7 @@ function WorkspaceDeletionProgress({ controller }: { controller: WorkspaceDetail
   const description = controller.workspaceDeleteIssue === "unconfirmed" ? "暂时无法确认原删除操作，请刷新状态。请勿重复删除或另行申请退款。"
     : cloudIdentity && presentation ? deletion?.status === "deleted"
       ? "资源与数据删除已确认。退款结果以原单回读为准。"
-      : deletion?.status === "manual_review" ? "删除操作需要核对，请刷新原操作状态或联系管理员。资源删除与退款分别确认。"
+      : deletion?.status === "manual_review" ? "删除操作已暂停。请由有删除权限的管理员重新确认，系统会继续原操作；资源删除与退款分别确认。"
         : "删除在后台继续处理，可以关闭页面后再查看。资源删除与退款分别确认。"
       : presentation ? presentation.detail
         : "正在读取工作空间是否有未完成的删除操作。";
@@ -293,6 +293,7 @@ function WorkspaceDeletionProgress({ controller }: { controller: WorkspaceDetail
           <div><dt>原操作阶段</dt><dd><code>{deletion?.phase || "-"}</code></dd></div>
         </> : <div><dt>删除回执</dt><dd><code>{deletion?.receiptId || "-"}</code></dd></div>}
       </dl>
+      {cloudIdentity && deletion?.status === "manual_review" ? <Button busy={controller.workspaceDeleteBusy} disabled={controller.workspaceDeletionLoading} onClick={() => void controller.deleteCurrentWorkspace()} variant="outline">重新核对并继续删除</Button> : null}
       <Button busy={controller.workspaceDeletionLoading} disabled={controller.workspaceDeleteBusy} onClick={() => void controller.refreshWorkspaceDeletion()} variant="outline">刷新删除状态</Button>
     </section>
   </section>;
