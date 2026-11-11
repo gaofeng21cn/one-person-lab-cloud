@@ -192,6 +192,24 @@ test("Tencent deletion rejection classes follow the SDK envelope without exposin
   }
 });
 
+test("prepaid detach and retire journal safe Tencent rejection classes, never provider messages", () => {
+  for (const action of ["detach_prepaid_compute_allocation", "retire_prepaid_compute_allocation"]) {
+    for (const [providerCode, token] of [["AuthFailure", "tencent_prepaid_compute_auth_failure"],
+      ["InvalidParameterValue", "tencent_prepaid_compute_invalid_parameter_value"],
+      ["UnsupportedOperation", "tencent_prepaid_compute_unsupported_operation"],
+      ["RequestLimitExceeded", "tencent_prepaid_compute_request_limit_exceeded"],
+      ["InternalError", "tencent_prepaid_compute_internal_error"], ["ResourceNotFound", "tencent_prepaid_compute_resource_not_found"]]) {
+      const raw = `${action === "detach_prepaid_compute_allocation" ? "compute_prepaid_detach" : "compute_prepaid_retire"}_dispatch_unconfirmed:${providerCode}`;
+      const row = finalReleaseRow({ action, resourceKind: "compute_prepaid_retirement", errorCode: raw });
+      const journal = decode(destroyRow(), row);
+      assert.equal(recordOf(journal, 1).errorToken, token);
+      assert.equal(recordOf(journal, 1).errorDigest, digest(raw));
+      assert.doesNotMatch(JSON.stringify(journal), /UnauthorizedOperation|InstanceDeleteMode/u);
+      validateComputeDestroyJournal(journal);
+    }
+  }
+});
+
 test("final release carries a digest of its exact original destroy operation", () => {
   const journal = decode(destroyRow(), finalReleaseRow());
   const release = recordOf(journal, 1);
@@ -301,5 +319,90 @@ test("strict receipt validation rejects leaked keys, forged digests and contradi
     const altered = structuredClone(journal);
     change(altered);
     assert.throws(() => validateComputeDestroyJournal(altered), /invalid/u);
+  }
+});
+
+const reconciliationAction = "reconcile_prepaid_compute_detachment";
+function reconciliationRow(overrides: Record<string, unknown> = {}) {
+  return finalReleaseRow({ id: "fop_reconciliation_1", operationId: "op_reconciliation_original",
+    action: reconciliationAction, resourceKind: "compute_prepaid_reconciliation",
+    errorCode: "compute_prepaid_detach_reconciliation_unconfirmed: SecretKey=never-export",
+    retryable: false, providerRequestId: "reconciliation-provider-request-secret", requestHash: "reconciliation-request-hash-secret",
+    ...overrides });
+}
+
+test("SQL includes independent reconciliation history through the same original resource binding", () => {
+  const sql = computeDestroyJournalSql(computeId);
+  assert.match(sql, /'reconcile_prepaid_compute_detachment'/u);
+  assert.match(sql, /'originalDestroyOperationId',redacted_provider_payload::jsonb->'originalDestroyOperationId'/u);
+  assert.ok(sql.includes(`resource_id='${computeId}'`));
+  assert.doesNotMatch(sql, /SELECT \*/u);
+  assert.doesNotMatch(sql, /SecretKey|authorizationReference|originalDetachRequestHash/u);
+});
+
+test("reconciliation retains original destroy/fence records unchanged and exports bound digests only", () => {
+  const original = destroyRow();
+  const detach = finalReleaseRow({ id: "fop_detach_original", operationId: "op_detach_original",
+    action: "detach_prepaid_compute_allocation", resourceKind: "compute_prepaid_retirement",
+    errorCode: "compute_prepaid_detach_dispatch_unconfirmed", retryable: false });
+  const previous = decodeComputeDestroyJournal(rows(original, detach), { computeId, workspaceId });
+  const journal = decodeComputeDestroyJournal(rows(reconciliationRow(), detach, original), { computeId, workspaceId });
+  assert.equal(journal.status, "observed");
+  for (const record of previous.records) assert.deepEqual(journal.records.find(value => value.recordIdDigest === record.recordIdDigest), record);
+  const reconciliation = journal.records.find(value => value.action === reconciliationAction)!;
+  assert.ok(reconciliation);
+  assert.equal(reconciliation.originalDestroyOperationIdDigest, journal.destroyOperationIdDigest);
+  assert.equal(reconciliation.operationIdDigest, digest("cloud-launch-readback:operation:v1\0op_reconciliation_original"));
+  assert.notEqual(reconciliation.operationIdDigest, journal.destroyOperationIdDigest);
+  assert.equal(reconciliation.errorToken, "compute_prepaid_detach_reconciliation_unconfirmed");
+  assert.equal(reconciliation.errorDigest, digest(String(reconciliationRow().errorCode)));
+  assert.equal(reconciliation.providerRequestDigest, digest("compute-readback:request:v1\0reconciliation-provider-request-secret"));
+  assert.equal(reconciliation.requestHashDigest, digest("reconciliation-request-hash-secret"));
+  assert.equal(reconciliation.mutationCount, null);
+  assert.equal(Object.hasOwn(reconciliation, "dispatchConfirmed"), false);
+  assert.equal(Object.hasOwn(reconciliation, "machineAbsent"), false);
+  const text = JSON.stringify(journal);
+  for (const secret of [accountId, workspaceId, computeId, destroyOperationId, "op_detach_original", "op_reconciliation_original",
+    "reconciliation-provider-request-secret", "reconciliation-request-hash-secret", "SecretKey", "never-export"]) {
+    assert.equal(text.includes(secret), false, secret);
+  }
+  assert.deepEqual(validateComputeDestroyJournal(JSON.parse(text)), journal);
+});
+
+test("reconciliation journal accepts actual nullable resource projection for started/failed/succeeded without inferring completion", () => {
+  for (const status of ["started", "failed", "succeeded"]) {
+    const raw = reconciliationRow({ status, errorCode: status === "failed" ? "compute_prepaid_detach_reconciliation_unconfirmed" : "",
+      finishedAt: status === "started" ? null : "2026-11-10T01:03:00Z", providerRequestId: "", resource: null });
+    const journal = decodeComputeDestroyJournal(rows(destroyRow(), raw), { computeId, workspaceId });
+    const record = journal.records.find(value => value.action === reconciliationAction)!;
+    assert.equal(record.status, status);
+    assert.equal(record.providerRequestPresent, false);
+    assert.equal(record.mutationCount, null);
+    assert.equal(record.phase, null);
+    assert.equal(record.errorToken, status === "failed" ? "compute_prepaid_detach_reconciliation_unconfirmed" : null);
+  }
+});
+
+test("reconciliation cannot carry a foreign original destroy, owner, resource kind or unprojected secrets", () => {
+  for (const change of [
+    { originalDestroyOperationId: "op_foreign" }, { originalDestroyOperationId: null },
+    { resourceId: "compute_foreign" }, { workspaceId: "workspace_foreign" }, { accountId: "account_foreign" },
+    { resourceKind: "compute_prepaid_retirement" }, { resourceKind: "compute_allocation" },
+    { originalDetachRequestHash: "raw-secret" }, { authorizationReference: "private-authorization" },
+    { redactedProviderPayload: { originalDetachOperationId: "private-detach", secret: "never-export" } },
+  ]) assert.throws(() => decode(destroyRow(), reconciliationRow(change)), /workspace_compute_destroy_journal_invalid/u);
+});
+
+test("strict reconciliation receipt rejects detached original binding and leaked identifiers", () => {
+  const journal = decode(destroyRow(), reconciliationRow());
+  for (const change of [
+    { originalDestroyOperationIdDigest: digest("foreign") }, { originalDestroyOperationIdDigest: null },
+    { accountId }, { authorizationReference: "private-authorization" }, { originalDetachRequestHash: "raw-secret" },
+    { providerRequestDigest: "reconciliation-provider-request-secret" },
+  ]) {
+    const altered = structuredClone(journal);
+    const record = (altered.records as Record<string, unknown>[]).find(value => value.action === reconciliationAction)!;
+    Object.assign(record, change);
+    assert.throws(() => validateComputeDestroyJournal(altered), /workspace_compute_destroy_journal_invalid/u);
   }
 });

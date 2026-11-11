@@ -113,6 +113,14 @@ test("binds the original bytes through the live decoder and preserves blocked an
   }
 });
 
+test("a failed reconciliation run may custody only its independently validated uploaded readback receipt", () => {
+  const source = input(true);
+  source.run.conclusion = "failure";
+  const result = validateWorkspaceComputeReadbackHandoff(source);
+  assert.equal(result.receiptStatus, "observed");
+  assert.equal(result.errorCode, "none");
+});
+
 const bindingFailureCodes = [
   ERROR.WORKSPACE_ACCESS, ERROR.WORKSPACE_BINDING,
   ERROR.FABRIC_ACCESS, ERROR.FABRIC_BINDING, ERROR.BINDING,
@@ -284,7 +292,7 @@ test("receipt self-reported provenance cannot replace independently fetched run,
     ["id", 23], ["id", "22"], ["id", Number.MAX_SAFE_INTEGER + 1], ["run_attempt", 1], ["run_attempt", "2"],
     ["run_attempt", 0], ["run_attempt", 2.5], ["repository.full_name", "attacker/opl-instance-medopl"],
     ["path", ".github/workflows/deployment-verify.yml"], ["event", "push"], ["head_branch", "feature"],
-    ["status", "in_progress"], ["conclusion", "failure"], ["head_sha", "e".repeat(40)],
+    ["status", "in_progress"], ["conclusion", "cancelled"], ["head_sha", "e".repeat(40)],
     ["actor.login", secret], ["triggering_actor.login", secret], ["actor", null], ["triggering_actor", {}],
     ["triggering_actor.login", "RenDeHuang"],
   ];

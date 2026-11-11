@@ -55,7 +55,7 @@ export function validateWorkspaceComputeReadbackHandoff(input: HandoffInput) {
     const provenance = receipt.provenance;
     if (record(run.repository).full_name !== INSTANCE_REPOSITORY || run.path !== WORKFLOW ||
         run.event !== "workflow_dispatch" || run.head_branch !== "main" || run.status !== "completed" ||
-        run.conclusion !== "success" || run.head_sha !== provenance.instanceSha ||
+        !["success", "failure"].includes(String(run.conclusion)) || run.head_sha !== provenance.instanceSha ||
         !positiveApiInteger(run.id) || String(run.id) !== provenance.runId ||
         !positiveApiInteger(run.run_attempt) || String(run.run_attempt) !== provenance.runAttempt) fail();
     const actors: string[] = [];

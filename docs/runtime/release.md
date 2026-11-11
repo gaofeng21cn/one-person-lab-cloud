@@ -148,6 +148,31 @@ without rebuilding it. Fabric runtime repairs require a qualified Candidate
 and Instance adoption. Continue the same original deletion operation after
 adoption; do not infer send state from the live readback alone.
 
+### Explicit Prepaid Detach Reconciliation
+
+An uncertain original detach keeps its permanent fence. Cloud's
+`tools/workspace-compute-detach-reconciliation.ts` resolves the original Workspace,
+Fabric destroy and failed detach from their owner journals. With an explicit
+operator authorization reference and `RECONCILE_ORIGINAL_PREPAID_DETACH`, it signs
+one `POST /fabric/compute-allocations/{id}/reconcile-prepaid-detach` command. Fabric
+verifies that binding, fresh ownership and current eligibility, then atomically
+claims an independent permanent fence before one retain-mode detach. It preserves
+the original rows. Replays only read; a changed authorization cannot admit another
+send. Confirmed Machine absence permits the existing original deletion to proceed
+through CVM retirement, recycled release and destroy cleanup.
+
+Instance's existing compute readback workflow transports this command only when
+`reconcile_detach` is explicitly enabled and its authorization/confirmation inputs
+are supplied. Default execution remains read-only. After either outcome it opens
+a separate read-only session and saves the Cloud-validated diagnostic. A recovery
+error fails the run after preserving that receipt. Cloud custody accepts a
+completed successful or failed run only with its exact validated uploaded receipt;
+cancelled and incomplete runs remain refused. Receipt status describes readback,
+never recovery, deletion, refund or Key completion. SDK failures retain bounded
+provider error classes and request-ID evidence without raw messages or automatic
+retry. This runtime capability requires a new Candidate and Instance installation;
+source-only diagnostic changes still reuse installed bytes.
+
 ### Original Provider Request Audit
 
 The existing protected compute-readback entry has an optional

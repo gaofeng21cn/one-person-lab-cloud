@@ -440,6 +440,27 @@ func newFabricMux(service *fabric.Service) http.Handler {
 		allocation, err := service.DestroyComputeAllocation(r.Context(), strings.TrimSpace(r.PathValue("id")))
 		writeResult(w, allocation, err)
 	})
+	mux.HandleFunc("POST /fabric/compute-allocations/{id}/reconcile-prepaid-detach", func(w http.ResponseWriter, r *http.Request) {
+		var input fabric.ComputePrepaidDetachReconciliationInput
+		var key string
+		key = r.Header.Get("Idempotency-Key")
+		if key == "" || key != strings.TrimSpace(key) {
+			writeError(w, http.StatusBadRequest, "missing Idempotency-Key")
+			return
+		}
+		decoder := json.NewDecoder(r.Body)
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&input) != nil || decoder.Decode(new(any)) != io.EOF {
+			writeError(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+		if key != input.AuthorizationReference {
+			writeError(w, http.StatusBadRequest, "compute_prepaid_detach_reconciliation_authorization_mismatch")
+			return
+		}
+		result, err := service.ReconcilePrepaidComputeDetachment(r.Context(), strings.TrimSpace(r.PathValue("id")), input)
+		writeResult(w, result, err)
+	})
 	mux.HandleFunc("POST /fabric/compute-allocations/{id}/release-recycled", func(w http.ResponseWriter, r *http.Request) {
 		var input fabric.ComputeFinalReleaseInput
 		var key string
@@ -933,7 +954,7 @@ func isFabricMutation(r *http.Request) bool {
 		return false
 	}
 	switch parts[1] + "/" + parts[3] {
-	case "compute-allocations/release-recycled", "compute-allocations/renew", "compute-allocations/destroy", "storage-volumes/renew", "storage-volumes/destroy", "storage-volumes/release-recycled", "storage-attachments/detach", "workspace-runtimes/repair", "workspace-runtimes/destroy", "workspace-runtimes/gateway-secret", "workspace-runtimes/image-replacements", "workspace-application-runtimes/readback", "workspace-application-runtimes/lifecycle", "workspace-application-runtimes/lifecycle-readback", "workspace-application-runtimes/credentials", "workspace-application-runtimes/preflight", "workspace-application-runtimes/gateway-secret-cleanup":
+	case "compute-allocations/reconcile-prepaid-detach", "compute-allocations/release-recycled", "compute-allocations/renew", "compute-allocations/destroy", "storage-volumes/renew", "storage-volumes/destroy", "storage-volumes/release-recycled", "storage-attachments/detach", "workspace-runtimes/repair", "workspace-runtimes/destroy", "workspace-runtimes/gateway-secret", "workspace-runtimes/image-replacements", "workspace-application-runtimes/readback", "workspace-application-runtimes/lifecycle", "workspace-application-runtimes/lifecycle-readback", "workspace-application-runtimes/credentials", "workspace-application-runtimes/preflight", "workspace-application-runtimes/gateway-secret-cleanup":
 		return true
 	default:
 		return false
@@ -1040,6 +1061,9 @@ func fabricMutationScopeForRequest(ctx context.Context, resolver fabricMutationS
 		case "release-recycled":
 			scope.Caller = "operator"
 			scope.Action = "release_recycled_compute_allocation"
+		case "reconcile-prepaid-detach":
+			scope.Caller = "operator"
+			scope.Action = "reconcile_prepaid_compute_detachment"
 		}
 	case len(parts) == 4 && parts[0] == "fabric" && parts[1] == "storage-volumes" && parts[2] != "":
 		scope.ResourceKind, scope.ResourceID = "storage_volume", parts[2]

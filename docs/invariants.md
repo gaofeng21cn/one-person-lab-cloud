@@ -301,6 +301,12 @@ implementation and remaining gaps are reported separately in status/roadmap.
   destroy and exact ownership to its own database-atomic, permanent one-send
   fence. An uncertain reply never authorizes another send of the same step.
   The generic TKE terminate mode cannot destroy prepaid instances.
+- Explicit operator reconciliation of a completed uncertain prepaid detach uses
+  a separate permanently claimed intent bound to the original destroy, detach
+  request hash and owner authorization. It preserves both original fence and
+  terminal evidence. No ordinary resume, audit result, changed authorization,
+  lost reply or restart can admit a further recovery send. Fresh Machine absence
+  remains required before CVM retirement.
 - Recycled NativeCVM final release stays within the original Cloud Workspace
   deletion through Fabric. Fresh Machine absence and `SHUTDOWN / MANMADE`
   observations precede the uniquely claimed one-send fence; the provider adapter

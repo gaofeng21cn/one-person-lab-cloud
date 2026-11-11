@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -237,6 +238,54 @@ func TestPrepaidRetirementRejectsWrongOwnerAndRequiresFreshReadBeforeClaim(t *te
 	}
 	if _, err := store.Get(t.Context(), stableID("fop-compute-prepaid-dispatch", a.ID, computePrepaidDetachAction)); err != ErrOperationNotFound {
 		t.Fatalf("failed read consumed a send fence: %v", err)
+	}
+}
+
+func TestPrepaidRetirementProviderClassReachesJournalWithoutRawMessage(t *testing.T) {
+	for _, class := range []string{"AuthFailure.UnauthorizedOperation", "InvalidParameterValue.InstanceDeleteMode", "UnsupportedOperation", "RequestLimitExceeded", "InternalError", "ResourceNotFound", "ClientError.NetworkError", "unrecognized-private-diagnostic"} {
+		t.Run(class, func(t *testing.T) {
+			store := NewMemoryOperationStore()
+			a := prepaidRetirementFixture(t, store)
+			live := &prepaidRetirementLive{noEffect: computePrepaidDetachAction}
+			p := live.provider(t, a)
+			base := p.provision
+			p.provision = func(ctx context.Context, request provisionerRequest) (provisionerResponse, error) {
+				if request.Action == computePrepaidDetachAction {
+					live.detach.Add(1)
+					return provisionerResponse{InstanceID: a.InstanceID, ErrorCode: "compute_prepaid_detach_dispatch_unconfirmed", ProviderErrorClass: class,
+						ProviderRequestID: "req-safe-diagnostic", Message: "SecretKey=must-never-escape", MutationCount: 1}, nil
+				}
+				return base(ctx, request)
+			}
+			s := NewServiceWithOperationStore(p, store)
+			if _, err := s.RetirePrepaidComputeAllocationForDeletion(t.Context(), a.ID, a.AccountID, a.WorkspaceID); err == nil {
+				t.Fatal("provider error became success")
+			}
+			want := "compute_prepaid_detach_dispatch_unconfirmed"
+			if class != "ClientError.NetworkError" && class != "unrecognized-private-diagnostic" {
+				want += ":" + strings.Split(class, ".")[0]
+			}
+			rows, err := store.List(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, row := range rows {
+				if row.Action == computePrepaidDetachAction && row.Status == "failed" {
+					if row.ErrorCode != want || row.ProviderRequestID != "req-safe-diagnostic" || row.Retryable {
+						t.Fatalf("incorrect journal evidence: %+v", row)
+					}
+					found = true
+				}
+			}
+			if !found {
+				t.Fatal("missing terminal journal")
+			}
+			_, _ = NewServiceWithOperationStore(p, store).RetirePrepaidComputeAllocationForDeletion(t.Context(), a.ID, a.AccountID, a.WorkspaceID)
+			if live.detach.Load() != 1 || live.retire.Load() != 0 {
+				t.Fatal("diagnostic authorized a resend")
+			}
+		})
 	}
 }
 func TestPrepaidRetirementAtomicFencesSurviveLostLockExclusion(t *testing.T) {

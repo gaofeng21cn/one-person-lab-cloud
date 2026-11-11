@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       instance_run_id:
-        description: Completed successful Instance readback workflow run.
+        description: Completed Instance readback workflow run with a validated uploaded Cloud receipt.
         required: true
         type: string
       workspace_id:
@@ -98,7 +98,7 @@ jobs:
             if (!positive(run.id) || String(run.id) !== env.INSTANCE_RUN_ID || !positive(run.run_attempt) ||
                 run.repository?.full_name !== repository || run.path !== '.github/workflows/cloud-workspace-compute-readback.yml' ||
                 run.event !== 'workflow_dispatch' || run.head_branch !== 'main' || run.status !== 'completed' ||
-                run.conclusion !== 'success' || !sha.test(run.head_sha || '')) throw 0;
+                !['success', 'failure'].includes(run.conclusion) || !sha.test(run.head_sha || '')) throw 0;
             // Read every page so duplicate names cannot hide after the first page.
             const artifacts = [];
             let total;

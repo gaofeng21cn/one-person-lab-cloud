@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
+	tcerrors "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/errors"
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile"
 	cvm2017 "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm/v20170312"
 	tke2022 "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/tke/v20220501"
@@ -105,6 +106,9 @@ func (sdk *prepaidRetirementSDK) RoundTrip(r *http.Request) (*http.Response, err
 	if err != nil {
 		sdk.t.Fatal(err)
 	}
+	if sdk.mutationReply == "invalid JSON" && (action == "DeleteClusterMachines" || action == "TerminateInstances") {
+		encoded = []byte(`{"Response": private provider diagnostic; SecretKey=synthetic-secret`)
+	}
 	return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(string(encoded))), Request: r}, nil
 }
 
@@ -178,16 +182,97 @@ func TestPrepaidRetirementSDKSingleSend(t *testing.T) {
 
 func TestPrepaidRetirementSDKLostOrMalformedReplyNeverResends(t *testing.T) {
 	for _, action := range []string{detachPrepaidComputeAction, retirePrepaidComputeAction} {
-		for _, reply := range []string{"lost", "missing id", "blank id", "unsafe id", "missing envelope", "sdk error"} {
+		for _, reply := range []string{"lost", "missing id", "blank id", "unsafe id", "missing envelope", "invalid JSON", "sdk error"} {
 			t.Run(action+"/"+reply, func(t *testing.T) {
 				r, client, sdk := newPrepaidRetirementSDK(t, action)
 				sdk.mutationReply = reply
 				out := invokePrepaidRetirement(client, r)
-				if out.Ok || out.Retryable || out.MutationCount != 1 || out.InstanceId != r.Allocation.InstanceId || out.ProviderRequestId != "" || out.Message != "" || !strings.HasSuffix(out.ErrorCode, "_dispatch_unconfirmed") || sdk.count("DeleteClusterMachines")+sdk.count("TerminateInstances") != 1 {
+				wantID, wantClass := "", ""
+				var wantFacts map[string]string
+				if reply == "sdk error" {
+					method := "TerminateInstances"
+					if action == detachPrepaidComputeAction {
+						method = "DeleteClusterMachines"
+					}
+					wantID, wantClass = "req-"+method, "InternalError"
+					wantFacts = map[string]string{"providerErrorCode": wantClass, "providerErrorRequestId": wantID}
+				}
+				if out.Ok || out.Retryable || out.Status != "" || out.MutationCount != 1 || out.InstanceId != r.Allocation.InstanceId || out.ProviderRequestId != wantID || out.ProviderErrorClass != wantClass || !reflect.DeepEqual(out.ProviderData, wantFacts) || out.Message != "" || !strings.HasSuffix(out.ErrorCode, "_dispatch_unconfirmed") || sdk.count("DeleteClusterMachines")+sdk.count("TerminateInstances") != 1 {
 					t.Fatalf("response=%+v calls=%+v", out, sdk.calls)
 				}
 			})
 		}
+	}
+}
+
+func TestPrepaidRetirementSDKProviderErrorFacts(t *testing.T) {
+	for _, action := range []string{detachPrepaidComputeAction, retirePrepaidComputeAction} {
+		for _, providerCode := range []string{"AuthFailure.UnauthorizedOperation", "InvalidParameterValue.InstanceDeleteMode", "UnsupportedOperation", "InternalError", "RequestLimitExceeded"} {
+			t.Run(action+"/"+providerCode, func(t *testing.T) {
+				r, client, sdk := newPrepaidRetirementSDK(t, action)
+				sdk.editReply = func(method string, params map[string]any) {
+					if method == "DeleteClusterMachines" || method == "TerminateInstances" {
+						params["RequestId"] = "d7b0fd12-010b-4cae-b678-93be192211fa"
+						params["Error"] = map[string]string{"Code": providerCode, "Message": "private provider diagnostic; SecretKey=synthetic-secret"}
+					}
+				}
+				out := invokePrepaidRetirement(client, r)
+				wantCode := "compute_prepaid_retire_dispatch_unconfirmed"
+				if action == detachPrepaidComputeAction {
+					wantCode = "compute_prepaid_detach_dispatch_unconfirmed"
+				}
+				wantFacts := map[string]string{"providerErrorCode": providerCode, "providerErrorRequestId": "d7b0fd12-010b-4cae-b678-93be192211fa"}
+				if out.Ok || out.Retryable || out.Status != "" || out.MutationCount != 1 || out.InstanceId != r.Allocation.InstanceId || out.ErrorCode != wantCode || out.ProviderErrorClass != providerCode || out.ProviderRequestId != wantFacts["providerErrorRequestId"] || !reflect.DeepEqual(out.ProviderData, wantFacts) || out.Message != "" {
+					t.Fatalf("safe SDK classification lost or dispatch semantics changed: %+v", out)
+				}
+				encoded, err := json.Marshal(out)
+				if err != nil || strings.Contains(string(encoded), "private provider diagnostic") || strings.Contains(string(encoded), "synthetic-secret") || strings.Contains(string(encoded), "SecretKey") {
+					t.Fatalf("unsafe diagnostic: %s err=%v", encoded, err)
+				}
+				if sdk.count("DeleteClusterMachines")+sdk.count("TerminateInstances") != 1 {
+					t.Fatalf("provider rejection must never cause a resend: %+v", sdk.calls)
+				}
+			})
+		}
+	}
+}
+
+func TestPrepaidRetirementDispatchTypedDiagnostics(t *testing.T) {
+	const providerCode = "AuthFailure.UnauthorizedOperation"
+	const requestID = "d7b0fd12-010b-4cae-b678-93be192211fa"
+	for _, tc := range []struct {
+		name     string
+		err      error
+		wantCode string
+		wantID   string
+	}{
+		{"wrapped provider", fmt.Errorf("private wrapper: %w", tcerrors.NewTencentCloudSDKError(providerCode, "private secret", requestID)), providerCode, requestID},
+		{"missing request ID", tcerrors.NewTencentCloudSDKError(providerCode, "private secret", ""), providerCode, ""},
+		{"unsafe request ID", tcerrors.NewTencentCloudSDKError(providerCode, "private secret", "req\nprivate secret"), providerCode, ""},
+		{"request ID punctuation", tcerrors.NewTencentCloudSDKError(providerCode, "private secret", "req/private?secret=value"), providerCode, ""},
+		{"long request ID", tcerrors.NewTencentCloudSDKError(providerCode, "private secret", strings.Repeat("a", 129)), providerCode, ""},
+		{"unsafe code", tcerrors.NewTencentCloudSDKError("AuthFailure\nprivate secret", "private secret", requestID), "", ""},
+		{"long code", tcerrors.NewTencentCloudSDKError(strings.Repeat("a", 129), "private secret", requestID), "", ""},
+		{"network", tcerrors.NewTencentCloudSDKError("ClientError.NetworkError", "private secret", requestID), "", ""},
+		{"parse", tcerrors.NewTencentCloudSDKError("ClientError.ParseJsonError", "private secret", requestID), "", ""},
+		{"IO", tcerrors.NewTencentCloudSDKError("ClientError.IOError", "private secret", requestID), "", ""},
+		{"untyped", errors.New("Code=AuthFailure.UnauthorizedOperation RequestId=" + requestID + " private secret"), "", ""},
+		{"typed nil", (*tcerrors.TencentCloudSDKError)(nil), "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// An error must never fall back to the success response's request ID.
+			out := prepaidComputeDispatchResponse(Request{}, "compute_prepaid_detach_dispatch_unconfirmed", "req-success", tc.err)
+			wantFacts := map[string]string(nil)
+			if tc.wantCode != "" {
+				wantFacts = map[string]string{"providerErrorCode": tc.wantCode}
+				if tc.wantID != "" {
+					wantFacts["providerErrorRequestId"] = tc.wantID
+				}
+			}
+			if out.Ok || out.Retryable || out.Status != "" || out.ErrorCode != "compute_prepaid_detach_dispatch_unconfirmed" || out.MutationCount != 1 || out.Message != "" || out.ProviderErrorClass != tc.wantCode || out.ProviderRequestId != tc.wantID || !reflect.DeepEqual(out.ProviderData, wantFacts) {
+				t.Fatalf("unsafe or missing typed diagnostic: %+v", out)
+			}
+		})
 	}
 }
 
