@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "purpose": "original_prepaid_detach_provider_audit",
+  "evidenceCustodian": "gaofeng21cn/one-person-lab-cloud",
+  "producerRun": {
+    "id": 42879470010,
+    "run_attempt": 1,
+    "path": ".github/workflows/cloud-workspace-compute-readback.yml",
+    "event": "workflow_dispatch",
+    "head_branch": "main",
+    "head_sha": "f5624f78b6e2ecd19955fe881686de1d2de62aa4",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-11-10T18:51:50Z",
+    "updated_at": "2026-11-10T18:52:14Z",
+    "html_url": "https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/42879470010"
+  },
+  "custodyRun": {
+    "id": 42879631172,
+    "run_attempt": 1,
+    "path": ".github/workflows/workspace-compute-readback-handoff.yml",
+    "event": "workflow_dispatch",
+    "head_branch": "main",
+    "head_sha": "c2845b7ca553cc6aa6f8eea57ba6ede341fb6d84",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-11-10T18:52:48Z",
+    "updated_at": "2026-11-10T18:53:05Z",
+    "html_url": "https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/42879631172"
+  },
+  "files": [
+    {
+      "file": "receipt.json",
+      "sha256": "440e83b66c46926d4bfc131d4e8c5fb728b430a051d10d8fd60bb9fb007994d4",
+      "bytes": 35013
+    },
+    {
+      "file": "binding.json",
+      "sha256": "c72d45d33624af4a30ef82b47cffec5481068eb6a16ae7cb10a5343aab3569aa",
+      "bytes": 1590
+    },
+    {
+      "file": "provider-audit.json",
+      "sha256": "7a53e43b722144940af42e462ef41c902ef4027c31699edbab53ee363cd2f221",
+      "bytes": 3759
+    },
+    {
+      "file": "provider-audit-binding.json",
+      "sha256": "fec6d71e5094cd397a071000419b892f0b23462be8240a2139a128191227a119",
+      "bytes": 2888
+    }
+  ],
+  "interpretation": "The parent owner readback remains observed: Machine present/RUNNING, CVM not queried. The separate CloudAudit lookup was refused with AuthFailure.UnauthorizedOperation (exact public code SHA-256 matches the retained code digest). No original DeleteClusterMachines event was retrieved. This query denial does not determine the original provider request outcome or establish absence, deletion, refund or retry authority."
+}

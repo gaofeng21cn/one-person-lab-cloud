@@ -275,6 +275,34 @@ proof of no side effects. Original Workspace completion, the deletion receipt,
 refund and Key closeout remain open. No retry or reset of the uncertain fence is
 authorized by the readback or this diagnostic source.
 
+## Workspace 1042 audit access readback (2026-11-11)
+
+Cloud #1161 and Instance #711 passed exact-revision CI and are merged. Protected
+readback `42879470010` reused the installed Candidate; Cloud custody
+`42879631172` retains the [parent and auxiliary audit evidence](evidence/workspace-deletion/2026-11-11-provider-audit/README.md).
+The parent still observes the Machine as present and `RUNNING`; CVM was not
+queried. The audit lookup is `blocked/audit_unavailable` with safe family
+`AuthFailure`. The public `AuthFailure.UnauthorizedOperation` code hashes exactly
+to the retained error-code digest. No original provider event was returned.
+
+A Tencent account/CAM administrator must resolve effective audit-read access for
+the protected Instance credential owner. The denial does not establish which
+policy caused it or prove the original detach failed without side effects. There
+is no approved IAM-policy mutation entry or separate audit identity configured.
+Continue with the same Candidate and original operation after that access issue
+is resolved; do not reset the uncertain fence. Deletion, refund and Key closeout
+remain unconfirmed.
+
+## Workspace 1042 audit response recheck (2026-11-11 10:34 CST)
+
+Protected readback `42946920364`, retained by Cloud custody `42947505427`, reused
+the same installed Candidate and original operation. The prior permission refusal
+was not returned. The [new audit evidence](evidence/workspace-deletion/2026-11-11-provider-audit-recheck/README.md)
+is `blocked/audit_schema_invalid` with no provider-error projection and zero
+accepted response pages. The current blocker is the response/pagination decoder,
+not a fresh authorization refusal. The Machine remains present and `RUNNING`;
+this read did not query CVM. No deletion or refund completion is established.
+
 ## Workspace 1042 storage deletion (2026-11-07)
 
 Protected Instance readback `42371451925`, from Instance source

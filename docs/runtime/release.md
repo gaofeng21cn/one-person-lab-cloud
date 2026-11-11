@@ -159,6 +159,9 @@ admit `LookUpEvents` for `DeleteClusterMachines`. The CloudAudit control API use
 `ap-guangzhou`; event matching retains the frozen resource region. Pagination is bounded; an
 incomplete, ambiguous or schema-invalid result remains unknown or blocked.
 Provider query errors preserve safe classes and hashes without raw messages.
+Response-envelope and pagination rejections have fixed safe field-stage codes.
+`TotalCount` remains nonnegative integer metadata; only `ListOver` and
+`NextToken` control pagination, not an undocumented comparison with page length.
 
 Instance supplies the approved provider credential transport for the fixed
 CloudAudit read API after exact Cloud-source and Candidate admission. Cloud owns

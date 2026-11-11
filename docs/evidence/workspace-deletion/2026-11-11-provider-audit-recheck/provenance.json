@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "purpose": "original_prepaid_detach_audit_permission_recheck",
+  "evidenceCustodian": "gaofeng21cn/one-person-lab-cloud",
+  "producerRun": {
+    "id": 42946920364,
+    "run_attempt": 1,
+    "path": ".github/workflows/cloud-workspace-compute-readback.yml",
+    "event": "workflow_dispatch",
+    "head_branch": "main",
+    "head_sha": "f5624f78b6e2ecd19955fe881686de1d2de62aa4",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-11-11T02:34:16Z",
+    "updated_at": "2026-11-11T02:34:42Z",
+    "html_url": "https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/42946920364"
+  },
+  "custodyRun": {
+    "id": 42947505427,
+    "run_attempt": 1,
+    "path": ".github/workflows/workspace-compute-readback-handoff.yml",
+    "event": "workflow_dispatch",
+    "head_branch": "main",
+    "head_sha": "c2845b7ca553cc6aa6f8eea57ba6ede341fb6d84",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-11-11T02:39:24Z",
+    "updated_at": "2026-11-11T02:39:46Z",
+    "html_url": "https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/42947505427"
+  },
+  "files": [
+    {
+      "file": "receipt.json",
+      "sha256": "8267387c0c356614ee593903de09bc654a82a499ced686f4cfd8d4278e2de125",
+      "bytes": 35012
+    },
+    {
+      "file": "binding.json",
+      "sha256": "d6a70a268430462cdb7e42035dddef8e76030903ac4c257684f84873f926e0f3",
+      "bytes": 1590
+    },
+    {
+      "file": "provider-audit.json",
+      "sha256": "dcc85d42fa34d7934ce205853f3bec27e519afc9809e6e3a619f4e39d3d5478d",
+      "bytes": 3395
+    },
+    {
+      "file": "provider-audit-binding.json",
+      "sha256": "c79cfaf280b69eab81bb3c1df028af9ea76c12280b9e0bc010d1d3102cdb21c9",
+      "bytes": 2891
+    }
+  ],
+  "interpretation": "A new protected read reused the installed Candidate and original deletion. The provider response no longer projects an AuthFailure refusal; it is blocked as audit_schema_invalid before a response page is counted. No raw event or original provider request outcome has been established. Parent still observes Machine present/RUNNING and no CVM query. Do not infer general IAM coverage, physical absence, deletion, refund or retry authority."
+}

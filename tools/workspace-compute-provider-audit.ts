@@ -15,7 +15,13 @@ const DIGEST = /^sha256:[a-f0-9]{64}$/;
 const SHA = /^[a-f0-9]{40}$/;
 const ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,255}$/;
 const MAX_PAGES = 5;
-const ERRORS = ["sql_unavailable", "journal_binding_invalid", "audit_unavailable", "audit_schema_invalid",
+export const COMPUTE_AUDIT_RESPONSE_ERROR = {
+  ENVELOPE: "audit_response_envelope_invalid", FIELDS: "audit_response_fields_invalid",
+  NEXT_TOKEN: "audit_response_next_token_invalid", EVENTS: "audit_response_events_invalid",
+  COMPLETION: "audit_response_completion_invalid", COUNT: "audit_response_count_invalid",
+  REQUEST_ID: "audit_response_request_id_invalid",
+} as const;
+const ERRORS = [...Object.values(COMPUTE_AUDIT_RESPONSE_ERROR), "sql_unavailable", "journal_binding_invalid", "audit_unavailable", "audit_schema_invalid",
   "incomplete_pagination", "ambiguous_events", "no_matching_event", "caller_identity_unbound"] as const;
 type Reason = typeof ERRORS[number];
 const CLASSES = ["success_code", "numeric_error", "AuthFailure", "UnauthorizedOperation", "OperationDenied", "InvalidParameter",
@@ -184,6 +190,13 @@ function queryFailure(result: Record<string, unknown>, envelopeValid: boolean): 
       codeValid && typeof message === "string" && message.length <= 4096,
   };
 }
+// The event field table uses strings; the official LookUpEvents example uses
+// numeric UINs. Admit exact safe integers only, with the same decimal identity.
+function providerIdentity(value: unknown): string {
+  if (text(value)) return value;
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) return String(value);
+  fail();
+}
 function jsonObject(value: unknown) { return object(typeof value === "string" ? JSON.parse(value) : value); }
 function decodeEvent(raw: unknown, target: { clusterId: string; machineName: string; region: string }): AuditEvent | null {
   const e = object(raw);
@@ -198,11 +211,13 @@ function decodeEvent(raw: unknown, target: { clusterId: string; machineName: str
       !Object.hasOwn(inner, "apiErrorMessage") || !Object.hasOwn(inner, "requestParameters")) fail();
   const caller = object(inner.userIdentity);
   // These are Tencent identities only. They are NEVER compared with Fabric accountId.
-  if (!text(caller.accountId) || caller.accountId !== String(e.AccountID) || !text(caller.principalId)) fail();
+  const accountId = providerIdentity(caller.accountId), principalId = providerIdentity(caller.principalId);
+  if (accountId !== String(e.AccountID)) fail();
   if (caller.secretId !== undefined && typeof caller.secretId !== "string") fail();
   if (caller.sessionContext !== undefined) {
     const session = object(caller.sessionContext);
-    if (session.ownerUin !== undefined && session.ownerUin !== caller.accountId || session.uin !== undefined && session.uin !== caller.principalId) fail();
+    if (session.ownerUin !== undefined && providerIdentity(session.ownerUin) !== accountId ||
+        session.uin !== undefined && providerIdentity(session.uin) !== principalId) fail();
   }
   const params = jsonObject(inner.requestParameters);
   if (!["ClusterId", "MachineNames", "InstanceDeleteMode", "EnableScaleDown"].every(k => Object.hasOwn(params, k)) ||
@@ -211,8 +226,8 @@ function decodeEvent(raw: unknown, target: { clusterId: string; machineName: str
   if (e.ResourceRegion !== target.region || params.ClusterId !== target.clusterId || params.MachineNames.length !== 1 ||
       params.MachineNames[0] !== target.machineName || params.InstanceDeleteMode !== "retain" || params.EnableScaleDown !== true) return null;
   return { eventIdDigest: identity("compute-provider-audit:event:v1", e.EventId), requestIdDigest: identity("compute-readback:request:v1", e.RequestID),
-    eventDigest: hash(canonicalJson(e)), parametersDigest: hash(canonicalJson(params)), providerAccountIdDigest: identity("compute-provider-audit:account:v1", caller.accountId),
-    principalIdDigest: identity("compute-provider-audit:principal:v1", caller.principalId), identityBinding: "event_internal_only", camErrorCode: e.ErrorCode as number,
+    eventDigest: hash(canonicalJson(e)), parametersDigest: hash(canonicalJson(params)), providerAccountIdDigest: identity("compute-provider-audit:account:v1", accountId),
+    principalIdDigest: identity("compute-provider-audit:principal:v1", principalId), identityBinding: "event_internal_only", camErrorCode: e.ErrorCode as number,
     camMessageDigest: optionalMessage(inner.errorMessage), apiErrorClass: errorClass(inner.apiErrorCode),
     apiErrorCodeDigest: inner.apiErrorCode === "" || inner.apiErrorCode === null ? null : hash(String(inner.apiErrorCode)), apiMessageDigest: optionalMessage(inner.apiErrorMessage) };
 }
@@ -251,19 +266,28 @@ export async function runComputeProviderRequestAudit(input: ComputeProviderReque
       receipt.query.requestDigests.push(hash(canonicalJson({ body, region: API_REGION })));
       phase = "audit_unavailable";
       const response = await input.lookUpEvents(body, API_REGION);
-      phase = "audit_schema_invalid";
-      const envelope = object(response), result = object(envelope.Response);
+      phase = COMPUTE_AUDIT_RESPONSE_ERROR.ENVELOPE;
+      let envelope: Record<string, unknown>, result: Record<string, unknown>;
+      try { envelope = object(response); result = object(envelope.Response); }
+      catch { fail(COMPUTE_AUDIT_RESPONSE_ERROR.ENVELOPE); }
       if (Object.hasOwn(result, "Error")) {
         const decoded = queryFailure(result, Object.keys(envelope).length === 1);
         receipt.query.failure = decoded.failure;
         if (!decoded.valid) fail("audit_schema_invalid");
         fail("audit_unavailable");
       }
-      exact(envelope, ["Response"]);
-      exact(result, ["NextToken", "Events", "ListOver", "TotalCount", "RequestId"]);
-      if (!(result.NextToken === null || typeof result.NextToken === "string" && result.NextToken.length <= 4096) ||
-          !Array.isArray(result.Events) || result.Events.length > 20 || typeof result.ListOver !== "boolean" ||
-          !Number.isSafeInteger(result.TotalCount) || Number(result.TotalCount) < result.Events.length || !text(result.RequestId)) fail();
+      try { exact(envelope, ["Response"]); }
+      catch { fail(COMPUTE_AUDIT_RESPONSE_ERROR.ENVELOPE); }
+      try { exact(result, ["NextToken", "Events", "ListOver", "TotalCount", "RequestId"]); }
+      catch { fail(COMPUTE_AUDIT_RESPONSE_ERROR.FIELDS); }
+      if (!(result.NextToken === null || typeof result.NextToken === "string" && result.NextToken.length <= 4096)) fail(COMPUTE_AUDIT_RESPONSE_ERROR.NEXT_TOKEN);
+      if (!Array.isArray(result.Events) || result.Events.length > 20) fail(COMPUTE_AUDIT_RESPONSE_ERROR.EVENTS);
+      if (typeof result.ListOver !== "boolean") fail(COMPUTE_AUDIT_RESPONSE_ERROR.COMPLETION);
+      // The API documents TotalCount as a count, but does not bind it to
+      // this page. Pagination authority is ListOver and NextToken only.
+      if (!Number.isSafeInteger(result.TotalCount) || Number(result.TotalCount) < 0) fail(COMPUTE_AUDIT_RESPONSE_ERROR.COUNT);
+      if (!text(result.RequestId)) fail(COMPUTE_AUDIT_RESPONSE_ERROR.REQUEST_ID);
+      phase = "audit_schema_invalid";
       receipt.query.responseRequestDigests.push(identity("compute-readback:request:v1", result.RequestId)); receipt.query.pages++;
       for (const raw of result.Events) {
         const e = object(raw);
@@ -317,6 +341,9 @@ export function validateComputeProviderRequestAuditReceipt(value: unknown): Comp
       !Number.isInteger(q.pages) || Number(q.pages) < 0 || Number(q.pages) > MAX_PAGES || typeof q.complete !== "boolean" ||
       q.responseRequestDigests.length !== q.pages || q.requestDigests.length < Number(q.pages) || q.requestDigests.length > Math.min(MAX_PAGES, Number(q.pages) + 1) ||
       r.stage === null && (q.requestDigests.length !== 0 || q.pages !== 0 || q.complete) || q.complete && q.pages === 0) fail();
+  if (Object.values(COMPUTE_AUDIT_RESPONSE_ERROR).includes(r.errorCode as never) &&
+      (r.stage === null || r.status !== "blocked" || q.complete || q.failure !== null ||
+        q.requestDigests.length !== Number(q.pages) + 1 || r.event !== null)) fail();
   if (q.failure !== null) {
     const f = exact(q.failure, ["providerErrorClass", "providerErrorCodeDigest", "providerMessageDigest", "responseRequestIdDigest"]);
     if (!(f.providerErrorClass === null || QUERY_ERROR_CLASSES.includes(f.providerErrorClass as never)) ||
