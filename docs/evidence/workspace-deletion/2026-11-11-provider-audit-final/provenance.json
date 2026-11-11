@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "purpose": "original_prepaid_detach_provider_audit_final",
+  "evidenceCustodian": "gaofeng21cn/one-person-lab-cloud",
+  "producerRun": {
+    "id": 42964486479,
+    "run_attempt": 1,
+    "path": ".github/workflows/cloud-workspace-compute-readback.yml",
+    "event": "workflow_dispatch",
+    "head_branch": "main",
+    "head_sha": "eb1052e83b7415a7f9695e88a60fac672010171f",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-11-11T05:14:51Z",
+    "updated_at": "2026-11-11T05:15:15Z",
+    "html_url": "https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/42964486479"
+  },
+  "custodyRun": {
+    "id": 42965039298,
+    "run_attempt": 1,
+    "path": ".github/workflows/workspace-compute-readback-handoff.yml",
+    "event": "workflow_dispatch",
+    "head_branch": "main",
+    "head_sha": "be7fc53a7aba9f96a17651d590af67ac4161d679",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-11-11T05:19:47Z",
+    "updated_at": "2026-11-11T05:20:04Z",
+    "html_url": "https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/42965039298"
+  },
+  "files": [
+    {
+      "file": "receipt.json",
+      "sha256": "6516c7f24b8f56e0227030d5a400a7b3ddcdda174acc9875ef03e35f99ed31da",
+      "bytes": 35013
+    },
+    {
+      "file": "binding.json",
+      "sha256": "2e9f778a6790f2a7a4b0ba9f8ab953183cfd302f29b9806e3da3587a6085d617",
+      "bytes": 1590
+    },
+    {
+      "file": "provider-audit.json",
+      "sha256": "4ce1e8d629a71f2cf515d34547ce7abf683725fefcd89af4ed048696c8ca2c64",
+      "bytes": 3476
+    },
+    {
+      "file": "provider-audit-binding.json",
+      "sha256": "2b00a132f12824cdef2fa8fdc44eb3550aa71db72fa234d5c65b071e90aaf2f7",
+      "bytes": 2888
+    }
+  ],
+  "interpretation": "The protected read reused the installed Candidate and original Workspace operation. CloudAudit authorization, exact large-token transport and response/event envelope handling completed. One page was fully read, but no event matched the frozen DeleteClusterMachines target and window. The parent readback still observes Machine present/RUNNING; CVM was not queried. No absence, provider-request attribution, deletion completion, refund or retry authority is established."
+}

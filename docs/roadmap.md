@@ -65,13 +65,16 @@ comparison is repaired; the new detach action is fenced and ended
 live-readback CVM query or later stage is recorded, and missing mutation counts
 remain unknown.
 
-Protected audit `42879470010` was refused with
-`AuthFailure.UnauthorizedOperation`. Fresh recheck `42946920364`, retained by Cloud
-custody `42947505427`, no longer observed that refusal; instead the response was
-`audit_schema_invalid` before a page was accepted. Fix the precise Cloud-owned
-response/pagination contract and preserve fixed safe schema-stage errors before
-another read. Do not infer a missing IAM allow or expand privileges from the
-historical refusal. Keep the installed Candidate and original operation.
+Protected audit `42879470010` was initially refused with
+`AuthFailure.UnauthorizedOperation`; fresh rechecks then exposed and repaired the
+CloudAudit pagination token and event-envelope boundaries. Final protected audit
+`42964486479`, retained by Cloud custody `42965039298`, completed one page and
+returned `unknown/no_matching_event`. No event matched the frozen target and
+failed-detach window. This does not prove no provider side effect. Keep the
+installed Candidate and original operation; do not reset or replay the uncertain
+fence. Next recovery requires an owner-approved, evidence-based resolution of the
+present Machine and the original uncertain dispatch, followed by physical absence
+and deletion/refund/Key closeout readbacks.
 Preserve
 schema, binding or access failures and ambiguous/unattributed events as unknown;
 a failed API response is not automatically proof of no side effects. Do not reset
