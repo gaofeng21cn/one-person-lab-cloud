@@ -5,7 +5,7 @@ import { candidateReceipt } from "../helpers/protected-qualification-fixture.ts"
 import { canonicalJson } from "../../tools/cloud-candidate-receipt.ts";
 import { decodeComputeDestroyJournal } from "../../tools/workspace-compute-destroy-journal.ts";
 import { computeProviderRequestAuditSql, runComputeProviderRequestAudit, validateComputeProviderRequestAuditReceipt,
-  type ComputeProviderRequestAuditInput } from "../../tools/workspace-compute-provider-audit.ts";
+  COMPUTE_AUDIT_RESPONSE_ERROR as RESPONSE_ERROR, type ComputeProviderRequestAuditInput } from "../../tools/workspace-compute-provider-audit.ts";
 
 const action = "detach_prepaid_compute_allocation";
 const binding = { workspaceId: "workspace_original", workspaceOperationId: "op_workspace_original", tenantId: "tenant_original",
@@ -359,4 +359,38 @@ test("malformed SQL projection rows return a validated blocked journal receipt w
     assert.deepEqual(validateComputeProviderRequestAuditReceipt(structuredClone(r)), r);
     assert.doesNotMatch(JSON.stringify(r), /never-export|invalid-private-json|private malformed resource/);
   }
+});
+
+
+test("response envelope and pagination schema failures retain safe field stages without raw data", async () => {
+  const cases: Array<[string, (reply: any) => unknown]> = [
+    [RESPONSE_ERROR.ENVELOPE, () => null],
+    [RESPONSE_ERROR.ENVELOPE, () => ({ Response: null })],
+    [RESPONSE_ERROR.FIELDS, reply => { delete reply.Response.Events; return reply; }],
+    [RESPONSE_ERROR.FIELDS, reply => { reply.Response.privateExtra = "never-export"; return reply; }],
+    [RESPONSE_ERROR.NEXT_TOKEN, reply => { reply.Response.NextToken = {}; return reply; }],
+    [RESPONSE_ERROR.EVENTS, reply => { reply.Response.Events = null; return reply; }],
+    [RESPONSE_ERROR.COMPLETION, reply => { reply.Response.ListOver = 1; return reply; }],
+    [RESPONSE_ERROR.COUNT, reply => { reply.Response.TotalCount = null; return reply; }],
+    [RESPONSE_ERROR.REQUEST_ID, reply => { reply.Response.RequestId = null; return reply; }],
+  ];
+  for (const [expected, edit] of cases) {
+    const f = fixture(); f.input.lookUpEvents = async () => edit(page());
+    const result = await runComputeProviderRequestAudit(f.input);
+    assert.equal(result.status, "blocked"); assert.equal(result.errorCode, expected);
+    assert.equal(result.query.pages, 0); assert.equal(result.query.complete, false); assert.equal(result.event, null);
+    assert.doesNotMatch(JSON.stringify(result), /privateExtra|never-export|private-audit-query-request/);
+    assert.deepEqual(validateComputeProviderRequestAuditReceipt(result), result);
+  }
+});
+
+
+test("provider count metadata does not override explicit event pages or completion", async () => {
+  const f = fixture();
+  f.input.lookUpEvents = async () => ({ Response: { ...page().Response, TotalCount: 0, NextToken: "terminal-nonempty-token" } });
+  const result = await runComputeProviderRequestAudit(f.input);
+  assert.equal(result.errorCode, "caller_identity_unbound"); assert.equal(result.status, "unknown");
+  assert.equal(result.query.pages, 1); assert.equal(result.query.complete, true);
+  assert.equal(result.event?.apiErrorClass, "UnsupportedOperation");
+  assert.deepEqual(validateComputeProviderRequestAuditReceipt(result), result);
 });

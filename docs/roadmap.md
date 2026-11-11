@@ -65,8 +65,14 @@ comparison is repaired; the new detach action is fenced and ended
 live-readback CVM query or later stage is recorded, and missing mutation counts
 remain unknown.
 
-Obtain the provider result of that one original detach through a bounded
-read-only audit lookup using the frozen target and journal times. Preserve
+Protected audit `42879470010` was refused with
+`AuthFailure.UnauthorizedOperation`. Fresh recheck `42946920364`, retained by Cloud
+custody `42947505427`, no longer observed that refusal; instead the response was
+`audit_schema_invalid` before a page was accepted. Fix the precise Cloud-owned
+response/pagination contract and preserve fixed safe schema-stage errors before
+another read. Do not infer a missing IAM allow or expand privileges from the
+historical refusal. Keep the installed Candidate and original operation.
+Preserve
 schema, binding or access failures and ambiguous/unattributed events as unknown;
 a failed API response is not automatically proof of no side effects. Do not reset
 or replay its fence. Qualify any subsequent provider-contract repair locally and

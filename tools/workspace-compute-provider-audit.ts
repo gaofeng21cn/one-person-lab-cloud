@@ -15,7 +15,13 @@ const DIGEST = /^sha256:[a-f0-9]{64}$/;
 const SHA = /^[a-f0-9]{40}$/;
 const ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,255}$/;
 const MAX_PAGES = 5;
-const ERRORS = ["sql_unavailable", "journal_binding_invalid", "audit_unavailable", "audit_schema_invalid",
+export const COMPUTE_AUDIT_RESPONSE_ERROR = {
+  ENVELOPE: "audit_response_envelope_invalid", FIELDS: "audit_response_fields_invalid",
+  NEXT_TOKEN: "audit_response_next_token_invalid", EVENTS: "audit_response_events_invalid",
+  COMPLETION: "audit_response_completion_invalid", COUNT: "audit_response_count_invalid",
+  REQUEST_ID: "audit_response_request_id_invalid",
+} as const;
+const ERRORS = [...Object.values(COMPUTE_AUDIT_RESPONSE_ERROR), "sql_unavailable", "journal_binding_invalid", "audit_unavailable", "audit_schema_invalid",
   "incomplete_pagination", "ambiguous_events", "no_matching_event", "caller_identity_unbound"] as const;
 type Reason = typeof ERRORS[number];
 const CLASSES = ["success_code", "numeric_error", "AuthFailure", "UnauthorizedOperation", "OperationDenied", "InvalidParameter",
@@ -251,19 +257,28 @@ export async function runComputeProviderRequestAudit(input: ComputeProviderReque
       receipt.query.requestDigests.push(hash(canonicalJson({ body, region: API_REGION })));
       phase = "audit_unavailable";
       const response = await input.lookUpEvents(body, API_REGION);
-      phase = "audit_schema_invalid";
-      const envelope = object(response), result = object(envelope.Response);
+      phase = COMPUTE_AUDIT_RESPONSE_ERROR.ENVELOPE;
+      let envelope: Record<string, unknown>, result: Record<string, unknown>;
+      try { envelope = object(response); result = object(envelope.Response); }
+      catch { fail(COMPUTE_AUDIT_RESPONSE_ERROR.ENVELOPE); }
       if (Object.hasOwn(result, "Error")) {
         const decoded = queryFailure(result, Object.keys(envelope).length === 1);
         receipt.query.failure = decoded.failure;
         if (!decoded.valid) fail("audit_schema_invalid");
         fail("audit_unavailable");
       }
-      exact(envelope, ["Response"]);
-      exact(result, ["NextToken", "Events", "ListOver", "TotalCount", "RequestId"]);
-      if (!(result.NextToken === null || typeof result.NextToken === "string" && result.NextToken.length <= 4096) ||
-          !Array.isArray(result.Events) || result.Events.length > 20 || typeof result.ListOver !== "boolean" ||
-          !Number.isSafeInteger(result.TotalCount) || Number(result.TotalCount) < result.Events.length || !text(result.RequestId)) fail();
+      try { exact(envelope, ["Response"]); }
+      catch { fail(COMPUTE_AUDIT_RESPONSE_ERROR.ENVELOPE); }
+      try { exact(result, ["NextToken", "Events", "ListOver", "TotalCount", "RequestId"]); }
+      catch { fail(COMPUTE_AUDIT_RESPONSE_ERROR.FIELDS); }
+      if (!(result.NextToken === null || typeof result.NextToken === "string" && result.NextToken.length <= 4096)) fail(COMPUTE_AUDIT_RESPONSE_ERROR.NEXT_TOKEN);
+      if (!Array.isArray(result.Events) || result.Events.length > 20) fail(COMPUTE_AUDIT_RESPONSE_ERROR.EVENTS);
+      if (typeof result.ListOver !== "boolean") fail(COMPUTE_AUDIT_RESPONSE_ERROR.COMPLETION);
+      // The API documents TotalCount as a count, but does not bind it to
+      // this page. Pagination authority is ListOver and NextToken only.
+      if (!Number.isSafeInteger(result.TotalCount) || Number(result.TotalCount) < 0) fail(COMPUTE_AUDIT_RESPONSE_ERROR.COUNT);
+      if (!text(result.RequestId)) fail(COMPUTE_AUDIT_RESPONSE_ERROR.REQUEST_ID);
+      phase = "audit_schema_invalid";
       receipt.query.responseRequestDigests.push(identity("compute-readback:request:v1", result.RequestId)); receipt.query.pages++;
       for (const raw of result.Events) {
         const e = object(raw);
