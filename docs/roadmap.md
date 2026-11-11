@@ -45,49 +45,45 @@ Workspace operation.
 
 Workspace owns the original deletion operation, deletion receipt and separate
 refund; Fabric owns provider readback and the fenced final release of accepted
-compute/storage resources. Instance owns installation configuration and
-deployment evidence, not the deletion execution path. The
-[November 9 retained observation](status.md#workspace-1042-deployed-deletion-and-evidence-custody-2026-11-09)
-confirms storage absence but predates the current compute observation. The
-November 10 evidence in [status](status.md#workspace-1042-compute-journal-follow-up-2026-11-10)
-shows the original operation remains `needs_attention`; compute remains
-`unknown`/`unconfirmed_send`; the live Machine is present with allocation
-`destroying` and TKE `RUNNING`. The live read did not query CVM. The other four
-resource families are absent, while the deletion receipt is missing and refund
-and Key closeout remain unknown.
+compute/storage resources. Instance owns installation and deployment evidence.
+The [current evidence](status.md#workspace-1042-explicit-detach-reconciliation-and-cloud-custody-2026-11-12)
+records Candidate `43005604100`, product source
+`13a2cfed43b8f19f6d525800bec82f0c32f9b1e3`, installed by `43011003384` attempt 3
+and verified by `43033347058`. The prior source-adoption gap for explicit one-send
+reconciliation is closed; the customer deletion outcome remains open.
 
-The current installed product is Candidate `42859752971`, Product SHA
-`d803ab030bc7a5a10cc60a4b0f9a342227b010d5`, adopted by Instance `42864431407`.
-The original-operation resume `42865942833` was accepted but parked again.
-Readback `42866553995` and Cloud custody `42867327990` show that recovery identity
-comparison is repaired; the new detach action is fenced and ended
-`compute_prepaid_detach_dispatch_unconfirmed`. The Machine remains `RUNNING`, no
-live-readback CVM query or later stage is recorded, and missing mutation counts
-remain unknown.
+Reconciliation `43034642706` failed with the journal-bound raw error
+`compute_prepaid_detach_dispatch_unconfirmed:AuthFailure` on November 11 at
+22:02:45 CST. Follow-up `43036356234` still sees the Machine present/`RUNNING`,
+allocation `destroying` and no CVM query. Cloud custody `43056046391` and
+`43056054326` preserve both runs, including the failed reconciliation. The audit's
+`unknown/no_matching_event` covers the original 01:32 detach window, not the 22:02
+reconciliation, and establishes no absence of side effects. Earlier storage and
+other resource-family absence evidence remains separate; the original operation
+has no completed deletion receipt, refund or Key closeout proof.
 
-Protected audit `42879470010` was initially refused with
-`AuthFailure.UnauthorizedOperation`; fresh rechecks then exposed and repaired the
-CloudAudit pagination token and event-envelope boundaries. Final protected audit
-`42964486479`, retained by Cloud custody `42965039298`, completed one page and
-returned `unknown/no_matching_event`. No event matched the frozen target and
-failed-detach window. This does not prove no provider side effect. Keep the
-installed Candidate and original operation; do not reset or replay the uncertain
-fence. Next recovery requires an owner-approved, evidence-based resolution of the
-present Machine and the original uncertain dispatch, followed by physical absence
-and deletion/refund/Key closeout readbacks. The
-[explicit detach recovery source](status.md#workspace-1042-explicit-detach-recovery-source-2026-11-11)
-adds that separate operator-bound, permanently claimed reconciliation. Adopt its
-Fabric runtime through one Candidate and Instance installation, then continue the
-same original operation. Resume `42989008699` was accepted but remains pending;
-it is not evidence of Machine/CVM absence or refund/Key closeout.
-Preserve
-schema, binding or access failures and ambiguous/unattributed events as unknown;
-a failed API response is not automatically proof of no side effects. Do not reset
-or replay its fence. Qualify any subsequent provider-contract repair locally and
-keep the same Candidate whenever its bytes remain valid. Continue the **same
-original Workspace deletion operation**. Resource absence, original destroy
-finalization, the Cloud deletion receipt, refund and Key closeout remain separate
-acceptance facts. Historical imports keep their original bytes and provenance.
+Remaining recovery first requires the Instance/provider identity owner to bind
+the failing Fabric runtime credential and resolve its effective access. IAM
+workflow `43040327638` identifies a CAM user, while `43038906679` cannot read
+policy contents because `ListPolicies` was denied; equivalence with the installed
+runtime identity remains unknown. Obtain authoritative evidence for the new
+attempt's exact target and time window where needed; neither the old-window audit
+nor the authorization error justifies resetting an uncertain fence.
+
+Additional bounded AuthFailure recovery source is verified against base `13a2cfed43b8f19f6d525800bec82f0c32f9b1e3`. Its further resource-wide slot
+requires the qualifying recorded AuthFailure and a different explicit operator
+authorization; it cannot admit an automatic or unbounded sequence. Qualify that
+source in current-revision CI and adopt its exact Candidate through Instance
+before claiming installed recovery support. A distinct authorization and owner evidence are still required
+for any subsequent send. Keep the installed Candidate for read-only diagnosis;
+further recovery or deployment requires separately authorized owner execution.
+
+Continue the **same original Workspace deletion operation**. Acceptance requires
+physical Machine/CVM absence, original destroy finalization, the Cloud deletion
+receipt, separate refund and effective Key closeout readbacks. Preserve missing
+mutation counts, binding/access failures and ambiguous events as unknown. The
+[custody manifest](evidence/workspace-deletion/2026-11-12-prepaid-detach-auth-custody.json)
+binds the retained artifacts without replacing their original bytes or outcomes.
 
 ## PR CI Cache Reuse And Parallel Verification
 

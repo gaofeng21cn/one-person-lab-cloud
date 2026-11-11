@@ -1,0 +1,392 @@
+{
+  "schemaVersion": 1,
+  "purpose": "workspace_1042_original_deletion_auth_failure_cloud_custody",
+  "evidenceCustodian": "gaofeng21cn/one-person-lab-cloud",
+  "recordedAt": "2026-11-11T16:18:29.516537+00:00",
+  "retentionReason": "Current docs/status.md and docs/roadmap.md consume these exact Cloud custody identities and file digests for the still-open original deletion. Original receipt bytes remain in the named Cloud artifacts; this file records custody and verification without reissuing those receipts.",
+  "diagnosticSourceSha": "13a2cfed43b8f19f6d525800bec82f0c32f9b1e3",
+  "candidateBuildRun": {
+    "repository": "gaofeng21cn/one-person-lab-cloud",
+    "id": 43005604100,
+    "run_attempt": 1,
+    "path": ".github/workflows/build-opl-cloud-candidate.yml",
+    "event": "workflow_dispatch",
+    "head_branch": "main",
+    "head_sha": "13a2cfed43b8f19f6d525800bec82f0c32f9b1e3",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-11-11T10:40:36Z",
+    "updated_at": "2026-11-11T10:50:07Z",
+    "html_url": "https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/43005604100"
+  },
+  "installedCandidateIdentity": {
+    "candidateReceiptDigest": "sha256:f09582d80d127419f453e17bfdecda671e55d1df58df8f41a1c4417a8cd08706",
+    "productSha": "13a2cfed43b8f19f6d525800bec82f0c32f9b1e3",
+    "productTree": "05e68c570690407714dfc7dc57f39a85ff136a86",
+    "cloudImageRef": "ghcr.io/gaofeng21cn/one-person-lab-cloud@sha256:98b293393ff87aafad80ba5855e5b2a5e294e6a5640488f156914306473a8d80",
+    "cloudImageDigest": "sha256:98b293393ff87aafad80ba5855e5b2a5e294e6a5640488f156914306473a8d80",
+    "cloudImageRevision": "13a2cfed43b8f19f6d525800bec82f0c32f9b1e3",
+    "cloudRuntimeChildDigest": "sha256:f49415d202580707d05ff7048dedc95672203c1f23a10d741af926c48b88973f"
+  },
+  "workspaceIdDigest": "sha256:f9daf7338d1f75a4575a3a816ab7f6db49d9218eb9b48175c4da32f6601d347c",
+  "workspaceOperationIdDigest": "sha256:ddd434fc36cf92a04e469ec4681d88d610795f003a2139c47e5918f253aecb55",
+  "instanceAdoption": {
+    "deploymentRun": {
+      "repository": "gaofeng21cn/opl-instance-medopl",
+      "id": 43011003384,
+      "run_attempt": 3,
+      "path": ".github/workflows/deploy.yml",
+      "event": "workflow_dispatch",
+      "head_branch": "main",
+      "head_sha": "26c03cc44b67a0a19883f6234614aec5284d6d94",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-11-11T11:19:33Z",
+      "updated_at": "2026-11-11T13:52:52Z",
+      "html_url": "https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/43011003384"
+    },
+    "verificationRun": {
+      "repository": "gaofeng21cn/opl-instance-medopl",
+      "id": 43033347058,
+      "run_attempt": 1,
+      "path": ".github/workflows/deployment-verify.yml",
+      "event": "workflow_dispatch",
+      "head_branch": "main",
+      "head_sha": "26c03cc44b67a0a19883f6234614aec5284d6d94",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-11-11T13:54:09Z",
+      "updated_at": "2026-11-11T13:54:45Z",
+      "html_url": "https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/43033347058"
+    },
+    "installationVerification": "succeeded",
+    "deploymentVerification": "deployment_verified",
+    "allDeploymentChecksTrue": true,
+    "installationReadback": {
+      "installation": true,
+      "materials": true,
+      "serveProbe": true
+    }
+  },
+  "imports": [
+    {
+      "producerRun": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "id": 43034642706,
+        "run_attempt": 1,
+        "path": ".github/workflows/cloud-workspace-compute-readback.yml",
+        "event": "workflow_dispatch",
+        "head_branch": "main",
+        "head_sha": "26c03cc44b67a0a19883f6234614aec5284d6d94",
+        "status": "completed",
+        "conclusion": "failure",
+        "created_at": "2026-11-11T14:02:26Z",
+        "updated_at": "2026-11-11T14:02:54Z",
+        "html_url": "https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/43034642706"
+      },
+      "producerArtifact": {
+        "id": 13863051402,
+        "name": "cloud-workspace-compute-readback-handoff-43034642706-1",
+        "digest": "sha256:fb1fb01909a4c13ac7f4e5103100ba8ef432003a75bb1233d6a553e621237270",
+        "size_in_bytes": 4623,
+        "expired": false,
+        "created_at": "2026-11-11T14:02:50Z",
+        "expires_at": "2026-11-14T14:02:49Z"
+      },
+      "custodyRun": {
+        "repository": "gaofeng21cn/one-person-lab-cloud",
+        "id": 43056046391,
+        "run_attempt": 1,
+        "path": ".github/workflows/workspace-compute-readback-handoff.yml",
+        "event": "workflow_dispatch",
+        "head_branch": "main",
+        "head_sha": "13a2cfed43b8f19f6d525800bec82f0c32f9b1e3",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-11-11T16:12:45Z",
+        "updated_at": "2026-11-11T16:13:07Z",
+        "html_url": "https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/43056046391"
+      },
+      "cloudArtifact": {
+        "id": 13870264857,
+        "name": "workspace-compute-readback-43034642706-43056046391-1",
+        "digest": "sha256:38442162bdfb5703389d463e2d0a36a96593fd8346206f65bfd85fbb14406dae",
+        "size_in_bytes": 5488,
+        "expired": false,
+        "created_at": "2026-11-11T16:13:03Z",
+        "expires_at": "2027-02-09T16:12:47Z"
+      },
+      "files": [
+        {
+          "file": "binding.json",
+          "sha256": "aabf6e153d96e30971972e4198a97ee34c1251765673b0d0f93f959e013b91ef",
+          "bytes": 1590
+        },
+        {
+          "file": "receipt.json",
+          "sha256": "09eabed4041639f6ec762d917d97c65714cca3a82adc233c0b29682bd4af5ae8",
+          "bytes": 41301
+        }
+      ],
+      "verification": {
+        "cloudArchiveDigestMatchesGitHub": true,
+        "originalReceiptBytesEqualInstanceArtifact": true,
+        "computedReadbackBindingBytesEqualCloudArtifact": true,
+        "candidateAndWorkspaceOperationAndDiagnosticSourceBindingsValid": true
+      },
+      "readback": {
+        "status": "observed",
+        "errorCode": "none",
+        "observedAt": "2026-11-11T14:02:48.286930892Z",
+        "machinePresent": true,
+        "allocationStatus": "destroying",
+        "tkeStatus": "RUNNING",
+        "cvmQueried": false
+      },
+      "reconciliationRecords": [
+        {
+          "action": "reconcile_prepaid_compute_detachment",
+          "status": "started",
+          "operationIdDigest": "sha256:0779b7325b341d8c6fe3f6632c52b56321b20f896a125c782589defc2307a574",
+          "originalDestroyOperationIdDigest": "sha256:35b8feb3c39ae357817415d993a7ca1a90123c715b400cb52bd0a4842ace99ae",
+          "requestHashDigest": "sha256:3a5e69700d97f7df6dfd2de795e0f22c75cd85dd72cb9d6bbed08d1bd223af5d",
+          "startedAt": "2026-11-11T22:02:44.521907+08:00",
+          "finishedAt": null,
+          "errorToken": null,
+          "errorDigest": null,
+          "retryable": false,
+          "mutationCount": null,
+          "providerRequestPresent": false,
+          "providerRequestDigest": null
+        },
+        {
+          "action": "reconcile_prepaid_compute_detachment",
+          "status": "failed",
+          "operationIdDigest": "sha256:0779b7325b341d8c6fe3f6632c52b56321b20f896a125c782589defc2307a574",
+          "originalDestroyOperationIdDigest": "sha256:35b8feb3c39ae357817415d993a7ca1a90123c715b400cb52bd0a4842ace99ae",
+          "requestHashDigest": "sha256:3a5e69700d97f7df6dfd2de795e0f22c75cd85dd72cb9d6bbed08d1bd223af5d",
+          "startedAt": "2026-11-11T22:02:44.521907+08:00",
+          "finishedAt": "2026-11-11T22:02:45.603616+08:00",
+          "errorToken": "tencent_prepaid_compute_auth_failure",
+          "errorDigest": "sha256:fe0377ee72cb6b23b36cc458a3739e2a3f76e2a0dcee78534a6a061354091edb",
+          "retryable": false,
+          "mutationCount": null,
+          "providerRequestPresent": true,
+          "providerRequestDigest": "sha256:b29c6b5ce83b4ca98ae7de92607d4117b5179a1e15d1e15cbed836cb12077ef3"
+        }
+      ]
+    },
+    {
+      "producerRun": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "id": 43036356234,
+        "run_attempt": 1,
+        "path": ".github/workflows/cloud-workspace-compute-readback.yml",
+        "event": "workflow_dispatch",
+        "head_branch": "main",
+        "head_sha": "26c03cc44b67a0a19883f6234614aec5284d6d94",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-11-11T14:13:11Z",
+        "updated_at": "2026-11-11T14:13:36Z",
+        "html_url": "https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/43036356234"
+      },
+      "producerArtifact": {
+        "id": 13862049853,
+        "name": "cloud-workspace-compute-readback-handoff-43036356234-1",
+        "digest": "sha256:6742d4ca6826e87380ac9d44f9efffbbd830f508c4759b8dcc407b679e111c09",
+        "size_in_bytes": 6365,
+        "expired": false,
+        "created_at": "2026-11-11T14:13:31Z",
+        "expires_at": "2026-11-14T14:13:30Z"
+      },
+      "custodyRun": {
+        "repository": "gaofeng21cn/one-person-lab-cloud",
+        "id": 43056054326,
+        "run_attempt": 1,
+        "path": ".github/workflows/workspace-compute-readback-handoff.yml",
+        "event": "workflow_dispatch",
+        "head_branch": "main",
+        "head_sha": "13a2cfed43b8f19f6d525800bec82f0c32f9b1e3",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-11-11T16:12:48Z",
+        "updated_at": "2026-11-11T16:13:12Z",
+        "html_url": "https://github.com/gaofeng21cn/one-person-lab-cloud/actions/runs/43056054326"
+      },
+      "cloudArtifact": {
+        "id": 13869884907,
+        "name": "workspace-compute-readback-43036356234-43056054326-1",
+        "digest": "sha256:4fcef613b059593c77b0620c925979ad89cac87d76bc336f6d703a479ad73ab5",
+        "size_in_bytes": 8696,
+        "expired": false,
+        "created_at": "2026-11-11T16:13:07Z",
+        "expires_at": "2027-02-09T16:12:49Z"
+      },
+      "files": [
+        {
+          "file": "binding.json",
+          "sha256": "33edd2f1bf99bd927a03cf2c0e3218bceb5d716559639aca49686aff4f2c7d72",
+          "bytes": 1590
+        },
+        {
+          "file": "provider-audit-binding.json",
+          "sha256": "ddebc7d055f81048efb2ba2d64dc7a7c5ffb31da6f860425d80bba3126db7cf4",
+          "bytes": 2888
+        },
+        {
+          "file": "provider-audit.json",
+          "sha256": "1b87641f9095a46445b67b618cdf0cfed2394a3088611127e8cceafc6856193f",
+          "bytes": 3476
+        },
+        {
+          "file": "receipt.json",
+          "sha256": "08452f9a0bdc9928f5083ac9173ea9516ac9cadd7310114dc5eeb2a68d4678a7",
+          "bytes": 41301
+        }
+      ],
+      "verification": {
+        "cloudArchiveDigestMatchesGitHub": true,
+        "originalReceiptBytesEqualInstanceArtifact": true,
+        "computedReadbackBindingBytesEqualCloudArtifact": true,
+        "candidateAndWorkspaceOperationAndDiagnosticSourceBindingsValid": true,
+        "originalAuditBytesEqualInstanceArtifact": true,
+        "computedAuditBindingBytesEqualCloudArtifact": true,
+        "auditParentAndFrozenStageBindingsValid": true
+      },
+      "readback": {
+        "status": "observed",
+        "errorCode": "none",
+        "observedAt": "2026-11-11T14:13:29.221464174Z",
+        "machinePresent": true,
+        "allocationStatus": "destroying",
+        "tkeStatus": "RUNNING",
+        "cvmQueried": false
+      },
+      "reconciliationRecords": [
+        {
+          "action": "reconcile_prepaid_compute_detachment",
+          "status": "started",
+          "operationIdDigest": "sha256:0779b7325b341d8c6fe3f6632c52b56321b20f896a125c782589defc2307a574",
+          "originalDestroyOperationIdDigest": "sha256:35b8feb3c39ae357817415d993a7ca1a90123c715b400cb52bd0a4842ace99ae",
+          "requestHashDigest": "sha256:3a5e69700d97f7df6dfd2de795e0f22c75cd85dd72cb9d6bbed08d1bd223af5d",
+          "startedAt": "2026-11-11T22:02:44.521907+08:00",
+          "finishedAt": null,
+          "errorToken": null,
+          "errorDigest": null,
+          "retryable": false,
+          "mutationCount": null,
+          "providerRequestPresent": false,
+          "providerRequestDigest": null
+        },
+        {
+          "action": "reconcile_prepaid_compute_detachment",
+          "status": "failed",
+          "operationIdDigest": "sha256:0779b7325b341d8c6fe3f6632c52b56321b20f896a125c782589defc2307a574",
+          "originalDestroyOperationIdDigest": "sha256:35b8feb3c39ae357817415d993a7ca1a90123c715b400cb52bd0a4842ace99ae",
+          "requestHashDigest": "sha256:3a5e69700d97f7df6dfd2de795e0f22c75cd85dd72cb9d6bbed08d1bd223af5d",
+          "startedAt": "2026-11-11T22:02:44.521907+08:00",
+          "finishedAt": "2026-11-11T22:02:45.603616+08:00",
+          "errorToken": "tencent_prepaid_compute_auth_failure",
+          "errorDigest": "sha256:fe0377ee72cb6b23b36cc458a3739e2a3f76e2a0dcee78534a6a061354091edb",
+          "retryable": false,
+          "mutationCount": null,
+          "providerRequestPresent": true,
+          "providerRequestDigest": "sha256:b29c6b5ce83b4ca98ae7de92607d4117b5179a1e15d1e15cbed836cb12077ef3"
+        }
+      ],
+      "providerAudit": {
+        "scope": "detach_prepaid_compute_allocation",
+        "status": "unknown",
+        "errorCode": "no_matching_event",
+        "stage": {
+          "operationIdDigest": "sha256:a64e723265dfcafe4bb6feb54c529bbb820fa00657327b3ac1579bdaf503fd5e",
+          "startedRecordIdDigest": "sha256:7ac1f40d3f89cc0a64be86948032f185be3bad5becbf3dd471add37891f7b1ad",
+          "failedRecordIdDigest": "sha256:49f411b278d7e0e55fe630604418bdac3d6f435a562222839f94ba8aca48b990",
+          "requestHashDigest": "sha256:7bf26a8023f58ffbbd126cff8833022e1cea23b7754d33b414b3b1555dc40ccc",
+          "startedAt": "2026-11-11T01:32:31.15853+08:00",
+          "failedAt": "2026-11-11T01:32:31.883374+08:00"
+        },
+        "window": {
+          "startTime": 1794331891,
+          "endTime": 1794332012,
+          "startUtc": "2026-11-10T17:31:31.000Z",
+          "endUtc": "2026-11-10T17:33:32.000Z"
+        },
+        "query": {
+          "apiRegion": "ap-guangzhou",
+          "sqlDigest": "sha256:1278733bb9891ae7dea0b5405457a07745e6733d48542bcd44e7e770c0ae7604",
+          "requestDigests": [
+            "sha256:5b08b79d7e7078a7e61428919841c8027e1db1cd0555508d0a6b4a34ffd222a3"
+          ],
+          "responseRequestDigests": [
+            "sha256:c350832bf03d763b3f57ee9e2c7c6ec2099194f8b1387916ff223e63240c3ba9"
+          ],
+          "pages": 1,
+          "complete": true,
+          "failure": null
+        },
+        "event": null,
+        "interpretation": "The frozen window covers the original 2026-11-11 01:32 UTC+08:00 detach, not the 22:02 reconciliation. No matching event proves neither absence of provider side effects nor eligibility for another send."
+      }
+    }
+  ],
+  "rawFailureDigestCheck": {
+    "value": "compute_prepaid_detach_dispatch_unconfirmed:AuthFailure",
+    "sha256": "fe0377ee72cb6b23b36cc458a3739e2a3f76e2a0dcee78534a6a061354091edb",
+    "matchesBothReconciliationErrorDigests": true
+  },
+  "iamReadback": {
+    "whoamiRun": {
+      "repository": "gaofeng21cn/opl-instance-medopl",
+      "id": 43040327638,
+      "run_attempt": 1,
+      "path": ".github/workflows/tke-basic-nodepool-create.yml",
+      "event": "workflow_dispatch",
+      "head_branch": "main",
+      "head_sha": "26c03cc44b67a0a19883f6234614aec5284d6d94",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-11-11T14:37:54Z",
+      "updated_at": "2026-11-11T14:38:12Z",
+      "html_url": "https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/43040327638"
+    },
+    "whoamiReceipt": {
+      "file": "receipt.json",
+      "sha256": "de4520c540b6abc7b11a93f386479ce4909c7b3366a05798fdca3bde9da6d181",
+      "bytes": 1563
+    },
+    "identity": {
+      "accountId": "100047070895",
+      "userId": "100049665797",
+      "identityType": "CAMUser",
+      "mutationCount": 0
+    },
+    "policyReadRun": {
+      "repository": "gaofeng21cn/opl-instance-medopl",
+      "id": 43038906679,
+      "run_attempt": 1,
+      "path": ".github/workflows/tke-basic-nodepool-create.yml",
+      "event": "workflow_dispatch",
+      "head_branch": "main",
+      "head_sha": "26c03cc44b67a0a19883f6234614aec5284d6d94",
+      "status": "completed",
+      "conclusion": "failure",
+      "created_at": "2026-11-11T14:29:09Z",
+      "updated_at": "2026-11-11T14:29:27Z",
+      "html_url": "https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/43038906679"
+    },
+    "policyReadReceipt": {
+      "file": "receipt.json",
+      "sha256": "3717a06de793c75dae67ef570432decb6ff392f8a91441d0324be3887d09347e",
+      "bytes": 400
+    },
+    "policyReadResult": {
+      "result": "fail",
+      "errorCode": "tencent_provider_call_failed",
+      "providerCode": "AuthFailure.UnauthorizedOperation"
+    },
+    "limitations": "Workflow credential identity is observed; equivalence with the installed Fabric runtime credential is unknown. ListPolicies was refused; effective policy contents and the cause of the reconciliation denial are not established."
+  },
+  "conclusion": "Both Cloud imports succeeded and preserve observed readbacks, including a failed reconciliation run. The Machine remains present/RUNNING, CVM was not queried and mutation counts remain unknown. No CVM release, original destroy finalization, Workspace deletion receipt, refund or Key closeout is proven. Local bounded AuthFailure recovery source is not part of installed Candidate 43005604100; no automatic or unbounded retry is established."
+}
