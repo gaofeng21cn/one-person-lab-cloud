@@ -11,6 +11,7 @@ import (
 // An operator explicitly accepts the unresolved original dispatch and authorizes
 // one additional retain-mode detachment of the same immutable resource. This is
 // never an automatic retry, and neither original fence nor outcome is rewritten.
+// A completed AuthFailure may admit one separately authorized, fixed retry slot.
 const ComputePrepaidDetachReconciliationConfirmation = "RECONCILE_ORIGINAL_PREPAID_DETACH"
 const computePrepaidDetachReconciliationAction = "reconcile_prepaid_compute_detachment"
 
@@ -46,6 +47,70 @@ func validUnconfirmedPrepaidDetachError(value string) bool {
 		}
 	}
 	return false
+}
+
+// AuthFailure remains an unresolved dispatch. A separate explicit operator
+// intent may consume exactly one further resource-wide slot after this outcome.
+func validPrepaidDetachReconciliationAuthFailure(row FabricOperation) bool {
+	return row.Status == "failed" && !row.FinishedAt.IsZero() && row.ProviderRequestID != "" &&
+		row.ErrorCode == "compute_prepaid_detach_dispatch_unconfirmed:AuthFailure"
+}
+
+func prepaidDetachReconciliationOperation(id string, input ComputePrepaidDetachReconciliationInput, provider string, retry bool, now time.Time) FabricOperation {
+	key := input.DestroyOperationID + ":" + computePrepaidDetachReconciliationAction
+	rowID := stableID("fop-compute-prepaid-detach-reconciliation", id)
+	if retry {
+		key += ":auth-retry"
+		rowID = stableID("fop-compute-prepaid-detach-reconciliation-auth-retry", id)
+	}
+	operation := newOperation(computePrepaidDetachReconciliationAction, "compute_prepaid_reconciliation", id, input.AccountID, input.WorkspaceID, key, hashInput(input), now)
+	operation.ID = rowID
+	operation.CallerService, operation.Provider = "operator", provider
+	operation.RedactedProviderPayload = map[string]any{"originalDestroyOperationId": input.DestroyOperationID, "originalDetachOperationId": input.DetachOperationID, "originalDetachRequestHash": input.DetachRequestHash, "authorizationReference": input.AuthorizationReference}
+	return operation
+}
+
+type prepaidDetachReconciliationAttempt struct {
+	claim, terminal *FabricOperation
+}
+
+func readPrepaidDetachReconciliationAttempt(rows []FabricOperation, id string, input ComputePrepaidDetachReconciliationInput, provider string, retry bool) (prepaidDetachReconciliationAttempt, error) {
+	var out prepaidDetachReconciliationAttempt
+	conflict := fmt.Errorf("compute_prepaid_detach_reconciliation_conflict")
+	if len(rows) > 2 {
+		return out, conflict
+	}
+	for index := range rows {
+		row := &rows[index]
+		reference, ok := row.RedactedProviderPayload["authorizationReference"].(string)
+		if !ok || !prepaidDetachReconciliationToken.MatchString(reference) {
+			return out, conflict
+		}
+		bound := input
+		bound.AuthorizationReference = reference
+		expected := prepaidDetachReconciliationOperation(id, bound, provider, retry, row.StartedAt)
+		if !validPrepaidDetachReconciliationFence(*row, expected) || row.StartedAt.IsZero() {
+			return out, conflict
+		}
+		if row.Status == "started" {
+			if out.claim != nil || row.ID != expected.ID || !row.FinishedAt.IsZero() {
+				return out, conflict
+			}
+			out.claim = row
+		} else {
+			if out.terminal != nil || row.ID == expected.ID || row.FinishedAt.IsZero() || row.FinishedAt.Before(row.StartedAt) {
+				return out, conflict
+			}
+			out.terminal = row
+		}
+	}
+	if len(rows) != 0 && out.claim == nil {
+		return out, conflict
+	}
+	if out.terminal != nil && (!validPrepaidDetachReconciliationFence(*out.terminal, *out.claim) || !out.terminal.StartedAt.Equal(out.claim.StartedAt)) {
+		return out, conflict
+	}
+	return out, nil
 }
 
 func (s *Service) ReconcilePrepaidComputeDetachment(ctx context.Context, id string, input ComputePrepaidDetachReconciliationInput) (ComputePrepaidDetachReconciliationResult, error) {
@@ -121,10 +186,6 @@ func (s *Service) ReconcilePrepaidComputeDetachment(ctx context.Context, id stri
 			if !claimedOriginal || previous.Status != "failed" || previous.FinishedAt.IsZero() || !validUnconfirmedPrepaidDetachError(previous.ErrorCode) {
 				return fmt.Errorf("compute_prepaid_detach_reconciliation_uncertain_outcome_required")
 			}
-			operation := newOperation(computePrepaidDetachReconciliationAction, "compute_prepaid_reconciliation", id, input.AccountID, input.WorkspaceID, destroy.OperationID+":"+computePrepaidDetachReconciliationAction, hashInput(input), s.now())
-			operation.ID = stableID("fop-compute-prepaid-detach-reconciliation", id)
-			operation.CallerService, operation.Provider = "operator", allocation.Provider
-			operation.RedactedProviderPayload = map[string]any{"originalDestroyOperationId": destroy.OperationID, "originalDetachOperationId": input.DetachOperationID, "originalDetachRequestHash": input.DetachRequestHash, "authorizationReference": input.AuthorizationReference}
 			read := func() (ComputeAllocation, error) {
 				observed, err := s.optionalProviders.computeDestroyStatus.ReadComputeDestroyStatus(ctx, cloneComputeAllocation(allocation))
 				if err != nil {
@@ -142,21 +203,47 @@ func (s *Service) ReconcilePrepaidComputeDetachment(ctx context.Context, id stri
 			if err != nil {
 				return err
 			}
-			// Read and validate an existing recovery claim even after provider progress,
-			// so changing the authorization cannot silently retarget an accepted command.
-			attempted := false
+			// Slot identity is resource-wide, independent of the new authorization.
+			// Even callers that lose the pool lock compete for the same durable claim.
+			first := prepaidDetachReconciliationOperation(id, input, allocation.Provider, false, s.now())
+			retry := prepaidDetachReconciliationOperation(id, input, allocation.Provider, true, s.now())
+			groups := make(map[string][]FabricOperation)
 			for _, row := range history {
 				if row.ResourceID != id || row.Action != computePrepaidDetachReconciliationAction {
 					continue
 				}
-				if !validPrepaidDetachReconciliationFence(row, operation) {
+				if row.OperationID != first.OperationID && row.OperationID != retry.OperationID {
 					return fmt.Errorf("compute_prepaid_detach_reconciliation_conflict")
 				}
-				attempted = true
-				out.OperationID = row.OperationID
+				groups[row.OperationID] = append(groups[row.OperationID], row)
 			}
-			out.DispatchAttempted, out.MachineAbsent = attempted, absent(observed)
-			if attempted || out.MachineAbsent {
+			originalAttempt, err := readPrepaidDetachReconciliationAttempt(groups[first.OperationID], id, input, allocation.Provider, false)
+			if err != nil {
+				return err
+			}
+			retryAttempt, err := readPrepaidDetachReconciliationAttempt(groups[retry.OperationID], id, input, allocation.Provider, true)
+			if err != nil {
+				return err
+			}
+			if retryAttempt.claim != nil && (originalAttempt.terminal == nil || !validPrepaidDetachReconciliationAuthFailure(*originalAttempt.terminal) ||
+				retryAttempt.claim.RedactedProviderPayload["authorizationReference"] == originalAttempt.claim.RedactedProviderPayload["authorizationReference"]) {
+				return fmt.Errorf("compute_prepaid_detach_reconciliation_conflict")
+			}
+			out.MachineAbsent = absent(observed)
+			for _, attempt := range []prepaidDetachReconciliationAttempt{originalAttempt, retryAttempt} {
+				if attempt.claim != nil && attempt.claim.RedactedProviderPayload["authorizationReference"] == input.AuthorizationReference {
+					out.OperationID, out.DispatchAttempted = attempt.claim.OperationID, true
+					return nil
+				}
+			}
+			operation := first
+			if originalAttempt.claim != nil {
+				if originalAttempt.terminal == nil || !validPrepaidDetachReconciliationAuthFailure(*originalAttempt.terminal) || retryAttempt.claim != nil {
+					return fmt.Errorf("compute_prepaid_detach_reconciliation_conflict")
+				}
+				operation = retry
+			}
+			if out.MachineAbsent {
 				return nil
 			}
 			if !ComputePrepaidRetirementEligible(observed) || observed.MachinePresent == nil || !*observed.MachinePresent {

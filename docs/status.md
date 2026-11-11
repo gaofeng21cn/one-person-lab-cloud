@@ -5,34 +5,82 @@ Purpose: `replaceable_current_evidence_snapshot`
 State: `current_snapshot`
 Reviewed source baseline: `3773966a31e2a5d6630038decfa0a812c1488830` on `main`
 Snapshot reconciliation date: 2026-11-10
-Scoped Workspace deletion update: 2026-11-10 (installed product source `41286b76860424ca5a71432d4ccc2552189bf32f`)
+Scoped Workspace deletion update: 2026-11-12 (installed product source `13a2cfed43b8f19f6d525800bec82f0c32f9b1e3`)
 
 Each observation below retains its original source, run and environment; the
 reviewed source baseline does not requalify those receipts. The Workspace deletion
-section includes the separately dated November 9 and November 10 evidence. Source tests, Candidate construction,
+section includes separately dated November 9-12 evidence. Source tests, Candidate construction,
 Instance installation and customer acceptance prove separate layers; none alone
 establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
 
-## Workspace 1042 explicit detach recovery source (2026-11-11)
+## Workspace 1042 explicit detach reconciliation and Cloud custody (2026-11-12)
 
-Against mainline base `e292ee280a7a1be646b3db294f88cff51292a492`, Fabric adds an
-operator-bound one-send reconciliation for the original uncertain prepaid detach.
-Cloud derives the exact original bindings and owns the journal projection;
-Instance transports the optional signed command and a subsequent independent
-readback. The original detach fence remains immutable. Local tests cover strict
-HTTP/capability boundaries, real projected journal rows, restart, uncertain
-responses and concurrent PostgreSQL claims after loss of lock exclusion. Focused
-verification passed with isolated PostgreSQL and local Docker enabled, with no
-failures or skipped tests. Current source checks and CI remain separate from
-Candidate installation and provider resource completion.
+The installed product is Candidate `43005604100`, source
+`13a2cfed43b8f19f6d525800bec82f0c32f9b1e3`, image index
+`sha256:98b293393ff87aafad80ba5855e5b2a5e294e6a5640488f156914306473a8d80`.
+Instance deployment `43011003384` attempt 3 succeeded; independent verification
+`43033347058` reports `deployment_verified`, all 12 deployment checks true and
+installation/materials/Serve readbacks true. Instance source is
+`26c03cc44b67a0a19883f6234614aec5284d6d94`. This installs the explicit
+operator-bound, separately fenced one-send reconciliation developed against
+`e292ee280a7a1be646b3db294f88cff51292a492`; the original detach fence remains
+immutable. Earlier source verification covered owner HTTP/capability boundaries,
+projected journals, restart, uncertain responses and concurrent PostgreSQL claims.
+Installation verification does not establish customer deletion completion.
 
-Protected original-operation resume `42989008699` returned HTTP 202 but retained
-`in_progress`, `needs_attention / storage_deletion`, pending resource/data deletion,
-unknown refund and no refund operation. It did not supply a new Machine or CVM
-absence proof. The final deletion receipt, refund and Key deactivation remain
-unconfirmed until the same original operation completes authoritative readbacks.
+Protected reconciliation `43034642706` failed. Its independent readback remains
+valid `observed/none`: the Machine is present, allocation `destroying`, TKE
+`RUNNING`, and CVM was not queried. The journal records
+`reconcile_prepaid_compute_detachment` started at
+`2026-11-11T22:02:44.521907+08:00` and failed at
+`2026-11-11T22:02:45.603616+08:00` with safe token
+`tencent_prepaid_compute_auth_failure`, `retryable=false` and unknown mutation
+count. The retained error digest exactly matches
+`compute_prepaid_detach_dispatch_unconfirmed:AuthFailure`; a provider request-ID
+digest is present. A failed authorization response does not prove no side effects.
+
+Read-only follow-up `43036356234` succeeded and observed the same present/`RUNNING`
+Machine at `2026-11-11T14:13:29.221464174Z`; CVM was again not queried. Its auxiliary
+audit completed one page with `unknown/no_matching_event`. That audit is bound to
+the **original** `detach_prepaid_compute_allocation` at 01:32 on November 11
+(UTC+08:00), with query window `2026-11-10T17:31:31Z`-`17:33:32Z`. It does not
+cover the new 22:02 reconciliation and cannot establish that attempt's side effects.
+Neither readback provides CVM release, original destroy finalization, Workspace
+deletion receipt, refund or Key closeout evidence.
+
+Cloud custody `43056046391` imported failed Instance run `43034642706`; custody
+`43056054326` imported successful Instance run `43036356234` and its audit. Both
+Cloud runs succeeded on source `13a2cfed43b8f19f6d525800bec82f0c32f9b1e3` at
+00:13 CST on November 12. The downloaded Cloud ZIP digests match GitHub metadata;
+all three original receipt files equal the Instance artifacts byte for byte, and
+all three Cloud binding files equal independently recomputed validator output.
+The [custody manifest](evidence/workspace-deletion/2026-11-12-prepaid-detach-auth-custody.json)
+retains exact run/attempt, artifact identities, file hashes and checks; original
+bytes remain in the named 90-day Cloud artifacts. Custody success preserves the
+failed reconciliation and unknown audit outcome.
+
+Separate protected IAM workflow `43040327638` observed CAM user `100049665797`
+under account `100047070895`, with zero mutations. Policy read `43038906679`
+failed with `AuthFailure.UnauthorizedOperation` at `ListPolicies`; effective policy
+contents remain unknown. These workflow credentials have not been proven to be
+the installed Fabric runtime identity, so they do not identify the failing policy.
+
+Additional bounded AuthFailure recovery source is verified against base `13a2cfed43b8f19f6d525800bec82f0c32f9b1e3`: only a recorded qualifying
+AuthFailure and a different explicit operator authorization can admit one further
+resource-wide, permanently claimed slot. Replays read the existing attempt; a
+consumed slot or another outcome does not admit another send. This local source
+is absent from Candidate `43005604100` and has no installed acceptance evidence.
+The focused Fabric gate passed 1,954 test/subtest events with isolated PostgreSQL
+and Docker, zero failures or skips. The targeted race run also passed both
+PostgreSQL reconciliation tests; the new regression fails against the unchanged
+base implementation. These checks do not establish current-revision PR CI.
+It is not an automatic or unbounded retry mechanism and grants no execution
+authorization. Earlier original-operation resume `42989008699` was accepted but
+remained pending. Continue the same original Workspace deletion only after the
+remaining owner evidence and explicitly authorized recovery are resolved in the
+[roadmap](roadmap.md#workspace-1042-original-deletion).
 
 ## Short-lived Agent connection source (2026-11-09)
 
