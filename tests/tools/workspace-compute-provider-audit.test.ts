@@ -433,3 +433,14 @@ test("official string field table and numeric example retain identical exact Ten
     assert.equal(result.status, "unknown"); assert.equal(result.errorCode, "no_matching_event"); assert.equal(result.event, null);
   }
 });
+
+
+test("incomplete event entries remain non-evidence while valid duplicate IDs stay rejected", async () => {
+  const f = fixture(); f.input.lookUpEvents = async () => page([{ private: "never-export" }, event()]);
+  const result = await runComputeProviderRequestAudit(f.input);
+  assert.equal(result.errorCode, "caller_identity_unbound"); assert.equal(result.status, "unknown");
+  const duplicate = fixture(); duplicate.input.lookUpEvents = async () => page([event(), event()]);
+  const blocked = await runComputeProviderRequestAudit(duplicate.input);
+  assert.equal(blocked.errorCode, "audit_schema_invalid"); assert.equal(blocked.status, "blocked");
+  assert.doesNotMatch(JSON.stringify(result), /never-export/);
+});

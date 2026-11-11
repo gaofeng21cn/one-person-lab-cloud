@@ -295,8 +295,12 @@ export async function runComputeProviderRequestAudit(input: ComputeProviderReque
       phase = "audit_schema_invalid";
       receipt.query.responseRequestDigests.push(identity("compute-readback:request:v1", result.RequestId)); receipt.query.pages++;
       for (const raw of result.Events) {
-        const e = object(raw);
-        if (!text(e.EventId) || !text(e.RequestID) || eventIds.has(e.EventId) || requests.has(e.RequestID)) fail();
+        let e: Record<string, unknown>;
+        try { e = object(raw); } catch { continue; }
+        // Some pages contain incomplete event entries. They cannot be evidence,
+        // but they must not erase a valid page or be treated as a match.
+        if (!text(e.EventId) || !text(e.RequestID)) continue;
+        if (eventIds.has(e.EventId) || requests.has(e.RequestID)) fail();
         eventIds.add(e.EventId); requests.add(e.RequestID);
         const event = decodeEvent(raw, frozen);
         if (event) candidates.push(event);
