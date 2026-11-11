@@ -9,8 +9,18 @@ const ACTIONS = {
   release_recycled_compute_allocation: "compute_final_release",
   detach_prepaid_compute_allocation: "compute_prepaid_retirement",
   retire_prepaid_compute_allocation: "compute_prepaid_retirement",
+  reconcile_prepaid_compute_detachment: "compute_prepaid_reconciliation",
+} as const;
+const PREPAID_PROVIDER_ERRORS = {
+  AuthFailure: "tencent_prepaid_compute_auth_failure",
+  InvalidParameterValue: "tencent_prepaid_compute_invalid_parameter_value",
+  UnsupportedOperation: "tencent_prepaid_compute_unsupported_operation",
+  RequestLimitExceeded: "tencent_prepaid_compute_request_limit_exceeded",
+  InternalError: "tencent_prepaid_compute_internal_error",
+  ResourceNotFound: "tencent_prepaid_compute_resource_not_found",
 } as const;
 const SAFE_ERRORS = new Set([
+  ...Object.values(PREPAID_PROVIDER_ERRORS),
   "compute_allocation_not_found",
   "compute_destroy_recovery_unconfirmed", "compute_destroy_recovery_identity_mismatch",
   "compute_destroy_recovery_phase_invalid", "compute_allocation_destroy_readback_mismatch",
@@ -27,6 +37,7 @@ const SAFE_ERRORS = new Set([
   "compute_prepaid_retirement_dispatch_claim_invalid", "compute_prepaid_retirement_original_destroy_mismatch",
   "compute_prepaid_detach_identity_or_state_mismatch", "compute_prepaid_detach_dispatch_unconfirmed",
   "compute_prepaid_retire_identity_or_state_mismatch", "compute_prepaid_retire_dispatch_unconfirmed",
+  "compute_prepaid_detach_reconciliation_unconfirmed",
 ]);
 
 export type ComputeDestroyJournalRecord = {
@@ -70,6 +81,8 @@ function instant(value: unknown): value is string {
 function nullableText(value: unknown): value is string | null { return value === null || typeof value === "string" && value.length <= 4096; }
 
 function errorToken(error: string): string | null {
+  const prepaid = /^compute_prepaid_(?:detach|retire)_dispatch_unconfirmed:([A-Za-z]+)$/u.exec(error);
+  if (prepaid && Object.hasOwn(PREPAID_PROVIDER_ERRORS, prepaid[1])) return PREPAID_PROVIDER_ERRORS[prepaid[1] as keyof typeof PREPAID_PROVIDER_ERRORS];
   // Tencent's SDK Error() has this fixed envelope. Export only the two known
   // rejection classes needed to diagnose the original delete, never its
   // subcode, Message, RequestId or arbitrary provider text.
@@ -104,7 +117,7 @@ export function computeDestroyJournalSql(computeId: string): string {
   )::text FROM fabric_operations WHERE status <> 'rejected' AND operation_id IN (
     SELECT operation_id FROM fabric_operations WHERE
       (resource_id=${id} OR redacted_provider_payload::jsonb->'resource'->'id'=to_jsonb(${id}::text))
-      AND action IN ('destroy_compute_allocation','release_recycled_compute_allocation','detach_prepaid_compute_allocation','retire_prepaid_compute_allocation')
+      AND action IN ('destroy_compute_allocation','release_recycled_compute_allocation','detach_prepaid_compute_allocation','retire_prepaid_compute_allocation','reconcile_prepaid_compute_detachment')
       AND status IN ('started','failed','succeeded')
   ) ORDER BY created_at,id LIMIT 101`;
 }

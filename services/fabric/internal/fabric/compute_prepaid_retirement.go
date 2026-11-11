@@ -3,6 +3,7 @@ package fabric
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -204,6 +205,16 @@ func (p *TencentProvider) prepaidComputeRetirement(ctx context.Context, a Comput
 		return response.ProviderRequestID, err
 	}
 	if !response.OK {
+		// Preserve only an admitted provider class across the process boundary;
+		// arbitrary provider messages never enter the durable dispatch journal.
+		if response.ErrorCode == "compute_prepaid_detach_dispatch_unconfirmed" || response.ErrorCode == "compute_prepaid_retire_dispatch_unconfirmed" {
+			class := strings.Split(response.ProviderErrorClass, ".")[0]
+			switch class {
+			case "AuthFailure", "InvalidParameterValue", "UnsupportedOperation", "RequestLimitExceeded", "InternalError", "ResourceNotFound":
+				return response.ProviderRequestID, fmt.Errorf("%s:%s", response.ErrorCode, class)
+			}
+			return response.ProviderRequestID, fmt.Errorf("%s", response.ErrorCode)
+		}
 		return response.ProviderRequestID, provisionerError(response)
 	}
 	if response.InstanceID != a.InstanceID || response.MutationCount < 0 || response.MutationCount > 1 || response.ProviderRequestID == "" {

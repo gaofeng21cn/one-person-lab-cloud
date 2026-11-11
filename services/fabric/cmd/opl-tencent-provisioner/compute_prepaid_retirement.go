@@ -1,10 +1,12 @@
 package main
 
 import (
+	"errors"
 	"strings"
 	"unicode"
 
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
+	tcerrors "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/errors"
 	cvm2017 "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm/v20170312"
 	tke2022 "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/tke/v20220501"
 )
@@ -158,10 +160,41 @@ func prepaidComputeRequestIDSafe(value string) bool {
 
 func prepaidComputeDispatchResponse(request Request, code, requestID string, callErr error) Response {
 	out := Response{InstanceId: request.Allocation.InstanceId, MutationCount: 1}
-	if callErr != nil || !prepaidComputeRequestIDSafe(requestID) {
+	if callErr != nil {
+		out.ErrorCode = code
+		// SDK client/transport failures are not provider responses. Even a typed
+		// provider rejection is diagnostic only: the dispatch stays unconfirmed.
+		var sdkErr *tcerrors.TencentCloudSDKError
+		providerCode := safeTencentProviderErrorCode(callErr)
+		if providerCode == "" || providerCode == "ClientError" || strings.HasPrefix(providerCode, "ClientError.") ||
+			!errors.As(callErr, &sdkErr) || sdkErr == nil {
+			return out
+		}
+		out.ProviderErrorClass = providerCode
+		out.ProviderData = map[string]string{"providerErrorCode": providerCode}
+		if prepaidComputeErrorRequestIDSafe(sdkErr.RequestId) {
+			out.ProviderRequestId = sdkErr.RequestId
+			out.ProviderData["providerErrorRequestId"] = sdkErr.RequestId
+		}
+		return out
+	}
+	if !prepaidComputeRequestIDSafe(requestID) {
 		out.ErrorCode = code
 		return out
 	}
 	out.Ok, out.Status, out.ProviderRequestId = true, "accepted", requestID
 	return out
+}
+
+// Error diagnostics admit only bounded ASCII identifiers, never SDK messages.
+func prepaidComputeErrorRequestIDSafe(value string) bool {
+	if value == "" || len(value) > 128 {
+		return false
+	}
+	for _, char := range value {
+		if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') && (char < '0' || char > '9') && char != '-' && char != '_' {
+			return false
+		}
+	}
+	return true
 }

@@ -74,7 +74,12 @@ failed-detach window. This does not prove no provider side effect. Keep the
 installed Candidate and original operation; do not reset or replay the uncertain
 fence. Next recovery requires an owner-approved, evidence-based resolution of the
 present Machine and the original uncertain dispatch, followed by physical absence
-and deletion/refund/Key closeout readbacks.
+and deletion/refund/Key closeout readbacks. The
+[explicit detach recovery source](status.md#workspace-1042-explicit-detach-recovery-source-2026-11-11)
+adds that separate operator-bound, permanently claimed reconciliation. Adopt its
+Fabric runtime through one Candidate and Instance installation, then continue the
+same original operation. Resume `42989008699` was accepted but remains pending;
+it is not evidence of Machine/CVM absence or refund/Key closeout.
 Preserve
 schema, binding or access failures and ambiguous/unattributed events as unknown;
 a failed API response is not automatically proof of no side effects. Do not reset

@@ -15,6 +15,25 @@ establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
 
+## Workspace 1042 explicit detach recovery source (2026-11-11)
+
+Against mainline base `e292ee280a7a1be646b3db294f88cff51292a492`, Fabric adds an
+operator-bound one-send reconciliation for the original uncertain prepaid detach.
+Cloud derives the exact original bindings and owns the journal projection;
+Instance transports the optional signed command and a subsequent independent
+readback. The original detach fence remains immutable. Local tests cover strict
+HTTP/capability boundaries, real projected journal rows, restart, uncertain
+responses and concurrent PostgreSQL claims after loss of lock exclusion. Focused
+verification passed with isolated PostgreSQL and local Docker enabled, with no
+failures or skipped tests. Current source checks and CI remain separate from
+Candidate installation and provider resource completion.
+
+Protected original-operation resume `42989008699` returned HTTP 202 but retained
+`in_progress`, `needs_attention / storage_deletion`, pending resource/data deletion,
+unknown refund and no refund operation. It did not supply a new Machine or CVM
+absence proof. The final deletion receipt, refund and Key deactivation remain
+unconfirmed until the same original operation completes authoritative readbacks.
+
 ## Short-lived Agent connection source (2026-11-09)
 
 On source base `b4bff4b056d75362a890ebda8f33201447c328ca`, CloudIdentity adds
