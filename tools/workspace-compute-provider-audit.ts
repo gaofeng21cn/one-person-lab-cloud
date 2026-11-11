@@ -190,6 +190,13 @@ function queryFailure(result: Record<string, unknown>, envelopeValid: boolean): 
       codeValid && typeof message === "string" && message.length <= 4096,
   };
 }
+// The event field table uses strings; the official LookUpEvents example uses
+// numeric UINs. Admit exact safe integers only, with the same decimal identity.
+function providerIdentity(value: unknown): string {
+  if (text(value)) return value;
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) return String(value);
+  fail();
+}
 function jsonObject(value: unknown) { return object(typeof value === "string" ? JSON.parse(value) : value); }
 function decodeEvent(raw: unknown, target: { clusterId: string; machineName: string; region: string }): AuditEvent | null {
   const e = object(raw);
@@ -204,11 +211,13 @@ function decodeEvent(raw: unknown, target: { clusterId: string; machineName: str
       !Object.hasOwn(inner, "apiErrorMessage") || !Object.hasOwn(inner, "requestParameters")) fail();
   const caller = object(inner.userIdentity);
   // These are Tencent identities only. They are NEVER compared with Fabric accountId.
-  if (!text(caller.accountId) || caller.accountId !== String(e.AccountID) || !text(caller.principalId)) fail();
+  const accountId = providerIdentity(caller.accountId), principalId = providerIdentity(caller.principalId);
+  if (accountId !== String(e.AccountID)) fail();
   if (caller.secretId !== undefined && typeof caller.secretId !== "string") fail();
   if (caller.sessionContext !== undefined) {
     const session = object(caller.sessionContext);
-    if (session.ownerUin !== undefined && session.ownerUin !== caller.accountId || session.uin !== undefined && session.uin !== caller.principalId) fail();
+    if (session.ownerUin !== undefined && providerIdentity(session.ownerUin) !== accountId ||
+        session.uin !== undefined && providerIdentity(session.uin) !== principalId) fail();
   }
   const params = jsonObject(inner.requestParameters);
   if (!["ClusterId", "MachineNames", "InstanceDeleteMode", "EnableScaleDown"].every(k => Object.hasOwn(params, k)) ||
@@ -217,8 +226,8 @@ function decodeEvent(raw: unknown, target: { clusterId: string; machineName: str
   if (e.ResourceRegion !== target.region || params.ClusterId !== target.clusterId || params.MachineNames.length !== 1 ||
       params.MachineNames[0] !== target.machineName || params.InstanceDeleteMode !== "retain" || params.EnableScaleDown !== true) return null;
   return { eventIdDigest: identity("compute-provider-audit:event:v1", e.EventId), requestIdDigest: identity("compute-readback:request:v1", e.RequestID),
-    eventDigest: hash(canonicalJson(e)), parametersDigest: hash(canonicalJson(params)), providerAccountIdDigest: identity("compute-provider-audit:account:v1", caller.accountId),
-    principalIdDigest: identity("compute-provider-audit:principal:v1", caller.principalId), identityBinding: "event_internal_only", camErrorCode: e.ErrorCode as number,
+    eventDigest: hash(canonicalJson(e)), parametersDigest: hash(canonicalJson(params)), providerAccountIdDigest: identity("compute-provider-audit:account:v1", accountId),
+    principalIdDigest: identity("compute-provider-audit:principal:v1", principalId), identityBinding: "event_internal_only", camErrorCode: e.ErrorCode as number,
     camMessageDigest: optionalMessage(inner.errorMessage), apiErrorClass: errorClass(inner.apiErrorCode),
     apiErrorCodeDigest: inner.apiErrorCode === "" || inner.apiErrorCode === null ? null : hash(String(inner.apiErrorCode)), apiMessageDigest: optionalMessage(inner.apiErrorMessage) };
 }
@@ -332,6 +341,9 @@ export function validateComputeProviderRequestAuditReceipt(value: unknown): Comp
       !Number.isInteger(q.pages) || Number(q.pages) < 0 || Number(q.pages) > MAX_PAGES || typeof q.complete !== "boolean" ||
       q.responseRequestDigests.length !== q.pages || q.requestDigests.length < Number(q.pages) || q.requestDigests.length > Math.min(MAX_PAGES, Number(q.pages) + 1) ||
       r.stage === null && (q.requestDigests.length !== 0 || q.pages !== 0 || q.complete) || q.complete && q.pages === 0) fail();
+  if (Object.values(COMPUTE_AUDIT_RESPONSE_ERROR).includes(r.errorCode as never) &&
+      (r.stage === null || r.status !== "blocked" || q.complete || q.failure !== null ||
+        q.requestDigests.length !== Number(q.pages) + 1 || r.event !== null)) fail();
   if (q.failure !== null) {
     const f = exact(q.failure, ["providerErrorClass", "providerErrorCodeDigest", "providerMessageDigest", "responseRequestIdDigest"]);
     if (!(f.providerErrorClass === null || QUERY_ERROR_CLASSES.includes(f.providerErrorClass as never)) ||

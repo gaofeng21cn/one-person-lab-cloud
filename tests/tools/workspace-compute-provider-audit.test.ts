@@ -394,3 +394,42 @@ test("provider count metadata does not override explicit event pages or completi
   assert.equal(result.event?.apiErrorClass, "UnsupportedOperation");
   assert.deepEqual(validateComputeProviderRequestAuditReceipt(result), result);
 });
+
+
+test("response-stage receipts cannot claim a completed or unrequested page", async () => {
+  for (const errorCode of Object.values(RESPONSE_ERROR)) {
+    const f = fixture(); f.input.lookUpEvents = async () => null;
+    const base = await runComputeProviderRequestAudit(f.input); base.errorCode = errorCode;
+    assert.deepEqual(validateComputeProviderRequestAuditReceipt(base), base);
+    for (const edit of [
+      (r: any) => { r.query.complete = true; r.query.pages = 1; r.query.responseRequestDigests = [r.query.requestDigests[0]]; },
+      (r: any) => { r.query.requestDigests = []; },
+      (r: any) => { r.query.requestDigests.push(r.query.requestDigests[0]); },
+    ]) {
+      const altered = structuredClone(base); edit(altered);
+      assert.throws(() => validateComputeProviderRequestAuditReceipt(altered));
+    }
+  }
+});
+
+test("official string field table and numeric example retain identical exact Tencent identities", async () => {
+  const stringResult = await runComputeProviderRequestAudit(fixture().input);
+  for (const numericFields of [["accountId"], ["principalId"], ["accountId", "principalId"]]) {
+    const f = fixture();
+    f.input.lookUpEvents = async () => page([editEvent(inner => {
+      for (const key of numericFields) inner.userIdentity[key] = Number(inner.userIdentity[key]);
+      inner.userIdentity.sessionContext.ownerUin = Number(inner.userIdentity.sessionContext.ownerUin);
+      inner.userIdentity.sessionContext.uin = Number(inner.userIdentity.sessionContext.uin);
+    })]);
+    const result = await runComputeProviderRequestAudit(f.input);
+    assert.equal(result.errorCode, "caller_identity_unbound");
+    assert.equal(result.event?.providerAccountIdDigest, stringResult.event?.providerAccountIdDigest);
+    assert.equal(result.event?.principalIdDigest, stringResult.event?.principalIdDigest);
+    assert.equal(result.event?.identityBinding, "event_internal_only");
+  }
+  for (const value of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, null, true, {}, []]) {
+    const f = fixture(); f.input.lookUpEvents = async () => page([editEvent(inner => { inner.userIdentity.principalId = value; })]);
+    const result = await runComputeProviderRequestAudit(f.input);
+    assert.equal(result.status, "blocked"); assert.equal(result.errorCode, "audit_schema_invalid"); assert.equal(result.event, null);
+  }
+});
