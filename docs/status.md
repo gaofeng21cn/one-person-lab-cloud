@@ -303,6 +303,18 @@ accepted response pages. The current blocker is the response/pagination decoder,
 not a fresh authorization refusal. The Machine remains present and `RUNNING`;
 this read did not query CVM. No deletion or refund completion is established.
 
+## Workspace 1042 final provider audit (2026-11-11 13:19 CST)
+
+Cloud #1164 is merged and the final protected read `42964486479` used the
+installed Candidate without rebuilding or deploying. Cloud custody `42965039298`
+retains the [final evidence](evidence/workspace-deletion/2026-11-11-provider-audit-final/README.md).
+CloudAudit authorization, exact large-token transport and response/event envelope
+handling completed. The result is `unknown/no_matching_event` after one complete
+page: no event matched the frozen provider target and failed-detach window. This
+is not proof of no provider side effect. The parent still observes the Machine
+present and `RUNNING`; CVM was not queried. Deletion, refund and Key closeout
+remain open, and the uncertain fence was not replayed.
+
 ## Workspace 1042 storage deletion (2026-11-07)
 
 Protected Instance readback `42371451925`, from Instance source
