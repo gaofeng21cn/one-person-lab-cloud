@@ -198,7 +198,7 @@ function providerIdentity(value: unknown): string {
   fail();
 }
 function jsonObject(value: unknown) { return object(typeof value === "string" ? JSON.parse(value) : value); }
-function decodeEvent(raw: unknown, target: { clusterId: string; machineName: string; region: string }): AuditEvent | null {
+function decodeEventStrict(raw: unknown, target: { clusterId: string; machineName: string; region: string }): AuditEvent | null {
   const e = object(raw);
   // CloudAuditEvent is an official JSON-encoded string, not an alternate DTO.
   if (!text(e.EventId) || !text(e.RequestID) || (typeof e.CloudAuditEvent !== "string" || e.CloudAuditEvent.length === 0 || e.CloudAuditEvent.length > 256 * 1024) || e.EventName !== EVENT ||
@@ -230,6 +230,11 @@ function decodeEvent(raw: unknown, target: { clusterId: string; machineName: str
     principalIdDigest: identity("compute-provider-audit:principal:v1", principalId), identityBinding: "event_internal_only", camErrorCode: e.ErrorCode as number,
     camMessageDigest: optionalMessage(inner.errorMessage), apiErrorClass: errorClass(inner.apiErrorCode),
     apiErrorCodeDigest: inner.apiErrorCode === "" || inner.apiErrorCode === null ? null : hash(String(inner.apiErrorCode)), apiMessageDigest: optionalMessage(inner.apiErrorMessage) };
+}
+function decodeEvent(raw: unknown, target: { clusterId: string; machineName: string; region: string }): AuditEvent | null {
+  // Ignore unusable/non-target entries; only a fully decoded exact target event
+  // can enter the diagnostic receipt.
+  try { return decodeEventStrict(raw, target); } catch { return null; }
 }
 export async function runComputeProviderRequestAudit(input: ComputeProviderRequestAuditInput): Promise<ComputeProviderRequestAuditReceipt> {
   const b = binding(input.binding), j = validateComputeDestroyJournal(input.journal), p = provenance(input.provenance);

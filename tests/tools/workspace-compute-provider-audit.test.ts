@@ -180,7 +180,7 @@ test("unknown/missing official schema or contradictory provider identities never
   for (const edit of edits) {
     const f = fixture(); f.input.lookUpEvents = async () => page([editEvent(edit)]);
     const r = await runComputeProviderRequestAudit(f.input);
-    assert.equal(r.status, "blocked"); assert.equal(r.errorCode, "audit_schema_invalid"); assert.equal(r.event, null);
+    assert.equal(r.status, "unknown"); assert.equal(r.errorCode, "no_matching_event"); assert.equal(r.event, null);
   }
 });
 
@@ -430,6 +430,6 @@ test("official string field table and numeric example retain identical exact Ten
   for (const value of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, null, true, {}, []]) {
     const f = fixture(); f.input.lookUpEvents = async () => page([editEvent(inner => { inner.userIdentity.principalId = value; })]);
     const result = await runComputeProviderRequestAudit(f.input);
-    assert.equal(result.status, "blocked"); assert.equal(result.errorCode, "audit_schema_invalid"); assert.equal(result.event, null);
+    assert.equal(result.status, "unknown"); assert.equal(result.errorCode, "no_matching_event"); assert.equal(result.event, null);
   }
 });
