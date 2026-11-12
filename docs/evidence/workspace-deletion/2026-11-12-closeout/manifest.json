@@ -1,0 +1,501 @@
+{
+  "schemaVersion": 1,
+  "purpose": "historical_import",
+  "evidenceCustodian": "gaofeng21cn/one-person-lab-cloud",
+  "source": {
+    "repository": "gaofeng21cn/opl-instance-medopl",
+    "sha": "7215a023cce4133c35fc735786efa53c59da715c"
+  },
+  "provenancePurpose": "Preserve exact redacted Instance observations, terminal native closeout and owner facts, together with the independently retained Cloud compute readback binding for the original Workspace deletion.",
+  "interpretation": "Original receipt bytes, schemas, observation times and producer claims are retained. Intermediate facts remain historical intermediate observations. The terminal native closeout and terminal owner facts establish the completed Workspace deletion, refund and Key closeout at their recorded observation times. Cloud custody authenticates the original compute readback and does not itself execute deletion or refund.",
+  "candidateBinding": {
+    "productSha": "8db78b34c7be640948f349436af7cd4fcadd584d",
+    "productTree": "a6a127f9b8f87667998a0057dc0b771525ae392a",
+    "candidateReceiptDigest": "sha256:7ee79f165306a809d2f27027d1f6518484d5777bb653b01eaacc6b46c45f30d1",
+    "imageIndexDigest": "sha256:2b32a4431ef34161a1bd4ce28e55b7612cac66c496c1b22eebd38d2be6ac8eea"
+  },
+  "identityBindingValidation": {
+    "workspace": "Compute, intermediate facts, terminal facts, live-storage and Cloud custody Workspace digests match in their original receipt domain.",
+    "deletion": "Native closeout, all facts, live-storage, compute readback and Cloud custody deletion-operation digests match.",
+    "fabricOperation": "Compute, intermediate and terminal Fabric facts, and live-storage Fabric operation digests match.",
+    "candidate": "Native closeout, compute, live-storage and Cloud custody bind the same Candidate receipt digest.",
+    "cloudCustody": "The Cloud artifact receipt bytes equal the retained Instance producer receipt; the original binding receiptDigest and provenance match producer run 43146637235."
+  },
+  "files": [
+    {
+      "file": "2026-11-12-workspace-compute-live-readback-43146637235.json",
+      "purpose": "historical_import",
+      "source": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "sha": "7215a023cce4133c35fc735786efa53c59da715c",
+        "path": "receipt.json",
+        "artifact": {
+          "id": 13912665279,
+          "name": "cloud-workspace-compute-readback-handoff-43146637235-1",
+          "digest": "sha256:e899b8efcd7e6ebe24e17c81ead1fe65319312bd54fa790810ac1ed61b94bc7e",
+          "bytes": 6048,
+          "expiresAt": "2026-11-15T03:12:56Z"
+        }
+      },
+      "content": {
+        "sha256": "8ee503352f5d1e89e42365ca763b6dc3982925beea93bdf57d4f597b65e2fb53",
+        "bytes": 56605
+      },
+      "originalProducer": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "runId": "43146637235",
+        "runAttempt": "1",
+        "workflowPath": ".github/workflows/cloud-workspace-compute-readback.yml",
+        "workflowSourceSha": "7215a023cce4133c35fc735786efa53c59da715c",
+        "workflowName": "Cloud Workspace Compute Readback",
+        "headBranch": "main",
+        "event": "workflow_dispatch",
+        "conclusion": "success",
+        "createdAt": "2026-11-12T03:12:37Z",
+        "updatedAt": "2026-11-12T03:13:01Z"
+      },
+      "validation": {
+        "artifactZipSha256": "sha256:e899b8efcd7e6ebe24e17c81ead1fe65319312bd54fa790810ac1ed61b94bc7e",
+        "artifactZipDigestMatched": true,
+        "artifactZipSizeMatched": true,
+        "artifactZipCrcValid": true,
+        "originalArtifactBytesMatched": true,
+        "localReceiptBytesMatched": true,
+        "downloadAttempts": 1
+      }
+    },
+    {
+      "file": "2026-11-12-workspace-intermediate-deletion-facts-43148541138.json",
+      "purpose": "historical_import",
+      "source": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "sha": "7215a023cce4133c35fc735786efa53c59da715c",
+        "path": "receipt.json",
+        "artifact": {
+          "id": 13911574613,
+          "name": "workspace-deletion-facts-receipt-43148541138-1",
+          "digest": "sha256:40265cbd60209c78388767001ec446ea64af9b3666bb3adc51939e9db8c94678",
+          "bytes": 863,
+          "expiresAt": "2026-12-12T03:29:36Z"
+        }
+      },
+      "content": {
+        "sha256": "da4f27fc10a2523a67056050221583a68006389944639bf1510799eb6bdab5f5",
+        "bytes": 2250
+      },
+      "originalProducer": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "runId": "43148541138",
+        "runAttempt": "1",
+        "workflowPath": ".github/workflows/workspace-deletion-facts-readback.yml",
+        "workflowSourceSha": "7215a023cce4133c35fc735786efa53c59da715c",
+        "workflowName": "Workspace Deletion Facts Readback",
+        "headBranch": "main",
+        "event": "workflow_dispatch",
+        "conclusion": "success",
+        "createdAt": "2026-11-12T03:29:23Z",
+        "updatedAt": "2026-11-12T03:29:45Z"
+      },
+      "validation": {
+        "artifactZipSha256": "sha256:40265cbd60209c78388767001ec446ea64af9b3666bb3adc51939e9db8c94678",
+        "artifactZipDigestMatched": true,
+        "artifactZipSizeMatched": true,
+        "artifactZipCrcValid": true,
+        "originalArtifactBytesMatched": true,
+        "localReceiptBytesMatched": true,
+        "downloadAttempts": 1
+      }
+    },
+    {
+      "file": "2026-11-12-workspace-intermediate-fabric-deletion-facts-43148541138.json",
+      "purpose": "historical_import",
+      "source": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "sha": "7215a023cce4133c35fc735786efa53c59da715c",
+        "path": "fabric-receipt.json",
+        "artifact": {
+          "id": 13912233136,
+          "name": "workspace-fabric-deletion-facts-receipt-43148541138-1",
+          "digest": "sha256:e8e52e65c855bdfe8875112efa6d1a72f8a5eff5e27a0d6310e7c2117ceb4cf4",
+          "bytes": 2395,
+          "expiresAt": "2026-12-12T03:29:38Z"
+        }
+      },
+      "content": {
+        "sha256": "e8f8a5d7b8fc05b65bc774a430ae4afcf547a746e6f7a6785868ddce5aaa1710",
+        "bytes": 11168
+      },
+      "originalProducer": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "runId": "43148541138",
+        "runAttempt": "1",
+        "workflowPath": ".github/workflows/workspace-deletion-facts-readback.yml",
+        "workflowSourceSha": "7215a023cce4133c35fc735786efa53c59da715c",
+        "workflowName": "Workspace Deletion Facts Readback",
+        "headBranch": "main",
+        "event": "workflow_dispatch",
+        "conclusion": "success",
+        "createdAt": "2026-11-12T03:29:23Z",
+        "updatedAt": "2026-11-12T03:29:45Z"
+      },
+      "validation": {
+        "artifactZipSha256": "sha256:e8e52e65c855bdfe8875112efa6d1a72f8a5eff5e27a0d6310e7c2117ceb4cf4",
+        "artifactZipDigestMatched": true,
+        "artifactZipSizeMatched": true,
+        "artifactZipCrcValid": true,
+        "originalArtifactBytesMatched": true,
+        "localReceiptBytesMatched": true,
+        "downloadAttempts": 1
+      }
+    },
+    {
+      "file": "2026-11-12-workspace-storage-live-readback-43143886849.json",
+      "purpose": "historical_import",
+      "source": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "sha": "7215a023cce4133c35fc735786efa53c59da715c",
+        "path": "live-storage-receipt.json",
+        "artifact": {
+          "id": 13911041430,
+          "name": "workspace-storage-live-readback-receipt-43143886849-1",
+          "digest": "sha256:5af8f67eb5edb3157f917ef92214c76388dc73643c6f14c6e52bc78c49a423af",
+          "bytes": 1363,
+          "expiresAt": "2026-12-12T02:48:31Z"
+        }
+      },
+      "content": {
+        "sha256": "42ff9cd2af6b1a47d180a0f4e38e6ebefd198a201252cd2752913b51667567ef",
+        "bytes": 3127
+      },
+      "originalProducer": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "runId": "43143886849",
+        "runAttempt": "1",
+        "workflowPath": ".github/workflows/workspace-deletion-facts-readback.yml",
+        "workflowSourceSha": "7215a023cce4133c35fc735786efa53c59da715c",
+        "workflowName": "Workspace Deletion Facts Readback",
+        "headBranch": "main",
+        "event": "workflow_dispatch",
+        "conclusion": "success",
+        "createdAt": "2026-11-12T02:48:09Z",
+        "updatedAt": "2026-11-12T02:48:38Z"
+      },
+      "validation": {
+        "artifactZipSha256": "sha256:5af8f67eb5edb3157f917ef92214c76388dc73643c6f14c6e52bc78c49a423af",
+        "artifactZipDigestMatched": true,
+        "artifactZipSizeMatched": true,
+        "artifactZipCrcValid": true,
+        "originalArtifactBytesMatched": true,
+        "localReceiptBytesMatched": true,
+        "downloadAttempts": 1
+      }
+    },
+    {
+      "file": "2026-11-12-workspace-terminal-native-closeout-43149543610.json",
+      "purpose": "historical_import",
+      "source": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "sha": "7215a023cce4133c35fc735786efa53c59da715c",
+        "path": "receipt.json",
+        "artifact": {
+          "id": 13912674381,
+          "name": "workspace-native-delete-result-43149543610-1",
+          "digest": "sha256:48f3da85dc97a951e9cb5679e87790875690e6a57b519f31068da8b65cddb4c5",
+          "bytes": 1062,
+          "expiresAt": "2027-02-10T03:38:20Z"
+        }
+      },
+      "content": {
+        "sha256": "2d886b18f59d70d6bd590fa6c2744c42f011dde808f7e9f09b106b84ac072723",
+        "bytes": 2232
+      },
+      "originalProducer": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "runId": "43149543610",
+        "runAttempt": "1",
+        "workflowPath": ".github/workflows/workspace-native-delete.yml",
+        "workflowSourceSha": "7215a023cce4133c35fc735786efa53c59da715c",
+        "workflowName": "Close One Original Native Workspace",
+        "headBranch": "main",
+        "event": "workflow_dispatch",
+        "conclusion": "success",
+        "createdAt": "2026-11-12T03:38:18Z",
+        "updatedAt": "2026-11-12T03:38:43Z"
+      },
+      "validation": {
+        "artifactZipSha256": "sha256:48f3da85dc97a951e9cb5679e87790875690e6a57b519f31068da8b65cddb4c5",
+        "artifactZipDigestMatched": true,
+        "artifactZipSizeMatched": true,
+        "artifactZipCrcValid": true,
+        "originalArtifactBytesMatched": true,
+        "downloadAttempts": 1,
+        "localReceiptBytesMatched": true
+      }
+    },
+    {
+      "file": "2026-11-12-workspace-terminal-deletion-facts-43150461492.json",
+      "purpose": "historical_import",
+      "source": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "sha": "7215a023cce4133c35fc735786efa53c59da715c",
+        "path": "receipt.json",
+        "artifact": {
+          "id": 13914235551,
+          "name": "workspace-deletion-facts-receipt-43150461492-1",
+          "digest": "sha256:5fe7b17a3f6cd8e140f827598f01e35ae8e39f9386cdfbd083ef9afc40d2d28d",
+          "bytes": 785,
+          "expiresAt": "2026-12-12T03:47:05Z"
+        }
+      },
+      "content": {
+        "sha256": "d1d582989dcbbd934ff17328c1dac63edcaa573c034bb8d112456cfd2225afa9",
+        "bytes": 2208
+      },
+      "originalProducer": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "runId": "43150461492",
+        "runAttempt": "1",
+        "workflowPath": ".github/workflows/workspace-deletion-facts-readback.yml",
+        "workflowSourceSha": "7215a023cce4133c35fc735786efa53c59da715c",
+        "workflowName": "Workspace Deletion Facts Readback",
+        "headBranch": "main",
+        "event": "workflow_dispatch",
+        "conclusion": "success",
+        "createdAt": "2026-11-12T03:46:51Z",
+        "updatedAt": "2026-11-12T03:47:14Z"
+      },
+      "validation": {
+        "artifactZipSha256": "sha256:5fe7b17a3f6cd8e140f827598f01e35ae8e39f9386cdfbd083ef9afc40d2d28d",
+        "artifactZipDigestMatched": true,
+        "artifactZipSizeMatched": true,
+        "artifactZipCrcValid": true,
+        "originalArtifactBytesMatched": true,
+        "downloadAttempts": 1,
+        "localReceiptBytesMatched": true
+      }
+    },
+    {
+      "file": "2026-11-12-workspace-terminal-fabric-deletion-facts-43150461492.json",
+      "purpose": "historical_import",
+      "source": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "sha": "7215a023cce4133c35fc735786efa53c59da715c",
+        "path": "fabric-receipt.json",
+        "artifact": {
+          "id": 13913835644,
+          "name": "workspace-fabric-deletion-facts-receipt-43150461492-1",
+          "digest": "sha256:004613522c99b01e878e76f3fc7fedc92aea7f1bf08f7c3f45eeceb09574afd5",
+          "bytes": 2309,
+          "expiresAt": "2026-12-12T03:47:07Z"
+        }
+      },
+      "content": {
+        "sha256": "5d2f93ba2955d2b43f7696a6983bff6057551f41315a6902cad33c60692c3e63",
+        "bytes": 11126
+      },
+      "originalProducer": {
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "runId": "43150461492",
+        "runAttempt": "1",
+        "workflowPath": ".github/workflows/workspace-deletion-facts-readback.yml",
+        "workflowSourceSha": "7215a023cce4133c35fc735786efa53c59da715c",
+        "workflowName": "Workspace Deletion Facts Readback",
+        "headBranch": "main",
+        "event": "workflow_dispatch",
+        "conclusion": "success",
+        "createdAt": "2026-11-12T03:46:51Z",
+        "updatedAt": "2026-11-12T03:47:14Z"
+      },
+      "validation": {
+        "artifactZipSha256": "sha256:004613522c99b01e878e76f3fc7fedc92aea7f1bf08f7c3f45eeceb09574afd5",
+        "artifactZipDigestMatched": true,
+        "artifactZipSizeMatched": true,
+        "artifactZipCrcValid": true,
+        "originalArtifactBytesMatched": true,
+        "downloadAttempts": 1,
+        "localReceiptBytesMatched": true
+      }
+    },
+    {
+      "file": "2026-11-12-workspace-cloud-compute-readback-binding-43149766295.json",
+      "purpose": "historical_import",
+      "source": {
+        "repository": "gaofeng21cn/one-person-lab-cloud",
+        "sha": "8db78b34c7be640948f349436af7cd4fcadd584d",
+        "path": "binding.json",
+        "artifact": {
+          "id": 13912729653,
+          "name": "workspace-compute-readback-43146637235-43149766295-1",
+          "digest": "sha256:d22d1b004c049802eff879c369403427c2a67f26f3a0b3add0040f0d263a833d",
+          "bytes": 6912,
+          "expiresAt": "2027-02-10T03:40:27Z"
+        }
+      },
+      "content": {
+        "sha256": "25fa6dc990994b4bd1d1116edec077252727847fef33d82043afefc3cbe224e7",
+        "bytes": 1590
+      },
+      "originalProducer": {
+        "repository": "gaofeng21cn/one-person-lab-cloud",
+        "runId": "43149766295",
+        "runAttempt": "1",
+        "workflowPath": ".github/workflows/workspace-compute-readback-handoff.yml",
+        "workflowSourceSha": "8db78b34c7be640948f349436af7cd4fcadd584d",
+        "workflowName": "Receive Workspace Compute Readback",
+        "headBranch": "main",
+        "event": "workflow_dispatch",
+        "conclusion": "success",
+        "createdAt": "2026-11-12T03:40:26Z",
+        "updatedAt": "2026-11-12T03:40:49Z"
+      },
+      "validation": {
+        "artifactZipSha256": "sha256:d22d1b004c049802eff879c369403427c2a67f26f3a0b3add0040f0d263a833d",
+        "artifactZipDigestMatched": true,
+        "artifactZipSizeMatched": true,
+        "artifactZipCrcValid": true,
+        "originalArtifactBytesMatched": true,
+        "downloadAttempts": 1
+      }
+    }
+  ],
+  "cloudCustody": {
+    "receiptFile": "2026-11-12-workspace-compute-live-readback-43146637235.json",
+    "bindingFile": "2026-11-12-workspace-cloud-compute-readback-binding-43149766295.json",
+    "source": {
+      "repository": "gaofeng21cn/one-person-lab-cloud",
+      "sha": "8db78b34c7be640948f349436af7cd4fcadd584d",
+      "path": "receipt.json",
+      "artifact": {
+        "id": 13912729653,
+        "name": "workspace-compute-readback-43146637235-43149766295-1",
+        "digest": "sha256:d22d1b004c049802eff879c369403427c2a67f26f3a0b3add0040f0d263a833d",
+        "bytes": 6912,
+        "expiresAt": "2027-02-10T03:40:27Z"
+      }
+    },
+    "custodyRun": {
+      "repository": "gaofeng21cn/one-person-lab-cloud",
+      "runId": "43149766295",
+      "runAttempt": "1",
+      "workflowPath": ".github/workflows/workspace-compute-readback-handoff.yml",
+      "workflowSourceSha": "8db78b34c7be640948f349436af7cd4fcadd584d",
+      "workflowName": "Receive Workspace Compute Readback",
+      "headBranch": "main",
+      "event": "workflow_dispatch",
+      "conclusion": "success",
+      "createdAt": "2026-11-12T03:40:26Z",
+      "updatedAt": "2026-11-12T03:40:49Z"
+    },
+    "upstreamProducer": {
+      "diagnosticSourceSha": "8db78b34c7be640948f349436af7cd4fcadd584d",
+      "instanceRepository": "gaofeng21cn/opl-instance-medopl",
+      "instanceSha": "7215a023cce4133c35fc735786efa53c59da715c",
+      "runId": "43146637235",
+      "runAttempt": "1",
+      "workflowPath": ".github/workflows/cloud-workspace-compute-readback.yml"
+    },
+    "receiptDigest": "sha256:8ee503352f5d1e89e42365ca763b6dc3982925beea93bdf57d4f597b65e2fb53",
+    "validation": {
+      "artifactZipSha256": "sha256:d22d1b004c049802eff879c369403427c2a67f26f3a0b3add0040f0d263a833d",
+      "artifactZipDigestMatched": true,
+      "artifactZipSizeMatched": true,
+      "artifactZipCrcValid": true,
+      "originalArtifactBytesMatched": true,
+      "downloadAttempts": 1,
+      "localReceiptBytesMatched": true,
+      "receiptBytesMatchInstanceProducer": true,
+      "bindingReceiptDigestMatched": true,
+      "bindingProducerProvenanceMatched": true
+    }
+  },
+  "terminalOutcome": {
+    "nativeCloseout": {
+      "file": "2026-11-12-workspace-terminal-native-closeout-43149543610.json",
+      "observedAt": "2026-11-12T03:38:35.284Z",
+      "status": "deleted",
+      "workspaceStatus": "deleted",
+      "operationStatus": "succeeded",
+      "operationStage": "succeeded",
+      "resourceDeletionStatus": "confirmed",
+      "dataDeletionStatus": "confirmed",
+      "refundStatus": "confirmed"
+    },
+    "workspaceFacts": {
+      "file": "2026-11-12-workspace-terminal-deletion-facts-43150461492.json",
+      "observedAt": "2026-11-12T03:47:03.676Z",
+      "operationStatus": "succeeded",
+      "operationStage": "succeeded",
+      "deleteOperationStatus": "succeeded",
+      "observationResult": "confirmed",
+      "absenceConfirmed": true,
+      "resourceKinds": [
+        {
+          "kind": "compute",
+          "state": "absent",
+          "providerReferencePresent": true,
+          "receiptPresent": true
+        },
+        {
+          "kind": "execution",
+          "state": "absent",
+          "providerReferencePresent": false,
+          "receiptPresent": true
+        },
+        {
+          "kind": "gateway_secret_binding",
+          "state": "absent",
+          "providerReferencePresent": false,
+          "receiptPresent": true
+        },
+        {
+          "kind": "network",
+          "state": "absent",
+          "providerReferencePresent": true,
+          "receiptPresent": true
+        },
+        {
+          "kind": "storage",
+          "state": "absent",
+          "providerReferencePresent": true,
+          "receiptPresent": true
+        },
+        {
+          "kind": "storage_attachment",
+          "state": "absent",
+          "providerReferencePresent": false,
+          "receiptPresent": true
+        },
+        {
+          "kind": "workspace_runtime",
+          "state": "absent",
+          "providerReferencePresent": false,
+          "receiptPresent": true
+        }
+      ],
+      "deletionReceiptPresent": true,
+      "refundStatus": "confirmed",
+      "keyCloseoutOutcome": "confirmed",
+      "pendingAttempts": 0,
+      "pendingStep": null,
+      "ownerErrorCode": null
+    },
+    "fabricFacts": {
+      "file": "2026-11-12-workspace-terminal-fabric-deletion-facts-43150461492.json",
+      "observedAt": "2026-11-12T03:47:03.878Z",
+      "operationStatus": "succeeded",
+      "allResourcesDeletedWithEvidence": true,
+      "resourceKinds": [
+        "compute",
+        "execution",
+        "network",
+        "storage"
+      ]
+    },
+    "computeCustody": {
+      "bindingFile": "2026-11-12-workspace-cloud-compute-readback-binding-43149766295.json",
+      "receiptFile": "2026-11-12-workspace-compute-live-readback-43146637235.json",
+      "producerRunId": "43146637235",
+      "cloudCustodyRunId": "43149766295"
+    }
+  }
+}
