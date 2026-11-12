@@ -31,7 +31,7 @@ test("Admin Runtime management uses immutable admission and owner readback only"
   const server = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await launchBrowser({ headless: true });
   try {
-    async function scenario(options: { holdReadback?: boolean; readFails?: boolean; loseCommand?: boolean; reject?: number; mismatch?: boolean; member?: boolean; empty?: boolean; listFails?: boolean } = {}) {
+    async function scenario(options: { holdReadback?: boolean; readFailure?: number | "network"; loseCommand?: boolean; reject?: number; rejectOnce?: boolean; mismatch?: boolean; member?: boolean; empty?: boolean; listFails?: boolean } = {}) {
       const context = await browser.newContext();
       const page = await context.newPage();
       page.setDefaultTimeout(12_000);
@@ -40,6 +40,7 @@ test("Admin Runtime management uses immutable admission and owner readback only"
       const pageErrors: string[] = [];
       const readbackEntered = gate(); const readbackResponse = gate();
       let commands = 0; let readbacks = 0; let listFails = options.listFails;
+      let admittedVersion = admitted;
       page.on("pageerror", error => pageErrors.push(error.message));
       await context.route("**/*", async route => {
         const request = route.request();
@@ -55,9 +56,10 @@ test("Admin Runtime management uses immutable admission and owner readback only"
         requests.push({ method, path, ...(method === "POST" ? { body: request.postDataJSON(), key: request.headers()["idempotency-key"], csrf: request.headers()["x-csrf-token"] } : {}) });
         if (method === "POST" && path === "/api/v2/admin/catalog/runtime-versions") {
           commands++;
-          if (options.reject) return json({ message: "publisher contract fails approved schema" }, options.reject);
+          if (options.reject && (!options.rejectOnce || commands === 1)) return json({ message: options.reject === 404 ? "publisher namespace not found" : "publisher contract fails approved schema" }, options.reject);
           if (options.loseCommand && commands === 1) return route.abort("failed");
-          return json(admitted, 201);
+          admittedVersion = { ...admitted, ...(request.postDataJSON() as RuntimeAdmission) };
+          return json(admittedVersion, 201);
         }
         if (method === "GET" && path === "/api/v2/catalog/runtime-versions") {
           if (listFails) return json({ message: "runtime catalog unavailable" }, 503);
@@ -65,8 +67,11 @@ test("Admin Runtime management uses immutable admission and owner readback only"
             if (commands > 0) {
               readbacks++; readbackEntered.release();
               if (options.holdReadback && readbacks === 1) await readbackResponse.promise;
-              if (options.readFails && readbacks === 1) return json({ message: "runtime catalog unavailable" }, 503);
-              return json({ items: options.mismatch ? [] : [admitted] });
+              if (options.readFailure && readbacks === 1) {
+                if (options.readFailure === "network") return route.abort("failed");
+                return json({ message: "runtime catalog unavailable" }, options.readFailure);
+              }
+              return json({ items: options.mismatch ? [] : [admittedVersion] });
             }
             return json({ items: [] });
           }
@@ -121,16 +126,21 @@ test("Admin Runtime management uses immutable admission and owner readback only"
       } finally { await s.close(); }
     });
 
-    await t.test("readback outage retries reads without issuing a second admission", async () => {
-      const s = await scenario({ readFails: true });
+    for (const readFailure of [503, 404, "network"] as const) await t.test(`readback ${readFailure} retains the admission and retries reads only`, async () => {
+      const s = await scenario({ readFailure });
       try {
         await s.fill(); await s.panel.getByRole("button", { name: "提交新版本准入" }).click();
         await s.panel.getByRole("button", { name: "重试本次准入与读回" }).waitFor();
         assert.equal(await s.panel.getByText(/已从 Runtime Control 目录确认新版本/).count(), 0);
         assert.equal(await s.panel.getByLabel("Runtime 名称", { exact: true }).isDisabled(), true);
+        assert.equal(await s.panel.getByLabel("发布者命名空间 ID", { exact: true }).isDisabled(), true);
+        assert.equal(await s.panel.getByRole("button", { name: "提交新版本准入" }).isDisabled(), true);
+        const readsBeforeRetry = s.requests.filter(request => request.method === "GET").length;
         await s.panel.getByRole("button", { name: "重试本次准入与读回" }).click();
         await s.panel.getByText(/已从 Runtime Control 目录确认新版本/).waitFor();
         assert.equal(s.requests.filter(request => request.method === "POST").length, 1);
+        assert.ok(s.requests.filter(request => request.method === "GET").length > readsBeforeRetry);
+        assert.equal(await s.panel.getByLabel("Runtime 名称", { exact: true }).isEnabled(), true);
       } finally { await s.close(); }
     });
 
@@ -138,11 +148,45 @@ test("Admin Runtime management uses immutable admission and owner readback only"
       const s = await scenario({ loseCommand: true });
       try {
         await s.fill(); await s.panel.getByRole("button", { name: "提交新版本准入" }).click();
+        await s.panel.getByRole("button", { name: "重试本次准入与读回" }).waitFor();
+        assert.equal(await s.panel.getByLabel("Runtime 名称", { exact: true }).isDisabled(), true);
+        assert.equal(await s.panel.getByLabel("发布者命名空间 ID", { exact: true }).isDisabled(), true);
+        assert.equal(await s.panel.getByText(/已从 Runtime Control 目录确认新版本/).count(), 0);
         await s.panel.getByRole("button", { name: "重试本次准入与读回" }).click();
         await s.panel.getByText(/已从 Runtime Control 目录确认新版本/).waitFor();
         const writes = s.requests.filter(request => request.method === "POST");
         assert.equal(writes.length, 2);
         assert.deepEqual(writes[0], writes[1]);
+      } finally { await s.close(); }
+    });
+
+    await t.test("command 404 releases the form and corrected publisher admission uses a new attempt", async () => {
+      const s = await scenario({ reject: 404, rejectOnce: true });
+      try {
+        await s.fill(); await s.panel.getByRole("button", { name: "提交新版本准入" }).click();
+        await s.panel.getByRole("alert").waitFor();
+        assert.equal(await s.panel.getByLabel("发布者命名空间 ID", { exact: true }).isEnabled(), true);
+        assert.equal(await s.panel.getByLabel("Runtime 发布契约 JSON").isEnabled(), true);
+        assert.equal(await s.panel.getByRole("button", { name: "提交新版本准入" }).isEnabled(), true);
+        assert.match(await s.panel.getByRole("alert").innerText(), /发布者命名空间.*重新提交/);
+        assert.equal(await s.panel.getByRole("button", { name: "重试本次准入与读回" }).count(), 0);
+        assert.equal(await s.panel.getByText(/已从 Runtime Control 目录确认新版本/).count(), 0);
+        assert.equal(await s.panel.getByLabel("Runtime 名称", { exact: true }).inputValue(), input.name);
+        const readsBeforeCorrection = s.requests.filter(request => request.method === "GET").length;
+        const correctedPublisher = "publisher-corrected";
+        const correctedContract = { ...contract, publisherNamespaceId: correctedPublisher };
+        await s.panel.getByLabel("发布者命名空间 ID", { exact: true }).fill(correctedPublisher);
+        await s.panel.getByLabel("Runtime 发布契约 JSON").fill(JSON.stringify(correctedContract));
+        await s.panel.getByRole("button", { name: "提交新版本准入" }).click();
+        await s.panel.getByText(/已从 Runtime Control 目录确认新版本/).waitFor();
+        const writes = s.requests.filter(request => request.method === "POST");
+        assert.equal(writes.length, 2);
+        assert.deepEqual(writes[0].body, input);
+        assert.deepEqual(writes[1].body, { ...input, publisherNamespaceId: correctedPublisher, publisherContract: correctedContract });
+        assert.ok(writes[0].key); assert.ok(writes[1].key);
+        assert.notEqual(writes[0].key, writes[1].key);
+        assert.ok(s.requests.filter(request => request.method === "GET").length > readsBeforeCorrection);
+        assert.equal(await s.panel.getByRole("button", { name: "重试本次准入与读回" }).count(), 0);
       } finally { await s.close(); }
     });
 

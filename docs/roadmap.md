@@ -368,6 +368,15 @@ version update or rollback for platform administration.
 
 ## Console Interface Adoption
 
+The native launch and subscription projection changes in #1169 require installed
+owner-backed acceptance after local verification. Confirm the effective Catalog
+compute/storage pairs and prices for both Basic and Pro; provider-profile shape
+and historical Control Plane amounts are not current native price evidence.
+The verified Basic admission is historical (2026-10-10); Pro's installation
+profile declares 8 vCPU, 16 GiB and 100 GiB storage, but its current native plan
+identities and effective price remain unverified. Retain those distinctions in
+local preview data. No production catalog admission is implied by UI work.
+
 The [Console interface refinement](status.md#console-interface-refinement-2026-11-05)
 has local source and fixture/browser evidence. Installed acceptance requires
 the adopted Candidate's customer and operator surfaces, real authenticated

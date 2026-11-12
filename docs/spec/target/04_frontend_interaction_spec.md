@@ -245,10 +245,10 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 | 交接面 | 确定行为 |
 |---|---|
 | 布局/优先级 | 新建向导四步：应用（默认OPL App，可自选Agent）→套餐/模型/续费方式→应用+套餐确切报价与条款一次确认→后台部署结果。桌面右侧当前选择摘要，窄屏摘要在步骤内容之后、主确认之前。 |
-| 控件/标注 | 默认应用卡显示获准OPL App/native WebUI和确切Runtime版本；“自选Agent”展开已批准CapabilityVersion radio。无Package时独立WebUI控件显示“请先选择Package”；计算radio卡、存储和模型select、名称输入；renewalMode默认manual但提交必填。automatic需要独立未勾选的明确同意。 |
+| 控件/标注 | 默认应用卡显示获准OPL App/native WebUI和确切Runtime版本；“自选Agent”展开已批准CapabilityVersion radio。独立WebUI在构建时确定，不在开通页重配；固定工作空间套餐radio卡显示计算规格、包含存储和完整月价，不提供独立存储拼配；模型select仅按所选Agent要求展示，另有名称输入；renewalMode默认manual但提交必填。automatic需要独立未勾选的明确同意。 |
 | 步骤/业务链 | 步骤1/2只编辑意图，不购买、不要求创建默认Package/Build；进入3前解析精确application selection再获取新Quote。选择已有Agent时读取其已冻结Runtime/WebUI来源，不在部署页重配产物。变更版本/套餐/模型/周期/续费设置、返回编辑或报价过期，都废弃旧quote和确认checkbox。重新报价后必须重新同意，不自动提交。新报价周期固定1个月。 |
 | 返回/草稿/刷新 | 按Tenant+用户+create/adopt分开保留非敏感选择；不保存密码、Key、签名URL。恢复草稿重新读取目录/余额/报价；旧quote不直接恢复为有效。 |
-| 失败/权限/不可用 | 目录/余额/政策读取失败禁止付款确认但保留选择；余额不足展示权威required/available，没有自助支付API就提示联系管理员。价格与规则按批准Catalog真实报价；示例金额不作为生产价格。 |
+| 失败/权限/不可用 | 所选应用、套餐、余额或必需模型读取失败禁止付款确认但保留其他已读取事实；无关Agent或模型目录失败不阻止默认App报价；余额不足展示权威required/available，没有自助支付API就提示联系管理员。价格与规则按批准Catalog真实报价；示例金额不作为生产价格。 |
 | 窄屏/焦点 | 每步单列，标题聚焦；radio整卡可点。关键费用/周期/退款保留条款不能折叠隐藏；确认按钮不被固定底栏遮挡。 |
 
 数据来源：`listCapabilityVersions`、`getCapabilityVersion`、`listComputePlans`、`listStoragePlans`、`listModels`、`getWallet`、`createQuote`、`getQuote`、`listRuntimeVersions`、`listWebuiVersions`

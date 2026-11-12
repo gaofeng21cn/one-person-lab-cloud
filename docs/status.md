@@ -63,37 +63,52 @@ observations; it is not another deletion execution or a new deployed Candidate.
 
 ## Console launch and Runtime administration (2026-11-12)
 
-The current local change adds Runtime version admission to the CloudIdentity
-Console system page. It reuses Runtime Control's existing public directory and
-admin admission command, retains the same request identity after an uncertain
-response, and requires directory readback before reporting confirmation.
-Existing immutable versions and customer deployments are not rewritten;
-Runtime status and the default-for-builds flag remain read-only in this UI.
+The #1169 source change adds Runtime admission and directory confirmation to
+`/admin/system`. The canonical Runtime read permission includes a platform
+administrator without Tenant membership. An authoritative pre-admission 404
+unlocks input correction; unknown command outcomes retain the original request,
+and failures after successful admission retry only directory readback. Existing
+Runtime status and default flags remain read-only in this UI.
 
-The native Workspace launch presents approved OPL App versions and ready built
-Agent versions as application choices. Plan names and specifications remain
-Resource Catalog facts; optional monthly prices now come from the current exact
-compute/storage policy pair. Missing or expired prices stay absent. The final
-offer and its terms still come from Catalog, and the purchase remains a
-separately confirmed Workspace command. Changing a selection invalidates its
-quote and prevents late responses from restoring that prior review. Customer
-copy uses application, plan and order terms, with internal diagnostics disclosed
-on demand.
+Native launch displays fixed Workspace offers projected by Resource Catalog
+from the current approved exact compute/storage price-policy pairs. Each offer
+includes storage identity/capacity and the full compute, storage and product
+monthly amount. Missing, future-only, expired or unavailable combinations are
+not offered for purchase; expiry never revives an older price. The browser
+neither guesses pairings nor constructs a second price authority. Catalog quotes
+and separately confirmed Workspace purchase remain required. Application, model,
+plan and wallet reads update independently, including when an unrelated source
+hangs; changing a selection invalidates its quote and consent.
 
-Local verification covers desktop/mobile Agent launch and recovery, default App
-selection, exact-pair Basic/Pro prices, late quote rejection, explicit purchase
-confirmation and Runtime admin admission/readback. The final five affected launch
-browser cases pass; the remaining 30 cases passed in the preceding full Workspace
-browser run. Runtime admin API/browser and launch-model checks pass. Catalog's
-isolated-PostgreSQL owner suite passes 58 tests/subtests, and its exact-pair HTTP
-BFF/gRPC/PostgreSQL integration passes without skips. The existing BFF Runtime
-admin scope/idempotency regression, typecheck/lint, build and test ownership also
-pass. New Runtime tests are part of the regular source/browser inventories.
+Workspace now serves its existing Subscription contract through the BFF. Tenant
+owner/admin may read the original accepted current price, period, renewal mode
+and policy; member, foreign Tenant and platform-only administrator cannot.
+Quoted and legacy evidence remain distinct, including absent versus zero prices.
+Details and Billing share the subscription presentation. Catalog supplies only
+exact plan names/specifications there, never a replacement subscription price;
+its failure cannot erase subscription facts or application access. Internal IDs,
+policy references and provenance are disclosed on demand. Personal historical
+bills retain their original identity and amount semantics.
 
-These are local source checks with synthetic identities, plans and amounts,
-not an installed production Console or a new customer purchase. No Candidate or
-Instance deployment was performed for this change. The completed #1042 order
-remains closed.
+Local affected-owner suites pass 1,497 tests/subtests across contracts,
+CloudIdentity, Catalog, Workspace and BFF with isolated PostgreSQL and no skipped
+tests. Catalog's real HTTP/BFF/gRPC/PostgreSQL integration confirms exact offers
+and full integer prices above JavaScript's safe integer range. Runtime browser
+checks cover 14 tests/subtests, subscription consumers cover six, and Workspace
+browser coverage spans 46 cases. The combined local browser run passed 64 of 66
+before two assertions were aligned with the application-name/version hierarchy;
+both final targeted reruns pass. The complete focused wrapper was not rerun.
+Generated contracts, OpenAPI/offer shape, permission inventory, development-plan
+freshness, TypeScript, lint, build, test ownership and whitespace checks pass.
+Current-revision CI and installed acceptance remain separate evidence.
+
+The localhost preview uses explicitly labelled sample identities and historical
+Basic admission facts from 2026-10-10: 2 vCPU / 4 GiB with 10 GiB storage at
+$52.58/month. Pro's installation profile declares 8 vCPU / 16 GiB with 100 GiB
+storage, but its current native Catalog plan identities and effective price are
+unverified; the preview leaves it unavailable. This work performs no production
+catalog admission, purchase, Candidate build or Instance deployment. The original
+#1042 deletion/refund remains closed.
 
 ## Lifecycle ownership review (2026-11-12)
 

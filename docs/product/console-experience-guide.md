@@ -25,8 +25,8 @@ Public entry and login surfaces introduce the generic OPL Cloud product. They
 must not hard-code medopl or another instance identity; instance branding and
 deployment facts belong to the instance owner.
 
-The desktop customer destinations are `概览`, `工作空间`, `OPL Gateway`, and
-`费用`, in that order; mobile uses the shorter `Gateway` label for the same
+The desktop customer destinations are `概览`, `智能体`, `工作空间`,
+`OPL Gateway`, and `费用`, in that order; mobile uses the shorter `Gateway` label for the same
 destination. Messages stay in the top bar and account facts in one account
 menu. Gateway has local Service Information, Usage and API Key destinations;
 Billing separates subscription terms from transaction history. The platform

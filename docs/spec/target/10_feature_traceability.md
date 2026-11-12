@@ -24,7 +24,7 @@
 | F14 钱包、用量、Key及管理员充值记录 | /console/api、/console/api/usage、/console/api/keys、/admin/recharge-records | 15 | gateway |
 | F15 Tenant停用、删除与窗口内恢复 | /admin/tenants/:tenantId | 12 | bff, tenant |
 | F16 旧资源与应用迁移后的可见状态和采用Agent | /console/workspaces/:workspaceId、/console/workspaces/:workspaceId/adopt | 10 | bff, capability, gateway, serve, workspace |
-| F17 管理员操作、审计与实例资格读回 | /admin/operations、/admin/qualifications | 8 | bff, ledger, tenant |
+| F17 管理员操作、审计与实例资格读回 | /admin/operations、/admin/qualifications、/admin/resources | 10 | bff, ledger, tenant, workspace |
 
 ## F01 登录、Tenant与成员权限
 
@@ -402,7 +402,7 @@
 - `BuildRecipeContractOutputImageCommand`：`cmd`、`entrypoint`
 - `CapabilityVersion`：`artifact`、`artifactDigest`、`buildJobId`、`createdAt`、`dataCompatibility`、`deploymentDescriptor`、`deploymentDescriptorDigest`、`deploymentDescriptorObjectRef`、`id`、`legacyApplicationRevisionId`、`modelRequirements`、`packageId`、`packageVersionId`、`provenance`、`referenceCount`、`runtimeVersionId`、`status`、`versionLabel`、`webuiVersionId`
 - `CloudPrivateAccessContract`：`admissionReceiptId`、`entryContract`、`mode`
-- `ComputePlan`：`availability`、`billingMode`、`createdAt`、`id`、`memoryMiB`、`monthlyPriceUSDMicros`、`name`、`pricePolicyVersionId`、`providerCapabilityVersion`、`validFrom`、`validUntil`、`vcpus`
+- `ComputePlan`：`availability`、`billingMode`、`createdAt`、`id`、`memoryMiB`、`monthlyPriceUSDMicros`、`name`、`pricePolicyVersionId`、`providerCapabilityVersion`、`validFrom`、`validUntil`、`vcpus`、`workspaceOffers`
 - `CreditSource`：`amountUSDMicros`、`creditReceiptId`、`originalSubscriptionPeriodId`、`originalWalletOperationId`、`policyVersionId`
 - `DataCompatibility`：`compatibleFromVersions`、`dataSchemaVersion`、`migrationReceiptId`、`migrationRequired`、`rollbackSafe`
 - `DataContract`：`mountPolicies`、`rollback`、`schemaVersion`、`upgrade`
@@ -443,6 +443,7 @@
 - `WorkspaceApplicationPort`：`name`、`port`、`protocol`
 - `WorkspaceApplicationRevision`：`applicationId`、`compute`、`configInputs`、`credentials`、`dependencies`、`entryPort`、`entrypoint`、`execution`、`exposurePolicy`、`healthChecks`、`image`、`persistentMounts`、`platform`、`ports`、`schemaVersion`、`scratchMounts`、`secretInputs`、`version`
 - `WorkspaceApplicationSecretInput`：`env`、`name`、`target`
+- `WorkspacePlanOffer`：`monthlyUSDMicros`、`pricePolicyVersionId`、`storageCapacityGiB`、`storageName`、`storagePlanId`
 
 **数据表及写入Owner**：`capability.capability_versions`、`capability.reference_claims`、`capability.webui_versions`、`resource_catalog.compute_plans`、`resource_catalog.price_policy_versions`、`resource_catalog.quote_items`、`resource_catalog.quotes`、`resource_catalog.refund_policy_versions`、`resource_catalog.retention_policy_versions`、`resource_catalog.storage_plans`、`runtime_control.runtime_releases`、`workspace.model_configurations`
 
@@ -896,15 +897,17 @@
 
 ## F17 管理员操作、审计与实例资格读回
 
-**页面**：`/admin/operations`（操作与审计）、`/admin/qualifications`（资格与发布证据）
+**页面**：`/admin/operations`（操作与审计）、`/admin/qualifications`（资格与发布证据）、`/admin/resources`（Workspace resources）
 
 | operationId | 请求 | 请求DTO | 成功响应DTO | 唯一Owner |
 |---|---|---|---|---|
 | `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | bff |
+| `getOperatorWorkspace` | `GET /api/v2/operator/workspaces/{workspaceId}` | — | 200 OperatorWorkspaceSource | workspace |
 | `getReceipt` | `GET /api/v2/admin/receipts/{receiptId}` | — | 200 Receipt | ledger |
 | `getWorkspaceFinancialReceipt` | `GET /api/v2/workspaces/{workspaceId}/financial-receipts/{receiptId}` | — | 200 WorkspaceFinancialReceipt | ledger |
 | `listAdminOperations` | `GET /api/v2/admin/operations` | — | 200 AdminOperationPage | bff |
 | `listAuditEvents` | `GET /api/v2/admin/audit-events` | — | 200 AuditEventPage | tenant |
+| `listOperatorWorkspaces` | `GET /api/v2/operator/workspaces` | — | 200 OperatorWorkspaceSourcePage | workspace |
 | `listQualifications` | `GET /api/v2/admin/qualifications` | — | 200 QualificationPage | ledger |
 | `listReceipts` | `GET /api/v2/admin/receipts` | — | 200 ReceiptPage | ledger |
 | `reconcileOperation` | `POST /api/v2/admin/operations/{owner}/{operationId}/reconcile` | ReconcileOperationRequest | 202 Operation | bff |
@@ -918,7 +921,7 @@
 - `Receipt`：`artifactDigest`、`createdAt`、`evidenceSummary`、`id`、`kind`、`operationId`、`outcome`、`owner`、`sourceSha`、`workflowRunId`
 - `WorkspaceFinancialReceipt`：`evidenceDigest`、`quote`、`receipt`、`walletOperation`、`workspaceId`
 
-**数据表及写入Owner**：`build.build_artifacts`、`build.idempotency_records`、`build.inbox_events`、`build.operations`、`build.outbox_deliveries`、`build.outbox_events`、`capability.idempotency_records`、`capability.inbox_events`、`capability.operations`、`capability.outbox_deliveries`、`capability.outbox_events`、`fabric.idempotency_records`、`fabric.inbox_events`、`fabric.operations`、`fabric.outbox_deliveries`、`fabric.outbox_events`、`fabric.resource_actions`、`gateway.idempotency_records`、`gateway.inbox_events`、`gateway.operations`、`gateway.outbox_deliveries`、`gateway.outbox_events`、`ledger.idempotency_records`、`ledger.inbox_events`、`ledger.outbox_deliveries`、`ledger.outbox_events`、`ledger.receipts`、`ledger.reconciliations`、`resource_catalog.idempotency_records`、`resource_catalog.inbox_events`、`resource_catalog.operations`、`resource_catalog.outbox_deliveries`、`resource_catalog.outbox_events`、`runtime_control.idempotency_records`、`runtime_control.inbox_events`、`runtime_control.operations`、`runtime_control.outbox_deliveries`、`runtime_control.outbox_events`、`serve.idempotency_records`、`serve.inbox_events`、`serve.operations`、`serve.outbox_deliveries`、`serve.outbox_events`、`tenant.audit_events`、`tenant.authorization_contexts`、`tenant.idempotency_records`、`tenant.inbox_events`、`tenant.operations`、`tenant.outbox_deliveries`、`tenant.outbox_events`、`workspace.idempotency_records`、`workspace.inbox_events`、`workspace.operations`、`workspace.outbox_deliveries`、`workspace.outbox_events`
+**数据表及写入Owner**：`build.build_artifacts`、`build.idempotency_records`、`build.inbox_events`、`build.operations`、`build.outbox_deliveries`、`build.outbox_events`、`capability.idempotency_records`、`capability.inbox_events`、`capability.operations`、`capability.outbox_deliveries`、`capability.outbox_events`、`fabric.idempotency_records`、`fabric.inbox_events`、`fabric.operations`、`fabric.outbox_deliveries`、`fabric.outbox_events`、`fabric.resource_actions`、`gateway.idempotency_records`、`gateway.inbox_events`、`gateway.operations`、`gateway.outbox_deliveries`、`gateway.outbox_events`、`ledger.idempotency_records`、`ledger.inbox_events`、`ledger.outbox_deliveries`、`ledger.outbox_events`、`ledger.receipts`、`ledger.reconciliations`、`resource_catalog.idempotency_records`、`resource_catalog.inbox_events`、`resource_catalog.operations`、`resource_catalog.outbox_deliveries`、`resource_catalog.outbox_events`、`runtime_control.idempotency_records`、`runtime_control.inbox_events`、`runtime_control.operations`、`runtime_control.outbox_deliveries`、`runtime_control.outbox_events`、`serve.idempotency_records`、`serve.inbox_events`、`serve.operations`、`serve.outbox_deliveries`、`serve.outbox_events`、`tenant.audit_events`、`tenant.authorization_contexts`、`tenant.idempotency_records`、`tenant.inbox_events`、`tenant.operations`、`tenant.outbox_deliveries`、`tenant.outbox_events`、`workspace.idempotency_records`、`workspace.inbox_events`、`workspace.operations`、`workspace.outbox_deliveries`、`workspace.outbox_events`、`workspace.workspaces`
 
 **验收向量**：
 

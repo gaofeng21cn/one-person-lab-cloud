@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	api "opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/publicjson"
 )
 
 // availability collapses the stored plan status and the plan's own validity
@@ -57,10 +58,15 @@ type planPriceRow struct {
 	rowScanner
 	amount   sql.NullInt64
 	policyID sql.NullString
+	offers   *[]byte
 }
 
 func (r *planPriceRow) Scan(dest ...any) error {
-	return r.rowScanner.Scan(append(dest, &r.amount, &r.policyID)...)
+	dest = append(dest, &r.amount, &r.policyID)
+	if r.offers != nil {
+		dest = append(dest, r.offers)
+	}
+	return r.rowScanner.Scan(dest...)
 }
 
 func nullOrZero(v sql.NullTime) time.Time {
@@ -105,7 +111,7 @@ func (s *Service) ListComputePlans(ctx context.Context, r *api.ListComputePlansR
 	// Select the latest version before checking its expiry: an expired current
 	// policy must not expose an older rate. Without the other plan ID the join
 	// yields NULL price fields rather than choosing a different combination.
-	rows, err := s.DB.QueryContext(ctx, `SELECT `+computePlanCols+`,price.compute_monthly_usd_micros,price.id
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+computePlanCols+`,price.compute_monthly_usd_micros,price.id,COALESCE(offers.items,'[]'::jsonb)
 		FROM resource_catalog.compute_plans p
 		LEFT JOIN LATERAL (
 			SELECT id,compute_monthly_usd_micros,valid_until
@@ -113,6 +119,22 @@ func (s *Service) ListComputePlans(ctx context.Context, r *api.ListComputePlansR
 			WHERE compute_plan_id=p.id AND storage_plan_id=$3 AND valid_from<=$4
 			ORDER BY valid_from DESC,id DESC LIMIT 1
 		) price ON price.valid_until IS NULL OR $4<price.valid_until
+        LEFT JOIN LATERAL (
+          SELECT jsonb_agg(jsonb_build_object(
+            'storagePlanId',s.id,'storageName',s.name,'storageCapacityGiB',s.capacity_gib,
+            'pricePolicyVersionId',v.id,
+            'monthlyUSDMicros',(v.compute_monthly_usd_micros::numeric+v.storage_monthly_usd_micros::numeric+v.product_monthly_usd_micros::numeric)::text
+          ) ORDER BY s.id) AS items
+          FROM (
+            SELECT DISTINCT ON (storage_plan_id) * FROM resource_catalog.price_policy_versions
+            WHERE compute_plan_id=p.id AND valid_from<=$4
+            ORDER BY storage_plan_id,valid_from DESC,id DESC
+          ) v JOIN resource_catalog.storage_plans s ON s.id=v.storage_plan_id
+          WHERE (v.valid_until IS NULL OR $4<v.valid_until)
+            AND p.status='approved' AND p.valid_from<=$4 AND (p.valid_until IS NULL OR $4<p.valid_until)
+            AND s.status='approved' AND s.valid_from<=$4 AND (s.valid_until IS NULL OR $4<s.valid_until)
+            AND s.billing_mode=p.billing_mode
+        ) offers ON true
 		WHERE p.id>$1 ORDER BY p.id LIMIT $2`, r.GetQueryCursor(), n+1, r.GetQueryStoragePlanId(), now)
 	if err != nil {
 		return nil, dbError(err)
@@ -120,7 +142,8 @@ func (s *Service) ListComputePlans(ctx context.Context, r *api.ListComputePlansR
 	defer rows.Close()
 	out := &api.ComputePlanPage{}
 	for rows.Next() {
-		price := &planPriceRow{rowScanner: rows}
+		var offers []byte
+		price := &planPriceRow{rowScanner: rows, offers: &offers}
 		plan, err := scanComputePlan(price, now)
 		if err != nil {
 			return nil, dbError(err)
@@ -128,6 +151,17 @@ func (s *Service) ListComputePlans(ctx context.Context, r *api.ListComputePlansR
 		if price.amount.Valid && price.policyID.Valid {
 			plan.MonthlyPriceUsdMicros = proto.Int64(price.amount.Int64)
 			plan.PricePolicyVersionId = proto.String(price.policyID.String)
+		}
+		var items []json.RawMessage
+		if err := json.Unmarshal(offers, &items); err != nil {
+			return nil, dbError(err)
+		}
+		for _, item := range items {
+			offer := &api.WorkspacePlanOffer{}
+			if err := publicjson.Unmarshal(item, offer); err != nil {
+				return nil, dbError(err)
+			}
+			plan.WorkspaceOffers = append(plan.WorkspaceOffers, offer)
 		}
 		out.Items = append(out.Items, plan)
 	}

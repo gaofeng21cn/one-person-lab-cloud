@@ -1907,7 +1907,13 @@
         "WorkspaceApplicationRevision.version",
         "WorkspaceApplicationSecretInput.env",
         "WorkspaceApplicationSecretInput.name",
-        "WorkspaceApplicationSecretInput.target"
+        "WorkspaceApplicationSecretInput.target",
+        "ComputePlan.workspaceOffers",
+        "WorkspacePlanOffer.storagePlanId",
+        "WorkspacePlanOffer.storageName",
+        "WorkspacePlanOffer.storageCapacityGiB",
+        "WorkspacePlanOffer.pricePolicyVersionId",
+        "WorkspacePlanOffer.monthlyUSDMicros"
       ],
       "tables": [
         "capability.capability_versions",
@@ -4356,14 +4362,20 @@
         {
           "route": "/admin/qualifications",
           "title": "资格与发布证据"
+        },
+        {
+          "route": "/admin/resources",
+          "title": "Workspace resources"
         }
       ],
       "operationIds": [
         "getOperation",
+        "getOperatorWorkspace",
         "getReceipt",
         "getWorkspaceFinancialReceipt",
         "listAdminOperations",
         "listAuditEvents",
+        "listOperatorWorkspaces",
         "listQualifications",
         "listReceipts",
         "reconcileOperation"
@@ -4468,12 +4480,14 @@
         "workspace.inbox_events",
         "workspace.operations",
         "workspace.outbox_deliveries",
-        "workspace.outbox_events"
+        "workspace.outbox_events",
+        "workspace.workspaces"
       ],
       "owners": [
         "bff",
         "ledger",
-        "tenant"
+        "tenant",
+        "workspace"
       ],
       "documents": [
         "00_master_index.md",

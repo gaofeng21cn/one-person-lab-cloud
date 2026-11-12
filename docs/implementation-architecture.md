@@ -438,6 +438,22 @@ retains its exact bytes. The remaining tooling/caller dispositions belong to the
 
 ## Console Source Truth
 
+The native launch consumes `ComputePlan.workspaceOffers` from Resource Catalog.
+Each offer is the current approved exact compute/storage price-policy pair,
+including its storage identity/capacity and full compute, storage and product
+monthly amount. This is a read projection over existing Catalog records, not a
+new package table, pricing authority or browser-defined pairing. Purchase still
+requires a separately accepted Catalog quote. Independent application, model,
+plan and wallet sources publish their own read results; an unrelated failed
+source does not remove a usable application path.
+
+Workspace subscription reads retain the Workspace owner's confirmed period,
+current accepted price and renewal mode. The Console does not replace them with
+current Catalog prices. The existing subscription contract is served through
+the BFF under Tenant owner/admin authorization; members do not gain financial
+access through the ordinary Workspace read. Historical personal bills retain
+their separate original-owner authorization and UI identity.
+
 The image's `VITE_CONSOLE_IDENTITY` selects authentication and migrated browser
 surfaces. The Dockerfile defaults to `cloud` and labels the built digest with
 `opl.cloud.console-identity`; a deployment cannot change the baked bundle.

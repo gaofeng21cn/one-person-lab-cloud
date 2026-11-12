@@ -1,0 +1,35 @@
+.workspace-subscription-panel > .workspace-primary-facts {
+  margin: 0;
+}
+
+.workspace-subscription-panel > .workspace-actions {
+  padding: 12px 18px;
+}
+
+.workspace-subscription-details {
+  border-top: 1px solid var(--line);
+}
+
+.workspace-subscription-details > summary {
+  cursor: pointer;
+  padding: 12px 18px;
+}
+
+.billing-subscriptions > .billing-subscription-row + .billing-subscription-row {
+  border-top: 1px solid var(--line);
+}
+
+.billing-subscription-row__heading {
+  padding: 16px 18px 0;
+}
+
+.billing-subscription-row__heading h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.billing-subscription-row > .workspace-subscription-panel > .workspace-primary-facts,
+.billing-subscription-row > .workspace-subscription-panel > .workspace-primary-facts > div {
+  border: 0;
+  background: transparent;
+}

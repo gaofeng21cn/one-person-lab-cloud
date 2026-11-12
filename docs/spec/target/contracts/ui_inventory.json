@@ -9301,7 +9301,13 @@
         "WorkspaceApplicationRevision.version",
         "WorkspaceApplicationSecretInput.env",
         "WorkspaceApplicationSecretInput.name",
-        "WorkspaceApplicationSecretInput.target"
+        "WorkspaceApplicationSecretInput.target",
+        "ComputePlan.workspaceOffers",
+        "WorkspacePlanOffer.storagePlanId",
+        "WorkspacePlanOffer.storageName",
+        "WorkspacePlanOffer.storageCapacityGiB",
+        "WorkspacePlanOffer.pricePolicyVersionId",
+        "WorkspacePlanOffer.monthlyUSDMicros"
       ],
       "displayRequirements": "Agent确切版本、计算/存储套餐、所选模型、报价用途/金额/priceVersion/有效期/计费周期及退款保留政策快照，Gateway真实钱包状态。金额字段按string→BigInt换算，不能Number浮点运算。 未指定另一侧套餐或不存在exact有效组合价时，计算/存储卡片显示“选择完整套餐后报价”，不得展示猜测最低价或0价格；确认页只以Quote总额与费用明细为准。",
       "interaction": "只从批准目录选Agent/套餐/模型；报价由后端解析Tenant、provider、运行底座和钱包主体，客户端不提交它们或自报价格。确认页展示确切quoteId、总额、周期与政策快照；输入变化即作废当前确认，重新报价。过期或钱包不可读时禁止提交并给出重新检查动作。",

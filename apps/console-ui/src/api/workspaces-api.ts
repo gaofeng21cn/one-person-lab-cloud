@@ -84,7 +84,22 @@ export async function listAvailableComputePlans(storagePlanId?: string): Promise
   const query = new URLSearchParams();
   if (storagePlanId) query.set("storagePlanId", storagePlanId);
   const path = `/api/v2/catalog/compute-plans${query.size ? `?${query}` : ""}`;
-  return listAllOwnerPages<ComputePlanPageDTO["items"][number]>(path, "compute_plan");
+  const plans = await listAllOwnerPages<ComputePlanPageDTO["items"][number]>(path, "compute_plan");
+  for (const plan of plans) {
+    if (plan.workspaceOffers === undefined) continue;
+    if (!Array.isArray(plan.workspaceOffers)) throw new Error("invalid_workspace_offers");
+    const seen = new Set<string>();
+    for (const offer of plan.workspaceOffers) {
+      if (!offer || typeof offer.storagePlanId !== "string" || !offer.storagePlanId.trim()
+        || typeof offer.storageName !== "string" || !offer.storageName.trim()
+        || !Number.isInteger(offer.storageCapacityGiB) || offer.storageCapacityGiB <= 0
+        || typeof offer.pricePolicyVersionId !== "string" || !offer.pricePolicyVersionId.trim()
+        || typeof offer.monthlyUSDMicros !== "string" || !/^(0|[1-9]\d*)$/.test(offer.monthlyUSDMicros)
+        || BigInt(offer.monthlyUSDMicros) > 9223372036854775807n || seen.has(offer.storagePlanId)) throw new Error("invalid_workspace_offer");
+      seen.add(offer.storagePlanId);
+    }
+  }
+  return plans;
 }
 
 export async function listAvailableStoragePlans(computePlanId?: string): Promise<StoragePlanPageDTO["items"]> {
@@ -282,6 +297,8 @@ export function projectCustomerWorkspace(workspace: WorkspaceOwnerDTO): Workspac
   return {
     id: workspace.id,
     state: workspace.status,
+    computePlanId: workspace.computePlanId,
+    storagePlanId: workspace.storagePlanId,
     createdAt: workspace.createdAt,
     updatedAt: workspace.updatedAt,
     ...(workspace.name ? { name: workspace.name } : {}),

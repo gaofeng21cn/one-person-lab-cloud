@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import type {
   AuthSession,
@@ -31,7 +31,6 @@ import {
   getWorkspaceOwner,
   listAvailableComputePlans,
   listAvailableLaunchModels,
-  listAvailableStoragePlans,
   listApprovedRuntimeVersions,
   listReadyCapabilityVersions,
   workspaceLaunchIdempotencyKey
@@ -52,6 +51,8 @@ import {
   type AgentLaunchReadiness,
   type WorkspaceLaunchReviewState
 } from "./workspace-launch-controller-model.ts";
+
+type ApplicationReadSource = "app" | "agent" | "models" | "wallet";
 
 const agentOperationStorageKey = "opl-cloud:agent-workspace-operation";
 
@@ -76,15 +77,14 @@ export interface AgentWorkspaceLaunchController extends WorkspaceLaunchControlle
   agentWallet: GatewayWalletReadbackDTO | null;
   agentSourceError: string;
   agentSourceLoading: boolean;
-  agentPricingLoading: boolean;
-  agentPricingError: boolean;
+  agentReadErrors: Partial<Record<ApplicationReadSource, string>>;
+  agentReadLoading: Record<ApplicationReadSource, boolean>;
   agentCanQuote: boolean;
   agentCapabilityVersionId: string;
   setAgentCapabilityVersionId: (value: string) => void;
   agentComputePlanId: string;
-  setAgentComputePlanId: (value: string) => void;
   agentStoragePlanId: string;
-  setAgentStoragePlanId: (value: string) => void;
+  setAgentWorkspaceOffer: (computePlanId: string, storagePlanId: string) => void;
   agentModelSelections: Record<string, string>;
   setAgentModelSelection: (slot: string, modelId: string) => void;
   agentQuote: WorkspaceQuoteDTO | null;
@@ -163,10 +163,11 @@ export function useWorkspaceLaunchController({
   const [agentApplicationKind, setAgentApplicationKindState] = useState<"opl_app" | "agent">("opl_app");
   const [agentRuntimeVersionId, setAgentRuntimeVersionIdState] = useState("");
   const [agentComputePlans, setAgentComputePlans] = useState<ComputePlanDTO[]>([]);
-  const [agentStoragePlans, setAgentStoragePlans] = useState<StoragePlanDTO[]>([]);
   const [agentModels, setAgentModels] = useState<LaunchModelDTO[]>([]);
   const [agentWallet, setAgentWallet] = useState<GatewayWalletReadbackDTO | null>(null);
   const [agentSourceError, setAgentSourceError] = useState("");
+  const [agentReadErrors, setAgentReadErrors] = useState<Partial<Record<ApplicationReadSource, string>>>({});
+  const [agentReadLoading, setAgentReadLoading] = useState<Record<ApplicationReadSource, boolean>>({ app: false, agent: false, models: false, wallet: false });
   const [agentSourceLoading, setAgentSourceLoading] = useState(false);
   const [agentCapabilityVersionId, setAgentCapabilityVersionIdState] = useState("");
   const [agentComputePlanId, setAgentComputePlanIdState] = useState("");
@@ -182,39 +183,6 @@ export function useWorkspaceLaunchController({
   const [agentRecoveryPending, setAgentRecoveryPending] = useState(() => Boolean(sessionStorage.getItem(agentOperationStorageKey)));
   const intent = useRef<PersistedAgentIntent | null>(null);
   const quoteRevision = useRef(0);
-  const [agentPlanPricing, setAgentPlanPricing] = useState<{
-    computePlanId: string;
-    storagePlanId: string;
-    compute: ComputePlanDTO[];
-    storage: StoragePlanDTO[];
-  } | null>(null);
-  const [agentPricingLoading, setAgentPricingLoading] = useState(false);
-  const [agentPricingError, setAgentPricingError] = useState(false);
-
-  // Prices belong to an exact compute/storage pairing. Never present the
-  // preceding selection's prices while its replacement read is in flight.
-  useEffect(() => {
-    setAgentPlanPricing(null);
-    setAgentPricingError(false);
-    if (!session || !agentComputePlanId || !agentStoragePlanId || agentSourceLoading || agentSourceError) {
-      setAgentPricingLoading(false);
-      return;
-    }
-    let active = true;
-    setAgentPricingLoading(true);
-    void Promise.all([
-      listAvailableComputePlans(agentStoragePlanId),
-      listAvailableStoragePlans(agentComputePlanId)
-    ]).then(([compute, storage]) => {
-      if (active) setAgentPlanPricing({ computePlanId: agentComputePlanId, storagePlanId: agentStoragePlanId, compute, storage });
-    }).catch(() => {
-      if (active) setAgentPricingError(true);
-    }).finally(() => {
-      if (active) setAgentPricingLoading(false);
-    });
-    return () => { active = false; };
-  }, [session, agentComputePlanId, agentStoragePlanId, agentSourceLoading, agentSourceError]);
-
   // Normal workspace launch state
   const [normalLaunchPlan, setNormalLaunchPlan] = useState<PlanId>("basic");
   const [normalLaunchBusy, setNormalLaunchBusy] = useState(false);
@@ -229,9 +197,6 @@ export function useWorkspaceLaunchController({
 
   const reset = () => {
     quoteRevision.current += 1;
-    setAgentPlanPricing(null);
-    setAgentPricingLoading(false);
-    setAgentPricingError(false);
     setCatalog(emptyCatalog());
     setPreviews({});
     setLaunchName("");
@@ -243,10 +208,11 @@ export function useWorkspaceLaunchController({
     setAgentApplicationKindState("opl_app");
     setAgentRuntimeVersionIdState("");
     setAgentComputePlans([]);
-    setAgentStoragePlans([]);
     setAgentModels([]);
     setAgentWallet(null);
     setAgentSourceError("");
+    setAgentReadErrors({});
+    setAgentReadLoading({ app: false, agent: false, models: false, wallet: false });
     setAgentCapabilityVersionIdState("");
     setAgentComputePlanIdState("");
     setAgentStoragePlanIdState("");
@@ -262,17 +228,9 @@ export function useWorkspaceLaunchController({
     intent.current = null;
   };
 
-  // The legacy package pricing routes are the authority for the package plans and
-  // for every price shown before confirmation. They require a retained Control
-  // Plane session, so a CloudIdentity build must not call them: Cloud has no
-  // package-pricing catalog owner yet, and the cloud launch surface prices the
-  // same purchase through the Resource Catalog quote instead. The refusal is an
-  // explicit unavailable state, never a fallback to the session the build does
-  // not have. A package is only offered when the owner reports a fabric compute
-  // pool for it, so a plan can read back as unavailable and earn no preview. A
-  // plan the owner did not price stays unpriced, and an unread price is reported
-  // through catalog.error so the page says so and offers a retry instead of
-  // leaving a dead button unexplained.
+  // Retained Control Plane package pricing is read only by its own identity.
+  // CloudIdentity launch consumes Catalog workspaceOffers and its exact quote;
+  // it never crosses to a retained Account session for missing native data.
   const loadPricingCatalog = async (generation: number, activeSession: AuthSession) => {
     const plan = packagePricingReadPlan(cloudIdentity);
     if (plan.state === "unavailable") {
@@ -312,48 +270,50 @@ export function useWorkspaceLaunchController({
     invalidateQuote();
     setAgentSourceLoading(true);
     setAgentSourceError("");
-    try {
-      const [versions, releases, compute, storage, models, wallet] = await Promise.all([
-        listReadyCapabilityVersions(), listApprovedRuntimeVersions(), listAvailableComputePlans(), listAvailableStoragePlans(), listAvailableLaunchModels(), getLaunchWallet()
-      ]);
-      if (!isRequestCurrent(generation, activeSession.user.id)) return;
-      const availableVersions = versions.filter((version) => version.status === "ready");
-      const availableReleases = releases.filter((release) => release.status === "approved");
-      const availableCompute = compute.filter((plan) => plan.availability === "available");
-      const availableStorage = storage.filter((plan) => plan.availability === "available");
-      const availableModels = models.filter((model) => model.available);
-      // Two application combinations share one launch: the default OPL App needs
-      // an approved Runtime Release, a built Agent needs a ready CapabilityVersion.
-      // Resource plans and models are required for both, but neither application
-      // combination is fabricated to satisfy the other.
-      if ((!availableReleases.length && !availableVersions.length) || !availableCompute.length || !availableStorage.length || !availableModels.length) {
-        throw new Error("agent_launch_catalog_empty");
-      }
-      setAgentCapabilityVersions(availableVersions);
-      setAgentRuntimeVersions(availableReleases);
-      setAgentComputePlans(availableCompute);
-      setAgentStoragePlans(availableStorage);
-      setAgentModels(availableModels);
-      setAgentWallet(wallet);
-      setAgentApplicationKindState((current) => current === "agent" ? (availableVersions.length ? "agent" : "opl_app") : (availableReleases.length ? "opl_app" : "agent"));
-      setAgentRuntimeVersionIdState((current) => current && availableReleases.some((r) => r.id === current) ? current : (availableReleases[0]?.id ?? ""));
-      setAgentCapabilityVersionIdState((current) => current && availableVersions.some((v) => v.id === current) ? current : (availableVersions[0]?.id ?? ""));
-      setAgentComputePlanIdState((current) => current && availableCompute.some((p) => p.id === current) ? current : availableCompute[0].id);
-      setAgentStoragePlanIdState((current) => current && availableStorage.some((p) => p.id === current) ? current : availableStorage[0].id);
-      setAgentSourceLoading(false);
-    } catch (error) {
-      if (isRequestCurrent(generation, activeSession.user.id)) {
-        setAgentSourceLoading(false);
-        setAgentSourceError(friendlyError(error));
-        setAgentWallet(null);
-        setAgentQuote(null);
-      }
-    }
+    setAgentReadErrors({});
+    setAgentReadLoading({ app: true, agent: true, models: true, wallet: true });
+    // These are independent authorities. An unavailable Agent/model directory
+    // cannot remove a valid default App, resource offer or wallet readback.
+    setAgentCapabilityVersions([]); setAgentRuntimeVersions([]); setAgentModels([]); setAgentWallet(null);
+    const current = () => isRequestCurrent(generation, activeSession.user.id);
+    const failed = (source: keyof typeof agentReadErrors, error: unknown) => {
+      if (current()) setAgentReadErrors((old) => ({ ...old, [source]: friendlyError(error) }));
+    };
+    const finished = (source: ApplicationReadSource) => { if (current()) setAgentReadLoading((old) => ({ ...old, [source]: false })); };
+    await Promise.allSettled([
+      listReadyCapabilityVersions().then((versions) => {
+        if (!current()) return;
+        const available = versions.filter((v) => v.status === "ready");
+        setAgentCapabilityVersions(available);
+        setAgentCapabilityVersionIdState((id) => available.some((v) => v.id === id) ? id : (available[0]?.id ?? ""));
+      }).catch((error) => failed("agent", error)).finally(() => finished("agent")),
+      listApprovedRuntimeVersions().then((releases) => {
+        if (!current()) return;
+        const available = releases.filter((v) => v.status === "approved");
+        setAgentRuntimeVersions(available);
+        setAgentRuntimeVersionIdState((id) => available.some((v) => v.id === id) ? id : (available[0]?.id ?? ""));
+      }).catch((error) => failed("app", error)).finally(() => finished("app")),
+      listAvailableComputePlans().then((plans) => {
+        if (!current()) return;
+        const available = plans.filter((p) => p.availability === "available");
+        setAgentComputePlans(available);
+        // Preserve only an exact owner-published pair, never two independent defaults.
+        const selected = available.find((p) => p.id === agentComputePlanId && p.workspaceOffers?.some((o) => o.storagePlanId === agentStoragePlanId));
+        const first = available.find((p) => p.workspaceOffers?.length);
+        if (!selected) {
+          setAgentComputePlanIdState(first?.id ?? "");
+          setAgentStoragePlanIdState(first?.workspaceOffers?.[0].storagePlanId ?? "");
+        }
+      }).catch((error) => {
+        if (current()) { setAgentComputePlans([]); setAgentSourceError(friendlyError(error)); }
+      }).finally(() => { if (current()) setAgentSourceLoading(false); }),
+      listAvailableLaunchModels().then((models) => { if (current()) setAgentModels(models.filter((m) => m.available)); }).catch((error) => failed("models", error)).finally(() => finished("models")),
+      getLaunchWallet().then((wallet) => { if (current()) setAgentWallet(wallet); }).catch((error) => failed("wallet", error)).finally(() => finished("wallet"))
+    ]);
   };
 
-  // The package plans and the Agent source plans are different products that share
-  // the Control Plane pricing surface. Neither read decides whether the other is
-  // available, and neither one's balance answers for the other's purchase.
+  // The baked Console identity selects its owner. A refused retained read cannot
+  // erase the native Catalog offer, and native facts never price retained orders.
   const loadCatalog = async (generation: number, activeSession: AuthSession) => {
     await Promise.all([loadPricingCatalog(generation, activeSession), loadAgentCatalog(generation, activeSession)]);
   };
@@ -442,8 +402,12 @@ export function useWorkspaceLaunchController({
   const setAgentApplicationKind = (value: "opl_app" | "agent") => { setAgentApplicationKindState(value); invalidateQuote(); };
   const setAgentRuntimeVersionId = (value: string) => { setAgentRuntimeVersionIdState(value); invalidateQuote(); };
   const setAgentCapabilityVersionId = (value: string) => { setAgentCapabilityVersionIdState(value); invalidateQuote(); };
-  const setAgentComputePlanId = (value: string) => { setAgentComputePlanIdState(value); invalidateQuote(); };
-  const setAgentStoragePlanId = (value: string) => { setAgentStoragePlanIdState(value); invalidateQuote(); };
+  const setAgentWorkspaceOffer = (computePlanId: string, storagePlanId: string) => {
+    if (!agentComputePlans.some((p) => p.id === computePlanId && p.workspaceOffers?.some((o) => o.storagePlanId === storagePlanId))) return;
+    setAgentComputePlanIdState(computePlanId);
+    setAgentStoragePlanIdState(storagePlanId);
+    invalidateQuote();
+  };
   const setAgentModelSelection = (slot: string, modelId: string) => { setAgentModelSelections((current) => ({ ...current, [slot]: modelId })); invalidateQuote(); };
 
   const selectedCapability = agentCapabilityVersions.find((version) => version.id === agentCapabilityVersionId) || null;
@@ -457,14 +421,19 @@ export function useWorkspaceLaunchController({
     ? Boolean(selectedRelease)
     : Boolean(selectedCapability) && selectedCapability.modelRequirements.every((requirement) => {
       const selection = modelSelections.find((item) => item.slot === requirement.slot);
-      return !requirement.required && !selection || Boolean(selection && requirement.allowedModelIds.length > 0 && requirement.allowedModelIds.includes(selection.modelId));
+      return !requirement.required && !selection || Boolean(selection && requirement.allowedModelIds.length > 0 && requirement.allowedModelIds.includes(selection.modelId) && agentModels.some((m) => m.id === selection.modelId));
     });
+  const selectedOffer = agentComputePlans.find((p) => p.id === agentComputePlanId)?.workspaceOffers?.find((o) => o.storagePlanId === agentStoragePlanId);
+  const agentStoragePlans: StoragePlanDTO[] = (agentComputePlans.find((p) => p.id === agentComputePlanId)?.workspaceOffers ?? []).map((o) => ({
+    id: o.storagePlanId, name: o.storageName, capacityGiB: o.storageCapacityGiB,
+    availability: "available", billingMode: agentComputePlans.find((p) => p.id === agentComputePlanId)!.billingMode
+  }));
   const readiness: AgentLaunchReadiness = {
     sourceReady: !agentSourceLoading && !agentSourceError && !agentRecoveryPending,
     hasName: Boolean(launchName.trim()),
     hasCapabilityVersion: isDefaultApp ? Boolean(selectedRelease) : Boolean(selectedCapability),
-    hasComputePlan: Boolean(agentComputePlanId),
-    hasStoragePlan: Boolean(agentStoragePlanId),
+    hasComputePlan: Boolean(selectedOffer),
+    hasStoragePlan: Boolean(selectedOffer),
     modelSelectionsReady,
     walletReadbackReady: Boolean(agentWallet),
     walletSufficient: Boolean(agentWallet && agentQuote && BigInt(agentWallet.balanceUSDMicros) >= BigInt(agentQuote.totalUSDMicros)),
@@ -645,12 +614,6 @@ export function useWorkspaceLaunchController({
     balanceSufficient
   };
 
-  const pricingMatches = agentPlanPricing?.computePlanId === agentComputePlanId && agentPlanPricing?.storagePlanId === agentStoragePlanId;
-  const pricedPlans = <T extends ComputePlanDTO | StoragePlanDTO>(plans: T[], prices: T[] | undefined): T[] => plans.map((plan) => {
-    const { monthlyPriceUSDMicros: _price, pricePolicyVersionId: _policy, ...definition } = plan;
-    const priced = prices?.find((item) => item.id === plan.id);
-    return { ...definition, monthlyPriceUSDMicros: priced?.monthlyPriceUSDMicros, pricePolicyVersionId: priced?.pricePolicyVersionId } as T;
-  });
 
   return {
     catalog,
@@ -686,21 +649,20 @@ export function useWorkspaceLaunchController({
     setAgentApplicationKind,
     agentRuntimeVersionId,
     setAgentRuntimeVersionId,
-    agentComputePlans: pricedPlans(agentComputePlans, pricingMatches ? agentPlanPricing.compute : undefined),
-    agentStoragePlans: pricedPlans(agentStoragePlans, pricingMatches ? agentPlanPricing.storage : undefined),
+    agentComputePlans,
+    agentStoragePlans,
     agentModels,
     agentWallet,
     agentSourceError,
     agentSourceLoading,
-    agentPricingLoading,
-    agentPricingError,
+    agentReadErrors,
+    agentReadLoading,
     agentCanQuote: canCreateAgentQuote(readiness) && !agentBusy && !intent.current,
     agentCapabilityVersionId,
     setAgentCapabilityVersionId,
     agentComputePlanId,
-    setAgentComputePlanId,
     agentStoragePlanId,
-    setAgentStoragePlanId,
+    setAgentWorkspaceOffer,
     agentModelSelections,
     setAgentModelSelection,
     agentQuote,

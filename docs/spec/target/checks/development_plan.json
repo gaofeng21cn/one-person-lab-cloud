@@ -4,14 +4,14 @@
   "inputSHA256": {
     "00_master_index.md": "f017516cff90b4fc5a7dc5fdb474ff6945631c849411e39ed2da251b4ceae15e",
     "01_domain_ownership_matrix.md": "5dd2b3b53146f4158e67defc9f0c123122f402578ac1ea6893a4b96937f2715b",
-    "03_api_contract_complete.yaml": "8c5dcc601c3e73cdab31edcdeb771c11b1e9be04735fcb3090657b21e838d76c",
-    "12_product_spec.md": "8c3a722f4bd65282723ce27d4c037e507677f82b9770fd29faaea959f76f058f",
+    "03_api_contract_complete.yaml": "d62988ceeb5165ea7c50d0fc8b8ee3a998037b7b760fc396e92d14cfccfab723",
+    "12_product_spec.md": "32d61b2bea33ee450c356dbad6d39adeb91b729f249cbd0e832a2f73f460a112",
     "checks/render_development_plan.py": "01cb5496b2eea9f243e91e25277eb6effe2fdff476730b3c43c4fa7e82cd31f4",
     "checks/validate_development_plan.py": "6a45868772cc5fdc5b82d546503bcd2b7ced99c119e93502afbb3894ed851f2f",
-    "contracts/api_inventory.json": "54f70ea2e5f9b4db892684e00e688cd16f817842f620d3afc942d1947ddd637f",
+    "contracts/api_inventory.json": "c287e08d90034cbd7f119683a38d3b5d023cc0fc0c70bbe4d3f8dfbc7122d321",
     "contracts/db_inventory.json": "51b760bf0c70e291a69efb7e6300f9d63be2e57da4c8fee0beba017e35f78712",
-    "contracts/ui_inventory.json": "02f94d08bc66ed28771da7ea238a9c3f8b0a6d37c823724d382aa6b9b3528f5d",
-    "packages/contracts/proto/internal.proto": "4112260ad4f54c95114ee221725514ed3254478bfd07d1d738dcb27ee8888a97"
+    "contracts/ui_inventory.json": "f378cd3181d4c504eaa3cb535026f17d22e9b259f6a0d9bb490fd85c4c06aa5b",
+    "packages/contracts/proto/internal.proto": "6776c45dc643adc40971d1001d8057e9d079a3e0e0be23acfc19ffa86d29a58d"
   },
   "sourceRoots": {
     "cloud": ".",
@@ -552,6 +552,8 @@
         "getPersonalGatewayKey",
         "getPersonalGatewayKeyUsageSummary",
         "getSelfUserExternalBinding",
+        "getUsageSummary",
+        "getWallet",
         "listPersonalGatewayGroups",
         "listPersonalGatewayKeyUsage",
         "listPersonalGatewayKeys"
@@ -1365,6 +1367,8 @@
         "getSelfUserExternalBinding",
         "getSession",
         "getTenant",
+        "getUsageSummary",
+        "getWallet",
         "getWorkspaceFinancialReceipt",
         "inviteMember",
         "listAdminOperations",

@@ -41,12 +41,26 @@ func TestLivePlanMonthlyPricesExactPair(t *testing.T) {
 	}
 	first := monthlyPriceRequest("first", computes[0], storages[0], 9_007_199_254_740_993, from.AsTime(), nil)
 	first.StorageMonthlyUsdMicros = 0
+	first.ProductMonthlyUsdMicros = 8 // Keep the total odd beyond JavaScript's safe integer range.
 	p1 := post("/api/v2/admin/catalog/price-policies", "first", first)
 	p2 := post("/api/v2/admin/catalog/price-policies", "second", monthlyPriceRequest("second", computes[0], storages[1], 120, from.AsTime(), nil))
 	p3 := post("/api/v2/admin/catalog/price-policies", "third", monthlyPriceRequest("third", computes[1], storages[0], 340, from.AsTime(), nil))
 	var stored int64
 	if err := system.db.QueryRowContext(ctx, `SELECT compute_monthly_usd_micros FROM resource_catalog.price_policy_versions WHERE id=$1`, p1["id"]).Scan(&stored); err != nil || stored != first.ComputeMonthlyUsdMicros {
 		t.Fatalf("persisted owner price = %d, %v", stored, err)
+	}
+	// Every approved exact pair is exposed as a fixed offer, independently of
+	// the optional scalar resource-price filter. Expected totals are literal
+	// decimal strings so no float conversion can conceal lost money precision.
+	type workspaceOffer struct{ storageName, policy, total string }
+	offers := map[string]map[string]workspaceOffer{
+		computes[0]: {
+			storages[0]: {"plan-0", p1["id"].(string), "9007199254741001"},
+			storages[1]: {"plan-1", p2["id"].(string), "139"},
+		},
+		computes[1]: {
+			storages[0]: {"plan-0", p3["id"].(string), "381"},
+		},
 	}
 	type price struct{ amount, policy string }
 	read := func(kind, otherKey, other string, want map[string]price) {
@@ -73,6 +87,28 @@ func TestLivePlanMonthlyPricesExactPair(t *testing.T) {
 				t.Fatalf("pagination repeated plan %s", id)
 			}
 			seen[id] = true
+			if kind == "compute-plans" {
+				items, ok := item["workspaceOffers"].([]any)
+				if !ok || len(items) != len(offers[id]) {
+					t.Fatalf("HTTP workspace offers missing an approved exact pair: %v", item)
+				}
+				seenStorage := make(map[string]bool)
+				for _, value := range items {
+					offer, ok := value.(map[string]any)
+					if !ok {
+						t.Fatalf("HTTP workspace offer is not an object: %v", value)
+					}
+					storageID, _ := offer["storagePlanId"].(string)
+					expected, approved := offers[id][storageID]
+					if !approved || seenStorage[storageID] {
+						t.Fatalf("HTTP workspace offer guessed or repeated a pair: %v", item)
+					}
+					seenStorage[storageID] = true
+					if offer["storageName"] != expected.storageName || offer["storageCapacityGiB"] != float64(10) || offer["pricePolicyVersionId"] != expected.policy || offer["monthlyUSDMicros"] != expected.total {
+						t.Fatalf("HTTP workspace offer lost storage facts, policy or full exact price: %v, want %v", offer, expected)
+					}
+				}
+			}
 			amount, hasAmount := item["monthlyPriceUSDMicros"]
 			policy, hasPolicy := item["pricePolicyVersionId"]
 			if expected, ok := want[id]; ok {

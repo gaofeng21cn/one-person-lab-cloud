@@ -49,6 +49,15 @@ func (s *Server) registerWorkspaceRoutes(mux *http.ServeMux, workspace api.Works
 			}
 			return workspace.ListWorkspaces(r.Context(), &api.ListWorkspacesRpcRequest{Context: call, QueryCursor: optionalQuery(r, "cursor"), QueryLimit: &limit})
 		})
+	// Subscription financial facts retain their own authorization and route; the
+	// member-readable Workspace detail never embeds them.
+	s.publisherRoute(mux, "GET /api/v2/workspaces/{workspaceId}/subscription", owneridentity.Workspace, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETSUBSCRIPTION, kind, "workspaceId", nil,
+		func(r *http.Request, call *api.CallContext, _ proto.Message) (proto.Message, error) {
+			if err := require(); err != nil {
+				return nil, err
+			}
+			return workspace.GetSubscription(r.Context(), &api.GetSubscriptionRpcRequest{Context: call, WorkspaceId: r.PathValue("workspaceId")})
+		})
 	// The model configuration belongs to the Workspace owner: the owner persists the
 	// accepted intent, its own applied version, and the operation that carries the
 	// reload. The BFF only forwards the caller's own request to that owner, so a

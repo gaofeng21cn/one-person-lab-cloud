@@ -103,6 +103,7 @@ function AgentLaunchPage({
   const isDefaultApp = controller.agentApplicationKind === "opl_app";
   const compute = controller.agentComputePlans.find((item) => item.id === controller.agentComputePlanId);
   const storage = controller.agentStoragePlans.find((item) => item.id === controller.agentStoragePlanId);
+  const offer = compute?.workspaceOffers?.find((item) => item.storagePlanId === controller.agentStoragePlanId);
   const quote = controller.agentQuote;
   const operation = controller.agentOperation;
   const operationDone = operation && ["succeeded", "failed", "needs_attention", "cancelled"].includes(operation.status);
@@ -147,7 +148,7 @@ function AgentLaunchPage({
       <WorkspaceLaunchSteps current={controller.agentStep === "quote" ? "confirm" : "configure"} />
       {controller.agentSourceLoading ? <div className="source-loading" aria-live="polite"><span className="spinner" />正在加载应用与套餐</div> : null}
       {controller.agentSourceError ? <>
-        <Alert color="warning" title="开通入口暂不可用" description="无法加载应用、套餐或钱包信息，请稍后重试。" actions={<Button onClick={() => void onRefresh()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />重试</Button>} />
+        <Alert color="warning" title="开通入口暂不可用" description="无法读取套餐，请稍后重试。" actions={<Button onClick={() => void onRefresh()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />重试</Button>} />
         <details className="launch-diagnostic"><summary>技术详情</summary><p>{controller.agentSourceError}</p></details>
       </> : null}
       {controller.agentStep === "quote" && quote ? (
@@ -156,8 +157,8 @@ function AgentLaunchPage({
             <header><h2>确认订单</h2></header>
             <dl className="launch-confirm-list">
               <div><dt>{isDefaultApp ? "应用版本" : "智能体版本"}</dt><dd>{isDefaultApp ? (release?.versionLabel || release?.name || release?.id) : (version?.versionLabel || version?.id)}</dd></div>
-              <div><dt>计算套餐</dt><dd>{compute?.name}</dd></div>
-              <div><dt>存储套餐</dt><dd>{storage?.name}</dd></div>
+              <div><dt>工作空间套餐</dt><dd>{compute?.name}</dd></div>
+              <div><dt>包含存储</dt><dd>{offer ? `${offer.storageCapacityGiB} GiB` : "待核对"}</dd></div>
               <div><dt>模型</dt><dd>{isDefaultApp ? "应用内置配置" : quote.modelSelections.map((selection) => `${selection.slot}: ${modelFor(selection.modelId)}`).join("、") || "无需配置"}</dd></div>
               <div><dt>计费周期</dt><dd>{formatDate(quote.periodStart)} 至 {formatDate(quote.periodEnd)}</dd></div>
               <div><dt>报价有效至</dt><dd>{formatDate(quote.expiresAt, true)}</dd></div>
@@ -184,35 +185,37 @@ function AgentLaunchPage({
                 <RadioGroup.Item block value="agent">已构建智能体</RadioGroup.Item>
               </RadioGroup>
             </fieldset>
-            {isDefaultApp ? <fieldset><legend>应用版本</legend>
-              <select aria-label="应用版本" disabled={!controller.agentRuntimeVersions.length} onChange={(event) => controller.setAgentRuntimeVersionId(event.currentTarget.value)} value={controller.agentRuntimeVersionId}>
-                <option value="">请选择版本</option>{controller.agentRuntimeVersions.map((item) => <option key={item.id} value={item.id}>{item.versionLabel || item.name}</option>)}
+            {isDefaultApp ? controller.agentReadLoading.app ? <p className="workspace-launch-note" role="status">正在读取应用…</p> : controller.agentReadErrors.app ? <Alert color="warning" title="应用目录暂不可用" description="请刷新后重试。" /> : controller.agentRuntimeVersions.length > 1 ? <details className="launch-diagnostic"><summary>应用版本 · {release?.versionLabel || release?.name}</summary>
+              <select aria-label="应用版本" onChange={(event) => controller.setAgentRuntimeVersionId(event.currentTarget.value)} value={controller.agentRuntimeVersionId}>
+                {controller.agentRuntimeVersions.map((item) => <option key={item.id} value={item.id}>{item.versionLabel || item.name}</option>)}
               </select>
-              {!controller.agentSourceLoading && !controller.agentRuntimeVersions.length ? <p className="workspace-launch-note">暂无可用版本，请联系管理员添加。</p> : null}
-            </fieldset> : <fieldset><legend>智能体版本</legend>
-              <select aria-label="智能体版本" disabled={!controller.agentCapabilityVersions.length} onChange={(event) => controller.setAgentCapabilityVersionId(event.currentTarget.value)} value={controller.agentCapabilityVersionId}>
-                <option value="">请选择智能体</option>{controller.agentCapabilityVersions.map((item) => <option key={item.id} value={item.id}>{item.versionLabel}</option>)}
-              </select>
-              {!controller.agentSourceLoading && !controller.agentCapabilityVersions.length ? <p className="workspace-launch-note">暂无可用智能体。<a href="/console/publisher">前往构建</a></p> : null}
+            </details> : !controller.agentSourceLoading && !release ? <p className="workspace-launch-note">暂无可用应用，请联系管理员。</p> : null : <fieldset><legend>智能体版本</legend>
+              {controller.agentReadLoading.agent ? <p className="workspace-launch-note" role="status">正在读取智能体…</p> : controller.agentReadErrors.agent ? <Alert color="warning" title="智能体目录暂不可用" description="请刷新后重试。" /> : <>
+                <select aria-label="智能体版本" disabled={!controller.agentCapabilityVersions.length} onChange={(event) => controller.setAgentCapabilityVersionId(event.currentTarget.value)} value={controller.agentCapabilityVersionId}>
+                  <option value="">请选择智能体</option>{controller.agentCapabilityVersions.map((item) => <option key={item.id} value={item.id}>{item.versionLabel}</option>)}
+                </select>
+                {!controller.agentReadLoading.agent && !controller.agentCapabilityVersions.length ? <p className="workspace-launch-note">暂无可用智能体。<a href="/console/publisher">前往构建</a></p> : null}
+              </>}
             </fieldset>}
-            <fieldset><legend>计算套餐</legend>
-              <RadioGroup<string> aria-label="计算套餐" className="workspace-plan-list workspace-native-plans" direction="col" name="agent-compute-plan" onChange={controller.setAgentComputePlanId} value={controller.agentComputePlanId}>
-                {controller.agentComputePlans.map((item) => <RadioGroup.Item block key={item.id} value={item.id}>
-                  <span className="workspace-native-plan"><span><strong>{item.name}</strong><small>{item.vcpus} 核 · {item.memoryMiB / 1024} GiB</small></span><span className="workspace-native-plan__price">{item.monthlyPriceUSDMicros !== undefined ? <>{formatUsdMicros(item.monthlyPriceUSDMicros)}<small> / 月</small></> : <small>{controller.agentPricingLoading ? "价格读取中" : "以订单报价为准"}</small>}</span></span>
-                </RadioGroup.Item>)}
+            <fieldset><legend>工作空间套餐</legend>
+              <RadioGroup<string> aria-label="工作空间套餐" className="workspace-plan-list workspace-native-plans" direction="col" name="agent-workspace-plan" onChange={(key) => {
+                const choice = controller.agentComputePlans.flatMap((plan) => (plan.workspaceOffers ?? []).map((item) => ({ plan, item }))).find(({ item }) => item.pricePolicyVersionId === key);
+                if (choice) controller.setAgentWorkspaceOffer(choice.plan.id, choice.item.storagePlanId);
+              }} value={offer?.pricePolicyVersionId || ""}>
+                {controller.agentComputePlans.flatMap((item) => item.workspaceOffers?.length ? item.workspaceOffers.map((included) => <RadioGroup.Item block key={included.pricePolicyVersionId} value={included.pricePolicyVersionId}>
+                  <span className="workspace-native-plan"><span><strong>{item.name}</strong><small>{item.vcpus} 核 · {item.memoryMiB / 1024} GiB · 含 {included.storageCapacityGiB} GiB 存储</small></span><span className="workspace-native-plan__price">{formatUsdMicros(included.monthlyUSDMicros)}<small> / 月</small></span></span>
+                </RadioGroup.Item>) : [<RadioGroup.Item block disabled key={item.id} value={`unpriced:${item.id}`}>
+                  <span className="workspace-native-plan"><span><strong>{item.name}</strong><small>{item.vcpus} 核 · {item.memoryMiB / 1024} GiB</small></span><span className="workspace-native-plan__price"><small>套餐待配置</small></span></span>
+                </RadioGroup.Item>])}
               </RadioGroup>
+              {!controller.agentSourceLoading && !controller.agentComputePlans.length && !controller.agentSourceError ? <p className="workspace-launch-note">暂无可用套餐，请联系管理员。</p> : null}
             </fieldset>
-            <fieldset><legend>存储套餐</legend>
-              <select aria-label="存储套餐" onChange={(event) => controller.setAgentStoragePlanId(event.currentTarget.value)} value={controller.agentStoragePlanId}>
-                {controller.agentStoragePlans.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.capacityGiB} GiB{item.monthlyPriceUSDMicros !== undefined ? ` · ${formatUsdMicros(item.monthlyPriceUSDMicros)} / 月` : ""}</option>)}
-              </select>
-            </fieldset>
-            {controller.agentPricingError ? <p className="workspace-launch-note" role="status">套餐月价暂不可用，请查看订单报价确认费用。</p> : null}
+            {!isDefaultApp && controller.agentReadErrors.models && version?.modelRequirements.length ? <Alert color="warning" title="模型目录暂不可用" description="请刷新后重试。" /> : null}
             {!isDefaultApp && version?.modelRequirements.map((requirement) => <fieldset key={requirement.slot}><legend>{requirement.slot}{requirement.required ? "（必选）" : "（可选）"}</legend><select aria-label={requirement.slot} onChange={(event) => controller.setAgentModelSelection(requirement.slot, event.currentTarget.value)} value={controller.agentModelSelections[requirement.slot] || ""}><option value="">请选择模型</option>{controller.agentModels.filter((model) => requirement.allowedModelIds.includes(model.id)).map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select></fieldset>)}
           </section>
           <aside className="workspace-order-summary">
-            <header><span>当前选择</span><strong>{isDefaultApp ? (release?.versionLabel || release?.name || "未选择应用版本") : (version?.versionLabel || "未选择智能体")}</strong></header>
-            <dl className="workspace-order-summary__facts"><div><dt>计算</dt><dd>{compute?.name || "未选择"}</dd></div><div><dt>存储</dt><dd>{storage?.name || "未选择"}</dd></div><div><dt>钱包余额</dt><dd>{controller.agentWallet ? formatUsdMicros(controller.agentWallet.balanceUSDMicros) : "暂不可用"}</dd></div></dl>
+            <header><strong>{isDefaultApp ? (release?.name || "OPL App") : (version?.versionLabel || "未选择智能体")}</strong>{isDefaultApp && release?.versionLabel ? <span>版本 {release.versionLabel}</span> : null}</header>
+            <dl className="workspace-order-summary__facts"><div><dt>套餐</dt><dd>{compute?.name || "未选择"}</dd></div><div><dt>包含存储</dt><dd>{offer ? `${offer.storageCapacityGiB} GiB` : "未选择"}</dd></div><div><dt>每月合计</dt><dd>{offer ? formatUsdMicros(offer.monthlyUSDMicros) : "未选择"}</dd></div><div><dt>钱包余额</dt><dd>{controller.agentWallet ? formatUsdMicros(controller.agentWallet.balanceUSDMicros) : controller.agentReadLoading.wallet ? "读取中" : "暂不可用"}</dd></div></dl>{controller.agentReadErrors.wallet ? <p className="workspace-launch-note" role="status">钱包暂不可用，请刷新后重试。</p> : null}
             <div className="workspace-order-summary__action"><Button busy={controller.agentBusy} color="primary" disabled={!controller.agentCanQuote} onClick={controller.reviewAgentLaunch}>查看报价</Button></div>
           </aside>
         </div>
