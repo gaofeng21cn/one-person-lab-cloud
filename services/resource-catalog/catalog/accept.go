@@ -270,12 +270,12 @@ func (s *Service) ReadQuoteResourcePlan(ctx context.Context, r *api.QuoteResourc
 func frozenResourcePlan(ctx context.Context, tx *sql.Tx, computeID, storageID string, months int32) (*api.ResourcePlanSnapshot, error) {
 	p := &api.ResourcePlanSnapshot{ComputePlanId: computeID, StoragePlanId: storageID, PrepaidMonths: months}
 	var computeSpec, storageSpec []byte
-	var storageProvider, storageProfile, storageRegion, storageBilling, storageCapability string
-	err := tx.QueryRowContext(ctx, `SELECT c.provider,c.provider_profile_ref,c.region,c.billing_mode,c.provider_capability_version,c.provider_specification,c.vcpus,c.memory_mib,s.provider,s.provider_profile_ref,s.region,s.billing_mode,s.provider_capability_version,s.provider_specification,s.capacity_gib FROM resource_catalog.compute_plans c JOIN resource_catalog.storage_plans s ON s.id=$2 WHERE c.id=$1`, computeID, storageID).Scan(&p.Provider, &p.ProviderProfileId, &p.Region, &p.BillingMode, &p.ProviderCapabilityVersion, &computeSpec, &p.Vcpus, &p.MemoryMib, &storageProvider, &storageProfile, &storageRegion, &storageBilling, &storageCapability, &storageSpec, &p.CapacityGib)
+	var compatible bool
+	err := tx.QueryRowContext(ctx, `SELECT p.provider,p.provider_profile_ref,p.region,p.billing_mode,p.provider_capability_version,p.provider_specification,p.vcpus,p.memory_mib,s.provider_specification,s.capacity_gib,(`+compatiblePlanPairSQL+`) FROM resource_catalog.compute_plans p JOIN resource_catalog.storage_plans s ON s.id=$2 WHERE p.id=$1`, computeID, storageID).Scan(&p.Provider, &p.ProviderProfileId, &p.Region, &p.BillingMode, &p.ProviderCapabilityVersion, &computeSpec, &p.Vcpus, &p.MemoryMib, &storageSpec, &p.CapacityGib, &compatible)
 	if err != nil {
 		return nil, dbError(err)
 	}
-	if p.Provider != storageProvider || p.ProviderProfileId != storageProfile || p.Region != storageRegion || p.BillingMode != storageBilling || p.ProviderCapabilityVersion != storageCapability {
+	if !compatible {
 		return nil, status.Error(codes.FailedPrecondition, "compute and storage must share the approved provider profile")
 	}
 	var c, s struct {

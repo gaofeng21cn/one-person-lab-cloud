@@ -92,8 +92,7 @@ func (s *Service) CreatePricePolicyVersion(ctx context.Context, r *api.CreatePri
 	}
 	out := &api.PricePolicyVersion{}
 	err := s.command(ctx, r.GetContext(), "CreatePricePolicyVersion", b, out, func(tx *sql.Tx) error {
-		// The exact compute/storage pair must already be an approved plan pair; the
-		// FK enforces existence and this read keeps a retired plan from being priced.
+		// Only an approved, compatible compute/storage pair can be priced.
 		if err := assertApprovedPlanPair(ctx, tx, b.ComputePlanId, b.StoragePlanId); err != nil {
 			return err
 		}
@@ -143,14 +142,15 @@ func validRenewalPolicy(p *api.RenewalPolicy, months int32) bool {
 
 func assertApprovedPlanPair(ctx context.Context, tx *sql.Tx, computePlanID, storagePlanID string) error {
 	var computeStatus, storageStatus string
-	if err := tx.QueryRowContext(ctx, `SELECT status FROM resource_catalog.compute_plans WHERE id=$1`, computePlanID).Scan(&computeStatus); err != nil {
-		return dbError(err)
-	}
-	if err := tx.QueryRowContext(ctx, `SELECT status FROM resource_catalog.storage_plans WHERE id=$1`, storagePlanID).Scan(&storageStatus); err != nil {
+	var compatible bool
+	if err := tx.QueryRowContext(ctx, `SELECT p.status,s.status,(`+compatiblePlanPairSQL+`) FROM resource_catalog.compute_plans p JOIN resource_catalog.storage_plans s ON s.id=$2 WHERE p.id=$1 FOR SHARE OF p,s`, computePlanID, storagePlanID).Scan(&computeStatus, &storageStatus, &compatible); err != nil {
 		return dbError(err)
 	}
 	if computeStatus != "approved" || storageStatus != "approved" {
 		return status.Error(codes.FailedPrecondition, "both plans in a price pair must be approved")
+	}
+	if !compatible {
+		return status.Error(codes.FailedPrecondition, "compute and storage must share the approved provider profile")
 	}
 	return nil
 }

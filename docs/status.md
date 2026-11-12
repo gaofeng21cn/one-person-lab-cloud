@@ -90,17 +90,26 @@ its failure cannot erase subscription facts or application access. Internal IDs,
 policy references and provenance are disclosed on demand. Personal historical
 bills retain their original identity and amount semantics.
 
-Local affected-owner suites pass 1,497 tests/subtests across contracts,
+Earlier local affected-owner suites passed 1,497 tests/subtests across contracts,
 CloudIdentity, Catalog, Workspace and BFF with isolated PostgreSQL and no skipped
-tests. Catalog's real HTTP/BFF/gRPC/PostgreSQL integration confirms exact offers
-and full integer prices above JavaScript's safe integer range. Runtime browser
-checks cover 14 tests/subtests, subscription consumers cover six, and Workspace
-browser coverage spans 46 cases. The combined local browser run passed 64 of 66
-before two assertions were aligned with the application-name/version hierarchy;
-both final targeted reruns pass. The complete focused wrapper was not rerun.
-Generated contracts, OpenAPI/offer shape, permission inventory, development-plan
-freshness, TypeScript, lint, build, test ownership and whitespace checks pass.
-Current-revision CI and installed acceptance remain separate evidence.
+tests. Catalog's real HTTP/BFF/gRPC/PostgreSQL integration confirmed exact offers
+and full integer prices above JavaScript's safe integer range.
+
+The local Catalog compatibility repair on top of #1169 head
+`f303e8f158d846064365d9eef08cdf015711cfdd` passes focused verification with
+96 owner tests/subtests, zero failures and zero skips. The real HTTP/BFF/gRPC/
+PostgreSQL compatibility and exact-price tests pass twice from fresh databases.
+Restoring the three original production files reproduces the rejected-pair
+admission and offer-projection failures with the same regression tests. The
+repair preserves historical price policies and frozen accepted resource plans;
+this local patch is not pushed-revision CI or installed acceptance evidence.
+Broader local checks pass 1,716 Node tests and 216 browser tests with zero
+failures/skips/TODOs, generated-contract freshness, TypeScript, lint and build.
+The complete local gate remains incomplete at Control Plane compilation:
+downloading its locked `github.com/mattn/go-sqlite3 v1.14.53` dependency fails
+because `proxy.golang.org` DNS resolution times out, including a retry. The
+all-module PostgreSQL lane was not reached; Catalog's isolated-owner and live
+integration results above remain separate, executed evidence.
 
 The localhost preview uses explicitly labelled sample identities and historical
 Basic admission facts from 2026-10-10: 2 vCPU / 4 GiB with 10 GiB storage at

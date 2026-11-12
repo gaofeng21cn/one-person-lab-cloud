@@ -443,7 +443,11 @@ Each offer is the current approved exact compute/storage price-policy pair,
 including its storage identity/capacity and full compute, storage and product
 monthly amount. This is a read projection over existing Catalog records, not a
 new package table, pricing authority or browser-defined pairing. Purchase still
-requires a separately accepted Catalog quote. Independent application, model,
+requires a separately accepted Catalog quote. Catalog reuses one owner-local
+plan-pair compatibility predicate for price-policy admission, offer projection
+and quote resource snapshots. Incompatible historical policies remain stored
+but produce no purchasable offer; accepted snapshots remain unchanged.
+Independent application, model,
 plan and wallet sources publish their own read results; an unrelated failed
 source does not remove a usable application path.
 

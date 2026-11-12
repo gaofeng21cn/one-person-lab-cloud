@@ -372,6 +372,9 @@ The native launch and subscription projection changes in #1169 require installed
 owner-backed acceptance after local verification. Confirm the effective Catalog
 compute/storage pairs and prices for both Basic and Pro; provider-profile shape
 and historical Control Plane amounts are not current native price evidence.
+Installed Catalog acceptance must also confirm that an incompatible pair cannot
+be newly priced, offered or quoted, while historical policies and accepted
+subscription facts remain readable.
 The verified Basic admission is historical (2026-10-10); Pro's installation
 profile declares 8 vCPU, 16 GiB and 100 GiB storage, but its current native plan
 identities and effective price remain unverified. Retain those distinctions in

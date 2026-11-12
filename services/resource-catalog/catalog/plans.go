@@ -78,6 +78,14 @@ func nullOrZero(v sql.NullTime) time.Time {
 
 const computePlanCols = `p.id,p.name,p.vcpus,p.memory_mib,p.status,p.billing_mode,p.provider_capability_version,p.valid_from,p.valid_until,p.created_at`
 
+// Plan-pair compatibility belongs to Catalog. Policy admission, offer reads
+// and quote snapshots use this predicate over compute alias p and storage alias s.
+const compatiblePlanPairSQL = `p.provider=s.provider
+	AND p.provider_profile_ref=s.provider_profile_ref
+	AND p.region=s.region
+	AND p.billing_mode=s.billing_mode
+	AND p.provider_capability_version=s.provider_capability_version`
+
 func scanComputePlan(row rowScanner, now time.Time) (*api.ComputePlan, error) {
 	var (
 		plan                 api.ComputePlan
@@ -133,7 +141,7 @@ func (s *Service) ListComputePlans(ctx context.Context, r *api.ListComputePlansR
           WHERE (v.valid_until IS NULL OR $4<v.valid_until)
             AND p.status='approved' AND p.valid_from<=$4 AND (p.valid_until IS NULL OR $4<p.valid_until)
             AND s.status='approved' AND s.valid_from<=$4 AND (s.valid_until IS NULL OR $4<s.valid_until)
-            AND s.billing_mode=p.billing_mode
+            AND `+compatiblePlanPairSQL+`
         ) offers ON true
 		WHERE p.id>$1 ORDER BY p.id LIMIT $2`, r.GetQueryCursor(), n+1, r.GetQueryStoragePlanId(), now)
 	if err != nil {
