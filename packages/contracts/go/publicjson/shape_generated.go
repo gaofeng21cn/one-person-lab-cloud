@@ -223,6 +223,7 @@ var required = map[protoreflect.Name]map[string]bool{
 	"RegisterWebuiVersionRequest":               {"name": true, "versionLabel": true, "publisherNamespaceId": true, "publisherContract": true, "admissionReceiptId": true},
 	"CatalogStatusRequest":                      {"status": true, "reason": true},
 	"ComputePlan":                               {"id": true, "name": true, "vcpus": true, "memoryMiB": true, "availability": true, "billingMode": true, "providerCapabilityVersion": true, "validFrom": true, "createdAt": true},
+	"WorkspacePlanOffer":                        {"storagePlanId": true, "storageName": true, "storageCapacityGiB": true, "pricePolicyVersionId": true, "monthlyUSDMicros": true},
 	"StoragePlan":                               {"id": true, "name": true, "capacityGiB": true, "availability": true, "billingMode": true, "shrinkSupported": true, "validFrom": true, "createdAt": true},
 	"CreateComputePlanRequest":                  {"name": true, "vcpus": true, "memoryMiB": true, "providerProfileId": true, "providerSkuId": true, "providerCapabilityVersion": true, "validFrom": true},
 	"CreateStoragePlanRequest":                  {"name": true, "capacityGiB": true, "providerProfileId": true, "providerSkuId": true, "shrinkSupported": true, "validFrom": true},
@@ -383,6 +384,7 @@ var publicToField = map[protoreflect.Name]map[string]string{
 	"UsageSummary":                  {"totalActualCostUSDMicros": "total_actual_cost_usd_micros"},
 	"Wallet":                        {"balanceUSDMicros": "balance_usd_micros"},
 	"WalletOperation":               {"amountUSDMicros": "amount_usd_micros"},
+	"WorkspacePlanOffer":            {"monthlyUSDMicros": "monthly_usd_micros"},
 	"WorkspaceTransactionTrend":     {"requestedChargeUSDMicros": "requested_charge_usd_micros", "requestedRefundUSDMicros": "requested_refund_usd_micros", "unknownChargeUSDMicros": "unknown_charge_usd_micros", "unknownRefundUSDMicros": "unknown_refund_usd_micros"},
 	"WorkspaceTransactionTrendDay":  {"confirmedChargeUSDMicros": "confirmed_charge_usd_micros", "confirmedRefundUSDMicros": "confirmed_refund_usd_micros"},
 }
@@ -412,6 +414,7 @@ var fieldToPublic = map[protoreflect.Name]map[string]string{
 	"UsageSummary":                  {"total_actual_cost_usd_micros": "totalActualCostUSDMicros"},
 	"Wallet":                        {"balance_usd_micros": "balanceUSDMicros"},
 	"WalletOperation":               {"amount_usd_micros": "amountUSDMicros"},
+	"WorkspacePlanOffer":            {"monthly_usd_micros": "monthlyUSDMicros"},
 	"WorkspaceTransactionTrend":     {"requested_charge_usd_micros": "requestedChargeUSDMicros", "requested_refund_usd_micros": "requestedRefundUSDMicros", "unknown_charge_usd_micros": "unknownChargeUSDMicros", "unknown_refund_usd_micros": "unknownRefundUSDMicros"},
 	"WorkspaceTransactionTrendDay":  {"confirmed_charge_usd_micros": "confirmedChargeUSDMicros", "confirmed_refund_usd_micros": "confirmedRefundUSDMicros"},
 }
@@ -456,6 +459,7 @@ var stringScalars = map[protoreflect.Name]map[string]bool{
 	"Wallet":                       {"balance_usd_micros": true},
 	"WalletOperation":              {"amount_usd_micros": true, "coverage_end_milliseconds": true, "coverage_start_milliseconds": true},
 	"Workspace":                    {"model_configuration_version": true, "version": true},
+	"WorkspacePlanOffer":           {"monthly_usd_micros": true},
 	"WorkspaceTransactionTrend":    {"requested_charge_usd_micros": true, "requested_refund_usd_micros": true, "unknown_charge_usd_micros": true, "unknown_refund_usd_micros": true},
 	"WorkspaceTransactionTrendDay": {"confirmed_charge_usd_micros": true, "confirmed_refund_usd_micros": true},
 }

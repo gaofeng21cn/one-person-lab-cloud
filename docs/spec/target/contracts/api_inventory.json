@@ -1058,7 +1058,7 @@
       "response": "Subscription",
       "status": 200,
       "permissions": [
-        "member"
+        "admin"
       ],
       "tables": [
         "workspace.subscriptions"
@@ -1168,8 +1168,7 @@
       "response": "Wallet",
       "status": 200,
       "permissions": [
-        "admin",
-        "owner"
+        "authenticated"
       ],
       "tables": [],
       "operationKind": null
@@ -1204,7 +1203,7 @@
       "response": "UsageSummary",
       "status": 200,
       "permissions": [
-        "member"
+        "authenticated"
       ],
       "tables": [],
       "operationKind": null
@@ -1597,7 +1596,8 @@
       "response": "RuntimeVersionPage",
       "status": 200,
       "permissions": [
-        "member"
+        "member",
+        "platform_admin"
       ],
       "tables": [
         "runtime_control.runtime_releases"
@@ -1617,7 +1617,8 @@
       "response": "WebuiVersionPage",
       "status": 200,
       "permissions": [
-        "member"
+        "member",
+        "platform_admin"
       ],
       "tables": [
         "capability.webui_versions"

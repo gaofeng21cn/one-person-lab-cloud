@@ -52,6 +52,120 @@ There is no remaining resource release, refund or Key mutation for this order.
 The [evidence manifest](evidence/workspace-deletion/2026-11-12-closeout/manifest.json)
 preserves producer provenance and exact receipt bytes in Cloud. Fresh lifecycle
 qualification and formal Release retain their separate acceptance obligations.
+Evidence PR #1168 merged on November 12, 2026. The completed original order is
+not a test target for another release or refund; further lifecycle work belongs
+to the following outcome.
+
+## Workspace lifecycle owner and recovery convergence
+
+The original paid order is closed. The product objective is the Workspace
+business lifecycle: choose an application and plans, review its owner-priced
+offer, provision and use the application, then renew or delete and settle the
+original order. OPL App uses an approved Runtime version directly; a built Agent
+uses a ready CapabilityVersion. Architecture changes and retirement of
+superseded callers support those outcomes with one writer per fact and
+preserved historical obligations. They are not a new prerequisite for product
+work. Unattended recovery remains a separate reliability outcome and cannot
+reopen the completed order. Service extraction follows purchase/fulfillment,
+application delivery, renewal/expiry and deletion/settlement responsibilities
+and real callers; it does not require new repositories or another orchestration
+service.
+
+### Business ownership and retained callers
+
+For each lifecycle command and read, reconcile the existing
+[implementation map](implementation-architecture.md#physical-module-and-dependency-map)
+and [retained caller inventory](implementation-architecture.md#retained-writer-and-caller-inventory-2026-11-03)
+with its authoritative fact, writer/database role, live consumer, original
+operation and completion evidence. Workspace owns business intent and Saga
+progress; Serve owns current application deployment/access; Fabric owns resource
+execution and observation; Gateway Integration owns external mappings and
+coordination, while Sub2API owns effective balance and Key state; Ledger owns
+receipts. BFF composes authorized reads without becoming another writer.
+
+Correct stale source/install declarations in their existing owners. Extend the
+existing source isolation checks to all extracted owners and BFF according to
+their actual allowed dependencies. Source import checks do not prove database
+role isolation: verify the affected owner's persistence role and cross-owner
+denial in isolated PostgreSQL when changing a writer boundary. A capability
+handover must move its real consumers and preserve accepted historical
+obligations before removing the old command, worker, adapter and exclusive tests.
+Control Plane retirement is per capability; its live account, identity,
+announcement, historical financial and original-operation recovery paths are
+not retired merely because native Workspace creation exists.
+
+Instance retains environment configuration, Secrets, deployment, rollback and
+deployment receipts. Protected transport may invoke a pinned Cloud-owned
+operation; its scripts must not decide deletion stages, refund policy or Key
+completion. Cloud retains business evidence and validators, including original
+producer provenance. No second workflow-owned business state machine is added.
+
+Retirement proceeds from the existing R1-R9 inventory, checked against current
+source rather than treating every historical proposal as still open. Select
+one old capability with a known replacement or an approved withdrawal. Remove
+its live callers, command/worker, exclusive configuration and dedicated tests
+together once its affected accepted operations have an accountable disposition.
+Preserve required historical records and readers without retaining an unused
+mutation engine. Other completed orders, including #1042, stay closed. Neither
+a fresh purchase/deletion qualification nor completion of the unattended
+recovery outcome below is a general admission gate for a retirement slice.
+
+### Unattended deletion recovery
+
+The current twelve-pass pause and worker exclusion are recorded in
+[the implementation reference](implementation-architecture.md#extracted-workspace-deletion-recovery).
+When this independent reliability outcome is selected, its runtime change
+belongs to Workspace's existing recovery path and Fabric's existing
+action/readback boundary. It must distinguish these outcomes
+without treating every `needs_attention` operation as eligible for mutation:
+
+| Owner-confirmed condition | Required recovery behavior |
+| --- | --- |
+| Original action is pending and no new decision is required | Schedule bounded observation/reconciliation under the accepted operation and valid authorization; preserve its target, command and action fences |
+| Downstream operation completed while Workspace has an older pending result | Consume the exact owner's confirmed result, clear only the resolved pending step and continue the original deletion |
+| A mutation response is lost or its side effects are unknown | Read/reconcile that original action; an already-consumed one-send fence never permits another provider call |
+| The accepted-operation grant is expired/revoked, an owner denies the action, ownership conflicts, evidence is invalid, or a new decision is required | Preserve the explicit reason and original operation for authorized recovery; elapsed time or a retry counter cannot authorize another mutation |
+
+An interactive session ending does not itself cancel the deletion's valid,
+restricted accepted-operation grant. Conversely, an expired or revoked grant
+cannot be replaced automatically or bypassed by an operator resume. Preserve
+the existing CloudIdentity continuation rules rather than making browser login
+the lifetime of an accepted cleanup obligation. Status GETs remain read-only;
+the owner worker, not page polling, advances the operation.
+
+Fabric's `ReadResources` reads persisted facts. Fresh provider observation and
+original-action finalization must still execute through Fabric's existing owner
+path; repeatedly polling the stored resource set alone cannot complete them.
+Workspace must not reimplement Tencent release rules. Gateway owns original
+refund readback and Key lifecycle confirmation. Neither a provider absence nor
+a successful workflow implies that those independent obligations are settled.
+
+Acceptance requires:
+
+- A local regression first reproduces downstream success after Workspace has
+  parked, using the real persisted input/result shapes. The repaired owner path
+  then advances the same deletion through `RunOnce` after restart, without a
+  direct `Resume`, another DELETE or a test-side state reset for an
+  observation-only wait; terminal refusals still retain their reason.
+- Isolated PostgreSQL and real owner-client integration cover restart, concurrent
+  workers, delayed observations, lost provider/refund replies and authorization
+  refusal. Original operation/command identities and permanent action fences
+  remain unchanged; no duplicate release, debit, refund or managed Key is issued.
+- Completion is read back as application retirement, every original resource
+  absent with its required Fabric finalization, a bound Ledger deletion receipt,
+  Workspace deleted, and refund/Key closeout each confirmed or owner-proven
+  not applicable. Only then may the original operation report `succeeded` with
+  no pending step. Resource/data, refund and Key facts remain independently
+  visible while any obligation is unresolved.
+- A runtime change passes affected Cloud and any changed Instance transport CI
+  before Candidate construction. Build and install the exact Candidate once;
+  environment retries retain that Candidate and the same accepted operations
+  unless a demonstrated runtime defect requires another source revision.
+- Fresh unattended lifecycle qualification is separately authorized and binds
+  one new order, its original charge, resources, application, deletion, refund
+  and Key facts to the exact installed Candidate. No manual resume substitutes
+  for the claimed automatic paths. The completed #1042 order and its historical
+  observations are not relabeled as that qualification.
 
 ## PR CI Cache Reuse And Parallel Verification
 
@@ -103,6 +217,13 @@ move or prove absent each live caller, preserve historical obligations under
 their existing owner, and remove the retired command, worker, adapters,
 configuration and exclusive tests together.
 
+The November 12 original deletion closeout is recorded separately above. Current
+work is prioritized by [business ownership and retained callers](#business-ownership-and-retained-callers):
+reconcile the selected capability's current callers and obligations, then retire
+its obsolete implementation and verify the surviving owner path. Unattended
+deletion recovery remains independent; it does not delay an otherwise justified
+retirement.
+
 The [November 1 installed evidence](status.md#native-runtime-admission-and-serve-upgrade-authorization-2026-11-01)
 records successful installation verification, the original Workspace's native
 Serve upgrade and same-operation response-loss replay, and the resolved public
@@ -116,9 +237,11 @@ The protected payer declaration, same-Candidate J0 READY and W01 ordering are
 separate engineering/release qualification evidence. They are not prerequisites
 for ordinary source-level owner convergence or for retiring a legacy capability
 whose callers and persisted obligations have already been accounted for. The
-existing Release admission still requires its protected qualification, bound to the exact
-Candidate and owner readbacks; never relabel #1042's customer evidence
-as that receipt. The App/Studio immutable-publication obligation also remains
+current Release admission binds the exact Candidate to successful source CI
+and records that paid business and customer reads were not executed. Protected
+operational qualification remains separately authorized and optional under the
+[current Release contract](runtime/release.md#optional-operational-qualification);
+never relabel #1042's customer evidence as a new qualification receipt. The App/Studio immutable-publication obligation also remains
 separate for retained path consumers.
 
 [#1018](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1018)
@@ -244,6 +367,18 @@ This read acceptance does not qualify application login, credential reveal,
 version update or rollback for platform administration.
 
 ## Console Interface Adoption
+
+The native launch and subscription projection changes in #1169 require installed
+owner-backed acceptance after local verification. Confirm the effective Catalog
+compute/storage pairs and prices for both Basic and Pro; provider-profile shape
+and historical Control Plane amounts are not current native price evidence.
+Installed Catalog acceptance must also confirm that an incompatible pair cannot
+be newly priced, offered or quoted, while historical policies and accepted
+subscription facts remain readable.
+The verified Basic admission is historical (2026-10-10); Pro's installation
+profile declares 8 vCPU, 16 GiB and 100 GiB storage, but its current native plan
+identities and effective price remain unverified. Retain those distinctions in
+local preview data. No production catalog admission is implied by UI work.
 
 The [Console interface refinement](status.md#console-interface-refinement-2026-11-05)
 has local source and fixture/browser evidence. Installed acceptance requires

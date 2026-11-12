@@ -173,3 +173,30 @@ test("an unavailable owner answer stays an explicit unavailable source with no d
 test("the Node lane is the retained identity, so the cloud route test does not depend on the environment", () => {
   assert.equal(cloudIdentity, false);
 });
+
+
+test("Workspace offers preserve owner-fixed pairs and exact full USD micros", async () => {
+  const { listAvailableComputePlans } = await import("../../apps/console-ui/src/api/workspaces-api.ts");
+  const offer = { storagePlanId: "disk-owned-pair", storageName: "Included disk", storageCapacityGiB: 10, pricePolicyVersionId: "price-exact", monthlyUSDMicros: "9007199254740993" };
+  globalThis.fetch = (async () => new Response(JSON.stringify({ items: [{ id: "compute-opaque", name: "Basic", workspaceOffers: [offer] }] }), { headers: { "content-type": "application/json" } })) as typeof fetch;
+  assert.deepEqual((await listAvailableComputePlans())[0].workspaceOffers, [offer]);
+  for (const invalid of [
+    { ...offer, monthlyUSDMicros: 52580000 }, { ...offer, monthlyUSDMicros: "-1" },
+    { ...offer, monthlyUSDMicros: "9223372036854775808" }, { ...offer, storageCapacityGiB: 0 },
+    { ...offer, pricePolicyVersionId: "" }, { ...offer, storagePlanId: "" }
+  ]) {
+    globalThis.fetch = (async () => new Response(JSON.stringify({ items: [{ workspaceOffers: [invalid] }] }))) as typeof fetch;
+    await assert.rejects(listAvailableComputePlans(), /invalid_workspace_offer/);
+  }
+  globalThis.fetch = (async () => new Response(JSON.stringify({ items: [{ workspaceOffers: [offer, offer] }] }))) as typeof fetch;
+  await assert.rejects(listAvailableComputePlans(), /invalid_workspace_offer/);
+});
+
+test("Workspace projection keeps exact plan references without inventing financial facts", async () => {
+  const { projectCustomerWorkspace } = await import("../../apps/console-ui/src/api/workspaces-api.ts");
+  const workspace = projectCustomerWorkspace({ id: "workspace-1", name: "Workspace", computePlanId: "compute-opaque", storagePlanId: "disk-opaque", status: "active", deliveryModel: "agent_saas", resourceReadiness: "ready", applicationAvailability: "available", createdAt: "2026-11-12T00:00:00Z", updatedAt: "2026-11-12T00:00:00Z", version: "1" });
+  assert.equal(workspace.computePlanId, "compute-opaque");
+  assert.equal(workspace.storagePlanId, "disk-opaque");
+  assert.equal(workspace.totalUsdMicros, undefined);
+  assert.equal(workspace.autoRenew, undefined);
+});

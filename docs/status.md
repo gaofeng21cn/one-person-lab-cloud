@@ -6,6 +6,7 @@ State: `current_snapshot`
 Reviewed source baseline: `3773966a31e2a5d6630038decfa0a812c1488830` on `main`
 Snapshot reconciliation date: 2026-11-10
 Scoped Workspace deletion update: 2026-11-12 (installed product source `8db78b34c7be640948f349436af7cd4fcadd584d`)
+Scoped lifecycle ownership review: 2026-11-12 (source inspection, not a new runtime qualification)
 
 Each observation below retains its original source, run and environment; the
 reviewed source baseline does not requalify those receipts. The Workspace deletion
@@ -54,6 +55,98 @@ are Cloud business evidence, separate from Instance installation receipts. The
 [earlier failed AuthFailure evidence](evidence/workspace-deletion/2026-11-12-prepaid-detach-auth-custody.json)
 remains unchanged. Completion of this original paid operation does not establish
 a fresh lifecycle qualification or a formal Product Release.
+
+Evidence PR #1168 merged on November 12 at 12:35 CST as
+`3a582db73e952130d619ac86567942995fdf63c3`. Its six PR checks passed on evidence
+head `6bee08b8cf9679d09095ce5dd64947c9933ce834`. The merge preserves the recorded
+observations; it is not another deletion execution or a new deployed Candidate.
+
+## Console launch and Runtime administration (2026-11-12)
+
+The #1169 source change adds Runtime admission and directory confirmation to
+`/admin/system`. The canonical Runtime read permission includes a platform
+administrator without Tenant membership. An authoritative pre-admission 404
+unlocks input correction; unknown command outcomes retain the original request,
+and failures after successful admission retry only directory readback. Existing
+Runtime status and default flags remain read-only in this UI.
+
+Native launch displays fixed Workspace offers projected by Resource Catalog
+from the current approved exact compute/storage price-policy pairs. Each offer
+includes storage identity/capacity and the full compute, storage and product
+monthly amount. Missing, future-only, expired or unavailable combinations are
+not offered for purchase; expiry never revives an older price. The browser
+neither guesses pairings nor constructs a second price authority. Catalog quotes
+and separately confirmed Workspace purchase remain required. Application, model,
+plan and wallet reads update independently, including when an unrelated source
+hangs; changing a selection invalidates its quote and consent.
+
+Workspace now serves its existing Subscription contract through the BFF. Tenant
+owner/admin may read the original accepted current price, period, renewal mode
+and policy; member, foreign Tenant and platform-only administrator cannot.
+Quoted and legacy evidence remain distinct, including absent versus zero prices.
+Details and Billing share the subscription presentation. Catalog supplies only
+exact plan names/specifications there, never a replacement subscription price;
+its failure cannot erase subscription facts or application access. Internal IDs,
+policy references and provenance are disclosed on demand. Personal historical
+bills retain their original identity and amount semantics.
+
+Earlier local affected-owner suites passed 1,497 tests/subtests across contracts,
+CloudIdentity, Catalog, Workspace and BFF with isolated PostgreSQL and no skipped
+tests. Catalog's real HTTP/BFF/gRPC/PostgreSQL integration confirmed exact offers
+and full integer prices above JavaScript's safe integer range.
+
+The local Catalog compatibility repair on top of #1169 head
+`f303e8f158d846064365d9eef08cdf015711cfdd` passes focused verification with
+96 owner tests/subtests, zero failures and zero skips. The real HTTP/BFF/gRPC/
+PostgreSQL compatibility and exact-price tests pass twice from fresh databases.
+Restoring the three original production files reproduces the rejected-pair
+admission and offer-projection failures with the same regression tests. The
+repair preserves historical price policies and frozen accepted resource plans;
+this local patch is not pushed-revision CI or installed acceptance evidence.
+Broader local checks pass 1,716 Node tests and 216 browser tests with zero
+failures/skips/TODOs, generated-contract freshness, TypeScript, lint and build.
+The complete local gate remains incomplete at Control Plane compilation:
+downloading its locked `github.com/mattn/go-sqlite3 v1.14.53` dependency fails
+because `proxy.golang.org` DNS resolution times out, including a retry. The
+all-module PostgreSQL lane was not reached; Catalog's isolated-owner and live
+integration results above remain separate, executed evidence.
+
+The localhost preview uses explicitly labelled sample identities and historical
+Basic admission facts from 2026-10-10: 2 vCPU / 4 GiB with 10 GiB storage at
+$52.58/month. Pro's installation profile declares 8 vCPU / 16 GiB with 100 GiB
+storage, but its current native Catalog plan identities and effective price are
+unverified; the preview leaves it unavailable. This work performs no production
+catalog admission, purchase, Candidate build or Instance deployment. The original
+#1042 deletion/refund remains closed.
+
+## Lifecycle ownership review (2026-11-12)
+
+Inspection of product source `8db78b34c7be640948f349436af7cd4fcadd584d` and the
+merged closeout evidence distinguishes the completed original order from the
+remaining architecture and unattended-lifecycle work. The declared topology has
+ten business data owners in nine domain processes, plus Console BFF and the
+retained Control Plane. This is a source/deployment declaration, not a fresh
+inventory of installed replicas or database permissions.
+
+Workspace owns the accepted lifecycle and continuation; Serve owns application
+retirement; Fabric owns resource actions, authoritative observations and local
+finalization; Gateway Integration coordinates the original refund and managed
+Key with Sub2API; Ledger owns receipt persistence. Their operation records name
+different facts. Instance provides the protected access and installation
+boundary; it does not decide business completion. The current caller and writer
+map belongs to [implementation architecture](implementation-architecture.md#physical-module-and-dependency-map).
+
+The original closeout required two explicit resumes. Current Workspace source
+parks a deletion after twelve unconfirmed passes for one step, and the worker
+excludes a deletion in `needs_attention`. Thus provider completion does not by
+itself establish unattended upstream convergence. The existing source isolation
+test also covers only Control Plane, Fabric and Ledger, rather than every
+extracted owner. Declaration reconciliation, boundary-check coverage and
+same-operation unattended recovery remain separate
+[open outcomes](roadmap.md#workspace-lifecycle-owner-and-recovery-convergence).
+Architecture cleanup proceeds through the existing retained-capability inventory;
+the independent unattended-recovery gap does not reopen this completed order or
+block an otherwise justified retirement.
 
 ## Short-lived Agent connection source (2026-11-09)
 

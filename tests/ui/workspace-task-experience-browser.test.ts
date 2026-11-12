@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 
 import type { Browser, BrowserContext, Locator, Page } from "playwright";
 
 import type {
+  CapabilityVersionDTO,
+  ComputePlanDTO,
+  RuntimeVersionDTO,
+  WorkspaceQuoteDTO,
+  WorkspaceQuoteRequestDTO,
   PricingCatalogResponse,
   PricingPreviewResponse,
   RuntimeCredentialResponse,
@@ -381,8 +386,7 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
         return route.fulfill({ json: { items: [{ id: "cap-ready-1", versionLabel: "IBD Agent 1.0", artifactDigest: "sha256:agent", status: "ready", provenance: "build", modelRequirements: [{ slot: "default", required: true, capability: "chat", allowedModelIds: ["model-1"] }] }] } });
       }
       if (path === "/api/v2/catalog/runtime-versions") return route.fulfill({ json: { items: [{ id: "runtime-1", name: "Default App", versionLabel: "App 1.0", artifactDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", status: "approved", defaultForNewBuilds: true }] } });
-      if (path === "/api/v2/catalog/compute-plans") return route.fulfill({ json: { items: [{ id: "compute-1", name: "Compute Standard", vcpus: 2, memoryMiB: 4096, availability: "available", billingMode: "prepaid_monthly" }] } });
-      if (path === "/api/v2/catalog/storage-plans") return route.fulfill({ json: { items: [{ id: "storage-1", name: "Storage Standard", capacityGiB: 50, availability: "available", billingMode: "prepaid_monthly" }] } });
+      if (path === "/api/v2/catalog/compute-plans") return route.fulfill({ json: { items: [{ id: "compute-1", name: "Compute Standard", vcpus: 2, memoryMiB: 4096, availability: "available", billingMode: "prepaid_monthly", workspaceOffers: [{ storagePlanId: "storage-1", storageName: "Storage Standard", storageCapacityGiB: 50, pricePolicyVersionId: "price-1", monthlyUSDMicros: "52580000" }] } satisfies ComputePlanDTO] } });
       if (path === "/api/v2/catalog/models") return route.fulfill({ json: { items: [{ id: "model-1", name: "IBD Model", capabilities: ["chat"], available: true, inputPricePerMillionTokensUSDMicros: "1", outputPricePerMillionTokensUSDMicros: "2", priceSource: "gateway", fetchedAt: "2026-09-27T00:00:00Z" }] } });
       if (path === "/api/v2/wallet") return route.fulfill({ json: { source: "gateway", status: "available", balanceUSDMicros: "100000000", currency: "USD", fetchedAt: "2026-09-27T00:00:00Z" } });
       if (path === "/api/v2/quotes" && request.method() === "POST") {
@@ -414,29 +418,29 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
     await page.locator(".workspace-list-row").first().waitFor({ state: "visible" });
     await page.getByRole("button", { name: "新建工作空间", exact: true }).click();
     await page.waitForURL((url) => url.pathname === "/console/workspaces/new");
-    await page.getByRole("heading", { name: "新建 Agent Workspace", exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("heading", { name: "新建工作空间", exact: true }).waitFor({ state: "visible" });
     await page.getByLabel("工作空间名称").fill(`Customer Journey ${viewport.name}`);
-    await page.getByText("已构建 Agent", { exact: true }).click();
+    await page.getByText("已构建智能体", { exact: true }).click();
     await page.getByLabel("default").selectOption("model-1");
-    await page.getByRole("button", { name: "获取准确报价", exact: true }).click();
-    await page.getByRole("heading", { name: "确认准确报价与部署条款", exact: true }).waitFor({ state: "visible" });
-    await page.getByRole("checkbox", { name: /我确认以上 Agent/ }).check();
-    await page.getByRole("button", { name: "确认并开通 Workspace", exact: true }).click();
-    await page.getByRole("button", { name: "打开 Agent WebUI", exact: true }).waitFor({ state: "visible", timeout: 5_000 });
+    await page.getByRole("button", { name: "查看报价", exact: true }).click();
+    await page.getByRole("heading", { name: "确认订单", exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("checkbox", { name: /我确认以上配置/ }).check();
+    await page.getByRole("button", { name: "确认并开通工作空间", exact: true }).click();
+    await page.getByRole("button", { name: "打开应用", exact: true }).waitFor({ state: "visible", timeout: 5_000 });
     assert.equal(accessReads, 1);
     assert.equal(seenIdempotencyKeys.size, 1);
     assert.deepEqual(createdBody, { name: `Customer Journey ${viewport.name}`, quoteId: "quote-1", renewalMode: "manual" });
-    await page.getByRole("button", { name: "打开 Agent WebUI", exact: true }).click();
+    await page.getByRole("button", { name: "打开应用", exact: true }).click();
     assert.deepEqual(await page.evaluate(() => (window as Window & { openedWorkspace?: unknown }).openedWorkspace), { url: `https://agent.example.invalid/${workspaceId}`, target: "_blank", features: "noopener,noreferrer" });
     assert.ok(operationReads >= 2);
     await page.reload({ waitUntil: "networkidle" });
-    await page.getByRole("button", { name: "打开 Agent WebUI", exact: true }).waitFor({ state: "visible", timeout: 5_000 }).catch(async (error) => {
+    await page.getByRole("button", { name: "打开应用", exact: true }).waitFor({ state: "visible", timeout: 5_000 }).catch(async (error) => {
       throw new Error(`reload access: ${await page.locator("body").innerText()} storage=${await page.evaluate(() => sessionStorage.getItem("opl-cloud:agent-workspace-operation"))}`, { cause: error });
     });
     assert.equal(seenIdempotencyKeys.size, 1);
     assert.ok(accessReads >= 2);
-    await page.getByRole("button", { name: "创建另一个 Workspace" }).click();
-    await page.getByRole("heading", { name: "新建 Agent Workspace", exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "创建另一个工作空间" }).click();
+    await page.getByRole("heading", { name: "新建工作空间", exact: true }).waitFor({ state: "visible" });
     assert.equal(await page.evaluate(() => sessionStorage.getItem("opl-cloud:agent-workspace-operation")), null);
     assertBrowserAuditClean(audit);
   } finally {
@@ -470,8 +474,7 @@ test("lost create response reloads into the original idempotent Workspace reques
       if (path === "/api/v2/auth/session") return route.fulfill({ json: { actorId: activeActor, tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
       if (path === "/api/v2/capability-versions") return route.fulfill({ json: { items: [{ id: "cap-1", versionLabel: "Agent", status: "ready", provenance: "build", modelRequirements: [] }] } });
       if (path === "/api/v2/catalog/runtime-versions") return route.fulfill({ json: { items: [{ id: "runtime-1", name: "Default App", versionLabel: "App 1.0", artifactDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", status: "approved", defaultForNewBuilds: true }] } });
-      if (path === "/api/v2/catalog/compute-plans") return route.fulfill({ json: { items: [{ id: "compute-1", name: "Compute", vcpus: 2, memoryMiB: 1024, availability: "available" }] } });
-      if (path === "/api/v2/catalog/storage-plans") return route.fulfill({ json: { items: [{ id: "storage-1", name: "Storage", capacityGiB: 10, availability: "available" }] } });
+      if (path === "/api/v2/catalog/compute-plans") return route.fulfill({ json: { items: [{ id: "compute-1", name: "Compute", vcpus: 2, memoryMiB: 1024, availability: "available", billingMode: "prepaid_monthly", workspaceOffers: [{ storagePlanId: "storage-1", storageName: "Storage", storageCapacityGiB: 10, pricePolicyVersionId: "p", monthlyUSDMicros: "1" }] } satisfies ComputePlanDTO] } });
       if (path === "/api/v2/catalog/models") return route.fulfill({ json: { items: [{ id: "model-1", name: "Model", capabilities: [], available: true }] } });
       if (path === "/api/v2/wallet") return route.fulfill({ json: { source: "gateway", status: "available", balanceUSDMicros: "100000000", currency: "USD", fetchedAt: "2026-09-27T00:00:00Z" } });
       if (path === "/api/v2/quotes" && request.method() === "POST") return route.fulfill({ status: 201, json: { id: "quote-lost", purpose: "deploy", capabilityVersionId: "cap-1", computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [], periodMonths: 1, periodStart: "2026-09-27T00:00:00Z", periodEnd: "2026-10-27T00:00:00Z", pricePolicyVersionId: "p", refundPolicyVersionId: "r", retentionPolicyVersionId: "t", refundTerms: "refund", retentionTerms: "retention", lineItems: [], totalUSDMicros: "1", status: "offered", expiresAt: "2099-01-01T00:00:00Z" } });
@@ -489,16 +492,16 @@ test("lost create response reloads into the original idempotent Workspace reques
     await loginCloudFixture(page, demo.origin);
     await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
     await page.getByLabel("工作空间名称").fill("Recovery Test");
-    await page.getByText("已构建 Agent", { exact: true }).click();
-    await page.getByRole("button", { name: "获取准确报价", exact: true }).click();
-    await page.getByRole("checkbox", { name: /我确认以上 Agent/ }).check();
-    await page.getByRole("button", { name: "确认并开通 Workspace", exact: true }).click();
+    await page.getByText("已构建智能体", { exact: true }).click();
+    await page.getByRole("button", { name: "查看报价", exact: true }).click();
+    await page.getByRole("checkbox", { name: /我确认以上配置/ }).check();
+    await page.getByRole("button", { name: "确认并开通工作空间", exact: true }).click();
     await page.getByText("正在核对原开通请求", { exact: true }).waitFor({ state: "visible", timeout: 5_000 }).catch(async (error) => {
       throw new Error(`lost response: ${await page.locator("body").innerText()} storage=${await page.evaluate(() => sessionStorage.getItem("opl-cloud:agent-workspace-operation"))}`, { cause: error });
     });
     await page.reload({ waitUntil: "networkidle" });
     await page.getByText("正在核对原开通请求", { exact: true }).waitFor({ state: "visible" });
-    assert.equal(await page.getByRole("button", { name: "确认并开通 Workspace" }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "确认并开通工作空间" }).count(), 0);
     activeActor = "another-customer";
     await page.reload({ waitUntil: "networkidle" });
     await page.getByText("原开通请求需由提交账户核对", { exact: false }).waitFor({ state: "visible" });
@@ -507,7 +510,7 @@ test("lost create response reloads into the original idempotent Workspace reques
     activeActor = "user-customer";
     await page.reload({ waitUntil: "networkidle" });
     await page.getByRole("button", { name: "核对原请求" }).click();
-    await page.getByText("正在开通 Workspace", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("正在开通工作空间", { exact: true }).waitFor({ state: "visible" });
     assert.equal(createWrites, 2);
     assert.equal(keys.size, 1);
   } finally {
@@ -704,7 +707,7 @@ test("v2 launch fails closed when Gateway or capability owner routes are unavail
     await loginCloudFixture(page, demo.origin);
     await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
     await page.getByText("开通入口暂不可用", { exact: true }).waitFor({ state: "visible" });
-    assert.equal(await page.getByRole("button", { name: "获取准确报价", exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
     assert.equal(await page.getByRole("button", { name: /确认并开通/ }).count(), 0);
     assert.equal(await page.getByText("模拟 Agent", { exact: true }).count(), 0);
     assert.ok(audit.consoleErrors.length > 0);
@@ -718,50 +721,412 @@ test("v2 launch fails closed when Gateway or capability owner routes are unavail
 });
 
 
-test("default App confirm step shows its Runtime Release instead of an empty CapabilityVersion", { timeout: 60_000 }, async () => {
+// Deliberately synthetic Catalog prices, including storage and the product fee.
+// In particular, Pro's $123.45 is a test value, not a production price. Opaque
+// storage IDs, unequal capacities and two Basic offers prevent name/ID pairing.
+const fixedLaunchPlans: ComputePlanDTO[] = [
+  {
+    id: "cp-7f21", name: "Basic", vcpus: 2, memoryMiB: 4096,
+    availability: "available", billingMode: "prepaid_monthly",
+    workspaceOffers: [
+      { storagePlanId: "vol-9d12", storageName: "Research data", storageCapacityGiB: 37, pricePolicyVersionId: "fixture-basic-37", monthlyUSDMicros: "52580000" },
+      { storagePlanId: "vol-0a43", storageName: "Archive data", storageCapacityGiB: 113, pricePolicyVersionId: "fixture-basic-113", monthlyUSDMicros: "61290000" }
+    ]
+  },
+  {
+    id: "cp-3c90", name: "Pro", vcpus: 8, memoryMiB: 16384,
+    availability: "available", billingMode: "prepaid_monthly",
+    workspaceOffers: [{ storagePlanId: "vol-8e66", storageName: "Analysis data", storageCapacityGiB: 151, pricePolicyVersionId: "fixture-pro-151", monthlyUSDMicros: "123450000" }]
+  }
+];
+const fixedLaunchRuntime: RuntimeVersionDTO = {
+  id: "runtime-1", name: "Default App", versionLabel: "App 1.0", status: "approved",
+  artifactDigest: `sha256:${"c".repeat(64)}`, defaultForNewBuilds: true
+};
+const fixedLaunchAgent: CapabilityVersionDTO = {
+  id: "cap-ready-1", versionLabel: "Ready research Agent", artifactDigest: `sha256:${"a".repeat(64)}`,
+  status: "ready", provenance: "build", modelRequirements: []
+};
+const fixedLaunchQuote: WorkspaceQuoteDTO = {
+  id: "quote-fixed-basic", purpose: "deploy", runtimeVersionId: "runtime-1",
+  computePlanId: "cp-7f21", storagePlanId: "vol-9d12", modelSelections: [], periodMonths: 1,
+  periodStart: "2026-11-12T00:00:00Z", periodEnd: "2026-12-12T00:00:00Z",
+  pricePolicyVersionId: "fixture-basic-37", refundPolicyVersionId: "fixture-refund", retentionPolicyVersionId: "fixture-retention",
+  refundTerms: "按报价政策处理退款。", retentionTerms: "数据保留按报价政策执行。", expectedInterruption: "部署期间可能短暂不可用。",
+  lineItems: [
+    { kind: "compute", description: "计算资源", quantity: 1, amountUSDMicros: "41000000" },
+    { kind: "storage", description: "持久存储", quantity: 1, amountUSDMicros: "6580000" },
+    { kind: "runtime_release", description: "应用产品费用", quantity: 1, amountUSDMicros: "5000000" }
+  ],
+  totalUSDMicros: "52580000", status: "offered", expiresAt: "2099-01-01T00:00:00Z",
+  createdAt: "2026-11-12T00:00:00Z", runtimeReadbackRequirement: "required"
+};
+const launchSourcePaths = {
+  agent: "/api/v2/capability-versions", app: "/api/v2/catalog/runtime-versions",
+  plans: "/api/v2/catalog/compute-plans", models: "/api/v2/catalog/models", wallet: "/api/v2/wallet"
+} as const;
+type LaunchSource = keyof typeof launchSourcePaths;
+interface NativeLaunchFixtureOptions {
+  failures?: LaunchSource[];
+  held?: Partial<Record<LaunchSource, ReturnType<typeof deferred>>>;
+  computePlans?: ComputePlanDTO[];
+  runtimeVersions?: RuntimeVersionDTO[];
+  capabilities?: CapabilityVersionDTO[];
+  quote?: WorkspaceQuoteDTO;
+  quoteUnavailable?: boolean;
+  heldQuote?: { requested: ReturnType<typeof deferred>; release: ReturnType<typeof deferred> };
+  fromList?: boolean;
+}
+
+async function openNativeLaunchFixture(t: TestContext, options: NativeLaunchFixtureOptions = {}) {
   const demo = await startCloudConsoleDemo();
   const browser = await launchBrowser({ headless: true });
-  try {
-    const page = await browser.newPage({ viewport: viewports[0] });
-    const audit = await installBrowserAudit(page, demo.origin);
-    await page.route("**/api/v2/**", async (route) => {
-      const request = route.request();
-      const path = new URL(request.url()).pathname;
-      if (path === "/api/v2/auth/session") return route.fulfill({ json: { actorId: "user-customer", tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
-      if (path === "/api/v2/workspaces" && request.method() === "GET") return route.fulfill({ json: { items: [{ id: "workspace-existing", name: "Existing", computePlanId: "compute-1", storagePlanId: "storage-1", deliveryModel: "agent_saas", status: "active", resourceReadiness: "ready", applicationAvailability: "available", currentPeriodEnd: "2026-10-27T00:00:00Z", createdAt: "2026-09-27T00:00:00Z", updatedAt: "2026-09-27T00:00:00Z", version: "1" }] } });
-      if (path === "/api/v2/capability-versions") return route.fulfill({ json: { items: [] } });
-      if (path === "/api/v2/catalog/runtime-versions") return route.fulfill({ json: { items: [{ id: "runtime-1", name: "Default App", versionLabel: "App 1.0", status: "approved", artifactDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" }] } });
-      if (path === "/api/v2/catalog/compute-plans") return route.fulfill({ json: { items: [{ id: "compute-1", name: "Compute Standard", vcpus: 2, memoryMiB: 4096, availability: "available", billingMode: "prepaid_monthly" }] } });
-      if (path === "/api/v2/catalog/storage-plans") return route.fulfill({ json: { items: [{ id: "storage-1", name: "Storage Standard", capacityGiB: 50, availability: "available", billingMode: "prepaid_monthly" }] } });
-      if (path === "/api/v2/catalog/models") return route.fulfill({ json: { items: [{ id: "model-1", name: "IBD Model", capabilities: ["chat"], available: true, inputPricePerMillionTokensUSDMicros: "1", outputPricePerMillionTokensUSDMicros: "2", priceSource: "gateway", fetchedAt: "2026-09-27T00:00:00Z" }] } });
-      if (path === "/api/v2/wallet") return route.fulfill({ json: { source: "gateway", status: "available", balanceUSDMicros: "100000000", currency: "USD", fetchedAt: "2026-09-27T00:00:00Z" } });
-      if (path === "/api/v2/quotes" && request.method() === "POST") {
-        assert.deepEqual(request.postDataJSON(), { purpose: "deploy", applicationSelection: { kind: "opl_app", runtimeVersionId: "runtime-1" }, computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [], periodMonths: 1 });
-        return route.fulfill({ status: 201, json: { id: "quote-1", purpose: "deploy", runtimeVersionId: "runtime-1", computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [], periodMonths: 1, periodStart: "2026-09-27T00:00:00Z", periodEnd: "2026-10-27T00:00:00Z", pricePolicyVersionId: "price-1", refundPolicyVersionId: "refund-1", retentionPolicyVersionId: "retention-1", refundTerms: "按报价政策处理退款。", retentionTerms: "数据保留按报价政策执行。", lineItems: [{ kind: "runtime_release", description: "默认 OPL App 运行时", quantity: 1, amountUSDMicros: "1000000" }], totalUSDMicros: "1000000", status: "offered", expiresAt: "2099-01-01T00:00:00Z" } });
+  t.after(async () => {
+    Object.values(options.held ?? {}).forEach((gate) => gate.resolve());
+    options.heldQuote?.release.resolve();
+    await browser.close();
+    await demo.close();
+  });
+  const page = await browser.newPage({ viewport: viewports[0] });
+  page.setDefaultTimeout(10_000);
+  const audit = await installBrowserAudit(page, demo.origin);
+  const reads: string[] = [];
+  const quoteRequests: WorkspaceQuoteRequestDTO[] = [];
+  const createRequests: unknown[] = [];
+  const unexpectedRequests: string[] = [];
+  const sources: Record<LaunchSource, unknown> = {
+    agent: { items: options.capabilities ?? [fixedLaunchAgent] },
+    app: { items: options.runtimeVersions ?? [fixedLaunchRuntime] },
+    plans: { items: options.computePlans ?? fixedLaunchPlans },
+    models: { items: [{ id: "model-1", name: "Research Model", capabilities: ["chat"], available: true, fetchedAt: "2026-11-12T00:00:00Z" }] },
+    wallet: { source: "gateway", status: "available", balanceUSDMicros: "200000000", currency: "USD", fetchedAt: "2026-11-12T00:00:00Z" }
+  };
+  await page.route("**/api/v2/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const path = url.pathname;
+    if (path === "/api/v2/auth/session") return route.fulfill({ json: { actorId: "user-customer", tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
+    const source = (Object.keys(launchSourcePaths) as LaunchSource[]).find((key) => launchSourcePaths[key] === path);
+    if (source) {
+      reads.push(`${request.method()} ${path}${url.search}`);
+      await options.held?.[source]?.promise;
+      if (options.failures?.includes(source)) return route.fulfill({ status: 503, json: { code: "DEPENDENCY_UNAVAILABLE", message: `${source} fixture unavailable` } });
+      return route.fulfill({ json: sources[source] });
+    }
+    if (path === "/api/v2/quotes" && request.method() === "POST") {
+      quoteRequests.push(request.postDataJSON() as WorkspaceQuoteRequestDTO);
+      if (quoteRequests.length === 1 && options.heldQuote) {
+        options.heldQuote.requested.resolve();
+        await options.heldQuote.release.promise;
       }
-      return route.fulfill({ status: 404, json: { error: "unexpected_v2_route", path } });
-    });
-    await loginCloudFixture(page, demo.origin);
+      if (options.quoteUnavailable) return route.fulfill({ status: 503, json: { code: "DEPENDENCY_UNAVAILABLE", message: "Catalog quote unavailable" } });
+      return route.fulfill({ status: 201, json: options.quote ?? fixedLaunchQuote });
+    }
+    if (path === "/api/v2/workspaces" && request.method() === "GET") return route.fulfill({ json: { items: [{ id: "workspace-existing", name: "Existing", computePlanId: "cp-7f21", storagePlanId: "vol-9d12", deliveryModel: "agent_saas", status: "active", resourceReadiness: "ready", applicationAvailability: "available", currentPeriodEnd: "2026-12-12T00:00:00Z", createdAt: "2026-11-12T00:00:00Z", updatedAt: "2026-11-12T00:00:00Z", version: "1" }] } });
+    if (path === "/api/v2/workspaces" && request.method() === "POST") createRequests.push(request.postDataJSON());
+    unexpectedRequests.push(`${request.method()} ${path}${url.search}`);
+    return route.fulfill({ status: 404, json: { error: "unexpected_v2_route", path } });
+  });
+  await loginCloudFixture(page, demo.origin);
+  if (options.fromList) {
     await page.goto(`${demo.origin}/console/workspaces`, { waitUntil: "networkidle" });
     await page.locator(".workspace-list-row").first().waitFor({ state: "visible" });
     await page.getByRole("button", { name: "新建工作空间", exact: true }).click();
     await page.waitForURL((url) => url.pathname === "/console/workspaces/new");
-    await page.getByRole("heading", { name: "新建 Agent Workspace", exact: true }).waitFor({ state: "visible", timeout: 10_000 });
-    await page.getByLabel("工作空间名称").fill("Default App Confirm");
-    await page.getByText("默认 OPL App", { exact: true }).click();
-    await page.getByLabel("Runtime Release", { exact: true }).selectOption("runtime-1");
-    await page.getByRole("button", { name: "获取准确报价", exact: true }).click();
-    await page.getByRole("heading", { name: "确认准确报价与部署条款", exact: true }).waitFor({ state: "visible" });
-    const confirm = page.locator(".launch-confirm-list");
-    const releaseRow = confirm.locator("div").filter({ hasText: "Runtime Release" }).first();
-    await releaseRow.waitFor({ state: "visible" });
-    assert.equal((await releaseRow.locator("dd").innerText()).trim(), "App 1.0");
-    assert.equal(await confirm.getByText("Agent 版本", { exact: true }).count(), 0, "the default App confirm step must not render the Agent CapabilityVersion row");
-    assertBrowserAuditClean(audit);
-  } finally {
-    await browser.close();
-    await demo.close();
+  } else {
+    // A held optional source intentionally prevents networkidle; prove the
+    // interactive page using its actual controls while those requests remain open.
+    await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "domcontentloaded" });
   }
+  await page.getByRole("heading", { name: "新建工作空间", exact: true }).waitFor();
+  return { page, audit, reads, quoteRequests, createRequests, unexpectedRequests };
+}
+
+function assertNativeLaunchFixtureClean(fixture: Awaited<ReturnType<typeof openNativeLaunchFixture>>, expected503s = 0) {
+  assert.deepEqual(fixture.unexpectedRequests, [], "launch must not request independent storage or per-pair pricing");
+  assert.deepEqual(fixture.reads.toSorted(), [
+    `GET ${launchSourcePaths.agent}?status=ready&limit=100`,
+    `GET ${launchSourcePaths.app}?limit=100`,
+    `GET ${launchSourcePaths.plans}?limit=100`,
+    `GET ${launchSourcePaths.models}?limit=100`,
+    `GET ${launchSourcePaths.wallet}`,
+    `GET ${launchSourcePaths.wallet}`
+  ].toSorted(), "catalogs are read once with only owner pagination/status parameters; Gateway account and launch each read their wallet");
+  assert.equal(fixture.audit.consoleErrors.length, expected503s);
+  assert.ok(fixture.audit.consoleErrors.every((message) => message.includes("503 (Service Unavailable)")));
+  assertBrowserAuditClean({ ...fixture.audit, consoleErrors: [] });
+}
+
+async function waitForLaunchQuoteButton(page: Page, enabled: boolean) {
+  await page.waitForFunction((expected) => [...document.querySelectorAll<HTMLButtonElement>("button")].some((button) => button.textContent === "查看报价" && button.disabled === !expected), enabled);
+}
+
+function defaultAppQuoteRequest(runtimeVersionId = "runtime-1"): WorkspaceQuoteRequestDTO {
+  return { purpose: "deploy", applicationSelection: { kind: "opl_app", runtimeVersionId }, computePlanId: "cp-7f21", storagePlanId: "vol-9d12", modelSelections: [], periodMonths: 1 };
+}
+
+function launchSummaryFact(page: Page, name: string) {
+  return page.locator(".workspace-order-summary__facts > div").filter({ has: page.locator("dt").getByText(name, { exact: true }) }).locator("dd");
+}
+
+test("launch selects fixed all-inclusive Basic/Pro offers by exact pair, rejects late quotes and confirms the default App", { timeout: 60_000 }, async (t) => {
+  const heldQuote = { requested: deferred(), release: deferred() };
+  const proQuote: WorkspaceQuoteDTO = {
+    ...fixedLaunchQuote, id: "quote-fixed-pro", computePlanId: "cp-3c90", storagePlanId: "vol-8e66", pricePolicyVersionId: "fixture-pro-151", totalUSDMicros: "123450000",
+    lineItems: [
+      { kind: "compute", description: "计算资源", quantity: 1, amountUSDMicros: "101130000" },
+      { kind: "storage", description: "持久存储", quantity: 1, amountUSDMicros: "17310000" },
+      { kind: "runtime_release", description: "应用产品费用", quantity: 1, amountUSDMicros: "5010000" }
+    ]
+  };
+  const fixture = await openNativeLaunchFixture(t, { capabilities: [], quote: proQuote, heldQuote, fromList: true });
+  const { page, quoteRequests, createRequests } = fixture;
+  assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
+  const plans = page.getByRole("radiogroup", { name: "工作空间套餐", exact: true });
+  await plans.getByRole("radio", { name: /Basic.*含 37 GiB 存储.*\$52\.58/ }).waitFor();
+  assert.match(await plans.innerText(), /2 核 · 4 GiB/);
+  assert.match(await plans.innerText(), /8 核 · 16 GiB/);
+  assert.equal(await plans.getByRole("radio").count(), 3);
+  await plans.getByRole("radio", { name: /Basic.*含 113 GiB 存储.*\$61\.29/ }).waitFor();
+  await plans.getByRole("radio", { name: /Pro.*含 151 GiB 存储.*\$123\.45/ }).waitFor();
+  assert.equal(await page.getByRole("radiogroup", { name: "计算套餐", exact: true }).count(), 0);
+  assert.equal(await page.getByLabel("存储套餐", { exact: true }).count(), 0);
+  assert.equal(await page.getByLabel("应用版本", { exact: true }).count(), 0, "one Runtime release needs no selector");
+  assert.equal(await launchSummaryFact(page, "每月合计").innerText(), "$52.58", "the owner offer already includes compute, storage and product fees");
+  assert.equal(await launchSummaryFact(page, "包含存储").innerText(), "37 GiB");
+  await page.getByLabel("工作空间名称").fill("Default App Confirm");
+  await waitForLaunchQuoteButton(page, true);
+  assert.equal(await page.getByRole("button", { name: "确认并开通工作空间", exact: true }).count(), 0);
+  assert.deepEqual(quoteRequests, [], "an offer is not a Catalog Quote");
+  await page.getByText("已构建智能体", { exact: true }).click();
+  await page.getByRole("link", { name: "前往构建", exact: true }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
+  await page.getByText("OPL App", { exact: true }).click();
+  await plans.getByRole("radio", { name: /Basic.*含 113 GiB/ }).check();
+  assert.equal(await launchSummaryFact(page, "每月合计").innerText(), "$61.29");
+  assert.equal(await launchSummaryFact(page, "包含存储").innerText(), "113 GiB");
+  await plans.getByRole("radio", { name: /Pro/ }).check();
+  assert.equal(await launchSummaryFact(page, "每月合计").innerText(), "$123.45");
+  assert.equal(await launchSummaryFact(page, "包含存储").innerText(), "151 GiB");
+  await page.getByRole("button", { name: "查看报价", exact: true }).click();
+  await heldQuote.requested.promise;
+  const expectedRequest = { ...defaultAppQuoteRequest(), computePlanId: "cp-3c90", storagePlanId: "vol-8e66" };
+  assert.deepEqual(quoteRequests, [expectedRequest]);
+  assert.equal(await page.getByRole("heading", { name: "确认订单", exact: true }).count(), 0, "pending quote cannot be bypassed with an offer price");
+  await page.getByText("已构建智能体", { exact: true }).click();
+  await page.getByText("OPL App", { exact: true }).click();
+  heldQuote.release.resolve();
+  await waitForLaunchQuoteButton(page, true);
+  assert.equal(await page.getByRole("heading", { name: "确认订单", exact: true }).count(), 0, "a late quote must not restore the prior selection's review even after switching back");
+  assert.equal(quoteRequests.length, 1);
+  await page.getByRole("button", { name: "查看报价", exact: true }).click();
+  await page.getByRole("heading", { name: "确认订单", exact: true }).waitFor();
+  assert.deepEqual(quoteRequests, [expectedRequest, expectedRequest]);
+  const confirm = page.locator(".launch-confirm-list");
+  assert.equal(await confirm.locator("div").filter({ hasText: "应用版本" }).locator("dd").innerText(), "App 1.0");
+  assert.equal(await confirm.getByText("智能体版本", { exact: true }).count(), 0, "the default App confirm step must not render the Agent CapabilityVersion row");
+  assert.equal(await confirm.locator("div").filter({ hasText: "工作空间套餐" }).locator("dd").innerText(), "Pro");
+  assert.equal(await confirm.locator("div").filter({ hasText: "包含存储" }).locator("dd").innerText(), "151 GiB");
+  const order = page.locator(".workspace-order-summary");
+  assert.equal(await order.locator("header strong").innerText(), "$123.45");
+  for (const [label, amount] of [["计算资源", "$101.13"], ["持久存储", "$17.31"], ["应用产品费用", "$5.01"]]) {
+    assert.equal(await launchSummaryFact(page, label).innerText(), amount);
+  }
+  assert.equal(await page.getByRole("button", { name: "确认并开通工作空间", exact: true }).isDisabled(), true);
+  assert.equal(createRequests.length, 0, "quote review must not purchase a workspace");
+  await page.getByRole("checkbox", { name: /我确认以上配置/ }).check();
+  assert.equal(await page.getByRole("button", { name: "确认并开通工作空间", exact: true }).isEnabled(), true);
+  await page.getByRole("button", { name: "返回修改", exact: true }).click();
+  await page.getByText("已构建智能体", { exact: true }).click();
+  assert.equal(await page.getByRole("heading", { name: "确认订单", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("checkbox", { name: /我确认以上配置/ }).count(), 0);
+  assert.equal(createRequests.length, 0);
+  assertNativeLaunchFixtureClean(fixture);
+});
+
+test("default App quotes while Agent and model owners return 503; failed Agent stays blocked", { timeout: 45_000 }, async (t) => {
+  const fixture = await openNativeLaunchFixture(t, { failures: ["agent", "models"] });
+  const { page, quoteRequests } = fixture;
+  await page.getByLabel("工作空间名称").fill("Independent App");
+  await waitForLaunchQuoteButton(page, true);
+  assert.equal(await launchSummaryFact(page, "每月合计").innerText(), "$52.58");
+  assert.equal(await launchSummaryFact(page, "钱包余额").innerText(), "$200.00");
+  assert.equal(await page.getByText("开通入口暂不可用", { exact: true }).count(), 0);
+  await page.getByText("已构建智能体", { exact: true }).click();
+  await page.getByText("智能体目录暂不可用", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
+  assert.equal(await launchSummaryFact(page, "每月合计").innerText(), "$52.58");
+  assert.equal(quoteRequests.length, 0);
+  await page.getByText("OPL App", { exact: true }).click();
+  await page.getByRole("button", { name: "查看报价", exact: true }).click();
+  await page.getByRole("heading", { name: "确认订单", exact: true }).waitFor();
+  assert.deepEqual(quoteRequests, [defaultAppQuoteRequest()]);
+  assert.equal(fixture.createRequests.length, 0);
+  assertNativeLaunchFixtureClean(fixture, 2);
+});
+
+test("pending Agent and model reads cannot hold App, offers or wallet behind allSettled", { timeout: 45_000 }, async (t) => {
+  const held = { agent: deferred(), models: deferred() };
+  const fixture = await openNativeLaunchFixture(t, { held });
+  const { page } = fixture;
+  const settled: string[] = [];
+  page.on("response", (response) => {
+    if (new URL(response.url()).pathname === launchSourcePaths.agent || new URL(response.url()).pathname === launchSourcePaths.models) settled.push(new URL(response.url()).pathname);
+  });
+  await page.getByLabel("工作空间名称").fill("App without optional owners");
+  await waitForLaunchQuoteButton(page, true);
+  assert.equal(await page.getByText("正在加载应用与套餐", { exact: true }).count(), 0, "compute readiness clears its own loading indicator");
+  assert.equal(await launchSummaryFact(page, "钱包余额").innerText(), "$200.00");
+  await page.getByRole("button", { name: "查看报价", exact: true }).click();
+  await page.getByRole("heading", { name: "确认订单", exact: true }).waitFor();
+  assert.deepEqual(settled, [], "App must have a real Catalog Quote before either optional read completes");
+  assert.deepEqual(fixture.quoteRequests, [defaultAppQuoteRequest()]);
+  assert.equal(fixture.createRequests.length, 0);
+  const responses = Promise.all([page.waitForResponse((response) => new URL(response.url()).pathname === launchSourcePaths.agent), page.waitForResponse((response) => new URL(response.url()).pathname === launchSourcePaths.models)]);
+  held.agent.resolve(); held.models.resolve();
+  await responses;
+  assert.equal(await page.getByRole("heading", { name: "确认订单", exact: true }).isVisible(), true);
+  assertNativeLaunchFixtureClean(fixture);
+});
+
+for (const requirements of [[], [{ slot: "optional-chat", required: false, capability: "chat", allowedModelIds: ["model-1"] }]] satisfies CapabilityVersionDTO["modelRequirements"][]) {
+  test(`App 503 preserves a ready Agent without required models (${requirements.length ? "optional slot" : "no slots"}) even when models return 503`, { timeout: 45_000 }, async (t) => {
+    const fixture = await openNativeLaunchFixture(t, {
+      failures: ["app", "models"], capabilities: [{ ...fixedLaunchAgent, modelRequirements: requirements }],
+      quote: { ...fixedLaunchQuote, runtimeVersionId: undefined, capabilityVersionId: "cap-ready-1" }
+    });
+    const { page } = fixture;
+    await page.getByText("应用目录暂不可用", { exact: true }).waitFor();
+    await page.getByLabel("工作空间名称").fill("Independent Agent");
+    await page.getByRole("radiogroup", { name: "工作空间套餐", exact: true }).getByRole("radio", { name: /Basic.*37 GiB/ }).waitFor();
+    assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true, "failed selected App must not borrow the Agent's readiness");
+    assert.equal(await launchSummaryFact(page, "钱包余额").innerText(), "$200.00");
+    assert.equal(fixture.quoteRequests.length, 0);
+    await page.getByText("已构建智能体", { exact: true }).click();
+    await page.getByLabel("智能体版本", { exact: true }).selectOption("cap-ready-1");
+    await waitForLaunchQuoteButton(page, true);
+    await page.getByRole("button", { name: "查看报价", exact: true }).click();
+    await page.getByRole("heading", { name: "确认订单", exact: true }).waitFor();
+    assert.deepEqual(fixture.quoteRequests, [{ ...defaultAppQuoteRequest(), applicationSelection: { kind: "agent", capabilityVersionId: "cap-ready-1" } }]);
+    assert.equal(fixture.createRequests.length, 0);
+    assertNativeLaunchFixtureClean(fixture, 2);
+  });
+}
+
+test("required-model Agent cannot quote after model 503 while App, offer and wallet remain usable", { timeout: 45_000 }, async (t) => {
+  const fixture = await openNativeLaunchFixture(t, { failures: ["models"], capabilities: [{ ...fixedLaunchAgent, modelRequirements: [{ slot: "required-chat", required: true, capability: "chat", allowedModelIds: ["model-1"] }] }] });
+  const { page } = fixture;
+  await page.getByLabel("工作空间名称").fill("Required models");
+  await waitForLaunchQuoteButton(page, true);
+  await page.getByText("已构建智能体", { exact: true }).click();
+  await page.getByText("模型目录暂不可用", { exact: true }).waitFor();
+  assert.equal(await page.getByLabel("智能体版本", { exact: true }).inputValue(), "cap-ready-1");
+  assert.equal(await page.getByLabel("required-chat", { exact: true }).getByRole("option").count(), 1);
+  assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
+  assert.equal(await launchSummaryFact(page, "每月合计").innerText(), "$52.58");
+  assert.equal(await launchSummaryFact(page, "钱包余额").innerText(), "$200.00");
+  assert.equal(fixture.quoteRequests.length, 0);
+  await page.getByText("OPL App", { exact: true }).click();
+  await page.getByRole("button", { name: "查看报价", exact: true }).click();
+  await page.getByRole("heading", { name: "确认订单", exact: true }).waitFor();
+  assert.deepEqual(fixture.quoteRequests, [defaultAppQuoteRequest()]);
+  assertNativeLaunchFixtureClean(fixture, 1);
+});
+
+test("wallet 503 blocks App and ready Agent quotes while their catalogs and offers remain visible", { timeout: 45_000 }, async (t) => {
+  const fixture = await openNativeLaunchFixture(t, { failures: ["wallet"] });
+  const { page } = fixture;
+  await page.getByText("钱包暂不可用，请刷新后重试。", { exact: true }).waitFor();
+  await page.getByLabel("工作空间名称").fill("No wallet authority");
+  assert.equal(await launchSummaryFact(page, "每月合计").innerText(), "$52.58");
+  assert.equal(await launchSummaryFact(page, "钱包余额").innerText(), "暂不可用");
+  assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
+  await page.getByText("已构建智能体", { exact: true }).click();
+  await page.getByLabel("智能体版本", { exact: true }).selectOption("cap-ready-1");
+  assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
+  assert.equal(fixture.quoteRequests.length, 0);
+  assert.equal(fixture.createRequests.length, 0);
+  assertNativeLaunchFixtureClean(fixture, 2);
+});
+
+for (const workspaceOffers of [undefined, []] satisfies Array<ComputePlanDTO["workspaceOffers"]>) {
+  test(`unpriced plan (${workspaceOffers ? "empty offers" : "absent offers"}) stays disabled despite legacy unit prices and has no independent storage selector`, { timeout: 45_000 }, async (t) => {
+    const fixture = await openNativeLaunchFixture(t, { computePlans: [{ ...fixedLaunchPlans[0], workspaceOffers, monthlyPriceUSDMicros: "17000000", pricePolicyVersionId: "legacy-compute-only" }] });
+    const { page } = fixture;
+    const plans = page.getByRole("radiogroup", { name: "工作空间套餐", exact: true });
+    await plans.getByText("套餐待配置", { exact: true }).waitFor();
+    await page.getByLabel("工作空间名称").fill("No priced pair");
+    assert.equal(await plans.getByRole("radio").count(), 1);
+    assert.equal(await plans.getByRole("radio").isDisabled(), true);
+    assert.equal(await plans.getByRole("radio").isChecked(), false);
+    assert.equal(await page.getByLabel("存储套餐", { exact: true }).count(), 0);
+    assert.doesNotMatch(await plans.innerText(), /\$17\.00/);
+    assert.equal(await launchSummaryFact(page, "每月合计").innerText(), "未选择");
+    assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole("button", { name: "确认并开通工作空间", exact: true }).count(), 0);
+    assert.equal(fixture.quoteRequests.length, 0);
+    assert.equal(fixture.createRequests.length, 0);
+    assertNativeLaunchFixtureClean(fixture);
+  });
+}
+
+test("compute catalog 503 preserves App and ready Agent data but cannot invent a priced pair", { timeout: 45_000 }, async (t) => {
+  const fixture = await openNativeLaunchFixture(t, { failures: ["plans"] });
+  const { page } = fixture;
+  await page.getByText("开通入口暂不可用", { exact: true }).waitFor();
+  await page.getByLabel("工作空间名称").fill("No Catalog authority");
+  await page.locator(".workspace-order-summary header").getByText("版本 App 1.0", { exact: true }).waitFor();
+  assert.equal(await launchSummaryFact(page, "钱包余额").innerText(), "$200.00");
+  assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
+  await page.getByText("已构建智能体", { exact: true }).click();
+  await page.getByLabel("智能体版本", { exact: true }).selectOption("cap-ready-1");
+  assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
+  assert.equal(fixture.quoteRequests.length, 0);
+  assertNativeLaunchFixtureClean(fixture, 1);
+});
+
+test("Catalog Quote 503 cannot be bypassed with the fixed monthly offer", { timeout: 45_000 }, async (t) => {
+  const fixture = await openNativeLaunchFixture(t, { quoteUnavailable: true });
+  const { page } = fixture;
+  await page.getByLabel("工作空间名称").fill("Quote required");
+  await waitForLaunchQuoteButton(page, true);
+  await page.getByRole("button", { name: "查看报价", exact: true }).click();
+  await waitForLaunchQuoteButton(page, true);
+  assert.deepEqual(fixture.quoteRequests, [defaultAppQuoteRequest()]);
+  assert.equal(await launchSummaryFact(page, "每月合计").innerText(), "$52.58");
+  assert.equal(await page.getByRole("heading", { name: "确认订单", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("checkbox", { name: /我确认以上配置/ }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "确认并开通工作空间", exact: true }).count(), 0);
+  assert.equal(fixture.createRequests.length, 0);
+  assertNativeLaunchFixtureClean(fixture, 1);
+});
+
+test("multiple App versions stay in collapsed details and quote the explicitly selected Runtime", { timeout: 45_000 }, async (t) => {
+  const fixture = await openNativeLaunchFixture(t, {
+    runtimeVersions: [fixedLaunchRuntime, { ...fixedLaunchRuntime, id: "runtime-2", versionLabel: "App 2.0", defaultForNewBuilds: false }],
+    quote: { ...fixedLaunchQuote, runtimeVersionId: "runtime-2" }
+  });
+  const { page } = fixture;
+  const details = page.locator("details").filter({ has: page.locator("summary").getByText(/应用版本/) });
+  await details.waitFor();
+  assert.equal(await details.evaluate((element: HTMLDetailsElement) => element.open), false);
+  assert.equal(await page.getByLabel("应用版本", { exact: true }).isVisible(), false);
+  await page.getByLabel("工作空间名称").fill("Explicit App version");
+  await waitForLaunchQuoteButton(page, true);
+  assert.equal(await page.locator(".workspace-order-summary header strong").innerText(), fixedLaunchRuntime.name);
+  assert.equal(await page.locator(".workspace-order-summary header span").innerText(), "版本 App 1.0");
+  await details.locator("summary").click();
+  const versions = details.getByLabel("应用版本", { exact: true });
+  assert.equal(await versions.inputValue(), "runtime-1");
+  await versions.selectOption("runtime-2");
+  assert.equal(await page.locator(".workspace-order-summary header strong").innerText(), fixedLaunchRuntime.name);
+  assert.equal(await page.locator(".workspace-order-summary header span").innerText(), "版本 App 2.0");
+  await page.getByRole("button", { name: "查看报价", exact: true }).click();
+  await page.getByRole("heading", { name: "确认订单", exact: true }).waitFor();
+  assert.deepEqual(fixture.quoteRequests, [defaultAppQuoteRequest("runtime-2")]);
+  assert.equal(await page.locator(".launch-confirm-list").locator("div").filter({ hasText: "应用版本" }).locator("dd").innerText(), "App 2.0");
+  assert.equal(fixture.createRequests.length, 0);
+  assertNativeLaunchFixtureClean(fixture);
 });
 
 test("Workspace detail fails closed without exposing Runtime or delete reason codes by default", { timeout: 30_000 }, async () => {
@@ -891,8 +1256,7 @@ test("v2 operation refresh keeps the original order and never opens before Serve
       if (url.pathname === "/api/v2/auth/session") return route.fulfill({ json: { actorId: "user-customer", tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
       if (url.pathname === "/api/v2/capability-versions") return route.fulfill({ json: { items: [{ id: "cap-1", versionLabel: "Agent", artifactDigest: "sha256:x", status: "ready", provenance: "build", modelRequirements: [] }] } });
       if (url.pathname === "/api/v2/catalog/runtime-versions") return route.fulfill({ json: { items: [{ id: "runtime-1", name: "Default App", versionLabel: "App 1.0", artifactDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", status: "approved", defaultForNewBuilds: true }] } });
-      if (url.pathname === "/api/v2/catalog/compute-plans") return route.fulfill({ json: { items: [{ id: "compute-1", name: "Compute", vcpus: 2, memoryMiB: 1024, availability: "available", billingMode: "prepaid_monthly" }] } });
-      if (url.pathname === "/api/v2/catalog/storage-plans") return route.fulfill({ json: { items: [{ id: "storage-1", name: "Storage", capacityGiB: 10, availability: "available", billingMode: "prepaid_monthly" }] } });
+      if (url.pathname === "/api/v2/catalog/compute-plans") return route.fulfill({ json: { items: [{ id: "compute-1", name: "Compute", vcpus: 2, memoryMiB: 1024, availability: "available", billingMode: "prepaid_monthly", workspaceOffers: [{ storagePlanId: "storage-1", storageName: "Storage", storageCapacityGiB: 10, pricePolicyVersionId: "p", monthlyUSDMicros: "1" }] } satisfies ComputePlanDTO] } });
       if (url.pathname === "/api/v2/catalog/models") return route.fulfill({ json: { items: [{ id: "model-1", name: "Model", capabilities: [], available: true, inputPricePerMillionTokensUSDMicros: "1", outputPricePerMillionTokensUSDMicros: "1", priceSource: "gateway", fetchedAt: "2026-09-27T00:00:00Z" }] } });
       if (url.pathname === "/api/v2/wallet") return route.fulfill({ json: { source: "gateway", status: "available", balanceUSDMicros: "100000000", currency: "USD", fetchedAt: "2026-09-27T00:00:00Z" } });
       if (url.pathname === "/api/v2/quotes" && request.method() === "POST") return route.fulfill({ status: 201, json: { id: "quote-refresh", purpose: "deploy", capabilityVersionId: "cap-1", computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [], periodMonths: 1, periodStart: "2026-09-27T00:00:00Z", periodEnd: "2026-10-27T00:00:00Z", pricePolicyVersionId: "p", refundPolicyVersionId: "r", retentionPolicyVersionId: "t", refundTerms: "refund", retentionTerms: "retention", expectedInterruption: "none", lineItems: [], totalUSDMicros: "1", status: "offered", expiresAt: "2099-01-01T00:00:00Z", createdAt: "2026-09-27T00:00:00Z", runtimeReadbackRequirement: "required" } });
@@ -907,17 +1271,17 @@ test("v2 operation refresh keeps the original order and never opens before Serve
     await loginCloudFixture(page, demo.origin);
     await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
     await page.getByLabel("工作空间名称").fill("Refresh");
-    await page.getByText("已构建 Agent", { exact: true }).click();
-    await page.getByRole("button", { name: "获取准确报价", exact: true }).click();
-    await page.getByRole("heading", { name: "确认准确报价与部署条款", exact: true }).waitFor();
-    await page.getByRole("checkbox", { name: /我确认以上 Agent/ }).check();
-    await page.getByRole("button", { name: "确认并开通 Workspace", exact: true }).click();
-    await page.getByText("Serve confirmed access 未确认，暂不开放 WebUI。", { exact: true }).waitFor({ state: "visible", timeout: 5_000 });
-    assert.equal(await page.getByRole("button", { name: "打开 Agent WebUI", exact: true }).count(), 0);
+    await page.getByText("已构建智能体", { exact: true }).click();
+    await page.getByRole("button", { name: "查看报价", exact: true }).click();
+    await page.getByRole("heading", { name: "确认订单", exact: true }).waitFor();
+    await page.getByRole("checkbox", { name: /我确认以上配置/ }).check();
+    await page.getByRole("button", { name: "确认并开通工作空间", exact: true }).click();
+    await page.getByText("应用访问尚未确认，请稍后刷新。", { exact: true }).waitFor({ state: "visible", timeout: 5_000 });
+    assert.equal(await page.getByRole("button", { name: "打开应用", exact: true }).count(), 0);
     assert.equal(createWrites, 1);
     assert.ok(operationReads >= 1);
     await page.getByRole("button", { name: "刷新状态", exact: true }).click();
-    await page.getByText("Serve confirmed access 未确认，暂不开放 WebUI。", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("应用访问尚未确认，请稍后刷新。", { exact: true }).waitFor({ state: "visible" });
     assert.equal(createWrites, 1);
     assert.ok(audit.consoleErrors.every((message) => message.includes("503 (Service Unavailable)")));
     audit.consoleErrors.length = 0;

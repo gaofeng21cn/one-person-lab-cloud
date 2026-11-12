@@ -53,9 +53,10 @@ const (
 )
 
 type memberSystem struct {
-	db     *sql.DB
-	client api.TenantProductServiceClient
-	auth   api.CloudIdentityAuthorizationClient
+	db      *sql.DB
+	client  api.TenantProductServiceClient
+	auth    api.CloudIdentityAuthorizationClient
+	service *identity.Service
 }
 
 func newMemberSystem(t *testing.T) memberSystem {
@@ -178,7 +179,7 @@ func newMemberSystem(t *testing.T) memberSystem {
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { authConn.Close() })
-	return memberSystem{db: db, client: api.NewTenantProductServiceClient(conn), auth: api.NewCloudIdentityAuthorizationClient(authConn)}
+	return memberSystem{db: db, client: api.NewTenantProductServiceClient(conn), auth: api.NewCloudIdentityAuthorizationClient(authConn), service: s}
 }
 
 // memberLogin authenticates one Gateway subject through the real login path and

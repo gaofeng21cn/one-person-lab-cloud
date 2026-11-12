@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	api "opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/publicjson"
 )
 
 // availability collapses the stored plan status and the plan's own validity
@@ -51,6 +52,23 @@ func storageBillingEnum(v string) api.StoragePlanBillingModeEnum {
 
 type rowScanner interface{ Scan(...any) error }
 
+// planPriceRow reads the optional price columns alongside a plan in the same
+// database snapshot. NULL means no effective exact-pair price; zero is a price.
+type planPriceRow struct {
+	rowScanner
+	amount   sql.NullInt64
+	policyID sql.NullString
+	offers   *[]byte
+}
+
+func (r *planPriceRow) Scan(dest ...any) error {
+	dest = append(dest, &r.amount, &r.policyID)
+	if r.offers != nil {
+		dest = append(dest, r.offers)
+	}
+	return r.rowScanner.Scan(dest...)
+}
+
 func nullOrZero(v sql.NullTime) time.Time {
 	if v.Valid {
 		return v.Time
@@ -59,6 +77,14 @@ func nullOrZero(v sql.NullTime) time.Time {
 }
 
 const computePlanCols = `p.id,p.name,p.vcpus,p.memory_mib,p.status,p.billing_mode,p.provider_capability_version,p.valid_from,p.valid_until,p.created_at`
+
+// Plan-pair compatibility belongs to Catalog. Policy admission, offer reads
+// and quote snapshots use this predicate over compute alias p and storage alias s.
+const compatiblePlanPairSQL = `p.provider=s.provider
+	AND p.provider_profile_ref=s.provider_profile_ref
+	AND p.region=s.region
+	AND p.billing_mode=s.billing_mode
+	AND p.provider_capability_version=s.provider_capability_version`
 
 func scanComputePlan(row rowScanner, now time.Time) (*api.ComputePlan, error) {
 	var (
@@ -90,16 +116,60 @@ func (s *Service) ListComputePlans(ctx context.Context, r *api.ListComputePlansR
 	}
 	n := limit(r.GetQueryLimit())
 	now := time.Now().UTC()
-	rows, err := s.DB.QueryContext(ctx, `SELECT `+computePlanCols+` FROM resource_catalog.compute_plans p WHERE p.id>$1 ORDER BY p.id LIMIT $2`, r.GetQueryCursor(), n+1)
+	// Select the latest version before checking its expiry: an expired current
+	// policy must not expose an older rate. Without the other plan ID the join
+	// yields NULL price fields rather than choosing a different combination.
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+computePlanCols+`,price.compute_monthly_usd_micros,price.id,COALESCE(offers.items,'[]'::jsonb)
+		FROM resource_catalog.compute_plans p
+		LEFT JOIN LATERAL (
+			SELECT id,compute_monthly_usd_micros,valid_until
+			FROM resource_catalog.price_policy_versions
+			WHERE compute_plan_id=p.id AND storage_plan_id=$3 AND valid_from<=$4
+			ORDER BY valid_from DESC,id DESC LIMIT 1
+		) price ON price.valid_until IS NULL OR $4<price.valid_until
+        LEFT JOIN LATERAL (
+          SELECT jsonb_agg(jsonb_build_object(
+            'storagePlanId',s.id,'storageName',s.name,'storageCapacityGiB',s.capacity_gib,
+            'pricePolicyVersionId',v.id,
+            'monthlyUSDMicros',(v.compute_monthly_usd_micros::numeric+v.storage_monthly_usd_micros::numeric+v.product_monthly_usd_micros::numeric)::text
+          ) ORDER BY s.id) AS items
+          FROM (
+            SELECT DISTINCT ON (storage_plan_id) * FROM resource_catalog.price_policy_versions
+            WHERE compute_plan_id=p.id AND valid_from<=$4
+            ORDER BY storage_plan_id,valid_from DESC,id DESC
+          ) v JOIN resource_catalog.storage_plans s ON s.id=v.storage_plan_id
+          WHERE (v.valid_until IS NULL OR $4<v.valid_until)
+            AND p.status='approved' AND p.valid_from<=$4 AND (p.valid_until IS NULL OR $4<p.valid_until)
+            AND s.status='approved' AND s.valid_from<=$4 AND (s.valid_until IS NULL OR $4<s.valid_until)
+            AND `+compatiblePlanPairSQL+`
+        ) offers ON true
+		WHERE p.id>$1 ORDER BY p.id LIMIT $2`, r.GetQueryCursor(), n+1, r.GetQueryStoragePlanId(), now)
 	if err != nil {
 		return nil, dbError(err)
 	}
 	defer rows.Close()
 	out := &api.ComputePlanPage{}
 	for rows.Next() {
-		plan, err := scanComputePlan(rows, now)
+		var offers []byte
+		price := &planPriceRow{rowScanner: rows, offers: &offers}
+		plan, err := scanComputePlan(price, now)
 		if err != nil {
 			return nil, dbError(err)
+		}
+		if price.amount.Valid && price.policyID.Valid {
+			plan.MonthlyPriceUsdMicros = proto.Int64(price.amount.Int64)
+			plan.PricePolicyVersionId = proto.String(price.policyID.String)
+		}
+		var items []json.RawMessage
+		if err := json.Unmarshal(offers, &items); err != nil {
+			return nil, dbError(err)
+		}
+		for _, item := range items {
+			offer := &api.WorkspacePlanOffer{}
+			if err := publicjson.Unmarshal(item, offer); err != nil {
+				return nil, dbError(err)
+			}
+			plan.WorkspaceOffers = append(plan.WorkspaceOffers, offer)
 		}
 		out.Items = append(out.Items, plan)
 	}
@@ -229,16 +299,31 @@ func (s *Service) ListStoragePlans(ctx context.Context, r *api.ListStoragePlansR
 	}
 	n := limit(r.GetQueryLimit())
 	now := time.Now().UTC()
-	rows, err := s.DB.QueryContext(ctx, `SELECT `+storagePlanCols+` FROM resource_catalog.storage_plans s WHERE s.id>$1 ORDER BY s.id LIMIT $2`, r.GetQueryCursor(), n+1)
+	// Use the same exact-pair, latest-then-expiry rule as compute reads and
+	// quotes. Product fees stay in the quote rather than either resource price.
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+storagePlanCols+`,price.storage_monthly_usd_micros,price.id
+		FROM resource_catalog.storage_plans s
+		LEFT JOIN LATERAL (
+			SELECT id,storage_monthly_usd_micros,valid_until
+			FROM resource_catalog.price_policy_versions
+			WHERE compute_plan_id=$3 AND storage_plan_id=s.id AND valid_from<=$4
+			ORDER BY valid_from DESC,id DESC LIMIT 1
+		) price ON price.valid_until IS NULL OR $4<price.valid_until
+		WHERE s.id>$1 ORDER BY s.id LIMIT $2`, r.GetQueryCursor(), n+1, r.GetQueryComputePlanId(), now)
 	if err != nil {
 		return nil, dbError(err)
 	}
 	defer rows.Close()
 	out := &api.StoragePlanPage{}
 	for rows.Next() {
-		plan, err := scanStoragePlan(rows, now)
+		price := &planPriceRow{rowScanner: rows}
+		plan, err := scanStoragePlan(price, now)
 		if err != nil {
 			return nil, dbError(err)
+		}
+		if price.amount.Valid && price.policyID.Valid {
+			plan.MonthlyPriceUsdMicros = proto.Int64(price.amount.Int64)
+			plan.PricePolicyVersionId = proto.String(price.policyID.String)
 		}
 		out.Items = append(out.Items, plan)
 	}

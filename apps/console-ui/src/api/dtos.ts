@@ -109,6 +109,8 @@ export interface Workspace {
 }
 
 export interface WorkspaceDTO extends Workspace {
+  computePlanId?: string;
+  storagePlanId?: string;
   workspaceApiKeyId?: string;
 }
 
@@ -144,11 +146,20 @@ export interface CapabilityVersionPageDTO {
   nextCursor?: string;
 }
 
+export interface WorkspacePlanOfferDTO {
+  storagePlanId: string;
+  storageName: string;
+  storageCapacityGiB: number;
+  pricePolicyVersionId: string;
+  monthlyUSDMicros: string;
+}
+
 export interface ComputePlanDTO {
   id: string;
   name: string;
   vcpus: number;
   memoryMiB: number;
+  workspaceOffers?: WorkspacePlanOfferDTO[];
   availability: "available" | "unavailable" | "retired";
   billingMode: "prepaid_monthly" | "local_no_charge";
   monthlyPriceUSDMicros?: string;

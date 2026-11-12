@@ -7737,3 +7737,121 @@ textarea:focus-visible,
     justify-content: flex-end;
   }
 }
+
+
+/* Native launch keeps application choices and plan prices in the purchase flow. */
+.workspace-launch-page--native .workspace-launch-config > header,
+.workspace-launch-page--native .workspace-launch-review > header {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.workspace-launch-page--native .workspace-launch-config {
+  gap: 24px;
+}
+
+.workspace-application-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.workspace-native-plans {
+  gap: 12px;
+}
+
+.workspace-native-plan {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.workspace-native-plan > span:first-child {
+  display: grid;
+  gap: 6px;
+}
+
+.workspace-native-plan strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.workspace-native-plan small,
+.workspace-launch-note,
+.workspace-launch-terms {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.workspace-native-plan__price {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.workspace-launch-note,
+.workspace-launch-terms p {
+  margin: 0;
+}
+
+.workspace-launch-terms {
+  display: grid;
+  gap: 8px;
+}
+
+.workspace-launch-page--native select {
+  width: 100%;
+  min-width: 0;
+}
+
+.workspace-launch-page--native .workspace-order-summary__facts {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.workspace-launch-page--native .workspace-order-summary > header {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.workspace-launch-page--native select {
+  min-height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 10px 12px;
+  color: var(--ink);
+  font-size: 14px;
+  appearance: auto;
+}
+
+.workspace-launch-page--native .workspace-native-plans label {
+  width: 100%;
+  min-height: 80px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 14px;
+}
+
+.workspace-launch-page--native .workspace-native-plans label:has([aria-checked="true"]) {
+  border-color: var(--action);
+}
+
+.workspace-launch-page--native [role="radio"] {
+  border-radius: 50%;
+}
+
+.workspace-launch-page--native .workspace-application-options label {
+  min-height: 44px;
+  align-items: center;
+}
+
+.workspace-launch-page--native select:focus-visible,
+.workspace-launch-page--native .workspace-native-plans label:focus-within {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}

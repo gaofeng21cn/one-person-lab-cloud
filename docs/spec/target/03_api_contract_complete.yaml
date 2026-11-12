@@ -2710,7 +2710,7 @@ paths:
       - F12
       x-owner: workspace
       x-permission:
-      - member
+      - admin
       x-tables:
       - workspace.subscriptions
       responses:
@@ -4435,6 +4435,7 @@ paths:
       x-owner: runtime_control
       x-permission:
       - member
+      - platform_admin
       x-tables:
       - runtime_control.runtime_releases
       responses:
@@ -8084,6 +8085,10 @@ components:
           - local_no_charge
         providerCapabilityVersion:
           type: string
+        workspaceOffers:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkspacePlanOffer'
         monthlyPriceUSDMicros:
           $ref: '#/components/schemas/USDMicros'
         pricePolicyVersionId:
@@ -8128,6 +8133,13 @@ components:
           - resource_catalog.compute_plans.billing_mode
           rule: PREPAID_MONTHLY映射prepaid_monthly；LOCAL_NO_CHARGE映射local_no_charge，仅Local计划
         providerCapabilityVersion: resource_catalog.compute_plans.provider_capability_version
+        workspaceOffers:
+          kind: derived
+          sources:
+          - resource_catalog.price_policy_versions
+          - resource_catalog.storage_plans
+          - resource_catalog.compute_plans
+          rule: 每个已批准exact compute/storage pair是一项固定Workspace套餐；先选各pair当前最大validFrom价格版本再校验有效期，不回落旧价。仅返回双方可用且billingMode相同的组合；monthlyUSDMicros为计算、存储、产品三项整数USD micros之和，含零价，不按名称或最低价猜配套。
         monthlyPriceUSDMicros:
           kind: derived
           sources:
@@ -8146,6 +8158,42 @@ components:
         validUntil: resource_catalog.compute_plans.valid_until
         createdAt: resource_catalog.compute_plans.created_at
       description: ' 仅查询指定另一侧planId且存在唯一有效组合价时返回monthlyPriceUSDMicros/pricePolicyVersionId；否则省略，UI展示“选择完整套餐后报价”，不猜最低价。'
+    WorkspacePlanOffer:
+      type: object
+      additionalProperties: false
+      properties:
+        storagePlanId:
+          $ref: '#/components/schemas/OpaqueId'
+        storageName:
+          type: string
+        storageCapacityGiB:
+          type: integer
+          format: int32
+          minimum: 1
+        pricePolicyVersionId:
+          $ref: '#/components/schemas/OpaqueId'
+        monthlyUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+      required:
+      - storagePlanId
+      - storageName
+      - storageCapacityGiB
+      - pricePolicyVersionId
+      - monthlyUSDMicros
+      x-owner: resource_catalog
+      x-table: derived owner read model
+      x-field-map:
+        storagePlanId: resource_catalog.price_policy_versions.storage_plan_id
+        storageName: resource_catalog.storage_plans.name
+        storageCapacityGiB: resource_catalog.storage_plans.capacity_gib
+        pricePolicyVersionId: resource_catalog.price_policy_versions.id
+        monthlyUSDMicros:
+          kind: derived
+          sources:
+          - resource_catalog.price_policy_versions.compute_monthly_usd_micros
+          - resource_catalog.price_policy_versions.storage_monthly_usd_micros
+          - resource_catalog.price_policy_versions.product_monthly_usd_micros
+          rule: 精确有效策略三项之和，以整数USD micros返回；不是当前已购订阅价格，购买仍须接受精确Quote。
     StoragePlan:
       type: object
       additionalProperties: false

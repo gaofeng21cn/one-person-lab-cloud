@@ -377,6 +377,16 @@ message ComputePlan {
  google.protobuf.Timestamp valid_from = 10;
  google.protobuf.Timestamp valid_until = 11;
  google.protobuf.Timestamp created_at = 12;
+ repeated WorkspacePlanOffer workspace_offers = 13;
+}
+
+// Each approved exact compute/storage price policy is one fixed Workspace offer.
+message WorkspacePlanOffer {
+ string storage_plan_id = 1;
+ string storage_name = 2;
+ int32 storage_capacity_gi_b = 3;
+ string price_policy_version_id = 4;
+ int64 monthly_usd_micros = 5;
 }
 
 message StoragePlan {

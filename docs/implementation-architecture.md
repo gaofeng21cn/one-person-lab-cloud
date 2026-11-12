@@ -372,17 +372,21 @@ packages/contracts/*.json -> consumed artifact and cross-owner byte contracts
 | CloudIdentity / Gateway Integration | `services/gateway-integration`, one independent module/process, separate Tenant/Gateway databases | CloudIdentity: User/session/Tenant/member policy and accepted-operation authorization; Gateway: both User↔Sub2API User and User↔OCI Destination in `gateway.identity_mappings`, plus native Gateway integration | external Sub2API APIs and typed owner readbacks | a second wallet, copied live balance, email/account-id binding keys or cross-owner table writes |
 | Capability / Build / Runtime Control | `services/capability`, `services/build`, `services/runtime-control`, independent modules/processes and stores | immutable Package/catalog facts, fixed-input OCI jobs/artifacts, approved Runtime Releases respectively | generated owner clients and current object/BuildKit adapters | another owner's store, Runtime implementation or deployment/current-selection authority |
 | Workspace / Resource Catalog / Serve | `services/workspace`, `services/resource-catalog`, `services/serve`, independent modules/processes and stores | accepted Workspace operations/Saga, plans and pricing policies, application delivery/current selection/readiness/access respectively | generated owner clients, Fabric/Ledger coordination and the retained first-delivery execution adapter | cross-owner writes, duplicate current deployment or inferred provider/financial success |
-| Control Plane | independent `go.mod`, binary, Deployment and schema | session/account mapping, Workspace entitlement, Launch cursor/attempt/lease/CAS, account/settlement coordination and customer DTOs | typed HTTP clients for Fabric, Ledger and Sub2API; narrow PostgreSQL migration helper | resource-stage reducers, Fabric operation derivation, Fabric/Ledger implementation imports, provider fields/SDKs/Kubernetes, provider mutations, or downstream table writes |
-| Fabric | independent `go.mod`, binary, Deployment and schema | compute, storage, attachment, Secret binding, Runtime, provider-neutral operation bindings/store, provider mutations and authoritative readback | provider adapters, cloud SDKs and narrow PostgreSQL migration helper | wallet, customer billing policy, Console session state, or Ledger table writes |
+| Control Plane | independent `go.mod`, binary, Deployment and schema | retained account/session policy, announcements, legacy Workspace/Launch records and original-operation/settlement recovery; exact live callers are listed in the retained inventory below | typed owner clients and retained HTTP clients for Fabric, Ledger and Sub2API; narrow PostgreSQL migration helper | a second writer of native Workspace orders or Serve current deployment; resource-stage reducers, Fabric operation derivation, Fabric/Ledger implementation imports, provider fields/SDKs/Kubernetes, provider mutations, or downstream table writes |
+| Fabric | independent `go.mod`, binary, Deployment and schema | compute, storage, attachment, Secret binding, provider-neutral operation bindings/store, provider mutations and authoritative readback; retained Runtime execution surfaces remain migration paths | provider adapters, cloud SDKs and narrow PostgreSQL migration helper | current application deployment/access authority, wallet, customer billing policy, Console session state, or Ledger table writes |
 | Ledger | independent `go.mod`, binary, Deployment and schema | receipts, reconciliation, idempotency, retention, and caller-owned opaque provenance refs | narrow PostgreSQL migration helper | review-policy or review-gate semantics, Launch continuation authority, spendable balance mutation, provider SDKs, Fabric execution, or Control Plane table writes |
 | PostgreSQL migration helper | independent narrow Go module under `services/internal/postgresmigrate` | advisory lock, migration journal and TLS validation mechanics | PostgreSQL driver only | any Console, Control Plane, Fabric or Ledger domain type |
 | Shared contracts | JSON and the Go module under `packages/contracts` | artifact identities, cross-owner byte boundaries and shared runtime types | current runtime consumers, build and validation | service implementation, runtime state or a second status owner |
 
-`tests/contracts/module-physical-boundaries.test.ts` enforces the source-level edges:
-no Go service may import another service implementation, only Fabric may import
-Tencent or Kubernetes SDKs, and Console network calls must remain inside its API
-adapter and resolve to `/api/*`. This gate runs through the existing `npm test`
-lane; it complements behavior and contract tests rather than replacing them.
+`tests/contracts/module-physical-boundaries.test.ts` currently checks Go imports
+for Control Plane, Fabric and Ledger: they may not import another service's
+implementation, and only Fabric among those three may import Tencent or
+Kubernetes SDKs. Its domain-neutral shared-library check also names those three
+service paths. It does not yet establish coverage for every extracted owner or
+BFF. The Console check constrains network calls to its API adapter and same-origin
+`/api/*`. This gate runs through the existing `npm test` lane; wider owner and
+database-role coverage remains an explicit
+[roadmap gap](roadmap.md#workspace-lifecycle-owner-and-recovery-convergence).
 
 The retained portable Compose profile gives Control Plane, Fabric and Ledger
 their own PostgreSQL role/database and inbound service token; Control Plane
@@ -421,16 +425,38 @@ and digest-addressed Releases after publication. Their internal artifacts may us
 `opl-cloud` identifier, but they never copy runtime code, product contracts, or
 spendable-balance state.
 
-The Instance boundary also owns medopl-specific production, acceptance,
-recovery, canary, rollback, and approval/evidence tooling. Those sources and
-focused tests are now canonical in `opl-instance-medopl` `main`; Cloud retains
-product runtime code, provider-neutral contracts, reusable adapters, and
-portable candidate/release assets. Instance workflows still checkout an exact
-Cloud `product_sha`, but they execute instance tools from the run-scoped
-Instance checkout. Cloud no longer provides an instance-specific production
-command or an accepted caller for these paths.
+The Instance boundary owns medopl-specific access and installation tooling,
+including deployment verification, canary, installation recovery and rollback.
+Protected workflows may transport a pinned Cloud product command to the private
+runtime. Workspace/Fabric/Gateway retain business stages, provider decisions and
+settlement; Instance transport does not acquire those responsibilities. Cloud
+owns business evidence schemas, validation and final custody, while Instance
+owns installation/deployment receipts. Producer provenance survives a transfer;
+Cloud's compute-readback handoff validates the original Instance artifact and
+retains its exact bytes. The remaining tooling/caller dispositions belong to the
+[Instance business retirement inventory](implementation/instance-business-retirement-inventory.md).
 
 ## Console Source Truth
+
+The native launch consumes `ComputePlan.workspaceOffers` from Resource Catalog.
+Each offer is the current approved exact compute/storage price-policy pair,
+including its storage identity/capacity and full compute, storage and product
+monthly amount. This is a read projection over existing Catalog records, not a
+new package table, pricing authority or browser-defined pairing. Purchase still
+requires a separately accepted Catalog quote. Catalog reuses one owner-local
+plan-pair compatibility predicate for price-policy admission, offer projection
+and quote resource snapshots. Incompatible historical policies remain stored
+but produce no purchasable offer; accepted snapshots remain unchanged.
+Independent application, model,
+plan and wallet sources publish their own read results; an unrelated failed
+source does not remove a usable application path.
+
+Workspace subscription reads retain the Workspace owner's confirmed period,
+current accepted price and renewal mode. The Console does not replace them with
+current Catalog prices. The existing subscription contract is served through
+the BFF under Tenant owner/admin authorization; members do not gain financial
+access through the ordinary Workspace read. Historical personal bills retain
+their separate original-owner authorization and UI identity.
 
 The image's `VITE_CONSOLE_IDENTITY` selects authentication and migrated browser
 surfaces. The Dockerfile defaults to `cloud` and labels the built digest with
@@ -2011,6 +2037,21 @@ remain unchanged. Confirmation still comes from a subsequent absence readback,
 and Ledger receipt/refund gates still follow it. These are source behavior facts;
 isolated PostgreSQL worker tests with synthetic owners do not prove provider
 absence, a real Gateway refund, deployment or Instance acceptance.
+
+The original #1042 deletion later completed after two explicit resumes, as
+recorded in [the November 12 closeout](status.md#workspace-1042-original-deletion-closeout-and-cloud-custody-2026-11-12).
+That observation does not change this scheduler behavior. Automatic consumption
+of a completed downstream result after an observation-only pause remains an
+[unattended recovery outcome](roadmap.md#unattended-deletion-recovery), distinct
+from authorization to repeat a provider mutation. Workspace owns the accepted
+deletion and aggregate progress; Fabric owns each resource action, its fresh
+provider observations and local finalization. Gateway owns the original refund
+and managed-Key coordination with Sub2API; Ledger owns the bound receipt.
+`resumeDeletion` invokes runtime retirement, resource absence, Key closeout,
+deletion receipt, Workspace deletion projection, original-charge refund and final
+operation completion. `recordDeletedWorkspace` may commit resource/data deletion
+while settlement is pending; `completeDeletion` requires both refund and Key
+outcomes to be confirmed or explicitly not applicable.
 
 
 Personal wallet and usage-summary authorization is bound to the live Cloud User,
