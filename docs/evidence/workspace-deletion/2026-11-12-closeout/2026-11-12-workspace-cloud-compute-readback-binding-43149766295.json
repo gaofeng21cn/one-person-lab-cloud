@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_workspace_compute_readback_handoff",
+  "evidenceRepository": "gaofeng21cn/one-person-lab-cloud",
+  "evidenceClass": "workspace_compute_readback",
+  "scope": "compute_destroy_status",
+  "receiptDigest": "sha256:8ee503352f5d1e89e42365ca763b6dc3982925beea93bdf57d4f597b65e2fb53",
+  "receiptStatus": "observed",
+  "errorCode": "none",
+  "identity": {
+    "candidateReceiptDigest": "sha256:7ee79f165306a809d2f27027d1f6518484d5777bb653b01eaacc6b46c45f30d1",
+    "productSha": "8db78b34c7be640948f349436af7cd4fcadd584d",
+    "productTree": "a6a127f9b8f87667998a0057dc0b771525ae392a",
+    "cloudImageRef": "ghcr.io/gaofeng21cn/one-person-lab-cloud@sha256:2b32a4431ef34161a1bd4ce28e55b7612cac66c496c1b22eebd38d2be6ac8eea",
+    "cloudImageDigest": "sha256:2b32a4431ef34161a1bd4ce28e55b7612cac66c496c1b22eebd38d2be6ac8eea",
+    "cloudImageRevision": "8db78b34c7be640948f349436af7cd4fcadd584d",
+    "cloudRuntimeChildDigest": "sha256:9b1fc648217705c4a2a2d179f05c5dca3236ca4cb0b8b2fbdb2f194299537035"
+  },
+  "workspaceIdDigest": "sha256:f9daf7338d1f75a4575a3a816ab7f6db49d9218eb9b48175c4da32f6601d347c",
+  "workspaceOperationIdDigest": "sha256:ddd434fc36cf92a04e469ec4681d88d610795f003a2139c47e5918f253aecb55",
+  "provenance": {
+    "diagnosticSourceSha": "8db78b34c7be640948f349436af7cd4fcadd584d",
+    "instanceRepository": "gaofeng21cn/opl-instance-medopl",
+    "instanceSha": "7215a023cce4133c35fc735786efa53c59da715c",
+    "runId": "43146637235",
+    "runAttempt": "1",
+    "workflowPath": ".github/workflows/cloud-workspace-compute-readback.yml"
+  }
+}

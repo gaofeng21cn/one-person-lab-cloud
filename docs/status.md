@@ -5,7 +5,7 @@ Purpose: `replaceable_current_evidence_snapshot`
 State: `current_snapshot`
 Reviewed source baseline: `3773966a31e2a5d6630038decfa0a812c1488830` on `main`
 Snapshot reconciliation date: 2026-11-10
-Scoped Workspace deletion update: 2026-11-12 (installed product source `13a2cfed43b8f19f6d525800bec82f0c32f9b1e3`)
+Scoped Workspace deletion update: 2026-11-12 (installed product source `8db78b34c7be640948f349436af7cd4fcadd584d`)
 
 Each observation below retains its original source, run and environment; the
 reviewed source baseline does not requalify those receipts. The Workspace deletion
@@ -15,72 +15,45 @@ establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
 
-## Workspace 1042 explicit detach reconciliation and Cloud custody (2026-11-12)
+## Workspace 1042 original deletion closeout and Cloud custody (2026-11-12)
 
-The installed product is Candidate `43005604100`, source
-`13a2cfed43b8f19f6d525800bec82f0c32f9b1e3`, image index
-`sha256:98b293393ff87aafad80ba5855e5b2a5e294e6a5640488f156914306473a8d80`.
-Instance deployment `43011003384` attempt 3 succeeded; independent verification
-`43033347058` reports `deployment_verified`, all 12 deployment checks true and
-installation/materials/Serve readbacks true. Instance source is
-`26c03cc44b67a0a19883f6234614aec5284d6d94`. This installs the explicit
-operator-bound, separately fenced one-send reconciliation developed against
-`e292ee280a7a1be646b3db294f88cff51292a492`; the original detach fence remains
-immutable. Earlier source verification covered owner HTTP/capability boundaries,
-projected journals, restart, uncertain responses and concurrent PostgreSQL claims.
-Installation verification does not establish customer deletion completion.
+The original Workspace deletion is complete. Native closeout `43149543610`
+reports Workspace `deleted`, original deletion operation `succeeded/succeeded`,
+resource and data deletion `confirmed`, and refund `confirmed` with an original
+refund-operation identity digest. Independent read-only facts `43150461492` at
+11:47 CST confirm all seven resource kinds `absent` with evidence, the Ledger
+deletion receipt present, refund `confirmed`, managed Key closeout `confirmed`,
+and no pending step or attempts. The original deletion identity digest remains
+`sha256:ddd434fc36cf92a04e469ec4681d88d610795f003a2139c47e5918f253aecb55`.
 
-Protected reconciliation `43034642706` failed. Its independent readback remains
-valid `observed/none`: the Machine is present, allocation `destroying`, TKE
-`RUNNING`, and CVM was not queried. The journal records
-`reconcile_prepaid_compute_detachment` started at
-`2026-11-11T22:02:44.521907+08:00` and failed at
-`2026-11-11T22:02:45.603616+08:00` with safe token
-`tencent_prepaid_compute_auth_failure`, `retryable=false` and unknown mutation
-count. The retained error digest exactly matches
-`compute_prepaid_detach_dispatch_unconfirmed:AuthFailure`; a provider request-ID
-digest is present. A failed authorization response does not prove no side effects.
+This closes the original order on Candidate `43130246290`, product source
+`8db78b34c7be640948f349436af7cd4fcadd584d`, image index
+`sha256:2b32a4431ef34161a1bd4ce28e55b7612cac66c496c1b22eebd38d2be6ac8eea`.
+Instance installation verification `43133896223` establishes adoption of that
+Candidate. The final resumes reused it; no new runtime patch, Candidate or
+installation was needed for this closeout.
 
-Read-only follow-up `43036356234` succeeded and observed the same present/`RUNNING`
-Machine at `2026-11-11T14:13:29.221464174Z`; CVM was again not queried. Its auxiliary
-audit completed one page with `unknown/no_matching_event`. That audit is bound to
-the **original** `detach_prepaid_compute_allocation` at 01:32 on November 11
-(UTC+08:00), with query window `2026-11-10T17:31:31Z`-`17:33:32Z`. It does not
-cover the new 22:02 reconciliation and cannot establish that attempt's side effects.
-Neither readback provides CVM release, original destroy finalization, Workspace
-deletion receipt, refund or Key closeout evidence.
+Provider absence and owner finalization have separate evidence. Compute
+readback `43146637235` confirms the exact Machine and CVM absent, TKE/CVM
+`NOT_FOUND`, and the original compute destroy journal succeeded at 10:42:28 CST
+with `cloud_absence_confirmed`. Live storage readback `43143886849` confirms the
+original CBS `NOT_FOUND`, binding absent and destroy phase `absence_confirmed`.
+Resume `43148192299` then completed Fabric resource deletion at 11:26:30 CST;
+facts `43148541138` preserve that intermediate state while Workspace still held
+its preceding unconfirmed readback and had parked after 25 attempts. Resume
+`43149543610` consumed the completed Fabric result and closed the original
+Workspace operation through its deletion receipt, original-charge refund and
+managed Key owner. No second Workspace deletion was created.
 
-Cloud custody `43056046391` imported failed Instance run `43034642706`; custody
-`43056054326` imported successful Instance run `43036356234` and its audit. Both
-Cloud runs succeeded on source `13a2cfed43b8f19f6d525800bec82f0c32f9b1e3` at
-00:13 CST on November 12. The downloaded Cloud ZIP digests match GitHub metadata;
-all three original receipt files equal the Instance artifacts byte for byte, and
-all three Cloud binding files equal independently recomputed validator output.
-The [custody manifest](evidence/workspace-deletion/2026-11-12-prepaid-detach-auth-custody.json)
-retains exact run/attempt, artifact identities, file hashes and checks; original
-bytes remain in the named 90-day Cloud artifacts. Custody success preserves the
-failed reconciliation and unknown audit outcome.
-
-Separate protected IAM workflow `43040327638` observed CAM user `100049665797`
-under account `100047070895`, with zero mutations. Policy read `43038906679`
-failed with `AuthFailure.UnauthorizedOperation` at `ListPolicies`; effective policy
-contents remain unknown. These workflow credentials have not been proven to be
-the installed Fabric runtime identity, so they do not identify the failing policy.
-
-Additional bounded AuthFailure recovery source is verified against base `13a2cfed43b8f19f6d525800bec82f0c32f9b1e3`: only a recorded qualifying
-AuthFailure and a different explicit operator authorization can admit one further
-resource-wide, permanently claimed slot. Replays read the existing attempt; a
-consumed slot or another outcome does not admit another send. This local source
-is absent from Candidate `43005604100` and has no installed acceptance evidence.
-The focused Fabric gate passed 1,954 test/subtest events with isolated PostgreSQL
-and Docker, zero failures or skips. The targeted race run also passed both
-PostgreSQL reconciliation tests; the new regression fails against the unchanged
-base implementation. These checks do not establish current-revision PR CI.
-It is not an automatic or unbounded retry mechanism and grants no execution
-authorization. Earlier original-operation resume `42989008699` was accepted but
-remained pending. Continue the same original Workspace deletion only after the
-remaining owner evidence and explicitly authorized recovery are resolved in the
-[roadmap](roadmap.md#workspace-1042-original-deletion).
+The [closeout evidence manifest](evidence/workspace-deletion/2026-11-12-closeout/manifest.json)
+retains the exact redacted producer bytes, run/attempt, workflow/source revision,
+artifact digest and file hashes. Cloud custody `43149766295` independently
+imported compute readback `43146637235`; terminal native closeout and facts are
+retained as historical imports with their original Instance provenance. These
+are Cloud business evidence, separate from Instance installation receipts. The
+[earlier failed AuthFailure evidence](evidence/workspace-deletion/2026-11-12-prepaid-detach-auth-custody.json)
+remains unchanged. Completion of this original paid operation does not establish
+a fresh lifecycle qualification or a formal Product Release.
 
 ## Short-lived Agent connection source (2026-11-09)
 
@@ -395,8 +368,8 @@ The Fabric source adds journal-bound destroy-status readback and a separately
 fenced explicit recycled-storage final release. Source checks, a new immutable
 Candidate, protected installation, final provider absence and continuation of the
 original Workspace deletion are distinct evidence layers. Installed adoption and
-physical deletion are not established by this source change. Remaining acceptance
-is tracked in [roadmap](roadmap.md#workspace-1042-original-deletion).
+physical deletion were not established by that source change. The later original
+operation closeout is recorded in the [current evidence](#workspace-1042-original-deletion-closeout-and-cloud-custody-2026-11-12).
 
 ## Workspace 1042 recycled CVM deletion path (2026-11-08)
 

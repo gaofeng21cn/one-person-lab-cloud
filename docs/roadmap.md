@@ -43,47 +43,15 @@ Workspace operation.
 
 ## Workspace 1042 original deletion
 
-Workspace owns the original deletion operation, deletion receipt and separate
-refund; Fabric owns provider readback and the fenced final release of accepted
-compute/storage resources. Instance owns installation and deployment evidence.
-The [current evidence](status.md#workspace-1042-explicit-detach-reconciliation-and-cloud-custody-2026-11-12)
-records Candidate `43005604100`, product source
-`13a2cfed43b8f19f6d525800bec82f0c32f9b1e3`, installed by `43011003384` attempt 3
-and verified by `43033347058`. The prior source-adoption gap for explicit one-send
-reconciliation is closed; the customer deletion outcome remains open.
-
-Reconciliation `43034642706` failed with the journal-bound raw error
-`compute_prepaid_detach_dispatch_unconfirmed:AuthFailure` on November 11 at
-22:02:45 CST. Follow-up `43036356234` still sees the Machine present/`RUNNING`,
-allocation `destroying` and no CVM query. Cloud custody `43056046391` and
-`43056054326` preserve both runs, including the failed reconciliation. The audit's
-`unknown/no_matching_event` covers the original 01:32 detach window, not the 22:02
-reconciliation, and establishes no absence of side effects. Earlier storage and
-other resource-family absence evidence remains separate; the original operation
-has no completed deletion receipt, refund or Key closeout proof.
-
-Remaining recovery first requires the Instance/provider identity owner to bind
-the failing Fabric runtime credential and resolve its effective access. IAM
-workflow `43040327638` identifies a CAM user, while `43038906679` cannot read
-policy contents because `ListPolicies` was denied; equivalence with the installed
-runtime identity remains unknown. Obtain authoritative evidence for the new
-attempt's exact target and time window where needed; neither the old-window audit
-nor the authorization error justifies resetting an uncertain fence.
-
-Additional bounded AuthFailure recovery source is verified against base `13a2cfed43b8f19f6d525800bec82f0c32f9b1e3`. Its further resource-wide slot
-requires the qualifying recorded AuthFailure and a different explicit operator
-authorization; it cannot admit an automatic or unbounded sequence. Qualify that
-source in current-revision CI and adopt its exact Candidate through Instance
-before claiming installed recovery support. A distinct authorization and owner evidence are still required
-for any subsequent send. Keep the installed Candidate for read-only diagnosis;
-further recovery or deployment requires separately authorized owner execution.
-
-Continue the **same original Workspace deletion operation**. Acceptance requires
-physical Machine/CVM absence, original destroy finalization, the Cloud deletion
-receipt, separate refund and effective Key closeout readbacks. Preserve missing
-mutation counts, binding/access failures and ambiguous events as unknown. The
-[custody manifest](evidence/workspace-deletion/2026-11-12-prepaid-detach-auth-custody.json)
-binds the retained artifacts without replacing their original bytes or outcomes.
+Closed on November 12, 2026. The [current evidence](status.md#workspace-1042-original-deletion-closeout-and-cloud-custody-2026-11-12)
+records native closeout `43149543610` and independent facts `43150461492`:
+original deletion succeeded, all resources absent, Ledger deletion receipt
+present, original-charge refund confirmed and managed Key closeout confirmed.
+The same Candidate `43130246290` and original deletion identity were retained.
+There is no remaining resource release, refund or Key mutation for this order.
+The [evidence manifest](evidence/workspace-deletion/2026-11-12-closeout/manifest.json)
+preserves producer provenance and exact receipt bytes in Cloud. Fresh lifecycle
+qualification and formal Release retain their separate acceptance obligations.
 
 ## PR CI Cache Reuse And Parallel Verification
 

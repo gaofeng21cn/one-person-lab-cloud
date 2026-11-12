@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "workspace_native_delete",
+  "status": "deleted",
+  "errorCode": "none",
+  "observedAt": "2026-11-12T03:38:35.284Z",
+  "mode": "resume",
+  "consoleOrigin": "https://cloud.medopl.com",
+  "candidate": {
+    "receiptDigest": "sha256:7ee79f165306a809d2f27027d1f6518484d5777bb653b01eaacc6b46c45f30d1"
+  },
+  "product": {
+    "sha": "8db78b34c7be640948f349436af7cd4fcadd584d",
+    "tree": "a6a127f9b8f87667998a0057dc0b771525ae392a"
+  },
+  "accountEmailIdentityDigest": "sha256:28c1f836f368e12334a7c5791c5c171150ee50815973f70c416b4c9a6462b206",
+  "observedCloudIdentityDigest": "sha256:21a411c337ce294013e06ed6c130b22e461f0eafe17e6815d53fc0da4e7916cd",
+  "workspaceIdentityDigest": "sha256:c33316a9e62499ff78ede64cdbcaf2ba038dc90bf0d97f41a5aeef4f81ff1702",
+  "originalOperationIdentityDigest": "sha256:2d252e78f0b736e4e6391f1f3763782a9d0b9f523a7a887476e78546f6b55beb",
+  "planDigest": "sha256:eb5c4eb19bcf48209a1f1385cd2c9724fac51abceba6c76a39dd75c94bc5853c",
+  "http": {
+    "contextStatus": 200,
+    "loginStatus": 200,
+    "sessionStatus": 200,
+    "workspaceStatus": 200,
+    "operationStatus": 200,
+    "deletionStatus": 200,
+    "deleteStatus": 202
+  },
+  "checks": {
+    "candidate": true,
+    "authority": true,
+    "account": true,
+    "accountRole": true,
+    "workspaceReadable": true,
+    "workspaceNotDeleted": true,
+    "confirmationName": true,
+    "originalOrderReadable": true,
+    "originalOrderBound": true,
+    "deletionReadable": true,
+    "planFrozen": true
+  },
+  "observed": {
+    "workspaceStatus": "deleted",
+    "originalOperationStatus": "succeeded",
+    "deletionOperationIdentityDigest": "sha256:ddd434fc36cf92a04e469ec4681d88d610795f003a2139c47e5918f253aecb55",
+    "resourceDeletionStatus": "confirmed",
+    "dataDeletionStatus": "confirmed",
+    "refundStatus": "confirmed",
+    "refundOperationIdentityDigest": "sha256:6bbaad8094a38e812957f95654aa3c957e2482bbb99ee3fde43f5cfe46b007b0",
+    "operationStatus": "succeeded",
+    "operationStage": "succeeded",
+    "observationResult": "confirmed",
+    "ownerErrorCode": null,
+    "resumed": true
+  },
+  "mutationCounts": {
+    "deleteRequests": 1,
+    "deleteDispatches": 1
+  },
+  "attempts": {
+    "delete": 1
+  }
+}
