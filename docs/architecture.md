@@ -120,6 +120,34 @@ opl-instance-medopl
   medopl customization, production environment, deployment, rollback and evidence
 ```
 
+### Candidate And Installation-Data Boundary
+
+The installation chain has one canonical input at each owner boundary. Cloud
+builds and qualifies a portable **Candidate** from one exact Cloud source SHA;
+the Candidate manifest, image digests and installation assets describe the
+product bytes. Instance supplies one **Instance profile** for the concrete
+installation; that profile is the sole canonical installation-data input for
+both install and upgrade. It declares the installation's non-secret provider,
+resource, database, storage, backup and Secret-reference facts. The profile
+does not contain Secret values or observed deployment state.
+
+The protected Instance workflow resolves Secret values and production access
+materials at execution time, validates the profile before the first mutation,
+and performs the install or upgrade from that profile plus the selected
+Candidate. The native stage receipts bind the Candidate identity; the final
+install/upgrade lifecycle summary additionally binds the normalized profile
+digest, the Instance revision and the workflow run/attempt. A profile change
+therefore creates a new installation identity; an observed state change does not
+rewrite the profile.
+
+Cloud does not read Instance Secret values, DSNs, kubeconfig, cluster
+configuration, customer data or other production configuration. Cloud may
+consume an Instance-produced receipt or redacted readback through the approved
+handoff, and may compare its opaque profile digest across receipts. The digest
+is an installation identity reference, not a permission to inspect or recreate
+the Instance configuration. Instance remains the authority for installation,
+upgrade, rollback and deployment evidence.
+
 This repository is the product and implementation repository for the target
 domain-separated Agent SaaS architecture. The target domains are `tenant`
 (CloudIdentity), `capability`, `build`, `workspace`, `runtime_control`,
@@ -193,20 +221,27 @@ writers. The short identifier `opl-cloud` remains valid for packages, images,
 binaries, services, namespaces, environment variables and runner labels.
 
 An instance repository materializes one installation without copying product or
-runtime code. It owns non-secret domains, provider selection, region and
-resource profile, the enabled subset of Cloud-defined plans, image pins, secret
-references, and deployment receipts. Installation checks establish the deployed
-Cloud artifact and service health. Customer operations and business qualification
-belong to the existing Cloud product owners, with separately authorized protected
-execution and exact-Candidate evidence. Instance deployment does not perform
-customer purchases, renewal, deletion, refund or managed-key mutation.
+runtime code. Its Instance profile is the sole canonical input for installation
+and upgrade. The profile owns non-secret domains, provider selection, region and
+resource profile, the enabled subset of Cloud-defined plans, image pins, Secret
+references, and backup/storage declarations. Workflow variables may provide
+protected Secret values and access materials at execution time, but they are
+not a second installation-data source. Installation checks establish the
+deployed Cloud artifact and service health; the native receipts bind that
+evidence to the Candidate and the final lifecycle summary also binds the
+profile digest. Customer operations and business qualification
+belong to the existing Cloud product owners, with separately authorized
+protected execution and exact-Candidate evidence. Instance deployment does not
+perform customer purchases, renewal, deletion, refund or managed-key mutation.
 Resource Catalog owns extracted plans and
 versioned price policies; Control Plane retains its legacy price catalog. An
 Instance cannot override either owner's accepted pricing facts. An instance may run on
 a hosted cloud or a supported Linux Docker host. macOS may run the
 control-services profile, but Docker Desktop is not a supported Local-Docker
 Workspace host under the current project-quota contract. Secrets remain in the
-selected secret owner, never in the instance repository.
+selected secret owner, never in the Instance profile or Cloud repository.
+Observed deployment state remains in Instance receipts and live readback; it is
+not written back into the profile as configuration.
 
 ### Deployment Model
 
