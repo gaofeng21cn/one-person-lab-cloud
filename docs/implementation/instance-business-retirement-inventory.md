@@ -5,12 +5,13 @@ Question: which `opl-instance-medopl` workflows and tools still perform or
 evidence customer business or business-qualification operations, and what must
 move before those paths can retire?
 State: open migration, not an executed retirement
-Observed: 2026-10-19
+Observed Instance workflow baseline: 2026-10-19
+Cloud release/custody reconciliation: 2026-11-12
 
 - Cloud baseline: `b5b5887a824f8acf10510a75500cc134f0603a05` (`main`). The
-  current release-consumer source change is described in
+  historical release-consumer source change is described in
   [status](../status.md#instance-hosted-business-qualification-consumer-binding-2026-10-19).
-  Cloud's active delivery is
+  The historical protected-qualification work is
   [Cloud #926](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/926).
 - Instance baseline: `ac64517e23cc82ed33bc41612e0b12864c50338e` (`main`,
   including the evidence-only PR #555). Instance retirement is tracked by
@@ -18,13 +19,12 @@ Observed: 2026-10-19
 
 This inventory is a classification and sequencing record. It does not authorize
 workflow dispatch, purchase, deletion, refund, Key mutation, release publication
-or production access. It does not remove or relax any gate. The shared
-provider-neutral qualification flow, deployed purchase entry and protected
-Instance execution lane are now present in source. No protected
-`.github/workflows/cloud-business-qualification.yml` run or settled qualification
-receipt exists. The release consumer admits that class separately and reads its
-exact artifact from Instance; it does not claim a real qualification. The
-transitional Instance gates therefore stay in force.
+or production access. It does not remove or relax any gate. The workflow counts
+and classifications retain their named Instance baseline; they are not a current
+installed-traffic inventory. Current publication inputs are reconciled below
+against Cloud source `8db78b34c7be640948f349436af7cd4fcadd584d`. Business
+qualification and the completed original Workspace deletion are separately
+reported in [status](../status.md) and [roadmap](../roadmap.md).
 
 ## Fixed Boundary
 
@@ -46,7 +46,7 @@ customer balance, Workspace lifecycle, managed Key, Package delivery or launch
 operation is a business evidence path even when it has no mutation; it belongs
 to the Cloud owner that publishes those facts.
 
-## Workspace Deletion Custody Update (2026-11-09)
+## Workspace Deletion Custody Update (2026-11-12)
 
 The current owner decision keeps final Workspace deletion, refund and diagnostic
 business evidence in Cloud. Instance retains installation/deployment receipts
@@ -60,15 +60,18 @@ Cloud has bounded dispatcher and live-compute diagnostic producers/validators,
 with [operation rules](../runtime/release.md#workspace-deletion-diagnostics-and-evidence-custody).
 The live-compute source separates a companion protected Instance transport
 adapter from Cloud's SQL, receipt schema, projection and final artifact consumer.
-Both owner entries still require merge and actual execution before this handoff
-is runtime evidence; no existing business mutation caller is moved by a source
-only diagnostic addition. The
-[eight original business receipts and Candidate input](../evidence/workspace-deletion/2026-11-09-1042/manifest.json)
-are exact historical imports from the unmerged Instance #702 head. Their original
-schema, producing runs and validator revisions remain authoritative; relocation
-is not a new execution or deletion confirmation. The broad installed-state
-observation is not promoted into compute absence evidence. Existing workflows
-and release gates are unchanged until producer and consumer migration is real.
+The compute handoff has executed: Cloud custody `43149766295` independently
+retains Instance compute readback `43146637235`. The original #1042 deletion,
+refund and managed-Key closeout are confirmed by terminal owner facts
+`43150461492`, retained with original producer bytes in the
+[November 12 manifest](../evidence/workspace-deletion/2026-11-12-closeout/manifest.json).
+Evidence PR #1168 merged on November 12. Native-closeout and owner-facts receipts
+remain explicitly labeled historical imports, rather than new Cloud producer
+runs. The [November 9 imports](../evidence/workspace-deletion/2026-11-09-1042/manifest.json)
+retain their original intermediate claims. This completes custody and the
+original order, not a fresh unattended lifecycle qualification or every Instance
+business-path retirement. Remaining caller disposition uses the existing
+[retained inventory](../implementation-architecture.md#retained-writer-and-caller-inventory-2026-11-03).
 
 ## Measurement
 
@@ -241,38 +244,29 @@ open-items section rather than silently treated as settled.
 
 ## Release Inputs And Gates
 
-Nothing in this table may be removed or relaxed until the Cloud replacement is
-executable and validated. The exact order is: #926 producer executable, its
-consumer validated, then #517 retires the Instance paths and removes their
-inputs. The Cloud consumer source is now locally validated (the Cloud business
-class and the Instance deployment class are separate, Candidate-bound
-requirements), but #926 has not produced a protected receipt and no Release has
-executed the consumer. A source-only branch, local fixture or documentation
-change does not satisfy that order.
+The current consumers are `.github/workflows/release-opl-cloud-image.yml`,
+`packages/contracts/opl-cloud-distribution-contract.json` and the publication
+procedure in [release operations](../runtime/release.md). At the November 12
+Cloud source baseline, publication promotes an exact Candidate without
+rebuilding and consumes the following inputs:
 
-| Gate | Current implementation | What it admits | Required successor |
-| --- | --- | --- | --- |
-| `cloud_business_qualification_run_id` | `release-opl-cloud-image.yml` resolves the exact Instance run and `cloud-business-qualification` artifact with `OPL_INSTANCE_EVIDENCE_TOKEN`; `tools/cloud-release-evidence.ts` validates `business-qualification.json` plus the Instance-verified `product-source.json`. | A protected Instance execution of the Cloud-owned `opl.workspace-qualification.purchase.v1` producer: exact Candidate receipt digest, Cloud source SHA/tree, Cloud image digest, terminal state `settled`, exact receipt bytes and producer run. | **#926 must execute the protected producer for the exact Candidate.** Do not claim a real qualification or remove any retained Instance gate until that receipt is actually consumed in a Release. |
-| `instance_workspace_verification_run_id` | `release-opl-cloud-image.yml:34-37` (input), `:73` (env), `:104` (run read), `:143` (workflow check), `:170` (artifact check), `:275-282` (download), `:471` (validator). | The Instance `verify.yml` `post_activation` run and `verify-post-activation` receipt with `workspace_verified`. | A Cloud business qualification run/receipt ID and a Cloud-owned validator. Remove the Instance input and artifact only in #517 after the protected producer and its consumer execute for the same Candidate. |
-| `instance_qualification_decision_run_id` | `release-opl-cloud-image.yml:30-33` (input), `:72` (env), `:103` (run read), `:142` (workflow check), `:169` (artifact check), `:266-273` (download), `:463-470` (validator and gate). | The Instance `qualification-decision.yml` decision receipt and its `qualificationRequired` gate. | A Cloud qualification decision/business receipt and a Cloud-owned gate. Remove the Instance input and artifact only in #517 after the protected producer and its consumer execute for the same Candidate. |
-| `tools/fresh-workspace-readback.mjs` | Instance tool invoked by `release-opl-cloud-image.yml:471` from the exact Instance workspace authority checkout. | The Instance workspace receipt schema and `workspace_verified` status. | A Cloud business receipt validator. Retire the Instance validator together with `verify.yml`. |
-| `tools/qualification-decision.mjs` | Instance tool invoked by `release-opl-cloud-image.yml:463-470`. | The Instance decision receipt and its Candidate/deployment binding. | A Cloud qualification gate/validator. Retire with `qualification-decision.yml`. |
-| `verify-post-activation` and `opl-cloud-qualification-decision-<run>` artifacts | `release-opl-cloud-image.yml:269` and `:278`; produced by Instance `verify.yml:800` and `qualification-decision.yml:230`. | The two Instance business qualification artifacts. | Cloud business evidence artifacts. The consumer downloads the separate `cloud-business-qualification` artifact and validates it; remove the Instance downloads only in #517 after the protected producer and consumer execute. |
-| `OPL_INSTANCE_EVIDENCE_TOKEN` | `release-opl-cloud-image.yml`; used for installation, the protected business qualification run/artifact, and retained Instance qualification reads. | Instance run/artifact reads for installation and the exact business qualification. | Keep the token limited to `Actions: read` and `Contents: read`; remove only the superseded qualification-decision and Workspace reads after the new path has executed. |
-| `requiredEvidence` in `packages/contracts/opl-cloud-distribution-contract.json` | Contract schema 7 keeps typed classes and names Instance as the protected business-qualification executor in environment `production`. | The release contract's separate evidence classes and exact producer ownership. | Keep the class separation. Retire the two transitional Instance business-qualification entries only after the protected producer and consumer execute; keep `instance_deployment_verified` and `cloud_customer_reads_verified`. |
-| `tools/validate-product-boundary.mjs` | Asserts the typed `requiredEvidence` classes, the Cloud business producer/receipt/terminal-state contract, the separate Cloud run input, and the two-class admission step; neither class may substitute for the other. | The distribution boundary check. | Keep the class separation; update only with a successor contract. |
-| `tests/contracts/product-distribution.test.ts` | Asserts the typed class contract, the Cloud business input, the distinct installation step, and the `validateReleaseAdmissionEvidence` pair step. | Contract and gate shape. | Keep the two-class assertions; extend only when the producer/consumer contract changes. |
-| `release-opl-cloud-public-readback.yml` | Line 124 asserts `.qualifications.instance.workspace.status == "workspace_verified"` in the sealed manifest. | The public readback of the sealed release. | The consumer records the separate `qualifications.business` record and provenance `evidenceClasses` without changing the manifest `schemaVersion` or the existing readback assertions; historical manifests remain readable. Do not add a readback requirement that would refuse historical releases. |
-| `instance_deployment_verification_run_id` | `release-opl-cloud-image.yml:22-25`, `:70`, `:102`, `:141`, `:168`, `:260-265`. | Independent Instance installation identity and health evidence. | **Keep.** This is the separate deployment class; do not remove it while retiring business qualification. |
-| `cloud_customer_readback_run_id` | `release-opl-cloud-image.yml:26-29`, `:71`, `:84`, `:133-134`, `:165`, `:255`, and the protected `cloud-business-readback.yml` consumer. | Cloud `customer_reads_verified` scope only; the receipt explicitly sets `fullBusinessQualification: false`, `workspaceLifecycleVerified: false` and `keyLifecycleVerified: false` (`tools/cloud-business-readback.ts:34`), and its schema version is 2 since the usage and fee-record checks joined the schema-validated check set. | Keep as the customer-read class. It is not a substitute for the #926 business qualification producer or the retained installation evidence. |
+| Input / evidence class | Current consumer and claim | Boundary |
+| --- | --- | --- |
+| `candidate_run_id` / `candidate` | Exact Candidate source, tree, receipt and image identity | Cloud product bytes; not installation or business completion |
+| `local_qualification_run_id` / `localInstallation` | Clean Host Qualification for that Candidate digest | Local qualification; not live paid customer acceptance |
+| `instance_deployment_verification_run_id` / `instanceDeployment` | Instance `deployment-verify.yml` and `deployment_verified` receipt | Installation identity and health; remains Instance-owned |
+| `source_verification_run_id` / `businessSourcePaths` | Exact Product SHA's complete PR CI; `tools/cloud-release-source-paths.ts` validates the source/run/jobs binding | `source_verified`, with `paidBusinessExecuted=false` and `customerReadsExecuted=false` |
+| `OPL_GITHUB_RELEASE_ADMIN_TOKEN` | Cross-repository read of Instance deployment evidence | Reader limited to the current installation evidence, not business authority |
 
-The current `docs/runtime/release.md` Publication section says the same thing:
-the Instance qualification-decision and Workspace gates remain until full parity
-is actually verified. The consumer requires the Cloud
-business class separately and keeps every retained Instance gate; the sentence
-stays true until #517 removes those gates. This inventory does not edit the
-release workflow, the distribution contract, the boundary validator or any
-test.
+The earlier Instance Workspace-verification, qualification-decision and Cloud
+business/customer-read input table described the October 19 consumer. It is
+superseded by these executable publication inputs; its gate-preservation text
+must not be used as the current Release procedure. Published historical manifests
+and receipts retain their original meaning. This reconciliation changes no
+workflow, validator or admission requirement. Live business acceptance, customer
+reads and fresh unattended lifecycle qualification remain independent outcomes
+in [the roadmap](../roadmap.md#workspace-lifecycle-owner-and-recovery-convergence);
+source-path verification does not establish them.
 
 ## Historical And Immutable Evidence
 

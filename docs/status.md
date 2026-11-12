@@ -6,6 +6,7 @@ State: `current_snapshot`
 Reviewed source baseline: `3773966a31e2a5d6630038decfa0a812c1488830` on `main`
 Snapshot reconciliation date: 2026-11-10
 Scoped Workspace deletion update: 2026-11-12 (installed product source `8db78b34c7be640948f349436af7cd4fcadd584d`)
+Scoped lifecycle ownership review: 2026-11-12 (source inspection, not a new runtime qualification)
 
 Each observation below retains its original source, run and environment; the
 reviewed source baseline does not requalify those receipts. The Workspace deletion
@@ -54,6 +55,74 @@ are Cloud business evidence, separate from Instance installation receipts. The
 [earlier failed AuthFailure evidence](evidence/workspace-deletion/2026-11-12-prepaid-detach-auth-custody.json)
 remains unchanged. Completion of this original paid operation does not establish
 a fresh lifecycle qualification or a formal Product Release.
+
+Evidence PR #1168 merged on November 12 at 12:35 CST as
+`3a582db73e952130d619ac86567942995fdf63c3`. Its six PR checks passed on evidence
+head `6bee08b8cf9679d09095ce5dd64947c9933ce834`. The merge preserves the recorded
+observations; it is not another deletion execution or a new deployed Candidate.
+
+## Console launch and Runtime administration (2026-11-12)
+
+The current local change adds Runtime version admission to the CloudIdentity
+Console system page. It reuses Runtime Control's existing public directory and
+admin admission command, retains the same request identity after an uncertain
+response, and requires directory readback before reporting confirmation.
+Existing immutable versions and customer deployments are not rewritten;
+Runtime status and the default-for-builds flag remain read-only in this UI.
+
+The native Workspace launch presents approved OPL App versions and ready built
+Agent versions as application choices. Plan names and specifications remain
+Resource Catalog facts; optional monthly prices now come from the current exact
+compute/storage policy pair. Missing or expired prices stay absent. The final
+offer and its terms still come from Catalog, and the purchase remains a
+separately confirmed Workspace command. Changing a selection invalidates its
+quote and prevents late responses from restoring that prior review. Customer
+copy uses application, plan and order terms, with internal diagnostics disclosed
+on demand.
+
+Local verification covers desktop/mobile Agent launch and recovery, default App
+selection, exact-pair Basic/Pro prices, late quote rejection, explicit purchase
+confirmation and Runtime admin admission/readback. The final five affected launch
+browser cases pass; the remaining 30 cases passed in the preceding full Workspace
+browser run. Runtime admin API/browser and launch-model checks pass. Catalog's
+isolated-PostgreSQL owner suite passes 58 tests/subtests, and its exact-pair HTTP
+BFF/gRPC/PostgreSQL integration passes without skips. The existing BFF Runtime
+admin scope/idempotency regression, typecheck/lint, build and test ownership also
+pass. New Runtime tests are part of the regular source/browser inventories.
+
+These are local source checks with synthetic identities, plans and amounts,
+not an installed production Console or a new customer purchase. No Candidate or
+Instance deployment was performed for this change. The completed #1042 order
+remains closed.
+
+## Lifecycle ownership review (2026-11-12)
+
+Inspection of product source `8db78b34c7be640948f349436af7cd4fcadd584d` and the
+merged closeout evidence distinguishes the completed original order from the
+remaining architecture and unattended-lifecycle work. The declared topology has
+ten business data owners in nine domain processes, plus Console BFF and the
+retained Control Plane. This is a source/deployment declaration, not a fresh
+inventory of installed replicas or database permissions.
+
+Workspace owns the accepted lifecycle and continuation; Serve owns application
+retirement; Fabric owns resource actions, authoritative observations and local
+finalization; Gateway Integration coordinates the original refund and managed
+Key with Sub2API; Ledger owns receipt persistence. Their operation records name
+different facts. Instance provides the protected access and installation
+boundary; it does not decide business completion. The current caller and writer
+map belongs to [implementation architecture](implementation-architecture.md#physical-module-and-dependency-map).
+
+The original closeout required two explicit resumes. Current Workspace source
+parks a deletion after twelve unconfirmed passes for one step, and the worker
+excludes a deletion in `needs_attention`. Thus provider completion does not by
+itself establish unattended upstream convergence. The existing source isolation
+test also covers only Control Plane, Fabric and Ledger, rather than every
+extracted owner. Declaration reconciliation, boundary-check coverage and
+same-operation unattended recovery remain separate
+[open outcomes](roadmap.md#workspace-lifecycle-owner-and-recovery-convergence).
+Architecture cleanup proceeds through the existing retained-capability inventory;
+the independent unattended-recovery gap does not reopen this completed order or
+block an otherwise justified retirement.
 
 ## Short-lived Agent connection source (2026-11-09)
 

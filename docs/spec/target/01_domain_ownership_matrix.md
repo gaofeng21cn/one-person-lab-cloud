@@ -1,6 +1,6 @@
 # 01 领域、服务与可替换边界
 
-> 目标设计；范围和状态以00为准，字段以02/SQL为准，外部操作以03为准。Domain不等于插件或仓库；全部Cloud产品在唯一`opl-cloud`仓库内保持明确领域边界。
+> 目标设计；范围和状态以00为准，字段以02/SQL为准，外部操作以03为准。Domain不等于插件或仓库；全部Cloud产品在唯一`one-person-lab-cloud`仓库内保持明确领域边界；`opl-cloud`是产品/运行标识。
 
 ## 1. 目标调用图
 
@@ -58,7 +58,7 @@ BFF按明确owner路由Operation；同origin静态资源与API可以确定性分
 
 ### 3.1 已决定的边界
 
-全部Cloud产品代码在唯一GitHub仓库`opl-cloud`内。仓库是源代码协同边界，Go module是编译/依赖边界，服务是运行/部署边界，database/角色是数据权限边界；四者不混为一谈。
+全部Cloud产品代码在唯一GitHub仓库`one-person-lab-cloud`内，产品/运行标识为`opl-cloud`。仓库是源代码协同边界，Go module是编译/依赖边界，服务是运行/部署边界，database/角色是数据权限边界；四者不混为一谈。
 
 - 目标业务服务使用Go，按下表独立module、部署进程与镜像。proto中的service只分组API，不按每个接口组增加进程。
 - 保留原规格例外：`tenant`（CloudIdentity）与`gateway`共用Gateway Integration的Go module和部署进程，但各自拥有独立database、角色及受限连接池，不获得跨库读写权。
@@ -69,53 +69,53 @@ BFF按明确owner路由Operation；同origin静态资源与API可以确定性分
 
 ### 3.2 目录、module、进程与数据Owner映射
 
-下表是**目标落点，不是新服务已实现声明**。本次核对时已存在Console UI、Control Plane、Fabric、Ledger及共享库；标“拟建”的路径按14依赖逐步实施。database/schema/角色的完整规则仍由02及SQL唯一负责。
+下表保留**目标职责与数据边界**，当前定位仅说明源码已有的module、启动入口及接线。Console BFF与7个提取领域服务均已有实现，并与Control Plane、Fabric、Ledger并存。源码存在不等于所有目标能力、历史迁移或无人值守全链路已验收，也不证明Instance已部署；当前实现和证据分别见[implementation architecture](../../implementation-architecture.md)与[status](../../status.md)，部署事实须由Instance回执证明。database/schema/角色的完整规则仍由02及SQL唯一负责。
 
 | 仓库内路径 | 编译/依赖单元 | 目标运行单元 | 数据Owner / database | 当前定位 |
 |---|---|---|---|---|
 | `apps/console-ui` | React/TypeScript前端应用 | Console UI前端制品 | 无业务数据库 | 已有，逐页面迁移真实BFF调用 |
-| `apps/console-bff` | 独立Go module | Console BFF | 无业务database；仅session安全存储 | 拟建 |
-| `services/gateway-integration` | 独立Go module；内部CloudIdentity与Gateway适配子模块 | Gateway Integration | `tenant` / `opl_tenant`；`gateway` / `opl_gateway`，两套受限连接池 | 拟建，不另建tenant服务 |
-| `services/capability` | 独立Go module | Capability | `capability` / `opl_capability` | 拟建 |
-| `services/build` | 独立Go module | Build | `build` / `opl_build` | 拟建 |
-| `services/workspace` | 独立Go module | Workspace | `workspace` / `opl_workspace` | 拟建 |
-| `services/runtime-control` | 独立Go module | Runtime Control / Runtime Release catalog | `runtime_control` / `opl_runtime_control` | 拟建；仅Runtime版本目录，不运行Workspace实例 |
-| `services/serve` | 独立Go module | OPL Serve | `serve` / `opl_serve` | 拟建；唯一Agent部署/访问Owner |
-| `services/resource-catalog` | 独立Go module | Resource Catalog | `resource_catalog` / `opl_resource_catalog` | 拟建 |
-| `services/fabric` | 保留独立Go module | Fabric | `fabric` / `opl_fabric` | 已有，目标数据库隔离按02/09实施 |
-| `services/ledger` | 保留独立Go module | Ledger | `ledger` / `opl_ledger` | 已有，目标数据库隔离按02/09实施 |
+| `apps/console-bff` | 独立Go module | Console BFF | 无业务database；仅session安全存储 | 已有HTTP启动入口与typed owner客户端 |
+| `services/gateway-integration` | 独立Go module；内部CloudIdentity与Gateway适配子模块 | Gateway Integration | `tenant` / `opl_tenant`；`gateway` / `opl_gateway`，两套受限连接池 | 已有共进程启动入口；Tenant与Gateway分别开库、迁移并检查readiness，Gateway库为必需依赖 |
+| `services/capability` | 独立Go module | Capability | `capability` / `opl_capability` | 已有启动入口、本域迁移与产品RPC接线 |
+| `services/build` | 独立Go module | Build | `build` / `opl_build` | 已有启动入口、本域迁移、产品RPC与worker接线 |
+| `services/workspace` | 独立Go module | Workspace | `workspace` / `opl_workspace` | 已有启动入口、本域迁移、产品RPC与worker接线 |
+| `services/runtime-control` | 独立Go module | Runtime Control / Runtime Release catalog | `runtime_control` / `opl_runtime_control` | 已有启动入口、本域迁移与目录RPC；不运行Workspace实例 |
+| `services/serve` | 独立Go module | OPL Serve | `serve` / `opl_serve` | 已有启动入口、本域迁移及delivery/access接线；唯一Agent部署/访问Owner |
+| `services/resource-catalog` | 独立Go module | Resource Catalog | `resource_catalog` / `opl_resource_catalog` | 已有启动入口、本域迁移与产品RPC接线 |
+| `services/fabric` | 保留独立Go module | Fabric | `fabric` / `opl_fabric` | 已有HTTP与typed coordination启动接线；数据库隔离仍受02/09约束 |
+| `services/ledger` | 保留独立Go module | Ledger | `ledger` / `opl_ledger` | 已有HTTP与owner RPC启动接线；数据库隔离仍受02/09约束 |
 | `services/control-plane` | 迁移期间保留现有Go module | 迁移期间的原Control Plane | 仅尚未移交的现有权威 | 已有来源，非第9个目标领域服务 |
-| `packages/contracts/go` | 唯一共享contracts Go module：`opl-cloud/packages/contracts/go` | 无进程 | 无数据库 | 已有，target architecture生成代码为其`v226`子包 |
+| `packages/contracts/go` | 唯一共享contracts Go module：`opl-cloud/packages/contracts/go` | 无进程 | 无数据库 | 已有，生产proto生成代码位于其`api`子包 |
 | `services/internal` | 现有policy-free共享基础设施目录，复用其中的窄module（如`postgresmigrate`） | 无进程 | 无业务数据Owner | 仅供至少两个真实服务调用，不承载共享业务规则 |
 
-目标目录树（`拟建`不表示W01要一次建立所有空服务）：
+下列目录均已有源码；目录存在不代表目标职责全部完成或进程已部署：
 
 ```text
-opl-cloud/                         # 唯一Cloud产品GitHub仓库
+one-person-lab-cloud/              # 唯一Cloud产品GitHub仓库；产品标识opl-cloud
 ├── apps/
 │   ├── console-ui/                # 已有React/TypeScript前端
-│   └── console-bff/               # 拟建独立Go module / BFF进程
+│   └── console-bff/               # 已有独立Go module / BFF进程入口
 ├── services/
-│   ├── gateway-integration/       # 拟建；tenant + gateway共module/进程
-│   ├── capability/                # 拟建独立Go module / 服务
-│   ├── build/                     # 拟建独立Go module / 服务
-│   ├── workspace/                 # 拟建独立Go module / 服务
-│   ├── runtime-control/           # 拟建独立Go module / Runtime Release catalog
-│   ├── serve/                   # 拟建独立Go module / 唯一Agent delivery/deployment Owner
-│   ├── resource-catalog/          # 拟建独立Go module / 服务
+│   ├── gateway-integration/       # 已有；tenant + gateway共module/进程、独立database
+│   ├── capability/                # 已有独立Go module / 服务入口
+│   ├── build/                     # 已有独立Go module / 服务入口
+│   ├── workspace/                 # 已有独立Go module / 服务入口
+│   ├── runtime-control/           # 已有独立Go module / Runtime Release catalog
+│   ├── serve/                     # 已有独立Go module / 唯一Agent delivery/deployment Owner
+│   ├── resource-catalog/          # 已有独立Go module / 服务入口
 │   ├── fabric/                    # 保留独立Go module / 服务
 │   ├── ledger/                    # 保留独立Go module / 服务
 │   ├── control-plane/             # 迁移来源，逐能力退休旧writer
 │   └── internal/                  # 现有policy-free共享库，非服务
 ├── packages/contracts/
-│   ├── proto/internal.proto       # W01落实规格协议源码
+│   ├── proto/internal.proto       # 现行生产协议源码
 │   └── go/                        # 现有且唯一的contracts Go module
 │       ├── go.mod
-│       └── v226/                  # 生成包，不另设go.mod
+│       └── api/                   # 现行生成包，不另设go.mod
 └── docs/spec/target/               # 规格与实施工作包
 ```
 
-新建的是**仓库内7个领域服务module和1个BFF module**，不是6个GitHub仓库；Fabric/Ledger沿用并演进。并行工作按独立Owner和写集分配，不因同仓库而合并进程、共业务库或直接导入另一个服务的内部实现。进程内部lane先用直接函数与类型；真正跨Owner边界仍遵守既定typed接口与权限，不靠共享表集成。
+已提取的是**仓库内7个领域服务module和1个BFF module**；Fabric/Ledger沿用并演进。启动接线可核对各服务及BFF的`cmd/server/main.go`、Fabric的`cmd/fabric/main.go`和Ledger的`cmd/ledger/main.go`；`Dockerfile`定义这些二进制的构建与打包，不证明Instance安装。并行工作按独立Owner和写集分配，不因同仓库而合并进程、共业务库或直接导入另一个服务的内部实现。进程内部lane先用直接函数与类型；真正跨Owner边界仍遵守既定typed接口与权限，不靠共享表集成。
 
 ### 3.3 共享契约与同提交消费
 
@@ -135,7 +135,7 @@ opl-cloud/                         # 唯一Cloud产品GitHub仓库
 | Storage Provider | Put/Head/Read/Verify/Delete已授权对象；对象引用+sha256+size；只读短期凭据 | storage adapter/Instance凭据 | 精确对象版本与摘要、续传/过期/隔离、删除引用保护 | PostgreSQL存包二进制、长效bucket key到客户端 |
 | OCI Registry | repository+digest；push/head/read manifest；受限凭据 | 外部Registry；Build推送；Capability保存引用 | 远端manifest与平台匹配、共享digest引用、权限 | Cloud再造Registry |
 | Fabric Provider | typed capability/preflight/execute/observe；resource profile版本 | Fabric adapter | 可用能力、资源/存储/Secret/readiness事实、相同输入读回 | 偷换provider、TKE字段进入客户DTO |
-| Gateway Adapter | authenticate/authorize billing principal/charge/read/refund/key/usage；待交付的managed key可逆状态与原key scope能力 | Sub2API权威，Integration适配 | 原单幂等、精确外部subject/Workspace/key、授权scope、状态/用量权威读回 | 新钱包、余额双写、猜测外部端点或以不可逆revoke代替停用 |
+| Gateway Adapter | authenticate/authorize billing principal/charge/read/refund/key/usage；managed key可逆状态与原key scope能力 | Sub2API权威，Integration适配 | 原单幂等、精确外部subject/Workspace/key、授权scope、状态/用量权威读回 | 新钱包、余额双写、猜测外部端点或以不可逆revoke代替停用 |
 
 Runtime/WebUI目录必须记录具体可验证contract，而不只给“兼容=true”。当前OPL App适配器可实现发布者现行约定，但路径仅属于该适配器。第三方Runtime需提供相同能力事实，不能以启发式探测冒充准入。
 
@@ -205,7 +205,7 @@ CloudIdentity是本规格已定义的Gateway Integration内Cloud身份/租户子
 
 新租户钱包委托、managed key可逆停用/启用与Gateway权威读回、Workspace Key/Group创建与轮换、无Tenant客户读权限、历史同人证明、报价接受、Runtime config reload、Build Receipt无Workspace类型等能力要么由当前owner接口证实，要么在明确的owner开发项中补齐；在能力未具备前相关命令返回可解释的准入错误，不能把“接口写在本文”当作owner已提供。
 
-上述缺失能力仍未交付，须由现有契约与真实消费者共同升级并在[roadmap](../../roadmap.md)记录；本文不命名尚不存在的RPC/字段。缺失的必要能力必须在对应功能验收前完成。不得借用管理员无限权限、二次钱包、假收据、假ready或客户手动执行CLI代替产品功能。
+各项能力的当前实现与验收证据分别由[implementation architecture](../../implementation-architecture.md)和[status](../../status.md)记录；仍未具备的部分须由现有契约与真实消费者共同升级并在[roadmap](../../roadmap.md)记录，本文不命名尚不存在的RPC/字段。缺失的必要能力必须在对应功能验收前完成。不得借用管理员无限权限、二次钱包、假收据、假ready或客户手动执行CLI代替产品功能。
 
 ## 8. 结构收敛，不再扩大架构
 

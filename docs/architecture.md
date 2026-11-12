@@ -123,7 +123,7 @@ opl-instance-medopl
 This repository is the product and implementation repository for the target
 domain-separated Agent SaaS architecture. The target domains are `tenant`
 (CloudIdentity), `capability`, `build`, `workspace`, `runtime_control`,
-`resource_catalog`, `gateway` (Gateway Integration), `fabric`, and `ledger`,
+`resource_catalog`, `gateway` (Gateway Integration), `serve`, `fabric`, and `ledger`,
 with `console-ui` and a Console BFF as the browser surface. All Cloud product
 code belongs to this one GitHub repository, `one-person-lab-cloud`; `opl-cloud`
 is its product/runtime identifier. Service boundaries are

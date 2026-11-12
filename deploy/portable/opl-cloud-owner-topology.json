@@ -345,7 +345,7 @@
     "RepositoryBinding"
    ],
    "notes": [
-    "CloudIdentity/Tenant and Gateway Integration share one process, but remain distinct database and writer owners. DATABASE_URL opens Tenant; OPL_GATEWAY_DATABASE_URL opens Gateway. Without the latter, the Gateway product and coordination surfaces are not registered."
+    "CloudIdentity/Tenant and Gateway Integration share one process, but remain distinct database and writer owners. DATABASE_URL opens Tenant; OPL_GATEWAY_DATABASE_URL is required and opens the separate Gateway database. Missing OPL_GATEWAY_DATABASE_URL aborts startup; startup migrates the Gateway database and includes it in readiness checks."
    ],
    "transportPrincipal": "tenant",
    "daemonArgs": []
