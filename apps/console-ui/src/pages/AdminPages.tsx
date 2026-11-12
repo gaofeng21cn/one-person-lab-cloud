@@ -43,6 +43,7 @@ import { SourceState } from "../components/source/SourceState.tsx";
 import { Badge, Button, Field, Modal, SegmentedControl } from "../components/ui/index.ts";
 
 import { formatCount, formatDate, formatUsdMicros } from "../console-model.ts";
+import { AdminRuntimeManager } from "./AdminRuntimeManager.tsx";
 import { OperatorRuntimeObservations } from "./OperatorRuntimeObservations.tsx";
 import { observationLabel, observationReason, workspaceImageStatusMessage } from "./operator-observation-presentation.ts";
 
@@ -1142,6 +1143,7 @@ function SystemPage({ controller }: { controller: ConsoleController }) {
           </>}
         </SourceState>
       </section>
+      {cloudIdentity && controller.session?.isOperator ? <AdminRuntimeManager key={`${controller.session.user.id}:${controller.session.csrfToken}`} csrfToken={controller.session.csrfToken} /> : null}
       {runtimeDetailsOpen && controller.session ? <OperatorRuntimeObservations key={`${controller.session.user.id}:${controller.session.csrfToken}`} onClose={() => setRuntimeDetailsOpen(false)} refreshKey={healthSource?.fetchedAt || ""} sessionIdentity={`${controller.session.user.id}:${controller.session.csrfToken}`} /> : null}
     </section>
   );

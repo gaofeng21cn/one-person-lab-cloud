@@ -414,29 +414,29 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
     await page.locator(".workspace-list-row").first().waitFor({ state: "visible" });
     await page.getByRole("button", { name: "新建工作空间", exact: true }).click();
     await page.waitForURL((url) => url.pathname === "/console/workspaces/new");
-    await page.getByRole("heading", { name: "新建 Agent Workspace", exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("heading", { name: "新建工作空间", exact: true }).waitFor({ state: "visible" });
     await page.getByLabel("工作空间名称").fill(`Customer Journey ${viewport.name}`);
-    await page.getByText("已构建 Agent", { exact: true }).click();
+    await page.getByText("已构建智能体", { exact: true }).click();
     await page.getByLabel("default").selectOption("model-1");
-    await page.getByRole("button", { name: "获取准确报价", exact: true }).click();
-    await page.getByRole("heading", { name: "确认准确报价与部署条款", exact: true }).waitFor({ state: "visible" });
-    await page.getByRole("checkbox", { name: /我确认以上 Agent/ }).check();
-    await page.getByRole("button", { name: "确认并开通 Workspace", exact: true }).click();
-    await page.getByRole("button", { name: "打开 Agent WebUI", exact: true }).waitFor({ state: "visible", timeout: 5_000 });
+    await page.getByRole("button", { name: "查看报价", exact: true }).click();
+    await page.getByRole("heading", { name: "确认订单", exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("checkbox", { name: /我确认以上配置/ }).check();
+    await page.getByRole("button", { name: "确认并开通工作空间", exact: true }).click();
+    await page.getByRole("button", { name: "打开应用", exact: true }).waitFor({ state: "visible", timeout: 5_000 });
     assert.equal(accessReads, 1);
     assert.equal(seenIdempotencyKeys.size, 1);
     assert.deepEqual(createdBody, { name: `Customer Journey ${viewport.name}`, quoteId: "quote-1", renewalMode: "manual" });
-    await page.getByRole("button", { name: "打开 Agent WebUI", exact: true }).click();
+    await page.getByRole("button", { name: "打开应用", exact: true }).click();
     assert.deepEqual(await page.evaluate(() => (window as Window & { openedWorkspace?: unknown }).openedWorkspace), { url: `https://agent.example.invalid/${workspaceId}`, target: "_blank", features: "noopener,noreferrer" });
     assert.ok(operationReads >= 2);
     await page.reload({ waitUntil: "networkidle" });
-    await page.getByRole("button", { name: "打开 Agent WebUI", exact: true }).waitFor({ state: "visible", timeout: 5_000 }).catch(async (error) => {
+    await page.getByRole("button", { name: "打开应用", exact: true }).waitFor({ state: "visible", timeout: 5_000 }).catch(async (error) => {
       throw new Error(`reload access: ${await page.locator("body").innerText()} storage=${await page.evaluate(() => sessionStorage.getItem("opl-cloud:agent-workspace-operation"))}`, { cause: error });
     });
     assert.equal(seenIdempotencyKeys.size, 1);
     assert.ok(accessReads >= 2);
-    await page.getByRole("button", { name: "创建另一个 Workspace" }).click();
-    await page.getByRole("heading", { name: "新建 Agent Workspace", exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "创建另一个工作空间" }).click();
+    await page.getByRole("heading", { name: "新建工作空间", exact: true }).waitFor({ state: "visible" });
     assert.equal(await page.evaluate(() => sessionStorage.getItem("opl-cloud:agent-workspace-operation")), null);
     assertBrowserAuditClean(audit);
   } finally {
@@ -489,16 +489,16 @@ test("lost create response reloads into the original idempotent Workspace reques
     await loginCloudFixture(page, demo.origin);
     await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
     await page.getByLabel("工作空间名称").fill("Recovery Test");
-    await page.getByText("已构建 Agent", { exact: true }).click();
-    await page.getByRole("button", { name: "获取准确报价", exact: true }).click();
-    await page.getByRole("checkbox", { name: /我确认以上 Agent/ }).check();
-    await page.getByRole("button", { name: "确认并开通 Workspace", exact: true }).click();
+    await page.getByText("已构建智能体", { exact: true }).click();
+    await page.getByRole("button", { name: "查看报价", exact: true }).click();
+    await page.getByRole("checkbox", { name: /我确认以上配置/ }).check();
+    await page.getByRole("button", { name: "确认并开通工作空间", exact: true }).click();
     await page.getByText("正在核对原开通请求", { exact: true }).waitFor({ state: "visible", timeout: 5_000 }).catch(async (error) => {
       throw new Error(`lost response: ${await page.locator("body").innerText()} storage=${await page.evaluate(() => sessionStorage.getItem("opl-cloud:agent-workspace-operation"))}`, { cause: error });
     });
     await page.reload({ waitUntil: "networkidle" });
     await page.getByText("正在核对原开通请求", { exact: true }).waitFor({ state: "visible" });
-    assert.equal(await page.getByRole("button", { name: "确认并开通 Workspace" }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "确认并开通工作空间" }).count(), 0);
     activeActor = "another-customer";
     await page.reload({ waitUntil: "networkidle" });
     await page.getByText("原开通请求需由提交账户核对", { exact: false }).waitFor({ state: "visible" });
@@ -507,7 +507,7 @@ test("lost create response reloads into the original idempotent Workspace reques
     activeActor = "user-customer";
     await page.reload({ waitUntil: "networkidle" });
     await page.getByRole("button", { name: "核对原请求" }).click();
-    await page.getByText("正在开通 Workspace", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("正在开通工作空间", { exact: true }).waitFor({ state: "visible" });
     assert.equal(createWrites, 2);
     assert.equal(keys.size, 1);
   } finally {
@@ -704,7 +704,7 @@ test("v2 launch fails closed when Gateway or capability owner routes are unavail
     await loginCloudFixture(page, demo.origin);
     await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
     await page.getByText("开通入口暂不可用", { exact: true }).waitFor({ state: "visible" });
-    assert.equal(await page.getByRole("button", { name: "获取准确报价", exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
     assert.equal(await page.getByRole("button", { name: /确认并开通/ }).count(), 0);
     assert.equal(await page.getByText("模拟 Agent", { exact: true }).count(), 0);
     assert.ok(audit.consoleErrors.length > 0);
@@ -718,27 +718,50 @@ test("v2 launch fails closed when Gateway or capability owner routes are unavail
 });
 
 
-test("default App confirm step shows its Runtime Release instead of an empty CapabilityVersion", { timeout: 60_000 }, async () => {
+test("launch reads paired Basic and Pro prices, preserves application choice, and confirms the default App", { timeout: 60_000 }, async () => {
   const demo = await startCloudConsoleDemo();
   const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: viewports[0] });
     const audit = await installBrowserAudit(page, demo.origin);
+    let createWrites = 0;
+    let quoteWrites = 0;
+    const quoteRequested = deferred();
+    const quoteRelease = deferred();
+    const pairedReads: string[] = [];
     await page.route("**/api/v2/**", async (route) => {
       const request = route.request();
-      const path = new URL(request.url()).pathname;
+      const url = new URL(request.url());
+      const path = url.pathname;
       if (path === "/api/v2/auth/session") return route.fulfill({ json: { actorId: "user-customer", tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
       if (path === "/api/v2/workspaces" && request.method() === "GET") return route.fulfill({ json: { items: [{ id: "workspace-existing", name: "Existing", computePlanId: "compute-1", storagePlanId: "storage-1", deliveryModel: "agent_saas", status: "active", resourceReadiness: "ready", applicationAvailability: "available", currentPeriodEnd: "2026-10-27T00:00:00Z", createdAt: "2026-09-27T00:00:00Z", updatedAt: "2026-09-27T00:00:00Z", version: "1" }] } });
       if (path === "/api/v2/capability-versions") return route.fulfill({ json: { items: [] } });
       if (path === "/api/v2/catalog/runtime-versions") return route.fulfill({ json: { items: [{ id: "runtime-1", name: "Default App", versionLabel: "App 1.0", status: "approved", artifactDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" }] } });
-      if (path === "/api/v2/catalog/compute-plans") return route.fulfill({ json: { items: [{ id: "compute-1", name: "Compute Standard", vcpus: 2, memoryMiB: 4096, availability: "available", billingMode: "prepaid_monthly" }] } });
-      if (path === "/api/v2/catalog/storage-plans") return route.fulfill({ json: { items: [{ id: "storage-1", name: "Storage Standard", capacityGiB: 50, availability: "available", billingMode: "prepaid_monthly" }] } });
+      if (path === "/api/v2/catalog/compute-plans") {
+        const paired = url.searchParams.get("storagePlanId");
+        pairedReads.push(`compute:${paired || "none"}`);
+        return route.fulfill({ json: { items: [
+          { id: "compute-1", name: "Basic", vcpus: 2, memoryMiB: 4096, availability: "available", billingMode: "prepaid_monthly", ...(paired ? { monthlyPriceUSDMicros: paired === "storage-1" ? "17000000" : "19000000", pricePolicyVersionId: "p-basic" } : {}) },
+          { id: "compute-2", name: "Pro", vcpus: 8, memoryMiB: 16384, availability: "available", billingMode: "prepaid_monthly", ...(paired ? { monthlyPriceUSDMicros: paired === "storage-1" ? "83000000" : "89000000", pricePolicyVersionId: "p-pro" } : {}) }
+        ] } });
+      }
+      if (path === "/api/v2/catalog/storage-plans") {
+        const paired = url.searchParams.get("computePlanId");
+        pairedReads.push(`storage:${paired || "none"}`);
+        return route.fulfill({ json: { items: [
+          { id: "storage-1", name: "Storage Standard", capacityGiB: 50, availability: "available", billingMode: "prepaid_monthly", ...(paired ? { monthlyPriceUSDMicros: "3000000", pricePolicyVersionId: "p" } : {}) },
+          { id: "storage-2", name: "Storage Large", capacityGiB: 100, availability: "available", billingMode: "prepaid_monthly", ...(paired ? { monthlyPriceUSDMicros: "6000000", pricePolicyVersionId: "p" } : {}) }
+        ] } });
+      }
       if (path === "/api/v2/catalog/models") return route.fulfill({ json: { items: [{ id: "model-1", name: "IBD Model", capabilities: ["chat"], available: true, inputPricePerMillionTokensUSDMicros: "1", outputPricePerMillionTokensUSDMicros: "2", priceSource: "gateway", fetchedAt: "2026-09-27T00:00:00Z" }] } });
       if (path === "/api/v2/wallet") return route.fulfill({ json: { source: "gateway", status: "available", balanceUSDMicros: "100000000", currency: "USD", fetchedAt: "2026-09-27T00:00:00Z" } });
       if (path === "/api/v2/quotes" && request.method() === "POST") {
-        assert.deepEqual(request.postDataJSON(), { purpose: "deploy", applicationSelection: { kind: "opl_app", runtimeVersionId: "runtime-1" }, computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [], periodMonths: 1 });
-        return route.fulfill({ status: 201, json: { id: "quote-1", purpose: "deploy", runtimeVersionId: "runtime-1", computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [], periodMonths: 1, periodStart: "2026-09-27T00:00:00Z", periodEnd: "2026-10-27T00:00:00Z", pricePolicyVersionId: "price-1", refundPolicyVersionId: "refund-1", retentionPolicyVersionId: "retention-1", refundTerms: "按报价政策处理退款。", retentionTerms: "数据保留按报价政策执行。", lineItems: [{ kind: "runtime_release", description: "默认 OPL App 运行时", quantity: 1, amountUSDMicros: "1000000" }], totalUSDMicros: "1000000", status: "offered", expiresAt: "2099-01-01T00:00:00Z" } });
+        quoteWrites += 1;
+        if (quoteWrites === 1) { quoteRequested.resolve(); await quoteRelease.promise; }
+        assert.deepEqual(request.postDataJSON(), { purpose: "deploy", applicationSelection: { kind: "opl_app", runtimeVersionId: "runtime-1" }, computePlanId: "compute-2", storagePlanId: "storage-2", modelSelections: [], periodMonths: 1 });
+        return route.fulfill({ status: 201, json: { id: "quote-1", purpose: "deploy", runtimeVersionId: "runtime-1", computePlanId: "compute-2", storagePlanId: "storage-2", modelSelections: [], periodMonths: 1, periodStart: "2026-09-27T00:00:00Z", periodEnd: "2026-10-27T00:00:00Z", pricePolicyVersionId: "price-1", refundPolicyVersionId: "refund-1", retentionPolicyVersionId: "retention-1", refundTerms: "按报价政策处理退款。", retentionTerms: "数据保留按报价政策执行。", lineItems: [{ kind: "runtime_release", description: "默认 OPL App 运行时", quantity: 1, amountUSDMicros: "1000000" }], totalUSDMicros: "1000000", status: "offered", expiresAt: "2099-01-01T00:00:00Z" } });
       }
+      if (path === "/api/v2/workspaces" && request.method() === "POST") createWrites += 1;
       return route.fulfill({ status: 404, json: { error: "unexpected_v2_route", path } });
     });
     await loginCloudFixture(page, demo.origin);
@@ -746,17 +769,48 @@ test("default App confirm step shows its Runtime Release instead of an empty Cap
     await page.locator(".workspace-list-row").first().waitFor({ state: "visible" });
     await page.getByRole("button", { name: "新建工作空间", exact: true }).click();
     await page.waitForURL((url) => url.pathname === "/console/workspaces/new");
-    await page.getByRole("heading", { name: "新建 Agent Workspace", exact: true }).waitFor({ state: "visible", timeout: 10_000 });
+    await page.getByRole("heading", { name: "新建工作空间", exact: true }).waitFor({ state: "visible", timeout: 10_000 });
+    assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
+    const plans = page.getByRole("radiogroup", { name: "计算套餐", exact: true });
+    await plans.getByText("$17.00", { exact: false }).waitFor();
+    assert.match(await plans.innerText(), /2 核 · 4 GiB/);
+    assert.match(await plans.innerText(), /8 核 · 16 GiB/);
+    assert.match(await plans.innerText(), /\$83.00/);
     await page.getByLabel("工作空间名称").fill("Default App Confirm");
-    await page.getByText("默认 OPL App", { exact: true }).click();
-    await page.getByLabel("Runtime Release", { exact: true }).selectOption("runtime-1");
-    await page.getByRole("button", { name: "获取准确报价", exact: true }).click();
-    await page.getByRole("heading", { name: "确认准确报价与部署条款", exact: true }).waitFor({ state: "visible" });
+    await page.getByText("已构建智能体", { exact: true }).click();
+    await page.getByRole("link", { name: "前往构建", exact: true }).waitFor();
+    assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
+    await page.getByText("OPL App", { exact: true }).click();
+    await page.getByLabel("应用版本", { exact: true }).selectOption("runtime-1");
+    await plans.getByRole("radio", { name: /Pro/ }).check();
+    await page.getByLabel("存储套餐", { exact: true }).selectOption("storage-2");
+    await plans.getByText("$89.00", { exact: false }).waitFor();
+    assert.doesNotMatch(await plans.innerText(), /\$83.00/);
+    assert.ok(pairedReads.includes("compute:storage-2"));
+    assert.ok(pairedReads.includes("storage:compute-2"));
+    await page.getByRole("button", { name: "查看报价", exact: true }).click();
+    await quoteRequested.promise;
+    await page.getByText("已构建智能体", { exact: true }).click();
+    await page.getByText("OPL App", { exact: true }).click();
+    quoteRelease.resolve();
+    await page.waitForFunction(() => [...document.querySelectorAll<HTMLButtonElement>("button")].some(button => button.textContent === "查看报价" && !button.disabled));
+    assert.equal(await page.getByRole("heading", { name: "确认订单", exact: true }).count(), 0, "a late quote must not restore the prior selection's review");
+    assert.equal(quoteWrites, 1);
+    await page.getByRole("button", { name: "查看报价", exact: true }).click();
+    await page.getByRole("heading", { name: "确认订单", exact: true }).waitFor({ state: "visible" });
     const confirm = page.locator(".launch-confirm-list");
-    const releaseRow = confirm.locator("div").filter({ hasText: "Runtime Release" }).first();
+    const releaseRow = confirm.locator("div").filter({ hasText: "应用版本" }).first();
     await releaseRow.waitFor({ state: "visible" });
     assert.equal((await releaseRow.locator("dd").innerText()).trim(), "App 1.0");
-    assert.equal(await confirm.getByText("Agent 版本", { exact: true }).count(), 0, "the default App confirm step must not render the Agent CapabilityVersion row");
+    assert.equal(await confirm.getByText("智能体版本", { exact: true }).count(), 0, "the default App confirm step must not render the Agent CapabilityVersion row");
+    assert.equal(await page.getByRole("button", { name: "确认并开通工作空间", exact: true }).isDisabled(), true);
+    assert.equal(createWrites, 0, "quote review must not purchase a workspace");
+    await page.getByRole("checkbox", { name: /我确认以上配置/ }).check();
+    await page.getByRole("button", { name: "返回修改", exact: true }).click();
+    await page.getByText("已构建智能体", { exact: true }).click();
+    assert.equal(await page.getByRole("heading", { name: "确认订单", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("checkbox", { name: /我确认以上配置/ }).count(), 0);
+    assert.equal(createWrites, 0);
     assertBrowserAuditClean(audit);
   } finally {
     await browser.close();
@@ -907,17 +961,17 @@ test("v2 operation refresh keeps the original order and never opens before Serve
     await loginCloudFixture(page, demo.origin);
     await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
     await page.getByLabel("工作空间名称").fill("Refresh");
-    await page.getByText("已构建 Agent", { exact: true }).click();
-    await page.getByRole("button", { name: "获取准确报价", exact: true }).click();
-    await page.getByRole("heading", { name: "确认准确报价与部署条款", exact: true }).waitFor();
-    await page.getByRole("checkbox", { name: /我确认以上 Agent/ }).check();
-    await page.getByRole("button", { name: "确认并开通 Workspace", exact: true }).click();
-    await page.getByText("Serve confirmed access 未确认，暂不开放 WebUI。", { exact: true }).waitFor({ state: "visible", timeout: 5_000 });
-    assert.equal(await page.getByRole("button", { name: "打开 Agent WebUI", exact: true }).count(), 0);
+    await page.getByText("已构建智能体", { exact: true }).click();
+    await page.getByRole("button", { name: "查看报价", exact: true }).click();
+    await page.getByRole("heading", { name: "确认订单", exact: true }).waitFor();
+    await page.getByRole("checkbox", { name: /我确认以上配置/ }).check();
+    await page.getByRole("button", { name: "确认并开通工作空间", exact: true }).click();
+    await page.getByText("应用访问尚未确认，请稍后刷新。", { exact: true }).waitFor({ state: "visible", timeout: 5_000 });
+    assert.equal(await page.getByRole("button", { name: "打开应用", exact: true }).count(), 0);
     assert.equal(createWrites, 1);
     assert.ok(operationReads >= 1);
     await page.getByRole("button", { name: "刷新状态", exact: true }).click();
-    await page.getByText("Serve confirmed access 未确认，暂不开放 WebUI。", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("应用访问尚未确认，请稍后刷新。", { exact: true }).waitFor({ state: "visible" });
     assert.equal(createWrites, 1);
     assert.ok(audit.consoleErrors.every((message) => message.includes("503 (Service Unavailable)")));
     audit.consoleErrors.length = 0;

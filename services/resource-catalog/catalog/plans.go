@@ -51,6 +51,18 @@ func storageBillingEnum(v string) api.StoragePlanBillingModeEnum {
 
 type rowScanner interface{ Scan(...any) error }
 
+// planPriceRow reads the optional price columns alongside a plan in the same
+// database snapshot. NULL means no effective exact-pair price; zero is a price.
+type planPriceRow struct {
+	rowScanner
+	amount   sql.NullInt64
+	policyID sql.NullString
+}
+
+func (r *planPriceRow) Scan(dest ...any) error {
+	return r.rowScanner.Scan(append(dest, &r.amount, &r.policyID)...)
+}
+
 func nullOrZero(v sql.NullTime) time.Time {
 	if v.Valid {
 		return v.Time
@@ -90,16 +102,32 @@ func (s *Service) ListComputePlans(ctx context.Context, r *api.ListComputePlansR
 	}
 	n := limit(r.GetQueryLimit())
 	now := time.Now().UTC()
-	rows, err := s.DB.QueryContext(ctx, `SELECT `+computePlanCols+` FROM resource_catalog.compute_plans p WHERE p.id>$1 ORDER BY p.id LIMIT $2`, r.GetQueryCursor(), n+1)
+	// Select the latest version before checking its expiry: an expired current
+	// policy must not expose an older rate. Without the other plan ID the join
+	// yields NULL price fields rather than choosing a different combination.
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+computePlanCols+`,price.compute_monthly_usd_micros,price.id
+		FROM resource_catalog.compute_plans p
+		LEFT JOIN LATERAL (
+			SELECT id,compute_monthly_usd_micros,valid_until
+			FROM resource_catalog.price_policy_versions
+			WHERE compute_plan_id=p.id AND storage_plan_id=$3 AND valid_from<=$4
+			ORDER BY valid_from DESC,id DESC LIMIT 1
+		) price ON price.valid_until IS NULL OR $4<price.valid_until
+		WHERE p.id>$1 ORDER BY p.id LIMIT $2`, r.GetQueryCursor(), n+1, r.GetQueryStoragePlanId(), now)
 	if err != nil {
 		return nil, dbError(err)
 	}
 	defer rows.Close()
 	out := &api.ComputePlanPage{}
 	for rows.Next() {
-		plan, err := scanComputePlan(rows, now)
+		price := &planPriceRow{rowScanner: rows}
+		plan, err := scanComputePlan(price, now)
 		if err != nil {
 			return nil, dbError(err)
+		}
+		if price.amount.Valid && price.policyID.Valid {
+			plan.MonthlyPriceUsdMicros = proto.Int64(price.amount.Int64)
+			plan.PricePolicyVersionId = proto.String(price.policyID.String)
 		}
 		out.Items = append(out.Items, plan)
 	}
@@ -229,16 +257,31 @@ func (s *Service) ListStoragePlans(ctx context.Context, r *api.ListStoragePlansR
 	}
 	n := limit(r.GetQueryLimit())
 	now := time.Now().UTC()
-	rows, err := s.DB.QueryContext(ctx, `SELECT `+storagePlanCols+` FROM resource_catalog.storage_plans s WHERE s.id>$1 ORDER BY s.id LIMIT $2`, r.GetQueryCursor(), n+1)
+	// Use the same exact-pair, latest-then-expiry rule as compute reads and
+	// quotes. Product fees stay in the quote rather than either resource price.
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+storagePlanCols+`,price.storage_monthly_usd_micros,price.id
+		FROM resource_catalog.storage_plans s
+		LEFT JOIN LATERAL (
+			SELECT id,storage_monthly_usd_micros,valid_until
+			FROM resource_catalog.price_policy_versions
+			WHERE compute_plan_id=$3 AND storage_plan_id=s.id AND valid_from<=$4
+			ORDER BY valid_from DESC,id DESC LIMIT 1
+		) price ON price.valid_until IS NULL OR $4<price.valid_until
+		WHERE s.id>$1 ORDER BY s.id LIMIT $2`, r.GetQueryCursor(), n+1, r.GetQueryComputePlanId(), now)
 	if err != nil {
 		return nil, dbError(err)
 	}
 	defer rows.Close()
 	out := &api.StoragePlanPage{}
 	for rows.Next() {
-		plan, err := scanStoragePlan(rows, now)
+		price := &planPriceRow{rowScanner: rows}
+		plan, err := scanStoragePlan(price, now)
 		if err != nil {
 			return nil, dbError(err)
+		}
+		if price.amount.Valid && price.policyID.Valid {
+			plan.MonthlyPriceUsdMicros = proto.Int64(price.amount.Int64)
+			plan.PricePolicyVersionId = proto.String(price.policyID.String)
 		}
 		out.Items = append(out.Items, plan)
 	}

@@ -123,40 +123,99 @@ function AgentLaunchPage({
         <WorkspaceLaunchSteps current="operation" />
         <div className="workspace-launch-layout workspace-launch-layout--operation">
           <section className="launch-operation">
-            <div className="launch-operation-head"><div><h2>{operation.status === "succeeded" && canOpen ? "Serve Agent 可访问，订单证据确认中" : operation.status === "succeeded" ? "Workspace 证据确认中" : operation.status === "needs_attention" ? "需要管理员处理" : operation.status === "failed" ? "Workspace 开通失败" : "正在开通 Workspace"}</h2><p>{operation.status === "succeeded" && canOpen ? "Serve confirmed access 已确认，可以打开 Agent WebUI；客户 Workspace 订单 receipt 仍需 owner 证据确认。" : operation.status === "succeeded" ? "操作已收到终态，但订单 receipt 与 Serve access 尚未同时确认；请刷新原操作，暂不重复提交。" : operation.status === "needs_attention" ? "操作结果需要管理员核实，请勿重复提交。" : operation.status === "failed" ? "开通未完成；页面不会把资源状态伪装成可用应用。" : "订单、资源和 Serve Agent 正在由各自 owner 继续处理。"}</p></div></div>
-            <div className="launch-current-phase"><span>订单阶段</span><strong>{operation.stage}</strong><small>状态：{operation.status}</small></div>
+            <div className="launch-operation-head"><div><h2>{operation.status === "succeeded" && canOpen ? "应用已可访问，订单确认中" : operation.status === "succeeded" ? "正在确认订单" : operation.status === "needs_attention" ? "需要管理员处理" : operation.status === "failed" ? "工作空间开通失败" : "正在开通工作空间"}</h2><p>{operation.status === "succeeded" && canOpen ? "现在可以打开应用。订单确认仍在进行中，请保留当前页面。" : operation.status === "succeeded" ? "正在核对订单和应用访问状态，请刷新查看进度，暂勿重复开通。" : operation.status === "needs_attention" ? "操作结果需要管理员核实，请勿重复提交。" : operation.status === "failed" ? "开通未完成，请联系管理员查看原因。" : "正在准备资源并部署应用。"}</p></div></div>
+            <details className="launch-diagnostic"><summary>技术详情</summary><dl className="operation-readback"><div><dt>操作编号</dt><dd>{operation.operationId}</dd></div><div><dt>阶段</dt><dd>{operation.stage}</dd></div><div><dt>状态</dt><dd>{operation.status}</dd></div></dl></details>
             {controller.agentPollIssue === "unknown" ? <Alert color="warning" title="结果正在核实" description="暂时无法确认下一阶段，请勿重复提交；刷新后继续读取原操作。" /> : null}
-            {controller.agentPollIssue === "timeout" ? <Alert color="warning" title="仍在处理中" description="owner 没有在当前轮次内完成读回，原操作仍被保留。" /> : null}
-            {controller.agentWorkspace ? <div className="launch-diagnostic"><header><span>Workspace owner readback</span></header><dl className="operation-readback"><div><dt>Workspace</dt><dd>{controller.agentWorkspace.name}</dd></div><div><dt>资源</dt><dd>{controller.agentWorkspace.resourceReadiness}</dd></div><div><dt>Serve Agent</dt><dd>{controller.agentWorkspace.applicationAvailability}</dd></div><div><dt>订单 receipt</dt><dd>证据确认中</dd></div></dl></div> : null}
+            {controller.agentPollIssue === "timeout" ? <Alert color="warning" title="仍在处理中" description="处理时间较长，请稍后刷新查看原订单。" /> : null}
+            {controller.agentWorkspace ? <details className="launch-diagnostic"><summary>工作空间详情</summary><dl className="operation-readback"><div><dt>工作空间</dt><dd>{controller.agentWorkspace.name}</dd></div><div><dt>资源</dt><dd>{controller.agentWorkspace.resourceReadiness}</dd></div><div><dt>应用</dt><dd>{controller.agentWorkspace.applicationAvailability}</dd></div><div><dt>订单确认</dt><dd>证据确认中</dd></div></dl></details> : null}
             <div className="launch-operation-actions">
-              {canOpen ? <Button color="primary" onClick={controller.openAgentWorkspace}>打开 Agent WebUI</Button> : null}
-              {operation.status === "succeeded" && canOpen ? <Button onClick={controller.startAnotherAgentLaunch} variant="outline">创建另一个 Workspace</Button> : null}
+              {canOpen ? <Button color="primary" onClick={controller.openAgentWorkspace}>打开应用</Button> : null}
+              {operation.status === "succeeded" && canOpen ? <Button onClick={controller.startAnotherAgentLaunch} variant="outline">创建另一个工作空间</Button> : null}
               <Button onClick={() => void onRefresh()} variant="outline"><RefreshCw aria-hidden size={16} />刷新状态</Button>
-              {operationDone && !canOpen ? <span className="inline-error">Serve confirmed access 未确认，暂不开放 WebUI。</span> : null}
+              {operationDone && !canOpen ? <span className="inline-error">应用访问尚未确认，请稍后刷新。</span> : null}
             </div>
           </section>
-          <aside className="workspace-order-summary"><header><span>订单与资源</span><strong>{controller.agentWorkspace?.name || controller.launchName || "Workspace"}</strong></header><dl className="workspace-order-summary__facts"><div><dt>报价</dt><dd>{quote ? formatUsdMicros(quote.totalUSDMicros) : "原报价读回中"}</dd></div><div><dt>套餐</dt><dd>{compute?.name || "暂不可用"} / {storage?.name || "暂不可用"}</dd></div><div><dt>应用来源</dt><dd>{isDefaultApp ? `默认 App · ${release?.versionLabel || release?.name || "暂不可用"}` : `Agent · ${version?.versionLabel || "暂不可用"}`}</dd></div><div><dt>模型</dt><dd>{isDefaultApp ? "默认 App 内置模型配置" : (quote?.modelSelections.map((selection) => `${selection.slot}: ${modelFor(selection.modelId)}`).join("、") || "暂不可用")}</dd></div></dl></aside>
+          <aside className="workspace-order-summary"><header><span>订单与资源</span><strong>{controller.agentWorkspace?.name || controller.launchName || "工作空间"}</strong></header><dl className="workspace-order-summary__facts"><div><dt>报价</dt><dd>{quote ? formatUsdMicros(quote.totalUSDMicros) : "原报价读回中"}</dd></div><div><dt>套餐</dt><dd>{compute?.name || "暂不可用"} / {storage?.name || "暂不可用"}</dd></div><div><dt>应用来源</dt><dd>{isDefaultApp ? `默认 App · ${release?.versionLabel || release?.name || "暂不可用"}` : `Agent · ${version?.versionLabel || "暂不可用"}`}</dd></div><div><dt>模型</dt><dd>{isDefaultApp ? "应用内置配置" : (quote?.modelSelections.map((selection) => `${selection.slot}: ${modelFor(selection.modelId)}`).join("、") || "暂不可用")}</dd></div></dl></aside>
         </div>
       </section>
     );
   }
 
   return (
-    <section className="workspace-launch-page" data-slide={controller.agentStep === "quote" ? "C-WS-03" : "C-WS-02"}>
+    <section className="workspace-launch-page workspace-launch-page--native" data-slide={controller.agentStep === "quote" ? "C-WS-03" : "C-WS-02"}>
       <Button className="workspace-launch-back" onClick={onBack} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />返回工作空间列表</Button>
       <WorkspaceLaunchSteps current={controller.agentStep === "quote" ? "confirm" : "configure"} />
-      {controller.agentSourceLoading ? <div className="source-loading" aria-live="polite"><span className="spinner" />正在读取 Agent、套餐、模型与 Gateway 钱包权威数据</div> : null}
-      {controller.agentSourceError ? <Alert color="warning" title="开通入口暂不可用" description={`无法取得真实 owner 数据：${controller.agentSourceError}。未使用旧目录、缓存余额或模拟 Agent。`} actions={<Button onClick={() => void onRefresh()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />重试</Button>} /> : null}
+      {controller.agentSourceLoading ? <div className="source-loading" aria-live="polite"><span className="spinner" />正在加载应用与套餐</div> : null}
+      {controller.agentSourceError ? <>
+        <Alert color="warning" title="开通入口暂不可用" description="无法加载应用、套餐或钱包信息，请稍后重试。" actions={<Button onClick={() => void onRefresh()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />重试</Button>} />
+        <details className="launch-diagnostic"><summary>技术详情</summary><p>{controller.agentSourceError}</p></details>
+      </> : null}
       {controller.agentStep === "quote" && quote ? (
         <div className="workspace-launch-layout">
-          <section className="workspace-launch-review"><header><h2>确认准确报价与部署条款</h2></header><dl className="launch-confirm-list"><div><dt>{isDefaultApp ? "Runtime Release" : "Agent 版本"}</dt><dd>{isDefaultApp ? (release?.versionLabel || release?.name || release?.id) : (version?.versionLabel || version?.id)}</dd></div><div><dt>计算套餐</dt><dd>{compute?.name}</dd></div><div><dt>存储套餐</dt><dd>{storage?.name}</dd></div><div><dt>模型</dt><dd>{isDefaultApp ? "默认 App 内置模型配置" : quote.modelSelections.map((selection) => `${selection.slot}: ${modelFor(selection.modelId)}`).join("、")}</dd></div><div><dt>计费周期</dt><dd>{quote.periodStart} 至 {quote.periodEnd}</dd></div><div><dt>报价有效至</dt><dd>{quote.expiresAt}</dd></div></dl><p>{quote.refundTerms}</p><p>{quote.retentionTerms}</p>{controller.agentWallet && BigInt(controller.agentWallet.balanceUSDMicros) < BigInt(quote.totalUSDMicros) ? <Alert color="warning" title="余额不足" description="Gateway 权威余额不足本次报价，请联系管理员充值后重新报价。" /> : null}<div className="launch-confirm-check"><Checkbox checked={controller.agentConfirmed} label="我确认以上 Agent、套餐、模型、费用与数据政策，并同意创建同一 Workspace。" onChange={controller.setAgentConfirmed} /></div><footer><Button onClick={() => { controller.setLaunchStep("configure"); controller.setAgentConfirmed(false); }} variant="outline">返回修改</Button></footer></section><aside className="workspace-order-summary"><header><span>确定报价</span><strong>{formatUsdMicros(quote.totalUSDMicros)}</strong></header><dl className="workspace-order-summary__facts">{quote.lineItems.map((item) => <div key={`${item.kind}:${item.description}`}><dt>{item.description}</dt><dd>{formatUsdMicros(item.amountUSDMicros)}</dd></div>)}</dl><div className="workspace-order-summary__action"><Button busy={controller.agentBusy} color="primary" disabled={!controller.agentConfirmed || !controller.agentWallet || BigInt(controller.agentWallet.balanceUSDMicros) < BigInt(quote.totalUSDMicros)} onClick={() => void controller.submitAgentLaunch()}>确认并开通 Workspace</Button></div></aside></div>
+          <section className="workspace-launch-review">
+            <header><h2>确认订单</h2></header>
+            <dl className="launch-confirm-list">
+              <div><dt>{isDefaultApp ? "应用版本" : "智能体版本"}</dt><dd>{isDefaultApp ? (release?.versionLabel || release?.name || release?.id) : (version?.versionLabel || version?.id)}</dd></div>
+              <div><dt>计算套餐</dt><dd>{compute?.name}</dd></div>
+              <div><dt>存储套餐</dt><dd>{storage?.name}</dd></div>
+              <div><dt>模型</dt><dd>{isDefaultApp ? "应用内置配置" : quote.modelSelections.map((selection) => `${selection.slot}: ${modelFor(selection.modelId)}`).join("、") || "无需配置"}</dd></div>
+              <div><dt>计费周期</dt><dd>{formatDate(quote.periodStart)} 至 {formatDate(quote.periodEnd)}</dd></div>
+              <div><dt>报价有效至</dt><dd>{formatDate(quote.expiresAt, true)}</dd></div>
+            </dl>
+            <div className="workspace-launch-terms"><p>{quote.refundTerms}</p><p>{quote.retentionTerms}</p>{quote.expectedInterruption ? <p>{quote.expectedInterruption}</p> : null}</div>
+            {controller.agentWallet && BigInt(controller.agentWallet.balanceUSDMicros) < BigInt(quote.totalUSDMicros) ? <Alert color="warning" title="余额不足" description="钱包余额不足，请充值后重新报价。" /> : null}
+            <div className="launch-confirm-check"><Checkbox checked={controller.agentConfirmed} label="我确认以上配置、费用与数据政策，同意开通工作空间。" onChange={controller.setAgentConfirmed} /></div>
+            <footer><Button onClick={() => { controller.setLaunchStep("configure"); controller.setAgentConfirmed(false); }} variant="outline">返回修改</Button></footer>
+          </section>
+          <aside className="workspace-order-summary">
+            <header><span>本次应付</span><strong>{formatUsdMicros(quote.totalUSDMicros)}</strong></header>
+            <dl className="workspace-order-summary__facts">{quote.lineItems.map((item) => <div key={`${item.kind}:${item.description}`}><dt>{item.description}</dt><dd>{formatUsdMicros(item.amountUSDMicros)}</dd></div>)}</dl>
+            <div className="workspace-order-summary__action"><Button busy={controller.agentBusy} color="primary" disabled={!controller.agentConfirmed || !controller.agentWallet || BigInt(controller.agentWallet.balanceUSDMicros) < BigInt(quote.totalUSDMicros)} onClick={() => void controller.submitAgentLaunch()}>确认并开通工作空间</Button></div>
+          </aside>
+        </div>
       ) : (
-        <div className="workspace-launch-layout"><section className="workspace-launch-config"><header><h2>新建 Agent Workspace</h2><p>选择已 ready 的 Agent CapabilityVersion、计算/存储套餐和模型；价格只由 Resource Catalog 报价。</p></header><Field label="工作空间名称" maxLength={256} onChange={(event) => controller.setLaunchName(event.currentTarget.value)} placeholder="例如：IBD 研究助手" required value={controller.launchName} />
-          <fieldset><legend>应用来源</legend><RadioGroup<"opl_app" | "agent"> aria-label="应用来源" direction="col" name="agent-application-kind" onChange={controller.setAgentApplicationKind} value={controller.agentApplicationKind}><RadioGroup.Item block value="opl_app"><strong>默认 OPL App</strong><small>使用已获准的 Runtime Release，无需构建</small></RadioGroup.Item><RadioGroup.Item block value="agent"><strong>已构建 Agent</strong><small>使用 ready 的 CapabilityVersion 与独立 WebUI</small></RadioGroup.Item></RadioGroup></fieldset>{isDefaultApp ? <fieldset><legend>Runtime Release（默认 App）</legend><select aria-label="Runtime Release" disabled={!controller.agentRuntimeVersions.length} onChange={(event) => controller.setAgentRuntimeVersionId(event.currentTarget.value)} value={controller.agentRuntimeVersionId}><option value="">请选择 approved 版本</option>{controller.agentRuntimeVersions.map((item) => <option key={item.id} value={item.id}>{item.versionLabel || item.name}</option>)}</select></fieldset> : <fieldset><legend>Agent CapabilityVersion</legend><select aria-label="Agent CapabilityVersion" disabled={!controller.agentCapabilityVersions.length} onChange={(event) => controller.setAgentCapabilityVersionId(event.currentTarget.value)} value={controller.agentCapabilityVersionId}><option value="">请选择 ready 版本</option>{controller.agentCapabilityVersions.map((item) => <option key={item.id} value={item.id}>{item.versionLabel} · {item.provenance}</option>)}</select></fieldset>}
-          <fieldset><legend>计算套餐</legend><RadioGroup<string> aria-label="计算套餐" className="workspace-plan-list" direction="col" name="agent-compute-plan" onChange={controller.setAgentComputePlanId} value={controller.agentComputePlanId}>{controller.agentComputePlans.map((item) => <RadioGroup.Item block key={item.id} value={item.id}><strong>{item.name}</strong><small>{item.vcpus} vCPU / {item.memoryMiB} MiB</small></RadioGroup.Item>)}</RadioGroup></fieldset>
-          <fieldset><legend>存储套餐</legend><select aria-label="存储套餐" onChange={(event) => controller.setAgentStoragePlanId(event.currentTarget.value)} value={controller.agentStoragePlanId}>{controller.agentStoragePlans.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.capacityGiB} GiB</option>)}</select></fieldset>
-          {!isDefaultApp && version?.modelRequirements.map((requirement) => <fieldset key={requirement.slot}><legend>{requirement.slot}{requirement.required ? "（必选）" : "（可选）"}</legend><select aria-label={requirement.slot} onChange={(event) => controller.setAgentModelSelection(requirement.slot, event.currentTarget.value)} value={controller.agentModelSelections[requirement.slot] || ""}><option value="">请选择模型</option>{controller.agentModels.filter((model) => requirement.allowedModelIds.includes(model.id)).map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select></fieldset>)}
-        </section><aside className="workspace-order-summary"><header><span>当前选择</span><strong>{isDefaultApp ? (release?.versionLabel || release?.name || "未选择 Runtime Release") : (version?.versionLabel || "未选择 Agent")}</strong></header><dl className="workspace-order-summary__facts"><div><dt>计算</dt><dd>{compute?.name || "未选择"}</dd></div><div><dt>存储</dt><dd>{storage?.name || "未选择"}</dd></div><div><dt>Gateway 钱包</dt><dd>{controller.agentWallet ? `${formatUsdMicros(controller.agentWallet.balanceUSDMicros)}（实时）` : "暂不可用"}</dd></div></dl><div className="workspace-order-summary__action"><Button busy={controller.agentBusy} color="primary" disabled={!controller.agentWallet || controller.agentSourceLoading || Boolean(controller.agentSourceError)} onClick={controller.reviewAgentLaunch}>获取准确报价</Button></div></aside></div>
+        <div className="workspace-launch-layout">
+          <section className="workspace-launch-config">
+            <header><h2>新建工作空间</h2></header>
+            <Field label="工作空间名称" maxLength={256} onChange={(event) => controller.setLaunchName(event.currentTarget.value)} placeholder="例如：研究助手" required value={controller.launchName} />
+            <fieldset><legend>应用</legend>
+              <RadioGroup<"opl_app" | "agent"> aria-label="应用" className="workspace-application-options" direction="row" name="agent-application-kind" onChange={controller.setAgentApplicationKind} value={controller.agentApplicationKind}>
+                <RadioGroup.Item block value="opl_app">OPL App</RadioGroup.Item>
+                <RadioGroup.Item block value="agent">已构建智能体</RadioGroup.Item>
+              </RadioGroup>
+            </fieldset>
+            {isDefaultApp ? <fieldset><legend>应用版本</legend>
+              <select aria-label="应用版本" disabled={!controller.agentRuntimeVersions.length} onChange={(event) => controller.setAgentRuntimeVersionId(event.currentTarget.value)} value={controller.agentRuntimeVersionId}>
+                <option value="">请选择版本</option>{controller.agentRuntimeVersions.map((item) => <option key={item.id} value={item.id}>{item.versionLabel || item.name}</option>)}
+              </select>
+              {!controller.agentSourceLoading && !controller.agentRuntimeVersions.length ? <p className="workspace-launch-note">暂无可用版本，请联系管理员添加。</p> : null}
+            </fieldset> : <fieldset><legend>智能体版本</legend>
+              <select aria-label="智能体版本" disabled={!controller.agentCapabilityVersions.length} onChange={(event) => controller.setAgentCapabilityVersionId(event.currentTarget.value)} value={controller.agentCapabilityVersionId}>
+                <option value="">请选择智能体</option>{controller.agentCapabilityVersions.map((item) => <option key={item.id} value={item.id}>{item.versionLabel}</option>)}
+              </select>
+              {!controller.agentSourceLoading && !controller.agentCapabilityVersions.length ? <p className="workspace-launch-note">暂无可用智能体。<a href="/console/publisher">前往构建</a></p> : null}
+            </fieldset>}
+            <fieldset><legend>计算套餐</legend>
+              <RadioGroup<string> aria-label="计算套餐" className="workspace-plan-list workspace-native-plans" direction="col" name="agent-compute-plan" onChange={controller.setAgentComputePlanId} value={controller.agentComputePlanId}>
+                {controller.agentComputePlans.map((item) => <RadioGroup.Item block key={item.id} value={item.id}>
+                  <span className="workspace-native-plan"><span><strong>{item.name}</strong><small>{item.vcpus} 核 · {item.memoryMiB / 1024} GiB</small></span><span className="workspace-native-plan__price">{item.monthlyPriceUSDMicros !== undefined ? <>{formatUsdMicros(item.monthlyPriceUSDMicros)}<small> / 月</small></> : <small>{controller.agentPricingLoading ? "价格读取中" : "以订单报价为准"}</small>}</span></span>
+                </RadioGroup.Item>)}
+              </RadioGroup>
+            </fieldset>
+            <fieldset><legend>存储套餐</legend>
+              <select aria-label="存储套餐" onChange={(event) => controller.setAgentStoragePlanId(event.currentTarget.value)} value={controller.agentStoragePlanId}>
+                {controller.agentStoragePlans.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.capacityGiB} GiB{item.monthlyPriceUSDMicros !== undefined ? ` · ${formatUsdMicros(item.monthlyPriceUSDMicros)} / 月` : ""}</option>)}
+              </select>
+            </fieldset>
+            {controller.agentPricingError ? <p className="workspace-launch-note" role="status">套餐月价暂不可用，请查看订单报价确认费用。</p> : null}
+            {!isDefaultApp && version?.modelRequirements.map((requirement) => <fieldset key={requirement.slot}><legend>{requirement.slot}{requirement.required ? "（必选）" : "（可选）"}</legend><select aria-label={requirement.slot} onChange={(event) => controller.setAgentModelSelection(requirement.slot, event.currentTarget.value)} value={controller.agentModelSelections[requirement.slot] || ""}><option value="">请选择模型</option>{controller.agentModels.filter((model) => requirement.allowedModelIds.includes(model.id)).map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select></fieldset>)}
+          </section>
+          <aside className="workspace-order-summary">
+            <header><span>当前选择</span><strong>{isDefaultApp ? (release?.versionLabel || release?.name || "未选择应用版本") : (version?.versionLabel || "未选择智能体")}</strong></header>
+            <dl className="workspace-order-summary__facts"><div><dt>计算</dt><dd>{compute?.name || "未选择"}</dd></div><div><dt>存储</dt><dd>{storage?.name || "未选择"}</dd></div><div><dt>钱包余额</dt><dd>{controller.agentWallet ? formatUsdMicros(controller.agentWallet.balanceUSDMicros) : "暂不可用"}</dd></div></dl>
+            <div className="workspace-order-summary__action"><Button busy={controller.agentBusy} color="primary" disabled={!controller.agentCanQuote} onClick={controller.reviewAgentLaunch}>查看报价</Button></div>
+          </aside>
+        </div>
       )}
     </section>
   );

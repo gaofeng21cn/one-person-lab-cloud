@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type {
   AuthSession,
@@ -76,6 +76,9 @@ export interface AgentWorkspaceLaunchController extends WorkspaceLaunchControlle
   agentWallet: GatewayWalletReadbackDTO | null;
   agentSourceError: string;
   agentSourceLoading: boolean;
+  agentPricingLoading: boolean;
+  agentPricingError: boolean;
+  agentCanQuote: boolean;
   agentCapabilityVersionId: string;
   setAgentCapabilityVersionId: (value: string) => void;
   agentComputePlanId: string;
@@ -178,6 +181,39 @@ export function useWorkspaceLaunchController({
   const [agentPollIssue, setAgentPollIssue] = useState<"" | "unavailable" | "timeout" | "unknown">("");
   const [agentRecoveryPending, setAgentRecoveryPending] = useState(() => Boolean(sessionStorage.getItem(agentOperationStorageKey)));
   const intent = useRef<PersistedAgentIntent | null>(null);
+  const quoteRevision = useRef(0);
+  const [agentPlanPricing, setAgentPlanPricing] = useState<{
+    computePlanId: string;
+    storagePlanId: string;
+    compute: ComputePlanDTO[];
+    storage: StoragePlanDTO[];
+  } | null>(null);
+  const [agentPricingLoading, setAgentPricingLoading] = useState(false);
+  const [agentPricingError, setAgentPricingError] = useState(false);
+
+  // Prices belong to an exact compute/storage pairing. Never present the
+  // preceding selection's prices while its replacement read is in flight.
+  useEffect(() => {
+    setAgentPlanPricing(null);
+    setAgentPricingError(false);
+    if (!session || !agentComputePlanId || !agentStoragePlanId || agentSourceLoading || agentSourceError) {
+      setAgentPricingLoading(false);
+      return;
+    }
+    let active = true;
+    setAgentPricingLoading(true);
+    void Promise.all([
+      listAvailableComputePlans(agentStoragePlanId),
+      listAvailableStoragePlans(agentComputePlanId)
+    ]).then(([compute, storage]) => {
+      if (active) setAgentPlanPricing({ computePlanId: agentComputePlanId, storagePlanId: agentStoragePlanId, compute, storage });
+    }).catch(() => {
+      if (active) setAgentPricingError(true);
+    }).finally(() => {
+      if (active) setAgentPricingLoading(false);
+    });
+    return () => { active = false; };
+  }, [session, agentComputePlanId, agentStoragePlanId, agentSourceLoading, agentSourceError]);
 
   // Normal workspace launch state
   const [normalLaunchPlan, setNormalLaunchPlan] = useState<PlanId>("basic");
@@ -185,12 +221,17 @@ export function useWorkspaceLaunchController({
   const [normalLaunchOperation, setNormalLaunchOperation] = useState<WorkspaceLaunchResponse | null>(null);
 
   const invalidateQuote = () => {
+    quoteRevision.current += 1;
     setAgentQuote(null);
     setAgentConfirmed(false);
     setLaunchStep("configure");
   };
 
   const reset = () => {
+    quoteRevision.current += 1;
+    setAgentPlanPricing(null);
+    setAgentPricingLoading(false);
+    setAgentPricingError(false);
     setCatalog(emptyCatalog());
     setPreviews({});
     setLaunchName("");
@@ -268,6 +309,7 @@ export function useWorkspaceLaunchController({
   };
 
   const loadAgentCatalog = async (generation: number, activeSession: AuthSession) => {
+    invalidateQuote();
     setAgentSourceLoading(true);
     setAgentSourceError("");
     try {
@@ -433,11 +475,8 @@ export function useWorkspaceLaunchController({
   const reviewAgentLaunch = () => {
     if (!session || intent.current || !canCreateAgentQuote(readiness) || (isDefaultApp ? !selectedRelease : !selectedCapability)) return;
     setAgentBusy(true);
-    // Capture current selection snapshot to validate against late-arriving quotes
-    const requestedApplicationKind = agentApplicationKind;
-    const requestedSourceId = isDefaultApp ? agentRuntimeVersionId : agentCapabilityVersionId;
-    const requestedComputePlanId = agentComputePlanId;
-    const requestedStoragePlanId = agentStoragePlanId;
+    const requestedRevision = quoteRevision.current;
+    const stillCurrent = currentMutationRequest();
     const applicationSelection = isDefaultApp
       ? { kind: "opl_app" as const, runtimeVersionId: selectedRelease!.id }
       : { kind: "agent" as const, capabilityVersionId: selectedCapability!.id };
@@ -445,20 +484,13 @@ export function useWorkspaceLaunchController({
       purpose: "deploy", applicationSelection, computePlanId: agentComputePlanId,
       storagePlanId: agentStoragePlanId, modelSelections, periodMonths: 1
     }, session.csrfToken, `workspace-quote:${crypto.randomUUID()}`).then((quote) => {
-      // Reject late-arriving quote if selection changed while quote was in flight
-      const currentSourceId = agentApplicationKind === "opl_app" ? agentRuntimeVersionId : agentCapabilityVersionId;
-      if (requestedApplicationKind !== agentApplicationKind ||
-          requestedSourceId !== currentSourceId ||
-          requestedComputePlanId !== agentComputePlanId ||
-          requestedStoragePlanId !== agentStoragePlanId) {
-        // Silently discard stale quote; user already changed selection and invalidateQuote() cleared agentQuote
-        setAgentBusy(false);
-        return;
-      }
+      if (!stillCurrent() || requestedRevision !== quoteRevision.current) return;
       setAgentQuote(quote);
       setAgentConfirmed(false);
       setLaunchStep("confirm");
-    }).catch((error) => flash(friendlyError(error), "danger")).finally(() => setAgentBusy(false));
+    }).catch((error) => {
+      if (stillCurrent() && requestedRevision === quoteRevision.current) flash(friendlyError(error), "danger");
+    }).finally(() => { if (stillCurrent()) setAgentBusy(false); });
   };
 
   const submitAgentLaunch = async () => {
@@ -613,6 +645,13 @@ export function useWorkspaceLaunchController({
     balanceSufficient
   };
 
+  const pricingMatches = agentPlanPricing?.computePlanId === agentComputePlanId && agentPlanPricing?.storagePlanId === agentStoragePlanId;
+  const pricedPlans = <T extends ComputePlanDTO | StoragePlanDTO>(plans: T[], prices: T[] | undefined): T[] => plans.map((plan) => {
+    const { monthlyPriceUSDMicros: _price, pricePolicyVersionId: _policy, ...definition } = plan;
+    const priced = prices?.find((item) => item.id === plan.id);
+    return { ...definition, monthlyPriceUSDMicros: priced?.monthlyPriceUSDMicros, pricePolicyVersionId: priced?.pricePolicyVersionId } as T;
+  });
+
   return {
     catalog,
     previews,
@@ -647,12 +686,15 @@ export function useWorkspaceLaunchController({
     setAgentApplicationKind,
     agentRuntimeVersionId,
     setAgentRuntimeVersionId,
-    agentComputePlans,
-    agentStoragePlans,
+    agentComputePlans: pricedPlans(agentComputePlans, pricingMatches ? agentPlanPricing.compute : undefined),
+    agentStoragePlans: pricedPlans(agentStoragePlans, pricingMatches ? agentPlanPricing.storage : undefined),
     agentModels,
     agentWallet,
     agentSourceError,
     agentSourceLoading,
+    agentPricingLoading,
+    agentPricingError,
+    agentCanQuote: canCreateAgentQuote(readiness) && !agentBusy && !intent.current,
     agentCapabilityVersionId,
     setAgentCapabilityVersionId,
     agentComputePlanId,

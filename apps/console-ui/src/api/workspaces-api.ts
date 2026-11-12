@@ -80,12 +80,18 @@ export async function listApprovedRuntimeVersions(): Promise<RuntimeVersionPageD
   return listAllOwnerPages<RuntimeVersionPageDTO["items"][number]>("/api/v2/catalog/runtime-versions", "runtime_version");
 }
 
-export async function listAvailableComputePlans(): Promise<ComputePlanPageDTO["items"]> {
-  return listAllOwnerPages<ComputePlanPageDTO["items"][number]>("/api/v2/catalog/compute-plans", "compute_plan");
+export async function listAvailableComputePlans(storagePlanId?: string): Promise<ComputePlanPageDTO["items"]> {
+  const query = new URLSearchParams();
+  if (storagePlanId) query.set("storagePlanId", storagePlanId);
+  const path = `/api/v2/catalog/compute-plans${query.size ? `?${query}` : ""}`;
+  return listAllOwnerPages<ComputePlanPageDTO["items"][number]>(path, "compute_plan");
 }
 
-export async function listAvailableStoragePlans(): Promise<StoragePlanPageDTO["items"]> {
-  return listAllOwnerPages<StoragePlanPageDTO["items"][number]>("/api/v2/catalog/storage-plans", "storage_plan");
+export async function listAvailableStoragePlans(computePlanId?: string): Promise<StoragePlanPageDTO["items"]> {
+  const query = new URLSearchParams();
+  if (computePlanId) query.set("computePlanId", computePlanId);
+  const path = `/api/v2/catalog/storage-plans${query.size ? `?${query}` : ""}`;
+  return listAllOwnerPages<StoragePlanPageDTO["items"][number]>(path, "storage_plan");
 }
 
 export async function listAvailableLaunchModels(): Promise<LaunchModelPageDTO["items"]> {
