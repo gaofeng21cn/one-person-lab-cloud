@@ -1731,6 +1731,10 @@ owner and request hash. Confirmed absence returns HTTP 410
 dispatching Gateway/Secret/Runtime/receipt effects. Failed reads, damaged state
 and identity conflicts retain their errors rather than becoming absence.
 
+The route itself is retired: no client calls it, so
+`POST /api/workspaces/{workspaceId}/workspace-key/rotate` is no longer
+registered. The recovery state machine below is untouched by that retirement.
+
 The original recovery state machine remains necessary: child activation can
 commit the Workspace Key projection, but does not complete the parent operation,
 retire/delete the predecessor or finish the parent's receipt. Parent recovery
