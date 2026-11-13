@@ -310,6 +310,8 @@ source and fixture evidence do not close that outcome.
 
 ## Priority Outcomes
 
+- **Portable Cloud bundle:** complete the current PR's Candidate/Release CI and clean-host runtime qualification for the digest-bound one-command install/update path before formal publication. Do not add a second installer framework or business authority.
+
 ### First Tencent/TKE Default App Launch (2026-10-10)
 
 The [October 10 decision](decisions.md#2026-10-10-first-tencenttke-launch-without-cloud-model-configuration)

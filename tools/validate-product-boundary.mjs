@@ -97,7 +97,7 @@ const readbackCommands = (readbackJob?.steps || []).map((step) => step.run || ""
 if (releaseCommands.includes("docker buildx build")) {
   throw new Error("Cloud Release must promote qualified Candidate bytes without rebuilding them");
 }
-for (const required of ["ghcr.io/${{ github.repository }}", "docker buildx imagetools create", "gh release create", "--clobber", "compose.yaml"]) {
+for (const required of ["ghcr.io/${{ github.repository }}", "docker buildx imagetools create", "gh release create", "--clobber"]) {
   if (!release.includes(required)) throw new Error("Cloud release is missing: " + required);
 }
 const releaseInputs = releaseWorkflow.on?.workflow_dispatch?.inputs || {};
@@ -171,7 +171,7 @@ const candidateArtifact = (candidateJob.steps || []).find((step) => step.id === 
 if (candidateArtifact?.with?.name !== "opl-cloud-candidate-${{ inputs.product_sha }}-${{ github.run_attempt }}") {
   throw new Error("Cloud Candidate artifact locator does not include the workflow run attempt");
 }
-for (const required of ["--platform linux/amd64,linux/arm64", "--push", "tools/cloud-candidate-receipt.ts validate-bundle", "opl-cloud-candidate.json", "SHA256SUMS"]) {
+for (const required of ["--platform linux/amd64,linux/arm64", "--push", "tools/cloud-candidate-receipt.ts validate-bundle", "tools/cloud-portable-assets.ts checksums", "opl-cloud-candidate.json"]) {
   if (!candidateCommands.includes(required)) throw new Error(`Cloud Candidate is missing: ${required}`);
 }
 // The Candidate image is the shipped cloud product: it must bake the cloud
@@ -222,21 +222,30 @@ const candidateReceipt = candidateContract.candidateReceiptV2;
 const requiredEvidence = contract.distribution?.publication?.requiredEvidence || {};
 const requiredEvidenceClasses = Object.keys(requiredEvidence);
 const requiredEvidenceNames = Object.values(requiredEvidence).flat();
-const expectedCandidateAssets = [
-  "compose.yaml",
-  "compose.deployment-platform-owned.yaml",
-  "compose.deployment-managed-tke.yaml",
-  "compose.deployment-customer-owned.yaml",
-  "compose.fabric-local-docker.yaml",
-  "compose.fabric-tencent-tke.yaml",
-  "compose.local-workspace.yaml",
-  "opl-cloud.env.example",
-  "opl-cloud-owner-topology.json",
-  "install.sh"
-];
+const bundleFormats = contract.bundleFormats;
+const currentFormat = bundleFormats?.formats?.[bundleFormats?.current];
+const legacyFormat = bundleFormats?.formats?.["legacy-v2"];
+if (!currentFormat || !legacyFormat ||
+    contract.distribution?.releaseAssets?.$ref !== "#/bundleFormats" ||
+    candidateReceipt?.currentPortableAssets?.$ref !== "opl-cloud-distribution-contract.json#/bundleFormats" ||
+    currentFormat.releaseAssets !== "candidateAssets" ||
+    !Array.isArray(currentFormat.candidateAssets) ||
+    new Set(currentFormat.candidateAssets).size !== currentFormat.candidateAssets.length ||
+    currentFormat.candidateAssets.some(name => !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) ||
+    JSON.stringify(legacyFormat.candidateAssets) !== JSON.stringify(candidateReceipt?.portableAssets) ||
+    !candidateCommands.includes("cloud-portable-assets.ts copy-candidate") ||
+    !candidateCommands.includes("cloud-portable-assets.ts checksums") ||
+    !sealStep.includes("cloud-portable-assets.ts prepare-release") ||
+    !sealStep.includes("cloud-portable-assets.ts checksums") ||
+    !publishValidate.includes("cloud-portable-assets.ts validate-release") ||
+    !readbackCommands.includes("cloud-portable-assets.ts release-names") ||
+    !readbackCommands.includes("cloud-portable-assets.ts validate-release") ||
+    (releasePublish?.steps || []).find(step => step.name === "Attest release assets")?.with?.["subject-path"] !== "artifacts/publication/release/*") {
+  throw new Error("distribution asset contract must own all bundle producers and consumers");
+}
 if (candidateContract.schemaVersion !== 2 || candidateReceipt?.schemaVersion !== 2 ||
     JSON.stringify(candidateReceipt?.platforms) !== JSON.stringify(["linux/amd64", "linux/arm64"]) ||
-    JSON.stringify(candidateReceipt?.portableAssets) !== JSON.stringify(expectedCandidateAssets) ||
+    JSON.stringify(candidateReceipt?.portableAssets) !== JSON.stringify(legacyFormat.candidateAssets) ||
     candidateReceipt?.manifest !== "opl-cloud-candidate.json" ||
     candidateReceipt?.checksumManifest !== "SHA256SUMS") {
   throw new Error("Candidate receipt contract boundary is invalid");

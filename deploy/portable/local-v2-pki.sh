@@ -22,6 +22,7 @@
 set -eu
 
 output="${1:-}"
+workspace_domain="${2:-}"
 if [ -z "$output" ]; then
   echo "usage: local-v2-pki.sh <output-directory>" >&2
   exit 2
@@ -102,7 +103,11 @@ done
 # The proxy answers the browser and the containers on one origin. Its
 # certificate names the host the browser uses and the service name the
 # containers resolve, so the same certificate serves both callers.
-issue proxy "cloud-local-v2" "subjectAltName = DNS:localhost, DNS:cloud-local-v2, IP:127.0.0.1
+proxy_san="DNS:localhost, DNS:cloud-local-v2, IP:127.0.0.1"
+if [ -n "$workspace_domain" ]; then
+  proxy_san="$proxy_san, DNS:$workspace_domain"
+fi
+issue proxy "cloud-local-v2" "subjectAltName = $proxy_san
 extendedKeyUsage = serverAuth
 keyUsage = critical, digitalSignature, keyEncipherment
 basicConstraints = critical, CA:FALSE"

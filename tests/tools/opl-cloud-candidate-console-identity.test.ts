@@ -41,16 +41,10 @@ test("the image defaults to Cloud while labelling its identity", async () => {
 // cover that exact ordered set. A candidate dispatched from a ref whose
 // checksum list misses one asset fails after the image is already published;
 // this pins the complete list next to the workflow it protects.
-test("the Candidate checksum manifest covers the complete portable asset set", async () => {
+test("the Candidate workflow delegates the complete portable asset set to the SSOT tool", async () => {
   const workflow = await readFile(".github/workflows/build-opl-cloud-candidate.yml", "utf8");
-  const start = workflow.indexOf("sha256sum \\");
-  assert.notEqual(start, -1, "the Candidate workflow must write a checksum manifest");
-  const end = workflow.indexOf("> SHA256SUMS", start);
-  assert.notEqual(end, -1, "the Candidate workflow must write SHA256SUMS");
-  const entries = workflow
-    .slice(start, end)
-    .split("\n")
-    .map((line) => line.trim().replace(/\\$/, "").trim())
-    .filter((line) => line && line !== "sha256sum");
-  assert.deepEqual(entries, [...PORTABLE_ASSETS, "opl-cloud-candidate.json"]);
+  assert.match(workflow, /cloud-portable-assets\.ts copy-candidate/);
+  assert.match(workflow, /cloud-portable-assets\.ts checksums/);
+  assert.match(workflow, /cloud-candidate-receipt\.ts validate-bundle/);
+  assert.ok(PORTABLE_ASSETS.includes("install.mjs"));
 });

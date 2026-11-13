@@ -1,5 +1,28 @@
 # Install OPL Cloud
 
+## One-command install and update
+
+A current Candidate or Release is a complete Cloud bundle. Download all files from one bundle, then run:
+
+```bash
+bash install.sh
+```
+
+The installer stores configuration, generated secrets, mTLS certificates and persistent data in a separate `opl-cloud/` directory. The downloaded bundle can be removed after installation. On the first run it writes `opl-cloud/installation.json` and reports the installation facts that only the operator can supply. Fill those values in that file and run the same command again.
+
+The same command updates an existing installation. It reads the new bundle manifest, pins `OPL_CLOUD_IMAGE` and `OPL_RELEASE_SHA` to that bundle, preserves the existing installation state and data, pulls the new digest, starts the complete Cloud owner topology, and verifies actual container image identity, owner health and the Control Plane baked source revision. It never recreates the PostgreSQL volume or rotates an existing secret during an update.
+
+The shipped product topology is `compose.cloud.yaml`: PostgreSQL, the eleven Cloud owner processes and the same-origin proxy. It contains no qualification Sub2API fixture. Sub2API URL and credentials, Workspace domain, provider profile, storage root and schema inputs remain installation-owned facts. Local Docker is the supported one-command provider path; production TLS and external provider deployment remain Instance or operator responsibilities.
+
+For an explicit installation directory:
+
+```bash
+bash install.sh --install-dir /srv/opl-cloud
+```
+
+Use `--dry-run` to verify the bundle, derive state and Compose configuration without pulling images or starting containers.
+
+
 OPL Cloud publishes portable product artifacts; a concrete Instance owns its
 deployment, domain, Secrets, provider profile, rollback, and acceptance. Use
 one admitted Release and its own manifest, checksums and installation assets. Candidate construction and formal publication have distinct formats.

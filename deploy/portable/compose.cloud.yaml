@@ -1,0 +1,155 @@
+# Production single-host Cloud topology. Owner services, databases, mTLS and
+# persistent data inherit the canonical local-v2 owner wiring; this file only
+# supplies production boundaries and removes qualification-only services.
+services:
+  postgres:
+    extends:
+      file: ./compose.local-v2.yaml
+      service: postgres
+    networks: !override [opl-cloud-local-v2]
+
+  tenant:
+    extends:
+      file: ./compose.local-v2.yaml
+      service: tenant
+    environment: !override
+      NODE_ENV: production
+      PGSSLMODE: disable
+      OPL_GRPC_CA_FILE: /pki/ca.crt
+      SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
+      OPL_CLOUD_IDENTITY_TOKEN: ${OPL_CLOUD_IDENTITY_TOKEN:?Set OPL_CLOUD_IDENTITY_TOKEN}
+      DATABASE_URL: postgresql://opl_tenant_owner:${OPL_TENANT_DATABASE_PASSWORD:?Set OPL_TENANT_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.29.0.10}:5432/opl_tenant?sslmode=disable
+      OPL_GATEWAY_DATABASE_URL: postgresql://opl_gateway_owner:${OPL_GATEWAY_DATABASE_PASSWORD:?Set OPL_GATEWAY_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.29.0.10}:5432/opl_gateway?sslmode=disable
+      OPL_TENANT_ADDR: ":8187"
+      OPL_TENANT_PEER_TOKENS: ${OPL_TENANT_PEER_TOKENS:?Set OPL_TENANT_PEER_TOKENS}
+      OPL_CLOUD_IDENTITY_URL: ""
+      OPL_SUB2API_URL: ${OPL_SUB2API_BASE_URL:?Set OPL_SUB2API_BASE_URL to the installation's HTTPS Sub2API URL}
+      OPL_GATEWAY_WORKSPACE_KEY_GROUP: ${OPL_GATEWAY_WORKSPACE_KEY_GROUP:?Set OPL_GATEWAY_WORKSPACE_KEY_GROUP}
+      # Gateway directoryIdentity is explicitly an administrative identity in
+      # the owner contract. It is separate from the customer-owned user that
+      # the retained Control Plane uses for customer_owned billing.
+      OPL_GATEWAY_DIRECTORY_EMAIL: ${OPL_SUB2API_ADMIN_EMAIL:?Set OPL_SUB2API_ADMIN_EMAIL for Gateway directory reads}
+      OPL_GATEWAY_DIRECTORY_PASSWORD: ${OPL_SUB2API_ADMIN_PASSWORD:?Set OPL_SUB2API_ADMIN_PASSWORD for Gateway directory reads}
+      OPL_SESSION_SIGNING_KEY: ${OPL_SESSION_SIGNING_KEY:?Set OPL_SESSION_SIGNING_KEY}
+      OPL_INVITATION_TTL: ${OPL_INVITATION_TTL:-168h}
+      OPL_PLATFORM_ADMIN_SUBJECTS: ${OPL_PLATFORM_ADMIN_SUBJECTS:?Set OPL_PLATFORM_ADMIN_SUBJECTS}
+      OPL_WORKSPACE_REGISTRY_HOST: ${OPL_WORKSPACE_REGISTRY_HOST:?Set OPL_WORKSPACE_REGISTRY_HOST}
+      OPL_WORKSPACE_REGISTRY_NAMESPACE: ${OPL_WORKSPACE_REGISTRY_NAMESPACE:?Set OPL_WORKSPACE_REGISTRY_NAMESPACE}
+      OPL_FABRIC_ADDR: fabric:8188
+      OPL_FABRIC_TOKEN: ${OPL_FABRIC_TOKEN:?Set OPL_FABRIC_TOKEN}
+      OPL_BUILD_ADDR: build:8182
+      OPL_BUILD_TOKEN: ${OPL_BUILD_TOKEN:?Set OPL_BUILD_TOKEN}
+      OPL_WORKSPACE_ADDR: workspace:8184
+      OPL_WORKSPACE_TOKEN: ${OPL_WORKSPACE_TOKEN:?Set OPL_WORKSPACE_TOKEN}
+      OPL_SERVE_ADDR: serve:8185
+      OPL_SERVE_TOKEN: ${OPL_SERVE_TOKEN:?Set OPL_SERVE_TOKEN}
+      OPL_GRPC_CERT_FILE: /pki/tenant.crt
+      OPL_GRPC_KEY_FILE: /pki/tenant.key
+    depends_on: !override
+      postgres:
+        condition: service_healthy
+
+  resource-catalog:
+    extends:
+      file: ./compose.local-v2.yaml
+      service: resource-catalog
+
+  ledger:
+    extends:
+      file: ./compose.local-v2.yaml
+      service: ledger
+
+  capability:
+    extends:
+      file: ./compose.local-v2.yaml
+      service: capability
+
+  build:
+    extends:
+      file: ./compose.local-v2.yaml
+      service: build
+
+  runtime-control:
+    extends:
+      file: ./compose.local-v2.yaml
+      service: runtime-control
+
+  workspace:
+    extends:
+      file: ./compose.local-v2.yaml
+      service: workspace
+
+  serve:
+    extends:
+      file: ./compose.local-v2.yaml
+      service: serve
+
+  fabric:
+    extends:
+      file: ./compose.local-v2.yaml
+      service: fabric
+    environment:
+      OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER: ${COMPOSE_PROJECT_NAME:-opl-cloud}-control-plane-1
+
+  control-plane:
+    extends:
+      file: ./compose.local-v2.yaml
+      service: control-plane
+    container_name: !reset null
+    # Keep the inherited gateway identity labels. Fabric uses them during its
+    # local-docker container readback; only the fixed container_name is reset.
+    environment:
+      OPL_SUB2API_BASE_URL: ${OPL_SUB2API_BASE_URL:?Set OPL_SUB2API_BASE_URL}
+      OPL_SUB2API_USER_EMAIL: ${OPL_SUB2API_USER_EMAIL:?Set OPL_SUB2API_USER_EMAIL}
+      OPL_SUB2API_USER_PASSWORD: ${OPL_SUB2API_USER_PASSWORD:?Set OPL_SUB2API_USER_PASSWORD}
+      SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
+      OPL_DEPLOYMENT_MODE: customer_owned
+      OPL_PUBLIC_URL: ${OPL_LOCAL_V2_PUBLIC_URL:?Set OPL_LOCAL_V2_PUBLIC_URL}
+      OPL_WORKSPACE_DOMAIN: ${OPL_WORKSPACE_DOMAIN:?Set OPL_WORKSPACE_DOMAIN}
+      OPL_WORKSPACE_APPLICATION_DOMAIN: ${OPL_WORKSPACE_APPLICATION_DOMAIN:-}
+      OPL_RELEASE_SHA: ${OPL_RELEASE_SHA:?Set OPL_RELEASE_SHA}
+    depends_on: !override
+      postgres:
+        condition: service_healthy
+
+  console-bff:
+    extends:
+      file: ./compose.local-v2.yaml
+      service: console-bff
+
+  cloud-local-v2:
+    extends:
+      file: ./compose.local-v2.yaml
+      service: cloud-local-v2
+    environment:
+      OPL_WORKSPACE_DOMAIN: ${OPL_WORKSPACE_DOMAIN:?Set OPL_WORKSPACE_DOMAIN}
+      OPL_WORKSPACE_APPLICATION_DOMAIN: ${OPL_WORKSPACE_APPLICATION_DOMAIN:-}
+      NGINX_ENVSUBST_FILTER: ^OPL_
+    ports: !override
+      - "${OPL_BIND_ADDRESS:-127.0.0.1}:${OPL_LOCAL_V2_PROXY_PORT:-8443}:8443"
+    volumes: !override
+      - type: bind
+        source: ./cloud-proxy.nginx.conf
+        target: /etc/nginx/templates/default.conf.template
+        read_only: true
+      - type: bind
+        source: ${OPL_LOCAL_V2_PKI_DIR:?Set OPL_LOCAL_V2_PKI_DIR}
+        target: /pki
+        read_only: true
+    depends_on: !override []
+
+volumes:
+  opl-cloud-local-v2-postgres: {}
+  opl-cloud-local-v2-objects: {}
+  opl-cloud-local-v2-build: {}
+  opl-cloud-local-v2-fabric: {}
+
+networks:
+  opl-cloud-local-v2:
+    ipam:
+      config:
+        - subnet: ${OPL_LOCAL_V2_SUBNET:-172.29.0.0/24}
+
+configs:
+  opl-local-v2-postgres-init:
+    file: ./owner-databases.sh

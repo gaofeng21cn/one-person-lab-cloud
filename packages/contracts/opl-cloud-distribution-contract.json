@@ -37,18 +37,10 @@
       "linux/amd64",
       "linux/arm64"
     ],
-    "releaseAssets": [
-      "compose.yaml",
-      "compose.deployment-platform-owned.yaml",
-      "compose.deployment-managed-tke.yaml",
-      "compose.deployment-customer-owned.yaml",
-      "compose.fabric-local-docker.yaml",
-      "compose.fabric-tencent-tke.yaml",
-      "compose.local-workspace.yaml",
-      "opl-cloud.env.example",
-      "opl-cloud-release.json",
-      "SHA256SUMS"
-    ],
+    "releaseAssets": {
+      "$ref": "#/bundleFormats",
+      "selection": "current release payload plus releaseManifest and checksumManifest"
+    },
     "assetIntegrity": {
       "checksumManifest": "SHA256SUMS",
       "provenance": "github_oidc_custom_attestation",
@@ -157,5 +149,69 @@
   "evidenceOwners": {
     "currentCapability": "docs/status.md",
     "activeGapsAndPriority": "docs/roadmap.md"
+  },
+  "bundleFormats": {
+    "current": "portable-v1",
+    "candidateSchemaVersion": 2,
+    "releaseSchemaVersion": 4,
+    "formats": {
+      "legacy-v2": {
+        "candidateAssets": [
+          "compose.yaml",
+          "compose.deployment-platform-owned.yaml",
+          "compose.deployment-managed-tke.yaml",
+          "compose.deployment-customer-owned.yaml",
+          "compose.fabric-local-docker.yaml",
+          "compose.fabric-tencent-tke.yaml",
+          "compose.local-workspace.yaml",
+          "opl-cloud.env.example",
+          "opl-cloud-owner-topology.json"
+        ],
+        "releaseAssets": [
+          "compose.yaml",
+          "compose.deployment-platform-owned.yaml",
+          "compose.deployment-managed-tke.yaml",
+          "compose.deployment-customer-owned.yaml",
+          "compose.fabric-local-docker.yaml",
+          "compose.fabric-tencent-tke.yaml",
+          "compose.local-workspace.yaml",
+          "opl-cloud.env.example"
+        ]
+      },
+      "portable-v1": {
+        "candidateAssets": [
+          "compose.yaml",
+          "compose.deployment-platform-owned.yaml",
+          "compose.deployment-managed-tke.yaml",
+          "compose.deployment-customer-owned.yaml",
+          "compose.fabric-local-docker.yaml",
+          "compose.fabric-tencent-tke.yaml",
+          "compose.local-workspace.yaml",
+          "opl-cloud.env.example",
+          "opl-cloud-owner-topology.json",
+          "install.sh",
+          "install.mjs",
+          "installer-manifest.mjs",
+          "compose.cloud.yaml",
+          "compose.local-v2.yaml",
+          "cloud-proxy.nginx.conf",
+          "owner-databases.sh",
+          "local-v2-pki.sh",
+          "agent-plugins-1.0.0-plugin.schema.json",
+          "opl-cloud-distribution-contract.json"
+        ],
+        "releaseAssets": "candidateAssets"
+      }
+    },
+    "assetSources": {
+      "compose.yaml": "compose.yaml",
+      "opl-cloud-distribution-contract.json": "packages/contracts/opl-cloud-distribution-contract.json"
+    },
+    "defaultAssetSourceDirectory": "deploy/portable",
+    "candidateManifest": "opl-cloud-candidate.json",
+    "releaseManifest": "opl-cloud-release.json",
+    "checksumManifest": "SHA256SUMS",
+    "selection": "exact_ordered_asset_names_no_subsets",
+    "instanceEnvelope": "schema2_unchanged; asset format is selected by the exact ordered assets, not a new envelope schema"
   }
 }
