@@ -7,10 +7,11 @@ import test from "node:test";
 // Route ownership is a boundary, not a convention.
 //
 // Every HTTP route a Cloud process registers has to be able to name the client
-// that calls it: the Console browser, an operator tool, or the installation's
-// own probe. A route whose only client is the test that exercises it is a
-// route nobody can reach in production, and it is the shape that lets an old
-// surface outlive the product that used it.
+// that calls it: the Console browser, an operator tool, the installation's
+// own probe, or a consumer in another repository that the contract declares.
+// A route whose only client is the test that exercises it is a route nobody
+// can reach in production, and it is the shape that lets an old surface
+// outlive the product that used it.
 //
 // This test derives both sides from the owning source. The route set comes
 // from the Control Plane's own net/http registrations, read with Go's parser
@@ -19,6 +20,13 @@ import test from "node:test";
 // argument each request call actually passes - including the paths that only
 // exist as a template literal, a conditional between the retained and the
 // cloud identity, or a helper that composes a base path with a suffix.
+//
+// A client in another repository cannot be derived from this tree, so the
+// contract declares those routes instead. The declaration is checked in both
+// directions: a route with no client in this repository must be declared, and
+// a declared route must still be registered. Without the second direction a
+// deletion in this repository would quietly drop a surface another repository
+// still calls.
 //
 // Nothing here is a hand written route list. Delete a route and this test
 // still knows the full set; add a client and it still knows.
@@ -732,6 +740,11 @@ type Topology = {
     rule: string;
     surfaces: { prefix: string; processes: string[]; browserFacing: boolean; evidence: string }[];
     probes?: { method: string; path: string; owner: string; evidence: string }[];
+    externalConsumers?: {
+      consumer: string;
+      rule: string;
+      paths: { method: string; path: string; evidence: string[] }[];
+    }[];
     requirement: string;
   };
 };
@@ -747,6 +760,12 @@ const toolCallList = toolClients(shared);
 const productionCalls = [...consoleCalls, ...toolCallList];
 const topology = JSON.parse(readFileSync(TOPOLOGY_PATH, "utf8")) as Topology;
 const declaredProbes = topology.browserApiSurface.probes ?? [];
+// A consumer in another repository calls these routes from its own source, so
+// this repository cannot derive the client from its own tree. The contract
+// declares them instead, and the declaration has to keep the route registered.
+const declaredExternalPaths = (topology.browserApiSurface.externalConsumers ?? []).flatMap((entry) =>
+  entry.paths.map((declared) => ({ ...declared, consumer: entry.consumer })),
+);
 
 test("every Control Plane route registration is readable from the source", () => {
   assert.deepStrictEqual(
@@ -762,12 +781,31 @@ test("every registered Control Plane /api/ route names the client that calls it"
     if (route.path === "/api/") continue; // The workspace application proxy, not a Console route.
     const probe = declaredProbes.find((declared) => declared.path === route.path && declared.method === route.method);
     if (probe) continue;
+    // A route another repository calls is owned by the contract's declaration,
+    // not by a call site in this repository.
+    const external = declaredExternalPaths.find((declared) => declared.path === route.path && declared.method === route.method);
+    if (external) continue;
     const clients = productionCalls.filter((client) => routeMatches(route, client));
     if (clients.length === 0) {
       unowned.push(`${route.method || "ANY"} ${route.path} (${path.basename(route.file)}:${route.line})`);
     }
   }
   assert.deepStrictEqual(unowned, [], "every registered route must name its client");
+});
+
+test("every external consumer path the contract declares is a registered Control Plane route", () => {
+  const unregistered = declaredExternalPaths
+    .filter((declared) => !apiRoutes.some((route) => route.path === declared.path && route.method === declared.method))
+    .map((declared) => `${declared.method} ${declared.path} (${declared.consumer})`);
+  assert.deepStrictEqual(
+    unregistered,
+    [],
+    "a route a consumer in another repository calls must stay registered: the declaration owns that surface",
+  );
+  const unproven = declaredExternalPaths
+    .filter((declared) => !Array.isArray(declared.evidence) || declared.evidence.length === 0)
+    .map((declared) => `${declared.method} ${declared.path} (${declared.consumer})`);
+  assert.deepStrictEqual(unproven, [], "an external consumer declaration must name the call site it rests on");
 });
 
 test("every client path a client derives exists as a registered route", () => {

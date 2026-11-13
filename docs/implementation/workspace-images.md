@@ -28,13 +28,16 @@ can authorize that image. This preserves the current owner and authorization rul
 it does not restore existing-Workspace replacement or a Console controller. Retire
 this writer only after the original recovery selection authority migrates.
 
-Two direct, operator-authenticated CP reads remain:
+One direct, operator-authenticated CP read remains:
 
 - `GET /api/operator/workspace-runtime-image-policy` serves the validated catalog
   and retained active policy. The Instance runtime-image client consumes it, and
   original Launch image-revision recovery still consumes the policy/catalog
   validation. The schema-1 `OPL_WORKSPACE_IMAGE_RELEASES_JSON` catalog and
   immutable image validation stay.
+
+One operator-authenticated CP read is retired:
+
 - `GET /api/operator/workspaces/{workspaceId}/runtime-image-replacements/{operationId}`
   read an existing persisted operation under its Workspace identity. It neither
   accepted nor dispatched a replacement, and no production client called it, so it

@@ -669,7 +669,40 @@
     "evidence": "services/control-plane/internal/server/routes_core.go registers GET /api/production/readiness for the installation's own production readiness probe."
    }
   ],
-  "requirement": "The Console is served from one origin and calls both browser-facing surfaces, so a browser-facing installation routes /api/ to control-plane and /api/v2/ to console-bff on the same public host. An installation that routes only one of them serves a Console whose other half cannot answer. Every route on a browser facing surface names a client in the owning source: a Console call site, an operator tool, or one of the installation probes declared here."
+  "externalConsumers": [
+   {
+    "consumer": "opl-instance-medopl",
+    "rule": "A route that only a consumer in another repository calls stays registered while that consumer calls it. This declaration owns that fact: the route exists for a named consumer outside this repository, not because a Cloud repository happens to call it. Every declared path must be a route the Control Plane registers, so a Cloud change cannot silently drop a surface another repository still uses.",
+    "paths": [
+     {
+      "method": "GET",
+      "path": "/api/management/state",
+      "evidence": [
+       "opl-instance-medopl tools/fresh-workspace-admission.mjs:783",
+       "opl-instance-medopl tools/workspace-state-observation.mjs:1394",
+       "opl-instance-medopl tools/project-explorer-persistence-acceptance.mjs:650",
+       "opl-instance-medopl tools/workspace-launch-stage-observation.mjs:127",
+       "The declaration owns the Cloud route, not the survival of its call sites. workspace-launch-stage-observation.mjs is being retired in a separate Instance PR; the other three call sites stay. The route stays registered while the Instance installation still reads it, so the number of call sites is not the test for whether the surface is still needed."
+      ]
+     },
+     {
+      "method": "GET",
+      "path": "/api/operator/application-deployments/{operationId}",
+      "evidence": [
+       "opl-instance-medopl tools/workspace-special-chain-acceptance.mjs:866"
+      ]
+     },
+     {
+      "method": "GET",
+      "path": "/api/operator/workspace-runtime-image-policy",
+      "evidence": [
+       "opl-instance-medopl tools/workspace-runtime-image-client.mjs:135"
+      ]
+     }
+    ]
+   }
+  ],
+  "requirement": "The Console is served from one origin and calls both browser-facing surfaces, so a browser-facing installation routes /api/ to control-plane and /api/v2/ to console-bff on the same public host. An installation that routes only one of them serves a Console whose other half cannot answer. Every route on a browser facing surface names a client in the owning source: a Console call site, an operator tool, one of the installation probes declared here, or a consumer in another repository declared under externalConsumers."
  },
  "communication": {
   "schemaVersion": 1,

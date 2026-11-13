@@ -474,3 +474,44 @@ func TestLoginAndSessionValidationNeverScanIdentityTablesAtScale(t *testing.T) {
 		t.Fatalf("identity hot path performed full-table scans: %#v", guard.scans)
 	}
 }
+
+func TestManagementStateDoesNotExposeSharedOrganizationFacts(t *testing.T) {
+	server := NewServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}))
+	response := requestWithSession(t, server, operatorSessionForTest(t, server), http.MethodGet, "/api/management/state", "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("management state status=%d body=%s", response.Code, response.Body.String())
+	}
+	var state map[string]any
+	if err := json.NewDecoder(response.Body).Decode(&state); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"organization", "organizations", "memberships"} {
+		if _, exists := state[key]; exists {
+			t.Fatalf("management state exposed retired %s: %#v", key, state[key])
+		}
+	}
+}
+
+func TestManagementStateAccountDTOExcludesUserIdentityFields(t *testing.T) {
+	server := NewServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}))
+	response := requestWithSession(t, server, operatorSessionForTest(t, server), http.MethodGet, "/api/management/state", "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("management state status=%d body=%s", response.Code, response.Body.String())
+	}
+	var state map[string]any
+	if err := json.NewDecoder(response.Body).Decode(&state); err != nil {
+		t.Fatal(err)
+	}
+	accounts, _ := state["accounts"].([]any)
+	if len(accounts) == 0 {
+		t.Fatal("management state has no accounts")
+	}
+	for _, item := range accounts {
+		account := item.(map[string]any)
+		for _, field := range []string{"email", "userId"} {
+			if _, exists := account[field]; exists {
+				t.Fatalf("account DTO exposed %s: %#v", field, account)
+			}
+		}
+	}
+}

@@ -29,6 +29,8 @@ const (
 )
 
 func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
+	registerWorkspaceImageHistoryRoutes(mux, app)
+	registerWorkspaceApplicationHistoryRoutes(mux, app)
 	registerWorkspaceRegistryCatalogRoutes(mux, app)
 	mux.HandleFunc("GET /api/operator/workspace-launches/{operationId}/recovery", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		app.writeOperatorWorkspaceLaunchRecovery(w, r, service)

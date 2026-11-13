@@ -2,8 +2,11 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -39,6 +42,33 @@ func retainedImageReplacementRow(status string) map[string]any {
 	}
 }
 
+func TestRetainedImagePolicyReadPreservesStoredRevisionAndInstalledDefault(t *testing.T) {
+	configureRetainedImageCatalog(t)
+	store := newMemoryTableStore()
+	original := retainedImagePolicyRow()
+	mustStore(t, store.SaveRuntimeOperation(context.Background(), original))
+	server := newServerForRetainedImages(t, store)
+	operator := reservedOperatorSessionForTest(t, server)
+	response := requestWithSession(t, server, operator, http.MethodGet, "/api/operator/workspace-runtime-image-policy", "")
+	var envelope struct {
+		Data workspaceImageReleasePolicyDTO `json:"data"`
+	}
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &envelope) != nil {
+		t.Fatalf("policy read=%d %s", response.Code, response.Body.String())
+	}
+	policy := envelope.Data
+	if policy.Revision != 7 || policy.Active.Version != "26.8.4" || policy.Active.Image != retainedImageActive || policy.InstalledDefault.Image != retainedImageInstalled || len(policy.Releases) != 2 || policy.UpdatedBy != "usr-admin" || policy.Reason != "retained approved release" {
+		t.Fatalf("stored policy lost identity: %#v", policy)
+	}
+	if response.Header().Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("policy cache=%q", response.Header().Get("Cache-Control"))
+	}
+	after, found, err := store.GetRuntimeOperation(context.Background(), workspaceImageReleasePolicyID)
+	if err != nil || !found || !reflect.DeepEqual(after, original) || len(store.auditEvents) != 0 {
+		t.Fatalf("read changed policy: %#v %v", after, err)
+	}
+}
+
 func TestRetainedImagePolicyMissingRecordUsesInstalledDefaultWithoutPersisting(t *testing.T) {
 	configureRetainedImageCatalog(t)
 	store := newMemoryTableStore()
@@ -53,6 +83,60 @@ type retainedImageReadFailureStore struct{ controlPlaneTableStore }
 
 func (s retainedImageReadFailureStore) GetRuntimeOperation(context.Context, string) (map[string]any, bool, error) {
 	return nil, false, errors.New("retained storage unavailable")
+}
+
+func TestRetainedImagePolicyReadRejectsCorruptAndUnavailableState(t *testing.T) {
+	configureRetainedImageCatalog(t)
+	for _, tc := range []struct {
+		name        string
+		mutate      func(map[string]any)
+		unavailable bool
+	}{
+		{name: "malformed JSON", mutate: func(row map[string]any) { row["result"] = `{` }},
+		{name: "wrong identity", mutate: func(row map[string]any) { row["resourceId"] = "other" }},
+		{name: "wrong status", mutate: func(row map[string]any) { row["status"] = "failed" }},
+		{name: "unknown active release", mutate: func(row map[string]any) {
+			row["result"] = strings.Replace(stringValue(row["result"]), "26.8.4", "unknown", 1)
+		}},
+		{name: "invalid revision", mutate: func(row map[string]any) {
+			row["result"] = strings.Replace(stringValue(row["result"]), `"revision":7`, `"revision":0`, 1)
+		}},
+		{name: "read unavailable", unavailable: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newMemoryTableStore()
+			row := retainedImagePolicyRow()
+			if tc.mutate != nil {
+				tc.mutate(row)
+			}
+			mustStore(t, store.SaveRuntimeOperation(context.Background(), row))
+			server := newServerForRetainedImages(t, store)
+			operator := reservedOperatorSessionForTest(t, server)
+			if tc.unavailable {
+				server.(*controlPlaneHTTPHandler).app.tables = retainedImageReadFailureStore{store}
+			}
+			response := requestWithSession(t, server, operator, http.MethodGet, "/api/operator/workspace-runtime-image-policy", "")
+			if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), `"status":"unavailable"`) || strings.Contains(response.Body.String(), retainedImageInstalled) {
+				t.Fatalf("invalid policy became available: %d %s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
+// The runtime image replacement history route stays retired, so the retained
+// reader that remains is the release policy the Instance installation reads.
+func TestRetainedImageReadersRequireOperatorAuthentication(t *testing.T) {
+	store := newMemoryTableStore()
+	server := newServerForRetainedImages(t, store)
+	customer := tenantOwnerSessionForTest(t, server)
+	for _, path := range []string{"/api/operator/workspace-runtime-image-policy"} {
+		unauthenticated := httptest.NewRecorder()
+		server.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, path, nil))
+		forbidden := requestWithSession(t, server, customer, http.MethodGet, path, "")
+		if unauthenticated.Code != http.StatusUnauthorized || forbidden.Code != http.StatusForbidden {
+			t.Fatalf("%s auth=%d/%d", path, unauthenticated.Code, forbidden.Code)
+		}
+	}
 }
 
 func TestRetainedImageDecoderAndTransitionConsumers(t *testing.T) {
