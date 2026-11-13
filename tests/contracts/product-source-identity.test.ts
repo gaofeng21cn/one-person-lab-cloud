@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 
 // The product revision a running binary states about itself is only meaningful
 // if every binary in the product image carries it, and if the revision the
@@ -10,6 +14,23 @@ import test from "node:test";
 // revision it puts in the image label.
 
 const STAMP = "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA";
+const execFileAsync = promisify(execFile);
+
+test("linked owner binaries retain the source stamp even without a revision reader", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "opl-source-stamp-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const source = join(directory, "main.go");
+  const binary = join(directory, "owner");
+  await writeFile(source, 'package main\nimport _ "opl-cloud/packages/contracts/go"\nfunc main() {}\n');
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+  await execFileAsync("go", ["build", "-ldflags", `-X opl-cloud/packages/contracts/go.ProductSourceSHA=${sha}`, "-o", binary, source], {
+    cwd: "packages/contracts/go",
+  });
+  const { stdout } = await execFileAsync("go", ["tool", "nm", binary], { maxBuffer: 16 * 1024 * 1024 });
+  assert.ok(/\bD opl-cloud\/packages\/contracts\/go\.ProductSourceSHA$/m.test(stdout), "the linked owner lost its ProductSourceSHA symbol");
+  assert.ok(/\bR opl-cloud\/packages\/contracts\/go\.ProductSourceSHA\.str$/m.test(stdout), "the linked owner lost its stamped revision bytes");
+  await execFileAsync(binary);
+});
 
 test("every product binary in the image carries the build-time product revision", async () => {
   const dockerfile = await readFile("Dockerfile", "utf8");

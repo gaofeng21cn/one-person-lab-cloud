@@ -3,6 +3,7 @@ package contracts
 import (
 	"errors"
 	"os"
+	"runtime"
 	"strings"
 )
 
@@ -25,7 +26,7 @@ func init() {
 	// unreferenced variables, and -X can only set a symbol that survived into
 	// the binary, so every binary that imports this package has to reach this
 	// variable from somewhere it runs.
-	_ = ProductSourceSHA
+	runtime.KeepAlive(ProductSourceSHA)
 }
 
 var (
