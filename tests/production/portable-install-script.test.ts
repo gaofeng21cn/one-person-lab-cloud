@@ -73,8 +73,8 @@ test("first run persists immutable identity and explicit missing facts outside t
     assert.equal(state.sourceSha, SOURCE_SHA);
     assert.notEqual(state.values.OPL_CLOUD_IMAGE, "ghcr.io/evil/wrong:latest");
     assert.match(state.values.OPL_WORKSPACE_DOMAIN, /^unset-/);
-    assert.equal(state.values.OPL_LOCAL_V2_PACKAGE_SCHEMA_PATH, join(installDir, "schemas", "agent-plugins-1.0.0-plugin.schema.json"));
-    assert.equal(sha256Of(await readFile(state.values.OPL_LOCAL_V2_PACKAGE_SCHEMA_PATH)), "0a4aad95ce337878ad38802ebf0daa3fde76abe3f65400c86bcbb1ec0b3ab883");
+    assert.equal(state.values.OPL_CAPABILITY_PACKAGE_SCHEMA_HOST_PATH, join(installDir, "schemas", "agent-plugins-1.0.0-plugin.schema.json"));
+    assert.equal(sha256Of(await readFile(state.values.OPL_CAPABILITY_PACKAGE_SCHEMA_HOST_PATH)), "0a4aad95ce337878ad38802ebf0daa3fde76abe3f65400c86bcbb1ec0b3ab883");
   });
 });
 
@@ -84,6 +84,8 @@ test("installation state retains operator facts while updates replace only immut
     const first = run(bundle, installDir, ["--dry-run"]); assert.equal(first.status, 2);
     const path = join(installDir, "installation.json"); const state = JSON.parse(await readFile(path, "utf8"));
     state.values.OPL_WORKSPACE_DOMAIN = "ws.example.test";
+    state.values.OPL_CAPABILITY_OBJECT_URL = "https://objects.example.test";
+    state.values.OPL_SUB2API_URL = "https://sub2api.example.test";
     state.values.OPL_SUB2API_BASE_URL = "https://sub2api.example.test";
     state.values.OPL_SUB2API_ADMIN_EMAIL = "admin@example.test";
     state.values.OPL_SUB2API_USER_EMAIL = "user@example.test";

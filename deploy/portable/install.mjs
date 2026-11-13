@@ -112,12 +112,13 @@ async function atomicJson(path, value) {
 }
 function requireAbsolute(name, value) { if (!isAbsolute(value)) fail(`installation_path_must_be_absolute:${name}`); }
 async function ensureSchema(values, installDir, bundle) {
-  const configured = values.get('OPL_LOCAL_V2_PACKAGE_SCHEMA_PATH');
-  if (!configured || isPlaceholder(configured) || configured.startsWith('unset-')) fail('OPL_LOCAL_V2_PACKAGE_SCHEMA_PATH is required');
-  requireAbsolute('OPL_LOCAL_V2_PACKAGE_SCHEMA_PATH', configured);
+  const configured = values.get('OPL_CAPABILITY_PACKAGE_SCHEMA_HOST_PATH');
+  if (!configured || isPlaceholder(configured) || configured.startsWith('unset-')) fail('OPL_CAPABILITY_PACKAGE_SCHEMA_HOST_PATH is required');
+  requireAbsolute('OPL_CAPABILITY_PACKAGE_SCHEMA_HOST_PATH', configured);
   try { const digest = sha256File(await readFile(configured)); if (digest !== PACKAGE_SCHEMA_DIGEST) fail('package_schema_digest_mismatch'); }
   catch (error) { if (error.message === 'package_schema_digest_mismatch') throw error; fail('package_schema_unreadable'); }
-  values.set('OPL_LOCAL_V2_PUBLISHER_SCHEMA_DIGEST', PUBLISHER_SCHEMA_DIGEST);
+  values.set('OPL_CAPABILITY_PACKAGE_SCHEMA_DIGEST', PACKAGE_SCHEMA_DIGEST);
+  values.set('OPL_PUBLISHER_SCHEMA_DIGEST', PUBLISHER_SCHEMA_DIGEST);
 }
 function runtimeImageReadback(bundle, env, expected) {
   const config = JSON.parse(compose(bundle, env, ['-f', 'compose.cloud.yaml', 'config', '--format', 'json']));
@@ -179,12 +180,13 @@ async function main(args = process.argv.slice(2)) {
     if (immutable.has(name)) continue;
     if (values.has(name) && !isPlaceholder(values.get(name)) && !String(values.get(name)).startsWith('unset-')) continue;
     const templateValue = template.get(name) ?? '';
-    if (name === 'OPL_LOCAL_V2_PKI_DIR') values.set(name, pkiDir);
-    else if (name === 'OPL_LOCAL_V2_PACKAGE_SCHEMA_PATH') values.set(name, join(options.installDir, 'schemas', 'agent-plugins-1.0.0-plugin.schema.json'));
+    if (name === 'OPL_PKI_DIR') values.set(name, pkiDir);
+    else if (name === 'OPL_CAPABILITY_PACKAGE_SCHEMA_HOST_PATH') values.set(name, join(options.installDir, 'schemas', 'agent-plugins-1.0.0-plugin.schema.json'));
     else if (name === 'OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT') values.set(name, join(dataDir, 'fabric-storage'));
     else if (name === 'OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT') values.set(name, join(dataDir, 'fabric-secrets'));
     else if (name === 'OPL_POSTGRES_DATA_ROOT') values.set(name, join(dataDir, 'postgres'));
-    else if (name === 'OPL_LOCAL_V2_PUBLISHER_SCHEMA_DIGEST') values.set(name, PUBLISHER_SCHEMA_DIGEST);
+    else if (name === 'OPL_CAPABILITY_PACKAGE_SCHEMA_DIGEST') values.set(name, PACKAGE_SCHEMA_DIGEST);
+    else if (name === 'OPL_PUBLISHER_SCHEMA_DIGEST') values.set(name, PUBLISHER_SCHEMA_DIGEST);
     else if (name.endsWith('_PEER_TOKENS')) values.set(name, `unset-${name.toLowerCase()}`);
     else if (name === 'OPL_CLOUD_IMAGE') values.set(name, bundleInfo.imageRef);
     else if (name === 'OPL_RELEASE_SHA' || name === 'OPL_RELEASE_TREE') values.set(name, name.endsWith('TREE') ? bundleInfo.sourceTree : bundleInfo.sourceSha);
@@ -196,7 +198,7 @@ async function main(args = process.argv.slice(2)) {
   if (template.has('OPL_RELEASE_SHA')) values.set('OPL_RELEASE_SHA', bundleInfo.sourceSha);
   if (template.has('OPL_RELEASE_TREE')) values.set('OPL_RELEASE_TREE', bundleInfo.sourceTree);
   for (const name of required.filter(name => name.endsWith('_PEER_TOKENS'))) values.set(name, derivePeerToken(name, template.get(name), values));
-  const schemaPath = values.get('OPL_LOCAL_V2_PACKAGE_SCHEMA_PATH');
+  const schemaPath = values.get('OPL_CAPABILITY_PACKAGE_SCHEMA_HOST_PATH');
   await mkdir(dirname(schemaPath), { recursive: true, mode: 0o700 });
   try { await access(schemaPath); } catch { await copyFile(join(bundle, 'agent-plugins-1.0.0-plugin.schema.json'), schemaPath); await chmod(schemaPath, 0o600); }
   const next = { schemaVersion: 1, project: 'opl-cloud', imageRef: bundleInfo.imageRef, sourceSha: bundleInfo.sourceSha, sourceTree: bundleInfo.sourceTree, values: Object.fromEntries(values), updatedAt: new Date().toISOString() };
@@ -224,7 +226,7 @@ async function main(args = process.argv.slice(2)) {
   if (!Array.isArray(services) || services.some(service => service.State !== 'running')) fail('cloud_services_not_running');
   runtimeImageReadback(bundle, env, bundleInfo.imageRef);
   ownerReadback(bundle, env, bundleInfo.sourceSha);
-  console.log(`install.mjs: OPL Cloud is running at ${values.get('OPL_LOCAL_V2_PUBLIC_URL') || 'the configured endpoint'}`);
+  console.log(`install.mjs: OPL Cloud is running at ${values.get('OPL_PUBLIC_URL') || 'the configured endpoint'}`);
   console.log(`install.mjs: image ${bundleInfo.imageRef}`);
 }
 if (process.argv[1]) {

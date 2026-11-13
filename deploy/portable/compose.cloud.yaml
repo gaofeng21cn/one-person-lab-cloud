@@ -18,8 +18,8 @@ services:
       OPL_GRPC_CA_FILE: /pki/ca.crt
       SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
       OPL_CLOUD_IDENTITY_TOKEN: ${OPL_CLOUD_IDENTITY_TOKEN:?Set OPL_CLOUD_IDENTITY_TOKEN}
-      DATABASE_URL: postgresql://opl_tenant_owner:${OPL_TENANT_DATABASE_PASSWORD:?Set OPL_TENANT_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.29.0.10}:5432/opl_tenant?sslmode=disable
-      OPL_GATEWAY_DATABASE_URL: postgresql://opl_gateway_owner:${OPL_GATEWAY_DATABASE_PASSWORD:?Set OPL_GATEWAY_DATABASE_PASSWORD}@${OPL_LOCAL_V2_POSTGRES_HOST:-172.29.0.10}:5432/opl_gateway?sslmode=disable
+      DATABASE_URL: postgresql://opl_tenant_owner:${OPL_TENANT_DATABASE_PASSWORD:?Set OPL_TENANT_DATABASE_PASSWORD}@${OPL_POSTGRES_HOST:-172.29.0.10}:5432/opl_tenant?sslmode=disable
+      OPL_GATEWAY_DATABASE_URL: postgresql://opl_gateway_owner:${OPL_GATEWAY_DATABASE_PASSWORD:?Set OPL_GATEWAY_DATABASE_PASSWORD}@${OPL_POSTGRES_HOST:-172.29.0.10}:5432/opl_gateway?sslmode=disable
       OPL_TENANT_ADDR: ":8187"
       OPL_TENANT_PEER_TOKENS: ${OPL_TENANT_PEER_TOKENS:?Set OPL_TENANT_PEER_TOKENS}
       OPL_CLOUD_IDENTITY_URL: ""
@@ -104,7 +104,7 @@ services:
       OPL_SUB2API_USER_PASSWORD: ${OPL_SUB2API_USER_PASSWORD:?Set OPL_SUB2API_USER_PASSWORD}
       SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
       OPL_DEPLOYMENT_MODE: customer_owned
-      OPL_PUBLIC_URL: ${OPL_LOCAL_V2_PUBLIC_URL:?Set OPL_LOCAL_V2_PUBLIC_URL}
+      OPL_PUBLIC_URL: ${OPL_PUBLIC_URL:?Set OPL_PUBLIC_URL}
       OPL_WORKSPACE_DOMAIN: ${OPL_WORKSPACE_DOMAIN:?Set OPL_WORKSPACE_DOMAIN}
       OPL_WORKSPACE_APPLICATION_DOMAIN: ${OPL_WORKSPACE_APPLICATION_DOMAIN:-}
       OPL_RELEASE_SHA: ${OPL_RELEASE_SHA:?Set OPL_RELEASE_SHA}
@@ -126,14 +126,14 @@ services:
       OPL_WORKSPACE_APPLICATION_DOMAIN: ${OPL_WORKSPACE_APPLICATION_DOMAIN:-}
       NGINX_ENVSUBST_FILTER: ^OPL_
     ports: !override
-      - "${OPL_BIND_ADDRESS:-127.0.0.1}:${OPL_LOCAL_V2_PROXY_PORT:-8443}:8443"
+      - "${OPL_BIND_ADDRESS:-127.0.0.1}:${OPL_PROXY_PORT:-8443}:8443"
     volumes: !override
       - type: bind
         source: ./cloud-proxy.nginx.conf
         target: /etc/nginx/templates/default.conf.template
         read_only: true
       - type: bind
-        source: ${OPL_LOCAL_V2_PKI_DIR:?Set OPL_LOCAL_V2_PKI_DIR}
+        source: ${OPL_PKI_DIR:?Set OPL_PKI_DIR}
         target: /pki
         read_only: true
     depends_on: !override []
@@ -148,7 +148,7 @@ networks:
   opl-cloud-local-v2:
     ipam:
       config:
-        - subnet: ${OPL_LOCAL_V2_SUBNET:-172.29.0.0/24}
+        - subnet: ${OPL_DOCKER_SUBNET:-172.29.0.0/24}
 
 configs:
   opl-local-v2-postgres-init:
