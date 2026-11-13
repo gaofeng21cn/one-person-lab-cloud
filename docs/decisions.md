@@ -4,6 +4,89 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-11-14: Deployment Addresses Are Declared Per Deployment Face
+
+A deployment address is a fact about one deployment face, not about a process.
+The owner topology contract keeps the address a process listens on when it is
+told nothing, and renames that field so its meaning is explicit. It then
+declares, per deployment face, the address each owner process binds. The
+portable Docker face and the Kubernetes face are separate declarations. The
+uniqueness rule applies inside one face: two owners in one face may not share
+an address, while the same owner may bind a different address in a different
+face. A process default address is never a deployment address and never
+participates in the uniqueness rule.
+
+This settles a case where the contract recorded the process defaults while the
+portable compose bound different values, so the contract could not be checked
+against what an installation actually runs. The contract now states what each
+face binds, and the boundary check compares a deployment against the contract
+rather than against whichever file happens to sit in the repository.
+
+## 2026-11-14: The Portable Product Serves New Installations Only
+
+The portable single-host Docker product installs the owner topology, and it
+serves new installations. An installation that already runs the earlier
+control services, its three databases and its earlier image is not migrated
+into the owner topology by this product, and this product offers no migration
+path for it. The distribution contract states that scope, and the installation
+guide states that an existing installation continues on the Instance channel.
+
+The reason is that the two topologies do not share a data boundary. The owner
+topology gives every owner its own database and its own credentials; the
+earlier topology has three databases shared by the services that need them.
+Moving one into the other would mean either two owners reading one database or
+facts crossing owner boundaries, and this product does not do either. Running
+both faces on one host is refused for the same reason: one installation would
+then have two incompatible answers about which owner holds a fact. Refusing the
+change keeps the failure loud at the point of the decision instead of silent in
+the data.
+
+## 2026-11-14: The Published Browser Face Replaces The Earlier One
+
+The published browser face is the `/api/v2/` face served by the Console BFF.
+The earlier `/api/` browser face on the Control Plane is retired. The earlier
+console build, the routes only that build used, the second session
+implementation and the proxy location that routed that face are removed
+rather than left switchable. The `/api/` routes that the installation tooling
+reads stay, because those are an installation surface and not a browser face.
+
+There is therefore no second browser face to choose between at install time,
+so an operator never has to learn that one existed. The contract states one
+browser face, and the boundary check fails when a second one appears.
+
+## 2026-11-14: Sub2API Authority And The Compose Version Are Installation Preconditions
+
+Sub2API is the external authority for spendable balance and for the console
+login credential. In the qualification stack it runs inside the stack as a
+fixture; in the published face it is an external dependency. The installation
+checks that the operator's Sub2API authority is reachable before it declares
+the installation complete, and reports it as one of the facts only a person
+can supply. A failed login is not where this is discovered.
+
+The published compose uses the `!override` and `!reset` merge tags, so it
+requires Docker Compose 2.24.0 or newer. That lower bound is checked before
+the pull, and stated in the installation guide, instead of surfacing later as
+an unresolved compose tag.
+
+## 2026-11-14: The Topology Contract Is A Candidate Asset, Not A Public Release Asset
+
+The owner topology contract states what the Cloud product exposes and which
+consumers read it. It ships in the Candidate bundle, because the installer
+and the boundary checks read it. It is not an additional public Release
+asset, because the public Release is what an operator receives and an operator
+does not read the topology contract. The distribution contract states this
+explicitly, so the boundary check holds the line rather than the rule living
+only in the installation guide.
+
+## 2026-11-14: Each Deployment Face Is Declared Where It Is Installed
+
+The portable Docker face is declared by the Cloud release contract. The
+Kubernetes face is declared by the installation repository, which owns the
+manifest and the installation. Converging both faces onto one declared address
+set is therefore a change in the installation repository, made against the
+published topology contract, and it is scoped separately from the release
+contract change.
+
 ## 2026-11-05: Stable Publication Uses Non-Spending Acceptance
 
 The product owner explicitly authorized Candidate registration, deployment and
