@@ -30,7 +30,7 @@ export function cleanHostInstallation({ template, compose, directory, sourceSha,
   };
   Object.assign(values, {
     OPL_CLOUD_IMAGE: cloudImage, OPL_WORKSPACE_IMAGE: workspaceImage,
-    OPL_LOCAL_V2_RELEASE_SHA: sourceSha, OPL_RELEASE_SHA: sourceSha, OPL_QUALIFICATION_SOURCE_SHA: sourceSha,
+    OPL_RELEASE_SHA: sourceSha,
     OPL_LOCAL_V2_PKI_DIR: resolve(directory, "pki"),
     OPL_LOCAL_V2_PUBLIC_URL: "https://localhost:8443", OPL_LOCAL_V2_PROXY_PORT: "8443",
     OPL_LOCAL_V2_SUBNET: "172.29.0.0/24", OPL_LOCAL_V2_POSTGRES_HOST: "172.29.0.10",
