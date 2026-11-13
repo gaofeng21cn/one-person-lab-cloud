@@ -3,7 +3,7 @@
  "owner": "opl-cloud",
  "purpose": "The Cloud owner processes a conforming installation runs, and the environment each process requires.",
  "state": "current",
- "machineBoundary": "Cloud declares the owner processes, their addresses, databases and peer identities. The instance owner selects the provider, supplies the domain, Secrets and certificates, and performs deployment.",
+ "machineBoundary": "Cloud declares the owner processes, their addresses, databases and peer identities. The instance owner selects the provider, supplies the domain, Secrets and certificates, and performs deployment. This contract declares the owner topology's environment names and their roles. The environment template declares the values an installation provides, once each: a name this contract lists is a name the template declares, a name the host provides, a name the Compose files derive from one of those, or a build argument. No fact is declared with a value in both places.",
  "image": {
   "env": "OPL_CLOUD_IMAGE",
   "fact": "One product image carries every owner executable; the installation selects which processes to run.",
