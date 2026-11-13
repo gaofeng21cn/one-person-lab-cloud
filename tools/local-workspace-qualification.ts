@@ -3093,7 +3093,7 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
     const envEntries = [
       ["OPL_CLOUD_IMAGE", cloudImage],
       ["OPL_WORKSPACE_IMAGE", workspaceImage],
-      ["OPL_QUALIFICATION_SOURCE_SHA", options.sourceSha],
+      ["OPL_RELEASE_SHA", options.sourceSha],
       ["OPL_BIND_ADDRESS", "127.0.0.1"],
       ["OPL_HTTP_PORT", publicPort],
       ["OPL_PUBLIC_URL", `http://127.0.0.1:${publicPort}`],
