@@ -3,8 +3,6 @@ package server
 import (
 	"context"
 	"errors"
-	"net/http"
-	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
@@ -37,15 +35,6 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) ReadStage(ctx context.Context,
 		return a.readWorkspaceLaunchReceipt(ctx, operation)
 	default:
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, errInvalidWorkspaceLaunchOperation
-	}
-}
-
-func (a *controlPlaneWorkspaceLaunchStageAdapter) ObserveStage(ctx context.Context, operation workspaceLaunchReconcileOperation) (workspaceLaunchStageObservation, error) {
-	switch operation.Stage {
-	case contracts.StageCompute, contracts.StageStorage, contracts.StageAttachment, contracts.StageSecret, contracts.StageRuntime:
-		return a.observeWorkspaceLaunchFabricStage(ctx, operation)
-	default:
-		return a.ReadStage(ctx, operation)
 	}
 }
 
@@ -94,122 +83,6 @@ func (app *controlPlaneServer) workspaceLaunchReconciler(service *controlplane.S
 	return NewWorkspaceLaunchReconciler(app.tables, &controlPlaneWorkspaceLaunchStageAdapter{
 		app: app, service: service, keyCredential: credential, keyUserID: userID,
 	})
-}
-
-func (app *controlPlaneServer) resumeWorkspaceLaunch(ctx context.Context, service *controlplane.Service, operationID string, authorization workspaceLaunchResumeAuthorization) (workspaceLaunchReconcileOperation, error) {
-	row, found, err := app.tables.GetRuntimeOperation(ctx, operationID)
-	if err != nil {
-		return workspaceLaunchReconcileOperation{}, err
-	} else if !found {
-		return workspaceLaunchReconcileOperation{}, errBillingReviewNotFound
-	}
-	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
-	if err != nil {
-		return workspaceLaunchReconcileOperation{}, err
-	}
-	_, _, authorizationExists := operation.resumeAuthorizationByID(authorization.AuthorizationID)
-	if existing, _, found := operation.resumeAuthorizationByID(authorization.AuthorizationID); found && authorization.AuthorizedAt == "" {
-		authorization.AuthorizedAt = existing.AuthorizedAt
-		authorization.ReadbacksAtAuthorization = existing.ReadbacksAtAuthorization
-	}
-	if authorization.ReplacementWorkspaceImageDigest != "" && !authorizationExists &&
-		(operation.Status != contracts.StatusManualReview || operation.Stage != contracts.StageRuntime || operation.stringFact("providerProfileRef") != "tencent-tke" ||
-			authorization.ReplacementWorkspaceImageDigest == operation.stringFact("workspaceImageDigest")) {
-		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
-	}
-	if authorization.ReplacementWorkspaceImageDigest != "" && !authorizationExists {
-		policy, catalog, _, policyErr := app.currentWorkspaceImageReleasePolicy(ctx)
-		if policyErr != nil || authorization.ReplacementWorkspaceImageDigest != policy.ActiveImage || !catalog.ContainsImage(authorization.ReplacementWorkspaceImageDigest) {
-			return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
-		}
-	}
-	if authorization.AuthorizedAt == "" {
-		authorization.AuthorizedAt = time.Now().UTC().Format(time.RFC3339)
-	}
-	return app.workspaceLaunchReconciler(service, clients.SessionDelegatedCredential{}, 0).Resume(ctx, operationID, authorization)
-}
-
-func (app *controlPlaneServer) bindProductionAcceptanceBResumeExisting(
-	ctx context.Context,
-	service *controlplane.Service,
-	header http.Header,
-	operationID string,
-	approval productionAcceptanceBResumeExistingApproval,
-	authorization workspaceLaunchResumeAuthorization,
-) (workspaceLaunchResumeAuthorization, error) {
-	row, found, err := app.tables.GetRuntimeOperation(ctx, operationID)
-	if err != nil {
-		return workspaceLaunchResumeAuthorization{}, err
-	}
-	if !found {
-		return workspaceLaunchResumeAuthorization{}, errBillingReviewNotFound
-	}
-	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
-	if err != nil {
-		return workspaceLaunchResumeAuthorization{}, err
-	}
-	if existing, consumed, found := operation.resumeAuthorizationByID(authorization.AuthorizationID); found {
-		if !productionAcceptanceBResumeExistingReplayApproved(header, approval, authorization, operationID, existing, consumed) {
-			return workspaceLaunchResumeAuthorization{}, errWorkspaceLaunchGrantConflict
-		}
-		authorization.AcceptanceBResumeExisting = existing.AcceptanceBResumeExisting
-		return authorization, nil
-	}
-	reconciler := app.workspaceLaunchReconciler(service, clients.SessionDelegatedCredential{}, 0)
-	observation, readErr := reconciler.adapter.ReadStage(ctx, operation)
-	if readErr != nil {
-		observation = workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}
-	}
-	binding, approved := productionAcceptanceBResumeExistingApproved(header, approval, authorization, operation, observation, time.Now())
-	if !approved {
-		return workspaceLaunchResumeAuthorization{}, errWorkspaceLaunchGrantConflict
-	}
-	authorization.AcceptanceBResumeExisting = &binding
-	return authorization, nil
-}
-
-func (app *controlPlaneServer) prepareProductionAcceptanceBResumeExisting(
-	ctx context.Context,
-	service *controlplane.Service,
-	operationID string,
-	request productionAcceptanceBResumeExistingPrepareRequest,
-	now time.Time,
-) (productionAcceptanceBResumeExistingApproval, error) {
-	adapter := app.workspaceLaunchReconciler(service, clients.SessionDelegatedCredential{}, 0).adapter
-	return prepareProductionAcceptanceBResumeExisting(ctx, app.tables, adapter, operationID, request, now)
-}
-
-func prepareProductionAcceptanceBResumeExisting(
-	ctx context.Context,
-	store workspaceLaunchReconcileStore,
-	adapter workspaceLaunchStageAdapter,
-	operationID string,
-	request productionAcceptanceBResumeExistingPrepareRequest,
-	now time.Time,
-) (productionAcceptanceBResumeExistingApproval, error) {
-	if store == nil || adapter == nil {
-		return productionAcceptanceBResumeExistingApproval{}, errWorkspaceLaunchGrantConflict
-	}
-	row, found, err := store.GetRuntimeOperation(ctx, operationID)
-	if err != nil {
-		return productionAcceptanceBResumeExistingApproval{}, err
-	}
-	if !found {
-		return productionAcceptanceBResumeExistingApproval{}, errBillingReviewNotFound
-	}
-	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
-	if err != nil {
-		return productionAcceptanceBResumeExistingApproval{}, err
-	}
-	observation, err := adapter.ReadStage(ctx, operation)
-	if err != nil || observation.State == workspaceLaunchStageUnknown {
-		return productionAcceptanceBResumeExistingApproval{}, errWorkspaceLaunchGrantConflict
-	}
-	approval, ok := productionAcceptanceBResumeExistingCandidate(request, operation, observation, now)
-	if !ok {
-		return productionAcceptanceBResumeExistingApproval{}, errWorkspaceLaunchGrantConflict
-	}
-	return approval, nil
 }
 
 func (app *controlPlaneServer) runWorkspaceLaunchesOnce(ctx context.Context, service *controlplane.Service) error {

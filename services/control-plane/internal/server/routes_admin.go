@@ -247,15 +247,6 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 	}))
 }
 
-func singleHeaderValue(header http.Header, name string) (string, bool) {
-	values := header.Values(name)
-	if len(values) != 1 {
-		return "", false
-	}
-	value := strings.TrimSpace(values[0])
-	return value, value != ""
-}
-
 func exactWorkspaceComputeClaimKeys(input map[string]any, want []string) bool {
 	if len(input) != len(want) {
 		return false

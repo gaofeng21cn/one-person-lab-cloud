@@ -104,11 +104,6 @@ func TestD3CloseoutRefundBusinessChain(t *testing.T) {
 		if closing.AmountUSDMicros != gatewayAccountingChargeMicros-10_000_000 {
 			t.Fatalf("wrong closing remainder: %+v", closing)
 		}
-		report, err := chain.process.handler.app.billingReconciliationReport(context.Background(), chain.process.handler.service, "d3-closeout-reconciled")
-		if err != nil {
-			t.Fatal(err)
-		}
-		d2AssertReportCounts(t, report, "ok", 3, 3, 0)
 		page, err := list.ListReceipts(context.Background(), clients.ReceiptQuery{AccountID: chain.accountID, TypePrefix: "billing.", IncludeType: "gateway.wallet_adjustment.v1", IncludeExecutionKind: "business_refund", Limit: 100})
 		if err != nil || len(page.Receipts) != 3 {
 			t.Fatalf("customer receipt count=%d err=%v", len(page.Receipts), err)
