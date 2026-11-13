@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
+import { parse } from "yaml";
+import {
+  localV2ReferencedVariables, localV2TemplateDeclarations,
+} from "../../tools/local-v2-installation-facts.ts";
 
 // The product revision is one fact. It reached the product under three names,
 // and every installation had to know which one the topology it used read. The
@@ -19,13 +23,6 @@ function declaredEnvNames() {
   return names;
 }
 
-function revisionLikeNames(text) {
-  // The environment template assigns with `=` and a Compose file maps with `:`,
-  // so both spellings name the same fact and both have to be checked.
-  return [...new Set([...text.matchAll(/^\s*(OPL_[A-Z0-9_]*(?:RELEASE_SHA|SOURCE_SHA|PRODUCT_SHA))\s*[=:]/gmu)]
-    .map((match) => match[1]))];
-}
-
 test("the topology declares exactly one product revision variable", () => {
   const revisions = [...declaredEnvNames()].filter((name) => /(?:RELEASE_SHA|SOURCE_SHA|PRODUCT_SHA)$/.test(name));
   assert.deepEqual(revisions, ["OPL_RELEASE_SHA"], "the installation provides the product revision under one name");
@@ -33,7 +30,10 @@ test("the topology declares exactly one product revision variable", () => {
 
 test("the environment template declares the product revision exactly once", async () => {
   const template = await readFile("deploy/portable/opl-cloud.env.example", "utf8");
-  const revisions = revisionLikeNames(template);
+  const { declarations, duplicates } = localV2TemplateDeclarations(template);
+  assert.deepEqual(duplicates, [], "the environment template must not repeat a declaration");
+  const revisions = declarations.map(({ name }) => name)
+    .filter((name) => /(?:RELEASE_SHA|SOURCE_SHA|PRODUCT_SHA)$/.test(name));
   assert.deepEqual(revisions, ["OPL_RELEASE_SHA"], "the environment template declares the product revision once");
 });
 
@@ -42,21 +42,33 @@ test("no portable deployment reads the product revision under another name", asy
     ...(await readdir("deploy/portable")).filter((name) => name.endsWith(".yaml")).map((name) => `deploy/portable/${name}`),
     "compose.yaml",
   ];
+  let revisionInputs = 0;
   for (const file of files) {
     const source = await readFile(file, "utf8");
-    for (const name of revisionLikeNames(source)) {
+    for (const name of localV2ReferencedVariables(source)
+      .filter((name) => /(?:RELEASE_SHA|SOURCE_SHA|PRODUCT_SHA)$/.test(name))) {
       assert.equal(name, "OPL_RELEASE_SHA", `${file} reads the product revision as ${name}`);
     }
-  }
-});
-
-test("the product revision reaches the product under one name in the portable tooling", async () => {
-  for (const file of ["tools/local-v2-clean-host.ts", "tools/local-workspace-qualification.ts"]) {
-    const source = await readFile(file, "utf8");
-    for (const name of revisionLikeNames(source)) {
-      assert.equal(name, "OPL_RELEASE_SHA", `${file} provides the product revision as ${name}`);
+    const compose = parse(source, { merge: true });
+    for (const [service, config] of Object.entries(compose.services as Record<string, {
+      environment?: Record<string, unknown> | string[];
+    }>)) {
+      const environment = config.environment ?? {};
+      const entries = Array.isArray(environment)
+        ? environment.map((entry) => {
+          const offset = entry.indexOf("=");
+          return offset < 0 ? [entry, null] : [entry.slice(0, offset), entry.slice(offset + 1)];
+        })
+        : Object.entries(environment);
+      for (const [name, value] of entries) {
+        if (name !== "OPL_RELEASE_SHA") continue;
+        revisionInputs += 1;
+        assert.deepEqual(localV2ReferencedVariables(value), ["OPL_RELEASE_SHA"],
+          `${file} ${service}.OPL_RELEASE_SHA must consume the one installation revision variable`);
+      }
     }
   }
+  assert.ok(revisionInputs > 0, "the Compose deployments must consume the product revision");
 });
 
 test("no installation fact carries the topology's name", async () => {

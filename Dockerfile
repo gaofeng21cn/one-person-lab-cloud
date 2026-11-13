@@ -76,10 +76,12 @@ WORKDIR /src
 COPY packages/contracts/go /src/packages/contracts/go
 COPY services /src/services
 COPY apps/console-bff /src/apps/console-bff
+COPY packages/contracts/go/cmd/opl-owner-probe /src/packages/contracts/go/cmd/opl-owner-probe
 RUN for service in capability build runtime-control workspace resource-catalog serve gateway-integration; do \
       CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/$service build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-$service ./cmd/server || exit 1; \
     done \
-    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C apps/console-bff build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-console-bff ./cmd/server
+    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C apps/console-bff build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-console-bff ./cmd/server \
+    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C packages/contracts/go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-owner-probe ./cmd/opl-owner-probe
 
 FROM docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb AS docker-cli
 

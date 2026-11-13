@@ -7,6 +7,7 @@ import test from "node:test";
 
 import {
   candidateReceiptDigest,
+  PORTABLE_ASSETS,
   canonicalJson,
   decodeCandidateReceipt,
   main,
@@ -22,17 +23,7 @@ const amd64Digest = `sha256:${"d".repeat(64)}`;
 const arm64Digest = `sha256:${"e".repeat(64)}`;
 const cloudRepository = "ghcr.io/gaofeng21cn/one-person-lab-cloud";
 const manifestName = "opl-cloud-candidate.json";
-const assetNames = [
-  "compose.yaml",
-  "compose.deployment-platform-owned.yaml",
-  "compose.deployment-managed-tke.yaml",
-  "compose.deployment-customer-owned.yaml",
-  "compose.fabric-local-docker.yaml",
-  "compose.fabric-tencent-tke.yaml",
-  "compose.local-workspace.yaml",
-  "opl-cloud.env.example",
-  "opl-cloud-owner-topology.json"
-];
+const assetNames = PORTABLE_ASSETS;
 
 function sha256(value: string | Buffer) {
   return createHash("sha256").update(value).digest("hex");

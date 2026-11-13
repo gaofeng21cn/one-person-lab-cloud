@@ -521,6 +521,8 @@ actions for those refusals. Installed adoption remains unverified.
 
 ## Current Capability Baseline
 
+- The current PR implementation adds a complete digest-bound Cloud bundle with one-command install/update. Local verification covers strict bundle validation, Compose topology resolution, immutable image selection, state persistence and owner-topology contracts. Runtime Candidate/Release CI and clean-host owner readback remain required before publication.
+
 Reconciled on 2026-11-05 against Cloud source `3773966a`; dated source and
 Instance observations below retain their original revisions and limits.
 

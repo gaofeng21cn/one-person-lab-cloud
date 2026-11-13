@@ -46,6 +46,9 @@ test("the CLI binds an owner-returned Tenant without rotating existing installat
       return [line.slice(0, offset), line.slice(offset + 1)];
     }));
     const before = decode(await readFile(envFile, "utf8"));
+    assert.equal(before.OPL_RELEASE_SHA, sourceSha, "the CLI writes the exact product revision");
+    assert.equal(Object.hasOwn(before, "OPL_QUALIFICATION_SOURCE_SHA"), false);
+    assert.equal(Object.hasOwn(before, "OPL_LOCAL_V2_RELEASE_SHA"), false);
     const receipt = {
       schemaVersion: 1, status: "NOT_READY", mode: "local-v2", errorCode: "local_v2_account_binding_required",
       source: { sha: sourceSha }, evidence: { readbacks: {
