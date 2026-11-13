@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { PORTABLE_ASSETS } from "../../tools/cloud-candidate-receipt.ts";
 
 import {
   QUALIFICATION_BUSINESS_CHECKS,
@@ -69,17 +70,7 @@ function candidateReceipt(overrides = {}) {
         { platform: "linux/arm64", digest: "sha256:" + "3".repeat(64) },
       ],
     },
-    assets: [
-      "compose.yaml",
-      "compose.deployment-platform-owned.yaml",
-      "compose.deployment-managed-tke.yaml",
-      "compose.deployment-customer-owned.yaml",
-      "compose.fabric-local-docker.yaml",
-      "compose.fabric-tencent-tke.yaml",
-      "compose.local-workspace.yaml",
-      "opl-cloud.env.example",
-      "opl-cloud-owner-topology.json",
-    ].map((name) => ({ name, sha256: "4".repeat(64) })),
+    assets: PORTABLE_ASSETS.map((name) => ({ name, sha256: "4".repeat(64) })),
     provenance: {
       workflowRepository: "gaofeng21cn/one-person-lab-cloud",
       workflowSha: SOURCE_SHA,

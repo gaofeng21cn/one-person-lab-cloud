@@ -9,7 +9,7 @@
 
 import { createHash } from "node:crypto";
 
-import { candidateReceiptDigest } from "../../tools/cloud-candidate-receipt.ts";
+import { candidateReceiptDigest, PORTABLE_ASSETS } from "../../tools/cloud-candidate-receipt.ts";
 import type { TencentTkeProviderBoundary } from "../../tools/workspace-qualification-tencent-tke.ts";
 
 export const SOURCE_SHA = "a".repeat(40);
@@ -73,17 +73,7 @@ export function candidateReceipt(overrides = {}) {
         { platform: "linux/arm64", digest: "sha256:" + "3".repeat(64) },
       ],
     },
-    assets: [
-      "compose.yaml",
-      "compose.deployment-platform-owned.yaml",
-      "compose.deployment-managed-tke.yaml",
-      "compose.deployment-customer-owned.yaml",
-      "compose.fabric-local-docker.yaml",
-      "compose.fabric-tencent-tke.yaml",
-      "compose.local-workspace.yaml",
-      "opl-cloud.env.example",
-      "opl-cloud-owner-topology.json",
-    ].map((name) => ({ name, sha256: "4".repeat(64) })),
+    assets: PORTABLE_ASSETS.map((name) => ({ name, sha256: "4".repeat(64) })),
     provenance: {
       workflowRepository: "gaofeng21cn/one-person-lab-cloud",
       workflowSha: SOURCE_SHA,
