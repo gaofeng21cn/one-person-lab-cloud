@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import YAML from "yaml";
-import { candidateReceiptDigest } from "../../tools/cloud-candidate-receipt.ts";
+import { candidateReceiptDigest, canonicalJson } from "../../tools/cloud-candidate-receipt.ts";
 import { RELEASE_SOURCE_PATHS, verifyReleaseSourcePaths } from "../../tools/cloud-release-source-paths.ts";
 
 const hash = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
@@ -75,12 +75,23 @@ test("source-path inspection refuses absent, empty and symlinked entry files", a
 test("real sealing, publication and public-readback scripts agree on source-only acceptance", async () => {
   const f = await fixture();
   try {
+    await mkdir(join(f.root, "runner-temp"), { recursive: true });
+    await symlink(process.cwd(), join(f.root, "product-source"), "dir");
+    await symlink(process.cwd(), join(f.root, "distribution-authority"), "dir");
     const release = YAML.parse(await readFile(".github/workflows/release-opl-cloud-image.yml", "utf8"));
     const follower = YAML.parse(await readFile(".github/workflows/release-opl-cloud-public-readback.yml", "utf8"));
     const evidence = join(f.root, "evidence/candidate");
     await mkdir(evidence, { recursive: true });
-    for (const asset of f.candidate.assets) await writeFile(join(evidence, asset.name), "fixture asset\n");
-    await writeFile(join(evidence, "opl-cloud-candidate.json"), JSON.stringify(f.candidate));
+    for (const asset of f.candidate.assets) {
+      const assetPath = join(evidence, asset.name);
+      await writeFile(assetPath, "fixture asset\n");
+      asset.sha256 = createHash("sha256").update("fixture asset\n").digest("hex");
+    }
+    await writeFile(join(evidence, "opl-cloud-candidate.json"), `${canonicalJson(f.candidate)}\n`);
+    const candidateNames = [...f.candidate.assets.map((asset: any) => asset.name), "opl-cloud-candidate.json"];
+    const candidateSums = [];
+    for (const name of candidateNames) candidateSums.push(`${createHash("sha256").update(await readFile(join(evidence, name))).digest("hex")}  ${name}`);
+    await writeFile(join(evidence, "SHA256SUMS"), `${candidateSums.join("\n")}\n`);
     const paths = await verifyReleaseSourcePaths(f.input);
     const pathsText = JSON.stringify(paths) + "\n";
     await writeFile(join(f.root, "evidence/source-paths.json"), pathsText);
@@ -89,7 +100,7 @@ test("real sealing, publication and public-readback scripts agree on source-only
       LOCAL_QUALIFICATION_RUN_ID: "22", LOCAL_RECEIPT_DIGEST: digest("1"), INSTANCE_DEPLOYMENT_RUN_ID: "33",
       DEPLOYMENT_RECEIPT_DIGEST: digest("2"), DEPLOYMENT_RUN_DIGEST: digest("3"), DEPLOYMENT_AUTHORITY_SHA: "f".repeat(40),
       SOURCE_PATHS_DIGEST: hash(pathsText), GITHUB_SHA: "f".repeat(40), GITHUB_REF: "refs/heads/main", GITHUB_RUN_ID: "44",
-      GITHUB_OUTPUT: join(f.root, "output"), GITHUB_ENV: join(f.root, "env"),
+      RUNNER_TEMP: join(f.root, "runner-temp"), GITHUB_OUTPUT: join(f.root, "output"), GITHUB_ENV: join(f.root, "env"),
       EXPECTED_PRODUCT_TREE: f.candidate.product.tree, EXPECTED_CANDIDATE_RECEIPT_DIGEST: candidateReceiptDigest(f.candidate), EXPECTED_IMAGE_DIGEST: digest("c"), EXPECTED_INSTALLATION_RECEIPT_DIGEST: digest("2"), EXPECTED_INSTALLATION_RUN_DIGEST: digest("3"),
       EXPECTED_INSTALLATION_RUN_ID: "33", EXPECTED_SOURCE_PATHS_DIGEST: hash(pathsText),
       PUBLICATION_WORKFLOW_SHA: "f".repeat(40), PUBLICATION_WORKFLOW_REF: "refs/heads/main" };

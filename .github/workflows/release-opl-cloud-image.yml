@@ -346,10 +346,9 @@ jobs:
           root="artifacts/publication"
           release="$root/release"
           mkdir -p "$release"
-          for asset in compose.yaml compose.deployment-platform-owned.yaml compose.deployment-managed-tke.yaml compose.deployment-customer-owned.yaml compose.fabric-local-docker.yaml compose.fabric-tencent-tke.yaml compose.local-workspace.yaml opl-cloud.env.example; do
-            cp "evidence/candidate/$asset" "$release/$asset"
-          done
+          node product-source/tools/cloud-portable-assets.ts prepare-release evidence/candidate "$release" > "$RUNNER_TEMP/release-assets.json"
           jq -n --slurpfile candidate evidence/candidate/opl-cloud-candidate.json --slurpfile sourcePaths evidence/source-paths.json \
+            --slurpfile assetMetadata "$RUNNER_TEMP/release-assets.json" \
             --arg tag "$RELEASE_TAG" --arg candidateRun "$CANDIDATE_RUN_ID" --arg candidateDigest "$CANDIDATE_RECEIPT_DIGEST" \
             --arg localRun "$LOCAL_QUALIFICATION_RUN_ID" --arg localDigest "$LOCAL_RECEIPT_DIGEST" \
             --arg deploymentRun "$INSTANCE_DEPLOYMENT_RUN_ID" --arg deploymentDigest "$DEPLOYMENT_RECEIPT_DIGEST" \
@@ -364,10 +363,9 @@ jobs:
                 receiptDigest:$deploymentDigest,authoritySha:$deploymentAuthority,status:"deployment_verified"},
               qualifications:{local:{repository:$c.product.repository,workflowRunId:$localRun,receiptDigest:$localDigest},
                 sourcePaths:($sourcePaths[0]+{receiptDigest:$sourceDigest})},
-              assets:["compose.yaml","compose.deployment-platform-owned.yaml","compose.deployment-managed-tke.yaml","compose.deployment-customer-owned.yaml",
-                "compose.fabric-local-docker.yaml","compose.fabric-tencent-tke.yaml","compose.local-workspace.yaml","opl-cloud.env.example","SHA256SUMS"]
-            }' > "$release/opl-cloud-release.json"
-          (cd "$release" && sha256sum compose.yaml compose.deployment-platform-owned.yaml compose.deployment-managed-tke.yaml compose.deployment-customer-owned.yaml compose.fabric-local-docker.yaml compose.fabric-tencent-tke.yaml compose.local-workspace.yaml opl-cloud.env.example opl-cloud-release.json > SHA256SUMS && sha256sum --check --strict SHA256SUMS)
+            } + $assetMetadata[0]' > "$release/opl-cloud-release.json"
+          node product-source/tools/cloud-portable-assets.ts checksums "$release" release
+          (cd "$release" && sha256sum --check --strict SHA256SUMS)
           release_manifest_digest="sha256:$(sha256sum "$release/opl-cloud-release.json" | cut -d ' ' -f1)"
           jq -n --slurpfile manifest "$release/opl-cloud-release.json" --arg workflowSha "$GITHUB_SHA" --arg workflowRef "$GITHUB_REF" \
             --arg manifestDigest "$release_manifest_digest" '
@@ -430,6 +428,16 @@ jobs:
       EXPECTED_PRODUCT_TREE: ${{ needs.admission.outputs.product_tree }}
       EXPECTED_CANDIDATE_RECEIPT_DIGEST: ${{ needs.admission.outputs.candidate_receipt_digest }}
     steps:
+      - name: Checkout exact distribution reader
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          path: distribution-authority
+          persist-credentials: false
+      - name: Set up Node 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24"
       - name: Verify sealed publication checkpoint identity
         env:
           GH_TOKEN: ${{ github.token }}
@@ -460,18 +468,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          expected="$(printf '%s\n' \
-            release-provenance.json \
-            release/SHA256SUMS \
-            release/compose.deployment-customer-owned.yaml \
-            release/compose.deployment-managed-tke.yaml \
-            release/compose.deployment-platform-owned.yaml \
-            release/compose.fabric-local-docker.yaml \
-            release/compose.fabric-tencent-tke.yaml \
-            release/compose.local-workspace.yaml \
-            release/compose.yaml \
-            release/opl-cloud-release.json \
-            release/opl-cloud.env.example | sort)"
+          node distribution-authority/tools/cloud-portable-assets.ts validate-release artifacts/publication/release
+          names="$(node distribution-authority/tools/cloud-portable-assets.ts release-names artifacts/publication/release/opl-cloud-release.json)"
+          expected="$( { printf '%s\n' release-provenance.json; while IFS= read -r name; do printf 'release/%s\n' "$name"; done <<< "$names"; } | sort)"
           actual="$(find artifacts/publication -type f -print | sed 's#^artifacts/publication/##' | sort)"
           test "$actual" = "$expected"
           (cd artifacts/publication/release && sha256sum --check --strict SHA256SUMS)
@@ -499,17 +498,7 @@ jobs:
       - name: Attest release assets
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
-          subject-path: |
-            artifacts/publication/release/compose.yaml
-            artifacts/publication/release/compose.deployment-platform-owned.yaml
-            artifacts/publication/release/compose.deployment-managed-tke.yaml
-            artifacts/publication/release/compose.deployment-customer-owned.yaml
-            artifacts/publication/release/compose.fabric-local-docker.yaml
-            artifacts/publication/release/compose.fabric-tencent-tke.yaml
-            artifacts/publication/release/compose.local-workspace.yaml
-            artifacts/publication/release/opl-cloud.env.example
-            artifacts/publication/release/opl-cloud-release.json
-            artifacts/publication/release/SHA256SUMS
+          subject-path: artifacts/publication/release/*
           predicate-type: https://github.com/gaofeng21cn/one-person-lab-cloud/attestations/opl-cloud-release/v1
           predicate-path: artifacts/publication/release-provenance.json
       - name: Log in to GHCR
@@ -539,18 +528,8 @@ jobs:
         run: |
           set -euo pipefail
           release_dir="artifacts/publication/release"
-          assets=(
-            "$release_dir/compose.yaml"
-            "$release_dir/compose.deployment-platform-owned.yaml"
-            "$release_dir/compose.deployment-managed-tke.yaml"
-            "$release_dir/compose.deployment-customer-owned.yaml"
-            "$release_dir/compose.fabric-local-docker.yaml"
-            "$release_dir/compose.fabric-tencent-tke.yaml"
-            "$release_dir/compose.local-workspace.yaml"
-            "$release_dir/opl-cloud.env.example"
-            "$release_dir/opl-cloud-release.json"
-            "$release_dir/SHA256SUMS"
-          )
+          assets=()
+          while IFS= read -r name; do assets+=("$release_dir/$name"); done < <(node distribution-authority/tools/cloud-portable-assets.ts release-names "$release_dir/opl-cloud-release.json")
           cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
           Portable OPL Cloud stable release with the native owner architecture and Cloud Console.
 

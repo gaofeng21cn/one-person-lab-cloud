@@ -36,6 +36,16 @@ jobs:
       MANUAL_RUN_ID: ${{ inputs.publication_run_id || '' }}
       IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}
     steps:
+      - name: Checkout exact distribution reader
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          path: distribution-authority
+          persist-credentials: false
+      - name: Set up Node 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24"
       - name: Resolve completed publication run and sealed artifact
         id: authority
         env:
@@ -140,17 +150,7 @@ jobs:
           curl -fsSL -H 'Accept: application/vnd.github+json' "$api/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/public-release.json"
           curl -fsSL -H 'Accept: application/vnd.github+json' "$api/commits/$RELEASE_TAG" > "$RUNNER_TEMP/public-tag-commit.json"
           test "$(jq -r .sha "$RUNNER_TEMP/public-tag-commit.json")" = "$(jq -r .source.sha artifacts/publication/release/opl-cloud-release.json)"
-          expected_names="$(printf '%s\n' \
-            SHA256SUMS \
-            compose.deployment-customer-owned.yaml \
-            compose.deployment-managed-tke.yaml \
-            compose.deployment-platform-owned.yaml \
-            compose.fabric-local-docker.yaml \
-            compose.fabric-tencent-tke.yaml \
-            compose.local-workspace.yaml \
-            compose.yaml \
-            opl-cloud-release.json \
-            opl-cloud.env.example | sort -u)"
+          expected_names="$(node distribution-authority/tools/cloud-portable-assets.ts release-names artifacts/publication/release/opl-cloud-release.json | sort)"
           actual_names="$(jq -r '.assets[].name' "$RUNNER_TEMP/public-release.json" | sort)"
           test "$(jq -r .tag_name "$RUNNER_TEMP/public-release.json")" = "$RELEASE_TAG"
           test "$(jq -r .draft "$RUNNER_TEMP/public-release.json")" = false
@@ -161,6 +161,7 @@ jobs:
             test -n "$url"
             curl -fsSL "$url" -o "artifacts/public-readback/$name"
           done <<< "$expected_names"
+          node distribution-authority/tools/cloud-portable-assets.ts validate-release artifacts/public-readback
           (cd artifacts/public-readback && sha256sum --check --strict SHA256SUMS)
           cmp artifacts/public-readback/opl-cloud-release.json artifacts/publication/release/opl-cloud-release.json
       - name: Verify public asset attestations

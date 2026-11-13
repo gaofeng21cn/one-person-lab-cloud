@@ -388,6 +388,10 @@ flowchart TB
 | OPL Runtime Control | Approved Runtime release versions and immutable artifact/compatibility references consumed by Build | Agent deployment, running instance state and Runtime implementation |
 | Domain agent | Domain strategy, evidence judgment, quality verdict and delivery authority | Cloud infrastructure truth |
 
+## Portable Cloud installation boundary
+
+Cloud publishes one immutable installation bundle and one complete local Cloud Compose topology. The bundle manifest and checksums are the SSOT for product image, source revision and installation assets. The installer owns only the reusable local start/update mechanism: it keeps installation configuration, Secrets, certificates and persistent data outside the bundle, and verifies actual Compose image identity and owner readback after startup. Instance or the installation operator owns domains, external Sub2API credentials, provider resources, production TLS, deployment approval, rollback and deployment receipts. Cloud does not create a second business authority or a second installation state machine.
+
 ## Capability Design Review
 
 The owner model is sound and can stay. Its main weakness is presentation:
