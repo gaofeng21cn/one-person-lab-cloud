@@ -14,7 +14,9 @@ test("OPL Cloud product image contains all three control-service binaries", asyn
     ["./cmd/fabric", "opl-fabric"],
     ["./cmd/ledger", "opl-ledger"]
   ]) {
-    assert.match(dockerfile, new RegExp(`go build -o /out/${binary.replaceAll("-", "\\-")} ${buildTarget.replaceAll("/", "\\/")}`));
+    // The build carries the product revision stamp, so the command is matched
+    // from `go build` up to its output path rather than as one fixed string.
+    assert.match(dockerfile, new RegExp(`go build[^\\n]*-o /out/${binary.replaceAll("-", "\\-")} ${buildTarget.replaceAll("/", "\\/")}`));
     assert.match(dockerfile, new RegExp(`COPY --from=.* /out/${binary.replaceAll("-", "\\-")} /usr/local/bin/${binary.replaceAll("-", "\\-")}`));
   }
   assert.match(dockerfile, /ARG TARGETARCH/);
