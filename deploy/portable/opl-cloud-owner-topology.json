@@ -649,7 +649,27 @@
     "evidence": "services/capability/catalog/data_plane.go registers the upload data-plane /parts handler."
    }
   ],
-  "requirement": "The Console is served from one origin and calls both browser-facing surfaces, so a browser-facing installation routes /api/ to control-plane and /api/v2/ to console-bff on the same public host. An installation that routes only one of them serves a Console whose other half cannot answer."
+  "probes": [
+   {
+    "method": "GET",
+    "path": "/api/healthz",
+    "owner": "control-plane",
+    "evidence": "services/control-plane/internal/server/routes_core.go registers GET /api/healthz for the installation's own liveness probe."
+   },
+   {
+    "method": "GET",
+    "path": "/api/runtime/readiness",
+    "owner": "control-plane",
+    "evidence": "services/control-plane/internal/server/routes_core.go registers GET /api/runtime/readiness for the installation's own readiness probe."
+   },
+   {
+    "method": "GET",
+    "path": "/api/production/readiness",
+    "owner": "control-plane",
+    "evidence": "services/control-plane/internal/server/routes_core.go registers GET /api/production/readiness for the installation's own production readiness probe."
+   }
+  ],
+  "requirement": "The Console is served from one origin and calls both browser-facing surfaces, so a browser-facing installation routes /api/ to control-plane and /api/v2/ to console-bff on the same public host. An installation that routes only one of them serves a Console whose other half cannot answer. Every route on a browser facing surface names a client in the owning source: a Console call site, an operator tool, or one of the installation probes declared here."
  },
  "communication": {
   "schemaVersion": 1,

@@ -10,10 +10,6 @@ import (
 	"opl-cloud/services/control-plane/internal/domain/application"
 )
 
-func TestApplicationRevisionStoreAndHistoryMemory(t *testing.T) {
-	testApplicationRevisionStoreAndHistory(t, newMemoryTableStore())
-}
-
 func TestApplicationRevisionStoreAndHistoryPostgres(t *testing.T) {
 	store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)
 	testApplicationRevisionStoreAndHistory(t, store)

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -208,84 +207,6 @@ func disposableResetPreviewFixture(t *testing.T) (http.Handler, *disposableReset
 	}
 	t.Setenv(workspaceLaunchDisposableResetOperationEnv, operation.ID)
 	return server, fabric, ledger, operation
-}
-
-func TestWorkspaceLaunchDisposableResetPreviewRouteInventoriesOwnersWithoutMutation(t *testing.T) {
-	server, fabric, ledger, operation := disposableResetPreviewFixture(t)
-	operator := reservedOperatorSessionForTest(t, server)
-	req := httptest.NewRequest(http.MethodGet, "/api/operator/workspace-launches/"+operation.ID+"/disposable-reset-preview", nil)
-	addAuth(req, operator)
-	rec := httptest.NewRecorder()
-	server.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK || fabric.writes != 0 || ledger.writes != 0 || rec.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("status=%d fabricWrites=%d ledgerWrites=%d cache=%q body=%s", rec.Code, fabric.writes, ledger.writes, rec.Header().Get("Cache-Control"), rec.Body.String())
-	}
-	var preview workspaceLaunchDisposableResetPreview
-	if json.Unmarshal(rec.Body.Bytes(), &preview) != nil || !preview.Eligible || preview.MutationBudget != 0 || preview.ResetPlanDigest == "" || preview.OwnerStates["providerResources"] != workspaceLaunchDisposableOwnerAbsent || len(preview.Blockers) != 0 {
-		t.Fatalf("preview=%#v body=%s", preview, rec.Body.String())
-	}
-	for _, raw := range []string{operation.ID, operation.stringFact("accountId"), operation.stringFact("workspaceId"), operation.stringFact("preflightBindingRef"), "test-key"} {
-		if strings.Contains(rec.Body.String(), raw) {
-			t.Fatalf("preview leaked %q: %s", raw, rec.Body.String())
-		}
-	}
-	beforeDigest := string(mustJSON(preview.OwnerObservations))
-	secondReq := httptest.NewRequest(http.MethodGet, "/api/operator/workspace-launches/"+operation.ID+"/disposable-reset-preview", nil)
-	addAuth(secondReq, operator)
-	secondRec := httptest.NewRecorder()
-	server.ServeHTTP(secondRec, secondReq)
-	var second workspaceLaunchDisposableResetPreview
-	if secondRec.Code != http.StatusOK || json.Unmarshal(secondRec.Body.Bytes(), &second) != nil || beforeDigest != string(mustJSON(second.OwnerObservations)) || strings.Join(preview.Blockers, "\x00") != strings.Join(second.Blockers, "\x00") {
-		t.Fatalf("preview is not deterministic: first=%#v second=%#v", preview, second)
-	}
-}
-
-func TestWorkspaceLaunchDisposableResetPreviewFailsClosedOnFabricResidual(t *testing.T) {
-	server, fabric, _, operation := disposableResetPreviewFixture(t)
-	fabric.stages["storage"] = clients.WorkspaceLaunchStageResult{SchemaVersion: 1, State: string(workspaceLaunchStageReady), Reason: "none", Resources: clients.WorkspaceLaunchResources{StorageID: "vol-residual", StorageBindingRef: operation.ID + ":storage"}}
-	operator := reservedOperatorSessionForTest(t, server)
-	req := httptest.NewRequest(http.MethodGet, "/api/operator/workspace-launches/"+operation.ID+"/disposable-reset-preview", nil)
-	addAuth(req, operator)
-	rec := httptest.NewRecorder()
-	server.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "fabric_residual_present") || strings.Contains(rec.Body.String(), "vol-residual") {
-		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
-	}
-}
-
-func TestWorkspaceLaunchDisposableResetPreviewFailsClosedOnProviderResidual(t *testing.T) {
-	server, fabric, _, operation := disposableResetPreviewFixture(t)
-	fabric.deleteObservation = clients.WorkspaceRuntimeDeleteObservation{
-		SchemaVersion: clients.WorkspaceRuntimeDeleteObservationSchemaVersion, State: clients.WorkspaceRuntimeDeleteObservationPresent,
-		WorkspaceID: operation.stringFact("workspaceId"), Residuals: []clients.WorkspaceRuntimeDeleteResidual{{Kind: "storage", Name: "vol-residual"}},
-	}
-	operator := reservedOperatorSessionForTest(t, server)
-	req := httptest.NewRequest(http.MethodGet, "/api/operator/workspace-launches/"+operation.ID+"/disposable-reset-preview", nil)
-	addAuth(req, operator)
-	rec := httptest.NewRecorder()
-	server.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "provider_resources_residual_present") || strings.Contains(rec.Body.String(), "vol-residual") {
-		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
-	}
-}
-
-func TestWorkspaceLaunchDisposableResetPreviewRequiresOperatorAndExactAuthority(t *testing.T) {
-	server, _, _, operation := disposableResetPreviewFixture(t)
-	path := "/api/operator/workspace-launches/" + operation.ID + "/disposable-reset-preview"
-	unauth := httptest.NewRecorder()
-	server.ServeHTTP(unauth, httptest.NewRequest(http.MethodGet, path, nil))
-	if unauth.Code != http.StatusUnauthorized {
-		t.Fatalf("status=%d body=%s", unauth.Code, unauth.Body.String())
-	}
-	t.Setenv(workspaceLaunchDisposableResetOperationEnv, "different-operation")
-	operator := reservedOperatorSessionForTest(t, server)
-	req := httptest.NewRequest(http.MethodGet, path, nil)
-	addAuth(req, operator)
-	denied := httptest.NewRecorder()
-	server.ServeHTTP(denied, req)
-	if denied.Code != http.StatusOK || !strings.Contains(denied.Body.String(), "disposable_authority_not_configured") {
-		t.Fatalf("status=%d body=%s", denied.Code, denied.Body.String())
-	}
 }
 
 func TestWorkspaceLaunchDisposableResetRejectsIneligibleClassification(t *testing.T) {

@@ -170,9 +170,6 @@ func registerWorkspaceRoutes(mux *http.ServeMux, app *controlPlaneServer, servic
 		w.Header().Set("Cache-Control", "private, no-store")
 		writeJSON(w, http.StatusOK, workspaceRuntimeCredentialResponse(runtime))
 	}))
-	mux.HandleFunc("POST /api/workspaces/{workspaceId}/workspace-key/rotate", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
-		app.resumeWorkspaceGatewayKeyRotation(w, r, service)
-	}))
 	mux.HandleFunc("GET /api/workspaces/{workspaceId}/gateway-budget", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
 		app.workspaceGatewayBudget(w, r, service)
 	}))

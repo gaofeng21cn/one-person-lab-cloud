@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -15,7 +14,6 @@ import (
 )
 
 const (
-	acceptanceBAccountReconcileRoute                = "/api/operator/account-reconciliation"
 	acceptanceBAccountReconcileHeader               = "X-OPL-Account-Reconcile-Email"
 	acceptanceBAccountReconcilePageSize             = 50
 	acceptanceBAccountReconcileMaxPages             = 1000
@@ -54,33 +52,6 @@ type acceptanceBAccountReconcileData struct {
 	KeyCount                       int    `json:"keyCount"`
 	ReceiptCount                   int    `json:"receiptCount"`
 	ReadbackError                  string `json:"readbackError,omitempty"`
-}
-
-// registerAcceptanceBAccountReconcileRoute installs a GET-only route. The
-// email is accepted only in a request header so it never appears in a URL,
-// response body, or redacted artifact. This handler never invokes a mutation
-// client and does not persist a checkpoint.
-func registerAcceptanceBAccountReconcileRoute(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
-	mux.HandleFunc("GET "+acceptanceBAccountReconcileRoute, app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		email, err := canonicalEmail(r.Header.Get(acceptanceBAccountReconcileHeader))
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "acceptance_b_account_reconcile_email_invalid")
-			return
-		}
-		data, err := app.reconcileAcceptanceBAccount(r.Context(), service, email)
-		if err != nil {
-			if errors.Is(err, errAcceptanceBAccountReconcileUnknown) {
-				// The reconcile contract is a readback, not an availability probe. A
-				// failed authority read must remain an explicit unknown data state so
-				// the runner can preserve the digest and refuse any mutation.
-				writeSourceEnvelope(w, http.StatusOK, "control-plane+sub2api+ledger", "available", data)
-				return
-			}
-			writeSourceEnvelope(w, http.StatusOK, "control-plane+sub2api+ledger", "available", data)
-			return
-		}
-		writeSourceEnvelope(w, http.StatusOK, "control-plane+sub2api+ledger", "available", data)
-	}))
 }
 
 func acceptanceBAccountDigest(email string) string {

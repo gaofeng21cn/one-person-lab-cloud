@@ -38,11 +38,6 @@ type workspaceRuntimeImageReplacementOperation struct {
 	ErrorCode   string                                `json:"errorCode,omitempty"`
 }
 
-func registerWorkspaceImageHistoryRoutes(mux *http.ServeMux, app *controlPlaneServer) {
-	mux.HandleFunc("GET /api/operator/workspace-runtime-image-policy", app.protected(true, app.getWorkspaceImageReleasePolicy))
-	mux.HandleFunc("GET /api/operator/workspaces/{workspaceId}/runtime-image-replacements/{operationId}", app.protected(true, app.getWorkspaceRuntimeImageReplacement))
-}
-
 func (app *controlPlaneServer) getWorkspaceRuntimeImageReplacement(w http.ResponseWriter, r *http.Request) {
 	workspaceID, operationID := strings.TrimSpace(r.PathValue("workspaceId")), strings.TrimSpace(r.PathValue("operationId"))
 	row, found, err := app.tables.GetRuntimeOperation(r.Context(), operationID)

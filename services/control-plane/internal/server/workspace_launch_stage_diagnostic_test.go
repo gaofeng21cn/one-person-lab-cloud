@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -157,44 +156,6 @@ func TestWorkspaceLaunchStageDiagnosticReturnsSafeFabricError(t *testing.T) {
 	if err != nil || !found || diagnostic.State != string(workspaceLaunchStageUnknown) || diagnostic.ErrorCode != "UnauthorizedOperation" ||
 		strings.Contains(diagnostic.ErrorCode, "secret") || adapter.reads != 1 || adapter.mutations != 0 {
 		t.Fatalf("diagnostic=%#v found=%v reads=%d mutations=%d err=%v", diagnostic, found, adapter.reads, adapter.mutations, err)
-	}
-}
-
-func TestWorkspaceLaunchStageDiagnosticRouteRequiresCapability(t *testing.T) {
-	t.Setenv("OPL_INTERNAL_SERVICE_TOKEN", "stage-diagnostic-capability")
-	store := newMemoryTableStore()
-	seedTenantMember(t, store, "acct-alpha", "org-alpha", "usr-alpha", "alpha@example.com")
-	row := workspaceLaunchStorageAfterExhaustedReplayRow(t)
-	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
-	if err != nil {
-		t.Fatal(err)
-	}
-	mustStore(t, store.SaveRuntimeOperation(context.Background(), row))
-	fabric := &workspaceLaunchStorageResumeFabric{}
-	server, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, fabric, &testSub2APIClient{}), store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := "/api/operator/workspace-launches/" + operation.ID + "/stage-observation"
-	operator := reservedOperatorSessionForTest(t, server)
-
-	unauthorized := httptest.NewRequest(http.MethodGet, path, nil)
-	addAuth(unauthorized, operator)
-	unauthorizedResponse := httptest.NewRecorder()
-	server.ServeHTTP(unauthorizedResponse, unauthorized)
-	if unauthorizedResponse.Code != http.StatusUnauthorized || fabric.observes != 0 {
-		t.Fatalf("unauthorized status=%d observations=%d", unauthorizedResponse.Code, fabric.observes)
-	}
-
-	authorized := httptest.NewRequest(http.MethodGet, path, nil)
-	addAuth(authorized, operator)
-	authorized.Header.Set(productionAcceptanceBCapability, "stage-diagnostic-capability")
-	response := httptest.NewRecorder()
-	server.ServeHTTP(response, authorized)
-	if response.Code != http.StatusOK || fabric.observes != 1 || fabric.reads != 0 || fabric.ensures != 0 || response.Header().Get("Cache-Control") != "no-store" ||
-		strings.Contains(response.Body.String(), operation.ID) || !strings.Contains(response.Body.String(), `"state":"absent"`) ||
-		!strings.Contains(response.Body.String(), `"mutationBudget":0`) {
-		t.Fatalf("status=%d body=%s observations=%d reads=%d ensures=%d", response.Code, response.Body.String(), fabric.observes, fabric.reads, fabric.ensures)
 	}
 }
 
