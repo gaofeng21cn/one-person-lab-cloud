@@ -30,6 +30,15 @@ test("linked owner binaries retain the source stamp even without a revision read
   assert.ok(/\bD opl-cloud\/packages\/contracts\/go\.ProductSourceSHA$/m.test(stdout), "the linked owner lost its ProductSourceSHA symbol");
   assert.ok(/\bR opl-cloud\/packages\/contracts\/go\.ProductSourceSHA\.str$/m.test(stdout), "the linked owner lost its stamped revision bytes");
   await execFileAsync(binary);
+
+  // This helper otherwise imports no product contracts, so verify its actual
+  // build as well as the blank-import probe that exercises linker retention.
+  const helper = join(directory, "opl-node-image-retire");
+  await execFileAsync("go", ["build", "-ldflags", `-X opl-cloud/packages/contracts/go.ProductSourceSHA=${sha}`, "-o", helper, "./cmd/opl-node-image-retire"], {
+    cwd: "services/fabric",
+  });
+  const helperSymbols = await execFileAsync("go", ["tool", "nm", helper], { maxBuffer: 16 * 1024 * 1024 });
+  assert.ok(/\bD opl-cloud\/packages\/contracts\/go\.ProductSourceSHA$/m.test(helperSymbols.stdout), "the node image helper lost its ProductSourceSHA symbol");
 });
 
 test("every product binary in the image carries the build-time product revision", async () => {
