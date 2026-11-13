@@ -44,10 +44,6 @@ func seedApplicationDataMaterialHistoryForTest(t *testing.T, store controlPlaneT
 	return row
 }
 
-func TestApplicationDataMaterialHistoryMemory(t *testing.T) {
-	testApplicationDataMaterialHistory(t, newMemoryTableStore())
-}
-
 func TestApplicationDataMaterialHistoryPostgres(t *testing.T) {
 	store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)
 	testApplicationDataMaterialHistory(t, store)

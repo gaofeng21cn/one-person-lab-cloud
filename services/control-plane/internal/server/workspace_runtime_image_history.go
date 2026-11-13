@@ -38,9 +38,11 @@ type workspaceRuntimeImageReplacementOperation struct {
 	ErrorCode   string                                `json:"errorCode,omitempty"`
 }
 
+// registerWorkspaceImageHistoryRoutes installs the retained image readers. The
+// Instance installation reads the release policy directly, so that route stays
+// registered even though no Cloud repository calls it.
 func registerWorkspaceImageHistoryRoutes(mux *http.ServeMux, app *controlPlaneServer) {
 	mux.HandleFunc("GET /api/operator/workspace-runtime-image-policy", app.protected(true, app.getWorkspaceImageReleasePolicy))
-	mux.HandleFunc("GET /api/operator/workspaces/{workspaceId}/runtime-image-replacements/{operationId}", app.protected(true, app.getWorkspaceRuntimeImageReplacement))
 }
 
 func (app *controlPlaneServer) getWorkspaceRuntimeImageReplacement(w http.ResponseWriter, r *http.Request) {

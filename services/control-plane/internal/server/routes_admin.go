@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -31,9 +30,7 @@ const (
 
 func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
 	registerWorkspaceImageHistoryRoutes(mux, app)
-	mux.HandleFunc("POST /api/operator/workspace-image-release-activations", app.protected(true, app.activateWorkspaceImageRelease))
 	registerWorkspaceApplicationHistoryRoutes(mux, app)
-	registerWorkspaceApplicationRecoveryRoutes(mux, app)
 	registerWorkspaceRegistryCatalogRoutes(mux, app)
 	mux.HandleFunc("GET /api/operator/workspace-launches/{operationId}/recovery", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		app.writeOperatorWorkspaceLaunchRecovery(w, r, service)
@@ -96,302 +93,6 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 		}
 		writeJSON(w, http.StatusOK, app.workspaceLaunchRecovery(r.Context(), service, result))
 	}))
-	mux.HandleFunc("GET /api/operator/workspace-launches/{operationId}/stage-observation", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		capabilities := r.Header.Values(productionAcceptanceBCapability)
-		if len(capabilities) != 1 || !secureHeaderMatches(strings.TrimSpace(capabilities[0]), strings.TrimSpace(os.Getenv("OPL_INTERNAL_SERVICE_TOKEN"))) {
-			writeError(w, http.StatusUnauthorized, "workspace_launch_stage_diagnostic_capability_invalid")
-			return
-		}
-		operationID := strings.TrimSpace(r.PathValue("operationId"))
-		adapter := &controlPlaneWorkspaceLaunchStageAdapter{app: app, service: service}
-		diagnostic, found, err := observeWorkspaceLaunchStage(r.Context(), app.tables, adapter, operationID)
-		w.Header().Set("Cache-Control", "no-store")
-		if !found {
-			writeError(w, http.StatusNotFound, "workspace_launch_not_found")
-			return
-		}
-		if err != nil {
-			writeError(w, http.StatusConflict, "workspace_launch_stage_diagnostic_not_available")
-			return
-		}
-		writeJSON(w, http.StatusOK, diagnostic)
-	}))
-	mux.HandleFunc("GET /api/operator/workspace-launches/{operationId}/disposable-reset-preview", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		operationID := strings.TrimSpace(r.PathValue("operationId"))
-		preview, err := app.previewWorkspaceLaunchDisposableReset(r.Context(), service, operationID)
-		w.Header().Set("Cache-Control", "no-store")
-		if err != nil {
-			if preview.SchemaVersion == 1 {
-				writeJSON(w, http.StatusOK, preview)
-				return
-			}
-			writeError(w, http.StatusConflict, errWorkspaceLaunchDisposableResetNotEligible.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, preview)
-	}))
-	mux.HandleFunc("POST /api/operator/workspace-launches/{operationId}/canonical-facts-repair", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		key, ok := requiredMutationKey(w, r)
-		if !ok {
-			return
-		}
-		if len(r.Header.Values("Idempotency-Key")) != 1 || !validBillingReviewOpaqueID(key) {
-			writeError(w, http.StatusBadRequest, errWorkspaceLaunchCanonicalFactRepairNotEligible.Error())
-			return
-		}
-		input := decodeJSON(r)
-		launchVersion, validVersion := positiveIntegerField(input, "launchVersion")
-		previewDigest, reason := strings.TrimSpace(stringValue(input["previewDigest"])), strings.TrimSpace(stringValue(input["reason"]))
-		if !validVersion || launchVersion > int64(^uint(0)>>1) || !workspaceLaunchRepairDigestPattern.MatchString(previewDigest) || reason == "" ||
-			!exactWorkspaceComputeClaimKeys(input, []string{"launchVersion", "previewDigest", "reason"}) {
-			writeError(w, http.StatusBadRequest, errWorkspaceLaunchCanonicalFactRepairNotEligible.Error())
-			return
-		}
-		operationID := strings.TrimSpace(r.PathValue("operationId"))
-		audit := app.auditEvent(r, "workspace.launch.canonical_fact_repair", "workspace_launch", operationID, "", nil, nil, "succeeded")
-		row, found, err := app.tables.GetRuntimeOperation(r.Context(), operationID)
-		if err == nil && found {
-			if operation, decodeErr := decodeWorkspaceLaunchReconcileOperation(row); decodeErr == nil && operation.Version == int(launchVersion)+1 {
-				auditID := workspaceLaunchCanonicalFactRepairAuditID(operationID, key)
-				audits, auditErr := app.tables.ListAuditEvents(r.Context(), operation.stringFact("accountId"))
-				for _, existing := range audits {
-					if auditErr == nil && workspaceLaunchCanonicalFactRepairReplayMatches(operation, existing, audit, int(launchVersion), previewDigest, key, reason) {
-						writeJSON(w, http.StatusOK, workspaceLaunchCanonicalFactRepairApplyResponse(operation, auditID))
-						return
-					}
-				}
-			}
-		}
-		repaired, err := app.applyWorkspaceLaunchCanonicalFactRepair(r.Context(), service, operationID, int(launchVersion), previewDigest, key, reason, audit)
-		if err != nil {
-			writeError(w, http.StatusConflict, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, workspaceLaunchCanonicalFactRepairApplyResponse(repaired, workspaceLaunchCanonicalFactRepairAuditID(operationID, key)))
-	}))
-	mux.HandleFunc("GET /api/operator/workspace-launches/{operationId}/canonical-facts-repair-preview", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		operationID := strings.TrimSpace(r.PathValue("operationId"))
-		preview, err := app.previewWorkspaceLaunchCanonicalFactRepair(r.Context(), service, operationID)
-		if err != nil {
-			writeError(w, http.StatusConflict, errWorkspaceLaunchCanonicalFactRepairNotEligible.Error())
-			return
-		}
-		w.Header().Set("Cache-Control", "no-store")
-		writeJSON(w, http.StatusOK, workspaceLaunchCanonicalFactRepairPreviewResponse(preview))
-	}))
-	mux.HandleFunc("POST /api/operator/workspace-launches/{operationId}/repair-runtime", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		key, ok := requiredMutationKey(w, r)
-		if !ok {
-			return
-		}
-		if len(r.Header.Values("Idempotency-Key")) != 1 || !validBillingReviewOpaqueID(key) {
-			writeError(w, http.StatusBadRequest, errInvalidBillingReview.Error())
-			return
-		}
-		input := decodeJSON(r)
-		launchVersion, validVersion := positiveIntegerField(input, "launchVersion")
-		reason, imageDigest := stringValue(input["reason"]), stringValue(input["imageDigest"])
-		if !validVersion || launchVersion > int64(^uint(0)>>1) || reason == "" || reason != strings.TrimSpace(reason) ||
-			imageDigest == "" || !workspaceImageReferenceWithDigest(imageDigest) ||
-			!exactWorkspaceComputeClaimKeys(input, []string{"launchVersion", "reason", "imageDigest"}) {
-			writeError(w, http.StatusBadRequest, errInvalidBillingReview.Error())
-			return
-		}
-		operationID := strings.TrimSpace(r.PathValue("operationId"))
-		row, found, err := app.tables.GetRuntimeOperation(r.Context(), operationID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "state_read_failed")
-			return
-		}
-		if !found {
-			writeError(w, http.StatusNotFound, "workspace_launch_not_found")
-			return
-		}
-		operation, err := decodeWorkspaceLaunchReconcileOperation(row)
-		if err != nil {
-			writeError(w, http.StatusConflict, errWorkspaceLaunchRepairNotEligible.Error())
-			return
-		}
-		operatorUserID := app.sessionUserID(r)
-		exactReplay := operation.RuntimeRepair != nil && operation.RuntimeRepair.AuthorizationID == key &&
-			operation.RuntimeRepair.AuthorizedBy == operatorUserID && operation.RuntimeRepair.LaunchVersion == int(launchVersion) && operation.RuntimeRepair.Reason == reason && operation.RuntimeRepair.ImageDigest == imageDigest
-		if !exactReplay && operation.Version != int(launchVersion) {
-			writeError(w, http.StatusConflict, errWorkspaceLaunchRepairNotEligible.Error())
-			return
-		}
-		repaired, err := app.repairWorkspaceLaunchRuntime(r.Context(), service, operationID, int(launchVersion), key, operatorUserID, reason, imageDigest)
-		if err != nil {
-			if errors.Is(err, errBillingReviewNotFound) {
-				writeError(w, http.StatusNotFound, "workspace_launch_not_found")
-			} else {
-				writeError(w, http.StatusConflict, err.Error())
-			}
-			return
-		}
-		body, err := workspaceLaunchReconcileResponse(repaired, nil)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "state_read_failed")
-			return
-		}
-		repair := map[string]any{"operationId": operationID, "authorizationId": key, "authorizedBy": operatorUserID, "reason": reason, "imageDigest": imageDigest}
-		if repaired.RuntimeRepair != nil {
-			repair["authorizedAt"] = repaired.RuntimeRepair.AuthorizedAt
-		}
-		body["repair"] = repair
-		writeJSON(w, http.StatusOK, body)
-	}))
-	mux.HandleFunc("GET /api/operator/workspace-launches/{operationId}/resume-approval-candidates", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		capabilities := r.Header.Values(productionAcceptanceBCapability)
-		if len(capabilities) != 1 || !secureHeaderMatches(strings.TrimSpace(capabilities[0]), strings.TrimSpace(os.Getenv("OPL_INTERNAL_SERVICE_TOKEN"))) {
-			writeError(w, http.StatusUnauthorized, "acceptance_b_capability_invalid")
-			return
-		}
-		operationID := strings.TrimSpace(r.PathValue("operationId"))
-		approvalID, approvalOK := singleHeaderValue(r.Header, productionAcceptanceBApprovalID)
-		authorizationID, authorizationOK := singleHeaderValue(r.Header, productionAcceptanceBResumeAuthorizationID)
-		reasonSHA256, reasonOK := singleHeaderValue(r.Header, productionAcceptanceBResumeReasonSHA256)
-		releaseSHA, releaseSHAOK := singleHeaderValue(r.Header, productionAcceptanceBResumeReleaseSHA)
-		releaseTree, releaseTreeOK := singleHeaderValue(r.Header, productionAcceptanceBResumeReleaseTree)
-		imageDigest, imageOK := singleHeaderValue(r.Header, productionAcceptanceBResumeImageDigest)
-		if operationID == "" || !approvalOK || !authorizationOK || !reasonOK || !releaseSHAOK || !releaseTreeOK || !imageOK {
-			writeError(w, http.StatusBadRequest, errInvalidBillingReview.Error())
-			return
-		}
-		var request productionAcceptanceBResumeExistingPrepareRequest
-		request.ApprovalID, request.AuthorizationID, request.ReasonSHA256 = approvalID, authorizationID, reasonSHA256
-		request.Release.CanonicalCloudSHA, request.Release.CanonicalCloudTree, request.Release.DeployedCloudImageDigest = releaseSHA, releaseTree, imageDigest
-		if !productionAcceptanceBResumeExistingPrepareRequestValid(request) {
-			writeError(w, http.StatusBadRequest, errInvalidBillingReview.Error())
-			return
-		}
-		approval, err := app.prepareProductionAcceptanceBResumeExisting(r.Context(), service, operationID, request, time.Now())
-		if err != nil {
-			if errors.Is(err, errBillingReviewNotFound) {
-				writeError(w, http.StatusNotFound, "workspace_launch_not_found")
-			} else {
-				writeError(w, http.StatusConflict, errWorkspaceLaunchGrantConflict.Error())
-			}
-			return
-		}
-		w.Header().Set("Cache-Control", "no-store")
-		writeJSON(w, http.StatusOK, approval)
-	}))
-	mux.HandleFunc("POST /api/operator/workspace-launches/{operationId}/resume", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		key, ok := requiredMutationKey(w, r)
-		if !ok {
-			return
-		}
-		if len(r.Header.Values("Idempotency-Key")) != 1 || !validBillingReviewOpaqueID(key) {
-			writeError(w, http.StatusBadRequest, errInvalidBillingReview.Error())
-			return
-		}
-		resumeExistingRequested, validResumeExistingHeaders := productionAcceptanceBResumeExistingRequestMode(r.Header)
-		if !validResumeExistingHeaders {
-			writeError(w, http.StatusBadRequest, errInvalidBillingReview.Error())
-			return
-		}
-		operationID := strings.TrimSpace(r.PathValue("operationId"))
-		input := decodeJSON(r)
-		launchVersion, validVersion := positiveIntegerField(input, "launchVersion")
-		authorizedStage, reason := stringValue(input["authorizedStage"]), stringValue(input["reason"])
-		replacementWorkspaceImageDigest, replacementWorkspaceImageProvided := input["replacementWorkspaceImageDigest"].(string)
-		_, replacementWorkspaceImageFieldPresent := input["replacementWorkspaceImageDigest"]
-		mutationBudget, validBudget := input["mutationBudget"].(float64)
-		idempotentReplayBudget, replayProvided := input["idempotentReplayBudget"].(float64)
-		authoritativeReadBudget, readBudgetProvided := input["authoritativeReadBudget"].(float64)
-		exactFields := exactWorkspaceComputeClaimKeys(input, []string{"launchVersion", "authorizedStage", "reason", "mutationBudget"}) ||
-			exactWorkspaceComputeClaimKeys(input, []string{"launchVersion", "authorizedStage", "reason", "mutationBudget", "idempotentReplayBudget", "authoritativeReadBudget"}) ||
-			exactWorkspaceComputeClaimKeys(input, []string{"launchVersion", "authorizedStage", "reason", "mutationBudget", "idempotentReplayBudget", "authoritativeReadBudget", "replacementWorkspaceImageDigest"})
-		validAuthoritativeReadBudget := authoritativeReadBudget == workspaceLaunchAuthoritativeReadBudget ||
-			authorizedStage == "ensure_compute_allocation" && authoritativeReadBudget > 0 &&
-				authoritativeReadBudget <= float64(workspaceLaunchComputeFreshContinuationAdditionalReadBudget)
-		validRuntimeImageRevision := !replacementWorkspaceImageFieldPresent || replacementWorkspaceImageProvided && authorizedStage == "runtime" &&
-			workspaceImageReferenceWithDigest(replacementWorkspaceImageDigest) && mutationBudget == 0 && replayProvided && readBudgetProvided &&
-			idempotentReplayBudget == 1 && authoritativeReadBudget == workspaceLaunchAuthoritativeReadBudget
-		if operationID == "" || !exactFields ||
-			!validVersion || launchVersion > int64(^uint(0)>>1) || authorizedStage == "" || authorizedStage != strings.TrimSpace(authorizedStage) ||
-			reason == "" || reason != strings.TrimSpace(reason) || !validBudget || mutationBudget != 0 && mutationBudget != 1 ||
-			replayProvided != readBudgetProvided || replayProvided && (idempotentReplayBudget != 0 && idempotentReplayBudget != 1 || !validAuthoritativeReadBudget) ||
-			!validRuntimeImageRevision {
-			writeError(w, http.StatusBadRequest, errInvalidBillingReview.Error())
-			return
-		}
-		authorization := workspaceLaunchResumeAuthorization{
-			AuthorizationID: key, LaunchVersion: int(launchVersion), AuthorizedStage: contracts.Stage(authorizedStage),
-			AuthorizedBy: app.sessionUserID(r), Reason: reason, MutationBudget: int(mutationBudget),
-			IdempotentReplayBudget: int(idempotentReplayBudget), AuthoritativeReadBudget: int(authoritativeReadBudget),
-			ReplacementWorkspaceImageDigest: replacementWorkspaceImageDigest,
-		}
-		if resumeExistingRequested && (!replayProvided || !readBudgetProvided) {
-			writeError(w, http.StatusBadRequest, errInvalidBillingReview.Error())
-			return
-		}
-		if resumeExistingRequested {
-			approval, configured := parseProductionAcceptanceBResumeExistingApproval()
-			if !configured {
-				writeError(w, http.StatusConflict, errWorkspaceLaunchGrantConflict.Error())
-				return
-			}
-			var bindErr error
-			authorization, bindErr = app.bindProductionAcceptanceBResumeExisting(r.Context(), service, r.Header, operationID, approval, authorization)
-			if bindErr != nil {
-				if errors.Is(bindErr, errBillingReviewNotFound) {
-					writeError(w, http.StatusNotFound, "workspace_launch_not_found")
-				} else {
-					writeError(w, http.StatusConflict, errWorkspaceLaunchGrantConflict.Error())
-				}
-				return
-			}
-		}
-		operation, err := app.resumeWorkspaceLaunch(r.Context(), service, operationID, authorization)
-		if err != nil {
-			if errors.Is(err, errBillingReviewNotFound) {
-				writeError(w, http.StatusNotFound, "workspace_launch_not_found")
-			} else if errors.Is(err, errWorkspaceLaunchGrantConflict) || errors.Is(err, errWorkspaceLaunchCASConflict) || errors.Is(err, errInvalidWorkspaceLaunchOperation) {
-				writeError(w, http.StatusConflict, err.Error())
-			} else {
-				writeError(w, http.StatusInternalServerError, "state_persist_failed")
-			}
-			return
-		}
-		body, err := workspaceLaunchReconcileResponse(operation, nil)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "state_read_failed")
-			return
-		}
-		if readback, found := workspaceLaunchResumeAuthorizationReadback(operation, key); found {
-			body["resumeAuthorizationReadback"] = readback
-		}
-		writeJSON(w, http.StatusOK, body)
-	}))
-	mux.HandleFunc("GET /api/operator/workspace-launches/{operationId}/resume-authorizations/{authorizationId}", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		operationID := strings.TrimSpace(r.PathValue("operationId"))
-		authorizationID := strings.TrimSpace(r.PathValue("authorizationId"))
-		if operationID == "" || !validBillingReviewOpaqueID(authorizationID) {
-			writeError(w, http.StatusBadRequest, "invalid_resume_authorization")
-			return
-		}
-		row, found, err := app.tables.GetRuntimeOperation(r.Context(), operationID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "state_read_failed")
-			return
-		}
-		if !found {
-			writeError(w, http.StatusNotFound, "workspace_launch_not_found")
-			return
-		}
-		operation, err := decodeWorkspaceLaunchReconcileOperation(row)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "state_read_failed")
-			return
-		}
-		readback, found := workspaceLaunchResumeAuthorizationReadback(operation, authorizationID)
-		if !found {
-			writeError(w, http.StatusNotFound, "resume_authorization_not_found")
-			return
-		}
-		writeJSON(w, http.StatusOK, readback)
-	}))
 	mux.HandleFunc("POST /api/operator/accounts/{accountId}/wallet-adjustments", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		app.createWalletAdjustment(w, r, service)
 	}))
@@ -404,7 +105,6 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 	mux.HandleFunc("GET /api/operator/accounts", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		app.writeOperatorAccounts(w, r, service)
 	}))
-	registerAcceptanceBAccountReconcileRoute(mux, app, service)
 	mux.HandleFunc("GET /api/operator/overview", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		app.writeOperatorOverview(w, r, service)
 	}))
@@ -501,14 +201,6 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 		result := map[string]any{"operationId": "account-disable-" + stableID(key, accountID)[:18], "accountId": accountID, "status": "succeeded"}
 		if err := app.appendAuditEvent(r, "account.disable", "account", accountID, accountID, nil, map[string]any{"userId": user["id"], "reason": input["reason"]}, "succeeded"); err != nil {
 			writeError(w, http.StatusInternalServerError, "state_persist_failed")
-			return
-		}
-		writeJSON(w, http.StatusOK, result)
-	}))
-	mux.HandleFunc("GET /api/operator/archive", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		result, err := app.archiveState(r.Context())
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "archive_state_failed")
 			return
 		}
 		writeJSON(w, http.StatusOK, result)

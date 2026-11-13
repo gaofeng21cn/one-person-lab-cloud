@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"math"
 	"net/http"
 	"strconv"
@@ -42,55 +41,6 @@ func registerBillingRoutes(mux *http.ServeMux, app *controlPlaneServer, service 
 		app.workspaceSettlementTrendForAccount(w, r, service, stringValue(user["accountId"]), "")
 	}))
 	app.registerCloudLegacyBillingRoutes(mux, service)
-	mux.HandleFunc("POST /api/billing/reconciliation", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		input := decodeJSON(r)
-		if !confirmed(input, "confirm") {
-			writeError(w, http.StatusBadRequest, "confirmation_required")
-			return
-		}
-		if _, supplied := input["report"]; supplied {
-			writeError(w, http.StatusBadRequest, "reconciliation_report_server_computed")
-			return
-		}
-		idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
-		if idempotencyKey == "" {
-			writeError(w, http.StatusBadRequest, "missing Idempotency-Key")
-			return
-		}
-		current, found, err := app.tables.BillingReconciliation(r.Context())
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "state_read_failed")
-			return
-		}
-		expectedCurrentGuardID := ""
-		if found {
-			expectedCurrentGuardID = stringValue(current["id"])
-		}
-		report, err := app.billingReconciliationReport(r.Context(), service, idempotencyKey)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "state_read_failed")
-			return
-		}
-		result, err := service.RecordReconciliation(r.Context(), controlplane.ReconciliationInput{Report: report}, idempotencyKey)
-		if err != nil {
-			writeUpstreamError(w, err)
-			return
-		}
-		row := reconciliationResponse(result)
-		audit := app.auditEvent(r, "billing.reconciliation", "billing_reconciliation", result.ID, "", current, row, "succeeded")
-		audit["id"] = billingReconciliationAuditID(result.ID)
-		if err := app.tables.ApplyBillingReconciliation(r.Context(), billingReconciliationMutation{
-			Row: row, AuditEvent: audit, ExpectedCurrentGuardID: expectedCurrentGuardID,
-		}); err != nil {
-			if errors.Is(err, errBillingReconciliationCASConflict) || errors.Is(err, errIdempotencyConflict) {
-				writeError(w, http.StatusConflict, err.Error())
-				return
-			}
-			writeError(w, http.StatusInternalServerError, "state_persist_failed")
-			return
-		}
-		writeJSON(w, http.StatusCreated, row)
-	}))
 }
 
 func (app *controlPlaneServer) projectCustomerBillingReceipt(ctx context.Context, receipt clients.Receipt) (map[string]any, bool) {

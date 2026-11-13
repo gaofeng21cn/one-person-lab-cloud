@@ -673,17 +673,20 @@ It no longer scans or advances default-install requests. The base Compose forwar
 setting; the local Workspace overlay enables it. Operator revision/data admission,
 new deployment commands and customer `application-installation/resume` have been
 removed with their Console mutation controls. Revision admission storage has no
-remaining production writer; historical revision/data/deployment GETs remain in
-`workspace_application_history_routes.go`. Default-install progress is not
-accepted by the deployment operation persistence port. Its historical preparation
-records remain a read barrier for deletion and Key rotation when unresolved.
-The operator `POST /api/operator/application-deployments/{id}/retry` remains for
-frozen failed deployments, including retained credential/Key rotation children;
-the original reservation, selection/version, entitlement and rotation-parent
-fences still apply. It admits no new deployment. The existing Console Workspace
-read flow retains scoped owner/runtime refresh while a selected application's
-credential deployment is pending; retiring installation commands does not
-remove asynchronous rotation readback.
+remaining production writer. Of the historical reads in
+`workspace_application_history_routes.go` only
+`GET /api/operator/application-deployments/{operationId}` is still registered,
+because the Instance installation reads that deployment receipt directly; the
+revision and data-material GETs had no client and are retired. Default-install
+progress is not accepted by the deployment operation persistence port. Its
+historical preparation records remain a read barrier for deletion and Key
+rotation when unresolved. The operator `POST /api/operator/application-deployments/{id}/retry`
+is retired as well, so a frozen failed deployment no longer has an operator
+retry entry point; the original reservation, selection/version, entitlement and
+rotation-parent fences still apply to the operations that remain. The existing
+Console Workspace read flow retains scoped owner/runtime refresh while a selected
+application's credential deployment is pending; retiring installation commands
+does not remove asynchronous rotation readback.
 
 Application generation IDs own Runtime components and Secret mounts. OPL
 credential identity is frozen separately in accepted runtime configurations.
@@ -1730,6 +1733,10 @@ owner and request hash. Confirmed absence returns HTTP 410
 `workspace_key_rotation_creation_retired` before accepting an operation or
 dispatching Gateway/Secret/Runtime/receipt effects. Failed reads, damaged state
 and identity conflicts retain their errors rather than becoming absence.
+
+The route itself is retired: no client calls it, so
+`POST /api/workspaces/{workspaceId}/workspace-key/rotate` is no longer
+registered. The recovery state machine below is untouched by that retirement.
 
 The original recovery state machine remains necessary: child activation can
 commit the Workspace Key projection, but does not complete the parent operation,
