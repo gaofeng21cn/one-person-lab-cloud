@@ -2185,11 +2185,11 @@ function localV2Fixture({ operationResponses = [], replayOrder, workspaceReadbac
   let operationReads = 0;
   const workspaceImage = `local/opl-workspace-local-v2@sha256:${"d".repeat(64)}`;
   const values = {
-    OPL_LOCAL_V2_PUBLIC_URL: "https://localhost:18443",
-    OPL_LOCAL_V2_PKI_DIR: "/tmp/opl-local-v2-pki",
-    OPL_LOCAL_V2_PROXY_PORT: "18443",
-    OPL_LOCAL_V2_SUBNET: "172.31.0.0/24",
-    OPL_LOCAL_V2_POSTGRES_HOST: "172.31.0.10",
+    OPL_PUBLIC_URL: "https://localhost:18443",
+    OPL_PKI_DIR: "/tmp/opl-local-v2-pki",
+    OPL_PROXY_PORT: "18443",
+    OPL_DOCKER_SUBNET: "172.31.0.0/24",
+    OPL_POSTGRES_HOST: "172.31.0.10",
     OPL_WORKSPACE_DOMAIN: "ws-qualification.localhost",
     OPL_CLOUD_IMAGE: `opl-cloud-local-v2@sha256:${"e".repeat(64)}`,
     OPL_WORKSPACE_IMAGE: workspaceImage,
@@ -2245,7 +2245,7 @@ function localV2Fixture({ operationResponses = [], replayOrder, workspaceReadbac
     return ok({}, 404);
   };
   const client = {
-    origin: values.OPL_LOCAL_V2_PUBLIC_URL,
+    origin: values.OPL_PUBLIC_URL,
     request: async (path, init = {}) => payload(String(init.method || "GET").toUpperCase(), path),
     json: async (path, init = {}, _auth = null, statuses = [200]) => {
       const result = payload(String(init.method || "GET").toUpperCase(), path);
@@ -2452,12 +2452,12 @@ test("local-v2 qualification collects owner readbacks and reports the host bound
 });
 
 test("the local-v2 origin and CA come only from the declared installation", () => {
-  assert.equal(localV2QualificationOrigin({ OPL_LOCAL_V2_PUBLIC_URL: "https://localhost:18443" }), "https://localhost:18443");
-  assert.throws(() => localV2QualificationOrigin({ OPL_LOCAL_V2_PUBLIC_URL: "http://localhost:18443" }), { code: "local_v2_public_url_invalid" });
-  assert.throws(() => localV2QualificationOrigin({ OPL_LOCAL_V2_PUBLIC_URL: "https://localhost:18443/api" }), { code: "local_v2_public_url_invalid" });
+  assert.equal(localV2QualificationOrigin({ OPL_PUBLIC_URL: "https://localhost:18443" }), "https://localhost:18443");
+  assert.throws(() => localV2QualificationOrigin({ OPL_PUBLIC_URL: "http://localhost:18443" }), { code: "local_v2_public_url_invalid" });
+  assert.throws(() => localV2QualificationOrigin({ OPL_PUBLIC_URL: "https://localhost:18443/api" }), { code: "local_v2_public_url_invalid" });
   assert.throws(() => localV2QualificationOrigin({}), { code: "local_v2_public_url_invalid" });
-  assert.equal(localV2QualificationCA({ OPL_LOCAL_V2_PKI_DIR: "/tmp/pki" }), "/tmp/pki/ca.crt");
-  assert.throws(() => localV2QualificationCA({ OPL_LOCAL_V2_PKI_DIR: "relative/pki" }), { code: "local_v2_pki_dir_invalid" });
+  assert.equal(localV2QualificationCA({ OPL_PKI_DIR: "/tmp/pki" }), "/tmp/pki/ca.crt");
+  assert.throws(() => localV2QualificationCA({ OPL_PKI_DIR: "relative/pki" }), { code: "local_v2_pki_dir_invalid" });
   assert.throws(() => localV2QualificationCA({}), { code: "local_v2_pki_dir_invalid" });
 });
 

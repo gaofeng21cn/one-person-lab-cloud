@@ -605,3 +605,67 @@ test("each peer allowlist names exactly the callers that reach that owner", asyn
       `${env} must admit exactly the callers that dial ${owner}, and no peer nothing dials`);
   }
 });
+
+test("every environment name the owner topology declares resolves in the installation", async () => {
+  const topology = await loadTopology();
+  const template = await readFile(envExamplePath, "utf8");
+  const declared = new Set<string>();
+  for (const line of template.split("\n")) {
+    const match = /^([A-Za-z_][A-Za-z0-9_]*)=/.exec(line);
+    if (match) declared.add(match[1]);
+  }
+
+  // The names the contract says an installation provides.
+  const required = new Set<string>();
+  const add = (name: string | undefined) => { if (name) required.add(name); };
+  for (const name of topology.sharedEnv?.tls || []) add(name);
+  add(topology.sharedEnv?.database);
+  for (const name of topology.sharedEnv?.cloudIdentity || []) add(name);
+  for (const process of topology.processes || []) {
+    for (const name of process.env || []) add(name);
+    add(process.addressEnv);
+    add(process.peerTokensEnv);
+    add(process.databaseEnv);
+  }
+  for (const edge of topology.communication?.edges || []) {
+    add(edge.addressEnv);
+    add(edge.tokenEnv);
+  }
+
+  // The host provides these, and the build takes its argument; neither is an
+  // installation fact, so neither appears in the environment template.
+  const hostProvided = new Set<string>(topology.sharedEnv?.hostProvided || []);
+  const buildArgs = new Set<string>([topology.consoleBundle?.buildArg].filter(Boolean) as string[]);
+
+  // The Compose files derive a container's environment from another fact.
+  // The derived set is a closure: a derived name resolves only when the fact
+  // it derives from resolves.
+  const derivedPairs: [string, string][] = [];
+  const files = [
+    "compose.yaml",
+    ...(await readdir("deploy/portable")).filter((name) => name.endsWith(".yaml")).map((name) => `deploy/portable/${name}`)
+  ];
+  for (const file of files) {
+    const source = await readFile(file, "utf8");
+    for (const match of source.matchAll(/^\s*([A-Za-z_][A-Za-z0-9_]*):\s*\$\{([A-Za-z_][A-Za-z0-9_]*)/gm)) {
+      derivedPairs.push([match[1], match[2]]);
+    }
+  }
+  const derived = new Set<string>();
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const [key, source] of derivedPairs) {
+      if (derived.has(key)) continue;
+      if (declared.has(source) || derived.has(source)) {
+        derived.add(key);
+        grew = true;
+      }
+    }
+  }
+
+  const unresolved = [...required]
+    .filter((name) => !declared.has(name) && !hostProvided.has(name) && !buildArgs.has(name) && !derived.has(name))
+    .sort();
+  assert.deepEqual(unresolved, [], "every environment name the owner topology declares must resolve in the installation");
+});

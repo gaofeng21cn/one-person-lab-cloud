@@ -70,3 +70,23 @@ test("no portable deployment reads the product revision under another name", asy
   }
   assert.ok(revisionInputs > 0, "the Compose deployments must consume the product revision");
 });
+
+test("no installation fact carries the topology's name", async () => {
+  // "local-v2" names the topology, not the installation. A fact that carries
+  // it tells an operator that this installation has a second kind, and makes
+  // the qualification stack and the published stack speak two vocabularies
+  // for one fact. Whoever runs an installation sets the same name; the values
+  // are what differ.
+  const files = [
+    "deploy/portable/opl-cloud.env.example",
+    "compose.yaml",
+    ...(await readdir("deploy/portable")).filter((name) => name.endsWith(".yaml")).map((name) => `deploy/portable/${name}`),
+    "tools/local-v2-clean-host.ts",
+    "tools/local-workspace-qualification.ts"
+  ];
+  for (const file of files) {
+    const source = await readFile(file, "utf8");
+    const names = [...new Set([...source.matchAll(/\bOPL_LOCAL_V2_[A-Z0-9_]+/g)].map((match) => match[0]))];
+    assert.deepEqual(names, [], `${file} carries the topology's name in an installation fact`);
+  }
+});
