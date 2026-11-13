@@ -119,13 +119,13 @@ test("a template that declares one name twice is refused when the topology reads
     (error) => error.code === "local_v2_variable_declared_twice" && error.message.includes("OPL_CLOUD_IMAGE"));
 });
 
-test("a template that declares one name twice is reported when the topology does not read it", () => {
+test("the environment template declares every installation fact exactly once", () => {
   const facts = localV2InstallationFacts({ template, compose, values: suppliedValues() });
-  assert.ok(facts.duplicates.length >= 1, "the template's upstream duplicates are reported, not hidden");
-  for (const duplicate of facts.duplicates) {
-    assert.ok(!facts.referenced.includes(duplicate.name),
-      `${duplicate.name} is declared twice, so the topology must not read it`);
-  }
+  // One fact, one declaration. The Compose environment reader keeps the last
+  // definition and the first reader of the same file keeps the first one, so a
+  // name declared twice gives two readers of one file two different values.
+  assert.deepEqual(facts.duplicates.map((duplicate) => duplicate.name), [],
+    "the template must not declare one installation fact twice");
   const declaredOnce = facts.entries.map(([name]) => name);
   assert.equal(new Set(declaredOnce).size, declaredOnce.length);
 });
