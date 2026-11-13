@@ -16,6 +16,21 @@ establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
 
+## Installation chain source boundary (2026-11-13)
+
+Instance source `842e666957ad34e85d55688e738a8cf6128f0769`
+([Instance #718](https://github.com/gaofeng21cn/opl-instance-medopl/pull/718))
+provides the protected install/upgrade orchestrator's configuration consumer
+and shared owner database provisioner over the existing Bootstrap, Deploy,
+First Install and Deployment Verification workflows. Its lifecycle summary
+validates Candidate-bound native receipts. It does not yet bind a profile digest
+across stages, and its source checks do not establish installed adoption.
+
+The [release boundary](runtime/release.md#candidate-instance-profile-and-receipt-boundary)
+defines the target handoff. No installation, upgrade, same-snapshot database
+backup or isolated restore was executed for this source convergence. Existing
+customer and production obligations retain their original owners and evidence.
+
 ## Workspace 1042 original deletion closeout and Cloud custody (2026-11-12)
 
 The original Workspace deletion is complete. Native closeout `43149543610`

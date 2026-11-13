@@ -9,6 +9,51 @@ rollback and deployment receipts. Production-private access runs only through
 - Product/Instance ownership: [Architecture](../architecture.md)
 - Current evidence: [Status](../status.md)
 
+## Candidate, Instance Profile And Receipt Boundary
+
+The install/upgrade chain uses one product input and one installation-data
+input:
+
+1. Cloud produces one immutable Candidate from one exact Cloud source SHA. The
+   Candidate bundle carries the product manifest, image digests, checksums and
+   portable installation assets.
+2. Instance loads one canonical Instance profile for the target installation.
+   The profile is the sole installation-data input for install and upgrade. It
+   contains non-secret provider, resource, database, storage, backup and
+   Secret-reference declarations; it does not contain Secret values or
+   observed deployment state.
+3. The protected Instance workflow resolves Secret values and production access
+   materials, validates the profile before mutation, and runs the requested
+   install or upgrade against that Candidate.
+
+The native stage receipts bind the Candidate identity. The current Instance
+install/upgrade lifecycle summary does not yet bind a normalized profile digest
+across stages. That is a required follow-up Instance receipt change. Once
+implemented, the profile digest must be an opaque installation identity: a
+changed profile produces a new digest, while live observations and deployment
+results remain receipt/readback evidence and do not rewrite the profile.
+
+Cloud does not read the Instance profile contents, Secret values, DSNs,
+kubeconfig, cluster configuration or customer data. Cloud can consume the
+approved redacted receipt/readback handoff and verify the Candidate identity.
+After the versioned Instance receipt change exists, it may also compare the
+opaque profile digest across receipts. It does not reconstruct or override the
+Instance configuration. A valid Cloud Candidate or Cloud-side source check
+therefore never proves installation or production readiness by itself. This
+section defines the cross-repository target contract; runtime adoption is
+proved only by an Instance-produced receipt and its protected readback.
+
+This is the target evidence boundary. Instance source
+`842e666957ad34e85d55688e738a8cf6128f0769`
+([Instance #718](https://github.com/gaofeng21cn/opl-instance-medopl/pull/718))
+has the protected install/upgrade orchestrator, profile consumption and
+Candidate-bound native receipts; it does not yet bind the Instance profile
+digest across phases. The versioned receipt change must be delivered in its
+owning Instance change before that stronger binding can be claimed.
+[Status](../status.md#installation-chain-source-boundary-2026-11-13) records the
+source-only evidence; [roadmap](../roadmap.md#priority-outcomes) retains
+installation and data-recovery acceptance.
+
 ## Workspace Deletion Diagnostics And Evidence Custody
 
 Cloud owns Workspace deletion and refund coordination, Fabric provider readback,
@@ -247,10 +292,13 @@ It is explicitly `LOCAL_NO_CHARGE` with `p0Ready: false`. The explicit
 `legacy-fixture` mode retains its own version-one validator and evidence scope.
 A failed or mismatched installation remains NOT_READY.
 
-Instance independently deploys the same Candidate through its protected main
-workflow, then its separate `deployment-verify.yml` records native installation
-identity and technical health. Cloud validates the original bytes through the
-producing Instance revision and binds the receipt/run to that Candidate.
+Instance independently installs or upgrades the same Candidate from its
+validated profile through its protected main workflow, then its separate
+`deployment-verify.yml` records native installation identity and technical
+health. The native receipts bind the Candidate, and the final lifecycle summary binds
+the profile digest as well. Cloud validates the original Candidate bytes and the
+summary association through the producing Instance revision without reading the
+profile or its Secrets.
 Successful installation does not imply paid business acceptance.
 
 The exact Candidate's successful Pull Request CI run must include all six

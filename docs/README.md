@@ -75,12 +75,19 @@ cannot yet follow is an explicit roadmap gap, not a competing SSOT.
   provider profile and deployment receipts belong to the instance repository;
   `one-person-lab-cloud` is the current GitHub product repository and `opl-cloud`
   is its product/artifact identifier; external owner repositories are not merged.
+- The release and installation boundary is explicit: a Cloud Candidate is the
+  product input, the Instance profile is the sole canonical installation-data
+  input, and Instance owns the protected Secret/production configuration and
+  the install/upgrade receipts. Cloud may validate the receipts and retain the
+  opaque profile digest, but does not read the Instance profile contents,
+  Secret values or production configuration.
 - Current Console identity routing, extracted services and retained Control
   Plane callers belong to [implementation architecture](./implementation-architecture.md).
   Architecture and target capability pages define ownership, not installed
   process inventory. [Status](./status.md) owns dated evidence, and
   [installation](./installation.md) separates public Release bytes from current
-  Candidate assets.
+  Candidate assets; [release operations](./runtime/release.md) defines the
+  Candidate-to-Instance receipt boundary.
 
 ## Active Navigation
 
