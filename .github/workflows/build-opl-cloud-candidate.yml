@@ -136,6 +136,7 @@ jobs:
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
             --build-arg VITE_CONSOLE_IDENTITY=cloud \
+            --build-arg OPL_SOURCE_SHA="$PRODUCT_SHA" \
             --label "org.opencontainers.image.source=https://github.com/$PRODUCT_REPOSITORY" \
             --label "org.opencontainers.image.revision=$PRODUCT_SHA" \
             --cache-from "type=gha,scope=opl-cloud-candidate" \

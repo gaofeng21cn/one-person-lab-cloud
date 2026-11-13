@@ -431,6 +431,15 @@ func TestPredebitIAMGateUsesTencentClientBoundaryWithoutTagMutation(t *testing.T
 	}
 }
 
+// stampProductSourceSHA marks the running binary as built from the given
+// product revision, the way the image build stamps it with -ldflags.
+func stampProductSourceSHA(t *testing.T, sha string) {
+	t.Helper()
+	previous := contracts.ProductSourceSHA
+	contracts.ProductSourceSHA = sha
+	t.Cleanup(func() { contracts.ProductSourceSHA = previous })
+}
+
 func TestTencentSDKPredebitIAMGateReadsLiveIdentityWithoutTagMutation(t *testing.T) {
 	identity := map[string]string{
 		"type": "CAMUser", "principalId": "100000000001:123456789", "accountId": "100000000001", "userId": "123456789",
@@ -452,6 +461,7 @@ func TestTencentSDKPredebitIAMGateReadsLiveIdentityWithoutTagMutation(t *testing
 	}
 	env := protectedResourceEnv()
 	env["OPL_RELEASE_SHA"] = strings.Repeat("a", 40)
+	stampProductSourceSHA(t, env["OPL_RELEASE_SHA"])
 	env["OPL_TENCENT_PREDEBIT_IAM_ATTESTATION"] = string(attestation)
 	tagAPI := &fakePredebitTagAPI{identity: identity}
 	client := &tencentSDKClient{nativeTagClient: tagAPI}
@@ -460,6 +470,41 @@ func TestTencentSDKPredebitIAMGateReadsLiveIdentityWithoutTagMutation(t *testing
 
 	if !response.Ok || response.Status != "ready" || response.ProviderRequestId != "req-cam-live" || response.MutationCount != 0 || tagAPI.identityCalls != 1 || tagAPI.financeCalls != 1 || tagAPI.tagCalls != 0 {
 		t.Fatalf("pre-debit IAM response=%#v identityCalls=%d financeCalls=%d tagCalls=%d", response, tagAPI.identityCalls, tagAPI.financeCalls, tagAPI.tagCalls)
+	}
+}
+
+func TestTencentSDKPredebitIAMGateRefusesABinaryThatIsNotTheClaimedRelease(t *testing.T) {
+	identity := map[string]string{
+		"type": "CAMUser", "principalId": "100000000001:123456789", "accountId": "100000000001", "userId": "123456789",
+	}
+	attestation, err := json.Marshal(map[string]any{
+		"schemaVersion": 3, "proofMode": "production_runner_deployment_attestation", "releaseSha": strings.Repeat("a", 40),
+		"identity": identity, "requiredActions": []string{"tag:TagResources", "tag:ModifyResourcesTagValue"},
+		"requiredPolicies": []string{"QcloudCVMFinanceAccess"},
+		"policyDigest":     "sha256:" + strings.Repeat("b", 64),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := protectedResourceEnv()
+	env["OPL_RELEASE_SHA"] = strings.Repeat("a", 40)
+	stampProductSourceSHA(t, env["OPL_RELEASE_SHA"])
+	// The deployment claims revision a and the attestation binds revision a,
+	// but the running binary was built from another revision. The attestation
+	// binds a release this binary is not, so the gate refuses before it makes
+	// any live call that could mutate the customer's cloud resources.
+	stampProductSourceSHA(t, strings.Repeat("c", 40))
+	env["OPL_TENCENT_PREDEBIT_IAM_ATTESTATION"] = string(attestation)
+	tagAPI := &fakePredebitTagAPI{identity: identity}
+
+	response := handleWithClient(Request{Action: "predebit_iam_gate"}, env, &tencentSDKClient{nativeTagClient: tagAPI})
+
+	if response.Ok || response.ErrorCode != "predebit_iam_release_mismatch" || response.MutationCount != 0 {
+		t.Fatalf("pre-debit IAM response=%#v", response)
+	}
+	if tagAPI.identityCalls != 0 || tagAPI.financeCalls != 0 || tagAPI.tagCalls != 0 {
+		t.Fatalf("a drifted release must be refused before any live call: identity=%d finance=%d tag=%d",
+			tagAPI.identityCalls, tagAPI.financeCalls, tagAPI.tagCalls)
 	}
 }
 
@@ -480,6 +525,7 @@ func TestTencentSDKPredebitIAMGateRejectsLiveIdentityDrift(t *testing.T) {
 	}
 	env := protectedResourceEnv()
 	env["OPL_RELEASE_SHA"] = strings.Repeat("a", 40)
+	stampProductSourceSHA(t, env["OPL_RELEASE_SHA"])
 	env["OPL_TENCENT_PREDEBIT_IAM_ATTESTATION"] = string(attestation)
 	tagAPI := &fakePredebitTagAPI{identity: liveIdentity}
 
@@ -516,6 +562,7 @@ func TestTencentSDKPredebitIAMGateRejectsMalformedDeploymentAttestationBeforeSTS
 		t.Run(tc.name, func(t *testing.T) {
 			env := protectedResourceEnv()
 			env["OPL_RELEASE_SHA"] = releaseSHA
+			stampProductSourceSHA(t, env["OPL_RELEASE_SHA"])
 			env["OPL_TENCENT_PREDEBIT_IAM_ATTESTATION"] = tc.attestation
 			tagAPI := &fakePredebitTagAPI{identity: map[string]string{"type": "CAMUser", "principalId": "100000000001:123456789", "accountId": "100000000001", "userId": "123456789"}}
 
@@ -543,6 +590,7 @@ func TestTencentSDKPredebitIAMGateFailsClosedOnSTSReadError(t *testing.T) {
 	}
 	env := protectedResourceEnv()
 	env["OPL_RELEASE_SHA"] = strings.Repeat("a", 40)
+	stampProductSourceSHA(t, env["OPL_RELEASE_SHA"])
 	env["OPL_TENCENT_PREDEBIT_IAM_ATTESTATION"] = string(attestation)
 	tagAPI := &fakePredebitTagAPI{identity: identity, identityErr: errors.New("sts unavailable")}
 
@@ -567,6 +615,7 @@ func TestTencentSDKPredebitIAMGateFailsClosedOnLiveFinancePolicy(t *testing.T) {
 	}
 	env := protectedResourceEnv()
 	env["OPL_RELEASE_SHA"] = strings.Repeat("a", 40)
+	stampProductSourceSHA(t, env["OPL_RELEASE_SHA"])
 	env["OPL_TENCENT_PREDEBIT_IAM_ATTESTATION"] = string(attestation)
 	missing := false
 	for _, test := range []struct {

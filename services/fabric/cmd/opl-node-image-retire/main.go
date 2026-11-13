@@ -15,6 +15,9 @@ import (
 	"strings"
 	"time"
 
+	// Retain the product image's build identity in this standalone helper.
+	_ "opl-cloud/packages/contracts/go"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	cri "k8s.io/cri-api/pkg/apis/runtime/v1"

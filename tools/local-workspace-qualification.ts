@@ -765,7 +765,10 @@ export async function buildSourceImages(sourceSha, project, registryPort) {
   try {
     await runProcess("docker", ["run", "-d", "--name", registryContainer, "-p", `127.0.0.1:${registryPort}:5000`, "registry:2"]);
     const proxyArgs = localBuildProxyArgs();
-    await runProcess("docker", ["build", ...proxyArgs, "--label", `org.opencontainers.image.revision=${sourceSha}`, "--tag", cloudTag, "."], { capture: false });
+    await runProcess("docker", [
+      "build", ...proxyArgs, "--build-arg", `OPL_SOURCE_SHA=${sourceSha}`,
+      "--label", `org.opencontainers.image.revision=${sourceSha}`, "--tag", cloudTag, "."
+    ], { capture: false });
     await runProcess("docker", [
       "build", ...proxyArgs, "--label", `org.opencontainers.image.revision=${sourceSha}`,
       "--file", "deploy/portable/qualification-workspace.Dockerfile", "--tag", workspaceTag, "."

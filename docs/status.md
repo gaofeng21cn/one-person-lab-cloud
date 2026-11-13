@@ -26,6 +26,20 @@ First Install and Deployment Verification workflows. Its lifecycle summary
 validates Candidate-bound native receipts. It does not yet bind a profile digest
 across stages, and its source checks do not establish installed adoption.
 
+Instance #719 makes the owner material lane the sole producer of owner database
+Secrets, service tokens and peer allowlists. Instance #720 consumes the IAM
+contract declared by exact Cloud Candidate source (#1171), rejects malformed or
+unsupported declarations, and retains exact historical Candidate resolution.
+Both Instance changes are merged source; they do not establish installed adoption.
+
+Cloud #1172 stamps product executables with the build source revision and checks
+that identity before the Tencent pre-debit IAM gate reads live identity or
+finance policy. Control Plane health reports the baked revision independently of
+the deployment environment. Candidate, local qualification image builds and the
+local Tencent provisioner builder supply the stamp. Real linker-retention,
+HTTP health and IAM gate tests exercise these source paths; they are not
+Candidate image or installation evidence.
+
 The [release boundary](runtime/release.md#candidate-instance-profile-and-receipt-boundary)
 defines the target handoff. No installation, upgrade, same-snapshot database
 backup or isolated restore was executed for this source convergence. Existing

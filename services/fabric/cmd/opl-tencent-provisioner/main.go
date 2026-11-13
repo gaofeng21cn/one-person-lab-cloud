@@ -695,6 +695,13 @@ func (client *tencentSDKClient) PredebitIAMGate(_ Request, env map[string]string
 	if releaseSHA := strings.TrimSpace(env["OPL_RELEASE_SHA"]); !validLowerHex(releaseSHA, 40) || attestation.ReleaseSHA != releaseSHA {
 		return Response{Ok: false, ErrorCode: "predebit_iam_release_mismatch", Message: "Tencent pre-debit IAM attestation release does not match the running release.", Retryable: false, MutationCount: 0}
 	}
+	// The attestation binds a release the deployment claimed. Only a binary
+	// that states the same revision itself may act on that binding, so a
+	// deployment that points at an image other than the one it claims cannot
+	// mutate the customer's cloud resources.
+	if !contracts.ProductSourceSHAIsCurrent(env["OPL_RELEASE_SHA"]) {
+		return Response{Ok: false, ErrorCode: "predebit_iam_release_mismatch", Message: "Tencent pre-debit IAM attestation release does not match the running binary.", Retryable: false, MutationCount: 0}
+	}
 	identityClient, ok := client.nativeTagClient.(callerIdentityNativeAPI)
 	if !ok {
 		return Response{Ok: false, ErrorCode: "predebit_iam_sts_unavailable", Message: "Tencent STS identity client is unavailable.", Retryable: false, MutationCount: 0}
