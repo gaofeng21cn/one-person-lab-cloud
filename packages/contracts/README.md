@@ -43,6 +43,7 @@ External authorities and artifact consumers keep their explicit version pins.
 | `opl-cloud-fabric-launch-binding-contract.json` | Control Plane and Fabric stage request hashing and Runtime image revision proof |
 | `opl-cloud-workspace-runtime-abi-contract.json` | Control Plane and Fabric Workspace WebUI routing |
 | `opl-cloud-webui-artifact-contract.json` | Cloud WebUI artifact identity and Build/Serve compatibility (W13/W14/W16) |
+| `tencent-predebit-iam-contract.json` | The Tencent provisioner's accepted pre-debit IAM attestation shape, and the installer that produces it |
 
 The Candidate and Distribution contracts bind portable artifact identity; they
 do not describe an instance deployment. Domains, provider selection, production
