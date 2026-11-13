@@ -98,7 +98,43 @@ function derivePeerToken(name, template, values) {
   for (const key of Object.keys(shape)) shape[key] = token;
   return JSON.stringify(shape);
 }
-function existingValues(state) { return state?.values && typeof state.values === 'object' ? new Map(Object.entries(state.values)) : new Map(); }
+function existingValues(state) {
+  const values =
+    state?.values && typeof state.values === "object"
+      ? new Map(Object.entries(state.values))
+      : new Map();
+  // Migrate the persisted installation, not just the template. Delete the old
+  // spelling after one successful save so there is still only one fact owner.
+  const renamed = {
+    OPL_LOCAL_V2_SUBNET: "OPL_DOCKER_SUBNET",
+    OPL_LOCAL_V2_POSTGRES_HOST: "OPL_POSTGRES_HOST",
+    OPL_LOCAL_V2_PROXY_PORT: "OPL_PROXY_PORT",
+    OPL_LOCAL_V2_GATEWAY_CONTAINER: "OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER",
+    OPL_LOCAL_V2_PUBLIC_URL: "OPL_PUBLIC_URL",
+    OPL_LOCAL_V2_SUB2API_URL: "OPL_SUB2API_URL",
+    OPL_LOCAL_V2_CAPABILITY_OBJECT_URL: "OPL_CAPABILITY_OBJECT_URL",
+    OPL_LOCAL_V2_CAPABILITY_OBJECT_INTERNAL_URL:
+      "OPL_CAPABILITY_OBJECT_INTERNAL_URL",
+    OPL_LOCAL_V2_PKI_DIR: "OPL_PKI_DIR",
+    OPL_LOCAL_V2_PACKAGE_SCHEMA_PATH: "OPL_CAPABILITY_PACKAGE_SCHEMA_HOST_PATH",
+    OPL_LOCAL_V2_PACKAGE_SCHEMA_DIGEST: "OPL_CAPABILITY_PACKAGE_SCHEMA_DIGEST",
+    OPL_LOCAL_V2_PUBLISHER_SCHEMA_DIGEST: "OPL_PUBLISHER_SCHEMA_DIGEST",
+  };
+  const filled = (value) =>
+    typeof value === "string" &&
+    value !== "" &&
+    !isPlaceholder(value) &&
+    !value.startsWith("unset-");
+  for (const [oldName, name] of Object.entries(renamed)) {
+    if (filled(values.get(oldName))) {
+      if (filled(values.get(name)) && values.get(name) !== values.get(oldName))
+        fail(`installation_fact_conflict:${oldName}:${name}`);
+      values.set(name, values.get(oldName));
+    }
+    values.delete(oldName);
+  }
+  return values;
+}
 async function readState(path) {
   try { return parseStrictJson(await readFile(path)); } catch (error) {
     if (error.code === 'ENOENT') return null;
@@ -129,6 +165,14 @@ function runtimeImageReadback(bundle, env, expected) {
     const image = execFileSync('docker', ['inspect', '--format', '{{.Config.Image}}', id], { env, encoding: 'utf8' }).trim();
     if (image !== expected) fail(`service_image_mismatch:${name}`);
   }
+}
+function composeServices(text) {
+  try {
+    const trimmed = text.trim();
+    const services = trimmed.startsWith('[') ? JSON.parse(trimmed) : trimmed.split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line));
+    if (!Array.isArray(services) || services.some(service => !service || typeof service !== 'object' || Array.isArray(service))) fail('cloud_services_invalid');
+    return services;
+  } catch { fail('cloud_services_invalid'); }
 }
 function ownerReadback(bundle, env, sourceSha) {
   const probes = [
@@ -170,7 +214,7 @@ async function main(args = process.argv.slice(2)) {
   if (state && state.schemaVersion !== 1) fail('installation_state_version_unsupported');
   if (state && state.imageRef === bundleInfo.imageRef && state.sourceSha !== bundleInfo.sourceSha) fail('installation_identity_conflict');
   await mkdir(options.installDir, { recursive: true, mode: 0o700 });
-  const pkiDir = join(options.installDir, 'pki');
+  const defaultPkiDir = join(options.installDir, 'pki');
   const dataDir = join(options.installDir, 'data');
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
   const template = parseTemplate(await readFile(join(bundle, 'opl-cloud.env.example'), 'utf8'));
@@ -180,7 +224,7 @@ async function main(args = process.argv.slice(2)) {
     if (immutable.has(name)) continue;
     if (values.has(name) && !isPlaceholder(values.get(name)) && !String(values.get(name)).startsWith('unset-')) continue;
     const templateValue = template.get(name) ?? '';
-    if (name === 'OPL_PKI_DIR') values.set(name, pkiDir);
+    if (name === 'OPL_PKI_DIR') values.set(name, defaultPkiDir);
     else if (name === 'OPL_CAPABILITY_PACKAGE_SCHEMA_HOST_PATH') values.set(name, join(options.installDir, 'schemas', 'agent-plugins-1.0.0-plugin.schema.json'));
     else if (name === 'OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT') values.set(name, join(dataDir, 'fabric-storage'));
     else if (name === 'OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT') values.set(name, join(dataDir, 'fabric-secrets'));
@@ -206,7 +250,11 @@ async function main(args = process.argv.slice(2)) {
   await ensureSchema(values, options.installDir, bundle);
   validateValues(required, values);
   const env = cleanEnvironment();
-  for (const name of required) env[name] = strictEnvLine(name, values.get(name));
+  // Optional Compose values (subnet, database host and proxy port) are also
+  // operator facts; exporting only required values silently replaces them.
+  for (const name of new Set([...required, ...template.keys()])) if (values.has(name)) env[name] = strictEnvLine(name, values.get(name));
+  const pkiDir = values.get('OPL_PKI_DIR');
+  requireAbsolute('OPL_PKI_DIR', pkiDir);
   await mkdir(pkiDir, { recursive: true, mode: 0o700 });
   const pkiNames = ['ca.crt', 'ca.key', 'proxy.crt', 'proxy.key', ...['tenant', 'capability', 'build', 'runtime_control', 'workspace', 'serve', 'resource_catalog', 'ledger', 'fabric', 'console_bff', 'control_plane'].flatMap(name => [`${name}.crt`, `${name}.key`])];
   const pkiPresent = [];
@@ -218,12 +266,13 @@ async function main(args = process.argv.slice(2)) {
   }
   next.updatedAt = new Date().toISOString();
   await atomicJson(statePath, next);
+  const config = JSON.parse(compose(bundle, env, ['-f', 'compose.cloud.yaml', 'config', '--format', 'json']));
   if (options.dryRun) { console.log(`install.mjs: dry run verified ${bundleInfo.imageRef}`); return; }
-  compose(bundle, env, ['-f', 'compose.cloud.yaml', 'config', '--format', 'json']);
   compose(bundle, env, ['-f', 'compose.cloud.yaml', 'pull']);
   compose(bundle, env, ['-f', 'compose.cloud.yaml', 'up', '-d', '--wait', '--wait-timeout', '180']);
-  const services = JSON.parse(compose(bundle, env, ['-f', 'compose.cloud.yaml', 'ps', '--format', 'json']));
-  if (!Array.isArray(services) || services.some(service => service.State !== 'running')) fail('cloud_services_not_running');
+  const services = composeServices(compose(bundle, env, ['-f', 'compose.cloud.yaml', 'ps', '--format', 'json']));
+  const running = new Set(services.filter(service => service.State === 'running').map(service => service.Service));
+  if (!services.length || services.some(service => service.State !== 'running') || Object.keys(config.services || {}).some(name => !running.has(name))) fail('cloud_services_not_running');
   runtimeImageReadback(bundle, env, bundleInfo.imageRef);
   ownerReadback(bundle, env, bundleInfo.sourceSha);
   console.log(`install.mjs: OPL Cloud is running at ${values.get('OPL_PUBLIC_URL') || 'the configured endpoint'}`);
