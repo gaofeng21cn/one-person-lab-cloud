@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { PORTABLE_ASSETS } from "../../tools/cloud-candidate-receipt.ts";
 
 // The shipped cloud product must bake the cloud Console identity, not the
 // a legacy identity. The identity selects the customer "智能体" (/console/agents)
@@ -51,16 +52,5 @@ test("the Candidate checksum manifest covers the complete portable asset set", a
     .split("\n")
     .map((line) => line.trim().replace(/\\$/, "").trim())
     .filter((line) => line && line !== "sha256sum");
-  assert.deepEqual(entries, [
-    "compose.yaml",
-    "compose.deployment-platform-owned.yaml",
-    "compose.deployment-managed-tke.yaml",
-    "compose.deployment-customer-owned.yaml",
-    "compose.fabric-local-docker.yaml",
-    "compose.fabric-tencent-tke.yaml",
-    "compose.local-workspace.yaml",
-    "opl-cloud.env.example",
-    "opl-cloud-owner-topology.json",
-    "opl-cloud-candidate.json"
-  ]);
+  assert.deepEqual(entries, [...PORTABLE_ASSETS, "opl-cloud-candidate.json"]);
 });

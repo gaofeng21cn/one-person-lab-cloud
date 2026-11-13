@@ -40,6 +40,7 @@ function syntheticCandidateReceipt() {
       "compose.local-workspace.yaml",
       "opl-cloud.env.example",
       "opl-cloud-owner-topology.json",
+      "install.sh",
     ].map((name) => ({ name, sha256: "4".repeat(64) })),
     provenance: {
       workflowRepository: "gaofeng21cn/one-person-lab-cloud",

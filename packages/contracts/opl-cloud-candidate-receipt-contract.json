@@ -54,7 +54,8 @@
    "compose.fabric-tencent-tke.yaml",
    "compose.local-workspace.yaml",
    "opl-cloud.env.example",
-   "opl-cloud-owner-topology.json"
+   "opl-cloud-owner-topology.json",
+   "install.sh"
   ],
   "manifest": "opl-cloud-candidate.json",
   "checksumManifest": "SHA256SUMS",

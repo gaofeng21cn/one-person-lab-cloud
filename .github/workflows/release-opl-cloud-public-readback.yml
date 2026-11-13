@@ -149,6 +149,7 @@ jobs:
             compose.fabric-tencent-tke.yaml \
             compose.local-workspace.yaml \
             compose.yaml \
+            install.sh \
             opl-cloud-release.json \
             opl-cloud.env.example | sort -u)"
           actual_names="$(jq -r '.assets[].name' "$RUNNER_TEMP/public-release.json" | sort)"

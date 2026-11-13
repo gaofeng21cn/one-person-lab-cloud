@@ -346,7 +346,7 @@ jobs:
           root="artifacts/publication"
           release="$root/release"
           mkdir -p "$release"
-          for asset in compose.yaml compose.deployment-platform-owned.yaml compose.deployment-managed-tke.yaml compose.deployment-customer-owned.yaml compose.fabric-local-docker.yaml compose.fabric-tencent-tke.yaml compose.local-workspace.yaml opl-cloud.env.example; do
+          for asset in compose.yaml compose.deployment-platform-owned.yaml compose.deployment-managed-tke.yaml compose.deployment-customer-owned.yaml compose.fabric-local-docker.yaml compose.fabric-tencent-tke.yaml compose.local-workspace.yaml opl-cloud.env.example install.sh; do
             cp "evidence/candidate/$asset" "$release/$asset"
           done
           jq -n --slurpfile candidate evidence/candidate/opl-cloud-candidate.json --slurpfile sourcePaths evidence/source-paths.json \
@@ -365,9 +365,9 @@ jobs:
               qualifications:{local:{repository:$c.product.repository,workflowRunId:$localRun,receiptDigest:$localDigest},
                 sourcePaths:($sourcePaths[0]+{receiptDigest:$sourceDigest})},
               assets:["compose.yaml","compose.deployment-platform-owned.yaml","compose.deployment-managed-tke.yaml","compose.deployment-customer-owned.yaml",
-                "compose.fabric-local-docker.yaml","compose.fabric-tencent-tke.yaml","compose.local-workspace.yaml","opl-cloud.env.example","SHA256SUMS"]
+                "compose.fabric-local-docker.yaml","compose.fabric-tencent-tke.yaml","compose.local-workspace.yaml","opl-cloud.env.example","install.sh","SHA256SUMS"]
             }' > "$release/opl-cloud-release.json"
-          (cd "$release" && sha256sum compose.yaml compose.deployment-platform-owned.yaml compose.deployment-managed-tke.yaml compose.deployment-customer-owned.yaml compose.fabric-local-docker.yaml compose.fabric-tencent-tke.yaml compose.local-workspace.yaml opl-cloud.env.example opl-cloud-release.json > SHA256SUMS && sha256sum --check --strict SHA256SUMS)
+          (cd "$release" && sha256sum compose.yaml compose.deployment-platform-owned.yaml compose.deployment-managed-tke.yaml compose.deployment-customer-owned.yaml compose.fabric-local-docker.yaml compose.fabric-tencent-tke.yaml compose.local-workspace.yaml opl-cloud.env.example install.sh opl-cloud-release.json > SHA256SUMS && sha256sum --check --strict SHA256SUMS)
           release_manifest_digest="sha256:$(sha256sum "$release/opl-cloud-release.json" | cut -d ' ' -f1)"
           jq -n --slurpfile manifest "$release/opl-cloud-release.json" --arg workflowSha "$GITHUB_SHA" --arg workflowRef "$GITHUB_REF" \
             --arg manifestDigest "$release_manifest_digest" '
@@ -470,6 +470,7 @@ jobs:
             release/compose.fabric-tencent-tke.yaml \
             release/compose.local-workspace.yaml \
             release/compose.yaml \
+            release/install.sh \
             release/opl-cloud-release.json \
             release/opl-cloud.env.example | sort)"
           actual="$(find artifacts/publication -type f -print | sed 's#^artifacts/publication/##' | sort)"
@@ -508,6 +509,7 @@ jobs:
             artifacts/publication/release/compose.fabric-tencent-tke.yaml
             artifacts/publication/release/compose.local-workspace.yaml
             artifacts/publication/release/opl-cloud.env.example
+            artifacts/publication/release/install.sh
             artifacts/publication/release/opl-cloud-release.json
             artifacts/publication/release/SHA256SUMS
           predicate-type: https://github.com/gaofeng21cn/one-person-lab-cloud/attestations/opl-cloud-release/v1
@@ -548,6 +550,7 @@ jobs:
             "$release_dir/compose.fabric-tencent-tke.yaml"
             "$release_dir/compose.local-workspace.yaml"
             "$release_dir/opl-cloud.env.example"
+            "$release_dir/install.sh"
             "$release_dir/opl-cloud-release.json"
             "$release_dir/SHA256SUMS"
           )

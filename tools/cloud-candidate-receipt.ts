@@ -12,7 +12,7 @@ const CLOUD_IMAGE_REPOSITORY = "ghcr.io/gaofeng21cn/one-person-lab-cloud";
 const MANIFEST_NAME = "opl-cloud-candidate.json";
 const CHECKSUM_MANIFEST_NAME = "SHA256SUMS";
 const PLATFORMS = ["linux/amd64", "linux/arm64"];
-const PORTABLE_ASSETS = [
+export const PORTABLE_ASSETS = [
   "compose.yaml",
   "compose.deployment-platform-owned.yaml",
   "compose.deployment-managed-tke.yaml",
@@ -21,7 +21,8 @@ const PORTABLE_ASSETS = [
   "compose.fabric-tencent-tke.yaml",
   "compose.local-workspace.yaml",
   "opl-cloud.env.example",
-  "opl-cloud-owner-topology.json"
+  "opl-cloud-owner-topology.json",
+  "install.sh"
 ];
 const RECEIPT_KEYS = ["schemaVersion", "kind", "product", "cloudImage", "assets", "provenance"];
 const PRODUCT_KEYS = ["repository", "sha", "tree"];
