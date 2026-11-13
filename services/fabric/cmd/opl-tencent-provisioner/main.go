@@ -75,6 +75,12 @@ const protectedCheckFailed = "failed"
 const protectedCheckNotApplicable = "not_applicable"
 
 const predebitIAMProofMode = "production_runner_deployment_attestation"
+
+// The accepted attestation shape is declared once for the source in
+// packages/contracts/tencent-predebit-iam-contract.json. The installer reads
+// that declaration from the exact Candidate source it installs, so the shape
+// this provisioner accepts and the shape the installer produces cannot drift.
+const predebitIAMAttestationSchemaVersion = 3
 const tencentProviderProfileEnv = "OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON"
 const workspaceNodeImageGCHighThresholdEnv = "OPL_WORKSPACE_NODE_IMAGE_GC_HIGH_THRESHOLD_PERCENT"
 const workspaceNodeImageGCLowThresholdEnv = "OPL_WORKSPACE_NODE_IMAGE_GC_LOW_THRESHOLD_PERCENT"
@@ -722,7 +728,7 @@ func (client *tencentSDKClient) PredebitIAMGate(_ Request, env map[string]string
 }
 
 func validPredebitIAMAttestation(attestation predebitIAMAttestation) bool {
-	if attestation.SchemaVersion != 3 || attestation.ProofMode != predebitIAMProofMode || !validLowerHex(attestation.ReleaseSHA, 40) ||
+	if attestation.SchemaVersion != predebitIAMAttestationSchemaVersion || attestation.ProofMode != predebitIAMProofMode || !validLowerHex(attestation.ReleaseSHA, 40) ||
 		len(attestation.RequiredActions) != len(predebitIAMRequiredActions) || !strings.HasPrefix(attestation.PolicyDigest, "sha256:") || !validLowerHex(strings.TrimPrefix(attestation.PolicyDigest, "sha256:"), 64) {
 		return false
 	}

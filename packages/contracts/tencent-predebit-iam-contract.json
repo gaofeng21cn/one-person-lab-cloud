@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "owner": "services/fabric",
+  "purpose": "Let one exact product source declare the Tencent pre-debit IAM deployment attestation it accepts, so an installer resolves the attestation contract from the Candidate source it is about to install instead of a hand-maintained per-candidate registry.",
+  "state": "current",
+  "machineBoundary": "The attestation schema version, proof mode, release binding, required actions and required policies that services/fabric/cmd/opl-tencent-provisioner enforces on OPL_TENCENT_PREDEBIT_IAM_ATTESTATION. The contract name is the installation-side vocabulary for that same shape; the attestation content itself stays with the installer that produces it.",
+  "lifecycle": {
+    "type": "long_term_contract",
+    "removalCondition": "Replace only with a newer attestation shape the same provisioner accepts."
+  },
+  "predebitIAMContract": "v3_candidate_finance_policy",
+  "attestation": {
+    "schemaVersion": 3,
+    "proofMode": "production_runner_deployment_attestation",
+    "bindsReleaseSha": true
+  },
+  "requiredActions": [
+    "tag:TagResources",
+    "tag:ModifyResourcesTagValue"
+  ],
+  "requiredPolicies": [
+    "QcloudCVMFinanceAccess"
+  ]
+}
