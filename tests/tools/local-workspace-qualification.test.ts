@@ -516,6 +516,71 @@ test("qualification selects the current Candidate overlay set", async () => {
   }
 });
 
+test("qualification passes its exact revision to Compose under the canonical name", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "opl-qualification-revision-"));
+  const binDirectory = join(directory, "bin");
+  const captured = join(directory, "compose-input.json");
+  await mkdir(binDirectory);
+  const cloudImage = `ghcr.io/example/cloud@${cloudDigest}`;
+  // Stop at the real Compose boundary, after the harness writes its environment.
+  // No container, provider or customer operation can run through this executable.
+  await writeFile(join(binDirectory, "docker"), `#!${process.execPath}
+const { readFileSync, writeFileSync } = require("node:fs");
+const args = process.argv.slice(2);
+if (args[0] === "version" || args[0] === "compose" && args[1] === "version") process.exit(0);
+if (args[0] === "image" && args[1] === "inspect") {
+  console.log(JSON.stringify([{ Id: args[2].split("@")[1], RepoDigests: [args[2]],
+    Config: { Labels: { "org.opencontainers.image.revision": ${JSON.stringify(sha)} } } }]));
+  process.exit(0);
+}
+if (args[0] === "context" && args[1] === "inspect") {
+  console.log("unix:///var/run/docker.sock");
+  process.exit(0);
+}
+if (args[0] === "compose" && args.includes("config")) {
+  const envFile = args[args.indexOf("--env-file") + 1];
+  writeFileSync(${JSON.stringify(captured)}, JSON.stringify({
+    file: readFileSync(envFile, "utf8"), environment: Object.fromEntries(
+      ["OPL_RELEASE_SHA", "OPL_QUALIFICATION_SOURCE_SHA", "OPL_LOCAL_V2_RELEASE_SHA"]
+        .filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]]))
+  }));
+  console.error("revision_capture_complete");
+  process.exit(1);
+}
+console.error("unexpected_docker_command");
+process.exit(1);
+`);
+  await chmod(join(binDirectory, "docker"), 0o700);
+  const replacement = {
+    PATH: `${binDirectory}:${process.env.PATH || ""}`,
+    OPL_RELEASE_SHA: "e".repeat(40),
+    OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: join(directory, "storage"),
+    OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: JSON.stringify({ schemaVersion: 1, packages: [{ id: "basic" }] })
+  };
+  const previous = Object.fromEntries(Object.keys(replacement).map((name) => [name, process.env[name]]));
+  Object.assign(process.env, replacement);
+  try {
+    await assert.rejects(() => runLocalWorkspaceQualification({
+      sourceSha: sha, cloudImage, workspaceImage: workspaceReference,
+      receiptPath: join(directory, "receipt.json"), buildSourceImages: false, authorityMode: "fixture"
+    }, {
+      readSourceIdentity: async () => ({ sha, tree: "d".repeat(40), clean: true })
+    }), /revision_capture_complete/);
+    const input = JSON.parse(await readFile(captured, "utf8"));
+    assert.deepEqual(input.file.split("\n").filter((line) => /^(?:OPL_RELEASE_SHA|OPL_QUALIFICATION_SOURCE_SHA|OPL_LOCAL_V2_RELEASE_SHA)=/.test(line)),
+      [`OPL_RELEASE_SHA=${sha}`]);
+    assert.equal(input.environment.OPL_RELEASE_SHA, sha, "the requested revision must override the ambient revision");
+    assert.equal(input.environment.OPL_QUALIFICATION_SOURCE_SHA, undefined);
+    assert.equal(input.environment.OPL_LOCAL_V2_RELEASE_SHA, undefined);
+  } finally {
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("qualification requires the installation-owned Local-Docker inputs", () => {
   const profile = JSON.stringify({
     schemaVersion: 1,
