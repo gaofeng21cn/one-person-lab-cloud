@@ -134,18 +134,19 @@ does not contain Secret values or observed deployment state.
 The protected Instance workflow resolves Secret values and production access
 materials at execution time, validates the profile before the first mutation,
 and performs the install or upgrade from that profile plus the selected
-Candidate. The native stage receipts bind the Candidate identity; the final
-install/upgrade lifecycle summary additionally binds the normalized profile
-digest, the Instance revision and the workflow run/attempt. A profile change
-therefore creates a new installation identity; an observed state change does not
-rewrite the profile.
+Candidate. The native stage receipts bind the Candidate identity. Cross-stage
+binding of a normalized profile digest, the Instance revision and the workflow
+run/attempt remains a required follow-up Instance receipt change. A profile
+change must create a new installation identity; an observed state change must
+not rewrite the profile.
 
 Cloud does not read Instance Secret values, DSNs, kubeconfig, cluster
 configuration, customer data or other production configuration. Cloud may
 consume an Instance-produced receipt or redacted readback through the approved
-handoff, and may compare its opaque profile digest across receipts. The digest
-is an installation identity reference, not a permission to inspect or recreate
-the Instance configuration. Instance remains the authority for installation,
+handoff. After the versioned Instance receipt change exists, Cloud may compare
+the opaque profile digest across receipts. The digest is an installation
+identity reference, not a permission to inspect or recreate the Instance
+configuration. Instance remains the authority for installation,
 upgrade, rollback and deployment evidence.
 
 This repository is the product and implementation repository for the target
@@ -228,8 +229,8 @@ references, and backup/storage declarations. Workflow variables may provide
 protected Secret values and access materials at execution time, but they are
 not a second installation-data source. Installation checks establish the
 deployed Cloud artifact and service health; the native receipts bind that
-evidence to the Candidate and the final lifecycle summary also binds the
-profile digest. Customer operations and business qualification
+evidence to the Candidate. Cross-stage profile-digest binding remains a
+separate Instance receipt requirement. Customer operations and business qualification
 belong to the existing Cloud product owners, with separately authorized
 protected execution and exact-Candidate evidence. Instance deployment does not
 perform customer purchases, renewal, deletion, refund or managed-key mutation.

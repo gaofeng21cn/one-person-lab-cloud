@@ -18,15 +18,13 @@ and remaining work in [roadmap.md](roadmap.md).
 
 ## Installation chain source boundary (2026-11-13)
 
-Instance source `6490d120293821d2c6bf0e940d8234ad44683dd1`
-([Instance #717](https://github.com/gaofeng21cn/opl-instance-medopl/pull/717))
-provides one protected install/upgrade orchestrator over the existing Bootstrap,
-Deploy, First Install and Deployment Verification workflows. Its lifecycle
-summary validates Candidate-bound native receipts. That source baseline does
-not yet consume a single data profile throughout deployment or bind its digest
-across stages. [Instance #718](https://github.com/gaofeng21cn/opl-instance-medopl/pull/718)
-is the separate configuration-consumer and shared database-provisioner change;
-its source checks do not establish installed adoption.
+Instance source `842e666957ad34e85d55688e738a8cf6128f0769`
+([Instance #718](https://github.com/gaofeng21cn/opl-instance-medopl/pull/718))
+provides the protected install/upgrade orchestrator's configuration consumer
+and shared owner database provisioner over the existing Bootstrap, Deploy,
+First Install and Deployment Verification workflows. Its lifecycle summary
+validates Candidate-bound native receipts. It does not yet bind a profile digest
+across stages, and its source checks do not establish installed adoption.
 
 The [release boundary](runtime/release.md#candidate-instance-profile-and-receipt-boundary)
 defines the target handoff. No installation, upgrade, same-snapshot database

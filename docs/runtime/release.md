@@ -26,30 +26,33 @@ input:
    materials, validates the profile before mutation, and runs the requested
    install or upgrade against that Candidate.
 
-The native stage receipts bind the Candidate identity. The final Instance
-install/upgrade lifecycle summary additionally binds the normalized profile
-digest, the Instance source revision and workflow run/attempt. The profile
-digest is an opaque installation identity: a changed profile produces a new
-digest, while live observations and deployment results remain receipt/readback
-evidence and do not rewrite the profile.
+The native stage receipts bind the Candidate identity. The current Instance
+install/upgrade lifecycle summary does not yet bind a normalized profile digest
+across stages. That is a required follow-up Instance receipt change. Once
+implemented, the profile digest must be an opaque installation identity: a
+changed profile produces a new digest, while live observations and deployment
+results remain receipt/readback evidence and do not rewrite the profile.
 
 Cloud does not read the Instance profile contents, Secret values, DSNs,
 kubeconfig, cluster configuration or customer data. Cloud can consume the
-approved redacted receipt/readback handoff and verify that related Instance
-receipts carry the same Candidate and profile digest. It does not reconstruct
-or override the Instance configuration. A valid Cloud Candidate or Cloud-side
-source check therefore never proves installation or production readiness by
-itself. This section defines the cross-repository contract; runtime adoption is
+approved redacted receipt/readback handoff and verify the Candidate identity.
+After the versioned Instance receipt change exists, it may also compare the
+opaque profile digest across receipts. It does not reconstruct or override the
+Instance configuration. A valid Cloud Candidate or Cloud-side source check
+therefore never proves installation or production readiness by itself. This
+section defines the cross-repository target contract; runtime adoption is
 proved only by an Instance-produced receipt and its protected readback.
 
-This is the target evidence boundary. The reviewed Instance source baseline
-`6490d120293821d2c6bf0e940d8234ad44683dd1` has the protected install/upgrade
-orchestrator and Candidate-bound native receipts; it does not bind the Instance
-profile digest across phases. Configuration consumption and the versioned
-receipt change must be delivered in their owning Instance changes before that
-stronger binding can be claimed. [Status](../status.md#installation-chain-source-boundary-2026-11-13)
-records the source-only evidence; [roadmap](../roadmap.md#priority-outcomes)
-retains installation and data-recovery acceptance.
+This is the target evidence boundary. Instance source
+`842e666957ad34e85d55688e738a8cf6128f0769`
+([Instance #718](https://github.com/gaofeng21cn/opl-instance-medopl/pull/718))
+has the protected install/upgrade orchestrator, profile consumption and
+Candidate-bound native receipts; it does not yet bind the Instance profile
+digest across phases. The versioned receipt change must be delivered in its
+owning Instance change before that stronger binding can be claimed.
+[Status](../status.md#installation-chain-source-boundary-2026-11-13) records the
+source-only evidence; [roadmap](../roadmap.md#priority-outcomes) retains
+installation and data-recovery acceptance.
 
 ## Workspace Deletion Diagnostics And Evidence Custody
 
