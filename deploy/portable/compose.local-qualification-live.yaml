@@ -1,7 +1,7 @@
 services:
   control-plane:
     environment:
-      OPL_RELEASE_SHA: ${OPL_QUALIFICATION_SOURCE_SHA:?Set OPL_QUALIFICATION_SOURCE_SHA}
+      OPL_RELEASE_SHA: ${OPL_RELEASE_SHA:?Set OPL_RELEASE_SHA to the product revision the image was built from}
       OPL_CLOUD_IMAGE: ${OPL_CLOUD_IMAGE:?Set OPL_CLOUD_IMAGE to an immutable image digest}
       OPL_CONTROLLED_BASIC_PILOT_ENABLED: "1"
       OPL_CONTROLLED_BASIC_PILOT_MAX_IN_FLIGHT: "1"
