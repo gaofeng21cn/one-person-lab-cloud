@@ -42,6 +42,15 @@ source check therefore never proves installation or production readiness by
 itself. This section defines the cross-repository contract; runtime adoption is
 proved only by an Instance-produced receipt and its protected readback.
 
+This is the target evidence boundary. The reviewed Instance source baseline
+`6490d120293821d2c6bf0e940d8234ad44683dd1` has the protected install/upgrade
+orchestrator and Candidate-bound native receipts; it does not bind the Instance
+profile digest across phases. Configuration consumption and the versioned
+receipt change must be delivered in their owning Instance changes before that
+stronger binding can be claimed. [Status](../status.md#installation-chain-source-boundary-2026-11-13)
+records the source-only evidence; [roadmap](../roadmap.md#priority-outcomes)
+retains installation and data-recovery acceptance.
+
 ## Workspace Deletion Diagnostics And Evidence Custody
 
 Cloud owns Workspace deletion and refund coordination, Fabric provider readback,
