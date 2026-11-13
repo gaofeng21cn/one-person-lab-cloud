@@ -27,6 +27,9 @@ const inputs = [
   "tools/validate-product-boundary.mjs",
   "packages/contracts/opl-cloud-distribution-contract.json",
   "packages/contracts/opl-cloud-candidate-receipt-contract.json",
+  "deploy/portable/installer-manifest.mjs",
+  "deploy/portable/compose.cloud.yaml",
+  "deploy/portable/opl-cloud-owner-topology.json",
   ...workflows.map((name) => `.github/workflows/${name}`)
 ];
 
@@ -38,6 +41,7 @@ async function boundaryFixture(): Promise<string> {
   await mkdir(join(directory, ".github/workflows"), { recursive: true });
   await mkdir(join(directory, "tools"), { recursive: true });
   await mkdir(join(directory, "packages/contracts"), { recursive: true });
+  await mkdir(join(directory, "deploy/portable"), { recursive: true });
   for (const input of inputs) await cp(join(repository, input), join(directory, input));
   await symlink(join(repository, "node_modules"), join(directory, "node_modules"), "dir");
   return directory;
@@ -45,6 +49,16 @@ async function boundaryFixture(): Promise<string> {
 
 function validate(directory: string) {
   return spawnSync(process.execPath, ["tools/validate-product-boundary.mjs"], { cwd: directory, encoding: "utf8" });
+}
+
+// The owner-topology declaration lives in the distribution contract, so the
+// mutations below rewrite that contract inside the scratch tree and let the
+// real validator refuse it.
+async function mutateContract(directory: string, mutate: (contract: any) => void) {
+  const path = join(directory, "packages/contracts/opl-cloud-distribution-contract.json");
+  const contract = JSON.parse(await readFile(path, "utf8"));
+  mutate(contract);
+  await writeFile(path, `${JSON.stringify(contract, null, 2)}\n`);
 }
 
 test("the real boundary check accepts the single Candidate workflow", async () => {
@@ -132,5 +146,97 @@ test("the admitted receiver still requires the exact existing Release secret env
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  }
+});
+
+test("the published entrypoint cannot drift back to a Compose file that is not the owner topology", async () => {
+  const directory = await boundaryFixture();
+  try {
+    await mutateContract(directory, (contract) => { contract.portableInstallation.entrypoint = "compose.yaml"; });
+    const result = validate(directory);
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stderr, /entrypoint must be the owner topology Compose file: compose\.yaml != compose\.cloud\.yaml/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("a dropped owner process is refused even when the contract still names an entrypoint", async () => {
+  const directory = await boundaryFixture();
+  try {
+    await mutateContract(directory, (contract) => {
+      contract.portableInstallation.processes = contract.portableInstallation.processes.filter((name: string) => name !== "ledger");
+    });
+    const result = validate(directory);
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stderr, /processes must equal the owner topology processes in order/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("the candidate bundle must carry the entrypoint and every file it references", async () => {
+  const mutations: Array<[string, (contract: any) => void, RegExp]> = [
+    ["compose.cloud.yaml",
+      (contract) => {
+        const format = contract.bundleFormats.formats[contract.bundleFormats.current];
+        format.candidateAssets = format.candidateAssets.filter((name: string) => name !== "compose.cloud.yaml");
+        format.releaseAssets = format.releaseAssets.filter((name: string) => name !== "compose.cloud.yaml");
+      },
+      /candidate bundle must carry the declared entrypoint: compose\.cloud\.yaml/],
+    ["compose.local-v2.yaml",
+      (contract) => {
+        const format = contract.bundleFormats.formats[contract.bundleFormats.current];
+        format.candidateAssets = format.candidateAssets.filter((name: string) => name !== "compose.local-v2.yaml");
+        format.releaseAssets = format.releaseAssets.filter((name: string) => name !== "compose.local-v2.yaml");
+      },
+      /candidate bundle must carry every file the entrypoint references: compose\.local-v2\.yaml/]
+  ];
+  for (const [, mutate, expected] of mutations) {
+    const directory = await boundaryFixture();
+    try {
+      await mutateContract(directory, mutate);
+      const result = validate(directory);
+      assert.equal(result.status, 1, result.stdout);
+      assert.match(result.stderr, expected);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+});
+
+test("the owner topology contract must not quietly enter the public Release bundle", async () => {
+  const mutations: Array<[(contract: any) => void, RegExp]> = [
+    [(contract) => {
+      const format = contract.bundleFormats.formats[contract.bundleFormats.current];
+      format.releaseAssets = [...format.releaseAssets, "opl-cloud-owner-topology.json"];
+    }, /must not be published in the Release bundle: opl-cloud-owner-topology\.json/],
+    [(contract) => {
+      const format = contract.bundleFormats.formats[contract.bundleFormats.current];
+      format.releaseAssets = "candidateAssets";
+    }, /must declare its release assets explicitly instead of aliasing the candidate assets: portable-v1/]
+  ];
+  for (const [mutate, expected] of mutations) {
+    const directory = await boundaryFixture();
+    try {
+      await mutateContract(directory, mutate);
+      const result = validate(directory);
+      assert.equal(result.status, 1, result.stdout);
+      assert.match(result.stderr, expected);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+});
+
+test("the candidate-only declaration of the owner topology contract cannot be dropped", async () => {
+  const directory = await boundaryFixture();
+  try {
+    await mutateContract(directory, (contract) => { delete contract.bundleFormats.candidateOnlyAssets; });
+    const result = validate(directory);
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stderr, /must declare the owner topology contract Candidate-only: opl-cloud-owner-topology\.json/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
   }
 });
