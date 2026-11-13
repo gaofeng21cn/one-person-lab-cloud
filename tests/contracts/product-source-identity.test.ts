@@ -47,8 +47,8 @@ test("every product binary in the image carries the build-time product revision"
   const productBuilds = buildCommands.filter((command) => command.includes("-o /out/opl-"));
   // Three Fabric binaries, Control Plane, Ledger, the owner loop and the
   // Console BFF. The owner loop emits one binary per owner, so the thirteen
-  // product binaries come from seven build commands.
-  assert.equal(productBuilds.length, 7, `expected seven product build commands, saw ${productBuilds.length}`);
+  // product binaries plus the installer probe come from eight build commands.
+  assert.equal(productBuilds.length, 8, `expected eight product build commands, saw ${productBuilds.length}`);
 
   for (const command of productBuilds) {
     assert.ok(
