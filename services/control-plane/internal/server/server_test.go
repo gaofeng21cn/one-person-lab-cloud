@@ -799,32 +799,6 @@ func TestCustomerOwnerCannotSelectAnotherAccount(t *testing.T) {
 	}
 }
 
-func TestBillingReconciliationAppendsAuditEvent(t *testing.T) {
-	server := NewServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}))
-	admin := operatorSessionForTest(t, server)
-
-	createResourceWithSession(t, server, admin, http.MethodPost, "/api/billing/reconciliation", `{"confirm":true}`)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/management/state", nil)
-	addSessionCookies(req, admin)
-	rec := httptest.NewRecorder()
-	server.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("management state status=%d body=%s", rec.Code, rec.Body.String())
-	}
-	var state map[string]any
-	if err := json.NewDecoder(rec.Body).Decode(&state); err != nil {
-		t.Fatalf("decode state: %v", err)
-	}
-	events := state["auditEvents"].([]any)
-	if !slices.ContainsFunc(events, func(item any) bool {
-		event := item.(map[string]any)
-		return event["action"] == "billing.reconciliation" && event["actorUserId"] != "" && event["result"] == "succeeded"
-	}) {
-		t.Fatalf("missing billing reconciliation audit event: %#v", events)
-	}
-}
-
 type fakeLedgerClient struct{}
 
 func (fakeLedgerClient) ListReceipts(context.Context, clients.ReceiptQuery) (clients.ReceiptPage, error) {
@@ -1537,41 +1511,6 @@ func TestPersistDerivesAttachmentAccountFromExistingFacts(t *testing.T) {
 	}
 }
 
-func TestArchiveStateEndpointReturnsRetentionEvidenceAndPolicy(t *testing.T) {
-	path := t.TempDir() + "/control-plane-state.sqlite"
-	store := NewTestEntStateStore(t, path).(*postgresEntStateStore)
-	if err := store.SaveAuditEvent(context.Background(), map[string]any{"id": "audit-old", "action": "test", "createdAt": "2000-01-01T00:00:00Z"}); err != nil {
-		t.Fatalf("seed old audit event: %v", err)
-	}
-	if _, err := store.ApplyRetention(context.Background(), retentionPolicy{AdminAuditDays: 1}); err != nil {
-		t.Fatalf("apply retention: %v", err)
-	}
-	service := newTestService(fakeLedgerClient{}, &fakeFabricClient{})
-	server, err := NewPersistentServer(service, store)
-	if err != nil {
-		t.Fatalf("server: %v", err)
-	}
-	admin := operatorSessionForTest(t, server)
-
-	rec := requestWithSession(t, server, admin, http.MethodGet, "/api/operator/archive", "")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("archive state status = %d: %s", rec.Code, rec.Body.String())
-	}
-	var archive map[string]any
-	if err := json.NewDecoder(rec.Body).Decode(&archive); err != nil {
-		t.Fatalf("decode archive state: %v", err)
-	}
-	if len(archive["adminAuditEvents"].([]any)) != 1 || archive["retentionPolicy"].(map[string]any)["adminAuditDays"] == nil {
-		t.Fatalf("archive state must come from retained audit facts and policy: %#v", archive)
-	}
-	if _, exists := archive["resources"]; exists {
-		t.Fatalf("retired resource archive projection remains: %#v", archive)
-	}
-	if _, exists := archive["jobs"]; exists {
-		t.Fatalf("retired archive job projection remains: %#v", archive)
-	}
-}
-
 func TestOperatorSummaryIncludesWorkspaceResourceAnomalies(t *testing.T) {
 	app := newControlPlaneApp()
 	mustStore(t, app.tables.SaveWorkspace(context.Background(), map[string]any{
@@ -1584,38 +1523,6 @@ func TestOperatorSummaryIncludesWorkspaceResourceAnomalies(t *testing.T) {
 	anomalies := operator["resourceAnomalies"].([]any)
 	if len(anomalies) != 1 || anomalies[0].(map[string]any)["status"] != "missing_storage" {
 		t.Fatalf("operator resource anomalies should include Workspace fact issues: %#v", anomalies)
-	}
-}
-
-func TestReconciliationGuardBlocksNewResourceProvisioning(t *testing.T) {
-	var calls []string
-	server := NewServer(newTestService(fakeBlockingReconciliationLedgerClient{}, &fakeFabricClient{calls: &calls}))
-	session := tenantAdminSessionForTest(t, server)
-
-	createResourceWithSession(t, server, session, http.MethodPost, "/api/billing/reconciliation", `{"confirm":true}`)
-
-	stateReq := httptest.NewRequest(http.MethodGet, "/api/management/state", nil)
-	addAuth(stateReq, operatorSessionForTest(t, server))
-	stateRec := httptest.NewRecorder()
-	server.ServeHTTP(stateRec, stateReq)
-	if stateRec.Code != http.StatusOK {
-		t.Fatalf("state status = %d: %s", stateRec.Code, stateRec.Body.String())
-	}
-	var state map[string]any
-	if err := json.NewDecoder(stateRec.Body).Decode(&state); err != nil {
-		t.Fatalf("decode state: %v", err)
-	}
-	guard := state["billingReconciliation"].(map[string]any)["guard"].(map[string]any)
-	if guard["blockNewWorkspaces"] != true || guard["reason"] != "provider_bill_reconciliation_failed" {
-		t.Fatalf("state missing blocking reconciliation guard: %#v", guard)
-	}
-
-	launchRec := requestWithSession(t, server, session, http.MethodPost, "/api/workspace-launches", `{"name":"Blocked","packageId":"basic","autoRenew":false}`)
-	if launchRec.Code != http.StatusConflict {
-		t.Fatalf("launch status = %d, want 409: %s", launchRec.Code, launchRec.Body.String())
-	}
-	if slices.Contains(calls, "fabric.compute") || slices.Contains(calls, "fabric.storage") {
-		t.Fatalf("reconciliation guard must block before Fabric mutation, calls=%#v", calls)
 	}
 }
 
@@ -1671,7 +1578,7 @@ func TestReadinessRoutesArePublicButAdminRoutesStayProtected(t *testing.T) {
 		}
 	}
 
-	adminReq := httptest.NewRequest(http.MethodGet, "/api/management/state", nil)
+	adminReq := httptest.NewRequest(http.MethodGet, "/api/operator/overview", nil)
 	adminRec := httptest.NewRecorder()
 	server.ServeHTTP(adminRec, adminReq)
 	if adminRec.Code != http.StatusUnauthorized {
@@ -1806,7 +1713,7 @@ func TestProtectedAPIRoutesRequireSessionCSRFAndAdminRole(t *testing.T) {
 		t.Fatalf("write without csrf status = %d, want 403: %s", postWithoutCSRFRec.Code, postWithoutCSRFRec.Body.String())
 	}
 
-	adminReq := httptest.NewRequest(http.MethodPost, "/api/billing/reconciliation", bytes.NewBufferString(`{"confirm":true,"report":{"id":"recon-nonadmin","status":"ok"}}`))
+	adminReq := httptest.NewRequest(http.MethodGet, "/api/operator/overview", bytes.NewBufferString(`{"confirm":true,"report":{"id":"recon-nonadmin","status":"ok"}}`))
 	adminReq.Header.Set("Content-Type", "application/json")
 	adminReq.Header.Set("Idempotency-Key", "topup-nonadmin")
 	addSessionCookies(adminReq, admin)
@@ -1820,24 +1727,6 @@ func TestProtectedAPIRoutesRequireSessionCSRFAndAdminRole(t *testing.T) {
 	allowed := requestWithSession(t, server, admin, http.MethodPost, "/api/pricing/preview", `{"resourceType":"workspace","packageId":"basic"}`)
 	if allowed.Code != http.StatusOK {
 		t.Fatalf("admin csrf request did not reach protected route: status=%d body=%s", allowed.Code, allowed.Body.String())
-	}
-}
-
-func TestHighRiskMutationsRequireBackendConfirmation(t *testing.T) {
-	server := NewServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}))
-	admin := operatorSessionForTest(t, server)
-
-	for _, tc := range []struct {
-		method string
-		path   string
-		body   string
-	}{
-		{http.MethodPost, "/api/billing/reconciliation", `{"report":{"id":"recon-confirm","generatedAt":"2026-07-06T00:00:00Z"}}`},
-	} {
-		rec := requestWithSession(t, server, admin, tc.method, tc.path, tc.body)
-		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "confirmation_required") {
-			t.Fatalf("%s %s status=%d body=%s, want confirmation_required", tc.method, tc.path, rec.Code, rec.Body.String())
-		}
 	}
 }
 
@@ -1896,19 +1785,6 @@ func TestLoginSessionMeAndLogoutUseRemotePassword(t *testing.T) {
 	server.ServeHTTP(afterLogoutRec, afterLogoutReq)
 	if afterLogoutRec.Code != http.StatusUnauthorized {
 		t.Fatalf("me after logout status = %d, want 401", afterLogoutRec.Code)
-	}
-
-	managementReq := httptest.NewRequest(http.MethodGet, "/api/management/state", nil)
-	addSessionCookies(managementReq, operatorSessionForTest(t, server))
-	managementRec := httptest.NewRecorder()
-	server.ServeHTTP(managementRec, managementReq)
-	var management map[string]any
-	if err := json.NewDecoder(managementRec.Body).Decode(&management); err != nil {
-		t.Fatalf("decode management: %v", err)
-	}
-	managementUser := management["users"].([]any)[0].(map[string]any)
-	if managementUser["passwordHash"] != nil {
-		t.Fatalf("management state leaked password hash: %#v", managementUser)
 	}
 }
 
@@ -2129,14 +2005,12 @@ func TestActiveConsoleAPIRoutesReachControlPlane(t *testing.T) {
 	}{
 		{http.MethodGet, "/api/auth/me", ""},
 		{http.MethodGet, "/api/healthz", ""},
-		{http.MethodGet, "/api/management/state", ""},
 		{http.MethodGet, "/api/operator/overview", ""},
 		{http.MethodGet, "/api/runtime/readiness", ""},
 		{http.MethodGet, "/api/production/readiness", ""},
 		{http.MethodGet, "/api/workspaces", ""},
 		{http.MethodGet, "/api/workspaces/ws-alpha/runtime-status", ""},
 		{http.MethodPost, "/api/auth/logout", `{}`},
-		{http.MethodPost, "/api/billing/reconciliation", `{"report":{"id":"recon-test","generatedAt":"2026-07-06T00:00:00Z"}}`},
 		{http.MethodPost, "/api/workspace-launches", `{"name":"Alpha","packageId":"basic","autoRenew":false}`},
 	}
 

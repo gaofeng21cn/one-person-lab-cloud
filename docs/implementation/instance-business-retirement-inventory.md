@@ -46,6 +46,37 @@ customer balance, Workspace lifecycle, managed Key, Package delivery or launch
 operation is a business evidence path even when it has no mutation; it belongs
 to the Cloud owner that publishes those facts.
 
+## Cross-Repository Route Retirement (Cloud #1177)
+
+Cloud PR #1177 retires Control Plane routes whose only client was their own Go
+test. Its guardrail derives the route set from the Control Plane's own
+registrations and the client set from `apps/console-ui/src` and `tools/`, so it
+only sees clients **inside this repository**. The Instance installation calls
+the Cloud `/api/` surface from its own repository, so those callers are not
+derivable here and are declared in
+`deploy/portable/opl-cloud-owner-topology.json` under
+`browserApiSurface.externalConsumers` instead.
+
+Two Instance workflows reach the Cloud `/api/` surface through routes that
+#1177 retires. Both are being retired in a separate Instance PR, and the two
+sides are retired together:
+
+| Cloud route | Instance caller | State |
+| --- | --- | --- |
+| `POST /api/operator/workspace-launches/{operationId}/resume` | `tools/resume-original-workspace-launch.mjs:418` | Cloud route retired in #1177; the workflow and its tool are being retired in the Instance PR. |
+| `GET /api/operator/workspace-launches/{operationId}/resume-authorizations/{authorizationId}` | `tools/resume-original-workspace-launch.mjs:147`, `:155` | Cloud route retired in #1177; the workflow and its tool are being retired in the Instance PR. |
+| `GET /api/operator/workspace-launches/{operationId}/stage-observation` | `tools/resume-original-workspace-launch.mjs:226`, `tools/workspace-launch-stage-observation.mjs:487` | Cloud route retired in #1177; both workflows and their tools are being retired in the Instance PR. |
+
+The Cloud handler implementations behind those three routes stay in the source
+for now and are unreferenced. They are listed for the dead-code retirement
+slice, not for this one.
+
+The other cross-repository call the two workflows make,
+`GET /api/management/state`, stays registered: three of its four Instance call
+sites are retained. A route's survival is owned by the Cloud contract, not by
+the number of callers in another repository, so the contract declares the
+surface even where one of its callers is going away.
+
 ## Workspace Deletion Custody Update (2026-11-12)
 
 The current owner decision keeps final Workspace deletion, refund and diagnostic
@@ -143,7 +174,7 @@ gain a new business capability in Instance in the meantime.
 | `tenant-admission.yml` | Writes Tenant, owner membership and repository binding through `POST /api/v2/admin/tenants` (`tools/tenant-admission-readback.mjs:265`). | Cloud business authority (CloudIdentity admin route through the Console BFF). Retire the Instance caller after the protected Cloud producer can provision or assume its declared Tenant without an Instance dispatch. |
 | `platform-catalog-admission.yml` | Writes publisher namespace, compute/storage plans, price/refund/retention policies and runtime release through the Cloud admin catalog routes (`tools/platform-catalog-admission.mjs:908`, `:1022`, `:1289`). | Cloud business authority (Resource Catalog admin routes). Retire after the Cloud producer or installation admission supplies the declared catalog without this caller. |
 | `cloud-workspace-launch-readback.yml` | Binds the Tenant wallet (`PUT /api/v2/admin/tenants/{id}/wallet-binding`, `tools/cloud-workspace-launch-readback.mjs:883`) and creates one Workspace launch (`POST /api/workspace-launches`, `:1040`). | Cloud purchase authority. Retire only after the #926/#933 replacement producer is executable for the same Candidate and no release input consumes this run. |
-| `resume-original-workspace-launch.yml` | Submits one operator resume request (`POST /api/operator/workspace-launches/{id}/resume`, `tools/resume-original-workspace-launch.mjs:418`). | Cloud launch-recovery authority. Retire after the Cloud qualification/recovery flow can resume the same original operation without an Instance caller. |
+| `resume-original-workspace-launch.yml` | Submitted one operator resume request (`POST /api/operator/workspace-launches/{id}/resume`, `tools/resume-original-workspace-launch.mjs:418`). That Cloud route is retired in Cloud #1177 and this workflow is being retired in a separate Instance PR, so it no longer calls it. | Cloud launch-recovery authority. Retired on both sides: the Cloud route is gone and the workflow is being withdrawn, so the resume capability is no longer reachable from Instance. |
 | `workspace-delete-refund.yml` | Issues one customer Workspace `DELETE` (`tools/workspace-delete-refund.mjs:567`) and reads the platform deletion and refund projections. | Cloud deletion/refund authority. Retire after the Cloud owner path for the same bounded operation is executable and validated. |
 | `workspace-special-chain-acceptance.yml` | Reads the purchase/deletion/refund chain and writes deployed application model config, including a declared model-provider key (`POST /api/agent/config`, `tools/workspace-special-chain-acceptance.mjs:893`), and one real application run (`POST /api/runs`, `:921`). It does not buy, deploy, delete, refund or mutate the Gateway/Sub2API managed Key. | Cloud product/business acceptance authority. Retire after the Cloud exact-Candidate acceptance ([#856](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/856)) covers the application journey. |
 | `workspace-billing-settlement-probe.yml` | Read-only customer settlements and Sub2API wallet census; only `POST /api/auth/login` (`tools/workspace-billing-settlement-probe.mjs:94`) and `GET /api/billing/workspace-settlements` (`:100`). | Cloud financial evidence authority. Retire after the Cloud financial qualification/readback covers the same customer settlements facts. |
@@ -153,7 +184,7 @@ gain a new business capability in Instance in the meantime.
 | `package-build-delivery-readback.yml` | Read-only Package -> Capability -> Build -> immutable OCI -> Serve delivery chain for a declared customer package. | Cloud product-delivery read authority. Retire after Cloud qualification/readback covers the delivery chain. |
 | `qualification-decision.yml` | Emits the Instance qualification decision/gate receipt and binds a deployment run; no business mutation. | Cloud business-qualification authority. Retire after the Cloud consumer admits the exact-Candidate business receipt and the release input is removed. |
 | `verify.yml` | Produces `verify-admission` and `verify-post-activation`; admission is a read-only probe (`tools/fresh-workspace-admission.mjs probe`, workflow line 476), post-activation reads an existing purchase and emits `workspace_verified` (`tools/fresh-workspace-readback.mjs:495`). | Cloud business-qualification authority. Retire after the Cloud consumer replaces the workspace run ID and validator. |
-| `workspace-launch-stage-observation.yml` | Read-only launch-stage observation; source records `operatorResumeRequests: 0`, `workspacePurchaseRequests: 0`, `providerMutations: 0`, `kubernetesMutations: 0` (`tools/workspace-launch-stage-observation.mjs:411-416`). | Cloud business-read authority. Migrate to the Cloud qualification/readback producer or retire; do not treat it as an Instance deployment probe. |
+| `workspace-launch-stage-observation.yml` | Read-only launch-stage observation; source records `operatorResumeRequests: 0`, `workspacePurchaseRequests: 0`, `providerMutations: 0`, `kubernetesMutations: 0` (`tools/workspace-launch-stage-observation.mjs:411-416`). It read `GET /api/operator/workspace-launches/{operationId}/stage-observation`, retired in Cloud #1177, and `GET /api/management/state`, which stays registered. This workflow is being retired in a separate Instance PR. | Cloud business-read authority. Retired with the Cloud stage-observation route; do not treat it as an Instance deployment probe. |
 | `workspace-operation-attribution-readback.yml` | Read-only `SELECT` attribution across `workspace.operations`, `workspace.saga_steps`, `gateway.idempotency_records` and `gateway.key_bindings` (`tools/workspace-operation-attribution.mjs:502-579`; header line 31 says it never writes). | Cloud business-read authority. Migrate to the Cloud qualification/readback or retire with the managed-Key/launch owner evidence. |
 
 ## The Five Initially Flagged Writers
@@ -166,10 +197,10 @@ produce a wrong retirement test.
 | Workflow | Source-verified effect | Mutates Cloud business state? | Classification |
 | --- | --- | --- | --- |
 | `workspace-delete-refund.yml` | `DELETE /api/workspaces/{id}` with the customer session (`tools/workspace-delete-refund.mjs:567`); then reads deletion, receipt and refund projections. | Yes, the platform deletion/refund operation is started once. | Cloud business authority. |
-| `resume-original-workspace-launch.yml` | `POST /api/operator/workspace-launches/{id}/resume` (`tools/resume-original-workspace-launch.mjs:418`). | Yes, one bounded resume of the original operation. | Cloud business authority. |
+| `resume-original-workspace-launch.yml` | Submitted `POST /api/operator/workspace-launches/{id}/resume` (`tools/resume-original-workspace-launch.mjs:418`). That Cloud route is retired in Cloud #1177 and the workflow is being retired in a separate Instance PR. | Yes, one bounded resume of the original operation, before the retirement. | Cloud business authority, retired. |
 | `cloud-workspace-launch-readback.yml` | `PUT .../wallet-binding` (`:883`) and `POST /api/workspace-launches` (`:1040`). | Yes, wallet binding and one Workspace purchase. | Cloud purchase authority. |
 | `workspace-billing-settlement-probe.yml` | `POST /api/auth/login` (`:94`), `GET /api/billing/workspace-settlements` (`:100`), then Sub2API admin reads. | No. The tool header says it never mutates platform or provider state. | Cloud financial evidence authority, read-only. |
-| `workspace-launch-stage-observation.yml` | `POST /api/auth/login` (`:84`), `POST /fabric/provider-facts/batch` (a batch read, `:211`), and `kubectl get`/`exec printenv` reads. | No. The receipt's `writes` block is all zero (`:411-416`). | Cloud business-read authority, read-only. |
+| `workspace-launch-stage-observation.yml` | `POST /api/auth/login` (`:84`), `POST /fabric/provider-facts/batch` (a batch read, `:211`), and `kubectl get`/`exec printenv` reads. It also read the Cloud stage-observation route that #1177 retired; the workflow is being retired in a separate Instance PR. | No. The receipt's `writes` block is all zero (`:411-416`). | Cloud business-read authority, read-only, retired. |
 
 Two additional writers are not in the initial five-workflow list but are in the measured
 11 and must be retired with it: `tenant-admission.yml` and
@@ -183,14 +214,14 @@ above.
 | `tools/tenant-admission-readback.mjs` | `tenant-admission.yml` | Writes Tenant, membership and binding (`POST /api/v2/admin/tenants`, `:264`). |
 | `tools/platform-catalog-admission.mjs` | `platform-catalog-admission.yml` | Writes catalog facts (`POST` at `:908`, `:1022`, `:1289`). |
 | `tools/cloud-workspace-launch-readback.mjs` | `cloud-workspace-launch-readback.yml` | Wallet binding (`:883`) and Workspace launch (`:1040`). |
-| `tools/resume-original-workspace-launch.mjs` | `resume-original-workspace-launch.yml` | Operator resume (`:418`). |
+| `tools/resume-original-workspace-launch.mjs` | `resume-original-workspace-launch.yml` | Operator resume (`:418`), against the Cloud route #1177 retired; the tool and its workflow are being retired in a separate Instance PR. |
 | `tools/workspace-delete-refund.mjs` | `workspace-delete-refund.yml` | Workspace `DELETE` (`:567`) and refund readback. |
 | `tools/workspace-special-chain-acceptance.mjs` | `workspace-special-chain-acceptance.yml` | Application model config (`:893`) and one application run (`:921`); no purchase, deployment, deletion, refund or managed-Key mutation. |
 | `tools/fresh-workspace-admission.mjs` | `verify.yml` admission phase | Read-only probe invoked at `verify.yml:476`; the admission receipt mutation counts stay zero. |
 | `tools/fresh-workspace-readback.mjs` | `verify.yml` post-activation; release admission | Read-only validator; emits `workspace_verified` (`:495`) from existing purchase facts. |
 | `tools/qualification-decision.mjs` | `qualification-decision.yml`; release admission | Decision/gate receipt only; no business mutation. |
 | `tools/workspace-billing-settlement-probe.mjs` | `workspace-billing-settlement-probe.yml` | Read-only settlements and wallet census (`:94`, `:100`). |
-| `tools/workspace-launch-stage-observation.mjs` | `workspace-launch-stage-observation.yml` | Read-only launch-stage observation; zero writes (`:411-416`). |
+| `tools/workspace-launch-stage-observation.mjs` | `workspace-launch-stage-observation.yml` | Read-only launch-stage observation; zero writes (`:411-416`). Read the Cloud stage-observation route that #1177 retired and the retained `GET /api/management/state`; the tool and its workflow are being retired in a separate Instance PR. |
 | `tools/workspace-operation-attribution.mjs` | `workspace-operation-attribution-readback.yml` | Read-only SQL attribution; header line 31 says it never writes. |
 
 ## Retained Instance Paths
@@ -355,6 +386,12 @@ grep -n 'wallet-binding\|POST /api/workspace-launches\|method: "PUT"' tools/clou
 # The two initially flagged "writers" that are read-only
 grep -n 'method: "POST"\|method: "GET"\|api/billing/workspace-settlements' tools/workspace-billing-settlement-probe.mjs
 grep -n 'method: "POST"\|provider-facts/batch\|operatorResumeRequests\|workspacePurchaseRequests\|providerMutations\|kubernetesMutations' tools/workspace-launch-stage-observation.mjs
+
+# The two tools being retired with their Cloud routes retired in Cloud #1177.
+# These greps reproduce the historical evidence at the pinned commit above; the
+# tools themselves are withdrawn in a separate Instance PR.
+grep -n 'stage-observation' tools/workspace-launch-stage-observation.mjs
+grep -n 'resume-authorizations\|/resume`' tools/resume-original-workspace-launch.mjs
 
 # The two additional admin writers
 grep -n 'admin/tenants' tools/tenant-admission-readback.mjs

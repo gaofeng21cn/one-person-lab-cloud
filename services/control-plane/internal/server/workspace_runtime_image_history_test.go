@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	contracts "opl-cloud/packages/contracts/go"
-	"opl-cloud/services/control-plane/internal/controlplane"
 )
 
 const retainedImageInstalled = "registry.example/workspace@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -124,55 +123,13 @@ func TestRetainedImagePolicyReadRejectsCorruptAndUnavailableState(t *testing.T) 
 	}
 }
 
-func TestRetainedImageHistoryReadPreservesOriginalOperation(t *testing.T) {
-	for _, status := range []string{"started", "succeeded", "failed"} {
-		t.Run(status, func(t *testing.T) {
-			store := newMemoryTableStore()
-			row := retainedImageReplacementRow(status)
-			mustStore(t, store.SaveRuntimeOperation(context.Background(), row))
-			server := newServerForRetainedImages(t, store)
-			operator := reservedOperatorSessionForTest(t, server)
-			path := "/api/operator/workspaces/ws-alpha/runtime-image-replacements/image-replacement-original"
-			response := requestWithSession(t, server, operator, http.MethodGet, path, "")
-			var got map[string]any
-			if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &got) != nil || got["operationId"] != row["operationId"] || got["status"] != status || got["runtimeId"] != "runtime-original" || got["replacementImageDigest"] != retainedImageActive {
-				t.Fatalf("history read=%d %s", response.Code, response.Body.String())
-			}
-			after, found, err := store.GetRuntimeOperation(context.Background(), stringValue(row["id"]))
-			if err != nil || !found || !reflect.DeepEqual(after, row) || len(store.auditEvents) != 0 {
-				t.Fatalf("history read changed operation: %#v %v", after, err)
-			}
-			wrongWorkspace := requestWithSession(t, server, operator, http.MethodGet, strings.Replace(path, "ws-alpha", "ws-other", 1), "")
-			if wrongWorkspace.Code != http.StatusNotFound {
-				t.Fatalf("cross workspace history=%d", wrongWorkspace.Code)
-			}
-		})
-	}
-}
-
-func TestRetainedImageHistoryReadRejectsCorruptAndUnavailableState(t *testing.T) {
-	for _, unavailable := range []bool{false, true} {
-		store := newMemoryTableStore()
-		row := retainedImageReplacementRow("started")
-		row["result"] = `{`
-		mustStore(t, store.SaveRuntimeOperation(context.Background(), row))
-		server := newServerForRetainedImages(t, store)
-		operator := reservedOperatorSessionForTest(t, server)
-		if unavailable {
-			server.(*controlPlaneHTTPHandler).app.tables = retainedImageReadFailureStore{store}
-		}
-		response := requestWithSession(t, server, operator, http.MethodGet, "/api/operator/workspaces/ws-alpha/runtime-image-replacements/image-replacement-original", "")
-		if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), "state_read_failed") {
-			t.Fatalf("invalid history unavailable=%v read=%d %s", unavailable, response.Code, response.Body.String())
-		}
-	}
-}
-
+// The runtime image replacement history route stays retired, so the retained
+// reader that remains is the release policy the Instance installation reads.
 func TestRetainedImageReadersRequireOperatorAuthentication(t *testing.T) {
 	store := newMemoryTableStore()
 	server := newServerForRetainedImages(t, store)
 	customer := tenantOwnerSessionForTest(t, server)
-	for _, path := range []string{"/api/operator/workspace-runtime-image-policy", "/api/operator/workspaces/ws-alpha/runtime-image-replacements/image-replacement-original"} {
+	for _, path := range []string{"/api/operator/workspace-runtime-image-policy"} {
 		unauthenticated := httptest.NewRecorder()
 		server.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, path, nil))
 		forbidden := requestWithSession(t, server, customer, http.MethodGet, path, "")
@@ -260,53 +217,4 @@ func newServerForRetainedImages(t *testing.T, store controlPlaneTableStore) http
 		t.Fatal(err)
 	}
 	return server
-}
-
-func TestRetainedLaunchImageRecoveryCanAdvancePersistedPolicy(t *testing.T) {
-	store := newMemoryTableStore()
-	fabric := &workspaceLaunchRuntimeImageRevisionResumeFabric{}
-	server, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, fabric, &testSub2APIClient{}), store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	operator := reservedOperatorSessionForTest(t, server)
-	row := workspaceLaunchRuntimeImageRevisionManualReviewRow(t)
-	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
-	if err != nil {
-		t.Fatal(err)
-	}
-	previousImage := operation.stringFact("workspaceImageDigest")
-	targetImage := "registry.example/workspace@sha256:" + strings.Repeat("e", 64)
-	catalog, err := json.Marshal(contracts.WorkspaceImageReleaseCatalog{SchemaVersion: 1, Releases: []contracts.WorkspaceImageRelease{
-		{Version: "1", Image: previousImage}, {Version: "2", Image: targetImage},
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("OPL_WORKSPACE_IMAGE", targetImage)
-	t.Setenv(contracts.WorkspaceImageReleasesEnv, string(catalog))
-	policy := retainedImagePolicyRow()
-	encoded, err := json.Marshal(workspaceImageReleasePolicy{SchemaVersion: 1, Revision: 7, ActiveVersion: "1", ActiveImage: previousImage})
-	if err != nil {
-		t.Fatal(err)
-	}
-	policy["result"] = string(encoded)
-	mustStore(t, store.SaveRuntimeOperation(context.Background(), policy))
-	mustStore(t, store.SaveRuntimeOperation(context.Background(), row))
-	activation := requestWithMutationKeyForTest(t, server, operator, http.MethodPost,
-		"/api/operator/workspace-image-release-activations", `{"releaseVersion":"2","expectedRevision":7,"reason":"approve qualified image for the original failed Launch"}`, "retained-launch-policy-advance")
-	if activation.Code != http.StatusOK {
-		t.Fatalf("original Launch policy advancement=%d %s", activation.Code, activation.Body.String())
-	}
-	body, err := json.Marshal(map[string]any{"launchVersion": operation.Version, "authorizedStage": string(contracts.StageRuntime),
-		"reason": "recover the exact original failed Runtime", "mutationBudget": 0, "idempotentReplayBudget": 1,
-		"authoritativeReadBudget": 3, "replacementWorkspaceImageDigest": targetImage})
-	if err != nil {
-		t.Fatal(err)
-	}
-	response := requestWithMutationKeyForTest(t, server, operator, http.MethodPost,
-		"/api/operator/workspace-launches/"+operation.ID+"/resume", string(body), "retained-launch-image-recovery")
-	if response.Code != http.StatusOK || len(fabric.ensures) != 1 {
-		t.Fatalf("original Launch recovery=%d %s ensures=%d", response.Code, response.Body.String(), len(fabric.ensures))
-	}
 }

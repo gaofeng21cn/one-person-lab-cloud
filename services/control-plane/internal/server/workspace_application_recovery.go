@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
 	"time"
 
 	controlplaneent "opl-cloud/services/control-plane/ent"
@@ -139,25 +138,4 @@ func (s *postgresEntStateStore) ResumeWorkspaceApplicationDeployment(ctx context
 		return nil, err
 	}
 	return next, nil
-}
-
-func registerWorkspaceApplicationRecoveryRoutes(mux *http.ServeMux, app *controlPlaneServer) {
-	// Retained credential/Key rotations and historical deployments still need
-	// explicit recovery of their frozen operation under the original store fences.
-	mux.HandleFunc("POST /api/operator/application-deployments/{operationID}/retry", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := requiredMutationKey(w, r); !ok {
-			return
-		}
-		row, err := app.tables.ResumeWorkspaceApplicationDeployment(r.Context(), r.PathValue("operationID"))
-		if err != nil {
-			writeError(w, http.StatusConflict, "workspace_application_recovery_conflict")
-			return
-		}
-		intent, err := decodeWorkspaceApplicationDeploymentIntent(row)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "state_read_failed")
-			return
-		}
-		writeJSON(w, http.StatusAccepted, map[string]any{"intent": intent})
-	}))
 }

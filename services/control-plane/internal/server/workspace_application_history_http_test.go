@@ -14,12 +14,14 @@ import (
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
 
+// The retained deployment receipt is read by the Instance installation, so the
+// route stays registered. The retired operator application writes stay retired:
+// they must answer without a side effect and without calling an external owner.
 func TestRetiredOperatorApplicationWritesPreserveHistoryAndHaveNoSideEffects(t *testing.T) {
 	ctx := context.Background()
 	store := newMemoryTableStore()
 	handler, operationID := applicationDeploymentWorkerFixture(t, store, newTestService(&fakeLedgerClient{}, &fakeFabricClient{}))
 	operator := operatorSessionForTest(t, handler)
-	materialRow := seedApplicationDataMaterialHistoryForTest(t, store)
 	row, found, err := store.GetRuntimeOperation(ctx, operationID)
 	if err != nil || !found {
 		t.Fatalf("deployment fixture found=%v err=%v", found, err)
@@ -36,10 +38,6 @@ func TestRetiredOperatorApplicationWritesPreserveHistoryAndHaveNoSideEffects(t *
 	failedIntent, err := decodeWorkspaceApplicationDeploymentIntent(failed)
 	if err != nil {
 		t.Fatal(err)
-	}
-	revisionRow, found, err := store.AdmittedApplicationRevision(ctx, "knowledge-app", "1.0.0")
-	if err != nil || !found {
-		t.Fatalf("revision fixture found=%v err=%v", found, err)
 	}
 
 	// Observe all three real outbound clients. Any provider, receipt, credential
@@ -78,8 +76,6 @@ func TestRetiredOperatorApplicationWritesPreserveHistoryAndHaveNoSideEffects(t *
 	before := snapshot()
 	revision := knowledgeApplicationRevisionForTest()
 	revision.Version = "2.0.0"
-	material := historicalApplicationDataMaterialForTest()
-	material.Version = "data-2.0.0"
 	deployment := struct {
 		WorkspaceID    string                                             `json:"workspaceId"`
 		ApplicationID  string                                             `json:"applicationId"`
@@ -88,8 +84,6 @@ func TestRetiredOperatorApplicationWritesPreserveHistoryAndHaveNoSideEffects(t *
 		Configuration  contracts.WorkspaceApplicationRuntimeConfiguration `json:"configuration"`
 	}{"ws-alpha", revision.ApplicationID, revision.Version, revision, contracts.WorkspaceApplicationRuntimeConfiguration{Environment: map[string]string{"CONFIG": "retired-request"}}}
 	for _, test := range []struct{ name, path, body string }{
-		{"revision", "/api/operator/application-revisions", encode(revision)},
-		{"data_material", "/api/operator/application-data-materials", encode(material)},
 		{"deployment", "/api/operator/application-deployments", encode(deployment)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -109,8 +103,6 @@ func TestRetiredOperatorApplicationWritesPreserveHistoryAndHaveNoSideEffects(t *
 		name, path string
 		expected   map[string]any
 	}{
-		{"revision", "/api/operator/application-revisions/knowledge-app/1.0.0", map[string]any{"decision": "identical", "revision": revisionRow}},
-		{"data_material", "/api/operator/application-data-materials/knowledge-app/data-1.0.0", map[string]any{"decision": "identical", "dataMaterial": materialRow}},
 		{"deployment", "/api/operator/application-deployments/" + operationID, map[string]any{"status": "manual_review", "intent": failedIntent}},
 	} {
 		t.Run("history_"+test.name, func(t *testing.T) {

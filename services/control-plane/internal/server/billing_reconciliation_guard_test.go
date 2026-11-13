@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-
-	"opl-cloud/services/control-plane/internal/clients"
 )
 
 func billingReconciliationRowForTest(id, status, reason string) map[string]any {
@@ -98,30 +96,5 @@ func TestRetainedWorkspaceLaunchFenceDoesNotDependOnReconciliationRead(t *testin
 	}
 	if len(*fixture.calls) != 0 || len(fixture.sub2API.charges) != 0 || len(fixture.store.runtimeOps) != len(before) {
 		t.Fatalf("retained new purchase reached downstream mutation: fabric=%#v charges=%#v operations=%#v", *fixture.calls, fixture.sub2API.charges, fixture.store.runtimeOps)
-	}
-}
-
-func TestBillingReconciliationMismatchDoesNotChangeRetainedLaunchFence(t *testing.T) {
-	fixture := newBillingReconciliationFixture(t)
-	originalHistory := append([]clients.Sub2APIBalanceHistoryEntry(nil), fixture.sub2API.history[41]...)
-	fixture.sub2API.history[41] = fixture.sub2API.history[41][1:]
-	operator := operatorSessionForTest(t, fixture.server)
-	mismatch := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, "/api/billing/reconciliation", `{"confirm":true}`, "guard-mismatch")
-	if mismatch.Code != http.StatusCreated {
-		t.Fatalf("mismatch status=%d body=%s", mismatch.Code, mismatch.Body.String())
-	}
-	blocked := requestWithMutationKeyForTest(t, fixture.server, fixture.member, http.MethodPost, "/api/workspace-launches", `{"name":"Blocked","packageId":"basic","autoRenew":false}`, "guard-blocked")
-	if blocked.Code != http.StatusConflict || !strings.Contains(blocked.Body.String(), retainedWorkspaceLaunchNewPurchaseRetired) {
-		t.Fatalf("retained new purchase under mismatch status=%d body=%s", blocked.Code, blocked.Body.String())
-	}
-
-	fixture.sub2API.history[41] = originalHistory
-	clean := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, "/api/billing/reconciliation", `{"confirm":true}`, "guard-clean")
-	if clean.Code != http.StatusCreated {
-		t.Fatalf("clean status=%d body=%s", clean.Code, clean.Body.String())
-	}
-	current, found, err := fixture.store.BillingReconciliation(context.Background())
-	if err != nil || !found || stringValue(current["status"]) != "ok" {
-		t.Fatalf("clean guard readback=%#v found=%v err=%v", current, found, err)
 	}
 }

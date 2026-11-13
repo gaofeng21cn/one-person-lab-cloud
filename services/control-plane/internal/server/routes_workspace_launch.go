@@ -168,51 +168,6 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 		writeError(w, http.StatusNotFound, "workspace_launch_not_found")
 	}))
 
-	mux.HandleFunc("POST /api/workspace-launches/{id}/resume", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := requiredMutationKey(w, r); !ok {
-			return
-		}
-		if !app.deployment.customerOwned() {
-			writeError(w, http.StatusNotFound, "workspace_launch_not_found")
-			return
-		}
-		accountID, ok := app.scopedAccountID(w, r, nil)
-		if !ok {
-			return
-		}
-		unlock := app.lockResource("workspace-launch", accountID)
-		defer unlock()
-		row, found, err := app.tables.GetRuntimeOperation(r.Context(), r.PathValue("id"))
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "state_read_failed")
-			return
-		}
-		if !found || stringValue(row["accountId"]) != accountID || stringValue(row["action"]) != workspaceLaunchAction {
-			writeError(w, http.StatusNotFound, "workspace_launch_not_found")
-			return
-		}
-		operation, err := decodeWorkspaceLaunchReconcileOperation(row)
-		recoverableManualReview := operation.Status == contracts.StatusManualReview && (operation.Stage == contracts.StageKey || operation.Stage == contracts.StageStorage || operation.Stage == contracts.StageAttachment || operation.Stage == contracts.StageSecret || operation.Stage == contracts.StageRuntime || operation.Stage == contracts.StageActivation) && operation.Observations[operation.Stage].State == workspaceLaunchStageUnknown
-		recoverablePendingStage := operation.Status == contracts.StatusPending && (operation.Stage == contracts.StageKey || operation.Stage == contracts.StageStorage || operation.Stage == contracts.StageAttachment || operation.Stage == contracts.StageSecret || operation.Stage == contracts.StageRuntime)
-		if err != nil || !recoverableManualReview && !recoverablePendingStage {
-			writeError(w, http.StatusConflict, "workspace_launch_not_recoverable")
-			return
-		}
-		_, sub2APIUserID, credential, ok := app.gatewayUserContext(w, r)
-		if !ok {
-			return
-		}
-		if sub2APIUserID != operation.int64Fact("sub2apiUserId") {
-			writeError(w, http.StatusForbidden, "account_scope_forbidden")
-			return
-		}
-		continued, err := app.workspaceLaunchReconciler(service, credential, sub2APIUserID).Reconcile(r.Context(), operation.ID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "state_persist_failed")
-			return
-		}
-		app.respondWorkspaceLaunchContinuation(w, r, continued)
-	}))
 }
 
 func (app *controlPlaneServer) respondWorkspaceLaunchContinuation(w http.ResponseWriter, r *http.Request, operation workspaceLaunchReconcileOperation) {

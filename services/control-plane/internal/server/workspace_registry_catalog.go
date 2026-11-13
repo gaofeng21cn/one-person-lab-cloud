@@ -147,7 +147,6 @@ func registerWorkspaceRegistryCatalogRoutesWithCatalog(mux *http.ServeMux, app *
 		}
 		writeJSON(w, http.StatusOK, response)
 	}
-	mux.HandleFunc("GET /api/operator/registry/repositories", app.protected(true, repositories))
 	mux.HandleFunc("GET /internal/cloud/operator/registry/repositories", app.cloudOperatorRead(repositories, map[string]bool{"namespace": true}))
 	tags := func(w http.ResponseWriter, r *http.Request) {
 		if !requireWorkspaceRegistryCatalog(w, catalog) {
@@ -164,35 +163,7 @@ func registerWorkspaceRegistryCatalogRoutesWithCatalog(mux *http.ServeMux, app *
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"namespace": namespace, "repository": repository, "tags": tags})
 	}
-	mux.HandleFunc("GET /api/operator/registry/tags/{namespace}/{repository}", app.protected(true, tags))
 	mux.HandleFunc("GET /internal/cloud/operator/registry/tags/{namespace}/{repository}", app.cloudOperatorRead(tags, nil))
-	mux.HandleFunc("POST /api/operator/registry/resolve", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		if !requireWorkspaceRegistryCatalog(w, catalog) {
-			return
-		}
-		input := decodeJSON(r)
-		namespace, repository, tag := strings.TrimSpace(stringValue(input["namespace"])), strings.TrimSpace(stringValue(input["repository"])), strings.TrimSpace(stringValue(input["tag"]))
-		if namespace == "" || repository == "" || tag == "" {
-			writeError(w, http.StatusBadRequest, "workspace_registry_request_invalid")
-			return
-		}
-		if err := contracts.ValidateWorkspaceRegistryRepository(namespace, repository); err != nil {
-			writeError(w, http.StatusBadRequest, "workspace_registry_request_invalid")
-			return
-		}
-		resolution, err := catalog.resolve(r.Context(), namespace, repository, tag)
-		if err != nil {
-			writeWorkspaceRegistryError(w, err)
-			return
-		}
-		// host and reference are returned together so a client confirms the
-		// resolved identity against the catalog host the server used, rather
-		// than assembling a second reference format of its own.
-		writeJSON(w, http.StatusOK, map[string]any{
-			"host": catalog.host, "namespace": namespace, "repository": repository, "tag": tag,
-			"digest": resolution.Digest, "reference": resolution.Reference,
-		})
-	}))
 }
 
 // requireWorkspaceRegistryCatalog answers the explicit unconfigured result.

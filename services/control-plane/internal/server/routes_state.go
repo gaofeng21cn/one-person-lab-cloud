@@ -8,7 +8,6 @@ import (
 )
 
 func registerStateRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
-	mux.HandleFunc("/api/state", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 	mux.HandleFunc("GET /api/pricing/catalog", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
 		computePools, ok := fabricComputePools(w, r, service)
 		if !ok {
@@ -41,6 +40,8 @@ func registerStateRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 		}
 		writeJSON(w, http.StatusOK, preview)
 	}))
+	// The Instance installation reads this surface directly, so the route stays
+	// registered even though no Cloud repository calls it.
 	mux.HandleFunc("GET /api/management/state", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		computePools, ok := fabricComputePools(w, r, service)
 		if !ok {
