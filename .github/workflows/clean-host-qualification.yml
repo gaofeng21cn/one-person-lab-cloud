@@ -172,7 +172,7 @@ jobs:
           bash deploy/portable/local-v2-pki.sh "$directory/pki"
           curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
             https://agent-plugins.org/schemas/1.0.0/plugin.schema.json --output "$directory/plugin.schema.json"
-          expected="$(awk -F= '$1 == "OPL_LOCAL_V2_PACKAGE_SCHEMA_DIGEST" { print $2 }' deploy/portable/opl-cloud.env.example)"
+          expected="$(awk -F= '$1 == "OPL_CAPABILITY_PACKAGE_SCHEMA_DIGEST" { print $2 }' deploy/portable/opl-cloud.env.example)"
           printf '%s  %s\n' "${expected#sha256:}" "$directory/plugin.schema.json" | sha256sum --check
           printf 'OPL_NATIVE_PROJECT=%s\n' "$project" >> "$GITHUB_ENV"
           native_args=(--mode local-v2 --source-sha "$PRODUCT_SHA" --installation-env "$directory/installation.env"

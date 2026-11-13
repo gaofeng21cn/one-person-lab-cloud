@@ -64,6 +64,7 @@ test("the local v2 topology does not claim the base installation's subnet", asyn
   const v2Source = await readFile(composePath, "utf8");
   const baseSource = await readFile(baseComposePath, "utf8");
   const environmentSource = await readFile(environmentPath, "utf8");
+  const cleanHostSource = await readFile("tools/local-v2-clean-host.ts", "utf8");
 
   const v2Subnets = declaredSubnets(v2Source);
   const baseSubnets = declaredSubnets(baseSource);
@@ -82,25 +83,28 @@ test("the local v2 topology does not claim the base installation's subnet", asyn
     }
   }
 
+  // The subnet and the PostgreSQL address are one name now. The
+  // qualification installation and the base installation differ in the values
+  // they set, and the values are what must differ: Docker refuses two
+  // networks with one subnet on one host.
   const environment = declaredValues(environmentSource);
-  const declaredSubnet = environment.get("OPL_LOCAL_V2_SUBNET");
-  assert.equal(declaredSubnet, v2Subnets[0], `${environmentPath} must declare the topology's subnet`);
+  const declaredSubnet = environment.get("OPL_DOCKER_SUBNET");
+  assert.equal(declaredSubnet, baseSubnets[0], `${environmentPath} must declare the base installation's subnet`);
 
-  const baseSubnet = environment.get("OPL_DOCKER_SUBNET");
-  if (baseSubnet) {
-    assert.notEqual(
-      declaredSubnet,
-      baseSubnet,
-      `the local v2 topology's subnet must differ from the base installation's declared subnet`,
-    );
-  }
+  const qualificationSubnet = /OPL_DOCKER_SUBNET:\s*"([^"]+)"/.exec(cleanHostSource)?.[1];
+  assert.equal(qualificationSubnet, v2Subnets[0], "the qualification installation must set its own subnet");
+  assert.notEqual(
+    qualificationSubnet,
+    declaredSubnet,
+    `the qualification installation's subnet must differ from the base installation's declared subnet`,
+  );
 
   // The PostgreSQL address belongs to the topology's own network.
-  const postgresHost = environment.get("OPL_LOCAL_V2_POSTGRES_HOST");
-  assert.ok(postgresHost, `${environmentPath} must declare the topology's PostgreSQL address`);
-  const prefix = declaredSubnet!.split("/")[0].split(".").slice(0, 3).join(".");
+  const qualificationPostgresHost = /OPL_POSTGRES_HOST:\s*"([^"]+)"/.exec(cleanHostSource)?.[1];
+  assert.ok(qualificationPostgresHost, "the qualification installation must set its own PostgreSQL address");
+  const prefix = qualificationSubnet!.split("/")[0].split(".").slice(0, 3).join(".");
   assert.ok(
-    postgresHost!.startsWith(`${prefix}.`),
+    qualificationPostgresHost!.startsWith(`${prefix}.`),
     `the PostgreSQL address must belong to the topology's own subnet`,
   );
 
@@ -110,7 +114,8 @@ test("the local v2 topology does not claim the base installation's subnet", asyn
   // (services/internal/postgresmigrate/migrate.go). A public or otherwise
   // non-private address in the topology's subnet would stop every owner from
   // starting, so the fact is checked here instead of at runtime.
-  assert.match(postgresHost!, /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/, `the PostgreSQL address must be an IPv4 literal`);
+  const postgresHost = qualificationPostgresHost!;
+  assert.match(postgresHost, /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/, `the PostgreSQL address must be an IPv4 literal`);
   const octets = postgresHost!.split(".").map((part) => Number(part));
   const isPrivate =
     octets[0] === 10 ||
@@ -135,7 +140,7 @@ test("the local v2 topology names the Local-Docker gateway container once", asyn
   assert.ok(containerName, `the Control Plane must carry the gateway container name`);
   assert.match(
     containerName,
-    /^\$\{OPL_LOCAL_V2_GATEWAY_CONTAINER:-[^}]+\}$/,
+    /^\$\{OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER:-[^}]+\}$/,
     `the gateway container name must come from one installation fact`,
   );
 

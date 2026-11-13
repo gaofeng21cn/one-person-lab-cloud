@@ -880,7 +880,7 @@ function caRequest(url, init, headers, body, ca) {
 // requestTimeoutMs is the budget one owner command gets. A read answers at once;
 // a deletion drives the retirement chain inside the owner before it responds.
 function requestTimeoutMs() {
-  const configured = Number(process.env.OPL_LOCAL_V2_REQUEST_TIMEOUT_MS || 0);
+  const configured = Number(process.env.OPL_QUALIFICATION_REQUEST_TIMEOUT_MS || 0);
   return configured > 0 ? configured : 120_000;
 }
 
@@ -2148,23 +2148,23 @@ export async function readLocalV2InstallationDeclaration({
 // Authenticated Console and owner requests use this declared HTTPS origin and
 // its own CA. The anonymous Local-Docker application has a separate binding.
 export function localV2QualificationOrigin(values) {
-  const declared = String(values?.OPL_LOCAL_V2_PUBLIC_URL || "").trim();
+  const declared = String(values?.OPL_PUBLIC_URL || "").trim();
   let url;
   try {
     url = new URL(declared);
   } catch {
-    throw namedQualificationError("local_v2_public_url_invalid", "OPL_LOCAL_V2_PUBLIC_URL must be the installation's HTTPS origin");
+    throw namedQualificationError("local_v2_public_url_invalid", "OPL_PUBLIC_URL must be the installation's HTTPS origin");
   }
   if (url.protocol !== "https:" || url.pathname !== "/" || url.search || url.hash) {
-    throw namedQualificationError("local_v2_public_url_invalid", "OPL_LOCAL_V2_PUBLIC_URL must be one HTTPS origin without a path");
+    throw namedQualificationError("local_v2_public_url_invalid", "OPL_PUBLIC_URL must be one HTTPS origin without a path");
   }
   return url.origin;
 }
 
 export function localV2QualificationCA(values) {
-  const directory = String(values?.OPL_LOCAL_V2_PKI_DIR || "").trim();
+  const directory = String(values?.OPL_PKI_DIR || "").trim();
   if (!directory || !isAbsolute(directory)) {
-    throw namedQualificationError("local_v2_pki_dir_invalid", "OPL_LOCAL_V2_PKI_DIR must be the absolute PKI directory the topology serves");
+    throw namedQualificationError("local_v2_pki_dir_invalid", "OPL_PKI_DIR must be the absolute PKI directory the topology serves");
   }
   return join(directory, "ca.crt");
 }
@@ -2249,7 +2249,7 @@ async function localV2ProviderBoundary(compose, composePrefix, sinceIso, query) 
   }
   if (!container) return null;
   const sinceEpoch = String(Math.max(0, Math.floor(Date.parse(sinceIso) / 1000)));
-  const deadline = Date.now() + Number(process.env.OPL_LOCAL_V2_PROVIDER_LOG_WAIT_MS || 30_000);
+  const deadline = Date.now() + Number(process.env.OPL_QUALIFICATION_PROVIDER_LOG_WAIT_MS || 30_000);
   let observed = "";
   while (Date.now() < deadline) {
     let log = "";
@@ -2333,14 +2333,14 @@ function localV2LaunchReadbackBoundary(workspace, workspaceId, origin) {
 // anonymous Local-Docker profile emits its native version-two receipt; retained
 // CP identities and paid-fixture facts stay with the version-one profile.
 export async function runLocalV2Qualification(options, dependencies = {}) {
-  const pollIntervalMs = localV2ConfiguredBudget(dependencies.pollIntervalMs, process.env.OPL_LOCAL_V2_POLL_INTERVAL_MS, 3000, {
-    name: "OPL_LOCAL_V2_POLL_INTERVAL_MS", code: "local_v2_poll_interval_invalid", minimum: 0, maximum: LOCAL_V2_MAX_POLL_INTERVAL_MS
+  const pollIntervalMs = localV2ConfiguredBudget(dependencies.pollIntervalMs, process.env.OPL_QUALIFICATION_POLL_INTERVAL_MS, 3000, {
+    name: "OPL_QUALIFICATION_POLL_INTERVAL_MS", code: "local_v2_poll_interval_invalid", minimum: 0, maximum: LOCAL_V2_MAX_POLL_INTERVAL_MS
   });
-  const pollAttempts = localV2ConfiguredBudget(dependencies.pollAttempts, process.env.OPL_LOCAL_V2_POLL_ATTEMPTS, 100, {
-    name: "OPL_LOCAL_V2_POLL_ATTEMPTS", code: "local_v2_poll_attempts_invalid", minimum: 1, maximum: LOCAL_V2_MAX_POLL_ATTEMPTS
+  const pollAttempts = localV2ConfiguredBudget(dependencies.pollAttempts, process.env.OPL_QUALIFICATION_POLL_ATTEMPTS, 100, {
+    name: "OPL_QUALIFICATION_POLL_ATTEMPTS", code: "local_v2_poll_attempts_invalid", minimum: 1, maximum: LOCAL_V2_MAX_POLL_ATTEMPTS
   });
-  const recoveryReplays = localV2ConfiguredBudget(dependencies.recoveryReplays, process.env.OPL_LOCAL_V2_RECOVERY_REPLAYS, 3, {
-    name: "OPL_LOCAL_V2_RECOVERY_REPLAYS", code: "local_v2_recovery_replays_invalid", minimum: 0, maximum: LOCAL_V2_MAX_RECOVERY_REPLAYS
+  const recoveryReplays = localV2ConfiguredBudget(dependencies.recoveryReplays, process.env.OPL_QUALIFICATION_RECOVERY_REPLAYS, 3, {
+    name: "OPL_QUALIFICATION_RECOVERY_REPLAYS", code: "local_v2_recovery_replays_invalid", minimum: 0, maximum: LOCAL_V2_MAX_RECOVERY_REPLAYS
   });
   if (pollAttempts * pollIntervalMs > LOCAL_V2_MAX_POLL_DURATION_MS) {
     throw namedQualificationError("local_v2_poll_budget_invalid", "the combined Workspace polling budget must not exceed 30 minutes");
@@ -2380,10 +2380,10 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     readbacks.installation = {
       envFile: declaration.envFile,
       origin,
-      pkiDir: String(values.OPL_LOCAL_V2_PKI_DIR || ""),
-      proxyPort: String(values.OPL_LOCAL_V2_PROXY_PORT || ""),
-      subnet: String(values.OPL_LOCAL_V2_SUBNET || ""),
-      postgresHost: String(values.OPL_LOCAL_V2_POSTGRES_HOST || ""),
+      pkiDir: String(values.OPL_PKI_DIR || ""),
+      proxyPort: String(values.OPL_PROXY_PORT || ""),
+      subnet: String(values.OPL_DOCKER_SUBNET || ""),
+      postgresHost: String(values.OPL_POSTGRES_HOST || ""),
       workspaceDomain: String(values.OPL_WORKSPACE_DOMAIN || ""),
       cloudImage: String(values.OPL_CLOUD_IMAGE || ""),
       workspaceImage: String(values.OPL_WORKSPACE_IMAGE || ""),
