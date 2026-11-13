@@ -10,6 +10,7 @@ import {
   continueWorkspaceDelete,
   assertLocalV2ComposeEnvironment,
   assertWorkspaceQualificationTopology,
+  buildSourceImages,
   deleteWorkspaceOnOwnerRoute,
   readWorkspaceRefundReceipt,
   readWorkspaceEvidence,
@@ -86,6 +87,49 @@ const sha = "a".repeat(40);
 const cloudDigest = `sha256:${"b".repeat(64)}`;
 const workspaceDigest = `sha256:${"c".repeat(64)}`;
 const workspaceReference = `ghcr.io/example/workspace@${workspaceDigest}`;
+
+test("source image builds pass the exact qualification source revision to Docker", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "opl-source-image-build-test-"));
+  const binDirectory = join(directory, "bin");
+  const logPath = join(directory, "docker-args.log");
+  await mkdir(binDirectory);
+  await writeFile(join(binDirectory, "docker"), `#!/bin/sh
+printf '%s\\n' "$*" >> "$OPL_TEST_DOCKER_LOG"
+case "$1:$2" in
+  image:inspect)
+    ref="$3"
+    case "$ref" in
+      *cloud*) digest="d" ;;
+      *) digest="e" ;;
+    esac
+    case "$ref" in
+      *@*) repository="\${ref%@*}" ;;
+      *) repository="\${ref%:source}" ;;
+    esac
+    printf '[{"Id":"sha256:%s%s","RepoDigests":["%s@sha256:%s%s"]}]\\n' "$digest" "$(printf '0%.0s' $(seq 1 63))" "$repository" "$digest" "$(printf '0%.0s' $(seq 1 63))"
+    ;;
+esac
+exit 0
+`);
+  await chmod(join(binDirectory, "docker"), 0o700);
+  const previousPath = process.env.PATH;
+  const previousLog = process.env.OPL_TEST_DOCKER_LOG;
+  process.env.PATH = `${binDirectory}:${previousPath || ""}`;
+  process.env.OPL_TEST_DOCKER_LOG = logPath;
+  try {
+    await buildSourceImages(sha, "opl-source-test", 32768);
+    const commands = (await readFile(logPath, "utf8")).trim().split("\n");
+    const cloudBuild = commands.find((command) => command.includes("build") && command.includes("opl-source-test-cloud:source"));
+    assert.ok(cloudBuild);
+    assert.match(cloudBuild, new RegExp(`--build-arg OPL_SOURCE_SHA=${sha}`));
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+    if (previousLog === undefined) delete process.env.OPL_TEST_DOCKER_LOG;
+    else process.env.OPL_TEST_DOCKER_LOG = previousLog;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test("a restart still establishes the declared customer's CloudIdentity session", async () => {
   const http = {

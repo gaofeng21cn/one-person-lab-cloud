@@ -1,8 +1,17 @@
+# OPL_SOURCE_SHA is the product revision this image is built from. The build
+# stamps it into every binary so a running process states its own revision
+# instead of only repeating what the deployment claims about it. The Candidate
+# workflow passes the same revision it names in the image label, so the two
+# cannot disagree.
+ARG OPL_SOURCE_SHA
+
 FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:dc0963f32053e4bc451d24d87e3892d42d01021b61f093e98eb95c0352bb84b0 AS fabric-build
 
 ARG TARGETOS
 ARG TARGETARCH
 ARG GOPROXY=https://proxy.golang.org,direct
+ARG OPL_SOURCE_SHA
+RUN printf '%s' "$OPL_SOURCE_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "opl_source_sha_invalid" >&2; exit 1; }
 
 WORKDIR /src/services/fabric
 COPY services/internal/ownerservice /src/services/internal/ownerservice
@@ -17,15 +26,17 @@ COPY packages/contracts/go /src/packages/contracts/go
 COPY services/fabric/go.mod services/fabric/go.sum ./
 RUN GOPROXY="$GOPROXY" go mod download
 COPY services/fabric ./
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/opl-tencent-provisioner ./cmd/opl-tencent-provisioner \
-  && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/opl-fabric ./cmd/fabric \
-  && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/opl-node-image-retire ./cmd/opl-node-image-retire
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-tencent-provisioner ./cmd/opl-tencent-provisioner \
+  && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-fabric ./cmd/fabric \
+  && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-node-image-retire ./cmd/opl-node-image-retire
 
 FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:dc0963f32053e4bc451d24d87e3892d42d01021b61f093e98eb95c0352bb84b0 AS control-plane-build
 
 ARG TARGETOS
 ARG TARGETARCH
 ARG GOPROXY=https://proxy.golang.org,direct
+ARG OPL_SOURCE_SHA
+RUN printf '%s' "$OPL_SOURCE_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "opl_source_sha_invalid" >&2; exit 1; }
 
 WORKDIR /src/services/control-plane
 COPY services/internal/postgresmigrate /src/services/internal/postgresmigrate
@@ -33,13 +44,15 @@ COPY packages/contracts/go /src/packages/contracts/go
 COPY services/control-plane/go.mod services/control-plane/go.sum ./
 RUN GOPROXY="$GOPROXY" go mod download
 COPY services/control-plane ./
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/opl-control-plane ./cmd/control-plane
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-control-plane ./cmd/control-plane
 
 FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:dc0963f32053e4bc451d24d87e3892d42d01021b61f093e98eb95c0352bb84b0 AS ledger-build
 
 ARG TARGETOS
 ARG TARGETARCH
 ARG GOPROXY=https://proxy.golang.org,direct
+ARG OPL_SOURCE_SHA
+RUN printf '%s' "$OPL_SOURCE_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "opl_source_sha_invalid" >&2; exit 1; }
 
 WORKDIR /src/services/ledger
 COPY services/internal/ownerservice /src/services/internal/ownerservice
@@ -49,7 +62,7 @@ COPY packages/contracts/go /src/packages/contracts/go
 COPY services/ledger/go.mod services/ledger/go.sum ./
 RUN GOPROXY="$GOPROXY" go mod download
 COPY services/ledger ./
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/opl-ledger ./cmd/ledger
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-ledger ./cmd/ledger
 
 # The publisher lane is shipped as independent owner executables in the same
 # portable product image. Instance chooses which processes to run.
@@ -57,14 +70,16 @@ FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:dc0963f32053e4bc451d2
 ARG TARGETOS
 ARG TARGETARCH
 ARG GOPROXY=https://proxy.golang.org,direct
+ARG OPL_SOURCE_SHA
+RUN printf '%s' "$OPL_SOURCE_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "opl_source_sha_invalid" >&2; exit 1; }
 WORKDIR /src
 COPY packages/contracts/go /src/packages/contracts/go
 COPY services /src/services
 COPY apps/console-bff /src/apps/console-bff
 RUN for service in capability build runtime-control workspace resource-catalog serve gateway-integration; do \
-      CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/$service build -o /out/opl-$service ./cmd/server || exit 1; \
+      CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/$service build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-$service ./cmd/server || exit 1; \
     done \
-    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C apps/console-bff build -o /out/opl-console-bff ./cmd/server
+    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C apps/console-bff build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-console-bff ./cmd/server
 
 FROM docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb AS docker-cli
 

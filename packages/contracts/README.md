@@ -44,6 +44,7 @@ External authorities and artifact consumers keep their explicit version pins.
 | `opl-cloud-workspace-runtime-abi-contract.json` | Control Plane and Fabric Workspace WebUI routing |
 | `opl-cloud-webui-artifact-contract.json` | Cloud WebUI artifact identity and Build/Serve compatibility (W13/W14/W16) |
 | `tencent-predebit-iam-contract.json` | The Tencent provisioner's accepted pre-debit IAM attestation shape, and the installer that produces it |
+| `release.go` | The product revision a binary was built from, and the claim a deployment makes about it |
 
 The Candidate and Distribution contracts bind portable artifact identity; they
 do not describe an instance deployment. Domains, provider selection, production
@@ -55,6 +56,14 @@ bounded Runtime image revision proof that both Go modules consume. The proof is
 validated independently and preserves the original stage request hash. The
 Workspace Runtime ABI contains only the fixed protocol and port projected by
 both modules.
+
+`release.go` carries the product revision a binary was built from. The build
+stamps it, the binary states it, and the deployment claims one; comparing the
+claim with the stamp is what makes a running binary attributable to the image
+it was deployed from. It is admitted here because the Installer reads the
+reported revision and because the pre-debit IAM release binding depends on it,
+and removing that binding would let a deployment point a stale binary at an
+approval that was granted for another revision.
 
 ## Generated-Field Freshness
 
