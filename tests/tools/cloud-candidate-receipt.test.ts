@@ -155,7 +155,7 @@ test("candidate bundle validator rejects tampered, missing, extra, and malformed
 
   const malformed = await createBundle();
   const sumsPath = join(malformed.directory, "SHA256SUMS");
-  await writeFile(sumsPath, (await readFile(sumsPath, "utf8")).replace("  compose.yaml", " *compose.yaml"));
+  await writeFile(sumsPath, (await readFile(sumsPath, "utf8")).replace(`  ${assetNames[0]}`, ` *${assetNames[0]}`));
   await assert.rejects(validateCandidateBundle(malformed.directory), /cloud_candidate_bundle_invalid/);
 
   const noncanonical = await createBundle();

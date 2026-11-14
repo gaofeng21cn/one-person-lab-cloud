@@ -278,12 +278,18 @@ jobs:
           # other bundle proves nothing about this release.
           actual="sha256:$(sha256sum "$receipt" | cut -d ' ' -f1)"
           test "$actual" = "$INSTALLABILITY_DIGEST"
+          # The receipt names the format of the bundle this release publishes.
+          # The bundle names its own format, so the two are compared instead of
+          # naming a format here: a frozen Candidate keeps the format it was
+          # built with, and its receipt is still about this bundle.
+          bundle_format="$(jq -r '.bundleFormats.current' evidence/candidate/opl-cloud-distribution-contract.json)"
           jq -e \
             --arg sha "$PRODUCT_SHA" \
             --arg image_ref "$CANDIDATE_IMAGE_REF" \
-            --arg digest "$INSTALLABILITY_DIGEST" '
+            --arg digest "$INSTALLABILITY_DIGEST" \
+            --arg bundle_format "$bundle_format" '
               .schemaVersion == 1 and .kind == "opl_cloud_bundle_installability" and
-              .dryRun == "verified" and .bundleFormat == "portable-v1" and
+              .dryRun == "verified" and .bundleFormat == $bundle_format and
               .productSha == $sha and .imageRef == $image_ref and
               .installedFacts == 71 and .manualFacts == 13 and
               (.facts | length == 13) and

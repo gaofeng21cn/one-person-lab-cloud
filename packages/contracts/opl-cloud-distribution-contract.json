@@ -172,7 +172,7 @@
     "activeGapsAndPriority": "docs/roadmap.md"
   },
   "bundleFormats": {
-    "current": "portable-v1",
+    "current": "portable-v2",
     "candidateSchemaVersion": 2,
     "releaseSchemaVersion": 4,
     "candidateOnlyAssets": [
@@ -255,10 +255,48 @@
           "publicationRequiresVerifiedInstallability": true,
           "verifiedBy": "the release workflow's bundle installation dry run"
         }
+      },
+      "portable-v2": {
+        "candidateAssets": [
+          "opl-cloud.env.example",
+          "opl-cloud-owner-topology.json",
+          "install.sh",
+          "install.mjs",
+          "installer-manifest.mjs",
+          "compose.cloud.yaml",
+          "compose.local-v2.yaml",
+          "cloud-proxy.nginx.conf",
+          "owner-databases.sh",
+          "local-v2-pki.sh",
+          "agent-plugins-1.0.0-plugin.schema.json",
+          "opl-cloud-distribution-contract.json"
+        ],
+        "releaseAssets": [
+          "opl-cloud.env.example",
+          "install.sh",
+          "install.mjs",
+          "installer-manifest.mjs",
+          "compose.cloud.yaml",
+          "compose.local-v2.yaml",
+          "cloud-proxy.nginx.conf",
+          "owner-databases.sh",
+          "local-v2-pki.sh",
+          "agent-plugins-1.0.0-plugin.schema.json",
+          "opl-cloud-distribution-contract.json"
+        ],
+        "installability": {
+          "installer": "install.sh",
+          "entrypoint": "install.mjs",
+          "contract": "opl-cloud-distribution-contract.json",
+          "installedFacts": 71,
+          "manualFacts": 13,
+          "dryRun": true,
+          "publicationRequiresVerifiedInstallability": true,
+          "verifiedBy": "the release workflow's bundle installation dry run"
+        }
       }
     },
     "assetSources": {
-      "compose.yaml": "compose.yaml",
       "opl-cloud-distribution-contract.json": "packages/contracts/opl-cloud-distribution-contract.json"
     },
     "defaultAssetSourceDirectory": "deploy/portable",

@@ -263,6 +263,10 @@ test("the candidate bundle must carry the entrypoint and every file it reference
 });
 
 test("the owner topology contract must not quietly enter the public Release bundle", async () => {
+  // The guard names the format it refused, so the expectation names the format
+  // the contract currently publishes instead of a spelling copied from it.
+  const distributionContract = JSON.parse(await readFile(join(repository, "packages/contracts/opl-cloud-distribution-contract.json"), "utf8"));
+  const currentFormat = distributionContract.bundleFormats.current;
   const mutations: Array<[(contract: any) => void, RegExp]> = [
     [(contract) => {
       const format = contract.bundleFormats.formats[contract.bundleFormats.current];
@@ -271,7 +275,7 @@ test("the owner topology contract must not quietly enter the public Release bund
     [(contract) => {
       const format = contract.bundleFormats.formats[contract.bundleFormats.current];
       format.releaseAssets = "candidateAssets";
-    }, /must declare its release assets explicitly instead of aliasing the candidate assets: portable-v1/]
+    }, new RegExp(`must declare its release assets explicitly instead of aliasing the candidate assets: ${currentFormat}`)]
   ];
   for (const [mutate, expected] of mutations) {
     const directory = await boundaryFixture();

@@ -7,6 +7,7 @@ import {
   bundleInstallabilityFacts,
   installabilityReceiptDigest,
   parseInstallationFactsRequired,
+  resolveBundleInstallabilityDeclaration,
 } from "../../tools/bundle-installability.ts";
 
 const contract = JSON.parse(await readFile("packages/contracts/opl-cloud-distribution-contract.json", "utf8"));
@@ -17,6 +18,54 @@ const manifest = {
   product: { repository: "gaofeng21cn/one-person-lab-cloud", sha: "a".repeat(40), tree: "b".repeat(40) },
   cloudImage: { indexRef: `ghcr.io/gaofeng21cn/one-person-lab-cloud@sha256:${"c".repeat(64)}` },
 };
+
+// The Compose files the published installation no longer carries. They stay in
+// the historical formats so the receipts that were published against them
+// keep verifying, and they are not in the format this repository publishes.
+const retiredComposeAssets = [
+  "compose.yaml",
+  "compose.deployment-platform-owned.yaml",
+  "compose.deployment-managed-tke.yaml",
+  "compose.deployment-customer-owned.yaml",
+  "compose.fabric-local-docker.yaml",
+  "compose.fabric-tencent-tke.yaml",
+  "compose.local-workspace.yaml"
+];
+
+test("the bundle's own format decides, and the authority contract has to declare it", () => {
+  // The bundle names its own format. A frozen Candidate built before the
+  // current format still verifies against the declaration it was built for,
+  // without its bytes changing.
+  const frozen = { bundleFormats: { current: "portable-v1" } };
+  assert.equal(resolveBundleInstallabilityDeclaration(frozen, contract).bundleFormat, "portable-v1");
+  // The current bundle resolves against the current declaration.
+  const current = { bundleFormats: { current: contract.bundleFormats.current } };
+  assert.equal(resolveBundleInstallabilityDeclaration(current, contract).bundleFormat, contract.bundleFormats.current);
+  // A format the authority does not declare proves nothing.
+  assert.throws(
+    () => resolveBundleInstallabilityDeclaration({ bundleFormats: { current: "not-a-format" } }, contract),
+    { code: "bundle_installability_not_declared" }
+  );
+  // A declared format without an installability declaration is not declared.
+  const withoutDeclaration = JSON.parse(JSON.stringify(contract));
+  delete withoutDeclaration.bundleFormats.formats[contract.bundleFormats.current].installability;
+  assert.throws(
+    () => resolveBundleInstallabilityDeclaration(current, withoutDeclaration),
+    { code: "bundle_installability_not_declared" }
+  );
+});
+
+test("the published bundle carries the installation Compose files and no retired overlay", () => {
+  const format = contract.bundleFormats.formats[contract.bundleFormats.current];
+  const published = format.candidateAssets.filter((name: string) => name.endsWith(".yaml") && name.startsWith("compose"));
+  assert.deepEqual(published, ["compose.cloud.yaml", "compose.local-v2.yaml"]);
+  for (const name of retiredComposeAssets) {
+    assert.ok(!format.candidateAssets.includes(name), `the published bundle must not carry ${name}`);
+    assert.ok(!format.releaseAssets.includes(name), `the published release must not carry ${name}`);
+  }
+  // The entrypoint the installer runs has to be in the bundle it installs.
+  assert.ok(format.candidateAssets.includes(contract.portableInstallation.entrypoint));
+});
 
 function facts() {
   return bundleInstallabilityFacts({ template, publishedCompose, localV2Compose, manifest });

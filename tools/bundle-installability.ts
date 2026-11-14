@@ -279,21 +279,30 @@ async function readInstallationState(installDir) {
 }
 
 /*
+ * The bundle names its own format, and the authority contract has to declare
+ * that format. A frozen Candidate built before the current format still
+ * verifies against the declaration it was built for, without its bytes
+ * changing: the bundle is the fact, and the contract is the authority that
+ * says what that format has to satisfy.
+ */
+export function resolveBundleInstallabilityDeclaration(bundledContract, contract) {
+  const bundleFormat = String(bundledContract?.bundleFormats?.current || "");
+  const declaration = contract?.bundleFormats?.formats?.[bundleFormat]?.installability;
+  if (!declaration || typeof declaration !== "object") {
+    throw installabilityError("bundle_installability_not_declared", bundleFormat);
+  }
+  return { bundleFormat, declaration };
+}
+
+/*
  * Run the bundle's own installer against the bundle's own bytes and report
  * what it proved.
  */
 export async function verifyBundleInstallability({ bundle, installDir, contract, manifest }) {
   bundle = resolve(bundle);
   installDir = resolve(installDir);
-  const contractFormat = String(contract?.bundleFormats?.current || "");
-  const declaration = contract?.bundleFormats?.formats?.[contractFormat]?.installability;
-  if (!declaration || typeof declaration !== "object") {
-    throw installabilityError("bundle_installability_not_declared", contractFormat);
-  }
   const bundledContract = JSON.parse(await readFile(join(bundle, "opl-cloud-distribution-contract.json"), "utf8"));
-  if (bundledContract?.bundleFormats?.current !== contractFormat) {
-    throw installabilityError("bundle_installability_format_mismatch", contractFormat);
-  }
+  const { bundleFormat, declaration } = resolveBundleInstallabilityDeclaration(bundledContract, contract);
   const template = await readFile(join(bundle, "opl-cloud.env.example"), "utf8");
   const publishedCompose = await readFile(join(bundle, "compose.cloud.yaml"), "utf8");
   const localV2Compose = await readFile(join(bundle, "compose.local-v2.yaml"), "utf8");
@@ -354,7 +363,7 @@ export async function verifyBundleInstallability({ bundle, installDir, contract,
   return {
     schemaVersion: INSTALLABILITY_RECEIPT_SCHEMA_VERSION,
     kind: INSTALLABILITY_RECEIPT_KIND,
-    bundleFormat: contractFormat,
+    bundleFormat,
     installer: String(declaration.installer || ""),
     entrypoint: String(declaration.entrypoint || ""),
     contract: String(declaration.contract || ""),

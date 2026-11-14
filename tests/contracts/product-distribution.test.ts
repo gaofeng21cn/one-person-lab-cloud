@@ -364,3 +364,23 @@ test("Release requires real installations and exact-source CI without a paid acc
   assert.match(publish.run, /paidBusinessExecuted == false/);
   assert.match(publish.run, /customerReadsExecuted == false/);
 });
+
+test("the release admission binds the installability receipt to the bundle's own format", async () => {
+  const release = YAML.parse(await readFile(".github/workflows/release-opl-cloud-image.yml", "utf8"));
+  const verify = release.jobs.admission.steps.find((step: any) => step.name === "Verify the bundle installability receipt");
+  assert.ok(verify?.run, "the release admission must verify the installability receipt");
+
+  // The receipt names the format of the bundle this release publishes, and the
+  // bundle names its own format. The two are compared, so a frozen Candidate
+  // keeps the format it was built with and its receipt is still about this
+  // bundle. Naming a format in the workflow would refuse that Candidate.
+  assert.match(
+    verify.run,
+    /bundle_format="\$\(jq -r '\.bundleFormats\.current' evidence\/candidate\/opl-cloud-distribution-contract\.json\)"/
+  );
+  assert.match(verify.run, /\.bundleFormat == \$bundle_format/);
+  assert.doesNotMatch(verify.run, /\.bundleFormat == "/);
+  // The facts the receipt reports are the ones the contract declares, and they
+  // stay pinned here: a contract that changes them must fail this release.
+  assert.match(verify.run, /\.installedFacts == 71 and \.manualFacts == 13/);
+});
