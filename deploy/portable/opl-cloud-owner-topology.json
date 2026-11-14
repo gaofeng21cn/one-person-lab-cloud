@@ -681,7 +681,6 @@
        "opl-instance-medopl tools/fresh-workspace-admission.mjs:783",
        "opl-instance-medopl tools/workspace-state-observation.mjs:1394",
        "opl-instance-medopl tools/project-explorer-persistence-acceptance.mjs:650",
-       "opl-instance-medopl tools/workspace-launch-stage-observation.mjs:127",
        "The declaration owns the Cloud route, not the survival of its call sites. workspace-launch-stage-observation.mjs is being retired in a separate Instance PR; the other three call sites stay. The route stays registered while the Instance installation still reads it, so the number of call sites is not the test for whether the surface is still needed."
       ]
      },
