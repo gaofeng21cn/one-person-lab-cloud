@@ -19,18 +19,24 @@ const manifest = {
   cloudImage: { indexRef: `ghcr.io/gaofeng21cn/one-person-lab-cloud@sha256:${"c".repeat(64)}` },
 };
 
-// The Compose files the published installation no longer carries. They stay in
-// the historical formats so the receipts that were published against them
-// keep verifying, and they are not in the format this repository publishes.
-const retiredComposeAssets = [
-  "compose.yaml",
-  "compose.deployment-platform-owned.yaml",
-  "compose.deployment-managed-tke.yaml",
-  "compose.deployment-customer-owned.yaml",
-  "compose.fabric-local-docker.yaml",
-  "compose.fabric-tencent-tke.yaml",
-  "compose.local-workspace.yaml"
-];
+// The Compose files the published bundle is expected to carry: the one the
+// installer runs and the one the qualification declares. Everything else the
+// retired formats carried is an overlay that must not come back.
+const publishedComposeFiles = ["compose.cloud.yaml", "compose.local-v2.yaml"];
+
+// The overlays the retired formats carried are read from those formats, so
+// the list of what must not come back is not written down here. They stay in
+// the historical formats so the receipts published against them keep
+// verifying.
+function retiredComposeOverlays() {
+  const current = contract.bundleFormats.current;
+  return [...new Set(
+    Object.entries(contract.bundleFormats.formats)
+      .filter(([name]) => name !== current)
+      .flatMap(([, spec]) => spec.candidateAssets)
+      .filter((name) => name.startsWith("compose") && !publishedComposeFiles.includes(name))
+  )].sort();
+}
 
 test("the bundle's own format decides, and the authority contract has to declare it", () => {
   // The bundle names its own format. A frozen Candidate built before the
@@ -57,11 +63,17 @@ test("the bundle's own format decides, and the authority contract has to declare
 
 test("the published bundle carries the installation Compose files and no retired overlay", () => {
   const format = contract.bundleFormats.formats[contract.bundleFormats.current];
-  const published = format.candidateAssets.filter((name: string) => name.endsWith(".yaml") && name.startsWith("compose"));
-  assert.deepEqual(published, ["compose.cloud.yaml", "compose.local-v2.yaml"]);
-  for (const name of retiredComposeAssets) {
-    assert.ok(!format.candidateAssets.includes(name), `the published bundle must not carry ${name}`);
-    assert.ok(!format.releaseAssets.includes(name), `the published release must not carry ${name}`);
+  assert.deepEqual(
+    format.candidateAssets.filter((name: string) => name.startsWith("compose")),
+    publishedComposeFiles
+  );
+  assert.deepEqual(
+    format.releaseAssets.filter((name: string) => name.startsWith("compose")),
+    publishedComposeFiles
+  );
+  for (const name of retiredComposeOverlays()) {
+    assert.ok(!format.candidateAssets.includes(name), `the published bundle must not carry the retired overlay ${name}`);
+    assert.ok(!format.releaseAssets.includes(name), `the published release must not carry the retired overlay ${name}`);
   }
   // The entrypoint the installer runs has to be in the bundle it installs.
   assert.ok(format.candidateAssets.includes(contract.portableInstallation.entrypoint));
