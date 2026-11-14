@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstat, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { execFileSync } from "node:child_process";
 import { validateCloudCandidateReceipt } from "./cloud-candidate-receipt.ts";
 
 // These are the existing product entry points, not substitute business owners.
@@ -25,13 +26,22 @@ export async function verifyReleaseSourcePaths(input: {
 }) {
   const candidate = validateCloudCandidateReceipt(input.candidate);
   const run = input.run;
+  let sameSource = run.head_sha === candidate.product.sha;
+  if (!sameSource && /^[a-f0-9]{40}$/.test(String(run.head_sha))) {
+    try {
+      const git = (...args: string[]) => execFileSync("git", ["-C", input.productRoot, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+      sameSource = git("rev-parse", `${run.head_sha}^{tree}`) === candidate.product.tree
+        && git("rev-parse", `${candidate.product.sha}^{tree}`) === candidate.product.tree;
+      if (sameSource) git("merge-base", "--is-ancestor", run.head_sha, candidate.product.sha);
+    } catch { sameSource = false; }
+  }
   if (run.repository?.full_name !== candidate.product.repository ||
       run.path !== ".github/workflows/pull-request-ci.yml" || run.event !== "pull_request" ||
-      run.head_sha !== candidate.product.sha || run.status !== "completed" || run.conclusion !== "success" ||
+      !sameSource || run.status !== "completed" || run.conclusion !== "success" ||
       !Number.isSafeInteger(run.id) || run.id < 1 || !Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1 ||
       !Array.isArray(input.jobs.jobs) || input.jobs.total_count !== input.jobs.jobs.length ||
       JOBS.some((name) => input.jobs.jobs.filter((job: any) => job.name === name && job.run_id === run.id &&
-        job.head_sha === candidate.product.sha && job.status === "completed" && job.conclusion === "success").length !== 1)) {
+        job.head_sha === run.head_sha && job.status === "completed" && job.conclusion === "success").length !== 1)) {
     throw new Error("release_source_ci_invalid");
   }
   const paths = [];

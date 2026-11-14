@@ -1,0 +1,47 @@
+{
+  "schema_version": "opl.product-release.v1",
+  "product_id": "opl-cloud",
+  "repository": "gaofeng21cn/one-person-lab-cloud",
+  "strategy": "daily_patch",
+  "trigger": "tag",
+  "tag_prefix": "v",
+  "publisher_workflow": "daily-release.yml",
+  "recheck_after_success": true,
+  "channel": {
+    "kind": "github_release"
+  },
+  "version_file": {
+    "path": "product-version.json",
+    "kind": "json"
+  },
+  "version_files": [
+    {
+      "path": "product-version.json",
+      "kind": "json"
+    },
+    {
+      "path": "package.json",
+      "kind": "json"
+    },
+    {
+      "path": "package-lock.json",
+      "kind": "json"
+    }
+  ],
+  "release_paths": [
+    "apps",
+    "services",
+    "packages",
+    "deploy",
+    "tools",
+    "product-version.json",
+    "package.json",
+    "package-lock.json",
+    ".github/workflows/build-opl-cloud-candidate.yml",
+    ".github/workflows/clean-host-qualification.yml",
+    ".github/workflows/release-opl-cloud-image.yml",
+    ".github/workflows/daily-release.yml"
+  ],
+  "prepare": [],
+  "verify": []
+}

@@ -11,6 +11,7 @@ const allowedWorkflows = new Set([
   "clean-host-qualification.yml",
   "cloud-business-readback.yml",
   "codeql.yml",
+  "daily-release.yml",
   "pull-request-ci.yml",
   "qualification.yml",
   "release-opl-cloud-image.yml",
@@ -38,6 +39,7 @@ if (unexpectedWorkflows.length > 0) {
 // its exact protected environment; never expose it to Candidate or PR jobs.
 const credentialEnvironments = {
   "release-opl-cloud-image.yml:admission": "cloud-release",
+  "daily-release.yml:continue": "cloud-release",
   "cloud-business-readback.yml:readback": "cloud-business-qualification",
   "workspace-compute-readback-handoff.yml:admission": "cloud-release"
 };
@@ -49,8 +51,12 @@ for (const name of workflows) {
   for (const [id, job] of Object.entries(workflow.jobs || {})) {
     if (!JSON.stringify(job).includes("secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN")) continue;
     const environment = credentialEnvironments[`${name}:${id}`];
-    const gate = "${{ github.ref == 'refs/heads/main' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang') }}";
-    if (!environment || job.environment !== environment || job.if !== gate) {
+    const manualGate = "${{ github.ref == 'refs/heads/main' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang') }}";
+    const gates = {
+      "release-opl-cloud-image.yml:admission": "${{ github.ref == 'refs/heads/main' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang' || (github.actor == 'github-actions[bot]' && inputs.automation_source_run_id != '')) }}",
+      "daily-release.yml:continue": "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'"
+    };
+    if (!environment || job.environment !== environment || job.if !== (gates[`${name}:${id}`] || manualGate)) {
       throw new Error(`Cloud publisher credential requires its protected environment and owner gate: ${name}:${id}`);
     }
   }
@@ -104,7 +110,7 @@ for (const required of ["ghcr.io/${{ github.repository }}", "docker buildx image
 }
 const releaseInputs = releaseWorkflow.on?.workflow_dispatch?.inputs || {};
 const expectedReleaseInputs = ["version", "ref", "candidate_run_id", "local_qualification_run_id", "instance_deployment_verification_run_id", "source_verification_run_id"];
-if (JSON.stringify(Object.keys(releaseInputs)) !== JSON.stringify(expectedReleaseInputs) || expectedReleaseInputs.some((name) => releaseInputs[name]?.required !== true)) {
+if (JSON.stringify(Object.keys(releaseInputs)) !== JSON.stringify([...expectedReleaseInputs, "automation_source_run_id"]) || expectedReleaseInputs.some((name) => releaseInputs[name]?.required !== true)) {
   throw new Error("Cloud Release requires exact Candidate, local installation, Instance installation and source CI evidence");
 }
 const installationDownload = (releaseAdmission?.steps || []).find((step) => step.name === "Download exact Instance installation verification");
@@ -134,22 +140,15 @@ const candidateWorkflow = YAML.parse(candidate);
 const candidateInputs = Object.keys(candidateWorkflow.on?.workflow_dispatch?.inputs || {});
 const candidateJobs = Object.keys(candidateWorkflow.jobs || {});
 const candidateJob = candidateWorkflow.jobs?.candidate;
-if (JSON.stringify(candidateInputs) !== JSON.stringify(["product_sha"]) ||
+if (JSON.stringify(candidateInputs) !== JSON.stringify(["product_sha", "release_tag"]) ||
     JSON.stringify(candidateJobs) !== JSON.stringify(["candidate"]) ||
     candidateJob?.environment !== undefined ||
     candidateJob?.env?.IMAGE_REPOSITORY !== "ghcr.io/${{ github.repository }}" ||
     candidateJob?.permissions?.contents !== "read" || candidateJob?.permissions?.packages !== "write") {
   throw new Error("Cloud Candidate workflow authority boundary is invalid");
 }
-// The Candidate is a replaceable input, not a formal Release, so it may be built
-// from the exact head of any dispatched branch: the guard must admit branch refs,
-// bind product_sha to github.sha, and must not pin the dispatched ref to main. Dispatch is limited to the repository's
-// write-access collaborators, which is what workflow_dispatch already requires,
-// and the run must stay self-attributed: the account that triggered it is the
-// account GitHub attributes it to. The publication boundary does not move. The
-// Release workflow keeps its main-only rule and already admits the same
-// dispatcher, so an owner-only build here refused the only evidence producer
-// that dispatcher could reach.
+// Exact branch heads remain available to write-access collaborators. Main may
+// continue a frozen annotated canonical tag with the same source identity.
 const candidateGuard = String(candidateJob?.if ?? "");
 for (const required of ["github.ref_type == 'branch'", "github.sha == inputs.product_sha", "github.actor == github.triggering_actor"]) {
   if (!candidateGuard.includes(required)) throw new Error(`Cloud Candidate guard is missing: ${required}`);
@@ -165,8 +164,8 @@ if (candidateGuard.includes("github.repository_owner")) {
 if (/github\.actor\s*(==|!=)\s*'[^']+'/.test(candidateGuard)) {
   throw new Error("Cloud Candidate guard must not name an actor; only the release gate may allowlist one");
 }
-if (candidateGuard.includes("refs/heads/main")) {
-  throw new Error("Cloud Candidate guard must not pin the dispatched ref to main");
+if (!candidateGuard.includes("github.sha == inputs.product_sha || (github.ref == 'refs/heads/main' && inputs.release_tag != '')")) {
+  throw new Error("Cloud Candidate must bind either the dispatch head or a frozen main product tag");
 }
 const candidateCommands = (candidateJob.steps || []).map((step) => step.run || "").join("\n");
 const candidateArtifact = (candidateJob.steps || []).find((step) => step.id === "candidate_artifact");

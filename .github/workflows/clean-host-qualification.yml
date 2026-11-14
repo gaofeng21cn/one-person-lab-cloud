@@ -1,4 +1,5 @@
 name: Clean Host Qualification
+run-name: Cloud local qualification ${{ inputs.ref }}
 
 on:
   workflow_dispatch:

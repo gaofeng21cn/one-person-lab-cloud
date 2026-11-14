@@ -1,4 +1,5 @@
 name: Release OPL Cloud
+run-name: Cloud release ${{ inputs.version }} / ${{ inputs.ref }}
 on:
   workflow_dispatch:
     inputs:
@@ -26,13 +27,18 @@ on:
         description: Successful complete Pull Request CI run for the exact frozen Product SHA.
         required: true
         type: string
+      automation_source_run_id:
+        description: Exact daily product run that selected this frozen source; empty for manual publication.
+        required: false
+        default: ''
+        type: string
 permissions:
   contents: read
 jobs:
   admission:
     name: Admit qualified Candidate bytes
     environment: cloud-release
-    if: ${{ github.ref == 'refs/heads/main' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang') }}
+    if: ${{ github.ref == 'refs/heads/main' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang' || (github.actor == 'github-actions[bot]' && inputs.automation_source_run_id != '')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -58,8 +64,27 @@ jobs:
       CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
       LOCAL_QUALIFICATION_RUN_ID: ${{ inputs.local_qualification_run_id }}
       INSTANCE_DEPLOYMENT_RUN_ID: ${{ inputs.instance_deployment_verification_run_id }}
+      AUTOMATION_SOURCE_RUN_ID: ${{ inputs.automation_source_run_id }}
       SOURCE_VERIFICATION_RUN_ID: ${{ inputs.source_verification_run_id }}
     steps:
+      - name: Verify the daily product publication authority
+        if: inputs.automation_source_run_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.automation_source_run_id }}
+          PRODUCT_SHA: ${{ inputs.ref }}
+          RELEASE_TAG: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN" =~ ^[1-9][0-9]*$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" | jq -e \
+            --arg repo "$GITHUB_REPOSITORY" --arg source "$PRODUCT_SHA" --arg tag "$RELEASE_TAG" \
+            '.repository.full_name == $repo and .path == ".github/workflows/daily-release.yml" and
+             .event == "workflow_dispatch" and .head_branch == "main" and
+             .display_title == ("Cloud product " + $tag) and .status == "in_progress"' > /dev/null
+          tag_object="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" --jq 'select(.object.type == "tag") | .object.sha')"
+          test -n "$tag_object"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_object" --jq '.object.sha')" = "$PRODUCT_SHA"
       - name: Require exact publication inputs and private evidence reader
         env:
           INSTANCE_EVIDENCE_TOKEN: ${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}
@@ -100,10 +125,11 @@ jobs:
           # source here; the later source gate proves reachability from canonical main.
           validate_candidate_run() {
             local file="$1" run_id="$2" repository="$3" workflow="$4"
-            jq -e --arg run_id "$run_id" --arg repository "$repository" --arg workflow "$workflow" --arg product_sha "$PRODUCT_SHA" '
+            jq -e --arg run_id "$run_id" --arg repository "$repository" --arg workflow "$workflow" --arg product_sha "$PRODUCT_SHA" --arg automation "${AUTOMATION_SOURCE_RUN_ID:-}" '
               (.id | tostring) == $run_id and .repository.full_name == $repository and
               .path == $workflow and .event == "workflow_dispatch" and
-              .status == "completed" and .conclusion == "success" and .head_sha == $product_sha
+              .status == "completed" and .conclusion == "success" and (.head_sha | test("^[a-f0-9]{40}$")) and
+              (.head_sha == $product_sha or ($automation != "" and .head_branch == "main"))
             ' "$file" >/dev/null
           }
           validate_candidate_run "$authority/candidate-run.json" "$CANDIDATE_RUN_ID" "$PRODUCT_REPOSITORY" ".github/workflows/build-opl-cloud-candidate.yml"
@@ -137,7 +163,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ inputs.ref }}
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
           path: product-source
       - name: Checkout exact Instance installation validator
@@ -186,6 +212,8 @@ jobs:
           # to canonical main history, so a commit that exists only on an unmerged
           # branch can never be published even when its branch built a valid Candidate.
           git -C product-source fetch --no-tags "https://github.com/$PRODUCT_REPOSITORY.git" main:refs/remotes/promotion-source/main
+          candidate_builder="$(jq -r .head_sha "$OPL_RELEASE_AUTHORITY/candidate-run.json")"
+          git -C product-source merge-base --is-ancestor "$candidate_builder" refs/remotes/promotion-source/main
           if ! git -C product-source merge-base --is-ancestor "$PRODUCT_SHA" refs/remotes/promotion-source/main; then
             echo "Released Product SHA is not an ancestor of canonical main." >&2
             exit 1
@@ -397,7 +425,7 @@ jobs:
           done
   publish:
     name: Publish admitted Candidate bytes
-    if: ${{ github.ref == 'refs/heads/main' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang') }}
+    if: ${{ github.ref == 'refs/heads/main' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang' || (github.actor == 'github-actions[bot]' && inputs.automation_source_run_id != '')) }}
     needs: admission
     runs-on: ubuntu-latest
     timeout-minutes: 15
