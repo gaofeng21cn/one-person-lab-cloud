@@ -121,6 +121,11 @@ jobs:
           PYTHONDONTWRITEBYTECODE: "1"
         run: python3 -m unittest discover -s tests/tools -p daily_product_release_test.py -v
 
+      - name: Validate the clean-host qualification recipe
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python3 -m unittest discover -s tests/tools -p clean_host_qualification_recipe_test.py -v
+
       - name: Validate source
         run: npm run verify:local -- --group source
 
