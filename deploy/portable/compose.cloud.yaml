@@ -83,8 +83,14 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    # The owners reach this database at one address fact, OPL_POSTGRES_HOST,
+    # and that address is inside this installation's own subnet. A list form
+    # here dropped the static address, so the address the owners dial and the
+    # address the container received were two different facts and every owner
+    # failed to connect. The mapping form keeps the address one fact.
     networks:
-      - opl-cloud-local-v2
+      opl-cloud-local-v2:
+        ipv4_address: ${OPL_POSTGRES_HOST:-172.29.0.10}
 
   # The Gateway Integration deployment unit. It carries the CloudIdentity and
   # the Gateway owners in one process and keeps them in two databases: the
