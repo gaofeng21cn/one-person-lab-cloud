@@ -6,7 +6,9 @@
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { lookup } from 'node:dns/promises';
 import { mkdir, readFile, writeFile, chmod, rename, access, copyFile } from 'node:fs/promises';
+import { connect } from 'node:net';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readInstallationBundle, parseStrictJson, sha256 } from './installer-manifest.mjs';
@@ -14,6 +16,9 @@ import { readInstallationBundle, parseStrictJson, sha256 } from './installer-man
 const MIN_SECRET = 32;
 const PACKAGE_SCHEMA_DIGEST = 'sha256:0a4aad95ce337878ad38802ebf0daa3fde76abe3f65400c86bcbb1ec0b3ab883';
 const PUBLISHER_SCHEMA_DIGEST = 'sha256:176d492a0c0c491ca4e180d9e5d3e04a08ab9c621c4254806658ef529c77b5ef';
+const COMPOSE_INSTALL_URL = 'https://docs.docker.com/compose/install/';
+const DOCKER_INSTALL_URL = 'https://docs.docker.com/engine/install/';
+const PRECONDITION_TIMEOUT_MS = 5000;
 const fail = (message, code = 1) => { throw Object.assign(new Error(message), { exitCode: code }); };
 const immutable = new Set(['OPL_CLOUD_IMAGE', 'OPL_RELEASE_SHA', 'OPL_RELEASE_TREE']);
 
@@ -70,15 +75,137 @@ function compose(bundle, env, args) {
     cwd: bundle, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']
   });
 }
-async function requiredVariables(bundle) {
+function oneLine(text) { return String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, 240); }
+function versionParts(text) {
+  const match = /(\d+)\.(\d+)(?:\.(\d+))?/.exec(String(text ?? ''));
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3] ?? 0)] : null;
+}
+// The Compose version is a host fact, so it is read before the first Compose
+// call. There is no version floor: the published compose file is the only
+// requirement, and the parse below decides whether this host can read it. The
+// version is still read, because the refusal names the version the host has
+// and the operator needs to know what to upgrade.
+function readComposeVersion(env) {
+  let reported = '';
+  try {
+    reported = execFileSync('docker', ['compose', 'version'], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      fail(`docker_command_missing\nThe installer needs the Docker CLI on PATH. Install Docker Engine (${DOCKER_INSTALL_URL}), then run this command again.`, 2);
+    }
+    const stderr = oneLine(error.stderr);
+    if (/is not a docker command|unknown docker command|unknown command/i.test(stderr)) {
+      fail(`docker_compose_plugin_missing\nThe Docker CLI on PATH has no "compose" subcommand. This installer drives the Docker Compose v2 plugin (docker compose); the legacy standalone docker-compose binary is not used. Install the plugin (${COMPOSE_INSTALL_URL}), then run this command again.`, 2);
+    }
+    fail(`docker_compose_version_unreadable\n"docker compose version" failed: ${stderr || oneLine(error.message)}\nEnsure the Docker Compose plugin is installed and working (${COMPOSE_INSTALL_URL}), then run this command again.`, 2);
+  }
+  const parts = versionParts(reported);
+  if (!parts) {
+    fail(`docker_compose_version_unreadable\n"docker compose version" did not report a version: ${oneLine(reported) || '(no output)'}\nEnsure the Docker Compose plugin is installed and working (${COMPOSE_INSTALL_URL}), then run this command again.`, 2);
+  }
+  return parts.join('.');
+}
+// The complaint is the Compose parser's own words, and the version is the
+// version the host actually has. A merge tag this Compose does not know is the
+// usual reason, and it is the reason an upgrade fixes.
+function composeParseFailure(version, complaint) {
+  const mergeTag = /!override|!reset|cannot override/i.test(complaint)
+    ? 'The published compose file uses the !override or !reset merge tags, and this Docker Compose does not apply them.\n'
+    : '';
+  return `docker_compose_parse_failed\nThe installed Docker Compose (${version}) cannot read the published compose file compose.cloud.yaml.\nThe Compose parser reported: ${complaint}\n${mergeTag}Upgrade Docker Compose (${COMPOSE_INSTALL_URL}), then run this command again.`;
+}
+// The published compose file is the installation surface, so the only Compose
+// requirement is that the installed Compose can read that file. The parse runs
+// on the resolved environment, before the installation generates its PKI,
+// records its checked version or pulls anything, so a refusal leaves the
+// installation as it was.
+function requireComposeParses(bundle, env, version) {
+  let raw;
+  try {
+    raw = compose(bundle, env, ['-f', 'compose.cloud.yaml', 'config', '--format', 'json']);
+  } catch (error) {
+    fail(composeParseFailure(version, oneLine(error.stderr) || oneLine(error.message)), 2);
+  }
+  try { return JSON.parse(raw); }
+  catch { fail(composeParseFailure(version, 'the Compose parser returned no readable configuration'), 2); }
+}
+function resolveWithTimeout(host, timeoutMs) {
+  let timer;
+  const expiry = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('resolution timed out')), timeoutMs);
+    if (typeof timer.unref === 'function') timer.unref();
+  });
+  return Promise.race([lookup(host), expiry]).finally(() => clearTimeout(timer));
+}
+function connectWithTimeout(address, port, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let timer;
+    const socket = connect({ host: address, port });
+    const finish = (error) => {
+      clearTimeout(timer);
+      socket.removeAllListeners();
+      socket.destroy();
+      if (error) reject(error); else resolve();
+    };
+    timer = setTimeout(() => finish(new Error('connection timed out')), timeoutMs);
+    socket.once('connect', () => finish(null));
+    socket.once('error', error => finish(error));
+  });
+}
+// The Sub2API authority is an external service, so the installer proves it is
+// reachable before it pulls anything. The probe resolves the host and opens a
+// TCP connection. It sends no credential, asks no question and verifies no
+// identity: only the host part of the URL is ever read, printed or stored.
+async function requireSub2apiAuthority(baseUrl) {
+  const name = 'OPL_SUB2API_BASE_URL';
+  const shape = `Set ${name} to the installation's absolute https URL for the Sub2API authority, for example https://sub2api.example.com. Its host must resolve from this machine and accept TCP connections.`;
+  let url;
+  try { url = new URL(String(baseUrl)); }
+  catch { fail(`sub2api_authority_url_invalid:${name}\n${name} is not an absolute URL the installer can read.\n${shape}`, 2); }
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    fail(`sub2api_authority_url_invalid:${name}\n${name} must use the http or https scheme.\n${shape}`, 2);
+  }
+  const host = url.hostname.replace(/^\[/, '').replace(/\]$/, '');
+  if (!host) fail(`sub2api_authority_url_invalid:${name}\n${name} names no host.\n${shape}`, 2);
+  const port = Number(url.port || (url.protocol === 'https:' ? 443 : 80));
+  let address;
+  try { address = (await resolveWithTimeout(host, PRECONDITION_TIMEOUT_MS)).address; }
+  catch { fail(`sub2api_authority_unresolvable:${name}\nThe host ${host} named by ${name} did not resolve from this machine.\n${shape}`, 2); }
+  try { await connectWithTimeout(address, port, PRECONDITION_TIMEOUT_MS); }
+  catch { fail(`sub2api_authority_unreachable:${name}\nThe host ${host} named by ${name} did not accept a TCP connection on port ${port}.\n${shape}`, 2); }
+  return { host, port };
+}
+// The installer's own fact discovery reads the published compose file. The
+// "--variables" command of "docker compose config" shipped in Compose v2.26.0,
+// so a Docker Compose that does not know that flag cannot report the
+// variables the file declares. Such a Compose reads the same file itself, and
+// the only Compose requirement stays the one the file states: the published
+// compose file must be parseable.
+async function requiredVariables(bundle, version) {
   const env = cleanEnvironment();
-  const raw = compose(bundle, env, ['-f', 'compose.cloud.yaml', 'config', '--variables', '--format', 'json']);
-  let model;
-  try { model = JSON.parse(raw); } catch { fail('compose_variables_invalid'); }
-  const required = new Set(Object.values(model).filter(item => item.Required || (item.DefaultValue === '' && item.PresenceValue === '')).map(item => item.Name));
+  let raw = null;
+  try {
+    raw = compose(bundle, env, ['-f', 'compose.cloud.yaml', 'config', '--variables', '--format', 'json']);
+  } catch (error) {
+    const complaint = oneLine(error.stderr) || oneLine(error.message);
+    if (!/unknown flag|unknown option/i.test(complaint)) fail(composeParseFailure(version, complaint), 2);
+  }
+  let model = null;
+  if (raw !== null) { try { model = JSON.parse(raw); } catch { fail('compose_variables_invalid'); } }
+  const required = new Set();
+  if (model) {
+    for (const item of Object.values(model).filter(item => item.Required || (item.DefaultValue === '' && item.PresenceValue === ''))) required.add(item.Name);
+  }
   for (const file of ['compose.cloud.yaml']) {
-    const text = await readFile(join(bundle, file), 'utf8');
-    for (const match of text.matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*):[?+]/g)) required.add(match[1]);
+    let text;
+    try { text = await readFile(join(bundle, file), 'utf8'); } catch { continue; }
+    for (const match of text.matchAll(/(?<!\$)\$\{([A-Za-z_][A-Za-z0-9_]*)([^}]*)\}/g)) {
+      const modifier = match[2];
+      // A Compose variable is required when the file asks for it and no
+      // default stands in for it. "$${...}" is an escaped shell variable,
+      // not a Compose variable, and never a fact.
+      if (modifier === '' || modifier.startsWith(':?') || modifier.startsWith('?') || modifier === ':-' || modifier === '-') required.add(match[1]);
+    }
   }
   for (const name of [...required]) if (name.startsWith('OPL_QUALIFICATION_') || ['OPL_WORKSPACE_APPLICATION_DOMAIN', 'OPL_WORKSPACE_APPLICATION_INGRESS_PEERS'].includes(name)) required.delete(name);
   const result = [...required].sort();
@@ -209,6 +336,7 @@ async function main(args = process.argv.slice(2)) {
   const contractPath = join(bundle, 'opl-cloud-distribution-contract.json');
   await access(contractPath).catch(() => fail('bundle_contract_missing'));
   const bundleInfo = await readInstallationBundle(bundle);
+  const composeVersion = readComposeVersion(cleanEnvironment());
   const statePath = join(options.installDir, 'installation.json');
   const state = await readState(statePath);
   if (state && state.schemaVersion !== 1) fail('installation_state_version_unsupported');
@@ -218,7 +346,7 @@ async function main(args = process.argv.slice(2)) {
   const dataDir = join(options.installDir, 'data');
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
   const template = parseTemplate(await readFile(join(bundle, 'opl-cloud.env.example'), 'utf8'));
-  const required = await requiredVariables(bundle);
+  const required = await requiredVariables(bundle, composeVersion);
   const values = existingValues(state);
   for (const name of required) {
     if (immutable.has(name)) continue;
@@ -253,6 +381,13 @@ async function main(args = process.argv.slice(2)) {
   // Optional Compose values (subnet, database host and proxy port) are also
   // operator facts; exporting only required values silently replaces them.
   for (const name of new Set([...required, ...template.keys()])) if (values.has(name)) env[name] = strictEnvLine(name, values.get(name));
+  // The published compose file is parsed here, on the resolved environment and
+  // before the installation generates its PKI, records the version it was
+  // checked against or pulls anything. The parse is the precondition: it
+  // refuses exactly the Docker Compose versions that cannot read the file this
+  // bundle ships.
+  const config = requireComposeParses(bundle, env, composeVersion);
+  console.log(`install.mjs: Docker Compose ${composeVersion} parsed the published compose file`);
   const pkiDir = values.get('OPL_PKI_DIR');
   requireAbsolute('OPL_PKI_DIR', pkiDir);
   await mkdir(pkiDir, { recursive: true, mode: 0o700 });
@@ -265,9 +400,11 @@ async function main(args = process.argv.slice(2)) {
     const path = values.get(name); if (path) await mkdir(path, { recursive: true, mode: 0o700 });
   }
   next.updatedAt = new Date().toISOString();
+  next.composeVersion = composeVersion;
   await atomicJson(statePath, next);
-  const config = JSON.parse(compose(bundle, env, ['-f', 'compose.cloud.yaml', 'config', '--format', 'json']));
   if (options.dryRun) { console.log(`install.mjs: dry run verified ${bundleInfo.imageRef}`); return; }
+  const authority = await requireSub2apiAuthority(values.get('OPL_SUB2API_BASE_URL'));
+  console.log(`install.mjs: Sub2API authority ${authority.host}:${authority.port} is reachable (network reachability only; no credential was sent or verified)`);
   compose(bundle, env, ['-f', 'compose.cloud.yaml', 'pull']);
   compose(bundle, env, ['-f', 'compose.cloud.yaml', 'up', '-d', '--wait', '--wait-timeout', '180']);
   const services = composeServices(compose(bundle, env, ['-f', 'compose.cloud.yaml', 'ps', '--format', 'json']));
