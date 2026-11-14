@@ -185,19 +185,6 @@ if (!candidateCommands.includes('opl.cloud.console-identity"] == "cloud')) {
   throw new Error("Cloud Candidate must read back the cloud console identity from the emitted image");
 }
 
-const compose = await readFile(new URL("compose.yaml", root), "utf8");
-for (const required of ["control-plane:", "fabric:", "ledger:", "postgres:", "OPL_CLOUD_IMAGE"]) {
-  if (!compose.includes(required)) throw new Error(`portable Compose is missing: ${required}`);
-}
-const commonImage = compose.match(/^  image: (.+)$/m)?.[1] || "";
-for (const service of ["control-plane", "fabric", "ledger", "postgres"]) {
-  const block = compose.match(new RegExp(`^  ${service}:\\n([\\s\\S]*?)(?=^  [a-z][a-z0-9-]*:|^volumes:|^configs:|^networks:)`, "m"))?.[1] || "";
-  const image = block.match(/^    image: (.+)$/m)?.[1] || commonImage;
-  if (!/@sha256:[0-9a-f]{64}$/.test(image) && image !== "${OPL_CLOUD_IMAGE:?Set OPL_CLOUD_IMAGE to an immutable GHCR digest}") {
-    throw new Error(`portable Compose image is not digest-pinned: ${service}`);
-  }
-}
-
 const dockerfile = await readFile(new URL("Dockerfile", root), "utf8");
 const baseImages = dockerfile
   .split("\n")
@@ -377,6 +364,32 @@ for (const process of topology.processes || []) {
   if (!entrypointServices[process.service] && !entrypointServices[process.ownerName]) {
     throw new Error(`the published Compose surface must run every owner process: ${process.service}`);
   }
+}
+
+// Every service the published Compose file declares must carry an image, and
+// every image must be either digest-pinned or the OPL_CLOUD_IMAGE parameter
+// the deployment resolves to an immutable digest. The check reads the Compose
+// file the distribution contract declares as the entrypoint, so the surface
+// that is actually published is the surface that gets checked.
+//
+// The parameter is compared as one exact string, the way the legacy check
+// compared the legacy Compose file's parameter: the thing being guarded is
+// that the image is pinned, not how the parameter explains itself. A parameter
+// that still names OPL_CLOUD_IMAGE but reads differently is reported as a
+// changed parameter instead of as an unpinned image, because that is what it
+// is.
+const productImageParameter = "${OPL_CLOUD_IMAGE:?Set OPL_CLOUD_IMAGE to the product image digest}";
+const productImageParameterShape = /^\$\{OPL_CLOUD_IMAGE:\?[^}]*\}$/;
+for (const [name, service] of Object.entries(entrypointServices)) {
+  const image = String(service?.image ?? "").trim();
+  if (!image) {
+    throw new Error(`the published Compose file declares a service without an image: ${name}`);
+  }
+  if (/@sha256:[0-9a-f]{64}$/.test(image) || image === productImageParameter) continue;
+  if (productImageParameterShape.test(image)) {
+    throw new Error(`the published Compose image parameter text changed: ${name}`);
+  }
+  throw new Error(`the published Compose image is not digest-pinned: ${name}`);
 }
 
 // Every format publishes exactly its candidate assets minus the assets the
