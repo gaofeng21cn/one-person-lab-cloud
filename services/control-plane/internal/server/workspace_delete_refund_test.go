@@ -129,7 +129,7 @@ func TestWorkspaceDeleteRefundDispatchesOnceWithFullAuthoritativeReadback(t *tes
 // a leap year, so a drifting fixture fails here with a named cause.
 func TestWorkspaceDeleteFixtureRefundWindowStaysInsideTheMonthlyBaseline(t *testing.T) {
 	for day := 0; day < 400; day++ {
-		clock := time.Date(2026, 1, 1, 23, 30, 0, 0, time.UTC).AddDate(0, 0, day)
+		clock := time.Date(2028, 1, 1, 23, 30, 0, 0, time.UTC).AddDate(0, 0, day)
 		periodStart, paidThrough := workspaceDeleteFixtureBillingPeriod(clock)
 		if !periodStart.Before(clock) {
 			t.Fatalf("day=%d periodStart=%s is not before the clock=%s", day, periodStart, clock)
