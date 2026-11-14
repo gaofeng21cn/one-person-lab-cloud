@@ -422,33 +422,6 @@ async function controlledPath(root: string, mock?: { bin: string }) {
   }
   return bin;
 }
-// The bundle is checksum-bound, so replacing an asset means re-signing the
-// bundle the way the publisher signs it.
-async function replaceBundleAsset(bundle: string, name: string, bytes: Buffer) {
-  await writeFile(join(bundle, name), bytes);
-  const assets = [];
-  for (const asset of PORTABLE_ASSETS) {
-    assets.push({ name: asset, sha256: sha256Of(await readFile(join(bundle, asset))) });
-  }
-  await writeFile(join(bundle, "opl-cloud-candidate.json"), `${canonicalJson(candidateReceipt(assets))}\n`);
-  const sumLines = [];
-  for (const asset of [...PORTABLE_ASSETS, "opl-cloud-candidate.json"]) {
-    sumLines.push(`${sha256Of(await readFile(join(bundle, asset)))}  ${asset}`);
-  }
-  await writeFile(join(bundle, "SHA256SUMS"), `${sumLines.join("\n")}\n`);
-}
-// The published compose file of a self-contained bundle: no extends, no
-// !override, no !reset. It declares the same services, so the installation
-// reaches the same places. The only difference is the syntax the installed
-// Docker Compose has to parse.
-function selfContainedCompose() {
-  return [
-    "# A self-contained compose file: no extends, no merge tags.",
-    "services:",
-    ...COMPOSE_SERVICES.map(name => `  ${name}:\n    image: alpine:3`),
-    "",
-  ].join("\n");
-}
 // The installer's PKI generation runs shell commands that a test's controlled
 // PATH does not carry. These tests are about the Compose precondition, so the
 // PKI is placed where the installer expects to find it.
@@ -563,12 +536,11 @@ test("installer accepts a Docker Compose that can parse the published compose fi
 
 test("the same Docker Compose is accepted when the published compose file uses no merge tags", async () => {
   await withBundle(async (bundle, root) => {
-    // The same old Docker Compose, the same installer, and a published
-    // compose file that carries no merge tag. Nothing but the file changed,
+    // The same old Docker Compose, the same installer, and the published
+    // compose file, which carries no merge tag. Nothing but the file changed,
     // so the refusal follows the file and not a version number.
     const mock = await writeDockerMock(root, { composeVersion: "Docker Compose version v2.24.3", oldParser: true });
     const env = { PATH: await controlledPath(root, mock) };
-    await replaceBundleAsset(bundle, "compose.cloud.yaml", Buffer.from(selfContainedCompose(), "utf8"));
     const authority = await startSub2apiStub();
     try {
       const { installDir } = await fillInstallationFacts(bundle, root, env, authority.url);
