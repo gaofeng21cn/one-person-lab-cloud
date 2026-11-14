@@ -12,11 +12,24 @@ import { approvedGoPackageTargets } from "./dev-session.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
+// The published compose file is where the product's PostgreSQL image is
+// declared. The root compose.yaml still declares the same image for the
+// legacy installation, but the published file is the one a customer installs
+// and the one the distribution contract names as the entrypoint, so the
+// development gate reads the fact from the published file. The root file
+// stays until the legacy compose files are retired.
+//
+// The path is exported because it is a declaration, not an implementation
+// detail: the test asserts it literally, so re-pointing the fact source
+// fails a check instead of silently reading another file that happens to
+// declare the same image.
+export const PUBLISHED_COMPOSE = "deploy/portable/compose.cloud.yaml";
+
 function composePostgresImage() {
-  const compose = parseYAML(readFileSync(join(root, "compose.yaml"), "utf8"));
+  const compose = parseYAML(readFileSync(join(root, PUBLISHED_COMPOSE), "utf8"));
   const image = String(compose?.services?.postgres?.image || "").trim();
   if (!/^postgres:[^\s@]+@sha256:[0-9a-f]{64}$/.test(image)) {
-    throw new Error("compose.yaml services.postgres.image must be an exact postgres tag@sha256 reference");
+    throw new Error(`${PUBLISHED_COMPOSE} services.postgres.image must be an exact postgres tag@sha256 reference`);
   }
   return image;
 }

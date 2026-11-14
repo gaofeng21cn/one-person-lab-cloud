@@ -27,6 +27,7 @@ import {
   parseVerifyLocalArgs,
   postgresImage,
   postgresVerificationSpecs,
+  PUBLISHED_COMPOSE,
   resolveApprovedBrowser,
   resolveOwnerDatabaseFixture,
   resolveTrustedPython,
@@ -809,7 +810,12 @@ test("verify-local reports leaf Go test failures separately from package failure
 });
 
 test("full local gate covers every PostgreSQL owner with the CI-only extensions", async () => {
-  const compose = parseYAML(await readFile("compose.yaml", "utf8"));
+  // The development gate reads the postgres image fact from the published
+  // compose file. The path is asserted literally here: the fact source is a
+  // declaration, so re-pointing it fails this check instead of silently
+  // reading another file that happens to declare the same image.
+  assert.equal(PUBLISHED_COMPOSE, "deploy/portable/compose.cloud.yaml");
+  const compose = parseYAML(await readFile("deploy/portable/compose.cloud.yaml", "utf8"));
   assert.equal(postgresImage, compose.services.postgres.image);
   assert.match(postgresImage, /^postgres:[^\s@]+@sha256:[0-9a-f]{64}$/);
   assert.notEqual(postgresImage, "postgres:16");
