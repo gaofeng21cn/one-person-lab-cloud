@@ -373,11 +373,11 @@ for (const process of topology.processes || []) {
 // that is actually published is the surface that gets checked.
 //
 // The parameter is compared as one exact string, the way the legacy check
-// compared the legacy Compose file's parameter: the thing being guarded is
-// that the image is pinned, not how the parameter explains itself. A parameter
-// that still names OPL_CLOUD_IMAGE but reads differently is reported as a
-// changed parameter instead of as an unpinned image, because that is what it
-// is.
+// compared the legacy Compose file's parameter. The allowlist is a declared
+// value, so it cannot drift unnoticed: a parameter that still names
+// OPL_CLOUD_IMAGE but reads differently is reported as a changed parameter
+// instead of being accepted, and it is never reported as an unpinned image,
+// because that is not what it is.
 const productImageParameter = "${OPL_CLOUD_IMAGE:?Set OPL_CLOUD_IMAGE to the product image digest}";
 const productImageParameterShape = /^\$\{OPL_CLOUD_IMAGE:\?[^}]*\}$/;
 for (const [name, service] of Object.entries(entrypointServices)) {
