@@ -7,9 +7,9 @@ belong in [roadmap.md](./roadmap.md).
 ## 2026-11-14: Deployment Addresses Are Declared Per Deployment Face
 
 A deployment address is a fact about one deployment face, not about a process.
-The owner topology contract keeps the address a process listens on when it is
-told nothing, and renames that field so its meaning is explicit. It then
-declares, per deployment face, the address each owner process binds. The
+The owner topology contract must keep the address a process listens on when it
+is told nothing under a name that says what that address is, and must declare,
+per deployment face, the address each owner process binds. The
 portable Docker face and the Kubernetes face are separate declarations. The
 uniqueness rule applies inside one face: two owners in one face may not share
 an address, while the same owner may bind a different address in a different
@@ -18,9 +18,11 @@ participates in the uniqueness rule.
 
 This settles a case where the contract recorded the process defaults while the
 portable compose bound different values, so the contract could not be checked
-against what an installation actually runs. The contract now states what each
-face binds, and the boundary check compares a deployment against the contract
-rather than against whichever file happens to sit in the repository.
+against what an installation actually runs. The contract is where each face's
+bindings are stated, and the boundary check compares a deployment against the
+contract rather than against whichever file happens to sit in the repository.
+This records where the fact is declared; it does not claim that the per-face
+declaration is already present in the contract.
 
 ## 2026-11-14: The Portable Product Serves New Installations Only
 
@@ -28,8 +30,9 @@ The portable single-host Docker product installs the owner topology, and it
 serves new installations. An installation that already runs the earlier
 control services, its three databases and its earlier image is not migrated
 into the owner topology by this product, and this product offers no migration
-path for it. The distribution contract states that scope, and the installation
-guide states that an existing installation continues on the Instance channel.
+path for it. The distribution contract must state that scope, and the
+installation guide must state that an existing installation continues on the
+Instance channel.
 
 The reason is that the two topologies do not share a data boundary. The owner
 topology gives every owner its own database and its own credentials; the
@@ -44,29 +47,33 @@ the data.
 ## 2026-11-14: The Published Browser Face Replaces The Earlier One
 
 The published browser face is the `/api/v2/` face served by the Console BFF.
-The earlier `/api/` browser face on the Control Plane is retired. The earlier
-console build, the routes only that build used, the second session
-implementation and the proxy location that routed that face are removed
+The earlier `/api/` browser face on the Control Plane is to be retired: the
+earlier console build, the routes only that build used, the second session
+implementation and the proxy location that routed that face are to be removed
 rather than left switchable. The `/api/` routes that the installation tooling
 reads stay, because those are an installation surface and not a browser face.
 
-There is therefore no second browser face to choose between at install time,
-so an operator never has to learn that one existed. The contract states one
-browser face, and the boundary check fails when a second one appears.
+There is therefore to be no second browser face to choose between at install
+time, so an operator never has to learn that one existed. The contract must
+state one browser face, and the boundary check must fail when a second one
+appears. The retirement is measured by whether a browser-facing `/api/` route
+is still registered, not by whether a flag can switch between them.
 
 ## 2026-11-14: Sub2API Authority And The Compose Version Are Installation Preconditions
 
 Sub2API is the external authority for spendable balance and for the console
 login credential. In the qualification stack it runs inside the stack as a
 fixture; in the published face it is an external dependency. The installation
-checks that the operator's Sub2API authority is reachable before it declares
-the installation complete, and reports it as one of the facts only a person
-can supply. A failed login is not where this is discovered.
+must check that the operator's Sub2API authority is reachable before it
+declares the installation complete, and must report it as one of the facts only
+a person can supply. A failed login is not where this is discovered.
 
-The published compose uses the `!override` and `!reset` merge tags, so it
-requires Docker Compose 2.24.0 or newer. That lower bound is checked before
-the pull, and stated in the installation guide, instead of surfacing later as
-an unresolved compose tag.
+The published compose's own syntax sets the Docker Compose version the
+installation requires. That requirement is checked before the pull, and stated
+in the installation guide, instead of surfacing later as an unresolved compose
+tag. The requirement is the published compose's requirement and no more: a
+lower bound the published compose does not need would refuse installations that
+run.
 
 ## 2026-11-14: The Topology Contract Is A Candidate Asset, Not A Public Release Asset
 
@@ -74,9 +81,9 @@ The owner topology contract states what the Cloud product exposes and which
 consumers read it. It ships in the Candidate bundle, because the installer
 and the boundary checks read it. It is not an additional public Release
 asset, because the public Release is what an operator receives and an operator
-does not read the topology contract. The distribution contract states this
-explicitly, so the boundary check holds the line rather than the rule living
-only in the installation guide.
+does not read the topology contract. The distribution contract must state
+this explicitly, so the boundary check holds the line rather than the rule
+living only in the installation guide.
 
 ## 2026-11-14: Each Deployment Face Is Declared Where It Is Installed
 
