@@ -53,6 +53,7 @@ jobs:
       image_digest: ${{ steps.candidate.outputs.image_digest }}
       installation_receipt_digest: ${{ steps.installation.outputs.receipt_digest }}
       installation_run_digest: ${{ steps.installation.outputs.run_digest }}
+      installability_receipt_digest: ${{ steps.installability.outputs.receipt_digest }}
       product_tree: ${{ steps.candidate.outputs.product_tree }}
       source_paths_digest: ${{ steps.source_paths.outputs.receipt_digest }}
     env:
@@ -243,6 +244,56 @@ jobs:
             echo "amd64_digest=$(jq -r '.cloudImage.platforms[] | select(.platform == "linux/amd64") | .digest' evidence/candidate/opl-cloud-candidate.json)"
             echo "arm64_digest=$(jq -r '.cloudImage.platforms[] | select(.platform == "linux/arm64") | .digest' evidence/candidate/opl-cloud-candidate.json)"
           } >> "$GITHUB_OUTPUT"
+      - name: Verify the bundle installs itself
+        id: installability
+        shell: bash
+        run: |
+          set -euo pipefail
+          receipt="artifacts/installability/opl-cloud-bundle-installability.json"
+          mkdir -p artifacts/installability
+          # The dry run returns before the first image pull and starts no
+          # container, so it proves the bundle installs itself without a
+          # registry and without a container runtime. The bundle it installs is
+          # the exact Candidate bundle this release publishes.
+          digest="$(node product-source/tools/bundle-installability.ts verify \
+            --bundle evidence/candidate \
+            --install-dir "$RUNNER_TEMP/opl-cloud-bundle-install" \
+            --receipt "$receipt")"
+          digest="${digest#receipt_digest=}"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "receipt_digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Verify the bundle installability receipt
+        env:
+          INSTALLABILITY_DIGEST: ${{ steps.installability.outputs.receipt_digest }}
+          CANDIDATE_IMAGE_REF: ${{ steps.candidate.outputs.image_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          receipt="artifacts/installability/opl-cloud-bundle-installability.json"
+          # The receipt is bound to the bytes that produced it, to this product
+          # commit and to the image this release publishes. A receipt about any
+          # other bundle proves nothing about this release.
+          actual="sha256:$(sha256sum "$receipt" | cut -d ' ' -f1)"
+          test "$actual" = "$INSTALLABILITY_DIGEST"
+          jq -e \
+            --arg sha "$PRODUCT_SHA" \
+            --arg image_ref "$CANDIDATE_IMAGE_REF" \
+            --arg digest "$INSTALLABILITY_DIGEST" '
+              .schemaVersion == 1 and .kind == "opl_cloud_bundle_installability" and
+              .dryRun == "verified" and .bundleFormat == "portable-v1" and
+              .productSha == $sha and .imageRef == $image_ref and
+              .installedFacts == 71 and .manualFacts == 13 and
+              (.facts | length == 13) and
+              (.facts[] | has("name") and has("source") and has("value"))
+            ' "$receipt" >/dev/null
+      - name: Upload the bundle installability receipt
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: opl-cloud-bundle-installability-${{ github.run_id }}
+          path: artifacts/installability/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
       - name: Read back Candidate index and platform bytes
@@ -368,6 +419,7 @@ jobs:
           DEPLOYMENT_RUN_DIGEST: ${{ steps.installation.outputs.run_digest }}
           DEPLOYMENT_AUTHORITY_SHA: ${{ steps.evidence.outputs.deployment_authority_sha }}
           SOURCE_PATHS_DIGEST: ${{ steps.source_paths.outputs.receipt_digest }}
+          INSTALLABILITY_DIGEST: ${{ steps.installability.outputs.receipt_digest }}
         shell: bash
         run: |
           set -euo pipefail
@@ -381,7 +433,7 @@ jobs:
             --arg localRun "$LOCAL_QUALIFICATION_RUN_ID" --arg localDigest "$LOCAL_RECEIPT_DIGEST" \
             --arg deploymentRun "$INSTANCE_DEPLOYMENT_RUN_ID" --arg deploymentDigest "$DEPLOYMENT_RECEIPT_DIGEST" \
             --arg deploymentRunDigest "$DEPLOYMENT_RUN_DIGEST" --arg deploymentAuthority "$DEPLOYMENT_AUTHORITY_SHA" \
-            --arg sourceDigest "$SOURCE_PATHS_DIGEST" '
+            --arg sourceDigest "$SOURCE_PATHS_DIGEST" --arg installabilityDigest "$INSTALLABILITY_DIGEST" --arg installabilityRun "$GITHUB_RUN_ID" '
             $candidate[0] as $c | {
               schemaVersion:4, product:"OPL Cloud", productRepository:$c.product.repository, releaseTag:$tag,
               source:{sha:$c.product.sha,tree:$c.product.tree}, acceptance:"installation_and_source_paths",
@@ -390,7 +442,8 @@ jobs:
               installation:{repository:"gaofeng21cn/opl-instance-medopl",workflowRunId:$deploymentRun,runDigest:$deploymentRunDigest,
                 receiptDigest:$deploymentDigest,authoritySha:$deploymentAuthority,status:"deployment_verified"},
               qualifications:{local:{repository:$c.product.repository,workflowRunId:$localRun,receiptDigest:$localDigest},
-                sourcePaths:($sourcePaths[0]+{receiptDigest:$sourceDigest})},
+                sourcePaths:($sourcePaths[0]+{receiptDigest:$sourceDigest}),
+                bundleInstallability:{repository:$c.product.repository,workflowRunId:$installabilityRun,receiptDigest:$installabilityDigest}},
             } + $assetMetadata[0]' > "$release/opl-cloud-release.json"
           node product-source/tools/cloud-portable-assets.ts checksums "$release" release
           (cd "$release" && sha256sum --check --strict SHA256SUMS)
@@ -400,8 +453,10 @@ jobs:
             $manifest[0] as $m | {schemaVersion:4,productRepository:$m.productRepository,workflowSha:$workflowSha,workflowRef:$workflowRef,
               releaseTag:$m.releaseTag,releaseManifestDigest:$manifestDigest,candidateReceiptDigest:$m.candidate.receiptDigest,imageDigest:$m.candidate.image.digest,
               acceptance:$m.acceptance,installation:$m.installation,
-              evidenceClasses:{businessSourcePaths:$m.qualifications.sourcePaths,instanceDeployment:$m.installation},
-              qualification:{localReceiptDigest:$m.qualifications.local.receiptDigest,sourcePathsDigest:$m.qualifications.sourcePaths.receiptDigest}}
+              evidenceClasses:{businessSourcePaths:$m.qualifications.sourcePaths,instanceDeployment:$m.installation,
+                bundleInstallability:$m.qualifications.bundleInstallability},
+              qualification:{localReceiptDigest:$m.qualifications.local.receiptDigest,sourcePathsDigest:$m.qualifications.sourcePaths.receiptDigest,
+                bundleInstallabilityDigest:$m.qualifications.bundleInstallability.receiptDigest}}
             ' > "$root/release-provenance.json"
           echo "artifact_name=opl-cloud-publication-admission-$PRODUCT_SHA-$GITHUB_RUN_ID" >> "$GITHUB_OUTPUT"
       - name: Upload sealed publication checkpoint
@@ -455,6 +510,7 @@ jobs:
       EXPECTED_SOURCE_PATHS_DIGEST: ${{ needs.admission.outputs.source_paths_digest }}
       EXPECTED_PRODUCT_TREE: ${{ needs.admission.outputs.product_tree }}
       EXPECTED_CANDIDATE_RECEIPT_DIGEST: ${{ needs.admission.outputs.candidate_receipt_digest }}
+      EXPECTED_INSTALLABILITY_RECEIPT_DIGEST: ${{ needs.admission.outputs.installability_receipt_digest }}
     steps:
       - name: Checkout exact distribution reader
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -505,7 +561,7 @@ jobs:
           jq -e --arg repository "$PRODUCT_REPOSITORY" --arg tag "$RELEASE_TAG" --arg sha "$PRODUCT_SHA" \
             --arg tree "$EXPECTED_PRODUCT_TREE" --arg candidate "$EXPECTED_CANDIDATE_RECEIPT_DIGEST" --arg digest "$EXPECTED_IMAGE_DIGEST" --arg installation "$EXPECTED_INSTALLATION_RECEIPT_DIGEST" \
             --arg installationRun "$EXPECTED_INSTALLATION_RUN_DIGEST" --arg installationRunId "$EXPECTED_INSTALLATION_RUN_ID" \
-            --arg sourcePaths "$EXPECTED_SOURCE_PATHS_DIGEST" '
+            --arg sourcePaths "$EXPECTED_SOURCE_PATHS_DIGEST" --arg installability "$EXPECTED_INSTALLABILITY_RECEIPT_DIGEST" --arg installabilityRun "$GITHUB_RUN_ID" '
             .schemaVersion == 4 and .productRepository == $repository and .releaseTag == $tag and .source.sha == $sha and
             .source.tree == $tree and .candidate.receiptDigest == $candidate and .candidate.image.digest == $digest and .acceptance == "installation_and_source_paths" and
             .installation.repository == "gaofeng21cn/opl-instance-medopl" and .installation.status == "deployment_verified" and
@@ -513,15 +569,19 @@ jobs:
             .qualifications.sourcePaths.status == "source_verified" and .qualifications.sourcePaths.scope == "business_source_paths" and
             .qualifications.sourcePaths.productSha == $sha and .qualifications.sourcePaths.productTree == .source.tree and .qualifications.sourcePaths.receiptDigest == $sourcePaths and
             .qualifications.sourcePaths.paidBusinessExecuted == false and .qualifications.sourcePaths.customerReadsExecuted == false and
+            .qualifications.bundleInstallability.repository == $repository and .qualifications.bundleInstallability.workflowRunId == $installabilityRun and
+            .qualifications.bundleInstallability.receiptDigest == $installability and
             (.qualifications | has("business") or has("customer") or has("instance") | not)
           ' artifacts/publication/release/opl-cloud-release.json >/dev/null
           jq -e --slurpfile manifest artifacts/publication/release/opl-cloud-release.json \
-            --arg sha "$GITHUB_SHA" --arg sourcePaths "$EXPECTED_SOURCE_PATHS_DIGEST" '
+            --arg sha "$GITHUB_SHA" --arg sourcePaths "$EXPECTED_SOURCE_PATHS_DIGEST" --arg installability "$EXPECTED_INSTALLABILITY_RECEIPT_DIGEST" '
             $manifest[0] as $m | .schemaVersion == 4 and .workflowSha == $sha and .workflowRef == "refs/heads/main" and
             .productRepository == $m.productRepository and .releaseTag == $m.releaseTag and .acceptance == $m.acceptance and
             .candidateReceiptDigest == $m.candidate.receiptDigest and .imageDigest == $m.candidate.image.digest and
             .installation == $m.installation and .evidenceClasses.businessSourcePaths == $m.qualifications.sourcePaths and
-            .evidenceClasses.instanceDeployment == $m.installation and .qualification.sourcePathsDigest == $sourcePaths
+            .evidenceClasses.instanceDeployment == $m.installation and
+            .evidenceClasses.bundleInstallability == $m.qualifications.bundleInstallability and
+            .qualification.sourcePathsDigest == $sourcePaths and .qualification.bundleInstallabilityDigest == $installability
           ' artifacts/publication/release-provenance.json >/dev/null
       - name: Attest release assets
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6

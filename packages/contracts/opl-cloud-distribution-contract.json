@@ -244,7 +244,17 @@
           "local-v2-pki.sh",
           "agent-plugins-1.0.0-plugin.schema.json",
           "opl-cloud-distribution-contract.json"
-        ]
+        ],
+        "installability": {
+          "installer": "install.sh",
+          "entrypoint": "install.mjs",
+          "contract": "opl-cloud-distribution-contract.json",
+          "installedFacts": 71,
+          "manualFacts": 13,
+          "dryRun": true,
+          "publicationRequiresVerifiedInstallability": true,
+          "verifiedBy": "the release workflow's bundle installation dry run"
+        }
       }
     },
     "assetSources": {
