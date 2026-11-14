@@ -184,13 +184,13 @@ test("the candidate bundle must carry the entrypoint and every file it reference
         format.releaseAssets = format.releaseAssets.filter((name: string) => name !== "compose.cloud.yaml");
       },
       /candidate bundle must carry the declared entrypoint: compose\.cloud\.yaml/],
-    ["compose.local-v2.yaml",
+    ["owner-databases.sh",
       (contract) => {
         const format = contract.bundleFormats.formats[contract.bundleFormats.current];
-        format.candidateAssets = format.candidateAssets.filter((name: string) => name !== "compose.local-v2.yaml");
-        format.releaseAssets = format.releaseAssets.filter((name: string) => name !== "compose.local-v2.yaml");
+        format.candidateAssets = format.candidateAssets.filter((name: string) => name !== "owner-databases.sh");
+        format.releaseAssets = format.releaseAssets.filter((name: string) => name !== "owner-databases.sh");
       },
-      /candidate bundle must carry every file the entrypoint references: compose\.local-v2\.yaml/]
+      /candidate bundle must carry every file the entrypoint references: owner-databases\.sh/]
   ];
   for (const [, mutate, expected] of mutations) {
     const directory = await boundaryFixture();
