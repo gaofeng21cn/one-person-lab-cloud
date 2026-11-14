@@ -125,18 +125,31 @@
     "releaseManifestSchemaVersion": 4
   },
   "portableInstallation": {
-    "entrypoint": "compose.yaml",
+    "entrypoint": "compose.cloud.yaml",
     "documentation": "docs/installation.md",
     "runtimeImagePolicy": "all_compose_images_require_registry_tag_and_sha256_digest",
     "processes": [
-      "control-plane",
+      "capability",
+      "build",
+      "runtime-control",
+      "workspace",
+      "serve",
+      "resource-catalog",
+      "ledger",
+      "gateway-integration",
       "fabric",
-      "ledger"
+      "control-plane",
+      "console-bff"
     ],
     "persistence": "postgresql",
     "providerSelection": "instance_or_installer_owned",
     "workspaceProviderRequired": true,
-    "composeScope": "cloud_control_services_only"
+    "composeScope": "owner_topology_processes_only",
+    "ownerTopology": {
+      "contract": "opl-cloud-owner-topology.json",
+      "compose": "compose.cloud.yaml",
+      "statement": "The published surface is the owner topology: the entrypoint Compose file runs exactly the processes the owner topology contract declares, and the owner topology contract itself is a Candidate-only asset."
+    }
   },
   "instanceHandoff": {
     "repository": "gaofeng21cn/opl-instance-medopl",
@@ -154,6 +167,10 @@
     "current": "portable-v1",
     "candidateSchemaVersion": 2,
     "releaseSchemaVersion": 4,
+    "candidateOnlyAssets": [
+      "opl-cloud-owner-topology.json"
+    ],
+    "candidateOnlyAssetsReason": "The owner topology contract is the Cloud-owned declaration the published surface is checked against. It stays in its Candidate bundle and is not an additional public Release asset.",
     "formats": {
       "legacy-v2": {
         "candidateAssets": [
@@ -200,7 +217,26 @@
           "agent-plugins-1.0.0-plugin.schema.json",
           "opl-cloud-distribution-contract.json"
         ],
-        "releaseAssets": "candidateAssets"
+        "releaseAssets": [
+          "compose.yaml",
+          "compose.deployment-platform-owned.yaml",
+          "compose.deployment-managed-tke.yaml",
+          "compose.deployment-customer-owned.yaml",
+          "compose.fabric-local-docker.yaml",
+          "compose.fabric-tencent-tke.yaml",
+          "compose.local-workspace.yaml",
+          "opl-cloud.env.example",
+          "install.sh",
+          "install.mjs",
+          "installer-manifest.mjs",
+          "compose.cloud.yaml",
+          "compose.local-v2.yaml",
+          "cloud-proxy.nginx.conf",
+          "owner-databases.sh",
+          "local-v2-pki.sh",
+          "agent-plugins-1.0.0-plugin.schema.json",
+          "opl-cloud-distribution-contract.json"
+        ]
       }
     },
     "assetSources": {

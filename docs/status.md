@@ -718,13 +718,16 @@ R1d is based on merged Cloud #1125 at
 `3773966a31e2a5d6630038decfa0a812c1488830`. The source removes CP's generic
 new-install/replacement/reinstall builder, transition validator and credential/data
 inheritance helpers, together with their exclusive admission tests. The only
-remaining deployment constructor reads a persisted accepted Key-rotation parent
-and keeps the selected application, revision, resources and data. It replaces
+remaining deployment constructor read a persisted accepted Key-rotation parent
+and kept the selected application, revision, resources and data. It replaced
 that parent's Gateway Secret and credential version; a lost child-claim response
-reuses the original frozen child, including after activation advances selection.
+reused the original frozen child, including after activation advances selection.
+That constructor has since left with the rotation command, so no child
+constructor remains.
 
-Accepted deployment decoding/hashing, worker, activation CAS and operator retry
-remain, as does parent Key/receipt closeout. The current protected observations
+Accepted deployment decoding/hashing, worker and activation CAS remain. The
+operator retry and the parent Key/receipt closeout leave with the rotation
+command. The current protected observations
 listed under [R3a](#retained-workspace-key-rotation-creation-withdrawal-2026-11-04)
 are owner projections, not archive or external-effect clearance. They do not
 justify deleting the shared recovery engine. Historical fixtures now seed
@@ -934,10 +937,11 @@ reveal/copy, no-store secret handling and historical credential lineage remain.
 This withdraws the old command; native credential reveal is not rotation parity.
 
 Already accepted managed credential changes remain frozen deployment operations.
-Their original worker, operator retry, selection/version fences and asynchronous
+Their original worker, selection/version fences and asynchronous
 Console readback remain. Accepted Workspace-Key rotations retain their own
-parent recovery and deployment child; R3a above withdraws fresh parent creation.
-No persisted record, schema, Secret, Key or financial receipt is removed.
+recorded parent evidence; the rotation parent recovery and deployment child
+have since left with the rotation command. No persisted record, schema, Secret,
+Key or financial receipt is removed.
 
 Protected Instance [observation 41750316687](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/41750316687)
 at `2026-11-04T00:54:57.466Z` read the same installed Cloud
@@ -967,11 +971,12 @@ Secret. The lineage test exercises the surviving selected-ancestor and
 credential-inheritance readers, including rejection of a broken predecessor
 chain and exclusion of a newer, unselected candidate.
 
-Accepted rotation recovery still uses the selected deployment's frozen
-configuration and the separate replacement-Secret path. Original Launch Key
+Accepted rotation recovery no longer uses the selected deployment's frozen
+configuration and the separate replacement-Secret path; both leave with the
+rotation command. Original Launch Key
 creation and renewal convergence retain their actual service callers. Shared
-deployment worker, activation/current-selection writers, operator retry,
-historical decoders and persisted records remain. Source caller absence for
+deployment worker, activation/current-selection writers, historical decoders and
+persisted records remain. Source caller absence for
 this removed bootstrap does not establish a production zero-traffic interval,
 archive clearance or retirement of the shared engine. Local verification and
 current-revision CI results belong to the source PR; no Candidate publication,
@@ -991,11 +996,11 @@ removes the default installer, customer installation-resume route/controller,
 Launch-replay installation side effects, worker scan and final revision-admission
 store mutation. Original request/revision records remain readable for history,
 original-order matching, credential lineage and Secret cleanup. This does not
-retire the shared deployment engine: accepted credential deployments and
-Workspace-Key rotation still need its worker, configuration, activation writers
-and operator retry. The retry
-continues an existing frozen operation under reservation, selection/version,
-entitlement and rotation-parent checks. Native Runtime Release, Workspace and
+retire the shared deployment engine: accepted credential deployments still need
+its worker, configuration and activation writers. The operator retry that
+continued an existing frozen operation under reservation, selection/version,
+entitlement and rotation-parent checks has left with the rotation command.
+Native Runtime Release, Workspace and
 Serve selection/update paths remain unchanged. Source verification and actual
 CI belong to the PR; no Candidate or Instance deployment is included.
 
