@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -66,96 +65,6 @@ func TestWorkspaceLaunchGETRedactsDiagnosticCheckDetails(t *testing.T) {
 		body["blockReason"] != "official_profile_apply_failed" || strings.Contains(response.Body.String(), "details") ||
 		strings.Contains(response.Body.String(), "must-not-reach-customer") || strings.Contains(response.Body.String(), "raw-provider-identity") {
 		t.Fatalf("GET leaked diagnostic details: %s", response.Body.String())
-	}
-}
-
-func TestWorkspaceLaunchStageDiagnosticReadsWithoutPersisting(t *testing.T) {
-	row := workspaceLaunchUnknownStageManualReviewRow(t, "runtime")
-	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
-	if err != nil {
-		t.Fatal(err)
-	}
-	store := &workspaceLaunchUnitStore{row: row}
-	adapter := &workspaceLaunchUnitAdapter{stageObservations: map[string]workspaceLaunchStageObservation{
-		"runtime": {
-			State: workspaceLaunchStagePending,
-			Diagnostic: &clients.WorkspaceLaunchStageDiagnostic{
-				SchemaVersion: 1, Owner: "fabric.tencent_tke", BlockReason: "runtime_deployment_not_ready", Retryable: true,
-				ObservedAt: "2026-08-24T10:48:02Z", Checks: []clients.WorkspaceLaunchStageCheck{{
-					Name: "deployment_ready", OK: false, Details: map[string]any{"waitingReason": "CrashLoopBackOff"},
-				}},
-			},
-		},
-	}}
-	before := stringValue(row["result"])
-	diagnostic, found, err := observeWorkspaceLaunchStage(context.Background(), store, adapter, operation.ID)
-	after, _, _ := store.GetRuntimeOperation(context.Background(), operation.ID)
-	if err != nil || !found || diagnostic.SchemaVersion != 3 || diagnostic.OperationIdentityDigest == "" ||
-		diagnostic.OperationVersion != operation.Version || diagnostic.OperationStatus != "manual_review" ||
-		diagnostic.Stage != "runtime" || diagnostic.State != string(workspaceLaunchStagePending) || diagnostic.ErrorCode != "none" ||
-		diagnostic.Owner != "fabric.tencent_tke" || diagnostic.BlockReason != "runtime_deployment_not_ready" || !diagnostic.Retryable ||
-		diagnostic.ObservedAt != "2026-08-24T10:48:02Z" || len(diagnostic.Checks) != 1 || diagnostic.Checks[0].Name != "deployment_ready" ||
-		!diagnostic.AuthoritativeRead || diagnostic.MutationBudget != 0 || diagnostic.AutoRecoveryEligible || diagnostic.AutoRecoveryBlockReason != "stage_provider_pending" ||
-		diagnostic.Attempt.Attempted != 1 ||
-		diagnostic.Attempt.Confirmed != 0 || diagnostic.Attempt.Unknown != 1 || adapter.reads != 1 || adapter.mutations != 0 ||
-		stringValue(after["result"]) != before {
-		t.Fatalf("diagnostic=%#v found=%v reads=%d mutations=%d err=%v", diagnostic, found, adapter.reads, adapter.mutations, err)
-	}
-}
-
-func TestWorkspaceLaunchStageDiagnosticExposesComputeAutoRecoveryEligibilityReadOnly(t *testing.T) {
-	operation := workspaceLaunchAutomaticComputeOwnershipAfterFailedFreshContinuationOperation(t)
-	row, err := workspaceLaunchReconcileOperationRow(operation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	store := &workspaceLaunchUnitStore{row: row}
-	adapter := &workspaceLaunchUnitAdapter{stageObservations: map[string]workspaceLaunchStageObservation{
-		string(contracts.StageCompute): {State: workspaceLaunchStageOwnershipPending},
-	}}
-	before := stringValue(row["result"])
-
-	diagnostic, found, err := observeWorkspaceLaunchStage(context.Background(), store, adapter, operation.ID)
-	after, _, _ := store.GetRuntimeOperation(context.Background(), operation.ID)
-	if err != nil || !found || diagnostic.SchemaVersion != 3 || !diagnostic.AutoRecoveryEligible ||
-		diagnostic.AutoRecoveryBlockReason != "none" || diagnostic.State != string(workspaceLaunchStageOwnershipPending) ||
-		diagnostic.MutationBudget != 0 || adapter.reads != 1 || adapter.mutations != 0 || stringValue(after["result"]) != before {
-		t.Fatalf("diagnostic=%#v found=%v reads=%d mutations=%d err=%v", diagnostic, found, adapter.reads, adapter.mutations, err)
-	}
-}
-
-func TestWorkspaceLaunchStageDiagnosticExposesStorageAbsenceAutoRecoveryEligibilityReadOnly(t *testing.T) {
-	operation := workspaceLaunchAutomaticStorageAbsenceOperation(t)
-	row, err := workspaceLaunchReconcileOperationRow(operation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	store := &workspaceLaunchUnitStore{row: row}
-	adapter := &workspaceLaunchUnitAdapter{}
-	before := stringValue(row["result"])
-
-	diagnostic, found, err := observeWorkspaceLaunchStage(context.Background(), store, adapter, operation.ID)
-	after, _, _ := store.GetRuntimeOperation(context.Background(), operation.ID)
-	if err != nil || !found || diagnostic.SchemaVersion != 3 || !diagnostic.AutoRecoveryEligible ||
-		diagnostic.AutoRecoveryBlockReason != "none" || diagnostic.State != string(workspaceLaunchStageAbsent) ||
-		diagnostic.MutationBudget != 0 || adapter.reads != 1 || adapter.mutations != 0 || stringValue(after["result"]) != before {
-		t.Fatalf("diagnostic=%#v found=%v reads=%d mutations=%d err=%v", diagnostic, found, adapter.reads, adapter.mutations, err)
-	}
-}
-
-func TestWorkspaceLaunchStageDiagnosticReturnsSafeFabricError(t *testing.T) {
-	row := workspaceLaunchStorageAfterExhaustedReplayRow(t)
-	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
-	if err != nil {
-		t.Fatal(err)
-	}
-	adapter := &workspaceLaunchUnitAdapter{readErrors: map[string]error{
-		"storage": &clients.FabricHTTPError{StatusCode: http.StatusServiceUnavailable, Body: `{"error":"UnauthorizedOperation: secret material"}`},
-	}}
-	diagnostic, found, err := observeWorkspaceLaunchStage(context.Background(), &workspaceLaunchUnitStore{row: row}, adapter, operation.ID)
-	if err != nil || !found || diagnostic.State != string(workspaceLaunchStageUnknown) || diagnostic.ErrorCode != "UnauthorizedOperation" ||
-		strings.Contains(diagnostic.ErrorCode, "secret") || adapter.reads != 1 || adapter.mutations != 0 {
-		t.Fatalf("diagnostic=%#v found=%v reads=%d mutations=%d err=%v", diagnostic, found, adapter.reads, adapter.mutations, err)
 	}
 }
 

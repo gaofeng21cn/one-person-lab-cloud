@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strings"
 
 	"opl-cloud/services/control-plane/internal/clients"
 )
@@ -45,25 +44,6 @@ func registerWorkspaceImageHistoryRoutes(mux *http.ServeMux, app *controlPlaneSe
 	mux.HandleFunc("GET /api/operator/workspace-runtime-image-policy", app.protected(true, app.getWorkspaceImageReleasePolicy))
 }
 
-func (app *controlPlaneServer) getWorkspaceRuntimeImageReplacement(w http.ResponseWriter, r *http.Request) {
-	workspaceID, operationID := strings.TrimSpace(r.PathValue("workspaceId")), strings.TrimSpace(r.PathValue("operationId"))
-	row, found, err := app.tables.GetRuntimeOperation(r.Context(), operationID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "state_read_failed")
-		return
-	}
-	if !found || stringValue(row["action"]) != workspaceRuntimeImageReplacementAction || stringValue(row["workspaceId"]) != workspaceID {
-		writeError(w, http.StatusNotFound, "workspace_runtime_image_replacement_not_found")
-		return
-	}
-	operation, status, err := decodeWorkspaceRuntimeImageReplacementOperation(row, stringValue(row["accountId"]), workspaceID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "state_read_failed")
-		return
-	}
-	writeJSON(w, http.StatusOK, workspaceRuntimeImageReplacementResponse(row, operation, status))
-}
-
 func decodeWorkspaceRuntimeImageReplacementOperation(row map[string]any, accountID, workspaceID string) (workspaceRuntimeImageReplacementOperation, string, error) {
 	if stringValue(row["accountId"]) != accountID || stringValue(row["workspaceId"]) != workspaceID || stringValue(row["action"]) != workspaceRuntimeImageReplacementAction {
 		return workspaceRuntimeImageReplacementOperation{}, "", errWorkspaceRuntimeImageReplacementState
@@ -80,17 +60,4 @@ func decodeWorkspaceRuntimeImageReplacementOperation(row map[string]any, account
 		return workspaceRuntimeImageReplacementOperation{}, "", errWorkspaceRuntimeImageReplacementState
 	}
 	return operation, status, nil
-}
-
-func workspaceRuntimeImageReplacementResponse(row map[string]any, operation workspaceRuntimeImageReplacementOperation, status string) map[string]any {
-	response := map[string]any{
-		"operationId": row["operationId"], "status": status, "workspaceId": operation.Input.WorkspaceID,
-		"runtimeId": operation.Input.RuntimeID, "previousImageDigest": operation.Input.PreviousImageDigest,
-		"replacementImageDigest": operation.Input.ReplacementImageDigest, "reason": operation.Reason,
-		"runtime": operation.Runtime, "createdAt": row["createdAt"], "updatedAt": row["updatedAt"],
-	}
-	if errorCode := firstNonEmpty(stringValue(row["errorCode"]), operation.ErrorCode); errorCode != "" {
-		response["errorCode"] = errorCode
-	}
-	return response
 }

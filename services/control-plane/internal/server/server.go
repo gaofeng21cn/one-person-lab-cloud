@@ -479,11 +479,6 @@ func mapField(input map[string]any, key string) map[string]any {
 	return cloneMap(value)
 }
 
-func confirmed(input map[string]any, key string) bool {
-	value, ok := input[key].(bool)
-	return ok && value
-}
-
 func requiredMutationKey(w http.ResponseWriter, r *http.Request) (string, bool) {
 	key := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
 	if key == "" {
@@ -617,19 +612,6 @@ func emptyMergeValue(value any) bool {
 		return typed == ""
 	default:
 		return false
-	}
-}
-
-func reconciliationResponse(result clients.ReconciliationResult) map[string]any {
-	return map[string]any{
-		"id":     result.ID,
-		"status": result.Status,
-		"guard": map[string]any{
-			"status":             result.Status,
-			"blockNewWorkspaces": result.BlockNewWorkspaces,
-			"reason":             result.Reason,
-		},
-		"report": result.Report,
 	}
 }
 

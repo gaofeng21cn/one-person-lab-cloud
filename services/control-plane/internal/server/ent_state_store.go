@@ -469,13 +469,6 @@ var (
 		textField("CreatedByUserID", "SetCreatedByUserID", "createdByUserId"),
 		textField("UpdatedByUserID", "SetUpdatedByUserID", "updatedByUserId"),
 	}
-	applicationDataMaterialEntFields = []entRecordField{
-		textField("ApplicationID", "SetApplicationID", "applicationId"),
-		textField("Version", "SetVersion", "version"),
-		textField("Digest", "SetDigest", "digest"),
-		textField("Payload", "SetPayload", "payload"),
-		textField("AdmittedByUserID", "SetAdmittedByUserID", "admittedByUserId"),
-	}
 	announcementReadEntFields = []entRecordField{
 		textField("AnnouncementID", "SetAnnouncementID", "announcementId"),
 		textField("UserID", "SetUserID", "userId"),
@@ -891,22 +884,6 @@ func (s *postgresEntStateStore) BillingReconciliation(ctx context.Context) (map[
 		return nil, false, err
 	}
 	return recordFromEnt(row, reconcileEntFields), true, nil
-}
-
-func (s *postgresEntStateStore) ArchiveState(ctx context.Context) (map[string]any, error) {
-	auditEvents, err := loadEventRows(ctx, s.client.ArchivedAdminAuditEvent.Query().All, auditEntFields)
-	if err != nil {
-		return nil, err
-	}
-	e2eRecords, err := loadEventRows(ctx, s.client.ProductionE2ERecord.Query().All, productionE2EEntFields)
-	if err != nil {
-		return nil, err
-	}
-	return map[string]any{
-		"adminAuditEvents": rowsAsAny(auditEvents),
-		"productionE2E":    productionE2ESummary(e2eRecords),
-		"retentionPolicy":  currentRetentionPolicy().dto(),
-	}, nil
 }
 
 func (s *postgresEntStateStore) ApplyRetention(ctx context.Context, policy retentionPolicy) (map[string]any, error) {
