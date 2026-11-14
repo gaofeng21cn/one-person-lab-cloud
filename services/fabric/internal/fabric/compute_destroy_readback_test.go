@@ -109,8 +109,8 @@ func TestTencentComputeDestroyStatusStaysRetryableWhileCvmTerminates(t *testing.
 func TestTencentComputeDestroyStatusCarriesRecycledCVMEligibilityFacts(t *testing.T) {
 	allocation := computeDestroyReadbackAllocation("compute-cvm-recycled", tencentComputeDestroyPhaseAttempted, "1")
 	response := computeDestroyStatusResponse(provisionerRequest{
-		Region: allocation.ProviderData["region"],
-		Pool: provisionerPool{NodePoolID: allocation.NodePoolID},
+		Region:     allocation.ProviderData["region"],
+		Pool:       provisionerPool{NodePoolID: allocation.NodePoolID},
 		Allocation: provisionerAllocation{InstanceID: allocation.InstanceID, MachineName: allocation.MachineName, NodeName: allocation.NodeName, PrivateIP: allocation.PrivateIP, MachineType: "NativeCVM"},
 	}, false, "NOT_FOUND", "SHUTDOWN")
 	response.ProviderData["isolatedSource"] = "MANMADE"
@@ -199,8 +199,20 @@ func TestTencentComputeDestroyStatusKeepsIdentityDriftAndSdkFailureFailing(t *te
 			return response, nil
 		}
 		readback, err := provider.ReadComputeDestroyStatus(context.Background(), allocation)
-		if err == nil || readback.DestroyState != "" || validTencentComputeAbsenceEvidence(readback) {
+		if err == nil || err.Error() != "compute_destroy_status_provider_identity_mismatch" || readback.DestroyState != "" || validTencentComputeAbsenceEvidence(readback) {
 			t.Fatalf("identity drift readback=%#v err=%v", readback, err)
+		}
+	})
+	t.Run("absence facts", func(t *testing.T) {
+		provider := NewTencentProvider()
+		provider.provision = func(_ context.Context, request provisionerRequest) (provisionerResponse, error) {
+			response := computeDestroyStatusResponse(request, false, "NOT_FOUND", "NOT_FOUND")
+			response.ProviderData["describeCvmRequestId"] = ""
+			return response, nil
+		}
+		readback, err := provider.ReadComputeDestroyStatus(context.Background(), allocation)
+		if err == nil || err.Error() != "compute_destroy_status_provider_absence_mismatch" || readback.DestroyState != "" || validTencentComputeAbsenceEvidence(readback) {
+			t.Fatalf("incomplete provider absence readback=%#v err=%v", readback, err)
 		}
 	})
 	t.Run("sdk readback failure", func(t *testing.T) {

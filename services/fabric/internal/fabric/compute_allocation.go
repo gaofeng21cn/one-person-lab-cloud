@@ -525,12 +525,12 @@ func (s *Service) ReadComputeDestroyStatus(ctx context.Context, allocationID str
 		return readback, err
 	}
 	if !sameComputeDestroyStableIdentity(existing, readback) {
-		return readback, fmt.Errorf("compute_destroy_status_readback_mismatch")
+		return readback, fmt.Errorf("compute_destroy_status_fabric_identity_mismatch")
 	}
 	// An unfinished deletion keeps its classification so the owning Control Plane
 	// operation retries the same operation instead of recording a terminal result.
 	if readback.DestroyState != "" && !validTencentComputeDestroyRetryEvidence(readback) {
-		return readback, fmt.Errorf("compute_destroy_status_readback_mismatch")
+		return readback, fmt.Errorf("compute_destroy_status_retry_evidence_invalid")
 	}
 	// The observing owner stamps when it read the fact and names that readback, on
 	// the readback result only.

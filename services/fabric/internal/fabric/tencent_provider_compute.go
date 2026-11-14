@@ -1201,7 +1201,7 @@ func (p *TencentProvider) ReadComputeDestroyStatus(ctx context.Context, allocati
 		return allocation, err
 	}
 	if !validTencentComputeDestroyStatusIdentityResponse(response, allocation) {
-		return allocation, fmt.Errorf("compute_destroy_status_readback_mismatch")
+		return allocation, fmt.Errorf("compute_destroy_status_provider_identity_mismatch")
 	}
 	if !response.OK {
 		return allocation, provisionerError(response)
@@ -1231,7 +1231,7 @@ func (p *TencentProvider) ReadComputeDestroyStatus(ctx context.Context, allocati
 		return observed, nil
 	}
 	if !validTencentComputeDestroyStatusAbsenceResponse(response, allocation) {
-		return allocation, fmt.Errorf("compute_destroy_status_readback_mismatch")
+		return allocation, fmt.Errorf("compute_destroy_status_provider_absence_mismatch")
 	}
 	confirmed := cloneComputeAllocation(allocation)
 	confirmed.Status = "external_deleted"
@@ -1252,7 +1252,7 @@ func (p *TencentProvider) ReadComputeDestroyStatus(ctx context.Context, allocati
 	confirmed.ProviderData["tkeStatus"] = "NOT_FOUND"
 	confirmed.ProviderData["verifyMachineDeletedReqId"] = response.ProviderData["describeClusterMachinesReq"]
 	if !validTencentComputeAbsenceEvidence(confirmed) {
-		return allocation, fmt.Errorf("compute_destroy_status_readback_mismatch")
+		return allocation, fmt.Errorf("compute_destroy_status_fabric_absence_evidence_invalid")
 	}
 	return confirmed, nil
 }

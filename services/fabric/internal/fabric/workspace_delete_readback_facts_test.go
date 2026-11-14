@@ -5,6 +5,8 @@ import (
 	"errors"
 	"slices"
 	"testing"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 // computeDestroyStatusStub reports the provider-authoritative absence facts and
@@ -70,8 +72,26 @@ func TestReadComputeDestroyStatusRejectsProviderIdentityDrift(t *testing.T) {
 	drifted := allocation
 	drifted.Status, drifted.InstanceID = "external_deleted", "ins-other"
 	provider.readback = drifted
-	if _, err := service.ReadComputeDestroyStatus(context.Background(), "compute-alpha"); err == nil {
-		t.Fatal("identity drift was reported as an authoritative readback")
+	if _, err := service.ReadComputeDestroyStatus(context.Background(), "compute-alpha"); err == nil || err.Error() != "compute_destroy_status_fabric_identity_mismatch" {
+		t.Fatalf("identity drift error=%v", err)
+	}
+}
+
+func TestReadComputeDestroyStatusRejectsRetryEvidenceContradictingAbsence(t *testing.T) {
+	provider := &computeDestroyStatusStub{}
+	service := NewService(provider)
+	allocation := computeDestroyReadbackAllocation("compute-retry-absence-conflict", tencentComputeDestroyPhaseAttempted, "1")
+	seedComputeAllocationForDeleteReadback(t, service, allocation)
+	absent := false
+	readback := allocation
+	readback.Status, readback.DestroyState = "external_deleted", contracts.WorkspaceDeleteOutcomeUnconfirmedSend
+	readback.ProviderRequestID, readback.MachinePresent, readback.TKEStatus, readback.CVMStatus = "request-readback", &absent, "NOT_FOUND", "NOT_FOUND"
+	readback.ProviderData["machinePresent"], readback.ProviderData["tkeStatus"] = "false", "NOT_FOUND"
+	readback.ProviderData["describeNodePoolRequestId"], readback.ProviderData["verifyMachineDeletedReqId"] = "request-pool", "request-machine"
+	readback.ProviderData["cvmApplicable"], readback.ProviderData["cvmStatus"], readback.ProviderData["describeCvmRequestId"] = "true", "NOT_FOUND", "request-cvm"
+	provider.readback = readback
+	if _, err := service.ReadComputeDestroyStatus(context.Background(), allocation.ID); err == nil || err.Error() != "compute_destroy_status_retry_evidence_invalid" {
+		t.Fatalf("contradictory retry evidence error=%v", err)
 	}
 }
 

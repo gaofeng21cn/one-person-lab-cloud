@@ -20,6 +20,11 @@ const STATUS = Object.freeze({
 const ERROR = Object.freeze({ INVALID: "workspace_fabric_dispatch_error_readback_invalid" } as const);
 const ERROR_TOKEN = Object.freeze({
   STATUS_MISMATCH: "compute_destroy_status_readback_mismatch",
+  FABRIC_IDENTITY: "compute_destroy_status_fabric_identity_mismatch",
+  RETRY_EVIDENCE: "compute_destroy_status_retry_evidence_invalid",
+  PROVIDER_IDENTITY: "compute_destroy_status_provider_identity_mismatch",
+  PROVIDER_ABSENCE: "compute_destroy_status_provider_absence_mismatch",
+  FABRIC_ABSENCE_EVIDENCE: "compute_destroy_status_fabric_absence_evidence_invalid",
   ALLOCATION_MISSING: "compute_allocation_not_found",
   OWNERSHIP_MISSING: "compute_readback_ownership_missing",
 } as const);
@@ -92,6 +97,16 @@ test("unknown raw errors are digested and block the receipt", () => {
   assert.equal(receipt.matches[0].errorDigest, `sha256:${createHash("sha256").update(secretError).digest("hex")}`);
   assert.doesNotMatch(JSON.stringify(receipt), /top-secret|never-persist-this|credential|provider returned/);
   assert.throws(() => validateWorkspaceFabricDispatchErrorReadbackReceipt({ ...receipt, status: STATUS.MATCHED }));
+});
+
+test("projects fixed read-only compute mismatch stages without raw provider facts", () => {
+  for (const errorToken of [ERROR_TOKEN.FABRIC_IDENTITY, ERROR_TOKEN.RETRY_EVIDENCE, ERROR_TOKEN.PROVIDER_IDENTITY,
+    ERROR_TOKEN.PROVIDER_ABSENCE, ERROR_TOKEN.FABRIC_ABSENCE_EVIDENCE]) {
+    const receipt = produceWorkspaceFabricDispatchErrorReadback(input(line(fabricOperationId, errorToken)));
+    assert.equal(receipt.status, STATUS.MATCHED);
+    assert.equal(receipt.matches[0].errorToken, errorToken);
+    assert.doesNotMatch(JSON.stringify(receipt), /workspace_bfa|op_d39e|fabric-op-compute/);
+  }
 });
 
 test("no exact operation match remains unknown without inventing an error", () => {
