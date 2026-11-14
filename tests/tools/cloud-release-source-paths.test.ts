@@ -129,10 +129,10 @@ test("real sealing, publication and public-readback scripts agree on source-only
       PRODUCT_TREE: f.candidate.product.tree, CANDIDATE_RUN_ID: "11", CANDIDATE_RECEIPT_DIGEST: candidateReceiptDigest(f.candidate),
       LOCAL_QUALIFICATION_RUN_ID: "22", LOCAL_RECEIPT_DIGEST: digest("1"), INSTANCE_DEPLOYMENT_RUN_ID: "33",
       DEPLOYMENT_RECEIPT_DIGEST: digest("2"), DEPLOYMENT_RUN_DIGEST: digest("3"), DEPLOYMENT_AUTHORITY_SHA: "f".repeat(40),
-      SOURCE_PATHS_DIGEST: hash(pathsText), GITHUB_SHA: "f".repeat(40), GITHUB_REF: "refs/heads/main", GITHUB_RUN_ID: "44",
+      SOURCE_PATHS_DIGEST: hash(pathsText), INSTALLABILITY_DIGEST: digest("4"), GITHUB_SHA: "f".repeat(40), GITHUB_REF: "refs/heads/main", GITHUB_RUN_ID: "44",
       RUNNER_TEMP: join(f.root, "runner-temp"), GITHUB_OUTPUT: join(f.root, "output"), GITHUB_ENV: join(f.root, "env"),
       EXPECTED_PRODUCT_TREE: f.candidate.product.tree, EXPECTED_CANDIDATE_RECEIPT_DIGEST: candidateReceiptDigest(f.candidate), EXPECTED_IMAGE_DIGEST: digest("c"), EXPECTED_INSTALLATION_RECEIPT_DIGEST: digest("2"), EXPECTED_INSTALLATION_RUN_DIGEST: digest("3"),
-      EXPECTED_INSTALLATION_RUN_ID: "33", EXPECTED_SOURCE_PATHS_DIGEST: hash(pathsText),
+      EXPECTED_INSTALLATION_RUN_ID: "33", EXPECTED_SOURCE_PATHS_DIGEST: hash(pathsText), EXPECTED_INSTALLABILITY_RECEIPT_DIGEST: digest("4"),
       PUBLICATION_WORKFLOW_SHA: "f".repeat(40), PUBLICATION_WORKFLOW_REF: "refs/heads/main" };
     const shell = (script: string) => spawnSync("bash", ["-c", script], { cwd: f.root, env, encoding: "utf8" });
     const sealed = shell(release.jobs.admission.steps.find((s: any) => s.id === "release_bundle").run);
@@ -163,6 +163,15 @@ test("real sealing, publication and public-readback scripts agree on source-only
       await writeFile(manifestPath, JSON.stringify({ ...manifest, ...patch })); checksum();
       assert.notEqual(shell(publicationScript).status, 0, JSON.stringify(patch));
       assert.notEqual(shell(readbackScript).status, 0, JSON.stringify(patch));
+    }
+    for (const bundleInstallability of [undefined,
+      { ...manifest.qualifications.bundleInstallability, repository: "other/repo" },
+      { ...manifest.qualifications.bundleInstallability, workflowRunId: "45" },
+      { ...manifest.qualifications.bundleInstallability, receiptDigest: digest("9") },
+    ]) {
+      await writeFile(manifestPath, JSON.stringify({ ...manifest,
+        qualifications: { ...manifest.qualifications, bundleInstallability } })); checksum();
+      assert.notEqual(shell(publicationScript).status, 0, JSON.stringify(bundleInstallability));
     }
     await writeFile(manifestPath, JSON.stringify(manifest)); checksum();
     for (const patch of [

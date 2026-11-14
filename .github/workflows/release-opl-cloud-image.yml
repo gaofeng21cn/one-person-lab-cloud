@@ -255,7 +255,10 @@ jobs:
           # container, so it proves the bundle installs itself without a
           # registry and without a container runtime. The bundle it installs is
           # the exact Candidate bundle this release publishes.
-          digest="$(node product-source/tools/bundle-installability.ts verify \
+          # Admission policy follows this workflow's authority. The frozen
+          # Candidate may predate this gate and must not be rebuilt to obtain it.
+          digest="$(node release-authority/tools/bundle-installability.ts verify \
+            --contract release-authority/packages/contracts/opl-cloud-distribution-contract.json \
             --bundle evidence/candidate \
             --install-dir "$RUNNER_TEMP/opl-cloud-bundle-install" \
             --receipt "$receipt")"

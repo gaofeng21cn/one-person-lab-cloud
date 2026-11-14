@@ -23,7 +23,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 export const INSTALLABILITY_RECEIPT_KIND = "opl_cloud_bundle_installability";
 export const INSTALLABILITY_RECEIPT_SCHEMA_VERSION = 1;
@@ -283,10 +283,16 @@ async function readInstallationState(installDir) {
  * what it proved.
  */
 export async function verifyBundleInstallability({ bundle, installDir, contract, manifest }) {
+  bundle = resolve(bundle);
+  installDir = resolve(installDir);
   const contractFormat = String(contract?.bundleFormats?.current || "");
   const declaration = contract?.bundleFormats?.formats?.[contractFormat]?.installability;
   if (!declaration || typeof declaration !== "object") {
     throw installabilityError("bundle_installability_not_declared", contractFormat);
+  }
+  const bundledContract = JSON.parse(await readFile(join(bundle, "opl-cloud-distribution-contract.json"), "utf8"));
+  if (bundledContract?.bundleFormats?.current !== contractFormat) {
+    throw installabilityError("bundle_installability_format_mismatch", contractFormat);
   }
   const template = await readFile(join(bundle, "opl-cloud.env.example"), "utf8");
   const publishedCompose = await readFile(join(bundle, "compose.cloud.yaml"), "utf8");
@@ -372,19 +378,20 @@ export function installabilityReceiptDigest(receipt) {
 }
 
 async function main(args) {
-  const options = { bundle: "", installDir: "", receipt: "" };
+  const options = { bundle: "", installDir: "", receipt: "", contract: "" };
   const rest = args[0] === "verify" ? args.slice(1) : args;
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
     if (arg === "--bundle") { options.bundle = rest[++index] ?? ""; continue; }
     if (arg === "--install-dir") { options.installDir = rest[++index] ?? ""; continue; }
     if (arg === "--receipt") { options.receipt = rest[++index] ?? ""; continue; }
+    if (arg === "--contract") { options.contract = rest[++index] ?? ""; continue; }
     throw installabilityError("bundle_installability_argument_unknown", arg);
   }
   if (!options.bundle || !options.installDir) {
     throw installabilityError("bundle_installability_arguments_required", "--bundle and --install-dir");
   }
-  const contract = JSON.parse(await readFile(join(options.bundle, "opl-cloud-distribution-contract.json"), "utf8"));
+  const contract = JSON.parse(await readFile(options.contract || join(options.bundle, "opl-cloud-distribution-contract.json"), "utf8"));
   const receipt = await verifyBundleInstallability({
     bundle: options.bundle, installDir: options.installDir, contract,
   });

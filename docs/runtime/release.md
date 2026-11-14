@@ -513,6 +513,20 @@ exact Product `ref`, `candidate_run_id`, `local_qualification_run_id`,
 `instance_deployment_verification_run_id` and `source_verification_run_id`.
 Admission validates their original run/artifact authority and exact identity.
 
+Before sealing a publication, admission runs the Candidate bundle's own
+`install.sh` in dry-run mode with derived local fixture facts. The bundle's
+installer validates its manifests and checksums, generates isolated PKI and
+parses the published Compose configuration. The resulting installability
+receipt is bound to the Candidate source and image; its digest and producing
+run are carried by the sealed manifest and checked again by publication.
+The verifier and its acceptance contract come from the current release
+authority, so a frozen Candidate that predates this gate can be checked without
+changing its bytes. Its declared bundle format must match that contract.
+PR CI runs the same tool over a bundle assembled from its exact source with
+synthetic image digests. Both checks stop before image pulls or container
+startup and prove neither an installed service nor provider or business
+acceptance.
+
 Both admission and publication use the existing protected `cloud-release`
 environment. Admission reuses the owner-approved
 `OPL_GITHUB_RELEASE_ADMIN_TOKEN` solely for Instance evidence and validator
