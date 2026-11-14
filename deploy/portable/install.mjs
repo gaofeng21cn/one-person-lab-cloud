@@ -302,12 +302,17 @@ function composeServices(text) {
   } catch { fail('cloud_services_invalid'); }
 }
 function ownerReadback(bundle, env, sourceSha) {
+  // Two criteria, and each identity is probed by the one that belongs to it.
+  // An owner is a data owner and is probed over its gRPC health service. The
+  // Control Plane and the Console BFF are deployment units rather than data
+  // owners: they carry a transport identity, not an owner identity, so they
+  // are probed over the HTTP surface each one serves.
   const probes = [
     ['tenant', 'tenant', '127.0.0.1:8187'], ['resource-catalog', 'resource_catalog', '127.0.0.1:8186'],
     ['ledger', 'ledger', '127.0.0.1:8189'], ['capability', 'capability', '127.0.0.1:8181'],
     ['build', 'build', '127.0.0.1:8182'], ['runtime-control', 'runtime_control', '127.0.0.1:8183'],
     ['workspace', 'workspace', '127.0.0.1:8184'], ['serve', 'serve', '127.0.0.1:8185'],
-    ['fabric', 'fabric', '127.0.0.1:8188'], ['console-bff', 'console_bff', '127.0.0.1:8190'],
+    ['fabric', 'fabric', '127.0.0.1:8188'], ['console-bff', 'console_bff', 'http://127.0.0.1:8190'],
     ['control-plane', 'control_plane', 'http://127.0.0.1:8787']
   ];
   for (const [service, owner, address] of probes) {
