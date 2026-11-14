@@ -1,17 +1,22 @@
 // The local v2 installation facts.
 //
 // deploy/portable/opl-cloud.env.example is the only declaration of an
-// installation's variables, and deploy/portable/compose.local-v2.yaml is the only
-// declaration of which of those variables the local v2 topology reads. This
-// module derives one installation's environment file from those two files, so
+// installation's variables, and the Compose files the qualification runs are
+// the only declaration of which of those variables the topology reads. The
+// qualification runs the published topology
+// (deploy/portable/compose.cloud.yaml) together with the qualification
+// overlay (deploy/portable/compose.qualification.yaml), and this module reads
+// both, so the facts are derived against the topology that actually runs.
+// This module derives one installation's environment file from those files, so
 // the topology's inputs are never hand-written and never drift from the
 // template that declares them.
 //
 // The derivation is a check as much as a fill. It refuses to produce an
 // environment file when
 //
-//   - the topology reads a variable the template does not declare, because the
-//     installation would run on a value nobody declared;
+//   - the topology reads a variable neither the template nor the Compose
+//     reader declares, because the installation would run on a value nobody
+//     declared;
 //   - a variable the topology reads still holds a placeholder, because a
 //     placeholder is an unfilled fact and a raw "<" is a redirection operator to
 //     any shell that reads the file;
@@ -35,6 +40,23 @@ export const LOCAL_V2_MINIMUM_TOKEN_LENGTH = 32;
 // The PostgreSQL initialization refuses a shorter password and refuses two
 // roles that share one.
 export const LOCAL_V2_MINIMUM_PASSWORD_LENGTH = 32;
+
+// The variables Compose declares to the Compose file it reads.
+//
+// Compose puts its own variables in the interpolation environment before it
+// reads a file: COMPOSE_PROJECT_NAME comes from the invocation's
+// --project-name, and the Compose reader publishes it to the file it reads.
+// The published topology reads it to name its gateway container, so the
+// installation's declaration file does not declare it and must not: the
+// Compose reader declares it. A name that neither the installation nor the
+// Compose reader declares is still refused.
+//
+// This narrows the "not declared" refusal to the installation's own
+// variables. It does not tolerate an unfilled fact, a sentinel or a name the
+// template declares twice.
+export const LOCAL_V2_COMPOSE_READER_VARIABLES = Object.freeze(["COMPOSE_PROJECT_NAME"]);
+
+const COMPOSE_READER_VARIABLES = new Set(LOCAL_V2_COMPOSE_READER_VARIABLES);
 
 const ASSIGNMENT = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/;
 // Every placeholder in the template is an angle-bracketed token, whether it
@@ -151,7 +173,7 @@ export function localV2InstallationFacts({ template, compose, values = {} } = {}
   const referenced = localV2ReferencedVariables(compose);
   const declared = new Set(declarations.map((declaration) => declaration.name));
 
-  const missing = referenced.filter((name) => !declared.has(name));
+  const missing = referenced.filter((name) => !declared.has(name) && !COMPOSE_READER_VARIABLES.has(name));
   if (missing.length) {
     throw localV2FactsError("local_v2_variable_not_declared", missing.join(", "));
   }

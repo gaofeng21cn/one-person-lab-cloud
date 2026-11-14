@@ -50,10 +50,18 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // deployment overlay, the Fabric provider overlay, and the Local-Workspace
 // overlay. The deployment and Fabric overlays are separate selections that the
 // script fixes to the Local installation it qualifies.
-// The v2 installation is one Compose file: its owners, its proxy, its fixture
-// authority and its PKI are all declared there, so a v2 run starts exactly this
-// file and no retained overlay.
-export const LOCAL_V2_QUALIFICATION_COMPOSE = "deploy/portable/compose.local-v2.yaml";
+// The v2 installation is the published installation plus the qualification
+// overlay: it starts exactly the file a customer installs
+// (deploy/portable/compose.cloud.yaml) and one qualification-only overlay that
+// carries the fixture authority and the wiring that points the tenant and the
+// Control Plane at it. The overlay is a repository file and is not in the
+// release bundle, so the product a customer installs carries none of it.
+export const LOCAL_V2_QUALIFICATION_COMPOSE = "deploy/portable/compose.cloud.yaml";
+
+// The qualification overlay: the fixture authority, and the wiring that points
+// the tenant and the Control Plane at it instead of at an installation's own
+// external Sub2API. It is not shipped.
+export const LOCAL_V2_QUALIFICATION_OVERLAY = "deploy/portable/compose.qualification.yaml";
 
 // The declaration template the installation is validated against: the file that
 // names every variable the Compose file requires.
@@ -154,7 +162,7 @@ export function qualificationModeBinding(mode) {
   if (mode === QUALIFICATION_MODE_LOCAL_V2) {
     return {
       mode,
-      composeFiles: [LOCAL_V2_QUALIFICATION_COMPOSE],
+      composeFiles: [LOCAL_V2_QUALIFICATION_COMPOSE, LOCAL_V2_QUALIFICATION_OVERLAY],
       installationEnvRequired: true,
       endpoints: LOCAL_V2_ENDPOINTS,
       allowedPrefixes: ["/api/v2/"],
@@ -2121,13 +2129,18 @@ export function parseInstallationEnvFile(text) {
 }
 
 // The installation this run qualifies, read from the declaration the operator
-// wrote and validated against the template and the Compose file the repository
-// ships. Every fact below uses this map, so a qualification run cannot qualify a
-// machine the installation does not describe.
+// wrote and validated against the template and the Compose files the
+// repository ships. Every fact below uses this map, so a qualification run
+// cannot qualify a machine the installation does not describe.
+//
+// The topology the facts are derived against is the published installation and
+// the qualification overlay, in that order: the facts describe the topology
+// that actually starts, so a fact the overlay reads and the published topology
+// does not is still derived and still checked.
 export async function readLocalV2InstallationDeclaration({
   envFile,
   templatePath = join(root, LOCAL_V2_INSTALLATION_TEMPLATE),
-  composePath = join(root, LOCAL_V2_QUALIFICATION_COMPOSE)
+  composePaths = [join(root, LOCAL_V2_QUALIFICATION_COMPOSE), join(root, LOCAL_V2_QUALIFICATION_OVERLAY)]
 } = {}) {
   const declaredPath = String(envFile || "").trim();
   if (!declaredPath) {
@@ -2136,12 +2149,12 @@ export async function readLocalV2InstallationDeclaration({
   if (!isAbsolute(declaredPath)) {
     throw namedQualificationError("local_v2_installation_env_invalid", "--installation-env must be an absolute path");
   }
-  const [template, compose, text] = await Promise.all([
+  const [template, composeTexts, text] = await Promise.all([
     readFile(templatePath, "utf8"),
-    readFile(composePath, "utf8"),
+    Promise.all(composePaths.map((path) => readFile(path, "utf8"))),
     readFile(declaredPath, "utf8")
   ]);
-  const facts = localV2InstallationFacts({ template, compose, values: parseInstallationEnvFile(text) });
+  const facts = localV2InstallationFacts({ template, compose: composeTexts.join("\n"), values: parseInstallationEnvFile(text) });
   return { envFile: declaredPath, values: facts.values, facts };
 }
 

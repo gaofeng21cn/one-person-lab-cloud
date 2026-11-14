@@ -1,0 +1,111 @@
+# The qualification overlay for the published installation.
+#
+# deploy/portable/compose.cloud.yaml is the published installation: it is the
+# artifact a customer installs and the artifact a qualification run starts. This
+# file adds only what a qualification run needs and a customer must never
+# carry: the local Sub2API authority fixture, and the wiring that points the
+# tenant and the Control Plane at that fixture instead of at an installation's
+# own external Sub2API.
+#
+# It is a repository file. It is not in the release bundle: the shipped asset
+# list lives in packages/contracts/opl-cloud-distribution-contract.json, and
+# this file is not in it. The published topology does not read this file, and a
+# customer who installs the bundle never sees it.
+#
+# Compose version
+#   The !override tag below requires Docker Compose 2.24.0 or newer. That
+#   requirement lands on this harness, not on a customer's installation: the
+#   published compose reads no !override and no !reset tag, so the installation
+#   a customer runs needs no such Compose version.
+
+services:
+  # The qualification's own Sub2API authority. It answers the balance, the
+  # directory and the redemption codes the qualification drives, and it keeps
+  # its state in a run-owned volume that the teardown removes.
+  sub2api-authority:
+    image: ${OPL_CLOUD_IMAGE:?Set OPL_CLOUD_IMAGE to the product image digest}
+    command: ["node", "--experimental-strip-types", "/qualification/local-sub2api-authority-fixture.ts"]
+    user: root
+    restart: unless-stopped
+    environment:
+      OPL_QUALIFICATION_PORT: "8080"
+      OPL_QUALIFICATION_AUTHORITY_TOKEN: ${OPL_QUALIFICATION_AUTHORITY_TOKEN:-}
+      OPL_QUALIFICATION_USER_EMAIL: ${OPL_QUALIFICATION_USER_EMAIL:-}
+      OPL_QUALIFICATION_USER_PASSWORD: ${OPL_QUALIFICATION_USER_PASSWORD:-}
+      OPL_QUALIFICATION_USER_TOKEN: ${OPL_QUALIFICATION_USER_TOKEN:-}
+      OPL_QUALIFICATION_INITIAL_USD_MICROS: ${OPL_QUALIFICATION_INITIAL_USD_MICROS:-1000000000}
+      OPL_QUALIFICATION_STATE_PATH: /qualification-state/state.json
+    volumes:
+      - type: bind
+        source: ../../tools/local-sub2api-authority-fixture.ts
+        target: /qualification/local-sub2api-authority-fixture.ts
+        read_only: true
+      - opl-cloud-local-v2-qualification-sub2api:/qualification-state
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks: [opl-cloud-local-v2]
+
+  # The published topology leaves the PostgreSQL address to the installation
+  # and gives the container a dynamic address, so every owner's DATABASE_URL
+  # would name an address the container does not hold. The qualification
+  # installation declares OPL_POSTGRES_HOST and this overlay pins it.
+  postgres:
+    networks:
+      opl-cloud-local-v2:
+        ipv4_address: ${OPL_POSTGRES_HOST:?Set OPL_POSTGRES_HOST to the qualification PostgreSQL address}
+
+  # The tenant reads the installation's Sub2API through the Gateway adapter,
+  # and that adapter admits an unencrypted endpoint only on loopback
+  # (services/gateway-integration/identity/gateway.go). The authority answers
+  # plain HTTP on the installation's own network, so the tenant reaches it
+  # through the installation's same-origin entry, which is HTTPS.
+  tenant:
+    environment:
+      OPL_SUB2API_URL: !override https://cloud-local-v2:8443/sub2api
+      # The Gateway directory identity is the administrative identity in the
+      # owner contract. The qualification's authority holds exactly one
+      # identity, the qualification's own, so the directory reads the
+      # authority as that identity.
+      OPL_GATEWAY_DIRECTORY_EMAIL: !override ${OPL_QUALIFICATION_USER_EMAIL:-}
+      OPL_GATEWAY_DIRECTORY_PASSWORD: !override ${OPL_QUALIFICATION_USER_PASSWORD:-}
+    depends_on:
+      sub2api-authority:
+        condition: service_healthy
+      cloud-local-v2:
+        condition: service_healthy
+
+  # The Control Plane authenticates its Sub2API user at startup. It reaches
+  # the qualification's authority through the same same-origin entry the
+  # tenant uses, so both owners read one authority the way the published
+  # routing table reads one.
+  control-plane:
+    environment:
+      OPL_SUB2API_BASE_URL: !override https://cloud-local-v2:8443/sub2api
+      OPL_SUB2API_USER_EMAIL: !override ${OPL_QUALIFICATION_USER_EMAIL:-}
+      OPL_SUB2API_USER_PASSWORD: !override ${OPL_QUALIFICATION_USER_PASSWORD:-}
+    depends_on:
+      sub2api-authority:
+        condition: service_healthy
+      cloud-local-v2:
+        condition: service_healthy
+
+  # The published same-origin entry has no route to a qualification authority,
+  # and the Gateway adapter admits an unencrypted endpoint only on loopback, so
+  # the tenant reaches the authority through the same-origin entry. The
+  # qualification's entry carries that one route next to the routes the
+  # qualification drives. The published entry's Workspace-domain routes are not
+  # exercised by a qualification run: the qualification declares no Workspace
+  # application domain, and the Local-Docker application has its own loopback
+  # origin.
+  cloud-local-v2:
+    volumes:
+      - type: bind
+        source: ./local-v2-proxy.nginx.conf
+        target: /etc/nginx/templates/default.conf.template
+        read_only: true
+
+volumes:
+  opl-cloud-local-v2-qualification-sub2api: {}
