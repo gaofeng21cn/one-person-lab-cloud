@@ -33,20 +33,31 @@ The installer reads two facts about the host before it pulls any image or starts
 any container, and it refuses to continue until both hold. Both refusals name
 the fact to change.
 
-**Docker Compose 2.24.4 or later.** `compose.cloud.yaml` merges every service
-with `compose.local-v2.yaml` through `extends`, and it uses the `!override` and
-`!reset` YAML tags to say which inherited attribute is replaced and which one
-is removed. `!override` first shipped in Docker Compose v2.24.4, the release
-that adopted the Compose Specification parser `compose-go` v2.0.0-rc.3; Compose
-v2.24.0 through v2.24.3 honour `!reset` but do not know `!override`, so the
-tag is not applied and the merge yields a topology the file does not declare.
-The Compose Specification marks the same v2.24.4 floor on its
-[merge and override](https://github.com/compose-spec/compose-spec/blob/main/13-merge.md)
-section. Install the Compose v2 plugin from the
+**A Docker Compose that can read the published compose file.** The published
+`compose.cloud.yaml` is the installation surface, so the requirement is not a
+version number: the installed Docker Compose must be able to parse the file
+this bundle ships. The installer reads `docker compose version`, then parses
+`compose.cloud.yaml` with the resolved installation facts, before it generates
+the PKI, records the version it checked against or pulls anything. A Compose
+that cannot read the file is refused with the version the host has and the
+Compose parser's own complaint:
+
+```
+install.mjs: docker_compose_parse_failed
+The installed Docker Compose (2.24.3) cannot read the published compose file compose.cloud.yaml.
+The Compose parser reported: cannot override services.x.networks.opl-cloud-local-v2
+The published compose file uses the !override or !reset merge tags, and this Docker Compose does not apply them.
+Upgrade Docker Compose (https://docs.docker.com/compose/install/), then run this command again.
+```
+
+The requirement follows the file and not a floor. A published compose file
+that uses no syntax the installed Compose does not know is accepted by that
+Compose, and a file that does use it is refused; the installer never refuses a
+version for being old. Install the Compose v2 plugin from the
 [Docker Compose install guide](https://docs.docker.com/compose/install/); the
 installer drives `docker compose` and does not use the legacy standalone
-`docker-compose` binary. `docker compose version` reports the version the
-installer reads.
+`docker-compose` binary. The version the installer checked against is printed
+on stdout and recorded in `opl-cloud/installation.json` as `composeVersion`.
 
 **A reachable Sub2API authority.** The installation's Sub2API authority is an
 external service. The shipped `compose.cloud.yaml` contains no Sub2API
@@ -143,9 +154,13 @@ docker compose --env-file .env -f compose.yaml \
 This portable base profile installs PostgreSQL, Control Plane, Fabric and Ledger.
 The complete owner-backed installation additionally supplies the processes,
 stores, peer identities and routes declared by the topology contract. The exact
-source includes the [native Local-v2 topology](../deploy/portable/compose.local-v2.yaml),
-used by the clean-host qualification; Instance supplies its own concrete
-manifests, protected Secrets, domains and deployment approval.
+source includes the [published installation surface](../deploy/portable/compose.cloud.yaml),
+which the clean-host qualification starts, together with the repository-only
+[qualification overlay](../deploy/portable/compose.qualification.yaml) that
+supplies the Sub2API authority fixture. That overlay stays in the repository
+and is not part of the release bundle. The native Local-v2 topology is no
+longer started by any run path; Instance supplies its own concrete manifests,
+protected Secrets, domains and deployment approval.
 
 The previous [v0.1.7](https://github.com/gaofeng21cn/one-person-lab-cloud/releases/tag/v0.1.7)
 has its historical five-file format. Use each version's own files and manifest.

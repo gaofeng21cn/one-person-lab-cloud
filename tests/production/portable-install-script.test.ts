@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmod, mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from "node:fs/promises";
+import { access, chmod, copyFile, mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -344,7 +344,10 @@ const COMPOSE_SERVICES = ["postgres", "tenant", "resource-catalog", "ledger", "c
 
 // A Docker stub that reports one Compose version and delegates every Compose
 // parse to the real binary, so the merge tags are still parsed for real.
-async function writeDockerMock(root: string, options: { composeVersion?: string; pluginMissing?: boolean } = {}) {
+// With "oldParser" the stub behaves like the Docker Compose release that
+// knows !reset but not !override: it has no "config --variables" command,
+// and it cannot merge the published compose file's merge tags.
+async function writeDockerMock(root: string, options: { composeVersion?: string; pluginMissing?: boolean; oldParser?: boolean } = {}) {
   const bin = join(root, "mock-bin");
   await mkdir(bin, { recursive: true });
   const log = join(root, "docker-calls.jsonl");
@@ -354,13 +357,22 @@ async function writeDockerMock(root: string, options: { composeVersion?: string;
     ? `console.error("docker: 'compose' is not a docker command."); process.exitCode = 1;`
     : `console.log(${JSON.stringify(options.composeVersion ?? "Docker Compose version v2.24.4")});`;
   const mock = `#!${process.execPath}
-const { appendFileSync } = require('node:fs');
+const { appendFileSync, readFileSync } = require('node:fs');
 const { execFileSync } = require('node:child_process');
 const args = process.argv.slice(2);
 appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');
+const isConfig = args.includes('config');
+const isVariables = args.includes('--variables');
+const isParse = isConfig && args.includes('--format');
+const oldParser = ${options.oldParser ? "true" : "false"};
 if (args[0] === 'compose' && args[1] === 'version') { ${versionReply} }
+else if (oldParser && isVariables) { console.error('unknown flag: --variables'); process.exitCode = 16; }
+else if (oldParser && isParse && /!(override|reset)/.test(readFileSync('compose.cloud.yaml', 'utf8'))) {
+  console.error('cannot override services.x.networks.opl-cloud-local-v2');
+  process.exitCode = 15;
+}
 else if (args[0] === 'inspect') console.log(${JSON.stringify(IMAGE_REFERENCE)});
-else if (args.includes('config')) process.stdout.write(execFileSync(${JSON.stringify(realDocker)}, args, {env: process.env}));
+else if (isConfig) process.stdout.write(execFileSync(${JSON.stringify(realDocker)}, args, {env: process.env}));
 else if (args.includes('pull') || args.includes('up')) {}
 else if (args.includes('ps') && args.includes('-q')) console.log('fixture-container');
 else if (args.includes('ps')) console.log(${JSON.stringify(COMPOSE_SERVICES)}.map(Service => JSON.stringify({Service, State: 'running'})).join('\\n'));
@@ -394,6 +406,57 @@ async function pathWithoutDocker(root: string) {
   try { await symlink(process.execPath, join(bin, "node")); } catch {}
   return bin;
 }
+// The PATH a Docker stub test owns completely. A stub that only prepends its
+// own directory leaves the real Docker reachable behind it, which is how a
+// test passed on one machine and failed in CI.
+async function controlledPath(root: string, mock?: { bin: string }) {
+  const bin = await pathWithoutDocker(root);
+  if (mock) {
+    await copyFile(join(mock.bin, "docker"), join(bin, "docker"));
+    await chmod(join(bin, "docker"), 0o755);
+  }
+  return bin;
+}
+// The bundle is checksum-bound, so replacing an asset means re-signing the
+// bundle the way the publisher signs it.
+async function replaceBundleAsset(bundle: string, name: string, bytes: Buffer) {
+  await writeFile(join(bundle, name), bytes);
+  const assets = [];
+  for (const asset of PORTABLE_ASSETS) {
+    assets.push({ name: asset, sha256: sha256Of(await readFile(join(bundle, asset))) });
+  }
+  await writeFile(join(bundle, "opl-cloud-candidate.json"), `${canonicalJson(candidateReceipt(assets))}\n`);
+  const sumLines = [];
+  for (const asset of [...PORTABLE_ASSETS, "opl-cloud-candidate.json"]) {
+    sumLines.push(`${sha256Of(await readFile(join(bundle, asset)))}  ${asset}`);
+  }
+  await writeFile(join(bundle, "SHA256SUMS"), `${sumLines.join("\n")}\n`);
+}
+// The published compose file of a self-contained bundle: no extends, no
+// !override, no !reset. It declares the same services, so the installation
+// reaches the same places. The only difference is the syntax the installed
+// Docker Compose has to parse.
+function selfContainedCompose() {
+  return [
+    "# A self-contained compose file: no extends, no merge tags.",
+    "services:",
+    ...COMPOSE_SERVICES.map(name => `  ${name}:\n    image: alpine:3`),
+    "",
+  ].join("\n");
+}
+// The installer's PKI generation runs shell commands that a test's controlled
+// PATH does not carry. These tests are about the Compose precondition, so the
+// PKI is placed where the installer expects to find it.
+async function writePkiFixture(installDir: string) {
+  const pki = join(installDir, "pki");
+  await mkdir(pki, { recursive: true });
+  const names = [
+    "ca.crt", "ca.key", "proxy.crt", "proxy.key",
+    ...["tenant", "capability", "build", "runtime_control", "workspace", "serve", "resource_catalog", "ledger", "fabric", "console_bff", "control_plane"]
+      .flatMap(name => [`${name}.crt`, `${name}.key`]),
+  ];
+  for (const name of names) await writeFile(join(pki, name), `fixture-${name}`);
+}
 // A Sub2API authority stub that accepts a TCP connection and speaks nothing.
 async function startSub2apiStub() {
   const server = createServer((socket) => socket.end());
@@ -426,40 +489,80 @@ async function fillInstallationFacts(bundle: string, root: string, env: NodeJS.P
   return { installDir, statePath, state };
 }
 
-test("installer refuses a Docker Compose older than the merge-tag floor before it pulls anything", async () => {
+test("installer refuses a Docker Compose that cannot parse the published compose file", async () => {
   await withBundle(async (bundle, root) => {
-    const mock = await writeDockerMock(root, { composeVersion: "Docker Compose version v2.20.3" });
-    const result = run(bundle, join(root, "install"), ["--dry-run"], { PATH: `${mock.bin}:${process.env.PATH}` });
+    // The Docker Compose release that knows !reset but not !override. It
+    // cannot merge the published compose file, so the installer refuses it.
+    const mock = await writeDockerMock(root, { composeVersion: "Docker Compose version v2.24.3", oldParser: true });
+    const env = { PATH: await controlledPath(root, mock) };
+    // The URL carries credentials in its userinfo, a path and a query. The
+    // refusal may report the host and nothing else.
+    const authorityUrl = "https://leaked-user:leaked-password-token@127.0.0.1:9/base-path?token=leaked-query-token";
+    const { installDir, statePath, state } = await fillInstallationFacts(bundle, root, env, authorityUrl);
+    const result = run(bundle, installDir, [], env);
     assert.equal(result.status, 2, `${result.stdout}${result.stderr}`);
-    assert.match(result.stderr, /docker_compose_version_too_old/);
-    assert.match(result.stderr, /2\.20\.3/, "the output names the version the host actually has");
-    assert.match(result.stderr, /2\.24\.4/, "the output names the version the host needs");
-    assert.match(result.stderr, /https:\/\/docs\.docker\.com\/compose\/install\//, "the output says how to upgrade");
-    assert.ok(!(await mock.calls()).some(args => args.includes("pull") || args.includes("up")), "no image is pulled before the floor is checked");
+    const reported = `${result.stdout}${result.stderr}`;
+    assert.match(result.stderr, /docker_compose_parse_failed/);
+    assert.match(result.stderr, /2\.24\.3/, "the refusal names the version the host has");
+    assert.match(result.stderr, /cannot override services\.x\.networks\.opl-cloud-local-v2/, "the refusal carries the parser's own complaint");
+    assert.match(result.stderr, /!override/, "the refusal names the merge tag this Compose does not apply");
+    assert.match(result.stderr, /https:\/\/docs\.docker\.com\/compose\/install\//, "the refusal says how to upgrade");
+    assert.ok(!reported.includes("docker_compose_version_too_old"), "no version floor is reported");
+    assert.ok(!reported.includes("2.24.4"), "no required version is reported");
+    assert.ok(!reported.includes("leaked-password-token"), "the URL's password is never reported");
+    assert.ok(!reported.includes("leaked-user"), "the URL's user is never reported");
+    assert.ok(!reported.includes("leaked-query-token"), "the URL's query is never reported");
+    assert.ok(!reported.includes("/base-path"), "the URL's path is never reported");
+    assert.ok(!reported.includes(state.values.OPL_SUB2API_ADMIN_PASSWORD), "the administrator password is never reported");
+    assert.ok(!reported.includes(state.values.OPL_SUB2API_USER_PASSWORD), "the user password is never reported");
+    assert.ok(!reported.includes(state.values.OPL_SUB2API_ADMIN_EMAIL), "the administrator email is never reported");
+    assert.ok(!reported.includes(state.values.OPL_SUB2API_USER_EMAIL), "the user email is never reported");
+    assert.ok(!reported.includes("OPL Cloud is running"), "a refused installation is not reported as a successful install");
+    assert.ok(!(await mock.calls()).some(args => args.includes("pull") || args.includes("up")), "no image is pulled before the compose file is parsed");
+    // A refusal happens before the installation generates its PKI, records
+    // the version it checked against or pulls anything.
+    await assert.rejects(access(join(installDir, "pki")), "the refusal leaves no PKI behind");
+    await assert.rejects(access(join(installDir, "data", "postgres")), "the refusal leaves no data directory behind");
+    const refused = JSON.parse(await readFile(statePath, "utf8"));
+    assert.equal(refused.composeVersion, undefined, "the refused installation records no checked-against version");
   });
 });
 
-test("installer refuses Compose 2.24.3, which parses !reset but not !override", async () => {
+test("installer accepts a Docker Compose that can parse the published compose file", async () => {
   await withBundle(async (bundle, root) => {
-    const mock = await writeDockerMock(root, { composeVersion: "Docker Compose version v2.24.3" });
-    const result = run(bundle, join(root, "install"), ["--dry-run"], { PATH: `${mock.bin}:${process.env.PATH}` });
-    assert.equal(result.status, 2, `${result.stdout}${result.stderr}`);
-    assert.match(result.stderr, /docker_compose_version_too_old/);
-    assert.match(result.stderr, /2\.24\.3/);
-    assert.match(result.stderr, /2\.24\.4/);
-  });
-});
-
-test("installer accepts exactly the Compose floor and completes the installation", async () => {
-  await withBundle(async (bundle, root) => {
-    const mock = await writeDockerMock(root, { composeVersion: "Docker Compose version v2.24.4" });
+    const mock = await writeDockerMock(root, { composeVersion: "Docker Compose version v5.1.1" });
+    const env = { PATH: await controlledPath(root, mock) };
     const authority = await startSub2apiStub();
     try {
-      const env = { PATH: `${mock.bin}:${process.env.PATH}` };
-      await fillInstallationFacts(bundle, root, env, authority.url);
-      const result = run(bundle, join(root, "install"), [], env);
+      const { installDir, statePath } = await fillInstallationFacts(bundle, root, env, authority.url);
+      await writePkiFixture(installDir);
+      const result = run(bundle, installDir, [], env);
       assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
-      assert.ok(!(result.stderr || "").includes("docker_compose_version_too_old"));
+      assert.match(result.stdout, /Docker Compose 5\.1\.1 parsed the published compose file/);
+      assert.match(result.stdout, /OPL Cloud is running/);
+      assert.ok((await mock.calls()).some(args => args.includes("pull")), "the installation pulls after the compose file is parsed");
+      const state = JSON.parse(await readFile(statePath, "utf8"));
+      assert.equal(state.composeVersion, "5.1.1", "the installation records the version it was checked against");
+    } finally { await authority.close(); }
+  });
+});
+
+test("the same Docker Compose is accepted when the published compose file uses no merge tags", async () => {
+  await withBundle(async (bundle, root) => {
+    // The same old Docker Compose, the same installer, and a published
+    // compose file that carries no merge tag. Nothing but the file changed,
+    // so the refusal follows the file and not a version number.
+    const mock = await writeDockerMock(root, { composeVersion: "Docker Compose version v2.24.3", oldParser: true });
+    const env = { PATH: await controlledPath(root, mock) };
+    await replaceBundleAsset(bundle, "compose.cloud.yaml", Buffer.from(selfContainedCompose(), "utf8"));
+    const authority = await startSub2apiStub();
+    try {
+      const { installDir } = await fillInstallationFacts(bundle, root, env, authority.url);
+      await writePkiFixture(installDir);
+      const result = run(bundle, installDir, [], env);
+      assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
+      assert.ok(!(result.stderr || "").includes("docker_compose_parse_failed"), "a compose file without merge tags is not refused");
+      assert.match(result.stdout, /OPL Cloud is running/);
     } finally { await authority.close(); }
   });
 });
@@ -473,7 +576,7 @@ test("installer reports a missing Docker CLI and a missing Compose plugin separa
     assert.ok(!missing.stderr.includes("docker_compose_plugin_missing"), "a missing CLI is not reported as a missing plugin");
 
     const mock = await writeDockerMock(root, { pluginMissing: true });
-    const missingPlugin = run(bundle, join(root, "install"), ["--dry-run"], { PATH: `${mock.bin}:${process.env.PATH}` });
+    const missingPlugin = run(bundle, join(root, "install"), ["--dry-run"], { PATH: await controlledPath(root, mock) });
     assert.equal(missingPlugin.status, 2, `${missingPlugin.stdout}${missingPlugin.stderr}`);
     assert.match(missingPlugin.stderr, /docker_compose_plugin_missing/);
     assert.match(missingPlugin.stderr, /https:\/\/docs\.docker\.com\/compose\/install\//);
@@ -484,10 +587,11 @@ test("installer reports a missing Docker CLI and a missing Compose plugin separa
 test("installer reports an unreadable Compose version instead of guessing a floor", async () => {
   await withBundle(async (bundle, root) => {
     const mock = await writeDockerMock(root, { composeVersion: "Docker Compose version" });
-    const result = run(bundle, join(root, "install"), ["--dry-run"], { PATH: `${mock.bin}:${process.env.PATH}` });
+    const result = run(bundle, join(root, "install"), ["--dry-run"], { PATH: await controlledPath(root, mock) });
     assert.equal(result.status, 2, `${result.stdout}${result.stderr}`);
     assert.match(result.stderr, /docker_compose_version_unreadable/);
     assert.ok(!result.stderr.includes("docker_compose_version_too_old"), "an unreadable version is not reported as an old one");
+    assert.ok(!result.stderr.includes("docker_compose_parse_failed"), "an unreadable version is not reported as a parse failure");
   });
 });
 
