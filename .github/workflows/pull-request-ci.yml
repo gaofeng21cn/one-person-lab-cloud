@@ -116,6 +116,11 @@ jobs:
         name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Validate daily release recovery
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python3 -m unittest discover -s tests/tools -p daily_product_release_test.py -v
+
       - name: Validate source
         run: npm run verify:local -- --group source
 

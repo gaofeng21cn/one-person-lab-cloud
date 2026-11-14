@@ -142,8 +142,10 @@ Release action, read [release operations](docs/runtime/release.md).
   head of its pushed, workflow-admitted branch, self-attributed. The build guard
   has no actor allowlist; publication has separate authority.
 - Formal Release requires the qualified exact source on canonical `main` and
-  promotes the same Candidate digest without rebuilding. Only the repository
-  owner and `RenDeHuang` may dispatch it; the original publisher stays the actor.
+  promotes the same Candidate digest without rebuilding. The repository owner
+  and `RenDeHuang` may dispatch it directly. The main-only daily continuation
+  may dispatch it through `github-actions[bot]` with its verified parent run and
+  frozen canonical tag; the original publisher stays the actor.
   Local development, Candidate construction and retries authorize neither
   formal publication nor Instance deployment.
 

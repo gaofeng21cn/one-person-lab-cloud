@@ -72,6 +72,36 @@ test("source-path inspection refuses absent, empty and symlinked entry files", a
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
+test("source CI accepts an identical merged PR tree and rejects changed merge bytes", async () => {
+  const f = await fixture();
+  const git = (...args: string[]) => {
+    const result = spawnSync('git', ['-C', f.root, ...args], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  try {
+    git('init', '-b', 'main'); git('config', 'user.name', 'Synthetic Fixture');
+    git('config', 'user.email', 'fixture@example.invalid'); git('add', '.'); git('commit', '-m', 'base');
+    git('checkout', '-b', 'fixture-feature');
+    await writeFile(join(f.root, 'product.txt'), 'reviewed product bytes');
+    git('add', '.'); git('commit', '-m', 'feature');
+    const head = git('rev-parse', 'HEAD');
+    git('checkout', 'main'); git('merge', '--no-ff', 'fixture-feature', '-m', 'merge');
+    const source = git('rev-parse', 'HEAD');
+    f.candidate.product.sha = source; f.candidate.product.tree = git('rev-parse', 'HEAD^{tree}');
+    f.candidate.cloudImage.revision = source;
+    f.run.head_sha = head;
+    for (const job of f.jobs.jobs) job.head_sha = head;
+    assert.equal((await verifyReleaseSourcePaths(f.input)).status, 'source_verified');
+    await writeFile(join(f.root, 'product.txt'), 'unreviewed merge bytes');
+    git('add', '.'); git('commit', '-m', 'changed merge');
+    f.candidate.product.sha = git('rev-parse', 'HEAD');
+    f.candidate.product.tree = git('rev-parse', 'HEAD^{tree}');
+    f.candidate.cloudImage.revision = f.candidate.product.sha;
+    await assert.rejects(verifyReleaseSourcePaths(f.input), /release_source_ci_invalid/);
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
 test("real sealing, publication and public-readback scripts agree on source-only acceptance", async () => {
   const f = await fixture();
   try {

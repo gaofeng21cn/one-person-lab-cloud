@@ -474,6 +474,33 @@ must emit the settled business receipt for that same Candidate.
 
 ## Publication
 
+### Daily Product Continuation
+
+The shared OPL daily product workflow reads this repository's
+`product-release.json`, prepares a changed product version through PR CI, and
+creates an immutable source tag. `daily-release.yml` continues that tag through
+the existing Candidate builder and Clean Host Qualification. Successful runs
+are reused by exact frozen source instead of rebuilding them on each inspection.
+
+The tag entry only dispatches the protected `main` continuation; it has no
+private evidence credential. The Candidate builder can select an annotated
+product tag reachable from canonical `main`, so later main commits do not force
+a frozen product to rebuild under a different identity. Release admission also
+checks that the Candidate builder revision is reachable from canonical main.
+
+The continuation reads existing Instance deployment-verification receipts and
+selects only a receipt bound to the same Candidate, source tree and image digest.
+If it is absent, the result is `qualification_pending`; the Candidate remains
+available for the Instance owner. A later daily inspection rechecks the same
+tag. This workflow never dispatches Instance installation or deployment. After
+all evidence is available, the existing release workflow independently admits
+and publishes the Candidate. A bot invocation additionally proves the protected
+main continuation and annotated source tag before entering publication admission.
+
+Source CI may select the merged release PR's head when its complete Git tree
+equals the Candidate tree and it is an ancestor of the released commit. All
+required jobs must have passed for that exact PR head; a different tree is refused.
+
 The owner or `RenDeHuang` dispatches `release-opl-cloud-image.yml` from main;
 original and triggering actors must match. Its required inputs are `version`,
 exact Product `ref`, `candidate_run_id`, `local_qualification_run_id`,
