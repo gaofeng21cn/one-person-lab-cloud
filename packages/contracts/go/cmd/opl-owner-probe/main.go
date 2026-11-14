@@ -21,6 +21,12 @@ import (
 
 const controlPlaneOwner = "control_plane"
 
+// The Console BFF is a deployment unit, not a data owner. owneridentity keeps
+// it as a transport principal, so it has no owner identity to parse and no
+// owner gRPC health service to call. Its health criterion is its own HTTP
+// surface.
+const consoleBFFDeploymentUnit = "console_bff"
+
 type result struct {
 	SchemaVersion      int                        `json:"schemaVersion"`
 	Owner              string                     `json:"owner"`
@@ -60,8 +66,8 @@ func main() {
 func probeFromArgs(args []string, getenv func(string) string) (result, error) {
 	flags := flag.NewFlagSet("opl-owner-probe", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	ownerArg := flags.String("owner", "", "owner identity")
-	addressArg := flags.String("addr", "", "owner gRPC address or Control Plane HTTP address")
+	ownerArg := flags.String("owner", "", "owner identity or deployment-unit identity")
+	addressArg := flags.String("addr", "", "owner gRPC address, or a deployment unit's HTTP address")
 	expectedArg := flags.String("expected-source-sha", "", "expected baked ProductSourceSHA")
 	timeoutArg := flags.Duration("timeout", 5*time.Second, "probe timeout")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
@@ -70,6 +76,9 @@ func probeFromArgs(args []string, getenv func(string) string) (result, error) {
 	ownerText := strings.TrimSpace(*ownerArg)
 	if strings.EqualFold(ownerText, controlPlaneOwner) {
 		return probeControlPlane(config{Address: *addressArg, ExpectedSourceSHA: *expectedArg, Timeout: *timeoutArg}, getenv)
+	}
+	if strings.EqualFold(ownerText, consoleBFFDeploymentUnit) {
+		return probeConsoleBFF(config{Address: *addressArg, Timeout: *timeoutArg}, getenv)
 	}
 	owner, ok := owneridentity.Parse(ownerText)
 	if !ok {
@@ -169,6 +178,40 @@ func probeControlPlane(cfg config, getenv func(string) string) (result, error) {
 	out.FabricReadiness = &readiness
 	if !readiness.ServiceReady {
 		return out, errors.New("fabric_not_service_ready")
+	}
+	out.Status = "ok"
+	return out, nil
+}
+
+// The Console BFF is a deployment unit rather than a data owner, so the owner
+// gRPC health service is not its criterion: it publishes no owner identity to
+// parse and no owner health service to call. Its own HTTP surface answers
+// whether the Console is served, and that is what the installer reads.
+func probeConsoleBFF(cfg config, getenv func(string) string) (result, error) {
+	out := resultFor(consoleBFFDeploymentUnit)
+	if cfg.Timeout <= 0 {
+		return out, errors.New("timeout_invalid")
+	}
+	base := strings.TrimSpace(cfg.Address)
+	if base == "" {
+		base = strings.TrimSpace(getenv("OPL_BFF_ADDR"))
+	}
+	if base == "" {
+		base = "127.0.0.1:8190"
+	}
+	base = httpBaseURL(base)
+	client := &http.Client{Timeout: cfg.Timeout}
+	health, err := getJSON(client, base+"/healthz")
+	if err != nil {
+		return out, fmt.Errorf("console_bff_health: %w", err)
+	}
+	status, ok := health["status"].(string)
+	if !ok || strings.TrimSpace(status) == "" {
+		return out, errors.New("console_bff_health_status_missing")
+	}
+	out.Health = &healthResult{Status: strings.TrimSpace(status)}
+	if strings.TrimSpace(status) != "ok" {
+		return out, errors.New("console_bff_not_ready")
 	}
 	out.Status = "ok"
 	return out, nil
