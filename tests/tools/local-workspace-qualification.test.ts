@@ -2430,8 +2430,7 @@ test("local-v2 qualification collects owner readbacks and reports the host bound
     assert.equal(result.evidence.readbacks.stores.ownerSeparated, true);
     assert.equal(result.evidence.readbacks.stores.ownerStores.opl_workspace.schema, "workspace");
     assert.deepEqual(result.retainedWritersUsed, []);
-    assert.equal(result.receiptCompatibility.compatible, false);
-    assert.ok(result.receiptCompatibility.missing.length > 0);
+    assert.deepEqual(result.receiptCompatibility, { nativeSchemaVersion: 2, legacyReceiptCompatible: false });
     // A boundary is evidence, never a READY receipt.
     assert.throws(() => validateLocalQualificationReceipt(result), /READY/);
     const written = JSON.parse(await readFile(receiptPath, "utf8"));

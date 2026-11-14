@@ -933,7 +933,8 @@ export function createHTTP(origin, { caFile = "", mode = "" } = {}) {
   const json = async (path, init = {}, auth = null, statuses = [200]) => {
     const result = await request(path, init, auth);
     if (!statuses.includes(result.response.status) || result.payload === null) {
-      throw new Error(`HTTP ${init.method || "GET"} ${path} returned ${result.response.status}: ${result.text.slice(0, 500)}`);
+      throw Object.assign(new Error(`HTTP ${init.method || "GET"} ${path} returned ${result.response.status}: ${result.text.slice(0, 500)}`),
+        { status: result.response.status, method: init.method || "GET", path });
     }
     return result;
   };
@@ -1168,8 +1169,20 @@ export async function openQualificationSessions(http, email, password, accountId
  * bound, the display name the Gateway directory returned for that actor, the
  * tenant it belongs to, and the CSRF token the write guards compare against.
  */
-export async function cloudIdentityLogin(http, origin, username, password, idempotencyKey) {
-  const context = await http.json("/api/v2/auth/context", {}, null, [200]);
+export async function cloudIdentityLogin(http, origin, username, password, idempotencyKey, { wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
+  // Compose can report running before the restarted identity route answers.
+  // Reconcile readiness with GETs; the login command is sent once afterward.
+  const deadline = Date.now() + 30_000;
+  let context;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      context = await http.json("/api/v2/auth/context", { signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())) }, null, [200]);
+      break;
+    } catch (error) {
+      if (![502, 503, 504].includes(Number(error?.status)) || attempt === 29 || Date.now() >= deadline) throw error;
+      await wait(Math.min(1000, Math.max(1, deadline - Date.now())));
+    }
+  }
   const challengeCookies = responseCookies(context.response.headers);
   const challenge = challengeCookies.get("opl_login_context");
   const csrfCookie = challengeCookies.get("opl_login_csrf");
@@ -2762,6 +2775,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
         workspace: { ...readbacks.workspace },
         receipts: Number(readbacks.ledger?.receipts || 0),
       };
+      stage = "restart_continuity";
       const restartStarted = Date.now();
       // This caller's compose wrapper takes the raw docker arguments and the
       // project prefix travels as its own argument list.
@@ -2904,17 +2918,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     evidence: { mode, stages, readbacks },
     compose: { project: String(options.project || ""), files: binding.composeFiles, prefix: composePrefix },
     retainedWritersUsed: [],
-    receiptCompatibility: {
-      compatible: false,
-      missing: [
-        "identities.accountId and identities.sub2apiUserId bound to a retained Control Plane account",
-        "identities.debitCode (opl:<debit>) and identities.keyId",
-        "wallet.beforeUsdMicros/afterUsdMicros/afterDeleteUsdMicros read from the Gateway wallet",
-        "processes.console/controlPlane/fabric/ledger readiness of the retained stack",
-        "receipt.count/id/chargeReference from a retained purchase receipt"
-      ],
-      authorityDecision: "a v2 qualification receipt shape needs its own accepted contract; docs/spec/target/checks is outside this change"
-    },
+    receiptCompatibility: { nativeSchemaVersion: 2, legacyReceiptCompatible: false },
     deferred: [...deferredCloudGates]
   };
   if (!failure && !boundary && readbacks.applicationRuntime?.providerBindingVerified === true) {
