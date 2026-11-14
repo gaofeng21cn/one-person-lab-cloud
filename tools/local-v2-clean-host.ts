@@ -6,8 +6,18 @@ import {
   localV2EnvFile, localV2InstallationFacts, localV2ReferencedVariables,
 } from "./local-v2-installation-facts.ts";
 
+// The qualification runs the published installation and the qualification
+// overlay, in that order, so the installation facts are derived against the
+// topology that actually starts. The overlay is a repository file and is not
+// in the release bundle.
+const PUBLISHED_COMPOSE = "deploy/portable/compose.cloud.yaml";
+const QUALIFICATION_OVERLAY = "deploy/portable/compose.qualification.yaml";
+
 // Installation inputs for the existing native topology. These are run-owned
 // fixture facts; no production credential, provider or billing authority is used.
+//
+// `compose` is the merged topology: the published Compose file and the
+// qualification overlay, concatenated in the order the harness starts them.
 export function cleanHostInstallation({ template, compose, directory, sourceSha, cloudImage, workspaceImage, storageRoot, project, publisherSchemaDigest, tenantId = "qualification-bootstrap" }) {
   if (!/^[0-9a-f]{40}$/.test(sourceSha)) throw new Error("clean_host_source_invalid");
   for (const image of [cloudImage, workspaceImage]) {
@@ -34,17 +44,33 @@ export function cleanHostInstallation({ template, compose, directory, sourceSha,
     OPL_PKI_DIR: resolve(directory, "pki"),
     OPL_PUBLIC_URL: "https://localhost:8443", OPL_PROXY_PORT: "8443",
     OPL_DOCKER_SUBNET: "172.29.0.0/24", OPL_POSTGRES_HOST: "172.29.0.10",
-    OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER: `${project}-control-plane`,
+    OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER: `${project}-control-plane-1`,
     OPL_CAPABILITY_PACKAGE_SCHEMA_HOST_PATH: resolve(directory, "plugin.schema.json"),
     OPL_PUBLISHER_SCHEMA_DIGEST: publisherSchemaDigest,
     // The published Agent Plugins schema the Capability owner validates every
     // uploaded manifest against. Its digest is the published artifact's own.
     OPL_CAPABILITY_PACKAGE_SCHEMA_DIGEST: "sha256:0a4aad95ce337878ad38802ebf0daa3fde76abe3f65400c86bcbb1ec0b3ab883",
+    // The qualification installation's own Sub2API: the authority fixture, at
+    // the address it answers on inside the installation's network. The
+    // published topology derives the tenant's Gateway adapter address and the
+    // Control Plane's Sub2API client address from this one fact, and the
+    // overlay replaces both with the installation's same-origin entry, because
+    // the Gateway adapter admits an unencrypted endpoint only on loopback.
+    OPL_SUB2API_BASE_URL: "http://sub2api-authority:8080",
     OPL_SUB2API_URL: "https://cloud-local-v2:8443/sub2api",
+    OPL_GATEWAY_DIRECTORY_EMAIL: email,
+    OPL_GATEWAY_DIRECTORY_PASSWORD: values.OPL_QUALIFICATION_USER_PASSWORD,
     OPL_CAPABILITY_OBJECT_URL: "https://localhost:8443/objects",
     OPL_WORKSPACE_DOMAIN: "ws-qualification.localhost",
+    // The authority holds exactly one identity: the qualification's own. The
+    // published topology reads the administrative slot for the Gateway
+    // directory and the ordinary user slot for the Control Plane's
+    // customer_owned billing, and the qualification's authority answers for
+    // both.
     OPL_QUALIFICATION_USER_EMAIL: email, OPL_SUB2API_ADMIN_EMAIL: email,
     OPL_SUB2API_ADMIN_PASSWORD: values.OPL_QUALIFICATION_USER_PASSWORD,
+    OPL_SUB2API_USER_EMAIL: email,
+    OPL_SUB2API_USER_PASSWORD: values.OPL_QUALIFICATION_USER_PASSWORD,
     OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: storageRoot,
     OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT: resolve(directory, "fabric-secrets"),
     OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: JSON.stringify(profile),
@@ -89,7 +115,11 @@ async function main() {
   await mkdir(directory, { recursive: true, mode: 0o700 });
   await mkdir(resolve(directory, "fabric-secrets"), { recursive: true, mode: 0o700 });
   const template = await readFile(resolve(productRoot, "deploy/portable/opl-cloud.env.example"), "utf8");
-  const compose = await readFile(resolve(productRoot, "deploy/portable/compose.local-v2.yaml"), "utf8");
+  const [published, overlay] = await Promise.all([
+    readFile(resolve(productRoot, PUBLISHED_COMPOSE), "utf8"),
+    readFile(resolve(productRoot, QUALIFICATION_OVERLAY), "utf8")
+  ]);
+  const compose = `${published}\n${overlay}`;
   if (options["cleanup-from"]) {
     const receipt = JSON.parse(await readFile(resolve(options["cleanup-from"]), "utf8"));
     const readbacks = receipt?.evidence?.readbacks;

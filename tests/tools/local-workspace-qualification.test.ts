@@ -2114,7 +2114,15 @@ test("v2 qualification refuses the old three-service topology before customer mu
 
 test("local-v2 mode binds only v2 owner endpoints", () => {
   const binding = qualificationModeBinding("local-v2");
-  assert.deepEqual(binding.composeFiles, ["deploy/portable/compose.local-v2.yaml"]);
+  // The v2 qualification starts the published installation and the
+  // qualification overlay. The published file is the artifact a customer
+  // installs, so the qualification verifies the shipped topology rather than
+  // a second one; the overlay carries the fixture authority and is not
+  // shipped.
+  assert.deepEqual(binding.composeFiles, [
+    "deploy/portable/compose.cloud.yaml",
+    "deploy/portable/compose.qualification.yaml"
+  ]);
   assert.equal(binding.installationEnvRequired, true);
   const endpoints = Object.values(binding.endpoints);
   assert.ok(endpoints.length >= 15);
