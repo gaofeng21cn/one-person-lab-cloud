@@ -730,6 +730,47 @@ func newWorkspaceDeleteEventFixture(t *testing.T) (workspaceDeleteFixture, *work
 	return fixture, sub2API, ledger, events
 }
 
+// The delete fixture models a Workspace that was purchased a fixed age before
+// the fixture clock, so its paid period and its refund window are a fixed
+// distance from the deletion moment.
+//
+// A calendar-anchored period cannot do this: the purchase then sits anywhere
+// between 0 and 31 days in the past, which lands on the edge of the platform's
+// 720-hour monthly refund baseline twice a month. On those days the refund is
+// correctly zero, the refund is not dispatched, and the suite fails on a
+// calendar date instead of on the behaviour under test.
+const workspaceDeleteFixturePurchaseAge = 15 * 24 * time.Hour
+
+// The refund window of a delete fixture must stay this many hours away from
+// both ends of the monthly baseline. A fixture that drifts onto an edge makes
+// the refund either expire or cover the whole order, and the failure that
+// follows is a vague "no refund was dispatched" instead of a named cause.
+const workspaceDeleteFixtureRefundMarginHours = 24
+
+// workspaceDeleteFixtureBillingPeriod returns the paid period of a Workspace
+// purchased at a fixed age before the clock. The paid period is the calendar
+// month the purchase started, computed exactly like the billing owner computes
+// it, so the fixture's anchor day stays consistent with its own period.
+func workspaceDeleteFixtureBillingPeriod(clock time.Time) (time.Time, time.Time) {
+	periodStart := clock.UTC().Add(-workspaceDeleteFixturePurchaseAge)
+	return periodStart, nextBillingMonth(periodStart, periodStart.Day())
+}
+
+// assertWorkspaceDeleteFixtureRefundWindow refuses a fixture whose refund
+// window sits on an edge of the platform's monthly baseline. The window is
+// measured with the platform's own billing formula, so a drifted fixture fails
+// here with a named cause instead of letting a later assertion report a
+// missing refund.
+func assertWorkspaceDeleteFixtureRefundWindow(t *testing.T, periodStart, deletedAt time.Time) {
+	t.Helper()
+	usedHours, refundHours := workspaceRefundBilledHours(periodStart, deletedAt)
+	if usedHours <= 0 || refundHours <= workspaceDeleteFixtureRefundMarginHours ||
+		refundHours >= int64(contracts.WorkspaceRefundMonthlyHours)-workspaceDeleteFixtureRefundMarginHours {
+		t.Fatalf("refund fixture drifted to the edge of the monthly refund window: usedHours=%d refundHours=%d monthly=%d marginHours=%d periodStart=%s deletedAt=%s",
+			usedHours, refundHours, contracts.WorkspaceRefundMonthlyHours, workspaceDeleteFixtureRefundMarginHours, periodStart, deletedAt)
+	}
+}
+
 func newWorkspaceDeleteCompletionFixtureWith(t *testing.T, store controlPlaneTableStore, fabric *workspaceDeleteFabric) (workspaceDeleteFixture, *workspaceDeleteSub2API, *workspaceDeleteLedger) {
 	t.Helper()
 	sub2API := &workspaceDeleteSub2API{
@@ -747,18 +788,18 @@ func newWorkspaceDeleteCompletionFixtureWith(t *testing.T, store controlPlaneTab
 		t.Fatal(err)
 	}
 	fixtureClock := time.Now().UTC()
-	periodStart, paidThrough := workspaceFixtureCurrentBillingPeriod(fixtureClock, 15)
+	periodStart, paidThrough := workspaceDeleteFixtureBillingPeriod(fixtureClock)
 	fixture.billingPeriodStart = periodStart
-	if !fixtureClock.After(periodStart) {
-		fixtureClock = periodStart.Add(time.Nanosecond)
-	}
+	// The fixture's refund window must stay strictly inside the platform's
+	// monthly baseline, with margin on both ends.
+	assertWorkspaceDeleteFixtureRefundWindow(t, periodStart, fixtureClock)
 	ledger.receiptCreatedAt = fixtureClock.Format(time.RFC3339Nano)
 	readyFacts := map[string]any{
 		"sub2apiRedeemCode": "opl:workspace-purchase-alpha",
 		"workspaceApiKeyId": int64(19), "workspaceKeyStatus": workspaceKeyCodexGroupBound, "workspaceKeyFingerprint": "sha256:" + strings.Repeat("a", 64),
 		"chargeAttempted": true, "chargeConfirmation": map[string]any{"code": "opl:workspace-purchase-alpha", "userId": int64(41), "chargeUsdMicros": int64(52_580_000), "status": "used"},
 		"postChargeBalanceUsdMicros": int64(947_420_000), "postChargeBalanceKnown": true, "billingPeriodState": "frozen",
-		"periodStart": periodStart.Format(time.RFC3339Nano), "paidThrough": paidThrough.Format(time.RFC3339Nano), "billingAnchorDay": 15,
+		"periodStart": periodStart.Format(time.RFC3339Nano), "paidThrough": paidThrough.Format(time.RFC3339Nano), "billingAnchorDay": periodStart.Day(),
 		"computeAllocationId": "compute-alpha", "computeBindingRef": "workspace-launch-alpha:compute", "storageId": "storage-alpha", "storageBindingRef": "workspace-launch-alpha:storage",
 		"attachmentId": "attachment-alpha", "attachmentBindingRef": "workspace-launch-alpha:attachment",
 		"gatewaySecretRef": "opl-gateway-ws-alpha", "gatewaySecretVersion": "v1", "secretBindingRef": "workspace-launch-alpha:secret",

@@ -82,6 +82,13 @@ func TestWorkspaceDeleteRefundDispatchesOnceWithFullAuthoritativeReadback(t *tes
 	if err != nil || refund.RefundUSDMicros != expected || refund.UserID != 41 {
 		t.Fatalf("refund=%#v expected=%d err=%v fulfilled=%s deleted=%s", refund, expected, err, fulfilled, deleted)
 	}
+	// The fixture models a Workspace bought recently, so the deletion must return
+	// most of the money. A refund of zero, or of the whole charge, would mean
+	// the fixture drifted onto an edge of the monthly window and stopped
+	// testing the behaviour it exists to test.
+	if expected <= 0 || expected >= 52_580_000 {
+		t.Fatalf("refund premise broken: expected=%d originalCharge=52580000 fulfilled=%s deleted=%s", expected, fulfilled, deleted)
+	}
 	if refund.Code != walletAdjustmentRedeemCode(workspaceDeleteRefundWalletOperationID(workspaceDeleteOperationID("ws-alpha"))) {
 		t.Fatalf("refund code=%q is not the deterministic operation code", refund.Code)
 	}
@@ -111,6 +118,31 @@ func TestWorkspaceDeleteRefundDispatchesOnceWithFullAuthoritativeReadback(t *tes
 	}
 	if refundReceipts != 1 {
 		t.Fatalf("ledger refund receipts=%#v", ledger.receipts)
+	}
+}
+
+// The delete fixture's refund window must stay inside the platform's monthly
+// baseline on every calendar day, not only on the days that happen to work. A
+// calendar-anchored purchase put the fixture on the edge of that window twice
+// a month, which is how this suite used to fail every 14th and 15th of the
+// month. The sweep below covers the 14th/15th boundary, every month length and
+// a leap year, so a drifting fixture fails here with a named cause.
+func TestWorkspaceDeleteFixtureRefundWindowStaysInsideTheMonthlyBaseline(t *testing.T) {
+	for day := 0; day < 400; day++ {
+		clock := time.Date(2028, 1, 1, 23, 30, 0, 0, time.UTC).AddDate(0, 0, day)
+		periodStart, paidThrough := workspaceDeleteFixtureBillingPeriod(clock)
+		if !periodStart.Before(clock) {
+			t.Fatalf("day=%d periodStart=%s is not before the clock=%s", day, periodStart, clock)
+		}
+		if !paidThrough.After(clock) {
+			t.Fatalf("day=%d paidThrough=%s does not keep the paid period in force at clock=%s", day, paidThrough, clock)
+		}
+		usedHours, refundHours := workspaceRefundBilledHours(periodStart, clock)
+		if usedHours <= 0 || refundHours <= workspaceDeleteFixtureRefundMarginHours ||
+			refundHours >= int64(contracts.WorkspaceRefundMonthlyHours)-workspaceDeleteFixtureRefundMarginHours {
+			t.Fatalf("day=%d refund window drifted to the edge of the monthly baseline: usedHours=%d refundHours=%d monthly=%d periodStart=%s clock=%s",
+				day, usedHours, refundHours, contracts.WorkspaceRefundMonthlyHours, periodStart, clock)
+		}
 	}
 }
 
