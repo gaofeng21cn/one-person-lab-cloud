@@ -29,11 +29,7 @@ type SharedStore interface {
 	GetProductionE2EAttempt(ctx context.Context, id string) (map[string]any, bool, error)
 	CompleteProductionE2EAttempt(ctx context.Context, id, binding string) (map[string]any, error)
 	BillingReconciliation(ctx context.Context) (map[string]any, bool, error)
-	ApplyBillingReconciliation(ctx context.Context, mutation billingReconciliationMutation) error
 	AdmittedApplicationRevision(ctx context.Context, applicationID, version string) (map[string]any, bool, error)
 	ApplyWorkspaceApplicationActivation(ctx context.Context, mutation workspaceApplicationActivationMutation) error
-	AdmittedApplicationDataMaterial(ctx context.Context, applicationID, version string) (map[string]any, bool, error)
-	ClaimWorkspaceApplicationDeploymentIntent(ctx context.Context, row map[string]any) error
 	PersistWorkspaceApplicationOperation(ctx context.Context, expectedResult string, desiredRow map[string]any) error
-	ResumeWorkspaceApplicationDeployment(ctx context.Context, operationID string) (map[string]any, error)
 }

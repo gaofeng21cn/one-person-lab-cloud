@@ -117,10 +117,6 @@ func (catalog *workspaceApplicationRegistryCatalog) tags(ctx context.Context, na
 	return catalog.client.ListTags(ctx, namespace, repository)
 }
 
-func (catalog *workspaceApplicationRegistryCatalog) resolve(ctx context.Context, namespace, repository, tag string) (contracts.WorkspaceRegistryImageResolution, error) {
-	return catalog.client.ResolveTag(ctx, namespace, repository, tag)
-}
-
 func registerWorkspaceRegistryCatalogRoutes(mux *http.ServeMux, app *controlPlaneServer) {
 	catalog, err := workspaceRegistryCatalogFromEnv()
 	if err != nil {

@@ -455,3 +455,26 @@ func assertErrorResponse(t *testing.T, status int, body string, wantStatus int, 
 		t.Fatalf("error body = %s, want %q", body, wantCode)
 	}
 }
+
+// applyBillingReconciliationForTest stores one reconciliation row for a test
+// that exercises the surviving read path. The production writer for this row
+// is retired with the billing reconciliation guard, so the row is seeded
+// directly.
+func applyBillingReconciliationForTest(t *testing.T, store controlPlaneTableStore, row map[string]any, _ string) {
+	t.Helper()
+	if memory, ok := store.(interface {
+		seedBillingReconciliationForTest(map[string]any)
+	}); ok {
+		memory.seedBillingReconciliationForTest(row)
+		return
+	}
+	if postgres, ok := store.(interface {
+		seedBillingReconciliationForTest(context.Context, map[string]any) error
+	}); ok {
+		if err := postgres.seedBillingReconciliationForTest(context.Background(), row); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	t.Fatalf("unsupported reconciliation store %T", store)
+}

@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"errors"
-	"net/http"
 
 	"opl-cloud/services/control-plane/internal/clients"
 )
@@ -166,13 +165,4 @@ func (*workspaceLaunchResumeRouteSub2API) UpdateUserKey(context.Context, clients
 
 func (*workspaceLaunchResumeRouteSub2API) DeleteUserKey(context.Context, clients.SessionDelegatedCredential, int64, int64) error {
 	return errors.New("unexpected key delete")
-}
-
-func addResumePrepareHeaders(request *http.Request, candidate productionAcceptanceBResumeExistingPrepareRequest) {
-	request.Header.Set(productionAcceptanceBApprovalID, candidate.ApprovalID)
-	request.Header.Set(productionAcceptanceBResumeAuthorizationID, candidate.AuthorizationID)
-	request.Header.Set(productionAcceptanceBResumeReasonSHA256, candidate.ReasonSHA256)
-	request.Header.Set(productionAcceptanceBResumeReleaseSHA, candidate.Release.CanonicalCloudSHA)
-	request.Header.Set(productionAcceptanceBResumeReleaseTree, candidate.Release.CanonicalCloudTree)
-	request.Header.Set(productionAcceptanceBResumeImageDigest, candidate.Release.DeployedCloudImageDigest)
 }

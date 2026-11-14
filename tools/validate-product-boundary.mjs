@@ -1,6 +1,8 @@
 import { readdir, readFile } from "node:fs/promises";
 import YAML from "yaml";
 
+import { assetNames } from "../deploy/portable/installer-manifest.mjs";
+
 const root = new URL("../", import.meta.url);
 const workflowRoot = new URL(".github/workflows/", root);
 const allowedWorkflows = new Set([
@@ -228,7 +230,6 @@ const legacyFormat = bundleFormats?.formats?.["legacy-v2"];
 if (!currentFormat || !legacyFormat ||
     contract.distribution?.releaseAssets?.$ref !== "#/bundleFormats" ||
     candidateReceipt?.currentPortableAssets?.$ref !== "opl-cloud-distribution-contract.json#/bundleFormats" ||
-    currentFormat.releaseAssets !== "candidateAssets" ||
     !Array.isArray(currentFormat.candidateAssets) ||
     new Set(currentFormat.candidateAssets).size !== currentFormat.candidateAssets.length ||
     currentFormat.candidateAssets.some(name => !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) ||
@@ -255,7 +256,7 @@ if (contract.schemaVersion !== 8 || contract.productRepository !== "gaofeng21cn/
     contract.candidate?.formalPublication !== false ||
     contract.candidate?.instanceDeployment !== false ||
     contract.portableInstallation?.providerSelection !== "instance_or_installer_owned" ||
-    contract.portableInstallation?.composeScope !== "cloud_control_services_only" ||
+    contract.portableInstallation?.composeScope !== "owner_topology_processes_only" ||
     contract.candidate?.contract !== "packages/contracts/opl-cloud-candidate-receipt-contract.json#candidateReceiptV2" ||
     JSON.stringify(Object.keys(contract.candidate || {}).sort()) !== JSON.stringify([
       "artifactLocator", "contract", "formalPublication", "instanceDeployment", "registry", "workflow"
@@ -300,6 +301,103 @@ if (contract.schemaVersion !== 8 || contract.productRepository !== "gaofeng21cn/
     contract.instanceHandoff?.artifactLocatorContract !== "packages/contracts/opl-cloud-distribution-contract.json#candidate.artifactLocator" ||
     JSON.stringify(contract.instanceHandoff?.inputs) !== JSON.stringify(["candidate_manifest_b64"])) {
   throw new Error("distribution owner boundary is invalid");
+}
+
+// The published surface is the owner topology. The distribution contract
+// declares which Compose file realizes that topology, which processes it runs
+// and that the owner topology contract itself is a Candidate-only asset. The
+// assertions below read the owner topology contract and the declared
+// entrypoint, so a declaration that drifts from the shipped surface fails the
+// boundary instead of shipping.
+const installation = contract.portableInstallation || {};
+const topology = JSON.parse(await readFile(new URL("deploy/portable/opl-cloud-owner-topology.json", root), "utf8"));
+const topologyProcesses = (topology.processes || []).map((process) => process.service);
+const ownerTopologyContractAsset = installation.ownerTopology?.contract;
+const ownerTopologyComposeAsset = installation.ownerTopology?.compose;
+const candidateOnlyAssets = bundleFormats.candidateOnlyAssets || [];
+const currentCandidateAssets = assetNames(contract, bundleFormats.current, "candidate");
+const currentReleaseAssets = assetNames(contract, bundleFormats.current, "release");
+const assetSourcePath = (name) => bundleFormats.assetSources?.[name] ?? `${bundleFormats.defaultAssetSourceDirectory}/${name}`;
+
+if (installation.entrypoint !== ownerTopologyComposeAsset) {
+  throw new Error(`distribution contract entrypoint must be the owner topology Compose file: ${installation.entrypoint} != ${ownerTopologyComposeAsset}`);
+}
+const undeclaredProcesses = (installation.processes || []).filter((name) => !topologyProcesses.includes(name));
+if (undeclaredProcesses.length > 0) {
+  throw new Error(`distribution contract declares processes the owner topology does not: ${undeclaredProcesses.join(",")}`);
+}
+if (JSON.stringify(installation.processes) !== JSON.stringify(topologyProcesses)) {
+  throw new Error(`distribution contract processes must equal the owner topology processes in order: ${JSON.stringify(installation.processes)} != ${JSON.stringify(topologyProcesses)}`);
+}
+if (!candidateOnlyAssets.includes(ownerTopologyContractAsset)) {
+  throw new Error(`distribution contract must declare the owner topology contract Candidate-only: ${ownerTopologyContractAsset}`);
+}
+if (typeof currentFormat.releaseAssets === "string") {
+  throw new Error(`the current bundle format must declare its release assets explicitly instead of aliasing the candidate assets: ${bundleFormats.current}`);
+}
+if (!Array.isArray(currentFormat.releaseAssets)) {
+  throw new Error(`the current bundle format must declare its release assets as an ordered list: ${bundleFormats.current}`);
+}
+if (!currentCandidateAssets.includes(installation.entrypoint)) {
+  throw new Error(`candidate bundle must carry the declared entrypoint: ${installation.entrypoint}`);
+}
+if (!currentCandidateAssets.includes(ownerTopologyContractAsset)) {
+  throw new Error(`candidate bundle must carry the owner topology contract: ${ownerTopologyContractAsset}`);
+}
+if (currentReleaseAssets.includes(ownerTopologyContractAsset)) {
+  throw new Error(`the owner topology contract must not be published in the Release bundle: ${ownerTopologyContractAsset}`);
+}
+
+const entrypointDocument = YAML.parseDocument(await readFile(new URL(assetSourcePath(installation.entrypoint), root), "utf8"), {
+  customTags: [
+    { tag: "!override", collection: "seq" },
+    { tag: "!override", collection: "map" },
+    { tag: "!reset", resolve: () => null }
+  ],
+  logLevel: "silent"
+});
+if (entrypointDocument.errors.length > 0) {
+  throw new Error(`the declared entrypoint is not a readable Compose file: ${installation.entrypoint}`);
+}
+const entrypointModel = entrypointDocument.toJS();
+const entrypointServices = entrypointModel.services || {};
+const referencedFiles = new Set();
+for (const service of Object.values(entrypointServices)) {
+  const extended = service?.extends?.file;
+  if (typeof extended === "string") referencedFiles.add(extended.replace(/^\.\//, "").split("/").pop());
+}
+for (const config of Object.values(entrypointModel.configs || {})) {
+  if (typeof config?.file === "string") referencedFiles.add(config.file.replace(/^\.\//, "").split("/").pop());
+}
+for (const name of referencedFiles) {
+  if (!currentCandidateAssets.includes(name)) {
+    throw new Error(`candidate bundle must carry every file the entrypoint references: ${name}`);
+  }
+}
+for (const process of topology.processes || []) {
+  if (!entrypointServices[process.service] && !entrypointServices[process.ownerName]) {
+    throw new Error(`the published Compose surface must run every owner process: ${process.service}`);
+  }
+}
+
+// Every format publishes exactly its candidate assets minus the assets the
+// contract declares Candidate-only. The alias that used to publish the whole
+// candidate list would publish the owner topology contract as well.
+for (const format of Object.keys(bundleFormats.formats || {})) {
+  const candidate = assetNames(contract, format, "candidate");
+  const release = assetNames(contract, format, "release");
+  for (const name of candidateOnlyAssets) {
+    if (!candidate.includes(name)) {
+      throw new Error(`candidate-only asset must stay in the Candidate bundle: ${format}:${name}`);
+    }
+    if (release.includes(name)) {
+      throw new Error(`candidate-only asset must not be published in the Release bundle: ${format}:${name}`);
+    }
+  }
+  const expectedRelease = candidate.filter((name) => !candidateOnlyAssets.includes(name));
+  if (JSON.stringify(release) !== JSON.stringify(expectedRelease)) {
+    throw new Error(`release asset set must be the candidate assets minus the candidate-only assets: ${format}`);
+  }
 }
 
 console.log("OPL Cloud product distribution boundary is valid");
