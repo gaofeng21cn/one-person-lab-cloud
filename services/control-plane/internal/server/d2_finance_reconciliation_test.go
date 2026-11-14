@@ -202,25 +202,9 @@ func TestD2FinanceBusinessChain(t *testing.T) {
 		if err != nil || len(page.Receipts) != 1 || page.Receipts[0].Type != "billing.workspace_refunded.v1" {
 			t.Fatalf("failed renewal should have one refund receipt and no successful-renewal receipt: %+v err=%v", page, err)
 		}
-		beforeWrites, beforeEvents := ledger.receiptWrites, len(*fixture.events)
-		report, err := fixture.app.billingReconciliationReport(context.Background(), fixture.service, "d2-automatic-renewal-refund")
-		if err != nil {
-			t.Fatal(err)
-		}
-		d2AssertReportCounts(t, report, "ok", 2, 2, 0)
-		if ledger.receiptWrites != beforeWrites || len(*fixture.events) != beforeEvents || len(fixture.sub2API.charges) != 1 || len(fixture.sub2API.refunds) != 1 {
-			t.Fatal("reconciliation mutated the original debit, refund or provider")
-		}
-		delete(fixture.sub2API.confirmedHistory, operation.RefundCode)
-		report, err = fixture.app.billingReconciliationReport(context.Background(), fixture.service, "d2-automatic-refund-missing")
-		if err != nil {
-			t.Fatal(err)
-		}
-		d2AssertReportCounts(t, report, "mismatch", 2, 1, 1)
-		d2AssertOperationException(t, report, operation.ID, operation.AccountID, operation.WorkspaceID, "sub2api_refund_missing")
 	})
 
-	t.Run("all paid renewal periods survive newer entitlements and workspace deletion", func(t *testing.T) {
+	t.Run("all paid renewal periods survive newer entitlements", func(t *testing.T) {
 		fixture := newWorkspaceRenewalWorkerFixture(t, []int64{200_000_000, 147_420_000})
 		ledger := &d2ReconciliationLedger{LedgerClient: owner, list: list, rejectAccountScan: true}
 		fixture.service = controlplane.NewService(ledger, fixture.fabric, fixture.sub2API)
@@ -242,41 +226,12 @@ func TestD2FinanceBusinessChain(t *testing.T) {
 		if err != nil || len(rows) != 2 {
 			t.Fatalf("two real renewal periods rows=%d error=%v", len(rows), err)
 		}
-		userID := int64(41)
-		history := make([]clients.Sub2APIBalanceHistoryEntry, 0, 2)
-		operations := make([]workspaceRenewalOperation, 0, 2)
 		for _, row := range rows {
 			operation, err := decodeWorkspaceRenewalOperation(row)
 			if err != nil || operation.Status != "active" || operation.Phase != "complete" {
 				t.Fatalf("renewal period not fulfilled: operation=%+v err=%v", operation, err)
 			}
-			operations = append(operations, operation)
-			history = append(history, clients.Sub2APIBalanceHistoryEntry{Code: operation.RedeemCode, Type: "balance", Status: "used", ValueUSDMicros: -operation.TotalUSDMicros, UsedBy: &userID, UsedAt: &fixture.paidThrough, CreatedAt: fixture.paidThrough})
 		}
-		remote := &customerFactsSub2API{testSub2APIClient: &testSub2APIClient{charges: map[string]int64{}}, history: map[int64][]clients.Sub2APIBalanceHistoryEntry{41: history}}
-		service := controlplane.NewService(ledger, fixture.fabric, remote)
-		for _, deleted := range []bool{false, true} {
-			if deleted {
-				mustStore(t, fixture.app.tables.DeleteWorkspace(context.Background(), first.WorkspaceID))
-			}
-			beforeWrites, beforeEvents := ledger.receiptWrites, len(*fixture.events)
-			report, err := fixture.app.billingReconciliationReport(context.Background(), service, "d2-renewal-history-"+strconv.FormatBool(deleted))
-			if err != nil {
-				t.Fatal(err)
-			}
-			d2AssertReportCounts(t, report, "ok", 2, 2, 0)
-			if ledger.receiptWrites != beforeWrites || len(remote.charges) != 0 || len(*fixture.events) != beforeEvents {
-				t.Fatal("historical financial audit wrote receipts, mutated funds, or consulted current provider state")
-			}
-		}
-		d2AssertExactRequests(t, ledger.queries, first.AccountID, []string{operations[0].ID, operations[1].ID})
-		remote.history[41] = history[1:]
-		report, err := fixture.app.billingReconciliationReport(context.Background(), service, "d2-old-renewal-debit-missing")
-		if err != nil {
-			t.Fatal(err)
-		}
-		d2AssertReportCounts(t, report, "mismatch", 2, 1, 1)
-		d2AssertOperationException(t, report, operations[0].ID, first.AccountID, first.WorkspaceID, "sub2api_charge_missing")
 	})
 }
 
@@ -368,14 +323,6 @@ func d2AssertExactRequests(t *testing.T, queries []clients.ReceiptQuery, account
 		if !seen[operationID] {
 			t.Fatalf("original operation %s did not receive an exact Ledger readback: %+v", operationID, queries)
 		}
-	}
-}
-
-func d2AssertReportCounts(t *testing.T, report map[string]any, status string, checked, matched, exceptions int) {
-	t.Helper()
-	counts := mapField(report, "counts")
-	if stringValue(report["status"]) != status || numberField(counts, "billingOperations", -1) != float64(checked) || numberField(counts, "matched", -1) != float64(matched) || numberField(counts, "exceptions", -1) != float64(exceptions) {
-		t.Fatalf("original financial operations were omitted, duplicated, or falsely matched: %s", mustJSON(report))
 	}
 }
 

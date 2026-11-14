@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"testing"
 	"time"
 
@@ -243,26 +242,5 @@ func TestD3EveryStageLateReadyRecoversWithoutRepeatingItsMutation(t *testing.T) 
 				}
 			})
 		}
-	}
-}
-
-func TestD3ReadOnlyCheckPreservesOriginalRecoveryLineage(t *testing.T) {
-	row := workspaceLaunchUnknownStorageAfterFailedReplayRow(t)
-	original, err := decodeWorkspaceLaunchReconcileOperation(row)
-	if err != nil {
-		t.Fatal(err)
-	}
-	store := &workspaceLaunchUnitStore{row: row}
-	adapter := &workspaceLaunchUnitAdapter{replayableStages: map[string]bool{string(contracts.StageStorage): true}}
-	reconciler := NewWorkspaceLaunchReconciler(store, adapter)
-	check := workspaceLaunchUnknownRuntimeReadAuthorization(t, row, "check-before-storage-recovery")
-	checked, err := reconciler.CheckResult(context.Background(), original.ID, check)
-	if err != nil || !reflect.DeepEqual(checked.ResumeAuthorization, original.ResumeAuthorization) || !reflect.DeepEqual(checked.ConsumedResumeAuthorizations, original.ConsumedResumeAuthorizations) || checked.Status != contracts.StatusManualReview {
-		t.Fatalf("check changed recovery lineage: %s err=%v", workspaceLaunchReconcileResultSummary(checked), err)
-	}
-	next := workspaceLaunchFailedStorageReplayAuthorization(t, store.row, "recover-after-result-check")
-	recovered, err := NewWorkspaceLaunchReconciler(store, adapter).Resume(context.Background(), original.ID, next)
-	if err != nil || recovered.Stage != contracts.StageAttachment || adapter.mutations != 1 {
-		t.Fatalf("read-only check blocked original-key recovery: %s mutations=%d err=%v", workspaceLaunchReconcileResultSummary(recovered), adapter.mutations, err)
 	}
 }

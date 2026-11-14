@@ -11,7 +11,6 @@ import (
 var errSub2APIAccountMappingConflict = errors.New("sub2api_account_mapping_conflict")
 var errPrimaryWorkspaceExists = errors.New("primary_workspace_already_exists")
 var errWorkspaceActivationConflict = errors.New("workspace_activation_conflict")
-var errWorkspaceAPIKeyCASConflict = errors.New("workspace_api_key_cas_conflict")
 var errInvalidAccountID = errors.New("invalid_account_id")
 var errInvalidEmail = errors.New("invalid_email")
 var errAccountIdentityConflict = errors.New("account_identity_conflict")
@@ -20,8 +19,6 @@ var errAnnouncementNotActive = errors.New("announcement_not_active")
 var errProductionE2EAttemptAlreadyExists = errors.New("production_e2e_attempt_already_exists")
 var errProductionE2EAttemptBindingMismatch = errors.New("production_e2e_attempt_binding_mismatch")
 var errProductionE2EAttemptNotFound = errors.New("production_e2e_attempt_not_found")
-var errBillingReconciliationCASConflict = errors.New("billing_reconciliation_cas_conflict")
-var errBillingReconciliationBlocked = errors.New("billing_reconciliation_blocked")
 
 const recoveredWorkspaceE2EAttemptReason = "recovered_workspace_e2e_model_request"
 
@@ -40,12 +37,6 @@ type announcementMutation struct {
 	RequestHash     string
 	Patch           map[string]any
 	AuditEvent      map[string]any
-}
-
-type billingReconciliationMutation struct {
-	Row                    map[string]any
-	AuditEvent             map[string]any
-	ExpectedCurrentGuardID string
 }
 
 type tablePageQuery struct {

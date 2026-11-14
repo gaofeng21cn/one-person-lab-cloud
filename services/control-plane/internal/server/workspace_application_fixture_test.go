@@ -130,12 +130,19 @@ func seedHistoricalDefaultApplicationForTest(t *testing.T, app *controlPlaneServ
 // applicationDeploymentFixtureForTest snapshots only the fixture's resource and
 // selection fields. Callers supply the accepted configuration, data lineage and
 // credentials explicitly; this does not resolve or admit an application change.
+
+// seedAcceptedApplicationDeploymentForTest persists a frozen typed command using
+// the existing reservation CAS. It computes serialization identities only; all
+// command fields and historical lineage have already been chosen by the fixture.
+
+// applicationDeploymentFixtureForTest builds the deployment intent a live
+// application deployment starts from.
 func applicationDeploymentFixtureForTest(t *testing.T, app *controlPlaneServer, workspaceID, mutationKey string, revision contracts.WorkspaceApplicationRevision) workspaceApplicationDeploymentIntent {
 	t.Helper()
 	seedAdmittedApplicationRevisionForTest(t, app.tables, revision)
 	workspace, found, err := app.tables.GetWorkspace(context.Background(), workspaceID)
 	if err != nil || !found {
-		t.Fatalf("fixture Workspace missing: found=%v err=%v", found, err)
+		t.Fatalf("fixture workspace missing: found=%v err=%v", found, err)
 	}
 	return workspaceApplicationDeploymentIntent{
 		SchemaVersion: workspaceApplicationDeploymentSchemaVersion, Version: 2,
@@ -150,9 +157,9 @@ func applicationDeploymentFixtureForTest(t *testing.T, app *controlPlaneServer, 
 	}
 }
 
-// seedAcceptedApplicationDeploymentForTest persists a frozen typed command using
-// the existing reservation CAS. It computes serialization identities only; all
-// command fields and historical lineage have already been chosen by the fixture.
+// seedAcceptedApplicationDeploymentForTest stores one accepted application
+// deployment intent. The production claim path is retired with the Workspace
+// Gateway key rotation, so the row is seeded directly.
 func seedAcceptedApplicationDeploymentForTest(t *testing.T, app *controlPlaneServer, intent workspaceApplicationDeploymentIntent) workspaceApplicationDeploymentIntent {
 	t.Helper()
 	ctx := context.Background()
@@ -180,6 +187,27 @@ func seedAcceptedApplicationDeploymentForTest(t *testing.T, app *controlPlaneSer
 		"workspaceId": intent.WorkspaceID, "resourceId": intent.WorkspaceID, "resourceKind": "workspace",
 		"action": workspaceApplicationDeploymentAction, "status": "pending", "result": string(payload), "createdAt": intent.CreatedAt,
 	}
-	mustStore(t, app.tables.ClaimWorkspaceApplicationDeploymentIntent(ctx, row))
+	seedWorkspaceApplicationDeploymentIntentForTest(t, app.tables, row)
 	return intent
+}
+
+// seedWorkspaceApplicationDeploymentIntentForTest stores one deployment
+// intent row and reserves it on its Workspace. The production claim path is
+// retired with the Workspace Gateway key rotation, so the row and the
+// reservation are written directly.
+func seedWorkspaceApplicationDeploymentIntentForTest(t *testing.T, store controlPlaneTableStore, row map[string]any) {
+	t.Helper()
+	ctx := context.Background()
+	if err := store.SaveRuntimeOperation(ctx, row); err != nil {
+		t.Fatal(err)
+	}
+	workspaceID := stringValue(row["workspaceId"])
+	workspace, found, err := store.GetWorkspace(ctx, workspaceID)
+	if err != nil || !found {
+		t.Fatalf("fixture workspace missing: found=%v err=%v", found, err)
+	}
+	workspace["reservedApplicationDeploymentId"] = stringValue(row["id"])
+	if err := store.SaveWorkspace(ctx, workspace); err != nil {
+		t.Fatal(err)
+	}
 }

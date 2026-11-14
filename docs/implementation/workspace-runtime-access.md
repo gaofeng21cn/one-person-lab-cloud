@@ -120,15 +120,13 @@ accepted commands preserve their frozen credential identity and proven source.
 CP no longer constructs ordinary image-update or reinstall commands.
 The legacy password-rotation creator and its Console action are removed. Already
 accepted credential deployments retain their frozen successor identity and data
-binding, shared worker and original operator retry. Fresh legacy Workspace-Key
+binding and the shared worker. Fresh legacy Workspace-Key
 rotation acceptance and its store claim are also removed. The original rotation
-POST only resumes a persisted operation with its original identity; confirmed
-absence returns HTTP 410. Accepted rotations may still create a successor from
-the selected application, revision, resources and data, replacing only the
-parent's Gateway Secret and
-credential version. The constructor reads the original parent and reuses its
-frozen child after a lost claim response. Parent recovery remains responsible
-for Key/receipt closeout.
+POST only resumed a persisted operation with its original identity; confirmed
+absence returned HTTP 410. No accepted rotation can still create a successor from
+the selected application, revision, resources and data; the constructor, the
+frozen child claim and the parent's Key/receipt closeout leave with the rotation
+command. The accepted rotation operations stay readable as history.
 HTTP 202 means the operation is pending, not that a new password is already in
 use. Console keeps read-only pending refresh, drops revealed credentials when the
 selection changes and keeps passwords only in component memory. Native credential
@@ -207,8 +205,8 @@ Control Plane resolves the target Workspace's persisted `workspaceApiKeyId` and
 hands the Key transiently to Fabric. Fabric writes or rotates a deterministic
 Workspace-scoped secret bound to account, Workspace, Key ID, and fingerprint,
 and records only its ref, version, and fingerprint. Existing
-account-scoped Secrets remain read-compatible; an already accepted rotation can
-finish the replacement binding. Ordinary reads never infer scope from Workspace
+account-scoped Secrets remain read-compatible; an already accepted rotation no
+longer finishes the replacement binding. Ordinary reads never infer scope from Workspace
 count or Key name.
 Ordinary runtime status is non-secret. The dedicated owner-only POST reveals the
 password transiently; the legacy password-rotation command is removed. Control

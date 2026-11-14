@@ -26,9 +26,12 @@ export async function prepareRelease(candidateDirectory: string, releaseDirector
   const names = releasePayload(receipt);
   for (const name of names) await cp(join(candidateDirectory, name), join(releaseDirectory, name), { dereference: false });
   const format = selectAssetFormat(receipt.assets.map((a: any) => a.name), contract, 'candidate');
+  // The Release publishes the candidate assets minus the contract-declared
+  // candidate-only assets, so its digests cover exactly the published assets.
+  const digests = names.map((name) => receipt.assets.find((asset: any) => asset.name === name));
   return {
     assets: [...names, contract.bundleFormats.checksumManifest],
-    ...(format === 'legacy-v2' ? {} : { assetFormat: format, assetDigests: receipt.assets })
+    ...(format === 'legacy-v2' ? {} : { assetFormat: format, assetDigests: digests })
   };
 }
 export async function writeBundleChecksums(directory: string, kind: 'candidate' | 'release') {

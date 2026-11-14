@@ -522,24 +522,6 @@ func (s *memoryTableStore) SaveWorkspace(_ context.Context, row map[string]any) 
 	return nil
 }
 
-func (s *memoryTableStore) CompareAndSwapWorkspaceAPIKey(_ context.Context, workspaceID string, expectedID, newID int64) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	workspace := s.workspaces[workspaceID]
-	currentID, ok := requiredPositiveInteger(workspace, "workspaceApiKeyId")
-	if workspace == nil || !ok || expectedID <= 0 || newID <= 0 || currentID != expectedID && currentID != newID {
-		return errWorkspaceAPIKeyCASConflict
-	}
-	if currentID == newID {
-		return nil
-	}
-	workspace = cloneMap(workspace)
-	workspace["workspaceApiKeyId"] = newID
-	workspace["updatedAt"] = time.Now().UTC().Format(time.RFC3339Nano)
-	s.workspaces[workspaceID] = workspace
-	return nil
-}
-
 func (s *memoryTableStore) ApplyWorkspaceRenewalIntent(_ context.Context, update workspaceRenewalIntentCAS) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -633,36 +615,6 @@ func applyWorkspaceLaunchReceiptProjection(workspaces controlPlaneRecordSet, pro
 	updated["updatedAt"] = time.Now().UTC().Format(time.RFC3339Nano)
 	workspaces[projection.WorkspaceID] = updated
 	return nil
-}
-
-func (s *memoryTableStore) ApplyWorkspaceLaunchCanonicalFactRepair(_ context.Context, update workspaceLaunchCanonicalFactRepairCAS) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	auditID := stringValue(update.AuditEvent["id"])
-	for _, audit := range s.auditEvents {
-		if stringValue(audit["id"]) == auditID {
-			for _, row := range s.runtimeOps {
-				if stringValue(row["id"]) == update.OperationID && stringValue(row["result"]) == stringValue(update.DesiredOperation["result"]) && workspaceLaunchCanonicalFactRepairAuditMatches(audit, update.AuditEvent) {
-					return nil
-				}
-			}
-			return errIdempotencyConflict
-		}
-	}
-	for index, row := range s.runtimeOps {
-		if stringValue(row["id"]) != update.OperationID {
-			continue
-		}
-		if err := validateWorkspaceLaunchCanonicalFactRepairCAS(update, row); err != nil {
-			return err
-		}
-		repaired := cloneMap(row)
-		repaired["result"] = stringValue(update.DesiredOperation["result"])
-		s.runtimeOps[index] = repaired
-		s.auditEvents = append(s.auditEvents, cloneMap(update.AuditEvent))
-		return nil
-	}
-	return errWorkspaceLaunchCASConflict
 }
 
 func (s *memoryTableStore) ClaimWorkspaceRenewal(_ context.Context, claim workspaceRenewalClaimCAS) error {
@@ -1014,18 +966,6 @@ func (s *memoryTableStore) PersistWorkspaceApplicationOperation(_ context.Contex
 	return nil
 }
 
-func (s *memoryTableStore) ResumeWorkspaceApplicationDeployment(_ context.Context, operationID string) (map[string]any, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	row := findRecord(s.runtimeOps, operationID)
-	next, err := workspaceApplicationRecoveryRow(s.workspaces[stringValue(row["workspaceId"])], row, s.runtimeOps)
-	if err != nil {
-		return nil, err
-	}
-	s.runtimeOps = upsertProjectionByID(s.runtimeOps, cloneMap(next))
-	return next, nil
-}
-
 func (s *memoryTableStore) SaveWalletAdjustment(_ context.Context, operationID string, operation walletAdjustmentOperation) (walletAdjustmentOperation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1062,31 +1002,6 @@ func (s *memoryTableStore) SaveWalletAdjustment(_ context.Context, operationID s
 	row := walletAdjustmentRow(operationID, operation)
 	s.runtimeOps = upsertProjectionByID(s.runtimeOps, cloneMap(row))
 	return decodeWalletAdjustment(row)
-}
-
-func (s *memoryTableStore) ApplyWorkspaceImageReleaseMutation(_ context.Context, mutation workspaceImageReleaseMutation) (workspaceImageReleasePolicy, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if audit := findRecord(s.auditEvents, stringValue(mutation.AuditEvent["id"])); audit != nil {
-		return workspaceImageReleaseReplay(audit, mutation)
-	}
-	current := mutation.Base
-	createdAt := ""
-	if row := findRecord(s.runtimeOps, workspaceImageReleasePolicyID); row != nil {
-		var err error
-		current, err = decodeWorkspaceImageReleasePolicyRow(row)
-		if err != nil {
-			return workspaceImageReleasePolicy{}, err
-		}
-		createdAt = stringValue(row["createdAt"])
-	}
-	desired, err := prepareWorkspaceImageReleaseMutation(current, mutation, time.Now().UTC())
-	if err != nil {
-		return workspaceImageReleasePolicy{}, err
-	}
-	s.runtimeOps = upsertProjectionByID(s.runtimeOps, workspaceImageReleasePolicyRow(desired, createdAt))
-	s.auditEvents = upsertProjectionByID(s.auditEvents, workspaceImageReleaseAudit(mutation, current, desired))
-	return desired, nil
 }
 
 func (s *memoryTableStore) ReserveWorkspaceLaunchCloseoutRefund(_ context.Context, operation workspaceLaunchReconcileOperation) ([]walletRefundOperation, error) {
@@ -1179,50 +1094,35 @@ func (s *memoryTableStore) BillingReconciliation(_ context.Context) (map[string]
 	return cloneMap(s.reconciliation), true, nil
 }
 
-func (s *memoryTableStore) ApplyBillingReconciliation(_ context.Context, mutation billingReconciliationMutation) error {
+// seedBillingReconciliationForTest stores one reconciliation row directly.
+// The production writer for this row is retired with the billing
+// reconciliation guard, so a test that still exercises the surviving read
+// path seeds the row here.
+func (s *memoryTableStore) seedBillingReconciliationForTest(row map[string]any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.reconciliationErr != nil {
-		return s.reconciliationErr
+	saved := cloneMap(row)
+	if stringValue(saved["createdAt"]) == "" {
+		saved["createdAt"] = time.Now().UTC().Format(time.RFC3339Nano)
 	}
-	if err := validateBillingReconciliationMutation(mutation); err != nil {
-		return err
-	}
-	resultID := stringValue(mutation.Row["id"])
-	if existing := s.reconciliations[resultID]; existing != nil {
-		if !billingReconciliationIdentityMatches(existing, mutation.Row) {
-			return errIdempotencyConflict
-		}
-		for _, event := range s.auditEvents {
-			if stringValue(event["id"]) == billingReconciliationAuditID(resultID) {
-				if !billingReconciliationAuditIdentityMatches(event, mutation.Row) {
-					return errIdempotencyConflict
-				}
-				return nil
-			}
-		}
-		return errIdempotencyConflict
-	}
-	currentID := ""
-	if s.reconciliation != nil {
-		currentID = stringValue(s.reconciliation["id"])
-	}
-	if currentID != mutation.ExpectedCurrentGuardID {
-		return errBillingReconciliationCASConflict
-	}
-	for _, event := range s.auditEvents {
-		if stringValue(event["id"]) == stringValue(mutation.AuditEvent["id"]) {
-			return errIdempotencyConflict
+	s.reconciliations[stringValue(saved["id"])] = saved
+	s.reconciliation = saved
+}
+
+// seedWorkspaceApplicationDeploymentIntentForTest stores one application
+// deployment intent row directly. The production claim path is retired with
+// the Workspace Gateway key rotation, so a test that still exercises the
+// surviving read path seeds the row here. The reserved deployment id is set
+// exactly as the retired claim path set it.
+func (s *memoryTableStore) seedWorkspaceApplicationDeploymentIntentForTest(row map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.runtimeOps = append(s.runtimeOps, cloneMap(row))
+	if intent, err := decodeWorkspaceApplicationDeploymentIntent(row); err == nil {
+		if current := s.workspaces[intent.WorkspaceID]; current != nil {
+			current["reservedApplicationDeploymentId"] = intent.OperationID
 		}
 	}
-	row := cloneMap(mutation.Row)
-	if stringValue(row["createdAt"]) == "" {
-		row["createdAt"] = time.Now().UTC().Format(time.RFC3339Nano)
-	}
-	s.reconciliations[resultID] = row
-	s.reconciliation = row
-	s.auditEvents = append(s.auditEvents, cloneMap(mutation.AuditEvent))
-	return nil
 }
 
 func (s *memoryTableStore) ApplyWorkspaceResourceReconcile(_ context.Context, mutation workspaceResourceReconcileMutation) error {
@@ -1288,34 +1188,4 @@ func (s *memoryTableStore) AdmittedApplicationDataMaterial(_ context.Context, ap
 		return nil, false, nil
 	}
 	return cloneMap(row), true, nil
-}
-
-func (s *memoryTableStore) ClaimWorkspaceApplicationDeploymentIntent(_ context.Context, row map[string]any) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if findRecord(s.runtimeOps, stringValue(row["id"])) != nil {
-		return errWorkspaceApplicationIntentConflict
-	}
-	intent, err := decodeWorkspaceApplicationDeploymentIntent(row)
-	if err != nil {
-		return err
-	}
-	current := s.workspaces[intent.WorkspaceID]
-	if !workspaceApplicationEntitlementOpen(current, time.Now()) || !workspaceApplicationOwnedResourcesMatch(current, intent) || stringValue(current["applicationBinding"]) != intent.CurrentBinding || int64(numberField(current, "applicationBindingVersion", 0)) != intent.ExpectedWorkspaceVersion || stringValue(current["currentApplicationDeploymentId"]) != intent.PreviousDeploymentID {
-		return errWorkspaceApplicationIntentConflict
-	}
-	for _, other := range s.runtimeOps {
-		if stringValue(other["workspaceId"]) == intent.WorkspaceID && (workspaceKeyRotationBlocksDelete(other) && !(stringValue(other["id"]) == intent.OriginOperationID && stringValue(other["action"]) == "workspace.gateway_key.rotate") || workspaceDeleteBlocksRotation(other)) {
-			return errWorkspaceApplicationIntentConflict
-		}
-	}
-	if reservedID := stringValue(current["reservedApplicationDeploymentId"]); reservedID != "" {
-		reserved, err := decodeWorkspaceApplicationDeploymentIntent(findRecord(s.runtimeOps, reservedID))
-		if err != nil || reserved.Phase != workspaceApplicationDeploymentActivePhase {
-			return errWorkspaceApplicationIntentConflict
-		}
-	}
-	s.runtimeOps = append(s.runtimeOps, cloneMap(row))
-	current["reservedApplicationDeploymentId"] = intent.OperationID
-	return nil
 }

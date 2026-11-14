@@ -153,21 +153,8 @@ func (app *controlPlaneServer) accountsLocked(accountID string) []any {
 	return rowsAsAnyFromMaps(accounts)
 }
 
-type archiveStateStore interface {
-	ArchiveState(ctx context.Context) (map[string]any, error)
-}
-
 type retentionStore interface {
 	ApplyRetention(ctx context.Context, policy retentionPolicy) (map[string]any, error)
-}
-
-func (app *controlPlaneServer) archiveState(ctx context.Context) (map[string]any, error) {
-	if store, ok := app.store.(archiveStateStore); ok {
-		return store.ArchiveState(ctx)
-	}
-	app.mu.Lock()
-	defer app.mu.Unlock()
-	return app.archiveStateLocked(), nil
 }
 
 func (app *controlPlaneServer) archiveStateLocked() map[string]any {

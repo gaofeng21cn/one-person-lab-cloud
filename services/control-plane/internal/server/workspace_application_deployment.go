@@ -16,7 +16,6 @@ const (
 )
 
 var (
-	errWorkspaceApplicationIntentConflict   = errors.New("workspace_application_deployment_intent_conflict")
 	errWorkspaceApplicationResourcesUnready = errors.New("workspace_application_resources_unready")
 	errWorkspaceApplicationBindingUnknown   = errors.New("workspace_application_binding_unknown")
 	errWorkspaceApplicationWorkspaceGone    = errors.New("workspace_application_workspace_not_found")

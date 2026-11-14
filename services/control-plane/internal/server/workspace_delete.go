@@ -837,18 +837,6 @@ func workspaceKeyRotationBlocksDelete(row map[string]any) bool {
 	return err != nil || stringValue(row["status"]) != "succeeded" || !workspaceKeyRotationSucceededEvidenceValid(operation)
 }
 
-func workspaceDeleteBlocksRotation(row map[string]any) bool {
-	action := stringValue(row["action"])
-	if action == workspaceDeleteLegacyAction {
-		return true
-	}
-	if action != workspaceDeleteAction {
-		return false
-	}
-	operation, err := decodeWorkspaceDeleteOperation(row)
-	return err != nil || operation.Status != "succeeded" || operation.Phase != "complete"
-}
-
 func workspaceDeleteWorkspaceProjectionMatches(operation workspaceDeleteOperation, row map[string]any, requireResources bool) bool {
 	if row == nil || firstNonEmpty(stringValue(row["accountId"]), stringValue(row["ownerAccountId"])) != operation.AccountID ||
 		firstNonEmpty(stringValue(row["ownerUserId"]), stringValue(row["ownerId"])) != operation.OwnerUserID {

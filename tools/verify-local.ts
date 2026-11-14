@@ -168,6 +168,7 @@ export const localVerificationSteps: readonly LocalVerificationStep[] = Object.f
   ...goModules.map((cwd) =>
     ({ group: "go" as const, name: `${cwd} compile`, command: "go", args: ["test", "-run", "^$", "./..."], cwd })
   ),
+  { group: "go", name: "Control Plane dead-code boundary", command: "go", args: ["run", "./internal/tools/deadcode"], cwd: "services/control-plane" },
   ...databaseFreeGoTestSpecs.map((spec) => ({
     group: "go" as const,
     name: `${spec.cwd} database-free tests`,

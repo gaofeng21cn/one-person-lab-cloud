@@ -42,14 +42,6 @@ func envInt(name string, fallback int) int {
 	return value
 }
 
-func rowsAsAny(rows []controlPlaneRecord) []any {
-	output := make([]any, 0, len(rows))
-	for _, row := range rows {
-		output = append(output, row)
-	}
-	return output
-}
-
 func productionE2ESummary(rows []controlPlaneRecord) map[string]any {
 	recent := make([]any, 0, len(rows))
 	passed := 0
