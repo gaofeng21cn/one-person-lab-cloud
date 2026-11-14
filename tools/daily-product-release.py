@@ -54,7 +54,21 @@ def ensure_run(workflow, inputs, title):
         raise RuntimeError('Dispatched Cloud operation is not yet reconciled')
     run = runs[0]
     if run['status'] == 'completed' and run['conclusion'] != 'success':
-        raise RuntimeError('Existing Cloud operation requires repair: ' + run['html_url'])
+        previous_attempt = run['run_attempt']
+        # Retry one failed native attempt while preserving its frozen identity.
+        # An uncertain response is reconciled by this same run, never another POST.
+        try:
+            api(f"repos/{REPO}/actions/runs/{run['id']}/rerun-failed-jobs", payload={})
+        except RuntimeError:
+            pass
+        for _ in range(12):
+            observed = api(f"repos/{REPO}/actions/runs/{run['id']}")
+            if observed['run_attempt'] > previous_attempt:
+                run = observed
+                break
+            time.sleep(5)
+        else:
+            raise RuntimeError('Native retry has no reconciled new attempt: ' + run['html_url'])
     if run['status'] != 'completed':
         command(['gh', 'run', 'watch', str(run['id']), '--repo', REPO, '--exit-status', '--compact', '--interval', '10'], timeout=7200)
         run = api(f"repos/{REPO}/actions/runs/{run['id']}")
