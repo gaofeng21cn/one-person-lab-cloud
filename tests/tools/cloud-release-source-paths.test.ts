@@ -145,8 +145,12 @@ test("real sealing, publication and public-readback scripts agree on source-only
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     const provenancePath = join(f.root, "artifacts/publication/release-provenance.json");
     const provenance = JSON.parse(await readFile(provenancePath, "utf8"));
+    // The release checksum manifest has to be regenerated with the real bundle writer.
+    // A hand-written subset leaves the release directory invalid, and then the bundle
+    // reader rejects it before the publication assertions in the workflow are reached,
+    // which would make every negative case below pass for the wrong reason.
     const checksum = () => {
-      const result = shell("cd artifacts/publication/release && shasum -a 256 *.yaml opl-cloud.env.example opl-cloud-release.json > SHA256SUMS");
+      const result = shell("node distribution-authority/tools/cloud-portable-assets.ts checksums artifacts/publication/release release");
       assert.equal(result.status, 0, result.stderr);
     };
     for (const patch of [
@@ -164,19 +168,47 @@ test("real sealing, publication and public-readback scripts agree on source-only
       assert.notEqual(shell(publicationScript).status, 0, JSON.stringify(patch));
       assert.notEqual(shell(readbackScript).status, 0, JSON.stringify(patch));
     }
+    // The publication and the public readback both have to witness the bundle
+    // installability evidence: the readback follower reads the sealed artifacts back
+    // independently, so a manifest whose installability qualification was rewritten
+    // after sealing must not survive either check.
     for (const bundleInstallability of [undefined,
       { ...manifest.qualifications.bundleInstallability, repository: "other/repo" },
       { ...manifest.qualifications.bundleInstallability, workflowRunId: "45" },
+      { ...manifest.qualifications.bundleInstallability, workflowRunId: "not-a-run-id" },
       { ...manifest.qualifications.bundleInstallability, receiptDigest: digest("9") },
+      { ...manifest.qualifications.bundleInstallability, receiptDigest: "not-a-digest" },
     ]) {
       await writeFile(manifestPath, JSON.stringify({ ...manifest,
         qualifications: { ...manifest.qualifications, bundleInstallability } })); checksum();
       assert.notEqual(shell(publicationScript).status, 0, JSON.stringify(bundleInstallability));
+      assert.notEqual(shell(readbackScript).status, 0, JSON.stringify(bundleInstallability));
     }
     await writeFile(manifestPath, JSON.stringify(manifest)); checksum();
+    // A seal step that rewrites the manifest and the provenance together must still be
+    // refused. Two artifacts agreeing on the same wrong value is internal consistency,
+    // not evidence: only the values the admission job sealed bind the publication, and
+    // the readback follower has no second source for them.
+    for (const forged of [
+      { ...manifest.qualifications.bundleInstallability, receiptDigest: "not-a-digest" },
+      { ...manifest.qualifications.bundleInstallability, repository: "other/repo" },
+      { ...manifest.qualifications.bundleInstallability, workflowRunId: "not-a-run-id" },
+    ]) {
+      await writeFile(manifestPath, JSON.stringify({ ...manifest,
+        qualifications: { ...manifest.qualifications, bundleInstallability: forged } })); checksum();
+      await writeFile(provenancePath, JSON.stringify({ ...provenance,
+        evidenceClasses: { ...provenance.evidenceClasses, bundleInstallability: forged },
+        qualification: { ...provenance.qualification, bundleInstallabilityDigest: forged.receiptDigest } }));
+      assert.notEqual(shell(publicationScript).status, 0, JSON.stringify(forged));
+      assert.notEqual(shell(readbackScript).status, 0, JSON.stringify(forged));
+    }
+    await writeFile(manifestPath, JSON.stringify(manifest)); checksum();
+    await writeFile(provenancePath, JSON.stringify(provenance));
     for (const patch of [
       { evidenceClasses: { ...provenance.evidenceClasses, businessSourcePaths: { ...provenance.evidenceClasses.businessSourcePaths, receiptDigest: digest("9") } } },
       { evidenceClasses: { ...provenance.evidenceClasses, instanceDeployment: { ...provenance.evidenceClasses.instanceDeployment, status: "blocked" } } },
+      { evidenceClasses: { ...provenance.evidenceClasses, bundleInstallability: { ...provenance.evidenceClasses.bundleInstallability, receiptDigest: digest("9") } } },
+      { qualification: { ...provenance.qualification, bundleInstallabilityDigest: digest("9") } },
       { workflowSha: "0".repeat(40) },
     ]) {
       await writeFile(provenancePath, JSON.stringify({ ...provenance, ...patch }));
