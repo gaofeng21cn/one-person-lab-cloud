@@ -193,7 +193,6 @@
           "install.mjs",
           "installer-manifest.mjs",
           "compose.cloud.yaml",
-          "compose.local-v2.yaml",
           "cloud-proxy.nginx.conf",
           "owner-databases.sh",
           "local-v2-pki.sh",
