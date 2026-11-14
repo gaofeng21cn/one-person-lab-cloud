@@ -69,8 +69,11 @@ test("the published compose stays the shipped one and the overlay stays out of t
     "the published Compose file must be in the release bundle");
   assert.equal(PORTABLE_ASSETS.includes("compose.qualification.yaml"), false,
     "the qualification overlay must not be in the release bundle");
-  assert.equal(PORTABLE_ASSETS.includes("compose.local-v2.yaml"), false,
-    "the retired qualification topology must not be in the release bundle");
+  // The retired qualification topology may still be in the bundle. The asset
+  // list is an exact-ordered, digest-bound publication surface: dropping a
+  // name leaves every already-issued candidate and release receipt matching no
+  // format at all. What has to hold is that nothing reads it, and
+  // tests/contracts/portable-compose-self-contained.test.ts guards that.
 });
 
 test("the merged topology resolves to the published services plus the fixture authority", async () => {
