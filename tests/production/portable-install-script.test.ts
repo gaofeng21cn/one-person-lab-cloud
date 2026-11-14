@@ -28,10 +28,15 @@ function candidateReceipt(assets: { name: string; sha256: string }[]) {
     kind: "opl_cloud_candidate", product: { repository: "gaofeng21cn/one-person-lab-cloud", sha: SOURCE_SHA, tree: SOURCE_TREE },
     provenance: { workflowRepository: "gaofeng21cn/one-person-lab-cloud", workflowRunAttempt: "1", workflowRunId: "1", workflowSha: SOURCE_SHA }, schemaVersion: 2 };
 }
-async function writeBundle(root: string) {
-  const bundle = join(root, "bundle"); await mkdir(bundle, { recursive: true });
+async function writeBundle(root: string, overrides: Record<string, string> = {}, dirName = "bundle") {
+  const bundle = join(root, dirName); await mkdir(bundle, { recursive: true });
   const assets = [];
-  for (const name of PORTABLE_ASSETS) { const bytes = await readFile(sourceOf(name)); await writeFile(join(bundle, name), bytes); if (name === "install.sh") await chmod(join(bundle, name), 0o755); assets.push({ name, sha256: sha256Of(bytes) }); }
+  for (const name of PORTABLE_ASSETS) {
+    // An override replaces one asset before the receipt and the checksums are
+    // computed, so the bundle stays self-consistent.
+    const bytes = overrides[name] !== undefined ? Buffer.from(overrides[name], "utf8") : await readFile(sourceOf(name));
+    await writeFile(join(bundle, name), bytes); if (name === "install.sh") await chmod(join(bundle, name), 0o755); assets.push({ name, sha256: sha256Of(bytes) });
+  }
   await writeFile(join(bundle, "opl-cloud-candidate.json"), `${canonicalJson(candidateReceipt(assets))}\n`);
   const names = [...PORTABLE_ASSETS, "opl-cloud-candidate.json"];
   const sumLines = [];
@@ -39,9 +44,9 @@ async function writeBundle(root: string) {
   await writeFile(join(bundle, "SHA256SUMS"), `${sumLines.join("\n")}\n`);
   return bundle;
 }
-async function withBundle(body: (bundle: string, root: string) => Promise<void>) {
+async function withBundle(body: (bundle: string, root: string) => Promise<void>, overrides: Record<string, string> = {}) {
   const root = await mkdtemp(join(tmpdir(), "opl-cloud-install-"));
-  try { await body(await writeBundle(root), root); } finally { spawnSync("python3", ["-c", "import shutil,sys; shutil.rmtree(sys.argv[1], ignore_errors=True)", root]); }
+  try { await body(await writeBundle(root, overrides), root); } finally { spawnSync("python3", ["-c", "import shutil,sys; shutil.rmtree(sys.argv[1], ignore_errors=True)", root]); }
 }
 function run(bundle: string, installDir: string, args: string[] = [], env: NodeJS.ProcessEnv = {}) {
   return spawnSync("bash", [join(bundle, "install.sh"), "--install-dir", installDir, ...args], { cwd: tmpdir(), encoding: "utf8", env: { ...process.env, OPL_CLOUD_IMAGE: "ghcr.io/evil/wrong:latest", COMPOSE_PROJECT_NAME: "evil", ...env } });
@@ -499,7 +504,16 @@ test("installer refuses a Docker Compose that cannot parse the published compose
     // refusal may report the host and nothing else.
     const authorityUrl = "https://leaked-user:leaked-password-token@127.0.0.1:9/base-path?token=leaked-query-token";
     const { installDir, statePath, state } = await fillInstallationFacts(bundle, root, env, authorityUrl);
-    const result = run(bundle, installDir, [], env);
+    // The published compose file is the installation surface, and a future
+    // release may use a merge tag this Docker Compose does not apply. The
+    // test builds that condition instead of depending on what today's file
+    // happens to contain: today's file carries no merge tag, and an old
+    // Compose reads it fine.
+    const published = await readFile(sourceOf("compose.cloud.yaml"), "utf8");
+    const withMergeTag = published.replace(/^services:$/m, `services:\n  compose-precondition-probe:\n    image: alpine:3\n    environment:\n      !override\n      OPL_COMPOSE_PRECONDITION_PROBE: "1"`);
+    assert.notEqual(withMergeTag, published, "the published compose file declares a services block");
+    const tagged = await writeBundle(root, { "compose.cloud.yaml": withMergeTag }, "bundle-with-merge-tag");
+    const result = run(tagged, installDir, [], env);
     assert.equal(result.status, 2, `${result.stdout}${result.stderr}`);
     const reported = `${result.stdout}${result.stderr}`;
     assert.match(result.stderr, /docker_compose_parse_failed/);
