@@ -121,6 +121,11 @@ jobs:
           PYTHONDONTWRITEBYTECODE: "1"
         run: python3 -m unittest discover -s tests/tools -p daily_product_release_test.py -v
 
+      - name: Validate the clean-host qualification recipe
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python3 -m unittest discover -s tests/tools -p clean_host_qualification_recipe_test.py -v
+
       - name: Validate source
         run: npm run verify:local -- --group source
 
@@ -170,10 +175,101 @@ jobs:
       - name: Validate browser shard
         run: npm run verify:local -- --group browser --shard "${{ matrix.shard }}"
 
+  bundle_installability:
+    name: bundle installability
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+
+      - name: Assemble the portable candidate bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="$RUNNER_TEMP/opl-cloud-candidate"
+          raw="$RUNNER_TEMP/opl-cloud-candidate-raw.json"
+          receipt="$bundle/opl-cloud-candidate.json"
+          assets="$RUNNER_TEMP/opl-cloud-candidate-assets.json"
+          mkdir -p "$bundle"
+          node tools/cloud-portable-assets.ts copy-candidate . "$bundle" > "$assets"
+          product_sha="$(git rev-parse HEAD)"
+          product_tree="$(git rev-parse 'HEAD^{tree}')"
+          # The product image is not built here, so the image references are
+          # deterministic stand-ins derived from this commit. The dry run returns
+          # before the first pull, so the references only have to carry the
+          # shape the installer and the receipt require.
+          index_digest="sha256:$(printf '%s' "$product_sha" | sha256sum | cut -d ' ' -f1)"
+          amd64_digest="sha256:$(printf '%s' "$product_sha:amd64" | sha256sum | cut -d ' ' -f1)"
+          arm64_digest="sha256:$(printf '%s' "$product_sha:arm64" | sha256sum | cut -d ' ' -f1)"
+          jq -n \
+            --arg productRepository "$GITHUB_REPOSITORY" \
+            --arg productSha "$product_sha" \
+            --arg productTree "$product_tree" \
+            --arg cloudRepository "ghcr.io/$GITHUB_REPOSITORY" \
+            --arg indexDigest "$index_digest" \
+            --arg amd64Digest "$amd64_digest" \
+            --arg arm64Digest "$arm64_digest" \
+            --arg workflowSha "$GITHUB_SHA" \
+            --arg workflowRunId "$GITHUB_RUN_ID" \
+            --arg workflowRunAttempt "$GITHUB_RUN_ATTEMPT" \
+            --slurpfile assets "$assets" '
+            {
+              schemaVersion: 2,
+              kind: "opl_cloud_candidate",
+              product: {repository: $productRepository, sha: $productSha, tree: $productTree},
+              cloudImage: {
+                repository: $cloudRepository,
+                indexRef: ($cloudRepository + "@" + $indexDigest),
+                indexDigest: $indexDigest,
+                revision: $productSha,
+                platforms: [
+                  {platform: "linux/amd64", digest: $amd64Digest},
+                  {platform: "linux/arm64", digest: $arm64Digest}
+                ]
+              },
+              assets: $assets[0],
+              provenance: {
+                workflowRepository: $productRepository,
+                workflowSha: $workflowSha,
+                workflowRunId: $workflowRunId,
+                workflowRunAttempt: $workflowRunAttempt
+              }
+            }
+          ' > "$raw"
+          RAW="$raw" RECEIPT="$receipt" node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          import { writeCandidateReceipt } from "./tools/cloud-candidate-receipt.ts";
+          await writeCandidateReceipt(process.env.RECEIPT, JSON.parse(await readFile(process.env.RAW, "utf8")));
+          NODE
+          node tools/cloud-portable-assets.ts checksums "$bundle" candidate
+          node tools/cloud-candidate-receipt.ts validate-bundle --bundle "$bundle"
+
+      - name: Verify the bundle installs itself
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The dry run returns before the first image pull and starts no
+          # container, so it proves the bundle installs itself without a
+          # registry and without a container runtime.
+          node tools/bundle-installability.ts verify \
+            --bundle "$RUNNER_TEMP/opl-cloud-candidate" \
+            --install-dir "$RUNNER_TEMP/opl-cloud-bundle-install" \
+            --receipt "$RUNNER_TEMP/opl-cloud-bundle-installability.json"
+
   validate:
     name: validate
     if: ${{ always() && github.event_name == 'pull_request' }}
-    needs: [dependency_review, source, go, browser]
+    needs: [dependency_review, source, go, browser, bundle_installability]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -183,7 +279,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           const results = JSON.parse(process.env.REQUIRED_RESULTS);
-          const required = ['dependency_review', 'source', 'go', 'browser'];
+          const required = ['dependency_review', 'source', 'go', 'browser', 'bundle_installability'];
           const unsuccessful = required.filter(name => results[name]?.result !== 'success');
           if (unsuccessful.length > 0) {
             console.error('Required validation jobs did not succeed:', unsuccessful);

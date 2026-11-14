@@ -27,6 +27,7 @@ import {
   parseVerifyLocalArgs,
   postgresImage,
   postgresVerificationSpecs,
+  PUBLISHED_COMPOSE,
   resolveApprovedBrowser,
   resolveOwnerDatabaseFixture,
   resolveTrustedPython,
@@ -99,7 +100,7 @@ test("dedicated plan verification preserves the target-spec scope and explicit m
 
 test("PR validate keeps the exhaustive source gate and dispatches the plan gate only from explicit committed SHAs", async t => {
   const workflow = parseYAML(await readFile(".github/workflows/pull-request-ci.yml", "utf8"));
-  assert.deepEqual(workflow.jobs.validate.needs.slice().sort(), ["browser", "dependency_review", "go", "source"]);
+  assert.deepEqual(workflow.jobs.validate.needs.slice().sort(), ["browser", "bundle_installability", "dependency_review", "go", "source"]);
   const steps = workflow.jobs.source.steps;
   const source = steps.find((step: any) => step.name === "Validate source");
   const plan = steps.find((step: any) => step.name === "Validate changed development plan");
@@ -253,10 +254,10 @@ test("PR jobs keep all verification groups and main alone produces the shared ca
   const workflow = parseYAML(await readFile(".github/workflows/pull-request-ci.yml", "utf8"));
   assert.deepEqual(workflow.on, { pull_request: { branches: ["main"] } });
   assert.deepEqual(workflow.permissions, { contents: "read" });
-  assert.deepEqual(Object.keys(workflow.jobs).sort(), ["browser", "dependency_review", "go", "source", "validate"]);
+  assert.deepEqual(Object.keys(workflow.jobs).sort(), ["browser", "bundle_installability", "dependency_review", "go", "source", "validate"]);
   assert.equal(workflow.concurrency["cancel-in-progress"], true);
   assert.equal(workflow.concurrency.group, "pull-request-ci-${{ github.event.pull_request.number }}");
-  for (const name of ["dependency_review", ...verificationGroups]) {
+  for (const name of ["dependency_review", "bundle_installability", ...verificationGroups]) {
     assert.equal(workflow.jobs[name].if, "github.event_name == 'pull_request'");
     assert.equal(workflow.jobs[name]["continue-on-error"], undefined);
   }
@@ -297,7 +298,7 @@ test("validate actually refuses failed, cancelled, skipped or missing required r
   assert.equal(gate.name, "validate");
   assert.equal(workflow.jobs.dependency_review.name, "dependency-review");
   assert.equal(gate.if, "${{ always() && github.event_name == 'pull_request' }}");
-  assert.deepEqual(gate.needs.slice().sort(), ["browser", "dependency_review", "go", "source"]);
+  assert.deepEqual(gate.needs.slice().sort(), ["browser", "bundle_installability", "dependency_review", "go", "source"]);
   const step = gate.steps.find((candidate: any) => candidate.name === "Require every validation job");
   assert.equal(step.env.REQUIRED_RESULTS, "${{ toJSON(needs) }}");
   const run = promisify(execFileCallback);
@@ -809,7 +810,12 @@ test("verify-local reports leaf Go test failures separately from package failure
 });
 
 test("full local gate covers every PostgreSQL owner with the CI-only extensions", async () => {
-  const compose = parseYAML(await readFile("compose.yaml", "utf8"));
+  // The development gate reads the postgres image fact from the published
+  // compose file. The path is asserted literally here: the fact source is a
+  // declaration, so re-pointing it fails this check instead of silently
+  // reading another file that happens to declare the same image.
+  assert.equal(PUBLISHED_COMPOSE, "deploy/portable/compose.cloud.yaml");
+  const compose = parseYAML(await readFile("deploy/portable/compose.cloud.yaml", "utf8"));
   assert.equal(postgresImage, compose.services.postgres.image);
   assert.match(postgresImage, /^postgres:[^\s@]+@sha256:[0-9a-f]{64}$/);
   assert.notEqual(postgresImage, "postgres:16");

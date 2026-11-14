@@ -6,6 +6,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import YAML from "yaml";
 import { canonicalJson, PORTABLE_ASSETS } from "../../tools/cloud-candidate-receipt.ts";
 
 const IMAGE_DIGEST = `sha256:${"a".repeat(64)}`;
@@ -435,6 +436,31 @@ async function writePkiFixture(installDir: string) {
   ];
   for (const name of names) await writeFile(join(pki, name), `fixture-${name}`);
 }
+
+test("current release admission verifies a frozen bundle that predates the installability gate", async () => {
+  const oldContract = JSON.parse(await readFile("packages/contracts/opl-cloud-distribution-contract.json", "utf8"));
+  delete oldContract.bundleFormats.formats[oldContract.bundleFormats.current].installability;
+  await withBundle(async (bundle, root) => {
+    const originalContract = await readFile(join(bundle, "opl-cloud-distribution-contract.json"), "utf8");
+    const mock = await writeDockerMock(root);
+    await symlink(process.cwd(), join(root, "release-authority"), "dir");
+    await mkdir(join(root, "product-source"));
+    await mkdir(join(root, "evidence"));
+    await symlink(bundle, join(root, "evidence/candidate"), "dir");
+    await mkdir(join(root, "runner-temp"));
+    const release = YAML.parse(await readFile(".github/workflows/release-opl-cloud-image.yml", "utf8"));
+    const script = release.jobs.admission.steps.find((step: any) => step.id === "installability").run;
+    const result = spawnSync("bash", ["-c", script], { cwd: root, encoding: "utf8",
+      env: { ...process.env, PATH: `${mock.bin}:${process.env.PATH}`, RUNNER_TEMP: join(root, "runner-temp"), GITHUB_OUTPUT: join(root, "output") } });
+    assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
+    const receipt = JSON.parse(await readFile(join(root, "artifacts/installability/opl-cloud-bundle-installability.json"), "utf8"));
+    assert.equal(receipt.productSha, SOURCE_SHA);
+    assert.equal(receipt.imageRef, IMAGE_REFERENCE);
+    assert.equal(receipt.dryRun, "verified");
+    assert.equal(await readFile(join(bundle, "opl-cloud-distribution-contract.json"), "utf8"), originalContract);
+    assert.ok(!(await mock.calls()).some(args => args.includes("pull") || args.includes("up")));
+  }, { "opl-cloud-distribution-contract.json": `${JSON.stringify(oldContract)}\n` });
+});
 // A Sub2API authority stub that accepts a TCP connection and speaks nothing.
 async function startSub2apiStub() {
   const server = createServer((socket) => socket.end());
