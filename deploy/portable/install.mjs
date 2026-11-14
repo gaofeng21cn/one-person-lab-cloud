@@ -196,7 +196,7 @@ async function requiredVariables(bundle, version) {
   if (model) {
     for (const item of Object.values(model).filter(item => item.Required || (item.DefaultValue === '' && item.PresenceValue === ''))) required.add(item.Name);
   }
-  for (const file of ['compose.cloud.yaml', 'compose.local-v2.yaml']) {
+  for (const file of ['compose.cloud.yaml']) {
     let text;
     try { text = await readFile(join(bundle, file), 'utf8'); } catch { continue; }
     for (const match of text.matchAll(/(?<!\$)\$\{([A-Za-z_][A-Za-z0-9_]*)([^}]*)\}/g)) {
