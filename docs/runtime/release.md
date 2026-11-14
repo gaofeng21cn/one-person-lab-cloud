@@ -283,14 +283,16 @@ Release. Formal publication requires that exact source reachable from canonical
 main and promotes the same Candidate image without rebuilding.
 
 The main Clean Host workflow qualifies the supplied Candidate on a clean Linux
-Docker host. Its default `local-v2` profile uses the declared native topology,
-CA-backed Console HTTPS, independent owner stores, project quota and the
-existing anonymous application fixture. The version-two READY receipt binds
-source/images, owner processes/stores, actual application access, restart
-continuity, owner deletion and replay, and zero remaining Workspace resources.
-It is explicitly `LOCAL_NO_CHARGE` with `p0Ready: false`. The explicit
-`legacy-fixture` mode retains its own version-one validator and evidence scope.
-A failed or mismatched installation remains NOT_READY.
+Docker host. Its `local-v2` profile is the only qualification and is also the
+default: it uses the declared native topology, CA-backed Console HTTPS,
+independent owner stores, project quota and the existing anonymous application
+fixture. The version-two READY receipt binds source/images, owner
+processes/stores, actual application access, restart continuity, owner deletion
+and replay, and zero remaining Workspace resources. It is explicitly
+`LOCAL_NO_CHARGE` with `p0Ready: false`. The version-one fixture and live runs
+are retired: the tool refuses their mode names and their options by name, so a
+caller that still asks for one is told which run it asked for and that it is
+gone. A failed or mismatched installation remains NOT_READY.
 
 Instance independently installs or upgrades the same Candidate from its
 validated profile through its protected main workflow, then its separate

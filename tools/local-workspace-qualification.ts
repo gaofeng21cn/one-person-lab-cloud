@@ -59,24 +59,6 @@ export const LOCAL_V2_QUALIFICATION_COMPOSE = "deploy/portable/compose.local-v2.
 // names every variable the Compose file requires.
 export const LOCAL_V2_INSTALLATION_TEMPLATE = "deploy/portable/opl-cloud.env.example";
 
-const baseComposeFiles = [
-  "compose.yaml",
-  "deploy/portable/compose.deployment-platform-owned.yaml",
-  "deploy/portable/compose.fabric-local-docker.yaml",
-  "deploy/portable/compose.local-workspace.yaml"
-];
-
-// The qualification overlays stay mode-specific: the fixture run bills its own
-// Sub2API authority under platform-owned billing, while a live run qualifies
-// the deployment mode the installation actually runs.
-export function localQualificationComposeFiles(authorityMode) {
-  if (authorityMode !== "fixture" && authorityMode !== "live") throw new Error("authority mode must be fixture or live");
-  const qualificationCompose = authorityMode === "fixture"
-    ? "deploy/portable/compose.local-qualification.yaml"
-    : "deploy/portable/compose.local-qualification-live.yaml";
-  return [...baseComposeFiles, qualificationCompose];
-}
-
 // The driver runs one installation mode at a time, and the mode owns which
 // Compose files it starts, which endpoints it may call and which authority it
 // authenticates against. A mode is selected explicitly; nothing below infers
@@ -84,6 +66,9 @@ export function localQualificationComposeFiles(authorityMode) {
 // owners with a retained Control Plane writer would price and charge a purchase
 // in the wrong authority.
 export const QUALIFICATION_MODE_LOCAL_V2 = "local-v2";
+// The retained version-one fixture and live runs are retired: the published
+// installation is the only qualification. Their names stay so a caller that
+// still asks for one is told which mode it asked for, and that it is gone.
 export const QUALIFICATION_MODE_LEGACY_FIXTURE = "legacy-fixture";
 export const QUALIFICATION_MODE_LEGACY_LIVE = "legacy-live";
 
@@ -99,15 +84,9 @@ export const LOCAL_V2_QUALIFICATION_SERVICES = Object.freeze([
   "postgres", "sub2api-authority", ...LOCAL_V2_OWNER_PROCESSES, "cloud-local-v2"
 ]);
 
-const LEGACY_OWNER_STORES = Object.freeze([
-  ["opl_control_plane", "opl_control_plane"],
-  ["opl_fabric", "opl_fabric"],
-  ["opl_ledger", "opl_ledger"]
-]);
-
-export const QUALIFICATION_MODES = Object.freeze([
-  QUALIFICATION_MODE_LOCAL_V2, QUALIFICATION_MODE_LEGACY_FIXTURE, QUALIFICATION_MODE_LEGACY_LIVE
-]);
+// The modes this tool offers. The retired version-one runs are named above so
+// they can be refused by name, and they are not offered here.
+export const QUALIFICATION_MODES = Object.freeze([QUALIFICATION_MODE_LOCAL_V2]);
 
 // The retained Control Plane routes. The v2 installation does not serve them,
 // and a v2 run that called one would be writing through the migration source
@@ -137,15 +116,18 @@ const LOCAL_V2_ENDPOINTS = Object.freeze({
   wallet: "/api/v2/wallet"
 });
 
-const LEGACY_ENDPOINTS = Object.freeze({
-  login: "/api/auth/login",
-  me: "/api/auth/me",
-  accounts: "/api/operator/accounts",
-  wallet: "/api/gateway/wallet",
-  usageSummary: "/api/gateway/usage-summary",
-  keys: "/api/gateway/keys",
-  balanceHistory: "/api/gateway/balance-history"
-});
+// A retired mode is refused by name, and an unknown one is refused as unknown.
+// The two answers are different facts: the first tells the caller which run it
+// asked for and that the run is gone, the second tells it what it may ask for.
+function retiredQualificationModeError(mode) {
+  const name = String(mode || "").trim();
+  if (name === QUALIFICATION_MODE_LEGACY_FIXTURE || name === QUALIFICATION_MODE_LEGACY_LIVE) {
+    return namedQualificationError("local_qualification_mode_retired",
+      `qualification mode ${name} is retired; the published installation is the only qualification`);
+  }
+  return namedQualificationError("local_qualification_mode_invalid",
+    `qualification mode must be one of ${QUALIFICATION_MODES.join(", ")}`);
+}
 
 // One binding per mode: the routes that mode may call and the Compose files it
 // starts. A caller asks for a mode and receives the whole binding, so no call
@@ -162,18 +144,7 @@ export function qualificationModeBinding(mode) {
       retainedPrefixes: RETAINED_LEGACY_ENDPOINT_PREFIXES
     };
   }
-  if (mode === QUALIFICATION_MODE_LEGACY_FIXTURE || mode === QUALIFICATION_MODE_LEGACY_LIVE) {
-    return {
-      mode,
-      composeFiles: localQualificationComposeFiles(mode === QUALIFICATION_MODE_LEGACY_LIVE ? "live" : "fixture"),
-      installationEnvRequired: false,
-      endpoints: LEGACY_ENDPOINTS,
-      allowedPrefixes: ["/api/auth/", "/api/operator/", "/api/gateway/", "/api/healthz", "/"],
-      allowedPaths: [],
-      retainedPrefixes: []
-    };
-  }
-  throw namedQualificationError("local_qualification_mode_invalid", `qualification mode must be one of ${QUALIFICATION_MODES.join(", ")}`);
+  throw retiredQualificationModeError(mode);
 }
 
 // Whether a path may be requested in this mode. The v2 installation is checked
@@ -200,14 +171,6 @@ function assertQualificationPath(mode, path) {
 }
 const digestPattern = /^sha256:[0-9a-f]{64}$/;
 const shaPattern = /^[0-9a-f]{40}$/;
-const sub2apiSecretFileFields = Object.freeze([
-  "OPL_SUB2API_BASE_URL",
-  "OPL_SUB2API_ADMIN_EMAIL",
-  "OPL_SUB2API_ADMIN_PASSWORD",
-  "OPL_QUALIFICATION_AUTHORITY_CLASS",
-  "OPL_QUALIFICATION_USER_EMAIL",
-  "OPL_QUALIFICATION_USER_PASSWORD"
-]);
 const deferredCloudGates = Object.freeze([
   "tencent-tke",
   "tcr-and-tke-image-pull",
@@ -254,10 +217,8 @@ function optionValues(args) {
 
 export function parseLocalQualificationArgs(args = process.argv.slice(2)) {
   const { values, buildSourceImages } = optionValues(args);
-  const mode = String(values.get("--mode") || QUALIFICATION_MODE_LEGACY_FIXTURE).trim();
-  if (!QUALIFICATION_MODES.includes(mode)) {
-    throw namedQualificationError("local_qualification_mode_invalid", `qualification mode must be one of ${QUALIFICATION_MODES.join(", ")}`);
-  }
+  const mode = String(values.get("--mode") || QUALIFICATION_MODE_LOCAL_V2).trim();
+  if (!QUALIFICATION_MODES.includes(mode)) throw retiredQualificationModeError(mode);
   const sourceSha = String(values.get("--source-sha") || "").trim();
   const installationEnv = String(values.get("--installation-env") || "").trim();
   const applicationContract = String(values.get("--application-contract") || "").trim();
@@ -266,120 +227,34 @@ export function parseLocalQualificationArgs(args = process.argv.slice(2)) {
   const cloudImage = String(values.get("--cloud-image") || "").trim();
   const workspaceImage = String(values.get("--workspace-image") || "").trim();
   const receiptPath = String(values.get("--receipt") || "").trim();
-  const authorityMode = String(values.get("--authority-mode") || "fixture").trim();
-  const j0ReadyReceipt = String(values.get("--j0-ready-receipt") || "").trim();
-  const sub2apiSecretFile = String(values.get("--sub2api-secret-file") || "").trim();
   if (!shaPattern.test(sourceSha)) throw new Error("source SHA must be an exact 40-character lowercase commit");
   if (!receiptPath) throw new Error("receipt path is required");
-  if (mode === QUALIFICATION_MODE_LOCAL_V2) {
-    // A v2 run takes its images, secrets, ports and provider facts from the
-    // declared installation and nothing else, so a second spelling of any of
-    // them is refused instead of silently overriding the declaration.
-    if (!installationEnv) throw namedQualificationError("local_v2_installation_env_required", "--installation-env must name the declared installation environment file");
-    if (!isAbsolute(installationEnv)) throw namedQualificationError("local_v2_installation_env_invalid", "--installation-env must be an absolute path");
-    if (!applicationContract) throw namedQualificationError("local_v2_application_contract_required", "--application-contract must name the approved Runtime Publisher Contract file");
-    if (!isAbsolute(applicationContract)) throw namedQualificationError("local_v2_application_contract_invalid", "--application-contract must be an absolute path");
-    if (!project) throw namedQualificationError("local_v2_project_required", "--project must name the Compose project of the declared installation");
-    if (cloudImage || workspaceImage) throw namedQualificationError("local_v2_images_are_declared", "the installation declaration owns OPL_CLOUD_IMAGE and OPL_WORKSPACE_IMAGE");
-    if (buildSourceImages) throw namedQualificationError("local_v2_images_are_declared", "the installation declaration owns OPL_CLOUD_IMAGE and OPL_WORKSPACE_IMAGE");
-    return { mode, sourceSha, receiptPath, installationEnv, applicationContract, project, workspaceName };
+  // The retired version-one options belonged to the retired modes. They are
+  // refused by name, so a caller that still passes one is told which option is
+  // gone rather than that its argument was never known.
+  for (const retired of ["--authority-mode", "--j0-ready-receipt", "--sub2api-secret-file"]) {
+    if (values.has(retired)) {
+      throw namedQualificationError("local_qualification_option_retired",
+        `${retired} belonged to the retired version-one qualification and is gone`);
+    }
   }
-  if (!buildSourceImages && !immutableImageReference(cloudImage)) throw new Error("immutable cloud image repository@digest is required");
-  if (!buildSourceImages && !immutableImageReference(workspaceImage)) throw new Error("immutable workspace image repository@digest is required");
-  if (buildSourceImages && (cloudImage || workspaceImage)) {
-    throw new Error("source image build cannot be combined with explicit image inputs");
-  }
-  if (authorityMode !== "fixture" && authorityMode !== "live") throw new Error("authority mode must be fixture or live");
-  if (authorityMode === "live" && !j0ReadyReceipt) throw new Error("live qualification requires a J0 READY receipt");
-  if (j0ReadyReceipt && !isAbsolute(j0ReadyReceipt)) throw new Error("J0 READY receipt path must be absolute");
-  if (j0ReadyReceipt && authorityMode !== "live") throw new Error("J0 READY receipt requires live authority mode");
-  if (sub2apiSecretFile && authorityMode !== "live") throw new Error("Sub2API secret file requires live authority mode");
-  if (sub2apiSecretFile && !isAbsolute(sub2apiSecretFile)) throw new Error("Sub2API secret file path must be absolute");
-  // The mode is one fact: the authority a run bills against decides whether it
-  // is the fixture or the live legacy run, and an explicit --mode that
-  // contradicts it is a configuration error rather than a preference.
-  const derivedMode = authorityMode === "live" ? QUALIFICATION_MODE_LEGACY_LIVE : QUALIFICATION_MODE_LEGACY_FIXTURE;
-  if (values.has("--mode") && mode !== derivedMode) {
-    throw namedQualificationError("local_qualification_mode_conflict",
-      `--mode ${mode} contradicts --authority-mode ${authorityMode}`);
-  }
-  return { mode: derivedMode, sourceSha, cloudImage, workspaceImage, receiptPath, buildSourceImages, authorityMode, j0ReadyReceipt, sub2apiSecretFile };
-}
-
-function sub2apiSecretFileError(code) {
-  return namedQualificationError(code, code);
+  // A run takes its images, secrets, ports and provider facts from the
+  // declared installation and nothing else, so a second spelling of any of
+  // them is refused instead of silently overriding the declaration.
+  if (!installationEnv) throw namedQualificationError("local_v2_installation_env_required", "--installation-env must name the declared installation environment file");
+  if (!isAbsolute(installationEnv)) throw namedQualificationError("local_v2_installation_env_invalid", "--installation-env must be an absolute path");
+  if (!applicationContract) throw namedQualificationError("local_v2_application_contract_required", "--application-contract must name the approved Runtime Publisher Contract file");
+  if (!isAbsolute(applicationContract)) throw namedQualificationError("local_v2_application_contract_invalid", "--application-contract must be an absolute path");
+  if (!project) throw namedQualificationError("local_v2_project_required", "--project must name the Compose project of the declared installation");
+  if (cloudImage || workspaceImage) throw namedQualificationError("local_v2_images_are_declared", "the installation declaration owns OPL_CLOUD_IMAGE and OPL_WORKSPACE_IMAGE");
+  if (buildSourceImages) throw namedQualificationError("local_v2_images_are_declared", "the installation declaration owns OPL_CLOUD_IMAGE and OPL_WORKSPACE_IMAGE");
+  return { mode, sourceSha, receiptPath, installationEnv, applicationContract, project, workspaceName };
 }
 
 function namedQualificationError(code, message) {
   const error = new Error(message);
   error.code = code;
   return error;
-}
-
-function validLiveAuthorityConfiguration(value) {
-  if (!value || !/^https:\/\/[^\s]+$/.test(value.baseURL) || !value.adminEmail || !value.adminPassword ||
-    !value.qualificationUserEmail || !value.qualificationUserPassword || !["sandbox", "preproduction"].includes(value.authorityClass)) {
-    return false;
-  }
-  return true;
-}
-
-export async function loadSub2APISecretFile(path, { environment = process.env, currentUid = typeof process.getuid === "function" ? process.getuid() : null } = {}) {
-  if (!isAbsolute(String(path || "")) || !Number.isSafeInteger(currentUid) || currentUid < 0) {
-    throw sub2apiSecretFileError("sub2api_secret_file_invalid");
-  }
-  if (sub2apiSecretFileFields.some((name) => Object.prototype.hasOwnProperty.call(environment, name))) {
-    throw sub2apiSecretFileError("sub2api_secret_file_env_conflict");
-  }
-  let handle;
-  try {
-    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-    const stat = await handle.stat();
-    if (!stat.isFile() || (stat.mode & 0o777) !== 0o600 || stat.uid !== currentUid || stat.size <= 0 || stat.size > 64 * 1024) {
-      throw sub2apiSecretFileError("sub2api_secret_file_invalid");
-    }
-    const document = parseDocument(await handle.readFile("utf8"), { uniqueKeys: true, maxAliasCount: 0 });
-    if (document.errors.length !== 0) throw sub2apiSecretFileError("sub2api_secret_file_schema_invalid");
-    const value = document.toJS({ maxAliasCount: 0 });
-    if (!value || typeof value !== "object" || Array.isArray(value) ||
-      Object.keys(value).sort().join("\0") !== [...sub2apiSecretFileFields].sort().join("\0") ||
-      sub2apiSecretFileFields.some((name) => typeof value[name] !== "string" || !value[name].trim())) {
-      throw sub2apiSecretFileError("sub2api_secret_file_schema_invalid");
-    }
-    const admitted = {
-      baseURL: value.OPL_SUB2API_BASE_URL.trim(),
-      adminEmail: value.OPL_SUB2API_ADMIN_EMAIL.trim(),
-      adminPassword: value.OPL_SUB2API_ADMIN_PASSWORD,
-      authorityClass: value.OPL_QUALIFICATION_AUTHORITY_CLASS,
-      qualificationUserEmail: value.OPL_QUALIFICATION_USER_EMAIL.trim(),
-      qualificationUserPassword: value.OPL_QUALIFICATION_USER_PASSWORD
-    };
-    if (!validLiveAuthorityConfiguration(admitted)) throw sub2apiSecretFileError("sub2api_secret_file_schema_invalid");
-    return admitted;
-  } catch (error) {
-    if (String(error?.code || "").startsWith("sub2api_secret_file_")) throw error;
-    throw sub2apiSecretFileError("sub2api_secret_file_invalid");
-  } finally {
-    await handle?.close();
-  }
-}
-
-function liveAuthorityConfigurationFromEnvironment(environment) {
-  const adminEmail = String(environment.OPL_SUB2API_ADMIN_EMAIL || "").trim();
-  const adminPassword = String(environment.OPL_SUB2API_ADMIN_PASSWORD || "");
-  return {
-    baseURL: String(environment.OPL_SUB2API_BASE_URL || "").trim(),
-    adminEmail,
-    adminPassword,
-    authorityClass: String(environment.OPL_QUALIFICATION_AUTHORITY_CLASS || ""),
-    qualificationUserEmail: String(environment.OPL_QUALIFICATION_USER_EMAIL || adminEmail).trim(),
-    qualificationUserPassword: String(environment.OPL_QUALIFICATION_USER_PASSWORD || adminPassword)
-  };
-}
-
-export function qualificationEnvFileEntries(entries, options) {
-  if (options.authorityMode !== "live" || !options.sub2apiSecretFile) return [...entries];
-  return entries.filter(([name]) => !sub2apiSecretFileFields.includes(name));
 }
 
 function requireString(value, label) {
@@ -617,19 +492,6 @@ function runProcess(command, args, { cwd = root, env = process.env, capture = tr
   });
 }
 
-export async function unusedPort() {
-  const server = createServer();
-  await new Promise((resolvePromise, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolvePromise);
-  });
-  const address = server.address();
-  const port = address && typeof address === "object" ? address.port : 0;
-  await new Promise((resolvePromise, reject) => server.close((error) => error ? reject(error) : resolvePromise()));
-  if (!port) throw new Error("local qualification could not allocate a loopback port");
-  return port;
-}
-
 // The platform's identifier derivation is owned by the purchase core, because a
 // buyer that derived it differently would refuse the platform's own answer. It
 // is re-exported here because this module is where its callers already reach.
@@ -724,36 +586,6 @@ export function assertLocalV2ComposeEnvironment(output, values) {
     throw namedQualificationError("local_v2_compose_environment_mismatch", mismatches.join(", "));
   }
   return observed;
-}
-
-// Two Local-Docker facts belong to the installation, not to this script: the
-// quota-enabled Workspace storage root, and the provider profile that lists the
-// packages that root can host. A qualification run that invented either one
-// would qualify a machine nobody deploys, so the script requires them and fails
-// with a named reason before Compose or PostgreSQL initialization can produce
-// an unrelated error.
-export function localDockerInstallationInputs(environment = process.env) {
-  const storageRoot = String(environment.OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT || "").trim();
-  if (!storageRoot) {
-    throw namedQualificationError("local_docker_storage_root_missing", "OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT must name the quota-enabled Workspace storage root");
-  }
-  if (!isAbsolute(storageRoot)) {
-    throw namedQualificationError("local_docker_storage_root_invalid", "OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT must be an absolute path");
-  }
-  const providerProfileJSON = String(environment.OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON || "").trim();
-  if (!providerProfileJSON) {
-    throw namedQualificationError("local_docker_provider_profile_missing", "OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON must carry the Local-Docker provider profile");
-  }
-  let profile;
-  try {
-    profile = JSON.parse(providerProfileJSON);
-  } catch {
-    throw namedQualificationError("local_docker_provider_profile_invalid", "OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON must be valid JSON");
-  }
-  if (profile?.schemaVersion !== 1 || !Array.isArray(profile?.packages) || profile.packages.length === 0) {
-    throw namedQualificationError("local_docker_provider_profile_invalid", "OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON must carry schemaVersion 1 and at least one package");
-  }
-  return { storageRoot, providerProfileJSON };
 }
 
 export async function buildSourceImages(sourceSha, project, registryPort) {
@@ -1008,33 +840,6 @@ export async function deleteWorkspaceOnOwnerRoute(http, auth, {
   throw new Error("Workspace owner DELETE did not reach a terminal status within 120 seconds");
 }
 
-// The Gateway transaction is the monetary owner's confirmed refund, bound to
-// the original charge and to the exact refund identity Workspace recorded.
-// The financial-receipt route is charge-only; it is never queried for refunds.
-export async function readWorkspaceRefundReceipt(http, auth, {
-  workspaceId, chargeAmountUsdMicros, chargeOperationId, refundOperationId,
-} = {}) {
-  if (!String(chargeOperationId || "").trim() || !String(refundOperationId || "").trim()) {
-    throw new Error("Workspace refund receipt binding is missing");
-  }
-  const transactions = await listWorkspaceTransactions(http, auth, workspaceId);
-  const refunds = transactions.filter((item) => item.id === refundOperationId);
-  if (refunds.length !== 1) throw new Error("Workspace refund cardinality is invalid");
-  const refund = refunds[0];
-  const amount = String(refund.amountUSDMicros || "");
-  if (refund.kind !== "refund" || refund.status !== "confirmed" ||
-    refund.originalChargeOperationId !== chargeOperationId || !String(refund.receiptId || "").trim() ||
-    !String(refund.externalReference || "").trim() ||
-    !/^[1-9][0-9]*$/.test(amount) || !/^[1-9][0-9]*$/.test(String(chargeAmountUsdMicros)) ||
-    BigInt(amount) > BigInt(chargeAmountUsdMicros)) {
-    throw new Error("Workspace refund receipt readback is invalid");
-  }
-  return {
-    walletOperationId: refund.id, receiptId: refund.receiptId, amountUsdMicros: amount,
-    code: refund.externalReference, originalChargeOperationId: refund.originalChargeOperationId,
-  };
-}
-
 // A deleted Workspace remains readable for financial obligations. Its typed
 // deletion readback, rather than a 404 or an empty deployment list, proves the
 // original owners confirmed resource/data absence and Ledger recorded it.
@@ -1063,57 +868,6 @@ function waitForWorkspaceDeleteSchedule(milliseconds) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
 }
 
-export function workspaceDeletePendingReceiptEvidence(pending) {
-  return {
-    phase: pending.phase,
-    ownerStage: pending.ownerStage,
-    ordinal: Number(pending.computeReadbacks),
-    max: Number(pending.maxComputeReadbacks),
-    operationDigest: `sha256:${createHash("sha256").update(String(pending.operationId)).digest("hex")}`
-  };
-}
-
-export function workspaceDeleteFailureEvidence(error) {
-  const message = String(error instanceof Error ? error.message : error);
-  const status = Number(message.match(/ returned ([0-9]{3}):/)?.[1] || 0);
-  const reasonCode = String(message.match(/"(?:reasonCode|error)"\s*:\s*"([a-z0-9_]+)"/i)?.[1] ||
-    (/timeout|aborted/i.test(message) ? "request_timeout" : "unknown"));
-  return { status, reasonCode };
-}
-
-export async function continueWorkspaceDelete(http, path, init, auth, expected, waitForSchedule = waitForWorkspaceDeleteSchedule) {
-  let previousReadback = Number(expected.initialReadback || 0);
-  let maxReadbacks = Number(expected.initialMaxReadbacks || 0);
-  for (;;) {
-    let result;
-    try {
-      result = await http.json(path, init, auth, [200, 202]);
-    } catch (error) {
-      expected.onFailure?.(workspaceDeleteFailureEvidence(error));
-      throw new Error("owner Workspace DELETE continuation failed");
-    }
-    if (result.response.status === 200) return result.payload;
-
-    const pending = result.payload;
-    const readback = Number(pending?.computeReadbacks);
-    const maximum = Number(pending?.maxComputeReadbacks);
-    const retryAfterRaw = result.response.headers?.get("retry-after");
-    const retryAfter = retryAfterRaw === "1" ? 1 : Number.NaN;
-    // The durable phase names the stage that just completed; ownerStage names the
-    // stage the operation is working on, so a compute wait reports storage_absent.
-    if (pending?.status !== "pending" || pending?.phase !== "storage_absent" || pending?.ownerStage !== "compute" ||
-      pending?.computeStatus !== "destroying" || pending?.operationId !== expected.operationId || pending?.workspaceId !== expected.workspaceId ||
-      !Number.isSafeInteger(readback) || !Number.isSafeInteger(maximum) || readback !== previousReadback + 1 ||
-      maximum !== 8 || maxReadbacks !== 0 && maximum !== maxReadbacks || readback >= maximum || retryAfter !== 1) {
-      throw new Error("owner Workspace DELETE pending evidence is invalid");
-    }
-    expected.onPending?.(workspaceDeletePendingReceiptEvidence(pending));
-    previousReadback = readback;
-    maxReadbacks = maximum;
-    await waitForSchedule(retryAfter * 1000);
-  }
-}
-
 export async function login(http, email, password, expectedAccountId = "acct-admin") {
   const result = await http.json("/api/auth/login", { method: "POST", body: { email, password } });
   const auth = { cookie: responseCookie(result.response.headers), csrf: result.response.headers.get("x-opl-csrf-token") || "" };
@@ -1132,18 +886,6 @@ export async function login(http, email, password, expectedAccountId = "acct-adm
  * of them, but one cookie is not one session: the buyer carries the two cookies
  * and each authority reads its own.
  */
-export async function openQualificationSessions(http, email, password, accountId, idempotencyKey) {
-  const controlPlane = await login(http, email, password, accountId);
-  const owner = await cloudIdentityLogin(http, http.origin, email, password, idempotencyKey);
-  if (!owner?.cookie || !owner?.ownerCsrf) {
-    throw new Error("qualification did not establish an owner session");
-  }
-  return {
-    cookie: `${controlPlane.cookie}; ${owner.cookie}`,
-    csrf: controlPlane.csrf,
-    ownerCsrf: owner.ownerCsrf,
-  };
-}
 
 /*
  * The CloudIdentity session.
@@ -1266,7 +1008,7 @@ async function inspectComposeImage(compose, service) {
   return values[0];
 }
 
-export async function verifyStores(compose, { stores = LEGACY_OWNER_STORES, v2 = false } = {}) {
+export async function verifyStores(compose, { stores = LOCAL_V2_OWNER_STORES } = {}) {
   const names = stores.map(([database]) => `'${database}'`).join(",");
   const query = `select datname || ':' || pg_get_userbyid(datdba) from pg_database where datname in (${names}) order by datname`;
   const rows = (await compose(["exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "postgres", "-Atqc", query])).stdout.trim().split(/\r?\n/);
@@ -1276,226 +1018,20 @@ export async function verifyStores(compose, { stores = LEGACY_OWNER_STORES, v2 =
   if (JSON.stringify([...rows].sort()) !== JSON.stringify(expected)) throw new Error("PostgreSQL database ownership is not separated");
   const observed = {};
   for (const [database, owner] of stores) {
-    const schema = v2 ? LOCAL_V2_OWNER_SCHEMAS[database] : "public";
+    const schema = LOCAL_V2_OWNER_SCHEMAS[database];
     const result = (await compose([
       "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", database, "-Atqc",
-      v2
-        ? `select count(*)::text || ':' || count(*) filter (where tableowner='${owner}')::text from pg_tables where schemaname='${schema}' and tablename <> 'opl_schema_migrations'`
-        : `select count(*) from pg_tables where schemaname='public' and tableowner='${owner}'`
+      `select count(*)::text || ':' || count(*) filter (where tableowner='${owner}')::text from pg_tables where schemaname='${schema}' and tablename <> 'opl_schema_migrations'`
     ])).stdout.trim();
-    if (v2) {
-      const [totalText, ownedText] = result.split(":");
-      const total = Number(totalText);
-      const owned = Number(ownedText);
-      if (!Number.isSafeInteger(total) || total <= 0 || owned !== total) {
-        throw new Error(`${database} owner schema is missing or not owned by ${owner}`);
-      }
-      observed[database] = { owner, schema, businessTables: total };
-    } else {
-      const count = Number(result);
-      if (!Number.isSafeInteger(count) || count <= 0) throw new Error(`${database} owns no durable tables`);
-      observed[database] = "durable";
+    const [totalText, ownedText] = result.split(":");
+    const total = Number(totalText);
+    const owned = Number(ownedText);
+    if (!Number.isSafeInteger(total) || total <= 0 || owned !== total) {
+      throw new Error(`${database} owner schema is missing or not owned by ${owner}`);
     }
+    observed[database] = { owner, schema, businessTables: total };
   }
-  return v2 ? { ownerStores: observed, ownerSeparated: true } : { ...observed, ownerSeparated: true };
-}
-
-async function consoleReadback(http) {
-  const home = await http.request("/");
-  if (home.response.status !== 200 || !/<div[^>]+id=["']root["']/.test(home.text)) throw new Error("Console entry asset is unavailable");
-  const script = home.text.match(/<script[^>]+src=["']([^"']+)["']/)?.[1];
-  if (!script) throw new Error("Console hashed script is missing");
-  const asset = await http.request(script);
-  if (asset.response.status !== 200 || !asset.text.trim()) throw new Error("Console hashed script is unavailable");
-}
-
-// The owner owns the catalog a buyer prices from, and the Console resolves it
-// the same way: the first approved Runtime Release for the default OPL App, the
-// first available compute plan and the first available storage plan. The pages
-// are read to the end, because a plan that is only offered on a later page is
-// still a plan the owner offers.
-async function readOwnerCatalogItems(http, auth, path, label) {
-  const items = [];
-  const seenCursors = new Set();
-  let cursor = "";
-  for (;;) {
-    const query = cursor ? `?limit=100&cursor=${encodeURIComponent(cursor)}` : "?limit=100";
-    const page = (await http.json(`${path}${query}`, {}, auth)).payload;
-    if (!page || !Array.isArray(page.items)) throw new Error(`local qualification ${label} catalog is invalid`);
-    items.push(...page.items);
-    const next = page.nextCursor;
-    if (next === undefined || next === null || next === "") break;
-    const nextCursor = String(next);
-    if (seenCursors.has(nextCursor)) throw new Error(`local qualification ${label} catalog cursor repeated`);
-    seenCursors.add(nextCursor);
-    cursor = nextCursor;
-  }
-  return items;
-}
-
-// What this purchase declares. The owner prices exactly one application source
-// beside the compute and the storage plan, so the declaration names all three
-// and the quote the owner returns is checked against it.
-//
-// This harness has no operator-declared selection, so it only runs against a
-// catalog that offers exactly one purchasable choice of each kind. A catalog
-// that offers several is refused rather than narrowed: picking one of them
-// would be the harness choosing a purchase nobody declared, and a qualification
-// run that buys a different Workspace each time it runs is not evidence about
-// anything.
-export async function resolveLocalWorkspaceDeclaration(http, auth) {
-  const [runtimeVersions, computePlans, storagePlans] = await Promise.all([
-    readOwnerCatalogItems(http, auth, "/api/v2/catalog/runtime-versions", "runtime version"),
-    readOwnerCatalogItems(http, auth, "/api/v2/catalog/compute-plans", "compute plan"),
-    readOwnerCatalogItems(http, auth, "/api/v2/catalog/storage-plans", "storage plan")
-  ]);
-  const onlyPurchasable = (candidates, label) => {
-    const purchasable = candidates.filter((candidate) => candidate?.status === "approved" || candidate?.availability === "available");
-    if (purchasable.length !== 1) {
-      throw new Error(`local qualification owner catalog offers ${purchasable.length} purchasable ${label}s`);
-    }
-    return purchasable[0];
-  };
-  const runtimeVersion = onlyPurchasable(runtimeVersions, "runtime version");
-  const computePlan = onlyPurchasable(computePlans, "compute plan");
-  const storagePlan = onlyPurchasable(storagePlans, "storage plan");
-  if (!runtimeVersion || !computePlan || !storagePlan) {
-    throw new Error("local qualification owner catalog does not offer a purchasable Workspace");
-  }
-  return workspaceDeclaration({
-    applicationSelection: { kind: "opl_app", runtimeVersionId: String(runtimeVersion.id || "") },
-    computePlanId: String(computePlan.id || ""),
-    storagePlanId: String(storagePlan.id || "")
-  });
-}
-
-// Buy one declared Workspace through the owner.
-//
-// The owner records the quote and the order against the buyer's idempotency
-// identity, so a repeated delivery with the same identity and the same request
-// replays the original quote and the original order instead of pricing or
-// buying twice. The harness replays the sequence when an answer is lost,
-// because the identities it has to record are the ones the owner mints and it
-// cannot invent them.
-export async function buyLocalWorkspace({
-  http, auth, name, declaration, walletUsdMicros, idempotencyKey, wait, attempts = 3
-}) {
-  let failure = null;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    let quote;
-    try {
-      quote = await quoteWorkspaceOrder({ http, auth, declaration, idempotencyKey: `${idempotencyKey}:quote` });
-    } catch (error) {
-      failure = error;
-      continue;
-    }
-    // The owner priced the Workspace, so the buyer never computes a price. It
-    // only confirms that the quote names the declared purchase and that its own
-    // wallet can fund it.
-    const amountUsdMicros = priceWorkspaceQuote({ quote, walletUsdMicros, declaration });
-    try {
-      const order = await submitWorkspaceOrder({ http, auth, name, quote, idempotencyKey, wait });
-      return { quote, amountUsdMicros, ...order };
-    } catch (error) {
-      failure = error;
-    }
-  }
-  throw failure;
-}
-
-// Read the purchase, application and funded charge from their current owners.
-// Control Plane has no projection for this native Workspace order.
-export async function readWorkspaceEvidence(http, auth, operationId, workspaceId, receiptId) {
-  const operation = (await http.json(`/api/v2/operations/workspace/${encodeURIComponent(operationId)}`, {}, auth)).payload;
-  if (operation?.owner !== "workspace" || operation?.kind !== "create_workspace" || operation?.status !== "succeeded" ||
-    operation?.operationId !== operationId || operation?.resourceId !== workspaceId) {
-    throw new Error("Workspace owner operation readback is invalid");
-  }
-  const workspace = (await http.json(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}`, {}, auth)).payload;
-  if (workspace?.id !== workspaceId || workspace.applicationAvailability !== "available") {
-    throw new Error("Workspace owner readback is invalid");
-  }
-  const page = (await http.json(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/deployments?limit=1`, {}, auth)).payload;
-  const active = page?.currentDeployment;
-  if (active?.status !== "active" || active?.workspaceId !== workspaceId ||
-    typeof active?.id !== "string" || !active.id.trim() ||
-    typeof active?.runtimeInstanceId !== "string" || !active.runtimeInstanceId.trim()) {
-    throw new Error("Workspace runtime readback is invalid");
-  }
-  const sources = [active.capabilityVersionId, active.runtimeVersionId];
-  if (sources.some((id) => id !== undefined && (typeof id !== "string" || (id !== "" && !id.trim()))) ||
-      sources.filter((id) => typeof id === "string" && id.trim()).length !== 1) {
-    throw new Error("Workspace application readback is invalid");
-  }
-  const applicationId = active.capabilityVersionId || active.runtimeVersionId;
-  const access = (await http.json(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/access`, {
-    method: "POST", headers: { "idempotency-key": `workspace-access:${active.id}` },
-  }, auth)).payload;
-  if (access?.workspaceId !== workspaceId || access?.deploymentId !== active.id ||
-      typeof access?.url !== "string" || !/^https?:\/\//.test(access.url)) {
-    throw new Error("Workspace access readback is invalid");
-  }
-  let entry;
-  try {
-    entry = new URL(access.url);
-  } catch {
-    throw new Error("Workspace access readback is invalid");
-  }
-  if (!entry.hostname || !["http:", "https:"].includes(entry.protocol) || entry.username || entry.password) {
-    throw new Error("Workspace access readback is invalid");
-  }
-  const entryUrl = access.url;
-  const transactions = await listWorkspaceTransactions(http, auth, workspaceId);
-  const charges = transactions.filter((item) => item.kind === "charge" && item.status === "confirmed" && item.receiptId === receiptId);
-  if (charges.length !== 1) throw new Error("Ledger charge readback is invalid");
-  const financial = await readWorkspacePurchaseEvidence(http, auth, {
-    workspaceId, operationId, expectedReceiptId: receiptId, amountUsdMicros: String(charges[0].amountUSDMicros),
-  });
-  // Serve names the current application source and deployment generation. Its
-  // matching access readback confirms the entry for that same generation.
-  const current = {
-    status: "ready", entryUrl, operationId: active.id,
-    applicationId, revision: applicationId,
-  };
-  return {
-    operation,
-    workspace: { ...workspace, accessUrl: entryUrl, url: entryUrl, openable: true, currentApplication: current },
-    current,
-    runtime: {
-      workspaceId, ready: true, status: "running", url: entryUrl,
-      runtimeId: active.runtimeInstanceId, currentApplication: { operationId: active.id },
-    },
-    receipt: {
-      receiptId, workspaceId, kind: financial.receipt.kind, status: "completed",
-      chargeReference: String(financial.walletOperation.externalReference || financial.walletOperation.id),
-      totalUsdMicros: String(financial.walletOperation.amountUSDMicros),
-      // The owner publishes fulfillment identities only when its typed receipt
-      // carries them. The delivery identities are the Serve deployment and
-      // Runtime instance above; no resource id is invented here.
-      fulfillment: {},
-      financial,
-    },
-  };
-}
-
-async function readAllGatewayKeys(http, auth) {
-  const items = [];
-  let expectedTotal = null;
-  let expectedPages = null;
-  for (let pageNumber = 1; ; pageNumber += 1) {
-    const page = sourceData((await http.json(`/api/gateway/keys?page=${pageNumber}&pageSize=100`, {}, auth)).payload, "sub2api");
-    if (!Array.isArray(page?.items) || !Number.isSafeInteger(page?.total) || page.total < 0 || page.page !== pageNumber || page.pageSize !== 100 ||
-      !Number.isSafeInteger(page.pages) || page.pages !== Math.max(1, Math.ceil(page.total / page.pageSize)) ||
-      expectedTotal !== null && (page.total !== expectedTotal || page.pages !== expectedPages)) {
-      throw new Error("local qualification key inventory is invalid");
-    }
-    expectedTotal ??= page.total;
-    expectedPages ??= page.pages;
-    items.push(...page.items);
-    if (pageNumber === page.pages) break;
-  }
-  if (items.length !== expectedTotal) throw new Error("local qualification key inventory is invalid");
-  return items;
+  return { ownerStores: observed, ownerSeparated: true };
 }
 
 /*
@@ -1504,269 +1040,6 @@ async function readAllGatewayKeys(http, auth) {
  * that settled it, and the retained Control Plane billing list is not consulted
  * for an order placed on the owner route.
  */
-export async function readWorkspacePurchaseReceipts(http, auth, workspaceId) {
-  const transactions = await listWorkspaceTransactions(http, auth, workspaceId);
-  return transactions
-    .filter((item) => item?.workspaceId === workspaceId && item?.kind === "charge" && item?.status === "confirmed" &&
-      String(item?.receiptId || "").trim())
-    .map((item) => ({ receiptId: String(item.receiptId), workspaceId }));
-}
-
-// The purchase receipt is the Ledger's own record of the purchase, and the
-// Ledger binds it to the Workspace it paid for. The owner mints the Workspace
-// identity, so the receipt for this purchase is the one the Ledger holds for
-// exactly that Workspace, and it is the only one this account may hold.
-export async function readLocalPurchaseReceiptId(http, auth, workspaceId) {
-  const transactions = await listWorkspaceTransactions(http, auth, workspaceId);
-  const charges = transactions.filter((candidate) =>
-    candidate?.workspaceId === workspaceId && candidate?.kind === "charge" && candidate?.status === "confirmed" &&
-    String(candidate?.receiptId || "").trim());
-  if (charges.length !== 1) throw new Error("local qualification purchase receipt cardinality is invalid");
-  return String(charges[0].receiptId);
-}
-
-export function validateLocalJ1AccountingReadback(input) {
-  const {
-    operationId, workspaceId, receiptId, runtimeId, keyId, keyName, sub2apiUserId, debitCode, amountUsdMicros,
-    beforeMicros, afterMicros, baselineKeys, keys, receipts, key, keyUsage, usage, history, debit, evidence
-  } = input;
-  if (![baselineKeys, keys, receipts].every(Array.isArray) || !Array.isArray(history?.items) ||
-    !String(keyName || "").trim()) {
-    throw new Error("local qualification accounting inventory is invalid");
-  }
-  // The installation creates the Workspace's reserved Key, so both its identity
-  // and its exact name must be new to this qualification run.
-  if (baselineKeys.some((candidate) => String(candidate?.id || "") === keyId || candidate?.name === keyName)) {
-    throw new Error("local qualification exact workspace key predates this operation");
-  }
-  // The purchase receipt is the Workspace owner's own confirmed charge, read
-  // from the v2 transactions projection. The retained Control Plane billing list
-  // is not this order's evidence, so there is no separate baseline to subtract:
-  // the Workspace identity is owner-minted after this operation started, which is
-  // what makes a pre-existing receipt for it impossible.
-  const exactKeys = keys.filter((candidate) => String(candidate?.id || "") === keyId);
-  if (exactKeys.length !== 1 || exactKeys[0]?.name !== keyName || key?.id !== keyId || key?.kind !== "workspace" || key?.status !== "active" ||
-    exactKeys[0]?.kind !== "workspace" || exactKeys[0]?.status !== "active") {
-    throw new Error("local qualification exact workspace key cardinality is invalid");
-  }
-  const workspacePurchaseReceipts = receipts.filter((candidate) => candidate?.workspaceId === workspaceId);
-  if (workspacePurchaseReceipts.length !== 1 || workspacePurchaseReceipts[0]?.receiptId !== receiptId) {
-    throw new Error("local qualification exact purchase receipt cardinality is invalid");
-  }
-  if (debit?.count !== 1 || debit?.code !== debitCode || String(debit?.userId) !== sub2apiUserId || String(debit?.amountUsdMicros) !== amountUsdMicros) {
-    throw new Error("local qualification exact debit cardinality is invalid");
-  }
-  if (typeof usage?.totalRequests !== "number" || typeof keyUsage?.totalRequests !== "number" ||
-    !/^\d+$/.test(afterMicros) ||
-    evidence?.operation?.operationId !== operationId || evidence?.operation?.resourceId !== workspaceId ||
-    evidence?.current?.status !== "ready" || !String(evidence?.current?.entryUrl || "").trim() ||
-    evidence?.workspace?.url !== evidence?.current?.entryUrl ||
-    evidence?.runtime?.runtimeId !== runtimeId || evidence?.runtime?.currentApplication?.operationId !== evidence?.current?.operationId ||
-    evidence?.receipt?.receiptId !== receiptId || evidence?.receipt?.workspaceId !== workspaceId ||
-    evidence?.receipt?.chargeReference !== debitCode || String(evidence?.receipt?.totalUsdMicros) !== amountUsdMicros ||
-    evidence?.receipt?.fulfillment?.runtimeId !== undefined || evidence?.receipt?.fulfillment?.workspaceApiKeyId !== undefined) {
-    throw new Error("local qualification operation accounting binding is invalid");
-  }
-  return { walletExactDeltaObserved: /^\d+$/.test(beforeMicros) && BigInt(beforeMicros) - BigInt(amountUsdMicros) === BigInt(afterMicros) };
-}
-
-// The existing Cloud activation flow must have created this account, its Tenant
-// and billing binding before qualification. This step only reads the mapping.
-export async function readLocalQualificationAccount(http, adminAuth, email) {
-  const normalizedEmail = String(email || "").trim().toLowerCase();
-  const matches = [];
-  let expectedTotal = null;
-  let observedCount = 0;
-  for (let pageNumber = 1; ; pageNumber += 1) {
-    const page = sourceData((await http.json(`/api/operator/accounts?page=${pageNumber}&pageSize=50`, {}, adminAuth)).payload, "control-plane+sub2api");
-    if (!Array.isArray(page?.items) || !Number.isSafeInteger(page?.total) || page.total < 0 || page.page !== pageNumber || page.pageSize !== 50 ||
-      expectedTotal !== null && page.total !== expectedTotal ||
-      page.items.length !== Math.min(50, Math.max(0, page.total - observedCount))) {
-      throw new Error("local qualification account mapping readback is invalid");
-    }
-    expectedTotal ??= page.total;
-    observedCount += page.items.length;
-    matches.push(...page.items.filter((candidate) => candidate?.email === normalizedEmail));
-    if (observedCount === expectedTotal) break;
-  }
-  if (matches.length !== 1 || typeof matches[0]?.accountId !== "string" || !matches[0].accountId.trim() ||
-    matches[0].accountId !== matches[0].accountId.trim() || matches[0]?.status !== "active" ||
-    !/^[1-9][0-9]*$/.test(String(matches[0]?.sub2apiUserId || ""))) {
-    throw new Error("local qualification requires an existing active account created through POST /api/v2/operator/accounts with its Tenant and billing binding");
-  }
-  return { accountId: matches[0].accountId, mapping: matches[0] };
-}
-
-export async function runLocalWorkspaceJ1HTTPQualification(input) {
-  const {
-    http, adminEmail, adminPassword, qualificationEmail, qualificationPassword,
-    launchKey, workspaceName, receiptBase, readDebit, readRuntime, cleanup, wait,
-    onStage = () => {}
-  } = input;
-  let cleanupEvidence;
-  let qualificationFailure;
-  let cleanupScope = {};
-  let orderSubmitted = false;
-  let operationId = "";
-  let workspaceId = "";
-  let auth = null;
-  try {
-    onStage("bootstrap_ready");
-    const bootstrap = await http.json("/api/healthz");
-    if (bootstrap.payload?.status !== "ok") throw new Error("local qualification bootstrap is not ready");
-    await consoleReadback(http);
-    onStage("admin_login");
-    const adminAuth = await login(http, adminEmail, adminPassword);
-    onStage("account_mapping_readback");
-    const account = await readLocalQualificationAccount(http, adminAuth, qualificationEmail);
-    cleanupScope = { accountId: account.accountId };
-    onStage("qualification_login");
-    auth = await openQualificationSessions(http, qualificationEmail, qualificationPassword, account.accountId, `local-qualification-owner:${launchKey}`);
-    const me = sourceData((await http.json("/api/auth/me", {}, auth)).payload, "sub2api");
-    const sub2apiUserId = String(me?.sub2apiUserId || "");
-    if (me?.accountId !== account.accountId || me?.email !== qualificationEmail.toLowerCase() || me?.role !== "owner" || me?.status !== "active" ||
-      sub2apiUserId !== String(account.mapping.sub2apiUserId)) {
-      throw new Error("qualification authority identity binding is invalid");
-    }
-    onStage("wallet_usage_baseline");
-    const walletBefore = sourceData((await http.json("/api/gateway/wallet", {}, auth)).payload, "sub2api");
-    const usageBefore = sourceData((await http.json("/api/gateway/usage-summary?period=month", {}, auth)).payload, "sub2api");
-    const beforeMicros = String(walletBefore?.usdMicros || "");
-    if (!/^[1-9][0-9]*$/.test(beforeMicros) || typeof usageBefore?.totalRequests !== "number") {
-      throw new Error("qualification Wallet or Usage baseline is invalid");
-    }
-    const baselineKeys = await readAllGatewayKeys(http, auth);
-    onStage("catalog_resolution");
-    const declaration = await resolveLocalWorkspaceDeclaration(http, auth);
-    onStage("workspace_order");
-    cleanupScope = { ...cleanupScope, idempotencyKey: launchKey, workspaceName, declaration };
-    orderSubmitted = true;
-    // The purchase sequence and the quote policy are shared invariants. What
-    // differs across authority profiles is the evidence below this point and
-    // the qualification resource scope recorded for cleanup.
-    let purchase;
-    try {
-      purchase = await buyLocalWorkspace({
-        http, auth, name: workspaceName, declaration, walletUsdMicros: beforeMicros, idempotencyKey: launchKey, wait,
-      });
-    } catch (error) {
-      // The owner may have accepted the order before a later read failed. The
-      // accepted identities are the recovery context even though the purchase
-      // did not complete, and the original idempotency identity is retained so a
-      // completely lost POST answer can be read back as the same order.
-      operationId = String(error?.operationId || "");
-      workspaceId = String(error?.workspaceId || "");
-      cleanupScope = {
-        ...cleanupScope,
-        ...(operationId ? { operationId } : {}),
-        ...(workspaceId ? { workspaceId } : {}),
-        ...(String(error?.quoteId || "") ? { quoteId: String(error.quoteId) } : {}),
-        idempotencyKey: launchKey,
-      };
-      throw error;
-    }
-    const { amountUsdMicros, operation, operationId: ownerOperationId, workspaceId: ownerWorkspaceId } = purchase;
-    operationId = ownerOperationId;
-    workspaceId = ownerWorkspaceId;
-    cleanupScope = { ...cleanupScope, operationId, workspaceId, idempotencyKey: launchKey };
-    onStage("application_installation");
-    const installation = await waitForWorkspaceApplicationInstallation(http, auth, { workspaceId, operationId, wait });
-    const workspaceKey = resolveWorkspaceKey(await readAllGatewayKeys(http, auth), workspaceId);
-    onStage("terminal_readback");
-    const receiptId = await readLocalPurchaseReceiptId(http, auth, workspaceId);
-    const evidence = await readWorkspaceEvidence(http, auth, operationId, workspaceId, receiptId);
-    if (localApplicationEntryPort(evidence.current.entryUrl) === 0) throw new Error("Workspace application entry is invalid");
-    const runtimeImage = await readRuntime({ accountId: account.accountId, workspaceId, runtimeId: evidence.runtime.runtimeId });
-    onStage("workspace_open");
-    const opened = await fetchApplicationEntry(evidence.current.entryUrl);
-    assertWorkspaceOpenQualification(opened);
-
-    onStage("accounting_readback");
-    const [usage, walletAfter, keys, historyPage, receipts, debit] = await Promise.all([
-      http.json("/api/gateway/usage-summary?period=month", {}, auth).then((result) => sourceData(result.payload, "sub2api")),
-      http.json("/api/gateway/wallet", {}, auth).then((result) => sourceData(result.payload, "sub2api")),
-      readAllGatewayKeys(http, auth),
-      http.json("/api/gateway/balance-history?page=1&pageSize=20", {}, auth).then((result) => sourceData(result.payload, "sub2api")),
-      readWorkspacePurchaseReceipts(http, auth, workspaceId),
-      readDebit({ accountId: account.accountId, sub2apiUserId, code: evidence.receipt.chargeReference, amountUsdMicros })
-    ]);
-    const keyId = workspaceKey.id;
-    const key = sourceData((await http.json(`/api/gateway/keys/${encodeURIComponent(keyId)}`, {}, auth)).payload, "sub2api");
-    const keyUsage = sourceData((await http.json(`/api/gateway/keys/${encodeURIComponent(keyId)}/usage-summary?period=month`, {}, auth)).payload, "sub2api");
-    const afterMicros = String(walletAfter?.usdMicros || "");
-    const accounting = validateLocalJ1AccountingReadback({
-      operationId, workspaceId, receiptId, runtimeId: evidence.runtime.runtimeId, keyId, keyName: workspaceKey.name, sub2apiUserId,
-      debitCode: evidence.receipt.chargeReference, amountUsdMicros, beforeMicros, afterMicros,
-      baselineKeys, keys, receipts, key, keyUsage, usage, history: historyPage, debit, evidence
-    });
-
-    const receiptCandidate = {
-      ...receiptBase,
-      images: {
-        ...receiptBase.images,
-        workspace: { ...receiptBase.images.workspace, runningDigest: runtimeImage.runningDigest }
-      },
-      identities: {
-        accountId: account.accountId, sub2apiUserId, operationId, workspaceId,
-        runtimeId: evidence.runtime.runtimeId, keyId, debitCode: debit.code, purchaseReceiptId: receiptId,
-        runtimeVersionId: declaration.applicationSelection.runtimeVersionId,
-        computePlanId: declaration.computePlanId, storagePlanId: declaration.storagePlanId
-      },
-      debit: { count: 1, accountId: account.accountId, operationId, workspaceId, code: debit.code, userId: sub2apiUserId, amountUsdMicros },
-      wallet: { beforeUsdMicros: beforeMicros, afterUsdMicros: afterMicros, exactDeltaObserved: accounting.walletExactDeltaObserved },
-      receipt: {
-        count: 1, id: receiptId, accountId: account.accountId, operationId, workspaceId, quoteId: String(purchase.quote?.id || ""),
-        computeAllocationId: String(evidence.receipt.fulfillment?.computeAllocationId || ""),
-        storageId: String(evidence.receipt.fulfillment?.storageId || ""), attachmentId: String(evidence.receipt.fulfillment?.attachmentId || ""),
-        chargeReference: evidence.receipt.chargeReference, amountUsdMicros: String(evidence.receipt.totalUsdMicros)
-      },
-      application: {
-        status: evidence.current.status, operationId: evidence.current.operationId, applicationId: evidence.current.applicationId,
-        revision: evidence.current.revision, entryUrl: evidence.current.entryUrl,
-        runtimeId: evidence.runtime.runtimeId, keyId, resumed: installation.resumed === true
-      },
-      restart: { performed: false },
-      deletion: { performed: false, mode: "qualification_owned_cleanup" },
-      deletionReceipt: { count: 0 },
-      residuals: cleanupEvidence,
-      authorityWriteCounts: { keyCreates: 1, keyDeletes: 0, debits: 1, refunds: 0 },
-      mutationCounts: { accountProvisionPosts: 0, workspaceQuotePosts: 1, workspaceOrderPosts: 1, workspaceDeleteRequests: 0, refundPosts: 0 },
-      refund: { count: 0 },
-      usage: { source: "sub2api", status: "available", totalRequests: usage.totalRequests }
-    };
-    onStage("receipt_validation");
-    validateLocalQualificationReceipt({ ...receiptCandidate, residuals: { containers: 0, volumes: 0, networks: 0 } });
-    onStage("qualification_cleanup");
-    cleanupEvidence = await cleanup({ accountId: account.accountId, workspaceId });
-    const receipt = validateLocalQualificationReceipt({ ...receiptCandidate, residuals: cleanupEvidence });
-    return { receipt, auth, account, operation, evidence, cleanupEvidence };
-  } catch (error) {
-    qualificationFailure = error;
-    throw error;
-  } finally {
-    if (cleanupEvidence === undefined) {
-      // A Workspace bought on the owner route has no retained Control Plane
-      // Launch, so the retained recovery surface has nothing to read, and the
-      // owner operation does not publish the retained per-resource write
-      // counters. The preserved service and PostgreSQL state remain the recovery
-      // authority, and the recovery artifact names the owner-minted identities
-      // the order was admitted under.
-      //
-      // Cleanup is recovery evidence, not the error being reported. A failure to
-      // write it must not replace the original failure with a second one; the
-      // scope carries the cleanup error beside the original cause instead.
-      try {
-        await cleanup({ ...cleanupScope, failed: true, launchSubmitted: orderSubmitted, recoveryAuthority: null });
-      } catch (cleanupError) {
-        if (qualificationFailure && typeof qualificationFailure === "object") {
-          qualificationFailure.cleanupError = cleanupError;
-          throw qualificationFailure;
-        }
-        throw cleanupError;
-      }
-    }
-  }
-}
 
 async function exactLabelIDs(kind, accountId, workspaceId) {
   const base = [
@@ -1789,41 +1062,6 @@ export async function residualCounts(accountId, workspaceId) {
   return { containers: containers.length, volumes: volumes.length, networks: networks.length };
 }
 
-export async function cleanupLocalQualificationSecretRoot(compose, fabricSecretRoot) {
-  const cleanup = await compose([
-    "exec", "-T", "--user", "root", "fabric", "sh", "-c",
-    'rm -rf -- "$1"/* "$1"/.[!.]* "$1"/..?*',
-    "opl-qualification-secret-cleanup", fabricSecretRoot
-  ], { allowFailure: true });
-  if (cleanup.code !== 0) throw new Error("qualification-owned secret cleanup failed");
-}
-
-// Only call after Compose down has confirmed that PostgreSQL is stopped. The
-// pinned PostgreSQL image can traverse its own chowned data; the host cannot on
-// Linux. Mount only this run's data root, clear it without following symlinks,
-// then return the empty 0700 directory to the actual scratch-root owner.
-export async function cleanupLocalQualificationPostgresRoot(tempRoot, postgresDataRoot, execute = runProcess) {
-  const [scratch, data, scratchPath, dataPath] = await Promise.all([
-    lstat(tempRoot), lstat(postgresDataRoot), realpath(tempRoot), realpath(postgresDataRoot)
-  ]);
-  if (!scratch.isDirectory() || !data.isDirectory() || scratch.isSymbolicLink() || data.isSymbolicLink() ||
-    dataPath !== join(scratchPath, "postgres")) {
-    throw new Error("qualification PostgreSQL cleanup requires the exact run-owned data root");
-  }
-  const image = parseDocument(await readFile(join(root, "compose.yaml"), "utf8")).getIn(["services", "postgres", "image"]);
-  if (!immutableImageDigest(image)) throw new Error("qualification PostgreSQL cleanup requires the pinned Compose image");
-  const cleanup = await execute("docker", [
-    "run", "--rm", "--network", "none", "--read-only", "--user", "0:0",
-    "--mount", `type=bind,source=${dataPath},target=/qualification-postgres`,
-    "--entrypoint", "sh", image, "-ceu",
-    'find /qualification-postgres -xdev -mindepth 1 -delete; chown "$1:$2" /qualification-postgres; chmod 0700 /qualification-postgres',
-    "opl-qualification-postgres-cleanup", String(scratch.uid), String(scratch.gid)
-  ], { allowFailure: true });
-  if (cleanup.code !== 0) {
-    throw new Error(`qualification PostgreSQL cleanup failed for ${postgresDataRoot} (owner ${data.uid}:${data.gid})`);
-  }
-}
-
 export async function cleanupLocalQualificationResources(accountId, workspaceId, beforeNetworks = async () => {}) {
   for (const id of await exactLabelIDs("containers", accountId, workspaceId)) {
     await runProcess("docker", ["stop", "--time", "10", id], { allowFailure: true });
@@ -1842,67 +1080,6 @@ export async function cleanupLocalQualificationResources(accountId, workspaceId,
   return residualCounts(accountId, workspaceId);
 }
 
-// The installation owns the Runtime container. Its exact provider labels must
-// name this account, Workspace, application Runtime generation and component,
-// and run exactly the qualified Workspace image.
-async function applicationRuntimeImageReadback(accountId, workspaceId, expectedImage, expectedImageID, expectedRuntimeId) {
-  const ids = await exactLabelIDs("containers", accountId, workspaceId);
-  const runtime = [];
-  for (const id of ids) {
-    const [inspection] = JSON.parse((await runProcess("docker", ["inspect", id])).stdout);
-    if (inspection?.Config?.Labels?.["opl.fabric.kind"] === "application_runtime") runtime.push(inspection);
-  }
-  if (runtime.length !== 1) throw new Error(`expected one exact-labelled application Runtime container, found ${runtime.length}`);
-  const labels = runtime[0].Config.Labels || {};
-  if (labels["opl.image.ref"] !== expectedImage || runtime[0].Image !== expectedImageID ||
-    labels["opl.runtime.id"] !== expectedRuntimeId || labels["opl.component.role"] !== "main" ||
-    labels["opl.workspace.id"] !== workspaceId || labels["opl.account.id"] !== accountId) {
-    throw new Error("Workspace Runtime image binding is invalid");
-  }
-  return runtime[0];
-}
-
-// The Workspace owner names every Workspace's reserved Sub2API Key from the
-// Workspace identity, and the default installation creates exactly that Key.
-export function workspaceReservedKeyName(workspaceId) {
-  return `opl-workspace-${stableID(workspaceId).slice(0, 12)}`;
-}
-
-export function resolveWorkspaceKey(keys, workspaceId) {
-  const name = workspaceReservedKeyName(workspaceId);
-  const matches = keys.filter((candidate) => candidate?.name === name);
-  if (matches.length !== 1 || matches[0]?.kind !== "workspace" || matches[0]?.status !== "active" ||
-    !/^[1-9][0-9]*$/.test(String(matches[0]?.id || ""))) {
-    throw new Error("local qualification Workspace Key inventory is invalid");
-  }
-  return { id: String(matches[0].id), name };
-}
-
-// The deleted Workspace's injected Gateway Secret is the provider secret-root
-// directory Contracts names from the Workspace identity.
-export function workspaceGatewaySecretRef(workspaceId) {
-  return `opl-gateway-${createHash("sha256").update(String(workspaceId)).digest("hex").slice(0, 16)}`;
-}
-
-// Delete retains the original Gateway Key identity and confirms deactivation.
-// An unchanged active Key is not a completed owner closeout.
-//
-// The authority is the owner of that fact, and its own key record carries the
-// identity the authority meters (id, name, user, group, status) without Control
-// Plane's `kind` projection. Identity and inventory stay unchanged; status must
-// move from active to disabled under the Gateway owner's own readback.
-export function retainedWorkspaceKey(before, after, workspaceId, keyId) {
-  const exact = (keys) => (keys || []).filter((candidate) => String(candidate?.id || "") === String(keyId));
-  const beforeKey = exact(before);
-  const afterKey = exact(after);
-  const name = workspaceReservedKeyName(workspaceId);
-  const record = (key) => [String(key?.id || ""), key?.name, String(key?.userId ?? ""), String(key?.groupId ?? "")].join("\u0000");
-  const inventory = (keys) => (keys || []).map((candidate) => String(candidate?.id ?? "")).sort().join(",");
-  return beforeKey.length === 1 && afterKey.length === 1 &&
-    beforeKey[0].name === name && afterKey[0].name === name && beforeKey[0].status === "active" && afterKey[0].status === "disabled" &&
-    record(beforeKey[0]) === record(afterKey[0]) && inventory(before) === inventory(after);
-}
-
 // The deletion Receipt attests every stage that preceded it: the frozen order,
 // each stage's own result and evidence kind, and a real provider or committed
 // local observation with its opaque reference.
@@ -1914,49 +1091,12 @@ const workspaceDeleteReceiptStages = Object.freeze([
   Object.freeze({ stage: "workspace_absent", result: "removed", evidenceKind: "local_transition" })
 ]);
 
-export function workspaceDeleteReceiptStagesMatch(stageEvidence) {
-  if (!Array.isArray(stageEvidence) || stageEvidence.length !== workspaceDeleteReceiptStages.length) return false;
-  return workspaceDeleteReceiptStages.every((expected, index) => {
-    const entry = stageEvidence[index];
-    return entry?.stage === expected.stage && entry?.result === expected.result && entry?.evidenceKind === expected.evidenceKind &&
-      typeof entry?.observedAt === "string" && entry.observedAt.trim() !== "" &&
-      typeof entry?.evidenceRef === "string" && entry.evidenceRef.trim() !== "";
-  });
-}
-
 // Only the Local-Docker publication shape is admissible: the application's own
 // entry is the host-bound loopback port its provider reported.
 export function localApplicationEntryPort(url) {
   const match = /^http:\/\/127\.0\.0\.1:([0-9]{1,5})\/$/.exec(String(url || ""));
   const port = match ? Number(match[1]) : 0;
   return port >= 1 && port <= 65535 ? port : 0;
-}
-
-function assertWorkspaceOpenQualification(opened) {
-  if (!opened.response.ok) {
-    throw namedQualificationError("workspace_open_http_failed", `Workspace Runtime open returned HTTP ${opened.response.status}`);
-  }
-  if (!opened.text.includes("OPL Workspace READY")) {
-    throw namedQualificationError("workspace_open_fixture_marker_missing", "Workspace Runtime open is missing the qualification fixture marker");
-  }
-}
-
-async function fetchApplicationEntry(url) {
-  const response = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(requestTimeoutMs()) });
-  return { response, text: await response.text() };
-}
-
-export async function authorityState(port, token) {
-  const response = await fetch(`http://127.0.0.1:${port}/qualification/state`, {
-    headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000)
-  });
-  const text = await response.text();
-  if (response.status !== 200) throw new Error(`qualification authority state returned ${response.status}`);
-  const payload = JSON.parse(text);
-  if (payload?.code !== 0 || !payload.data || typeof payload.data !== "object") {
-    throw new Error("qualification authority state envelope is invalid");
-  }
-  return payload.data;
 }
 
 function usdMicrosFromDecimal(value) {
@@ -1967,148 +1107,8 @@ function usdMicrosFromDecimal(value) {
   return `${match[1] === "-" ? "-" : ""}${micros.toString()}`;
 }
 
-export async function liveAuthorityAdjustmentReadback(baseURL, email, password, userId, code, expectedValueUsdMicros, request = fetch) {
-  const signal = AbortSignal.timeout(10_000);
-  const loginResponse = await request(`${baseURL.replace(/\/$/, "")}/api/v1/auth/login`, {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, password }),
-    signal
-  });
-  const loginPayload = await loginResponse.json();
-  const token = String(loginPayload?.data?.access_token || "");
-  if (!loginResponse.ok || loginPayload?.code !== 0 || !token) throw new Error("live Sub2API admin authentication failed");
-  let authorityTotal = -1;
-  let authorityPages = -1;
-  let match = null;
-  for (let page = 1; ; page += 1) {
-    const url = new URL(`${baseURL.replace(/\/$/, "")}/api/v1/admin/users/${encodeURIComponent(userId)}/balance-history`);
-    url.searchParams.set("page", String(page));
-    url.searchParams.set("page_size", "100");
-    url.searchParams.set("type", "balance");
-    const response = await request(url, { headers: { authorization: `Bearer ${token}` }, signal });
-    const payload = await response.json();
-    if (!response.ok || payload?.code !== 0 || !Array.isArray(payload?.data?.items)) throw new Error("live Sub2API balance-history readback failed");
-    const data = payload.data;
-    const total = Number(data.total);
-    const pages = Number(data.pages);
-    const expectedPages = total > 0 ? Math.ceil(total / 100) : 1;
-    const expectedItems = total > 0 ? Math.min(100, total - (page - 1) * 100) : 0;
-    if (!Number.isSafeInteger(total) || total < 0 || !Number.isSafeInteger(pages) || pages !== expectedPages ||
-      data.page !== page || data.page_size !== 100 || page > pages || data.items.length !== expectedItems ||
-      page > 1 && (total !== authorityTotal || pages !== authorityPages)) {
-      throw new Error("live Sub2API balance-history pagination is invalid");
-    }
-    if (page === 1) {
-      authorityTotal = total;
-      authorityPages = pages;
-    }
-    for (const candidate of data.items) {
-      if (candidate?.code !== code) continue;
-      if (match) throw new Error("live Sub2API exact adjustment cardinality is invalid");
-      const valueUsdMicros = usdMicrosFromDecimal(candidate.value);
-      if (candidate.type !== "balance" || candidate.status !== "used" || String(candidate.used_by) !== String(userId) ||
-        !String(candidate.used_at || "").trim() || !String(candidate.created_at || "").trim() || valueUsdMicros !== expectedValueUsdMicros) {
-        throw new Error("live Sub2API adjustment readback differs from the expected identity");
-      }
-      match = { code, userId: String(userId), valueUsdMicros, status: "used", count: 1 };
-    }
-    if (page === authorityPages) break;
-  }
-  if (match) return match;
-  throw new Error("live Sub2API exact adjustment was not found");
-}
-
 function receiptCommand(options) {
-  if (options.mode === QUALIFICATION_MODE_LOCAL_V2) {
-    return `npm run qualify:local:workspace -- --mode local-v2 --source-sha ${options.sourceSha} --installation-env ${options.installationEnv} --application-contract ${options.applicationContract} --project ${options.project} --receipt ${options.receiptPath}`;
-  }
-  const imageArgs = options.buildSourceImages
-    ? "--build-source-images"
-    : `--cloud-image ${options.cloudImage} --workspace-image ${options.workspaceImage}`;
-  const j0Arg = options.j0ReadyReceipt ? ` --j0-ready-receipt ${options.j0ReadyReceipt}` : "";
-  return `npm run qualify:local:workspace -- --source-sha ${options.sourceSha} ${imageArgs} --authority-mode ${options.authorityMode}${j0Arg} --receipt ${options.receiptPath}`;
-}
-
-async function writeEarlyNotReady(options, stage, errorCode, error) {
-  let tree = "unavailable";
-  try {
-    tree = (await runProcess("git", ["rev-parse", `${options.sourceSha}^{tree}`])).stdout.trim() || tree;
-  } catch {
-    // The input receipt still records the exact requested source when the local checkout is incomplete.
-  }
-  await writeJSONAtomic(options.receiptPath, {
-    schemaVersion: 1,
-    status: "NOT_READY",
-    completedAt: new Date().toISOString(),
-    source: { sha: options.sourceSha, tree },
-    images: {
-      cloud: { input: options.cloudImage || "unavailable", digest: immutableImageDigest(options.cloudImage) || "unavailable" },
-      workspace: { input: options.workspaceImage || "unavailable", digest: immutableImageDigest(options.workspaceImage) || "unavailable" }
-    },
-    command: receiptCommand(options),
-    stage,
-    errorCode,
-    error: redactedError(error),
-    deferred: [...deferredCloudGates]
-  });
-}
-
-// The run reports READY only after its own scratch root is actually gone. Any
-// unconfirmed removal — including the Linux EACCES raised when the PostgreSQL
-// image's chowned bind-mount directory blocks the qualifier's scan — keeps the
-// attempt failed, preserving the earliest stage failure when one exists, so
-// the receipt records NOT_READY instead of claiming a clean run. The removal
-// stays confined to the run-owned scratch root. PostgreSQL's container-owned
-// contents are cleared separately after confirmed Compose shutdown.
-export async function finishLocalWorkspaceQualification(state, dependencies = {}) {
-  const { options, startedAt, sourceTree, cloudImage, workspaceImage, stage, residuals } = state;
-  const { recovery, ownerDeletePending, ownerDeleteFailure, finalReceipt } = state;
-  let { failure } = state;
-  if (!state.preserveRecoveryAuthority) {
-    const removeScratch = dependencies.removeScratch || ((target) => rm(target, { recursive: true, force: true }));
-    try {
-      await removeScratch(state.tempRoot);
-    } catch (error) {
-      failure ||= error;
-    }
-  }
-
-  if (failure) {
-    const notReady = {
-      schemaVersion: 1,
-      status: "NOT_READY",
-      startedAt,
-      completedAt: new Date().toISOString(),
-      source: { sha: options.sourceSha, tree: sourceTree },
-      images: {
-        cloud: { input: cloudImage || "unavailable", digest: immutableImageDigest(cloudImage) || "unavailable" },
-        workspace: { input: workspaceImage || "unavailable", digest: immutableImageDigest(workspaceImage) || "unavailable" }
-      },
-      command: receiptCommand({ ...options, cloudImage, workspaceImage }),
-      stage,
-      errorCode: ["workspace_open_http_failed", "workspace_open_fixture_marker_missing"].includes(failure?.code)
-        ? failure.code : "local_workspace_qualification_failed",
-      error: redactedError(failure),
-      residuals,
-      ...(recovery?.artifact ? {
-        recovery: {
-          status: recovery.artifact.status,
-          path: recovery.path,
-          operationIdDigest: recovery.artifact.authority.operationIdDigest,
-          workspaceIdDigest: recovery.artifact.authority.workspaceIdDigest,
-          externalWrites: recovery.artifact.authority.externalWrites,
-          compose: recovery.artifact.compose,
-          cleanup: recovery.artifact.cleanup
-        }
-      } : {}),
-      ...(ownerDeletePending ? { ownerDeletePending } : {}),
-      ...(ownerDeleteFailure ? { ownerDeleteFailure } : {}),
-      deferred: [...deferredCloudGates]
-    };
-    await writeJSONAtomic(options.receiptPath, notReady);
-    throw failure;
-  }
-  await writeJSONAtomic(options.receiptPath, finalReceipt);
-  return finalReceipt;
+  return `npm run qualify:local:workspace -- --mode local-v2 --source-sha ${options.sourceSha} --installation-env ${options.installationEnv} --application-contract ${options.applicationContract} --project ${options.project} --receipt ${options.receiptPath}`;
 }
 
 // A declared installation environment file is one NAME=value entry per line, in
@@ -2464,7 +1464,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     }
     readbacks.topology = { services: Object.keys(config.services || {}).sort() };
     record("compose_topology", "confirmed", { services: readbacks.topology.services.length });
-    const stores = await verifyStores((args) => compose([...composePrefix, ...args]), { stores: LOCAL_V2_OWNER_STORES, v2: true });
+    const stores = await verifyStores((args) => compose([...composePrefix, ...args]));
     readbacks.stores = stores;
     record("owner_stores", "confirmed", { databases: Object.keys(stores.ownerStores || {}).length });
     const query = ownerQuery || (async (database, sql) => (await compose([
@@ -2985,556 +1985,11 @@ async function catalogIds(http, auth, path) {
   return (Array.isArray(page?.items) ? page.items : []).map((item) => String(item?.id || "")).filter(Boolean);
 }
 
-export async function runLocalWorkspaceQualification(options, dependencies = {}) {
-  let liveAuthority = null;
-  if (options.authorityMode === "live") {
-    try {
-      liveAuthority = dependencies.loadLiveAuthority ? await dependencies.loadLiveAuthority(options) : options.sub2apiSecretFile
-        ? await loadSub2APISecretFile(options.sub2apiSecretFile)
-        : liveAuthorityConfigurationFromEnvironment(process.env);
-      if (!validLiveAuthorityConfiguration(liveAuthority)) {
-        throw new Error("live qualification requires protected non-production Sub2API credentials and HTTPS authority");
-      }
-    } catch (error) {
-      const errorCode = String(error?.code || "live_authority_configuration_missing");
-      await writeEarlyNotReady(options, "authority_preflight", errorCode, error);
-      throw error;
-    }
-  }
-  const readSourceIdentity = dependencies.readSourceIdentity || readQualificationSourceIdentity;
-  const sourceBefore = await readSourceIdentity();
-  validateQualificationSourceIdentity(sourceBefore, sourceBefore, options.sourceSha);
-  const sourceTree = sourceBefore.tree;
-  let j0Ready = null;
-  if (options.authorityMode === "live") {
-    try {
-      j0Ready = await loadJ0ReadyReceipt(options.j0ReadyReceipt, options.sourceSha, sourceTree);
-    } catch (error) {
-      await writeEarlyNotReady(options, "j0_ready_preflight", "j0_ready_receipt_invalid", error);
-      throw error;
-    }
-  }
-  // Every path below assembles the Local-Docker store stack, so the
-  // installation facts it binds are admitted before anything starts.
-  let installationInputs;
-  try {
-    installationInputs = localDockerInstallationInputs(process.env);
-  } catch (error) {
-    await writeEarlyNotReady(options, "installation_preflight", String(error?.code || "local_docker_installation_inputs_invalid"), error);
-    throw error;
-  }
-  if (options.authorityMode === "live" && dependencies.runLiveJ1) {
-    const result = await dependencies.runLiveJ1({ options, liveAuthority, source: sourceBefore, j0Ready });
-    const receipt = validateLocalQualificationReceipt(result?.receipt || result);
-    validateQualificationSourceIdentity(sourceBefore, await readSourceIdentity(), options.sourceSha);
-    await writeJSONAtomic(options.receiptPath, receipt);
-    return receipt;
-  }
-  const startedAt = new Date().toISOString();
-  const suffix = `${process.pid}-${randomBytes(4).toString("hex")}`;
-  const project = `opl-local-qualification-${suffix}`.toLowerCase();
-  const tempRoot = await mkdtemp(join(tmpdir(), "opl-local-qualification-"));
-  const fabricSecretRoot = join(tempRoot, "fabric-secrets");
-  await mkdir(fabricSecretRoot, { recursive: true, mode: 0o700 });
-  // The Local-Workspace overlay binds the PostgreSQL data root with
-  // create_host_path: false, so the directory must exist before Compose starts;
-  // PostgreSQL initializes and owns its contents inside the container.
-  const postgresDataRoot = join(tempRoot, "postgres");
-  await mkdir(postgresDataRoot, { recursive: true, mode: 0o700 });
-  const envFile = join(tempRoot, "qualification.env");
-  const publicPort = await unusedPort();
-  const authorityPort = await unusedPort();
-  const registryPort = await unusedPort();
-  const subnetOctet = 20 + (Number.parseInt(randomBytes(1).toString("hex"), 16) % 200);
-  let accountId = "acct-admin";
-  const fixtureEmail = "local-qualification@example.test";
-  const fixturePassword = `Local-${randomBytes(18).toString("base64url")}-Aa1!`;
-  const adminEmail = options.authorityMode === "live" ? liveAuthority.qualificationUserEmail : fixtureEmail;
-  const adminPassword = options.authorityMode === "live" ? liveAuthority.qualificationUserPassword : fixturePassword;
-  const userToken = randomBytes(32).toString("hex");
-  const authorityToken = randomBytes(32).toString("hex");
-  const launchKey = `local-qualification:${suffix}`;
-  // The owner mints the operation identity and the Workspace identity of a new
-  // purchase, so the harness does not derive them and waits for the owner to
-  // name them.
-  let operationId = "";
-  let workspaceId = "";
-  let cloudImage = options.cloudImage;
-  let workspaceImage = options.workspaceImage;
-  let builtTags = [];
-  let registryContainer = "";
-  let stage = "image_admission";
-  let composeStarted = false;
-  let composeDown = false;
-  let auth = null;
-  let finalReceipt;
-  let failure;
-  let recovery = null;
-  let preserveRecoveryAuthority = false;
-  let ownerDeletePending = null;
-  let ownerDeleteFailure = null;
-  let residuals = { containers: null, volumes: null, networks: null };
-  const composePrefix = ["compose", "--project-name", project, "--env-file", envFile];
-  for (const file of localQualificationComposeFiles(options.authorityMode)) composePrefix.push("-f", file);
-  let composeEnvironment = process.env;
-  const compose = (args, settings = {}) => runProcess("docker", [...composePrefix, ...args], { ...settings, env: composeEnvironment });
-
-  try {
-    await runProcess("docker", ["version"]);
-    await runProcess("docker", ["compose", "version"]);
-    if (options.buildSourceImages) {
-      ({ cloudImage, workspaceImage, tags: builtTags, registryContainer } = await buildSourceImages(options.sourceSha, project, registryPort));
-    }
-    const cloudInspection = await imageInspection(cloudImage);
-    const workspaceInspection = await imageInspection(workspaceImage);
-    const cloudRevision = String(cloudInspection.Config?.Labels?.["org.opencontainers.image.revision"] || "");
-    if (cloudRevision !== options.sourceSha) throw new Error("Cloud image revision label does not equal source SHA");
-    const cloudDigest = immutableImageDigest(cloudImage);
-    const workspaceDigest = immutableImageDigest(workspaceImage);
-    if (!cloudDigest || !workspaceDigest) throw new Error("qualified images must be immutable");
-
-    const context = await runProcess("docker", ["context", "inspect", "--format", "{{(index .Endpoints \"docker\").Host}}"]);
-    const dockerHost = context.stdout.trim();
-    const dockerSocket = dockerHost.startsWith("unix://") ? dockerHost.slice("unix://".length) : "/var/run/docker.sock";
-    const secrets = Array.from({ length: 10 }, () => randomBytes(32).toString("hex"));
-    const envEntries = [
-      ["OPL_CLOUD_IMAGE", cloudImage],
-      ["OPL_WORKSPACE_IMAGE", workspaceImage],
-      ["OPL_RELEASE_SHA", options.sourceSha],
-      ["OPL_BIND_ADDRESS", "127.0.0.1"],
-      ["OPL_HTTP_PORT", publicPort],
-      ["OPL_PUBLIC_URL", `http://127.0.0.1:${publicPort}`],
-      // The Control Plane refuses to start without a Workspace host, and it must
-      // differ from OPL_PUBLIC_URL because that host serves Workspace entries
-      // while every other host serves the Console this script drives.
-      ["OPL_WORKSPACE_DOMAIN", `ws-qualification-${suffix}.localhost`],
-      // The qualification run bills its own fixture authority, so it qualifies
-      // the platform-owned deployment mode.
-      ["OPL_DEPLOYMENT_MODE", "platform_owned"],
-      ["OPL_POSTGRES_DATA_ROOT", postgresDataRoot],
-      ["OPL_WORKSPACE_IMAGE_RELEASES_JSON", ""],
-      // Installation-owned facts, already verified by the installation
-      // preflight: the quota-enabled Workspace storage root and the provider
-      // profile that describes the packages this host can host.
-      ["OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT", installationInputs.storageRoot],
-      ["OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON", installationInputs.providerProfileJSON],
-      ["OPL_DOCKER_SUBNET", `10.251.${subnetOctet}.0/24`],
-      ["OPL_POSTGRES_HOST", `10.251.${subnetOctet}.10`],
-      ["OPL_POSTGRES_ADMIN_PASSWORD", secrets[0]],
-      ["OPL_CONTROL_PLANE_DATABASE_PASSWORD", secrets[1]],
-      ["OPL_FABRIC_DATABASE_PASSWORD", secrets[2]],
-      ["OPL_LEDGER_DATABASE_PASSWORD", secrets[3]],
-      ["OPL_CONTROL_PLANE_SERVICE_TOKEN", secrets[4]],
-      ["OPL_FABRIC_SERVICE_TOKEN", secrets[5]],
-      ["OPL_LEDGER_SERVICE_TOKEN", secrets[6]],
-      ["OPL_FABRIC_RUNNER_SERVICE_TOKEN", secrets[7]],
-      ["OPL_FABRIC_CAPABILITY_KEY", secrets[8]],
-      ["OPL_LEDGER_CAPABILITY_KEY", secrets[9]],
-      ["OPL_AIONUI_ADMIN_PASSWORD_SEED", randomBytes(32).toString("hex")],
-      ["OPL_SUB2API_BASE_URL", options.authorityMode === "live" ? liveAuthority.baseURL : "http://sub2api-authority:8080"],
-      ["OPL_SUB2API_ADMIN_EMAIL", options.authorityMode === "live" ? liveAuthority.adminEmail : adminEmail],
-      ["OPL_SUB2API_ADMIN_PASSWORD", options.authorityMode === "live" ? liveAuthority.adminPassword : adminPassword],
-      ["OPL_QUALIFICATION_USER_EMAIL", adminEmail],
-      ["OPL_QUALIFICATION_USER_PASSWORD", adminPassword],
-      ["OPL_QUALIFICATION_USER_TOKEN", userToken],
-      ["OPL_QUALIFICATION_AUTHORITY_TOKEN", authorityToken],
-      ["OPL_QUALIFICATION_AUTHORITY_HOST_PORT", authorityPort],
-      ["OPL_QUALIFICATION_INITIAL_USD_MICROS", "1000000000"],
-      ["OPL_DOCKER_SOCKET_PATH", dockerSocket],
-      ["OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT", fabricSecretRoot],
-      ["OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER", `${project}-control-plane-1`],
-      ["OPL_SUB2API_REQUEST_TIMEOUT_MS", "5000"],
-      ["OPL_MONTHLY_BILLING_WORKER_ENABLED", "0"],
-      ["OPL_WORKSPACE_LAUNCH_WORKER_ENABLED", "1"],
-      ["OPL_FABRIC_LOCAL_DOCKER_TRUSTED_WORKSPACE_IMAGES", workspaceImage],
-      ["OPL_FABRIC_LOCAL_DOCKER_HOST", "127.0.0.1"]
-    ];
-    if (options.authorityMode === "live") {
-      accountId = `acct-${stableID("account", adminEmail.toLowerCase()).slice(0, 18)}`;
-    }
-    composeEnvironment = qualificationComposeEnvironment(process.env, envEntries);
-    const envFileEntries = qualificationEnvFileEntries(envEntries, options);
-    await writeFile(envFile, `${envFileEntries.map(([key, value]) => `${key}=${value}`).join("\n")}\n`, { mode: 0o600 });
-    stage = "owner_topology_preflight";
-    assertWorkspaceQualificationTopology(JSON.parse((await compose(["config", "--format", "json"])).stdout));
-
-    stage = "compose_start";
-    composeStarted = true;
-    await waitForCompose(compose);
-    const [controlPlaneContainer, fabricContainer, ledgerContainer] = await Promise.all([
-      inspectComposeImage(compose, "control-plane"),
-      inspectComposeImage(compose, "fabric"),
-      inspectComposeImage(compose, "ledger")
-    ]);
-    if ([controlPlaneContainer, fabricContainer, ledgerContainer].some((container) => container.Image !== cloudInspection.Id)) {
-      throw new Error("one or more Cloud services did not run the admitted image");
-    }
-    const stores = await verifyStores(compose);
-    const http = createHTTP(`http://127.0.0.1:${publicPort}`);
-
-    if (options.authorityMode === "live") {
-      finalReceipt = (await runLocalWorkspaceJ1HTTPQualification({
-        http,
-        adminEmail: liveAuthority.adminEmail,
-        adminPassword: liveAuthority.adminPassword,
-        qualificationEmail: adminEmail,
-        qualificationPassword: adminPassword,
-        launchKey,
-        workspaceName: `Local qualification ${suffix}`,
-        wait: (milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds)),
-        onStage: (name) => { stage = name; },
-        readRuntime: async ({ accountId: exactAccountId, workspaceId: exactWorkspaceId, runtimeId: exactRuntimeId }) => {
-          const runtime = await applicationRuntimeImageReadback(exactAccountId, exactWorkspaceId, workspaceImage, workspaceInspection.Id, exactRuntimeId);
-          return { runningDigest: runtime.Image };
-        },
-        readDebit: async ({ sub2apiUserId, code, amountUsdMicros }) => {
-          const readback = await liveAuthorityAdjustmentReadback(
-            liveAuthority.baseURL, liveAuthority.adminEmail, liveAuthority.adminPassword,
-            sub2apiUserId, code, `-${amountUsdMicros}`
-          );
-          if (readback.valueUsdMicros !== `-${amountUsdMicros}`) throw new Error("live Sub2API debit amount readback is invalid");
-          return { code: readback.code, userId: readback.userId, amountUsdMicros, count: readback.count };
-        },
-        cleanup: async (scope) => {
-          const authority = scope?.recoveryAuthority || { externalWrites: noLocalJ1ExternalWrites() };
-          const cleanupPlan = localJ1CleanupPlan({
-            ready: !scope?.failed,
-            launchSubmitted: scope?.launchSubmitted === true,
-            authority
-          });
-          if (cleanupPlan.preserveRecoveryAuthority) {
-            preserveRecoveryAuthority = true;
-            const postgresVolumeRefs = (await runProcess("docker", [
-              "volume", "ls", "-q", "--filter", `label=com.docker.compose.project=${project}`
-            ])).stdout.trim().split(/\r?\n/).filter(Boolean);
-            const providerVolumeRefs = scope?.accountId && scope?.workspaceId
-              ? await exactLabelIDs("volumes", scope.accountId, scope.workspaceId)
-              : [];
-            const recoveryPath = localJ1RecoveryArtifactPath(options.receiptPath);
-            const common = {
-              source: { sha: options.sourceSha, tree: sourceTree },
-              failure: { stage, errorCode: "local_workspace_qualification_failed" },
-              compose: {
-                project,
-                recoveryRoot: tempRoot,
-                fabricSecretRoot,
-                postgresVolumeRefs,
-                providerVolumeRefs
-              }
-            };
-            // The order was admitted under the identities the owner minted, and
-            // the recovery artifact names those identities rather than a
-            // retained launch identity the harness no longer derives.
-            const artifact = scope?.recoveryAuthority
-              ? createLocalJ1RecoveryArtifact({ ...common, authority })
-              : createLocalJ1RecoveryReadbackPendingArtifact({
-                ...common, operationId: String(scope?.operationId || ""), workspaceId: String(scope?.workspaceId || ""),
-                idempotencyKey: String(scope?.idempotencyKey || ""),
-                quoteId: String(scope?.quoteId || ""), workspaceName: scope?.workspaceName, declaration: scope?.declaration,
-              });
-            await writeLocalJ1RecoveryArtifact(recoveryPath, artifact);
-            recovery = { status: artifact.status, path: recoveryPath, artifact };
-            return null;
-          }
-          if (!scope?.accountId || !scope?.workspaceId) return { containers: 0, volumes: 0, networks: 0 };
-          await cleanupLocalQualificationSecretRoot(compose, fabricSecretRoot);
-          const counts = await cleanupLocalQualificationResources(scope.accountId, scope.workspaceId, async () => {
-            const down = await compose(["down", "--volumes", "--remove-orphans", "--timeout", "30"], { allowFailure: false });
-            if (down.code !== 0) throw new Error("local qualification compose teardown failed");
-            composeDown = true;
-          });
-          await rm(fabricSecretRoot, { recursive: true, force: true });
-          await mkdir(fabricSecretRoot, { recursive: true, mode: 0o700 });
-          return counts;
-        },
-        receiptBase: {
-          schemaVersion: 1,
-          status: "READY",
-          startedAt,
-          completedAt: new Date().toISOString(),
-          source: { sha: options.sourceSha, tree: sourceTree },
-          images: {
-            cloud: { input: cloudImage, repoDigest: cloudImage, digest: cloudDigest, runningDigest: cloudInspection.Id },
-            workspace: { input: workspaceImage, repoDigest: workspaceImage, digest: workspaceDigest, runningDigest: workspaceInspection.Id }
-          },
-          command: receiptCommand({ ...options, cloudImage, workspaceImage }),
-          processes: { console: "ready", controlPlane: "ready", fabric: "ready", ledger: "ready" },
-          stores,
-          j0Ready,
-          qualification: { authorityMode: "live", p0Ready: true },
-          deferred: [...deferredCloudGates]
-        }
-      })).receipt;
-      validateQualificationSourceIdentity(sourceBefore, await readQualificationSourceIdentity(), options.sourceSha);
-    } else {
-    stage = "console_and_login";
-    await consoleReadback(http);
-    auth = await openQualificationSessions(http, adminEmail, adminPassword, "acct-admin", `local-workspace-owner:${launchKey}`);
-    const me = sourceData((await http.json("/api/auth/me", {}, auth)).payload, "sub2api");
-    const sub2apiUserId = String(me?.sub2apiUserId || "");
-    if (me?.accountId !== accountId || !/^[1-9][0-9]*$/.test(sub2apiUserId) || me?.status !== "active") {
-      throw new Error("qualification authority identity binding is invalid");
-    }
-    const walletBefore = sourceData((await http.json("/api/gateway/wallet", {}, auth)).payload, "sub2api");
-    const beforeMicros = String(walletBefore?.usdMicros || "");
-    if (!/^[1-9][0-9]*$/.test(beforeMicros)) throw new Error("qualification wallet readback is invalid");
-
-    stage = "catalog_resolution";
-    const declaration = await resolveLocalWorkspaceDeclaration(http, auth);
-    stage = "workspace_order";
-    const workspaceName = `Local qualification ${suffix}`;
-    const { amountUsdMicros, quote, operation, operationId: ownerOperationId, workspaceId: ownerWorkspaceId } = await buyLocalWorkspace({
-      http, auth, name: workspaceName, declaration, walletUsdMicros: beforeMicros, idempotencyKey: launchKey,
-    });
-    operationId = ownerOperationId;
-    workspaceId = ownerWorkspaceId;
-
-    // The owner order names the application it installs, so the owner commits
-    // the default OPL application installation beside it. Wait for the owner's
-    // own ready readback, then bind the Workspace Key the installation created.
-    stage = "application_installation";
-    const installation = await waitForWorkspaceApplicationInstallation(http, auth, { workspaceId, operationId });
-    const workspaceKey = resolveWorkspaceKey(await readAllGatewayKeys(http, auth), workspaceId);
-    const keyId = workspaceKey.id;
-    stage = "terminal_readback";
-    const receiptId = await readLocalPurchaseReceiptId(http, auth, workspaceId);
-    const evidence = await readWorkspaceEvidence(http, auth, operationId, workspaceId, receiptId);
-    if (localApplicationEntryPort(evidence.current.entryUrl) === 0) throw new Error("Workspace application entry is invalid");
-    stage = "workspace_open";
-    const opened = await fetchApplicationEntry(evidence.current.entryUrl);
-    assertWorkspaceOpenQualification(opened);
-    const runtimeContainer = await applicationRuntimeImageReadback(accountId, workspaceId, workspaceImage, workspaceInspection.Id, evidence.runtime.runtimeId);
-    const usage = sourceData((await http.json("/api/gateway/usage-summary?period=month", {}, auth)).payload, "sub2api");
-    const walletAfterCharge = sourceData((await http.json("/api/gateway/wallet", {}, auth)).payload, "sub2api");
-    const chargedMicros = String(walletAfterCharge?.usdMicros || "");
-    if (!usage || typeof usage.totalRequests !== "number") throw new Error("Sub2API usage readback is invalid");
-    const authorityBeforeDelete = options.authorityMode === "fixture" ? await authorityState(authorityPort, authorityToken) : null;
-    const debits = authorityBeforeDelete?.adjustments?.filter((candidate) => candidate?.kind === "debit") || [];
-    const liveDebit = options.authorityMode === "live" ? await liveAuthorityAdjustmentReadback(
-      liveAuthority.baseURL, liveAuthority.adminEmail, liveAuthority.adminPassword,
-      sub2apiUserId, evidence.receipt.chargeReference, `-${amountUsdMicros}`
-    ) : null;
-    const debit = options.authorityMode === "fixture" ? debits.find((candidate) => candidate?.code === evidence.receipt.chargeReference) : {
-      code: liveDebit.code, userId: liveDebit.userId, amountUsdMicros, count: liveDebit.count
-    };
-    const debitCount = options.authorityMode === "fixture" ? debits.filter((candidate) => candidate?.code === evidence.receipt.chargeReference).length : liveDebit.count;
-    const afterMicros = options.authorityMode === "fixture" ? String(authorityBeforeDelete.wallet?.usdMicros || "") : chargedMicros;
-    if (options.authorityMode === "fixture" && (debits.length !== 1 || authorityBeforeDelete.writeCounts?.debits !== 1 || !debit || String(debit.userId) !== "41" || String(debit.amountUsdMicros) !== amountUsdMicros)) {
-      throw new Error("qualification authority exact debit evidence is invalid");
-    }
-    if (!/^\d+$/.test(afterMicros) || options.authorityMode === "fixture" && BigInt(beforeMicros) - BigInt(amountUsdMicros) !== BigInt(afterMicros)) {
-      throw new Error("qualification wallet debit snapshot is invalid");
-    }
-    const receipt = evidence.receipt;
-    // The Workspace owner's typed financial receipt is the only purchase
-    // evidence this order has. It names the exact charge the authority debited
-    // and no Runtime or Gateway Key of the application installation, so the
-    // retained Control Plane billing projection is never consulted or backfilled.
-    if (receipt.chargeReference !== debit.code || String(receipt.totalUsdMicros) !== amountUsdMicros ||
-      receipt.financial?.receipt?.kind !== "wallet_action" || receipt.financial?.receipt?.outcome !== "confirmed" ||
-      receipt.financial?.walletOperation?.kind !== "charge" || receipt.financial?.walletOperation?.status !== "confirmed" ||
-      receipt.fulfillment?.runtimeId !== undefined || receipt.fulfillment?.workspaceApiKeyId !== undefined) {
-      throw new Error("Ledger receipt exact binding is invalid");
-    }
-
-    stage = "restart_continuity";
-    await compose(["restart", "workspace", "console-bff", "tenant", "serve", "fabric", "ledger"]);
-    await waitForCompose(compose);
-    // Re-establish CloudIdentity authentication under the same declared customer
-    // after restart; persisted session lifetime remains the identity owner's.
-    // the Control Plane cookie alone is refused by the BFF's RequireSession.
-    const restartedAuth = await openQualificationSessions(
-      http, adminEmail, adminPassword, accountId, `local-workspace-restart:${launchKey}`,
-    );
-    if (!String(restartedAuth.cookie || "").includes("opl_console_session=")) {
-      throw new Error("restart continuity did not re-establish the CloudIdentity session");
-    }
-    const afterRestart = await readWorkspaceEvidence(http, restartedAuth, operationId, workspaceId, receiptId);
-    const restart = {
-      performed: true,
-      operationStable: afterRestart.operation.operationId === operation.operationId,
-      workspaceStable: afterRestart.workspace.id === evidence.workspace.id,
-      runtimeStable: afterRestart.runtime.runtimeId === evidence.runtime.runtimeId,
-      receiptStable: afterRestart.receipt.receiptId === receipt.receiptId
-    };
-    if (Object.values(restart).some((value) => value !== true)) throw new Error("restart continuity changed an exact identity");
-
-    stage = "owner_delete";
-    // A Workspace bought on the owner route is deleted by the Workspace owner.
-    // The retained Control Plane route never saw this Workspace, so the harness
-    // sends the owner's own Delete under the restarted customer session and
-    // follows the operation identity the owner minted rather than deriving one.
-    const deletion = await deleteWorkspaceOnOwnerRoute(http, restartedAuth, {
-      workspaceId, confirmationName: workspaceName, idempotencyKey: `local-qualification-delete:${workspaceId}`,
-    });
-    const deletionEvidence = await readWorkspaceDeletionEvidence(http, restartedAuth, {
-      workspaceId, operationId: deletion.operationId,
-    });
-    const workspaceAbsent = deletionEvidence.resourceDeletionStatus === "confirmed";
-    const runtimeAbsent = deletionEvidence.dataDeletionStatus === "confirmed";
-    residuals = await residualCounts(accountId, workspaceId);
-    const authorityAfterOwnerDelete = await authorityState(authorityPort, authorityToken);
-    // The Workspace-reserved Gateway Key is the one object Delete must not
-    // remove: the platform retains it, so the authority still owns and meters
-    // exactly the Key this installation created after the Workspace is gone.
-    const workspaceKeyRetained = retainedWorkspaceKey(authorityBeforeDelete?.keys || [], authorityAfterOwnerDelete?.keys || [], workspaceId, keyId);
-    // Fabric's injected Secret is a provider secret-root directory named from
-    // the Workspace identity; that exact ref must be gone after Delete.
-    const fabricSecretAbsent = !existsSync(join(fabricSecretRoot, workspaceGatewaySecretRef(workspaceId)));
-    if (!runtimeAbsent || !workspaceKeyRetained || !fabricSecretAbsent || Object.values(residuals).some((count) => count !== 0)) {
-      throw new Error("owner DELETE did not prove Runtime and Secret cleanup with Gateway Key retention");
-    }
-    // Workspace already read back the Ledger absence receipt. Gateway's
-    // transaction readback separately proves its refund of the original charge.
-    const refund = await readWorkspaceRefundReceipt(http, restartedAuth, {
-      workspaceId, chargeAmountUsdMicros: amountUsdMicros,
-      chargeOperationId: evidence.receipt.financial.walletOperation.id, refundOperationId: deletionEvidence.refundOperationId,
-    });
-    const refundEvidence = {
-      count: 1, walletOperationId: refund.walletOperationId, receiptId: refund.receiptId,
-      amountUsdMicros: refund.amountUsdMicros, code: refund.code,
-      originalChargeOperationId: refund.originalChargeOperationId,
-    };
-    let afterDeleteMicros = afterMicros;
-    if (options.authorityMode === "fixture") {
-      const adjustmentsAfterDelete = authorityAfterOwnerDelete?.adjustments || [];
-      const debitAfterDelete = adjustmentsAfterDelete.filter((candidate) => candidate?.kind === "debit" && candidate?.code === debit.code);
-      const refundsAfterDelete = adjustmentsAfterDelete.filter((candidate) => candidate?.kind === "refund");
-      // The fixture authority is the wallet provider this run billed, so its own
-      // adjustment ledger must show exactly the debit it accepted and exactly one
-      // refund whose amount and payer are the ones the owner's receipt publishes.
-      const adjustment = refundsAfterDelete[0];
-      if (debitAfterDelete.length !== 1 || authorityAfterOwnerDelete?.writeCounts?.debits !== 1 ||
-        refundsAfterDelete.length !== 1 || authorityAfterOwnerDelete?.writeCounts?.refunds !== 1 ||
-        String(adjustment?.valueUsdMicros || "") !== refund.amountUsdMicros ||
-        String(adjustment?.amountUsdMicros || "") !== refund.amountUsdMicros ||
-        String(adjustment?.userId || "") !== String(sub2apiUserId) || adjustment?.status !== "used" ||
-        String(adjustment?.code || "") !== refund.code || !String(adjustment?.code || "").startsWith("opl:") ||
-        !Number.isFinite(Date.parse(adjustment?.usedAt))) {
-        throw new Error("platform refund for the deleted Workspace is not exactly bound");
-      }
-      refundEvidence.userId = String(adjustment.userId);
-      refundEvidence.code = String(adjustment.code);
-      afterDeleteMicros = String(authorityAfterOwnerDelete?.wallet?.usdMicros || "");
-      if (!/^\d+$/.test(afterDeleteMicros) || BigInt(afterDeleteMicros) !== BigInt(afterMicros) + BigInt(refund.amountUsdMicros)) {
-        throw new Error("qualification wallet changed during Workspace Delete");
-      }
-    }
-
-    validateQualificationSourceIdentity(sourceBefore, await readQualificationSourceIdentity(), options.sourceSha);
-    finalReceipt = validateLocalQualificationReceipt({
-      schemaVersion: 1,
-      status: "READY",
-      startedAt,
-      completedAt: new Date().toISOString(),
-      source: { sha: options.sourceSha, tree: sourceTree },
-      images: {
-        cloud: { input: cloudImage, repoDigest: cloudImage, digest: cloudDigest, runningDigest: cloudInspection.Id },
-        workspace: { input: workspaceImage, repoDigest: workspaceImage, digest: workspaceDigest, runningDigest: runtimeContainer.Image }
-      },
-      command: receiptCommand({ ...options, cloudImage, workspaceImage }),
-      processes: { console: "ready", controlPlane: "ready", fabric: "ready", ledger: "ready" },
-      stores,
-      identities: {
-        accountId, sub2apiUserId, operationId, deleteOperationId: String(deletion.operationId || ""),
-        deletionReceiptId: deletionEvidence.deletionReceipt.id, workspaceId,
-        runtimeId: evidence.runtime.runtimeId, keyId, debitCode: debit.code,
-        purchaseReceiptId: receiptId,
-        runtimeVersionId: declaration.applicationSelection.runtimeVersionId,
-        computePlanId: declaration.computePlanId, storagePlanId: declaration.storagePlanId
-      },
-      debit: { count: debitCount, accountId, operationId, workspaceId, code: debit.code, userId: String(debit.userId), amountUsdMicros },
-      wallet: { beforeUsdMicros: beforeMicros, afterUsdMicros: afterMicros, afterDeleteUsdMicros: afterDeleteMicros },
-      receipt: {
-        count: 1, id: receipt.receiptId, accountId, operationId, workspaceId: receipt.workspaceId, quoteId: String(quote?.id || ""),
-        chargeOperationId: evidence.receipt.financial.walletOperation.id,
-        computeAllocationId: String(receipt.fulfillment.computeAllocationId || ""),
-        storageId: String(receipt.fulfillment.storageId || ""), attachmentId: String(receipt.fulfillment.attachmentId || ""),
-        chargeReference: receipt.chargeReference, amountUsdMicros: String(receipt.totalUsdMicros)
-      },
-      application: {
-        status: evidence.current.status, operationId: evidence.current.operationId, applicationId: evidence.current.applicationId,
-        revision: evidence.current.revision, entryUrl: evidence.current.entryUrl,
-        runtimeId: evidence.runtime.runtimeId, keyId, resumed: installation.resumed === true
-      },
-      restart,
-      deletion: {
-        // The owner reports the deletion it executed; the Workspace is gone, so
-        // the harness publishes the absence it observed and not a Runtime or Key
-        // identity the owner never returned for this deletion.
-        ownerAuthorized: true, accountId, operationId: String(deletion.operationId || ""),
-        deletionReceiptId: deletionEvidence.deletionReceipt.id, workspaceId,
-        runtimeId: "", workspaceApiKeyId: "",
-        workspaceAbsent, runtimeAbsent, workspaceKeyRetained, fabricSecretAbsent
-      },
-      deletionReceipt: {
-        count: 1, ...deletionEvidence.deletionReceipt, workspaceId,
-      },
-      residuals,
-      authorityWriteCounts: authorityAfterOwnerDelete?.writeCounts,
-      mutationCounts: { workspaceQuotePosts: 1, workspaceOrderPosts: 1, workspaceDeleteRequests: 1, refundPosts: 0 },
-      refund: refundEvidence,
-      usage: { source: "sub2api", status: "available", totalRequests: usage.totalRequests },
-      qualification: { authorityMode: options.authorityMode, p0Ready: false },
-      deferred: [...deferredCloudGates]
-    });
-    }
-  } catch (error) {
-    failure = error;
-  } finally {
-    if (composeStarted && !preserveRecoveryAuthority) {
-      if (!composeDown) {
-        try {
-          await cleanupLocalQualificationSecretRoot(compose, fabricSecretRoot);
-        } catch (error) {
-          failure ||= error;
-        }
-      }
-      const stop = await compose(["stop", "--timeout", "30", "control-plane", "fabric"], { allowFailure: true });
-      const down = await compose(["down", "--volumes", "--remove-orphans"], { allowFailure: true });
-      if (down.code === 0) {
-        try {
-          await cleanupLocalQualificationPostgresRoot(tempRoot, postgresDataRoot);
-        } catch (error) {
-          failure ||= error;
-        }
-      }
-      const observed = await residualCounts(accountId, workspaceId).catch(() => null);
-      if (stop.code !== 0 || !observed || down.code !== 0) failure ||= new Error("local qualification teardown was not confirmed");
-      if (observed) residuals = observed;
-    }
-    if (!preserveRecoveryAuthority) for (const tag of builtTags) await runProcess("docker", ["image", "rm", tag], { allowFailure: true });
-    if (registryContainer && !preserveRecoveryAuthority) {
-      const removed = await runProcess("docker", ["rm", "-f", registryContainer], { allowFailure: true });
-      if (removed.code !== 0) failure ||= new Error("local source registry cleanup was not confirmed");
-    }
-  }
-
-  return finishLocalWorkspaceQualification({
-    options,
-    startedAt,
-    sourceTree,
-    cloudImage,
-    workspaceImage,
-    stage,
-    failure,
-    residuals,
-    recovery,
-    ownerDeletePending,
-    ownerDeleteFailure,
-    finalReceipt,
-    tempRoot,
-    preserveRecoveryAuthority
-  }, dependencies);
-}
-
 async function main() {
   let options;
   try {
     options = parseLocalQualificationArgs();
-    const receipt = options.mode === QUALIFICATION_MODE_LOCAL_V2
-      ? await runLocalV2Qualification(options)
-      : await runLocalWorkspaceQualification(options);
+    const receipt = await runLocalV2Qualification(options);
     process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
     // A boundary is a real result and never a success: the process exit code
     // says the qualification is not READY even though evidence was collected.
