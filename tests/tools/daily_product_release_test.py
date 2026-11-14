@@ -25,6 +25,39 @@ class DailyCloudRelease(unittest.TestCase):
             self.assertEqual(daily.ensure_run('fixture.yml', {'product_sha': 'a' * 40}, row['display_title'])['id'], 123)
         self.assertEqual(sum(payload is not None for _, payload in calls), 1)
 
+    def test_unknown_native_retry_resumes_the_same_failed_run_once(self):
+        old = {'id': 456, 'head_branch': 'main', 'display_title': 'fixed source',
+               'status': 'completed', 'conclusion': 'failure', 'run_attempt': 1,
+               'html_url': 'https://example.invalid/456'}
+        observed = {**old, 'status': 'in_progress', 'conclusion': None, 'run_attempt': 2}
+        completed = {**observed, 'status': 'completed', 'conclusion': 'success'}
+        posts = []
+        reads = [observed, completed]
+        def api(path, *, instance=False, payload=None):
+            if 'workflow_dispatch' in path: return {'workflow_runs': [old]}
+            if payload is not None:
+                posts.append(path)
+                raise RuntimeError('synthetic lost retry response')
+            return reads.pop(0)
+        with patch.object(daily, 'api', api), patch.object(daily, 'command') as command:
+            result = daily.ensure_run('fixture.yml', {}, 'fixed source')
+        self.assertEqual((result['id'], result['run_attempt'], result['conclusion']), (456, 2, 'success'))
+        self.assertEqual(posts, [f'repos/{daily.REPO}/actions/runs/456/rerun-failed-jobs'])
+        self.assertEqual(command.call_count, 1)
+
+    def test_completed_continuation_uses_updated_main_orchestration(self):
+        row = {'id': 123, 'head_branch': 'main', 'head_sha': 'a' * 40,
+               'display_title': 'Cloud product v0.1.9', 'status': 'completed'}
+        calls = []
+        def api(path, *, instance=False, payload=None):
+            calls.append((path, payload))
+            if 'commits/main' in path: return {'sha': 'b' * 40}
+            return {'workflow_runs': [row]}
+        with patch.object(daily, 'api', api): daily.dispatch_tag('v0.1.9')
+        posts = [(path, payload) for path, payload in calls if payload is not None]
+        self.assertEqual(posts, [(f'repos/{daily.REPO}/actions/workflows/daily-release.yml/dispatches',
+                                 {'ref': 'main', 'inputs': {'release_tag': 'v0.1.9'}})])
+
     def test_tag_entry_reuses_in_progress_main_continuation(self):
         row = {'id': 123, 'head_branch': 'main', 'display_title': 'Cloud product v0.1.9',
                'status': 'in_progress'}

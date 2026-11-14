@@ -481,6 +481,12 @@ The shared OPL daily product workflow reads this repository's
 creates an immutable source tag. `daily-release.yml` continues that tag through
 the existing Candidate builder and Clean Host Qualification. Successful runs
 are reused by exact frozen source instead of rebuilding them on each inspection.
+Each continuation can resume one failed native attempt under its existing run
+identity. An uncertain retry response is reconciled through that same run.
+When owner orchestration changes, the next continuation runs its current main
+revision while retaining the frozen product source and successful native runs.
+Candidate registry readback waits briefly for a newly pushed tag to become
+readable, then requires the exact acknowledged image digest.
 
 The tag entry only dispatches the protected `main` continuation; it has no
 private evidence credential. The Candidate builder can select an annotated

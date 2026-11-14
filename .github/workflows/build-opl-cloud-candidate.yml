@@ -158,7 +158,18 @@ jobs:
           EXPECTED_DIGEST: ${{ steps.image.outputs.digest }}
         run: |
           set -euo pipefail
-          manifest="$(docker buildx imagetools inspect "$CANDIDATE_TAG" --format '{{json .Manifest}}')"
+          # GHCR can acknowledge a push before its unique tag is readable.
+          # Retry the same read; a readable tag with different bytes fails below.
+          for attempt in {1..12}; do
+            if manifest="$(docker buildx imagetools inspect "$CANDIDATE_TAG" --format '{{json .Manifest}}' 2> "$RUNNER_TEMP/candidate-readback-error")"; then
+              break
+            fi
+            if [ "$attempt" = 12 ] || ! grep -Eqi 'not found|manifest unknown' "$RUNNER_TEMP/candidate-readback-error"; then
+              cat "$RUNNER_TEMP/candidate-readback-error" >&2
+              exit 1
+            fi
+            sleep 5
+          done
           observed_digest="$(jq -r '.digest // empty' <<< "$manifest")"
           if [ "$observed_digest" != "$EXPECTED_DIGEST" ]; then
             echo "Candidate registry index digest readback mismatch." >&2
