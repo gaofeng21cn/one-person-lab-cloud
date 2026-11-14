@@ -45,6 +45,19 @@ class DailyCloudRelease(unittest.TestCase):
         self.assertEqual(posts, [f'repos/{daily.REPO}/actions/runs/456/rerun-failed-jobs'])
         self.assertEqual(command.call_count, 1)
 
+    def test_completed_continuation_uses_updated_main_orchestration(self):
+        row = {'id': 123, 'head_branch': 'main', 'head_sha': 'a' * 40,
+               'display_title': 'Cloud product v0.1.9', 'status': 'completed'}
+        calls = []
+        def api(path, *, instance=False, payload=None):
+            calls.append((path, payload))
+            if 'commits/main' in path: return {'sha': 'b' * 40}
+            return {'workflow_runs': [row]}
+        with patch.object(daily, 'api', api): daily.dispatch_tag('v0.1.9')
+        posts = [(path, payload) for path, payload in calls if payload is not None]
+        self.assertEqual(posts, [(f'repos/{daily.REPO}/actions/workflows/daily-release.yml/dispatches',
+                                 {'ref': 'main', 'inputs': {'release_tag': 'v0.1.9'}})])
+
     def test_tag_entry_reuses_in_progress_main_continuation(self):
         row = {'id': 123, 'head_branch': 'main', 'display_title': 'Cloud product v0.1.9',
                'status': 'in_progress'}
