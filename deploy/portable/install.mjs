@@ -14,6 +14,9 @@ import { readInstallationBundle, parseStrictJson, sha256 } from './installer-man
 const MIN_SECRET = 32;
 const PACKAGE_SCHEMA_DIGEST = 'sha256:0a4aad95ce337878ad38802ebf0daa3fde76abe3f65400c86bcbb1ec0b3ab883';
 const PUBLISHER_SCHEMA_DIGEST = 'sha256:176d492a0c0c491ca4e180d9e5d3e04a08ab9c621c4254806658ef529c77b5ef';
+const OWNER_DATABASE_SCRIPT = 'owner-databases.sh';
+const POSTGRES_READY_TIMEOUT_MS = 120000;
+const POSTGRES_READY_INTERVAL_MS = 1000;
 const fail = (message, code = 1) => { throw Object.assign(new Error(message), { exitCode: code }); };
 const immutable = new Set(['OPL_CLOUD_IMAGE', 'OPL_RELEASE_SHA', 'OPL_RELEASE_TREE']);
 
@@ -65,9 +68,10 @@ function cleanEnvironment() {
   if (process.env.DOCKER_CONTEXT) env.DOCKER_CONTEXT = process.env.DOCKER_CONTEXT;
   return env;
 }
-function compose(bundle, env, args) {
+function compose(bundle, env, args, input) {
   return execFileSync('docker', ['compose', '--env-file', '/dev/null', '-p', 'opl-cloud', ...args], {
-    cwd: bundle, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']
+    cwd: bundle, env, encoding: 'utf8', input,
+    stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe']
   });
 }
 async function requiredVariables(bundle) {
@@ -193,6 +197,45 @@ function ownerReadback(bundle, env, sourceSha) {
   }
 }
 
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+function boundedMilliseconds(value, fallback) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+// PostgreSQL only answers on its TCP socket once the image finished its own
+// initialization. The socket-only temporary server that runs
+// /docker-entrypoint-initdb.d is therefore never mistaken for a ready server,
+// and the wait cannot deadlock on the health check that needs the databases
+// this installation is about to create.
+function postgresReadyCommand() {
+  return ['-f', 'compose.cloud.yaml', 'exec', '-T', 'postgres', 'sh', '-c',
+    'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "select 1"'];
+}
+async function waitForPostgres(bundle, env) {
+  const timeoutMs = boundedMilliseconds(process.env.OPL_INSTALL_POSTGRES_READY_TIMEOUT_MS, POSTGRES_READY_TIMEOUT_MS);
+  const intervalMs = boundedMilliseconds(process.env.OPL_INSTALL_POSTGRES_READY_INTERVAL_MS, POSTGRES_READY_INTERVAL_MS);
+  const deadline = Date.now() + timeoutMs;
+  for (let attempt = 1; ; attempt++) {
+    try { compose(bundle, env, postgresReadyCommand()); return attempt; }
+    catch {
+      if (Date.now() >= deadline) fail(`postgres_not_ready:${attempt}`);
+      await sleep(intervalMs);
+    }
+  }
+}
+// The PostgreSQL image runs /docker-entrypoint-initdb.d only against an empty
+// data directory, so an update over an existing volume would start the owners
+// without their databases. The bundle carries the same idempotent script the
+// image runs, and this installation runs it explicitly over standard input,
+// so the script travels with the bundle instead of a container path.
+async function provisionOwnerDatabases(bundle, env) {
+  let script;
+  try { script = await readFile(join(bundle, OWNER_DATABASE_SCRIPT), 'utf8'); }
+  catch { fail('owner_database_script_missing'); }
+  try { compose(bundle, env, ['-f', 'compose.cloud.yaml', 'exec', '-T', 'postgres', 'sh', '-s'], script); }
+  catch { fail('owner_database_provision_failed'); }
+}
+
 function validateValues(required, values) {
   const missing = required.filter(name => {
     const value = values.get(name); return value === undefined || value === '' || isPlaceholder(value) || String(value).startsWith('unset-');
@@ -269,6 +312,13 @@ async function main(args = process.argv.slice(2)) {
   const config = JSON.parse(compose(bundle, env, ['-f', 'compose.cloud.yaml', 'config', '--format', 'json']));
   if (options.dryRun) { console.log(`install.mjs: dry run verified ${bundleInfo.imageRef}`); return; }
   compose(bundle, env, ['-f', 'compose.cloud.yaml', 'pull']);
+  // Start PostgreSQL on its own, wait until it accepts connections and create
+  // the owner databases from the bundle script before the rest of the topology
+  // starts. The script is idempotent, so a first installation and an update
+  // over an existing data directory take the same path.
+  compose(bundle, env, ['-f', 'compose.cloud.yaml', 'up', '-d', 'postgres']);
+  await waitForPostgres(bundle, env);
+  await provisionOwnerDatabases(bundle, env);
   compose(bundle, env, ['-f', 'compose.cloud.yaml', 'up', '-d', '--wait', '--wait-timeout', '180']);
   const services = composeServices(compose(bundle, env, ['-f', 'compose.cloud.yaml', 'ps', '--format', 'json']));
   const running = new Set(services.filter(service => service.State === 'running').map(service => service.Service));
