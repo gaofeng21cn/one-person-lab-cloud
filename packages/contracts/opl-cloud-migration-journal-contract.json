@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "journals": [
+    {
+      "service": "build",
+      "source": { "kind": "sqlDirectory", "path": "services/build/migrations" },
+      "versions": ["0001_opl_build", "0002_execution"]
+    },
+    {
+      "service": "capability",
+      "source": { "kind": "sqlDirectory", "path": "services/capability/migrations" },
+      "versions": ["0001_opl_capability"]
+    },
+    {
+      "service": "control-plane",
+      "source": { "kind": "goMigrationList", "file": "services/control-plane/internal/server/ent_state_store.go", "symbol": "controlPlaneMigrations" },
+      "versions": [
+        "202607140001_sub2api_monthly_hard_cut",
+        "202608170002_legacy_identity_table_custody",
+        "202607150001_legacy_membership_normalize",
+        "202607150002_pre_schema_backfill",
+        "202607150003_ent_schema",
+        "202607150004_post_schema_backfill",
+        "202607160001_sub2api_user_unique",
+        "202607160002_primary_workspace",
+        "202607170001_invited_account_identity",
+        "202607170002_workspace_renewal",
+        "202607170003_workspace_auto_renew_audit",
+        "202607180001_customer_identity_hard_cut",
+        "202607190001_workspace_api_key_id",
+        "202607190002_pilot_announcements",
+        "202607230001_workspace_purchase_receipt_id",
+        "202607240001_multi_workspace_pagination",
+        "202607250001_control_plane_capacity_indexes",
+        "202608180001_workspace_purchase_eligibility",
+        "202609120001_workspace_application_binding",
+        "202609120002_application_revisions",
+        "202609120003_workspace_application_binding_version",
+        "202609130001_application_data_materials",
+        "202609130001_workspace_application_selection"
+      ]
+    },
+    {
+      "service": "fabric",
+      "source": { "kind": "sqlDirectory", "path": "services/fabric/internal/fabric/ent_migrations" },
+      "versions": [
+        "202607080001_fabric_operations_legacy_migration",
+        "202607090001_ent_hard_cut",
+        "202607110001_workspace_secret_authority_hard_cut",
+        "202607110003_runtime_operation_claim",
+        "202607120001_machine_ownership",
+        "202607260001_compute_pool_admission",
+        "202607290001_compute_claim_pending_pool_head",
+        "202609080001_launch_compute_pool_admission"
+      ]
+    },
+    {
+      "service": "fabric",
+      "source": { "kind": "sqlDirectory", "path": "services/fabric/ownermigrations" },
+      "versions": ["0001_opl_fabric"]
+    },
+    {
+      "service": "gateway",
+      "source": { "kind": "sqlDirectory", "path": "services/gateway-integration/gatewaymigrations" },
+      "versions": ["0001_opl_gateway", "0002_user_external_bindings", "0003_managed_key_lifecycle"]
+    },
+    {
+      "service": "ledger",
+      "source": { "kind": "sqlDirectory", "path": "services/ledger/internal/ledger/ent_migrations" },
+      "versions": [
+        "202607140001_evidence_ledger_hard_cut",
+        "202608140001_evidence_receipt_lookup_ids",
+        "202608210001_cloud_evidence_index",
+        "202609080001_receipt_request_lookup"
+      ]
+    },
+    {
+      "service": "resource_catalog",
+      "source": { "kind": "sqlDirectory", "path": "services/resource-catalog/migrations" },
+      "versions": ["0001_opl_resource_catalog", "0002_application_selection"]
+    },
+    {
+      "service": "runtime_control",
+      "source": { "kind": "sqlDirectory", "path": "services/runtime-control/migrations" },
+      "versions": ["0001_opl_runtime_control", "0002_optional_package_formats"]
+    },
+    {
+      "service": "serve",
+      "source": { "kind": "sqlDirectory", "path": "services/serve/migrations" },
+      "versions": [
+        "0001_opl_serve",
+        "0002_application_selection",
+        "0003_access_data_plane",
+        "0004_route_revision_identity",
+        "0005_route_retirement"
+      ]
+    },
+    {
+      "service": "tenant",
+      "source": { "kind": "sqlDirectory", "path": "services/gateway-integration/migrations" },
+      "versions": [
+        "0001_opl_tenant",
+        "0002_tenant_repository_binding",
+        "0003_session_display_name",
+        "0004_freeze_tenant_repository_bindings",
+        "0005_agent_credentials"
+      ]
+    },
+    {
+      "service": "workspace",
+      "source": { "kind": "sqlDirectory", "path": "services/workspace/migrations" },
+      "versions": ["0001_opl_workspace", "0002_model_configuration_version"]
+    }
+  ]
+}
