@@ -82,9 +82,9 @@ Linux hosts. It requires Workspace storage on a dedicated ext4/XFS mount with
 project quota enabled and fails readiness when the host cannot enforce it.
 
 Source capability, a public Product Release, and a concrete Instance are three
-different evidence layers. The only public Product Release, `v0.1.7`, predates
-the current Candidate format and does not contain the current complete
-Workspace installation path. See [current capability](docs/status.md) for
+different evidence layers. The current public Product Release is `v0.1.8`;
+it carries the portable Cloud product source and deployment bundle. A concrete
+Instance has its own configuration and deployment evidence. See [current capability](docs/status.md) for
 verified implementation and runtime facts, [installation](docs/installation.md)
 for the exact public-release boundary, and the [roadmap](docs/roadmap.md) for
 open end-to-end outcomes.
