@@ -161,6 +161,63 @@ test("the published entrypoint cannot drift back to a Compose file that is not t
   }
 });
 
+// The published Compose file is the portable installation's entrypoint, and
+// the distribution contract names it. The image fact must be read out of that
+// file, so the mutations below change the published Compose file and expect
+// the validator to refuse it.
+test("the published Compose images must stay digest-pinned", async () => {
+  const mutations: Array<[string, string, RegExp]> = [
+    [
+      "    image: postgres:16.8-bookworm@sha256:301bcb60b8a3ee4ab7e147932723e3abd1cef53516ce5210b39fd9fe5e3602ae",
+      "    image: postgres:16.8-bookworm",
+      /the published Compose image is not digest-pinned: postgres/
+    ],
+    [
+      "  tenant:\n    image: ${OPL_CLOUD_IMAGE:?Set OPL_CLOUD_IMAGE to the product image digest}",
+      "  tenant:\n    image: opl-cloud:latest",
+      /the published Compose image is not digest-pinned: tenant/
+    ],
+    [
+      "  tenant:\n    image: ${OPL_CLOUD_IMAGE:?Set OPL_CLOUD_IMAGE to the product image digest}",
+      "  tenant:",
+      /the published Compose file declares a service without an image: tenant/
+    ],
+    [
+      "    image: ${OPL_CLOUD_IMAGE:?Set OPL_CLOUD_IMAGE to the product image digest}",
+      "    image: ${OPL_CLOUD_IMAGE:?Set OPL_CLOUD_IMAGE to the product image digest v2}",
+      /the published Compose image parameter text changed: tenant/
+    ]
+  ];
+  for (const [before, after, expected] of mutations) {
+    const directory = await boundaryFixture();
+    try {
+      const path = join(directory, "deploy/portable/compose.cloud.yaml");
+      const source = await readFile(path, "utf8");
+      assert.ok(source.includes(before), `the published Compose file does not contain the mutation anchor: ${before}`);
+      await writeFile(path, source.replace(before, after));
+      const result = validate(directory);
+      assert.equal(result.status, 1, result.stdout);
+      assert.match(result.stderr, expected);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+});
+
+// The legacy root Compose file is the one scheduled for retirement. The
+// boundary check must read the published surface, so it must not need it.
+test("the boundary check reads the published Compose file, not the legacy root one", async () => {
+  const directory = await boundaryFixture();
+  try {
+    await rm(join(directory, "compose.yaml"), { force: true });
+    const result = validate(directory);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /distribution boundary is valid/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("a dropped owner process is refused even when the contract still names an entrypoint", async () => {
   const directory = await boundaryFixture();
   try {
