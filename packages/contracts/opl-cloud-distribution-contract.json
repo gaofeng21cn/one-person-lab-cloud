@@ -106,6 +106,14 @@
           "ciRun",
           "entryPathHashes"
         ]
+      },
+      "automation": {
+        "workflow": ".github/workflows/daily-release.yml",
+        "protectedExecutionRef": "refs/heads/main",
+        "sourceSelection": "immutable_product_tag_reachable_from_main",
+        "reusesCandidateAndQualification": true,
+        "instanceDeploymentDispatched": false,
+        "missingQualificationStatus": "qualification_pending"
       }
     },
     "publicReadback": {

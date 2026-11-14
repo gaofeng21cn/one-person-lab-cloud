@@ -1,0 +1,61 @@
+name: Continue Daily Cloud Product Release
+run-name: Cloud product ${{ inputs.release_tag || github.ref_name }}
+on:
+  push:
+    tags: ['v0.*']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Frozen canonical product tag to continue
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: cloud-daily-product-release-${{ github.event_name }}
+  cancel-in-progress: false
+jobs:
+  dispatch:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Dispatch or reconcile the protected main continuation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/daily-product-release.py --dispatch-tag "$GITHUB_REF_NAME"
+  continue:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: cloud-release
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      actions: write
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+      - name: Continue the frozen product Candidate and qualification
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPL_INSTANCE_EVIDENCE_TOKEN: ${{ secrets.OPL_GITHUB_RELEASE_ADMIN_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: python3 tools/daily-product-release.py
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: cloud-daily-product-${{ github.run_id }}
+          path: ${{ runner.temp }}/cloud-daily-release-result.json
+          if-no-files-found: error

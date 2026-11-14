@@ -1,4 +1,5 @@
 name: Build OPL Cloud Candidate
+run-name: Cloud candidate ${{ inputs.product_sha }}
 
 on:
   workflow_dispatch:
@@ -6,6 +7,11 @@ on:
       product_sha:
         description: Exact 40-character Product commit at the head of the dispatched branch.
         required: true
+        type: string
+      release_tag:
+        description: Optional annotated product tag already on canonical main; permits frozen-source continuation.
+        required: false
+        default: ''
         type: string
 
 permissions:
@@ -17,26 +23,11 @@ concurrency:
 
 jobs:
   candidate:
-    # The Candidate is a replaceable input, not a formal Release. It may be built
-    # from the exact commit of any branch (for example the serial integration
-    # branch before its work lands on canonical main), so the job does not pin the
-    # dispatched ref to main. Dispatch is limited to the repository's write-access
-    # collaborators, which is what workflow_dispatch already requires, and the run
-    # must stay self-attributed: the account that triggered it is the account
-    # GitHub attributes it to. workflow_dispatch carries no separate delegating
-    # principal, so self-attribution is not what admits a collaborator; it only
-    # refuses a run whose attributed actor is not the account that triggered it,
-    # and it is not on its own a stronger control than the owner predicate it
-    # replaces. Admission is deliberately wider here than at publication: building
-    # a replaceable Candidate is open to write access, while
-    # release-opl-cloud-image.yml still admits only a named allowlist and still
-    # requires the source commit to be reachable from canonical main. The Release
-    # workflow still runs from main.
-    # Promotion is decided by .github/workflows/release-opl-cloud-image.yml: it admits
-    # this run by its recorded source SHA and artifact digest and requires that commit
-    # to be reachable from canonical main. A contract test fails when the two
-    # workflows disagree about which branches may produce a promotable Candidate.
-    if: ${{ github.ref_type == 'branch' && github.sha == inputs.product_sha && github.actor == github.triggering_actor }}
+    # Write-access collaborators build an exact branch head. Main may also build
+    # a frozen annotated product tag after proving canonical ancestry. Both paths
+    # retain the original actor, product source and Candidate digest; formal
+    # publication verifies qualification and release authority separately.
+    if: ${{ github.ref_type == 'branch' && (github.sha == inputs.product_sha || (github.ref == 'refs/heads/main' && inputs.release_tag != '')) && github.actor == github.triggering_actor }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -56,6 +47,8 @@ jobs:
           persist-credentials: false
 
       - name: Verify candidate identity
+        env:
+          FROZEN_RELEASE_TAG: ${{ inputs.release_tag }}
         shell: bash
         run: |
           set -euo pipefail
@@ -67,13 +60,16 @@ jobs:
             echo "Candidate checkout must be clean before source validation." >&2
             exit 1
           fi
-          # The Candidate source is the exact PRODUCT_SHA, and the job admission
-          # above also proves it is the dispatch-time HEAD of the selected branch. When
-          # that commit is not yet on canonical main, it is an exact branch commit
-          # for this Candidate only; the bytes and the provenance are still bound to
-          # one unambiguous SHA. A non-branch ref (a tag or a PR merge ref) is
-          # refused so the accepted sources stay branches whose HEAD is the SHA.
+          # A branch dispatch selects its exact head, or main continues a frozen
+          # canonical product tag verified below.
           git fetch --no-tags "https://github.com/$PRODUCT_REPOSITORY.git" main:refs/remotes/candidate-source/main
+          if [ -n "$FROZEN_RELEASE_TAG" ]; then
+            [[ "$FROZEN_RELEASE_TAG" =~ ^v0\.[0-9]+\.[0-9]+$ ]]
+            git fetch --quiet "https://github.com/$PRODUCT_REPOSITORY.git" "refs/tags/$FROZEN_RELEASE_TAG:refs/tags/$FROZEN_RELEASE_TAG"
+            test "$(git cat-file -t "$FROZEN_RELEASE_TAG")" = tag
+            test "$(git rev-parse "$FROZEN_RELEASE_TAG^{commit}")" = "$PRODUCT_SHA"
+            git merge-base --is-ancestor "$PRODUCT_SHA" refs/remotes/candidate-source/main
+          fi
           if ! git merge-base --is-ancestor "$PRODUCT_SHA" refs/remotes/candidate-source/main; then
             # Not on main: accept it only as the exact head of a dispatched branch.
             # The job guard already proved PRODUCT_SHA is the dispatch-time HEAD of

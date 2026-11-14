@@ -39,7 +39,7 @@ test("Cloud Release promotes an admitted Candidate and isolates public mutation"
   const admission = workflow.jobs.admission;
   const publish = workflow.jobs.publish;
   const readback = readbackWorkflow.jobs["public-readback"];
-  const publisherGate = "${{ github.ref == 'refs/heads/main' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang') }}";
+  const publisherGate = "${{ github.ref == 'refs/heads/main' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang' || (github.actor == 'github-actions[bot]' && inputs.automation_source_run_id != '')) }}";
 
   assert.deepEqual(Object.keys(workflow.on), ["workflow_dispatch"]);
   assert.deepEqual(Object.keys(workflow.jobs), ["admission", "publish"]);
@@ -96,6 +96,7 @@ test("reused release credential is confined to protected main-only evidence jobs
   const uses: string[] = [];
   const expected = new Map([
     ["release-opl-cloud-image.yml:admission", "cloud-release"],
+    ["daily-release.yml:continue", "cloud-release"],
     ["cloud-business-readback.yml:readback", "cloud-business-qualification"],
     ["workspace-compute-readback-handoff.yml:admission", "cloud-release"]
   ]);
@@ -108,7 +109,17 @@ test("reused release credential is confined to protected main-only evidence jobs
       uses.push(key);
       assert.ok(expected.has(key), `unexpected credential consumer: ${key}`);
       assert.equal(job.environment, expected.get(key));
-      assert.equal(job.if, "${{ github.ref == 'refs/heads/main' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang') }}");
+      if (key === 'daily-release.yml:continue') {
+        assert.equal(job.if, "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'");
+      } else if (key === 'release-opl-cloud-image.yml:admission') {
+        assert.match(job.if, /github\.ref == 'refs\/heads\/main'/);
+        const authority = job.steps.find((step: any) => step.name === 'Verify the daily product publication authority');
+        assert.match(authority.run, /head_branch == "main"/);
+        assert.match(authority.run, /display_title == \("Cloud product " \+ \$tag\)/);
+        assert.match(authority.run, /git\/tags/);
+      } else {
+        assert.equal(job.if, "${{ github.ref == 'refs/heads/main' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang') }}");
+      }
     }
   }
   assert.deepEqual(uses.sort(), [...expected.keys()].sort());
@@ -194,7 +205,7 @@ test("Candidate promotion gate agrees with the Candidate branch-source rule", as
 
   const buildGuard = String(build.jobs.candidate.if);
   assert.ok(
-    buildGuard.includes("github.ref_type == 'branch'") && !buildGuard.includes("refs/heads/main"),
+    buildGuard.includes("github.ref_type == 'branch'") && buildGuard.includes("github.sha == inputs.product_sha"),
     "the Candidate build side admits any workflow-admitted branch; this contract assumes that rule"
   );
 
@@ -203,11 +214,8 @@ test("Candidate promotion gate agrees with the Candidate branch-source rule", as
   // built from an integration branch, which is exactly what the build side admits.
   const evidenceScript = promotionEvidenceScript(release);
   const gate = bashFunctionBody(evidenceScript, calleeOf(evidenceScript, "candidate-run.json"));
-  assert.doesNotMatch(
-    gate,
-    /head_branch/,
-    "the Candidate promotion gate must key on the recorded artifact digest and source SHA, not on the Candidate run's dispatch branch"
-  );
+  assert.match(gate, /\.head_sha == \$product_sha/);
+  assert.match(gate, /\$automation != "" and \.head_branch == "main"/);
   assert.match(gate, /\.head_sha == \$product_sha/);
   assert.match(gate, /\.conclusion == "success"/);
 
@@ -226,6 +234,7 @@ test("Candidate promotion gate agrees with the Candidate branch-source rule", as
   const admissionScript = release.jobs.admission.steps.map((step: any) => step.run || "").join("\n");
   assert.match(admissionScript, /fetch --no-tags "https:\/\/github\.com\/\$PRODUCT_REPOSITORY\.git" main:/);
   assert.match(admissionScript, /merge-base --is-ancestor "\$PRODUCT_SHA"/);
+  assert.match(admissionScript, /merge-base --is-ancestor "\$candidate_builder"/);
 
   // Publication itself remains main-only and owner-gated.
   assert.match(String(release.jobs.publish.if), /github\.ref == 'refs\/heads\/main'/);
@@ -263,7 +272,7 @@ test("Candidate build admits a write-access dispatcher instead of only the repos
   // absence of the owner predicate alone would also pass a guard that hard-codes an
   // account name, which is the failure this test exists to prevent.
   assert.match(buildGuard, /github\.ref_type == 'branch'/);
-  assert.doesNotMatch(buildGuard, /refs\/heads\/main/);
+  assert.match(buildGuard, /inputs\.release_tag != ''/);
 });
 
 test("Candidate build binds product_sha to the dispatch-time branch head", async () => {
@@ -306,11 +315,11 @@ test("Candidate promotion gate refuses every run that is not the promoted source
     conclusion: "success"
   };
 
-  const admits = (run: Record<string, unknown>, productSha = promotedSha) => {
+  const admits = (run: Record<string, unknown>, productSha = promotedSha, automation = "") => {
     const evaluated = spawnSync(
       "jq",
       ["-e", "--arg", "run_id", String(run.id), "--arg", "repository", repository, "--arg", "workflow", workflowPath,
-        "--arg", "product_sha", productSha, jqProgram],
+        "--arg", "product_sha", productSha, "--arg", "automation", automation, jqProgram],
       { input: JSON.stringify(run), encoding: "utf8" }
     );
     return evaluated.status === 0;
@@ -333,14 +342,19 @@ test("Candidate promotion gate refuses every run that is not the promoted source
   // The source SHA comes from the promotion inputs, so a qualified Candidate cannot
   // be promoted at a commit other than the one the publisher released.
   assert.equal(admits(branchSourcedRun, otherSha), false, "the promotion gate must refuse a Candidate whose run commit is not the released ref");
+  assert.equal(admits({ ...branchSourcedRun, head_sha: otherSha }, promotedSha, '123'), false,
+    'automation does not admit an arbitrary branch builder revision');
+  assert.equal(admits({ ...branchSourcedRun, head_branch: 'main', head_sha: otherSha }, promotedSha, '123'), true,
+    'a trusted automation main builder proceeds to the separate canonical ancestry and Candidate byte checks');
 });
 
 
 test("Release requires real installations and exact-source CI without a paid acceptance claim", async () => {
   const release = YAML.parse(await readFile(".github/workflows/release-opl-cloud-image.yml", "utf8"));
   const inputs = release.on.workflow_dispatch.inputs;
-  assert.deepEqual(Object.keys(inputs), ["version", "ref", "candidate_run_id", "local_qualification_run_id", "instance_deployment_verification_run_id", "source_verification_run_id"]);
-  assert.ok(Object.values(inputs).every((input: any) => input.required === true));
+  assert.deepEqual(Object.keys(inputs), ["version", "ref", "candidate_run_id", "local_qualification_run_id", "instance_deployment_verification_run_id", "source_verification_run_id", "automation_source_run_id"]);
+  assert.ok(Object.entries(inputs).filter(([name]) => name !== 'automation_source_run_id').every(([, input]: any) => input.required === true));
+  assert.equal(inputs.automation_source_run_id.required, false);
   const installation = release.jobs.admission.steps.find((step: any) => step.id === "installation");
   assert.match(installation.run, /deployment-verification-receipt.mjs.*validate/);
   assert.match(installation.run, /validateReleaseInstallationReadback/);
