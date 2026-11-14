@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -261,9 +262,12 @@ test("full installer accepts Compose NDJSON and refuses missing or non-running s
     assert.equal(run(bundle, installDir, ["--dry-run"]).status, 2);
     const statePath = join(installDir, "installation.json");
     const state = JSON.parse(await readFile(statePath, "utf8"));
+    // The install path now requires the Sub2API authority to be reachable,
+    // so the fixture points at a local stub instead of an unresolvable name.
+    const authority = await startSub2apiStub();
     Object.assign(state.values, {
       OPL_WORKSPACE_DOMAIN: "ws.example.test", OPL_CAPABILITY_OBJECT_URL: "https://objects.example.test",
-      OPL_SUB2API_URL: "https://sub2api.example.test", OPL_SUB2API_BASE_URL: "https://sub2api.example.test",
+      OPL_SUB2API_URL: authority.url, OPL_SUB2API_BASE_URL: authority.url,
       OPL_SUB2API_ADMIN_EMAIL: "admin@example.test", OPL_SUB2API_USER_EMAIL: "user@example.test",
       OPL_WORKSPACE_IMAGE: `ghcr.io/example/workspace@sha256:${"d".repeat(64)}`,
       OPL_WORKSPACE_REGISTRY_HOST: "registry.example.test", OPL_WORKSPACE_REGISTRY_NAMESPACE: "opl",
@@ -283,7 +287,8 @@ const { appendFileSync, readFileSync } = require('node:fs');
 const { execFileSync } = require('node:child_process');
 const args = process.argv.slice(2);
 appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');
-if (args[0] === 'inspect') console.log(${JSON.stringify(IMAGE_REFERENCE)});
+if (args[0] === 'compose' && args[1] === 'version') console.log('Docker Compose version v2.24.4');
+else if (args[0] === 'inspect') console.log(${JSON.stringify(IMAGE_REFERENCE)});
 else if (args.includes('config')) process.stdout.write(execFileSync(${JSON.stringify(realDocker)}, args, {env: process.env}));
 else if (args.includes('pull') || args.includes('up')) {}
 else if (args.includes('ps') && args.includes('-q')) console.log('fixture-container');
@@ -314,5 +319,228 @@ else { console.error('unexpected docker command'); process.exitCode = 1; }
         assert.match(result.stdout, /OPL Cloud is running/);
       }
     }
+    await authority.close();
+  });
+});
+
+// The installation facts a second run must carry before the installer will
+// pull anything. Only OPL_SUB2API_BASE_URL changes between the cases below.
+const INSTALLATION_FACTS: Record<string, string> = {
+  OPL_WORKSPACE_DOMAIN: "ws.example.test",
+  OPL_CAPABILITY_OBJECT_URL: "https://objects.example.test",
+  OPL_SUB2API_URL: "https://sub2api.example.test",
+  OPL_SUB2API_BASE_URL: "https://sub2api.example.test",
+  OPL_SUB2API_ADMIN_EMAIL: "admin@example.test",
+  OPL_SUB2API_USER_EMAIL: "user@example.test",
+  OPL_WORKSPACE_IMAGE: `ghcr.io/example/workspace@sha256:${"d".repeat(64)}`,
+  OPL_WORKSPACE_REGISTRY_HOST: "registry.example.test",
+  OPL_WORKSPACE_REGISTRY_NAMESPACE: "opl",
+  OPL_GATEWAY_WORKSPACE_KEY_GROUP: "default",
+  OPL_PLATFORM_ADMIN_SUBJECTS: "admin@example.test",
+  OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: JSON.stringify({ schemaVersion: 1 }),
+  OPL_RESOURCE_CATALOG_PROFILE_JSON: JSON.stringify({ provider: "local-docker" }),
+};
+const COMPOSE_SERVICES = ["postgres", "tenant", "resource-catalog", "ledger", "capability", "build", "runtime-control", "workspace", "serve", "fabric", "control-plane", "console-bff", "cloud-local-v2"];
+
+// A Docker stub that reports one Compose version and delegates every Compose
+// parse to the real binary, so the merge tags are still parsed for real.
+async function writeDockerMock(root: string, options: { composeVersion?: string; pluginMissing?: boolean } = {}) {
+  const bin = join(root, "mock-bin");
+  await mkdir(bin, { recursive: true });
+  const log = join(root, "docker-calls.jsonl");
+  const realDocker = spawnSync("which", ["docker"], { encoding: "utf8" }).stdout.trim();
+  assert.ok(realDocker, "the real docker binary parses the bundle's Compose file");
+  const versionReply = options.pluginMissing
+    ? `console.error("docker: 'compose' is not a docker command."); process.exitCode = 1;`
+    : `console.log(${JSON.stringify(options.composeVersion ?? "Docker Compose version v2.24.4")});`;
+  const mock = `#!${process.execPath}
+const { appendFileSync } = require('node:fs');
+const { execFileSync } = require('node:child_process');
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');
+if (args[0] === 'compose' && args[1] === 'version') { ${versionReply} }
+else if (args[0] === 'inspect') console.log(${JSON.stringify(IMAGE_REFERENCE)});
+else if (args.includes('config')) process.stdout.write(execFileSync(${JSON.stringify(realDocker)}, args, {env: process.env}));
+else if (args.includes('pull') || args.includes('up')) {}
+else if (args.includes('ps') && args.includes('-q')) console.log('fixture-container');
+else if (args.includes('ps')) console.log(${JSON.stringify(COMPOSE_SERVICES)}.map(Service => JSON.stringify({Service, State: 'running'})).join('\\n'));
+else if (args.includes('exec')) console.log(JSON.stringify({status:'ok'}));
+else { console.error('unexpected docker command'); process.exitCode = 1; }
+`;
+  await writeFile(join(bin, "docker"), mock, { mode: 0o755 });
+  await writeFile(log, "");
+  return {
+    bin,
+    log,
+    calls: async () =>
+      (await readFile(log, "utf8")).split("\n").filter(Boolean).map(line => JSON.parse(line) as string[]),
+  };
+}
+
+// A PATH that holds every executable the host offers except Docker itself.
+async function pathWithoutDocker(root: string) {
+  const bin = join(root, "no-docker-bin");
+  await mkdir(bin, { recursive: true });
+  const linked = new Set<string>();
+  for (const dir of (process.env.PATH || "").split(":").filter(Boolean)) {
+    let entries: string[] = [];
+    try { entries = await readdir(dir); } catch { continue; }
+    for (const entry of entries) {
+      if (entry === "docker" || entry === "docker-compose" || linked.has(entry)) continue;
+      linked.add(entry);
+      try { await symlink(join(dir, entry), join(bin, entry)); } catch {}
+    }
+  }
+  try { await symlink(process.execPath, join(bin, "node")); } catch {}
+  return bin;
+}
+// A Sub2API authority stub that accepts a TCP connection and speaks nothing.
+async function startSub2apiStub() {
+  const server = createServer((socket) => socket.end());
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  return {
+    url: `http://127.0.0.1:${port}`,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
+}
+// A port that nothing listens on, so the authority refuses the connection.
+async function closedPort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return port;
+}
+async function fillInstallationFacts(bundle: string, root: string, env: NodeJS.ProcessEnv, sub2apiUrl: string) {
+  const installDir = join(root, "install");
+  const first = run(bundle, installDir, ["--dry-run"], env);
+  assert.equal(first.status, 2, `${first.stdout}${first.stderr}`);
+  const statePath = join(installDir, "installation.json");
+  const state = JSON.parse(await readFile(statePath, "utf8"));
+  Object.assign(state.values, INSTALLATION_FACTS, { OPL_SUB2API_BASE_URL: sub2apiUrl, OPL_SUB2API_URL: sub2apiUrl });
+  state.values.OPL_FABRIC_LOCAL_DOCKER_TRUSTED_WORKSPACE_IMAGES = state.values.OPL_WORKSPACE_IMAGE;
+  await writeFile(statePath, JSON.stringify(state));
+  return { installDir, statePath, state };
+}
+
+test("installer refuses a Docker Compose older than the merge-tag floor before it pulls anything", async () => {
+  await withBundle(async (bundle, root) => {
+    const mock = await writeDockerMock(root, { composeVersion: "Docker Compose version v2.20.3" });
+    const result = run(bundle, join(root, "install"), ["--dry-run"], { PATH: `${mock.bin}:${process.env.PATH}` });
+    assert.equal(result.status, 2, `${result.stdout}${result.stderr}`);
+    assert.match(result.stderr, /docker_compose_version_too_old/);
+    assert.match(result.stderr, /2\.20\.3/, "the output names the version the host actually has");
+    assert.match(result.stderr, /2\.24\.4/, "the output names the version the host needs");
+    assert.match(result.stderr, /https:\/\/docs\.docker\.com\/compose\/install\//, "the output says how to upgrade");
+    assert.ok(!(await mock.calls()).some(args => args.includes("pull") || args.includes("up")), "no image is pulled before the floor is checked");
+  });
+});
+
+test("installer refuses Compose 2.24.3, which parses !reset but not !override", async () => {
+  await withBundle(async (bundle, root) => {
+    const mock = await writeDockerMock(root, { composeVersion: "Docker Compose version v2.24.3" });
+    const result = run(bundle, join(root, "install"), ["--dry-run"], { PATH: `${mock.bin}:${process.env.PATH}` });
+    assert.equal(result.status, 2, `${result.stdout}${result.stderr}`);
+    assert.match(result.stderr, /docker_compose_version_too_old/);
+    assert.match(result.stderr, /2\.24\.3/);
+    assert.match(result.stderr, /2\.24\.4/);
+  });
+});
+
+test("installer accepts exactly the Compose floor and completes the installation", async () => {
+  await withBundle(async (bundle, root) => {
+    const mock = await writeDockerMock(root, { composeVersion: "Docker Compose version v2.24.4" });
+    const authority = await startSub2apiStub();
+    try {
+      const env = { PATH: `${mock.bin}:${process.env.PATH}` };
+      await fillInstallationFacts(bundle, root, env, authority.url);
+      const result = run(bundle, join(root, "install"), [], env);
+      assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
+      assert.ok(!(result.stderr || "").includes("docker_compose_version_too_old"));
+    } finally { await authority.close(); }
+  });
+});
+
+test("installer reports a missing Docker CLI and a missing Compose plugin separately", async () => {
+  await withBundle(async (bundle, root) => {
+    const withoutDocker = await pathWithoutDocker(root);
+    const missing = run(bundle, join(root, "install"), ["--dry-run"], { PATH: withoutDocker });
+    assert.equal(missing.status, 2, `${missing.stdout}${missing.stderr}`);
+    assert.match(missing.stderr, /docker_command_missing/);
+    assert.ok(!missing.stderr.includes("docker_compose_plugin_missing"), "a missing CLI is not reported as a missing plugin");
+
+    const mock = await writeDockerMock(root, { pluginMissing: true });
+    const missingPlugin = run(bundle, join(root, "install"), ["--dry-run"], { PATH: `${mock.bin}:${process.env.PATH}` });
+    assert.equal(missingPlugin.status, 2, `${missingPlugin.stdout}${missingPlugin.stderr}`);
+    assert.match(missingPlugin.stderr, /docker_compose_plugin_missing/);
+    assert.match(missingPlugin.stderr, /https:\/\/docs\.docker\.com\/compose\/install\//);
+    assert.ok(!missingPlugin.stderr.includes("docker_command_missing"), "a missing plugin is not reported as a missing CLI");
+  });
+});
+
+test("installer reports an unreadable Compose version instead of guessing a floor", async () => {
+  await withBundle(async (bundle, root) => {
+    const mock = await writeDockerMock(root, { composeVersion: "Docker Compose version" });
+    const result = run(bundle, join(root, "install"), ["--dry-run"], { PATH: `${mock.bin}:${process.env.PATH}` });
+    assert.equal(result.status, 2, `${result.stdout}${result.stderr}`);
+    assert.match(result.stderr, /docker_compose_version_unreadable/);
+    assert.ok(!result.stderr.includes("docker_compose_version_too_old"), "an unreadable version is not reported as an old one");
+  });
+});
+
+test("installer refuses an unreachable Sub2API authority without leaking a credential", async () => {
+  await withBundle(async (bundle, root) => {
+    const mock = await writeDockerMock(root);
+    const port = await closedPort();
+    // The URL carries credentials in its userinfo, a path and a query. The
+    // installer may report the host and nothing else.
+    const authorityUrl = `https://leaked-user:leaked-password-token@127.0.0.1:${port}/base-path?token=leaked-query-token`;
+    const env = { PATH: `${mock.bin}:${process.env.PATH}` };
+    const { state } = await fillInstallationFacts(bundle, root, env, authorityUrl);
+    const result = run(bundle, join(root, "install"), [], env);
+    assert.notEqual(result.status, 0, `${result.stdout}${result.stderr}`);
+    const reported = `${result.stdout}${result.stderr}`;
+    assert.match(result.stderr, /sub2api_authority_unreachable/);
+    assert.match(result.stderr, /127\.0\.0\.1/, "the report names the host to change");
+    assert.match(result.stderr, /OPL_SUB2API_BASE_URL/, "the report names the variable to change");
+    assert.ok(!reported.includes("leaked-password-token"), "the URL's password is never reported");
+    assert.ok(!reported.includes("leaked-user"), "the URL's user is never reported");
+    assert.ok(!reported.includes("leaked-query-token"), "the URL's query is never reported");
+    assert.ok(!reported.includes("/base-path"), "the URL's path is never reported");
+    assert.ok(!reported.includes(state.values.OPL_SUB2API_ADMIN_PASSWORD), "the administrator password is never reported");
+    assert.ok(!reported.includes(state.values.OPL_SUB2API_USER_PASSWORD), "the user password is never reported");
+    assert.ok(!reported.includes(state.values.OPL_SUB2API_ADMIN_EMAIL), "the administrator email is never reported");
+    assert.ok(!reported.includes(state.values.OPL_SUB2API_USER_EMAIL), "the user email is never reported");
+    assert.ok(!(await mock.calls()).some(args => args.includes("pull") || args.includes("up")), "no image is pulled before the authority is checked");
+  });
+});
+
+test("installer accepts a reachable Sub2API authority and says exactly what it proved", async () => {
+  await withBundle(async (bundle, root) => {
+    const mock = await writeDockerMock(root);
+    const authority = await startSub2apiStub();
+    try {
+      const env = { PATH: `${mock.bin}:${process.env.PATH}` };
+      // The authority is reachable, but its URL still carries a credential, a
+      // path and a query. The receipt may name the host and nothing else.
+      const authorityUrl = `https://leaked-user:leaked-password-token@127.0.0.1:${new URL(authority.url).port}/base-path?token=leaked-query-token`;
+      const { state } = await fillInstallationFacts(bundle, root, env, authorityUrl);
+      const result = run(bundle, join(root, "install"), [], env);
+      assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
+      const reported = `${result.stdout}${result.stderr}`;
+      assert.ok(!reported.includes("leaked-password-token"), "the URL's password is never reported");
+      assert.ok(!reported.includes("leaked-user"), "the URL's user is never reported");
+      assert.ok(!reported.includes("leaked-query-token"), "the URL's query is never reported");
+      assert.ok(!reported.includes("/base-path"), "the URL's path is never reported");
+      assert.ok(!reported.includes(state.values.OPL_SUB2API_ADMIN_PASSWORD), "the administrator password is never reported");
+      assert.ok(!reported.includes(state.values.OPL_SUB2API_USER_PASSWORD), "the user password is never reported");
+      assert.ok(!reported.includes(state.values.OPL_SUB2API_ADMIN_EMAIL), "the administrator email is never reported");
+      assert.ok(!reported.includes(state.values.OPL_SUB2API_USER_EMAIL), "the user email is never reported");
+      assert.match(result.stdout, /Sub2API authority 127\.0\.0\.1:\d+ is reachable/);
+      assert.match(result.stdout, /network reachability only; no credential was sent or verified/);
+    } finally { await authority.close(); }
   });
 });

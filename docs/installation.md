@@ -27,6 +27,42 @@ OPL Cloud publishes portable product artifacts; a concrete Instance owns its
 deployment, domain, Secrets, provider profile, rollback, and acceptance. Use
 one admitted Release and its own manifest, checksums and installation assets. Candidate construction and formal publication have distinct formats.
 
+## Installation preconditions
+
+The installer reads two facts about the host before it pulls any image or starts
+any container, and it refuses to continue until both hold. Both refusals name
+the fact to change.
+
+**Docker Compose 2.24.4 or later.** `compose.cloud.yaml` merges every service
+with `compose.local-v2.yaml` through `extends`, and it uses the `!override` and
+`!reset` YAML tags to say which inherited attribute is replaced and which one
+is removed. `!override` first shipped in Docker Compose v2.24.4, the release
+that adopted the Compose Specification parser `compose-go` v2.0.0-rc.3; Compose
+v2.24.0 through v2.24.3 honour `!reset` but do not know `!override`, so the
+tag is not applied and the merge yields a topology the file does not declare.
+The Compose Specification marks the same v2.24.4 floor on its
+[merge and override](https://github.com/compose-spec/compose-spec/blob/main/13-merge.md)
+section. Install the Compose v2 plugin from the
+[Docker Compose install guide](https://docs.docker.com/compose/install/); the
+installer drives `docker compose` and does not use the legacy standalone
+`docker-compose` binary. `docker compose version` reports the version the
+installer reads.
+
+**A reachable Sub2API authority.** The installation's Sub2API authority is an
+external service. The shipped `compose.cloud.yaml` contains no Sub2API
+service, so `OPL_SUB2API_BASE_URL` must name an authority this machine can
+reach. Before it pulls, the installer resolves the host that URL names and
+opens a TCP connection to it. The probe sends no credential, asks no question
+and verifies no identity: only the host part of the URL is read, reported and
+stored. An authority that does not resolve, or does not accept the connection,
+is refused with the variable to change.
+
+The probe proves network reachability only. It does not prove that the
+configured administrator or user identity can log in; the first operator login
+remains the first proof of that. `--dry-run` verifies the bundle, the
+installation state and the Compose configuration, and it stays on this machine,
+so it does not contact the authority.
+
 ## Public Product Release: v0.1.8
 
 Download [OPL Cloud v0.1.8](https://github.com/gaofeng21cn/one-person-lab-cloud/releases/tag/v0.1.8).
