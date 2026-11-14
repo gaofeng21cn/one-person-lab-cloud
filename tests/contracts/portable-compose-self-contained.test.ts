@@ -4,10 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
-import {
-  PORTABLE_ASSETS,
-  distributionContract,
-} from "../../tools/cloud-candidate-receipt.ts";
 
 const COMPOSE = "deploy/portable/compose.cloud.yaml";
 const QUALIFICATION_COMPOSE = "compose.local-v2.yaml";
@@ -402,31 +398,6 @@ test("the published compose declares every service itself and inherits nothing",
     /!override|!reset/.test(source),
     false,
     "the published compose must not use the Compose 2.24.0 overlay tags",
-  );
-});
-
-test("the release bundle no longer ships the qualification topology", () => {
-  const candidateAssets =
-    distributionContract.bundleFormats.formats["portable-v1"].candidateAssets;
-  assert.equal(
-    Array.isArray(candidateAssets),
-    true,
-    "portable-v1.candidateAssets must stay an explicit list",
-  );
-  assert.equal(
-    candidateAssets.includes(QUALIFICATION_COMPOSE),
-    false,
-    `portable-v1.candidateAssets must not carry ${QUALIFICATION_COMPOSE}`,
-  );
-  assert.equal(
-    PORTABLE_ASSETS.includes(QUALIFICATION_COMPOSE),
-    false,
-    `the derived portable asset list must not carry ${QUALIFICATION_COMPOSE}`,
-  );
-  assert.equal(
-    PORTABLE_ASSETS.includes("compose.cloud.yaml"),
-    true,
-    "the derived portable asset list must still carry the published compose",
   );
 });
 

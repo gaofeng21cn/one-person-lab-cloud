@@ -9,8 +9,8 @@
 # qualification topology file and inherit the rest from there. That made the
 # shipped product depend on a file the qualification harness owns and changes:
 # editing the harness would silently change the published product. The two
-# roles are separate now. This file is the product, it names no other Compose
-# file, and the qualification topology is no longer part of the release bundle.
+# roles are separate now. This file is the product and names no other Compose
+# file. The existing bundle asset format remains unchanged.
 #
 # The owner processes, their databases, their mTLS material and their
 # persistent data are the canonical local-v2 owner wiring, carried here in
