@@ -69,6 +69,7 @@ func (r *Runner) Validate() error {
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Scheme != "https" && !(r.AllowHTTP && u.Scheme == "http")) {
 		return errors.New("invalid approved storage endpoint")
 	}
+
 	// A declared plain-HTTP host has to be an exact host name: a value the
 	// runner cannot match would silently leave that host unreachable.
 	for _, host := range r.InsecureHTTPHosts {
