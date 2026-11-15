@@ -45,9 +45,10 @@ gRPC handlers and separate owner databases.
 
 Not proven here: no provider absence, no real Gateway refund, no installed
 Candidate and no customer order were exercised. The fresh unattended lifecycle
-qualification on one exact Candidate and the affected Instance transport CI
-remain open [roadmap obligations](roadmap.md#unattended-deletion-recovery). The
-`TestLiveAcceptedWorkspaceResourceReference` failure is present on `main` as
+qualification on one exact installed Candidate remains the open
+[roadmap obligation](roadmap.md#unattended-deletion-recovery). This change does
+not touch the Instance repository, so it leaves no Instance transport CI affected.
+The `TestLiveAcceptedWorkspaceResourceReference` failure is present on `main` as
 well and is not affected by this change.
 
 ## Installation chain source boundary (2026-11-13)
