@@ -2371,6 +2371,27 @@ export function customerWorkspaceIdentity(operation) {
   return { operationId, workspaceId };
 }
 
+// The launch boundary of a purchase.
+//
+// The Workspace owner parks a Local no-charge order at its activation boundary
+// on purpose: the zero-fee period of that order is a separate product decision,
+// so the order never reaches a paid order's terminal "succeeded". What the owner
+// does publish there is its own confirmed readiness of the deployed runtime.
+//
+// The launch of a built Agent is therefore read the way this tool already reads
+// the launch of the default App in its own Local phase: the boundary the owner
+// declares, with the confirmed observation that proves it. A purchase that ends
+// in any other state, including a state the owner marks as needing attention,
+// is still a failed purchase.
+export function customerLaunchReached(operation) {
+  const status = String(operation?.status || "");
+  const stage = String(operation?.stage || "");
+  const observation = String(operation?.observationResult || "");
+  if (observation !== "confirmed") return false;
+  if (status === "succeeded") return true;
+  return status === "awaiting_confirmation" && stage === LOCAL_V2_ACTIVATION_STAGE;
+}
+
 // The package archive.
 //
 // The package directory is mirrored into an archive and the probe file is
@@ -2703,15 +2724,20 @@ export async function runCustomerPackageEvidenceChain({
   const { operationId, workspaceId } = customerWorkspaceIdentity(order);
   readback.customerOrder = { operationId, workspaceId };
 
-  // The purchase reaches its terminal state before the entry is read.
+  // The purchase reaches the owner's launch boundary before the entry is read.
   let operation = order;
   for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
     operation = (await http.json(`/api/v2/operations/workspace/${encodeURIComponent(operationId)}`, {}, auth)).payload;
-    if (["succeeded", "failed", "cancelled"].includes(String(operation?.status || ""))) break;
+    if (customerLaunchReached(operation) || LOCAL_V2_TERMINAL_OPERATION.has(String(operation?.status || ""))) break;
     await wait(pollIntervalMs);
   }
-  readback.customerOperation = { status: String(operation?.status || ""), stage: String(operation?.stage || "") };
-  if (String(operation?.status || "") !== "succeeded") {
+  readback.customerOperation = {
+    status: String(operation?.status || ""), stage: String(operation?.stage || ""),
+    observationResult: String(operation?.observationResult || ""), errorCode: String(operation?.errorCode || ""),
+    activationBoundary: String(operation?.status || "") === "awaiting_confirmation" &&
+      String(operation?.stage || "") === LOCAL_V2_ACTIVATION_STAGE,
+  };
+  if (!customerLaunchReached(operation)) {
     throw namedQualificationError("local_v2_customer_workspace_operation_failed",
       `the purchase operation ended ${readback.customerOperation.status} ${readback.customerOperation.stage}`.trim());
   }

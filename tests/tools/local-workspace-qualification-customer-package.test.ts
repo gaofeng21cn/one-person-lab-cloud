@@ -523,3 +523,102 @@ test("the run follows the Build it asked for to the version that Build registere
   assert.equal(asked.includes("/api/v2/builds/build_1"), true);
   assert.equal(asked.includes("/api/v2/capability-versions/cv_1"), true);
 });
+
+test("the customer chain reads the launch boundary the owner declares", async () => {
+  // The Workspace owner parks a Local no-charge order at its activation
+  // boundary on purpose, and this tool's own Local phase already reads that
+  // boundary as the launch. The customer chain has to read the same boundary,
+  // or a purchase the owner confirmed never reaches the entry it published.
+  const packageDir = fileURLToPath(new URL("./fixtures/customer-agent-package", import.meta.url));
+  const asked = [];
+  let uploaded = null;
+  let nonce = "";
+  const http = {
+    json: async (path, init = {}) => {
+      asked.push(path);
+      if (path === "/api/v2/namespaces") return { payload: { items: [{ id: "ns_1", isDefault: true }] } };
+      if (path === "/api/v2/packages") return { payload: { id: "pkg_1" } };
+      if (path === "/api/v2/packages/pkg_1/uploads") {
+        uploaded = init.body;
+        return { payload: { id: "upload_1", packageVersionId: "pv_1", partSizeBytes: "16777216" } };
+      }
+      if (path === "/api/v2/uploads/upload_1/parts") return { payload: { url: "https://objects.test/part-1", method: "PUT", contentType: "application/octet-stream" } };
+      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
+      if (path === "/api/v2/package-versions/pv_1") return { payload: { id: "pv_1", packageId: "pkg_1", versionLabel: "1.0.0", sha256: uploaded?.sha256, sizeBytes: uploaded?.sizeBytes, status: "uploaded" } };
+      if (path === "/api/v2/catalog/build-policy") return { payload: { runtimeVersionId: "rt_1", defaultWebuiVersionId: "wu_1" } };
+      if (path === "/api/v2/catalog/runtime-versions?cursor=") {
+        return { payload: { items: [{ id: "rt_1", publisherContract: { buildRecipe: { packageInput: { sourceRoot: "agent", targetPath: "/opt/opl" }, outputImageCommand: { entrypoint: ["/opt/opl/bin/runtime"] } } } }] } };
+      }
+      if (path === "/api/v2/builds") {
+        return { payload: { id: "build_1", status: "queued", packageVersionId: "pv_1", runtimeVersionId: "rt_1", webuiVersionId: "wu_1" } };
+      }
+      if (path === "/api/v2/builds/build_1") {
+        return { payload: { id: "build_1", status: "succeeded", stage: "delivered", packageVersionId: "pv_1", runtimeVersionId: "rt_1", webuiVersionId: "wu_1", resultCapabilityVersionId: "cv_1" } };
+      }
+      if (path === "/api/v2/capability-versions/cv_1") {
+        return { payload: { id: "cv_1", status: "ready", buildJobId: "build_1", packageVersionId: "pv_1", artifactDigest: `sha256:${"a".repeat(64)}` } };
+      }
+      if (path === "/api/v2/quotes") {
+        return { payload: { id: "quote_1", capabilityVersionId: "cv_1", provider: "local-docker", billingMode: "LOCAL_NO_CHARGE", totalUSDMicros: "0", status: "offered", purpose: "deploy" } };
+      }
+      if (path === "/api/v2/workspaces") return { payload: { operationId: "op_ws_1", resourceId: "ws_1", status: "accepted" } };
+      if (path === "/api/v2/operations/workspace/op_ws_1") {
+        return { payload: { operationId: "op_ws_1", resourceId: "ws_1", status: "awaiting_confirmation", stage: "activation", observationResult: "confirmed", errorCode: "DEPENDENCY_UNAVAILABLE" } };
+      }
+      if (path === "/api/v2/operations/workspace/op_del_1") {
+        return { payload: { operationId: "op_del_1", owner: "workspace", kind: "delete_workspace", resourceId: "ws_1", status: "succeeded", stage: "succeeded" } };
+      }
+      if (path === "/api/v2/workspaces/ws_1" && init.method === "DELETE") {
+        return { payload: { operationId: "op_del_1", owner: "workspace", kind: "delete_workspace", resourceId: "ws_1", status: "accepted" } };
+      }
+      if (path === "/api/v2/workspaces/ws_1") {
+        return { payload: { id: "ws_1", status: "provisioning", capabilityVersionId: "cv_1", accessUrl: "http://127.0.0.1:32774/" } };
+      }
+      throw new Error(`unexpected request ${path}`);
+    },
+    request: async (path) => {
+      asked.push(path);
+      if (path === "/api/v2/workspaces/ws_1") return { payload: { id: "ws_1", status: "deleted", accessUrl: "" } };
+      throw new Error(`unexpected request ${path}`);
+    },
+  };
+  const readback = {};
+  await runCustomerPackageEvidenceChain({
+    http,
+    auth: {},
+    wait: async () => {},
+    readback,
+    plan: {
+      mode: "directory", packageDir, probePath: "agent/provenance/probe.txt",
+      achievableEvidenceLevel: CUSTOMER_EVIDENCE_LEVEL_CONTENT,
+      requestedEvidenceLevel: CUSTOMER_EVIDENCE_LEVEL_CONTENT,
+      degradationReason: "",
+    },
+    packageName: "local-qualification-agent",
+    versionLabel: "1.0.0",
+    workspaceName: "local qualification",
+    provider: "local-docker",
+    billingMode: "LOCAL_NO_CHARGE",
+    computePlanId: "compute_1",
+    storagePlanId: "storage_1",
+    sourceSha: "a".repeat(40),
+    putPart: async (_url, init) => {
+      const found = Buffer.from(init.body).toString("latin1")
+        .match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/);
+      if (found) nonce = found[0];
+      return { status: 200, headers: { get: () => "" } };
+    },
+    fetchEntry: async () => ({ status: 200, text: nonce }),
+  });
+  // The owner confirmed the launch at its activation boundary, so the chain
+  // read that boundary as the launch, read the Workspace it published, and
+  // proved the entry answers with this run's nonce.
+  assert.equal(readback.customerOperation.status, "awaiting_confirmation");
+  assert.equal(readback.customerOperation.stage, "activation");
+  assert.equal(readback.customerOperation.observationResult, "confirmed");
+  assert.equal(readback.customerOperation.activationBoundary, true);
+  assert.equal(readback.customerWorkspace.capabilityVersionId, "cv_1");
+  assert.equal(readback.customerEntry.status, 200);
+  assert.equal(readback.customerEntry.matched, true);
+  assert.equal(asked.includes("/api/v2/workspaces/ws_1"), true);
+});
