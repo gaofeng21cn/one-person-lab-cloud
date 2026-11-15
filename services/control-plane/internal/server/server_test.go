@@ -1437,7 +1437,7 @@ func TestResourceLedgerEvidencePreservesControlPlaneIdentity(t *testing.T) {
 	}
 }
 
-func TestResourceDestroyAndDetachUpdateWorkspaceState(t *testing.T) {
+func TestResourceDestroyUpdatesWorkspaceState(t *testing.T) {
 	app := newControlPlaneApp()
 	mustStore(t, app.tables.SaveWorkspace(context.Background(), map[string]any{
 		"id":                         "ws-alpha",
@@ -1460,69 +1460,12 @@ func TestResourceDestroyAndDetachUpdateWorkspaceState(t *testing.T) {
 		t.Fatalf("compute destroy did not suspend and clear compute pointer: %#v", workspace)
 	}
 
-	mustStore(t, app.saveAttachmentFact(map[string]any{"id": "attach-alpha", "status": "detached"}, map[string]any{}))
-	workspace = storedWorkspace(t, app, "ws-alpha")
-	if workspace["currentAttachmentId"] != "" || workspace["attachmentId"] != "" {
-		t.Fatalf("attachment detach did not clear workspace pointer: %#v", workspace)
-	}
-
 	mustStore(t, app.saveStorageFact(map[string]any{
 		"id": "storage-alpha", "accountId": "acct-alpha", "status": "destroyed", "billingStatus": "stopped",
 	}))
 	workspace = storedWorkspace(t, app, "ws-alpha")
 	if workspace["state"] != "data_deleted" || workspace["status"] != "unrecoverable" {
 		t.Fatalf("storage destroy did not mark workspace unrecoverable: %#v", workspace)
-	}
-}
-
-func TestRememberAttachmentDerivesAccountFromLinkedResources(t *testing.T) {
-	app := newControlPlaneApp()
-	mustStore(t, app.tables.SaveCompute(context.Background(), map[string]any{"id": "compute-alpha", "accountId": "acct-alpha"}))
-	mustStore(t, app.tables.SaveStorage(context.Background(), map[string]any{"id": "storage-alpha", "accountId": "acct-alpha"}))
-	if err := app.saveAttachmentFact(map[string]any{
-		"id":                  "attach-alpha",
-		"computeAllocationId": "compute-alpha",
-		"storageId":           "storage-alpha",
-		"status":              "attached",
-	}, map[string]any{}); err != nil {
-		t.Fatal(err)
-	}
-	if got := stringValue(storedAttachment(t, app, "attach-alpha")["accountId"]); got != "acct-alpha" {
-		t.Fatalf("attachment accountId = %q, want acct-alpha", got)
-	}
-}
-
-func TestPersistDerivesAttachmentAccountFromExistingFacts(t *testing.T) {
-	app := newControlPlaneApp()
-	app.store = NewTestEntStateStore(t, t.TempDir()+"/attachment-account.sqlite")
-	app.tables = app.store.(controlPlaneTableStore)
-	mustStore(t, app.tables.SaveCompute(context.Background(), map[string]any{"id": "compute-alpha", "accountId": "acct-alpha"}))
-	mustStore(t, app.tables.SaveStorage(context.Background(), map[string]any{"id": "storage-alpha", "accountId": "acct-alpha"}))
-	mustStore(t, app.saveAttachmentFact(map[string]any{
-		"id":                  "attach-alpha",
-		"computeAllocationId": "compute-alpha",
-		"storageId":           "storage-alpha",
-		"status":              "attached",
-	}, map[string]any{}))
-	attachments, err := app.tables.ListAttachments(context.Background(), "")
-	mustStore(t, err)
-	if got := stringValue(attachments[0]["accountId"]); got != "acct-alpha" {
-		t.Fatalf("persisted attachment accountId = %q, want acct-alpha", got)
-	}
-}
-
-func TestOperatorSummaryIncludesWorkspaceResourceAnomalies(t *testing.T) {
-	app := newControlPlaneApp()
-	mustStore(t, app.tables.SaveWorkspace(context.Background(), map[string]any{
-		"id":             "ws-missing-storage",
-		"ownerAccountId": "acct-alpha",
-		"storageId":      "missing-storage",
-	}))
-
-	operator := app.operatorSummary()
-	anomalies := operator["resourceAnomalies"].([]any)
-	if len(anomalies) != 1 || anomalies[0].(map[string]any)["status"] != "missing_storage" {
-		t.Fatalf("operator resource anomalies should include Workspace fact issues: %#v", anomalies)
 	}
 }
 

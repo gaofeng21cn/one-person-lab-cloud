@@ -149,7 +149,7 @@ func (h *settlementTrendHarness) save(t *testing.T, row map[string]any) {
 
 func (h *settlementTrendHarness) trend(t *testing.T, now time.Time) workspaceSettlementTrend {
 	t.Helper()
-	trend, err := h.app.projectWorkspaceSettlementTrend(context.Background(), h.service, "acct-alpha", now)
+	trend, err := h.app.projectWorkspaceSettlementTrendForOwner(context.Background(), h.service, "acct-alpha", "", now)
 	if err != nil {
 		t.Fatal(err)
 	}

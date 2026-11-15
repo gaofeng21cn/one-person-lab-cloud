@@ -1185,20 +1185,23 @@ func TestWorkspaceCustomerResponseUsesExplicitAllowlist(t *testing.T) {
 	}
 }
 
-func TestAttachmentDetachDisablesCanonicalWorkspaceRenewal(t *testing.T) {
+func TestWorkspaceResourceLossDisablesCanonicalWorkspaceRenewal(t *testing.T) {
 	app := newControlPlaneApp()
 	workspace := canonicalWorkspaceRenewalRow(true)
 	workspace["state"], workspace["status"] = "running", "running"
 	workspace["attachmentId"], workspace["currentAttachmentId"] = "attachment-renewal", "attachment-renewal"
 	mustStore(t, app.tables.SaveWorkspace(context.Background(), workspace))
-	if err := app.clearWorkspacesForAttachment("attachment-renewal"); err != nil {
-		t.Fatal(err)
-	}
+	// The provider reconcile worker is the live writer of storage facts. A
+	// storage that the provider reports as destroyed must suspend the
+	// Workspace and withdraw its renewal authorization.
+	mustStore(t, app.saveStorageFact(map[string]any{
+		"id": "storage-renewal", "accountId": "acct-renewal", "status": "destroyed", "billingStatus": "stopped",
+	}))
 	stored := storedWorkspace(t, app, "ws-renewal")
 	if stored["autoRenew"] != false || stored["authorizedBy"] != workspace["authorizedBy"] || stored["authorizedAt"] != workspace["authorizedAt"] ||
 		stored["periodStart"] != workspace["periodStart"] || stored["paidThrough"] != workspace["paidThrough"] || stored["priceVersion"] != workspace["priceVersion"] ||
 		stored["computeAllocationId"] != workspace["computeAllocationId"] || stored["storageId"] != workspace["storageId"] {
-		t.Fatalf("detached canonical Workspace=%#v", stored)
+		t.Fatalf("lost resource canonical Workspace=%#v", stored)
 	}
 }
 

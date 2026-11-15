@@ -85,12 +85,6 @@ func (app *controlPlaneServer) workspaceLaunchReconciler(service *controlplane.S
 	})
 }
 
-func (app *controlPlaneServer) runWorkspaceLaunchesOnce(ctx context.Context, service *controlplane.Service) error {
-	scheduler := newWorkspaceLaunchScheduler(app, service)
-	err := scheduler.dispatch(ctx)
-	return errors.Join(err, scheduler.collect(true))
-}
-
 func (app *controlPlaneServer) runWorkspaceLaunch(ctx context.Context, service *controlplane.Service, operationID string) error {
 	_, err := app.workspaceLaunchReconciler(service, clients.SessionDelegatedCredential{}, 0).Reconcile(ctx, operationID)
 	return err

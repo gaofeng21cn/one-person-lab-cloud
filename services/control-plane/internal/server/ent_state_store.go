@@ -27,7 +27,6 @@ import (
 )
 
 const (
-	singletonFactID                  = "default"
 	controlPlaneMaxOpenDBConnections = 20
 )
 

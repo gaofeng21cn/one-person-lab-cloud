@@ -82,7 +82,6 @@ var (
 	errLastActiveAdmin = errors.New("last_active_admin")
 	errUserDeleted     = errors.New("user_deleted")
 	errInvalidRole     = errors.New("invalid_role")
-	errAccountNotFound = errors.New("account_not_found")
 )
 
 func newControlPlaneAppWithStore(store StateStore) (*controlPlaneServer, error) {
@@ -240,11 +239,6 @@ func (app *controlPlaneServer) listComputes(accountID string) []map[string]any {
 	}
 	return rows
 }
-
-func (app *controlPlaneServer) computeRecordSet(accountID string) controlPlaneRecordSet {
-	return recordSetFromRows(app.listComputes(accountID))
-}
-
 func (app *controlPlaneServer) listStorages(accountID string) []map[string]any {
 	rows, err := app.tables.ListStorages(context.Background(), accountID)
 	if err != nil {
@@ -252,11 +246,6 @@ func (app *controlPlaneServer) listStorages(accountID string) []map[string]any {
 	}
 	return rows
 }
-
-func (app *controlPlaneServer) storageRecordSet(accountID string) controlPlaneRecordSet {
-	return recordSetFromRows(app.listStorages(accountID))
-}
-
 func (app *controlPlaneServer) listAttachments(accountID string) []map[string]any {
 	rows, err := app.tables.ListAttachments(context.Background(), accountID)
 	if err != nil {
@@ -276,19 +265,6 @@ func (app *controlPlaneServer) listWorkspaces(accountID string) []map[string]any
 func (app *controlPlaneServer) workspaceByID(ctx context.Context, id string) (map[string]any, bool, error) {
 	return app.tables.GetWorkspace(ctx, id)
 }
-
-func (app *controlPlaneServer) workspaceRecordSet(accountID string) controlPlaneRecordSet {
-	return recordSetFromRows(app.listWorkspaces(accountID))
-}
-
-func recordSetFromRows(rows []map[string]any) controlPlaneRecordSet {
-	out := controlPlaneRecordSet{}
-	for _, row := range rows {
-		out[stringValue(row["id"])] = cloneMap(row)
-	}
-	return out
-}
-
 func rowsAsAnyFromMaps(rows []map[string]any) []any {
 	out := make([]any, 0, len(rows))
 	for _, row := range rows {
@@ -326,17 +302,6 @@ func (app *controlPlaneServer) runtimeOperationRows(query runtimeOperationQuery)
 	}
 	return rows
 }
-
-func failedRuntimeOperations(operations []map[string]any) []any {
-	failed := make([]any, 0)
-	for i := len(operations) - 1; i >= 0 && len(failed) < 10; i-- {
-		if stringValue(operations[i]["status"]) == "failed" {
-			failed = append(failed, cloneMap(operations[i]))
-		}
-	}
-	return failed
-}
-
 // workspaceGatewayEntryURL is the route this installation publishes for one
 // Workspace. The gateway is this server, so the route is this server's own shape
 // rather than a value an executing provider observes.
@@ -624,14 +589,4 @@ func mapContainsAnyID(input map[string]any, ids ...string) bool {
 		}
 	}
 	return false
-}
-
-func countStatus(input controlPlaneRecordSet, status string) int {
-	count := 0
-	for _, item := range input {
-		if item["status"] == status || item["state"] == status {
-			count++
-		}
-	}
-	return count
 }

@@ -276,7 +276,7 @@ func TestResourceOnlyWorkspaceAutoRenewsWithoutGatewayKey(t *testing.T) {
 	mustStore(t, fixture.app.tables.SaveWorkspace(context.Background(), workspace))
 	fixture.workspace = workspace
 	seedResourceOnlyRenewalLaunch(t, fixture.app.tables, workspace)
-	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead)); err != nil {
+	if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead)); err != nil {
 		t.Fatal(err)
 	}
 	operation, err := decodeWorkspaceRenewalOperation(fixture.operation(t))
@@ -300,7 +300,7 @@ func TestResourceOnlyWorkspaceExpirySkipsRuntimeSuspension(t *testing.T) {
 	mustStore(t, fixture.app.tables.SaveWorkspace(context.Background(), workspace))
 	fixture.workspace = workspace
 	seedResourceOnlyRenewalLaunch(t, fixture.app.tables, workspace)
-	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, fixture.paidThrough.Add(time.Second)); err != nil {
+	if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, fixture.paidThrough.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	operation, err := decodeWorkspaceRenewalOperation(fixture.operation(t))

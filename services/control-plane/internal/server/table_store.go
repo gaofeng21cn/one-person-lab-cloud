@@ -9,7 +9,6 @@ import (
 )
 
 var errSub2APIAccountMappingConflict = errors.New("sub2api_account_mapping_conflict")
-var errPrimaryWorkspaceExists = errors.New("primary_workspace_already_exists")
 var errWorkspaceActivationConflict = errors.New("workspace_activation_conflict")
 var errInvalidAccountID = errors.New("invalid_account_id")
 var errInvalidEmail = errors.New("invalid_email")

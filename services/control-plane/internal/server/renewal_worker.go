@@ -59,11 +59,6 @@ func (app *controlPlaneServer) startMonthlyBillingWorker(ctx context.Context, se
 	}()
 }
 
-func (app *controlPlaneServer) runMonthlyBillingOnce(ctx context.Context, service *controlplane.Service, now time.Time) error {
-	_, err := app.runMonthlyBillingSweep(ctx, service, now)
-	return err
-}
-
 func (app *controlPlaneServer) runMonthlyBillingSweep(ctx context.Context, service *controlplane.Service, now time.Time) (time.Time, error) {
 	var next time.Time
 	recoveryOperations, err := queryRuntimeOperations(ctx, app.tables, runtimeOperationQuery{

@@ -11,37 +11,6 @@
 #
 # Format: one symbol key per line. A package-level symbol is its bare name;
 # a method is "<receiver type>.<name>".
-
-# Pre-existing debt, unrelated to the retired capabilities: a Workspace
-# billing state comparison that no caller uses any more.
-workspaceBillingStateMatchesLaunch
-# Pre-existing debt, unrelated to the retired capabilities: a stable launch
-# projection comparison that no caller uses any more.
-workspaceLaunchStableProjectionMatches
-# Pre-existing debt, unrelated to the retired capabilities: an unused fact id
-# constant.
-singletonFactID
-# Pre-existing debt, unrelated to the retired capabilities: an unused
-# settlement window constant.
-workspaceSettlementOutOfWindow
-# Pre-existing debt, unrelated to the retired capabilities: an unused account
-# lookup error.
-errAccountNotFound
-# Pre-existing debt, unrelated to the retired capabilities: an unused primary
-# workspace error.
-errPrimaryWorkspaceExists
-# Pre-existing debt, unrelated to the retired capabilities: the operator
-# summary projection has no production caller.
-controlPlaneServer.operatorSummary
-# Pre-existing debt, unrelated to the retired capabilities: the settlement
-# trend projection has no production caller.
-controlPlaneServer.projectWorkspaceSettlementTrend
-# Pre-existing debt, unrelated to the retired capabilities: the one-shot
-# workspace launch sweep has no production caller.
-controlPlaneServer.runWorkspaceLaunchesOnce
-# Pre-existing debt, unrelated to the retired capabilities: the one-shot
-# monthly billing sweep has no production caller.
-controlPlaneServer.runMonthlyBillingOnce
-# Pre-existing debt, unrelated to the retired capabilities: the attachment
-# fact writer has no production caller.
-controlPlaneServer.saveAttachmentFact
+#
+# The list is empty. Every implementation in this package is reachable from
+# the package's own production source, and the check enforces that.

@@ -99,7 +99,7 @@ func TestD1RenewalRejectsConflictingTransactionBeforeFulfillment(t *testing.T) {
 			charge := clients.Sub2APICharge{Code: expected.RedeemCode, UserID: 41, ChargeUSDMicros: expected.TotalUSDMicros, Status: "used"}
 			test.mutate(&charge)
 			fixture.sub2API.chargeResults = []clients.Sub2APICharge{charge}
-			if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now); err != nil {
+			if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now); err != nil {
 				t.Fatal(err)
 			}
 			operation := d1RenewalOperation(t, fixture)
@@ -110,7 +110,7 @@ func TestD1RenewalRejectsConflictingTransactionBeforeFulfillment(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := restarted.runMonthlyBillingOnce(context.Background(), fixture.service, now.Add(time.Second)); err != nil {
+			if _, err := restarted.runMonthlyBillingSweep(context.Background(), fixture.service, now.Add(time.Second)); err != nil {
 				t.Fatal(err)
 			}
 			if len(fixture.sub2API.charges) != 1 || len(fixture.sub2API.refunds) != 0 || len(fixture.fabric.computeRenewKeys) != 0 || len(fixture.fabric.storageRenewKeys) != 0 || len(fixture.ledger.receipts) != 0 {
@@ -149,7 +149,7 @@ func TestD1RenewalUnknownDebitWaitsForAuthoritativeHistoryAcrossRestart(t *testi
 	gateway := &d1RenewalHistoryGateway{monthlySub2API: fixture.sub2API, historyErr: errors.New("history unavailable")}
 	fixture.service = controlplane.NewService(fixture.ledger, fixture.fabric, gateway)
 	now := fixture.paidThrough.Add(-monthlyRenewalLead)
-	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now); !errors.Is(err, clients.ErrSub2APIChargeUnknown) {
+	if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now); !errors.Is(err, clients.ErrSub2APIChargeUnknown) {
 		t.Fatalf("unknown debit error=%v", err)
 	}
 	for attempt := range 2 {
@@ -158,7 +158,7 @@ func TestD1RenewalUnknownDebitWaitsForAuthoritativeHistoryAcrossRestart(t *testi
 			t.Fatal(err)
 		}
 		fixture.app = restarted
-		if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now.Add(time.Duration(attempt+1)*time.Second)); !errors.Is(err, gateway.historyErr) {
+		if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now.Add(time.Duration(attempt+1)*time.Second)); !errors.Is(err, gateway.historyErr) {
 			t.Fatalf("history failure error=%v", err)
 		}
 		operation := d1RenewalOperation(t, fixture)
@@ -169,7 +169,7 @@ func TestD1RenewalUnknownDebitWaitsForAuthoritativeHistoryAcrossRestart(t *testi
 	usedBy := int64(41)
 	gateway.historyErr = nil
 	gateway.entry = &clients.Sub2APIBalanceHistoryEntry{Type: "balance", ValueUSDMicros: -52_580_000, Status: "used", UsedBy: &usedBy}
-	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now.Add(3*time.Second)); err != nil {
+	if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now.Add(3*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	assertD1RenewalFulfilled(t, fixture)
@@ -197,10 +197,10 @@ func TestD1RenewalConflictingHistoryNeverRechargesOrFulfills(t *testing.T) {
 			gateway := &d1RenewalHistoryGateway{monthlySub2API: fixture.sub2API, entry: &entry}
 			fixture.service = controlplane.NewService(fixture.ledger, fixture.fabric, gateway)
 			now := fixture.paidThrough.Add(-monthlyRenewalLead)
-			if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now); !errors.Is(err, clients.ErrSub2APIChargeUnknown) {
+			if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now); !errors.Is(err, clients.ErrSub2APIChargeUnknown) {
 				t.Fatalf("unknown debit error=%v", err)
 			}
-			if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now.Add(time.Second)); err != nil {
+			if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now.Add(time.Second)); err != nil {
 				t.Fatal(err)
 			}
 			operation := d1RenewalOperation(t, fixture)
@@ -224,7 +224,7 @@ func TestD1RenewalPersistedConfirmationIsRevalidatedBeforeProviderRenewal(t *tes
 	}
 	fixture.app = app
 	now := fixture.paidThrough.Add(-monthlyRenewalLead)
-	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now); !errors.Is(err, persistErr) {
+	if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now); !errors.Is(err, persistErr) {
 		t.Fatalf("persistence failure=%v", err)
 	}
 	operation := d1RenewalOperation(t, fixture)
@@ -240,7 +240,7 @@ func TestD1RenewalPersistedConfirmationIsRevalidatedBeforeProviderRenewal(t *tes
 		t.Fatal(err)
 	}
 	fixture.app = restarted
-	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now.Add(workspaceRenewalLeaseDuration+time.Second)); err != nil {
+	if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now.Add(workspaceRenewalLeaseDuration+time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	operation = d1RenewalOperation(t, fixture)
@@ -269,7 +269,7 @@ func TestD1RenewalRefundRequiresTheOriginalConfirmedDebit(t *testing.T) {
 			fixture := newWorkspaceRenewalWorkerFixture(t, []int64{100_000_000})
 			fixture.fabric.computeRenewErr = errors.New("provider response lost")
 			fixture.fabric.computeSync = clients.ComputeAllocation{ID: "compute-workspace-monthly", AccountID: "acct-monthly", WorkspaceID: "workspace-monthly", Status: "renewing"}
-			if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead)); err != nil {
+			if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead)); err != nil {
 				t.Fatal(err)
 			}
 			operation := d1RenewalOperation(t, fixture)
@@ -309,7 +309,7 @@ func TestD1RenewalHTTPTransactionRecoversAcrossPostgresReopen(t *testing.T) {
 	})
 	fixture.service = controlplane.NewService(fixture.ledger, fixture.fabric, gateway.client)
 	now := fixture.paidThrough.Add(-monthlyRenewalLead)
-	if err := fixture.app.runMonthlyBillingOnce(ctx, fixture.service, now); !errors.Is(err, clients.ErrSub2APIChargeUnknown) {
+	if _, err := fixture.app.runMonthlyBillingSweep(ctx, fixture.service, now); !errors.Is(err, clients.ErrSub2APIChargeUnknown) {
 		t.Fatalf("lost HTTP debit response error=%v", err)
 	}
 	pending := d1RenewalOperation(t, fixture)
@@ -333,7 +333,7 @@ func TestD1RenewalHTTPTransactionRecoversAcrossPostgresReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	fixture.app = restarted
-	if err := fixture.app.runMonthlyBillingOnce(ctx, fixture.service, now.Add(time.Second)); err != nil {
+	if _, err := fixture.app.runMonthlyBillingSweep(ctx, fixture.service, now.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	completed := d1RenewalOperation(t, fixture)
@@ -350,7 +350,7 @@ func TestD1RenewalHTTPTransactionRecoversAcrossPostgresReopen(t *testing.T) {
 		t.Fatalf("recovered receipt lost transaction or period binding: receipt=%#v cost=%#v", receipt, cost)
 	}
 	before := len(*fixture.events)
-	if err := fixture.app.runMonthlyBillingOnce(ctx, fixture.service, now.Add(2*time.Second)); err != nil {
+	if _, err := fixture.app.runMonthlyBillingSweep(ctx, fixture.service, now.Add(2*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if len(gateway.codes) != 1 || gateway.historyCalls == 0 || len(*fixture.events) != before || len(fixture.ledger.receipts) != 1 {
@@ -406,7 +406,7 @@ func TestD1RenewalPersistedPaidPhaseWithoutTransactionCannotFulfill(t *testing.T
 				t.Fatal(err)
 			}
 			fixture.app = restarted
-			if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now); err != nil {
+			if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now); err != nil {
 				t.Fatal(err)
 			}
 			operation = d1RenewalOperation(t, fixture)
@@ -454,7 +454,7 @@ func TestD1RenewalRefundVerifiesOriginalAppliedDebitThroughHTTP(t *testing.T) {
 			fixture.fabric.computeRenewErr = errors.New("provider response lost")
 			fixture.fabric.computeSync = clients.ComputeAllocation{ID: "compute-workspace-monthly", AccountID: "acct-monthly", WorkspaceID: "workspace-monthly", Status: "renewing"}
 			now := fixture.paidThrough.Add(-monthlyRenewalLead)
-			if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now); err != nil {
+			if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now); err != nil {
 				t.Fatal(err)
 			}
 			operation := d1RenewalOperation(t, fixture)
@@ -541,7 +541,7 @@ func TestD1RenewalRefundVerifiesOriginalAppliedDebitThroughHTTP(t *testing.T) {
 			if err := fixture.app.refundWorkspaceRenewal(context.Background(), fixture.service, &retained, "fabric_compute_confirmed_absent"); err != nil {
 				t.Fatal(err)
 			}
-			if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now.Add(workspaceRenewalLeaseDuration+time.Second)); err != nil {
+			if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now.Add(workspaceRenewalLeaseDuration+time.Second)); err != nil {
 				t.Fatal(err)
 			}
 			completed := d1RenewalOperation(t, fixture)
@@ -561,7 +561,7 @@ func TestD1RenewalResumedFulfillmentRequiresAppliedDebit(t *testing.T) {
 	}
 	fixture.app = app
 	now := fixture.paidThrough.Add(-monthlyRenewalLead)
-	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now); err != nil {
+	if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now); err != nil {
 		t.Fatal(err)
 	}
 	for _, snapshot := range store.snapshots {
@@ -619,7 +619,7 @@ func TestD1RenewalResumedFulfillmentRequiresAppliedDebit(t *testing.T) {
 					t.Fatal(err)
 				}
 				replay.service = controlplane.NewService(replay.ledger, replay.fabric, &d1RenewalRefundSourceGateway{monthlySub2API: replay.sub2API, lookup: client})
-				err = replay.app.runMonthlyBillingOnce(context.Background(), replay.service, now)
+				_, err = replay.app.runMonthlyBillingSweep(context.Background(), replay.service, now)
 				current := d1RenewalOperation(t, replay)
 				if applied == "null" {
 					if !errors.Is(err, clients.ErrSub2APIChargeUnknown) || current.Status != op.Status || current.ErrorCode != "sub2api_charge_history_unavailable" {
