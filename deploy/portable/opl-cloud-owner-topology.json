@@ -108,7 +108,9 @@
     "OPL_CAPABILITY_ADDR",
     "OPL_CAPABILITY_OBJECT_URL",
     "OPL_CAPABILITY_OBJECT_TOKEN",
-    "OPL_LEDGER_ADDR"
+    "OPL_LEDGER_ADDR",
+    "OPL_CONTROL_PLANE_URL",
+    "OPL_FABRIC_CAPABILITY_KEY"
    ],
    "optionalEnv": [],
    "externalEnv": [],
@@ -117,7 +119,8 @@
     "BuildCoordination"
    ],
    "notes": [
-    "Runs the admitted BuildKit build; OPL_BUILD_BUILDER and OPL_BUILD_WORKDIR are installation facts for the build host."
+    "Runs the admitted BuildKit build; OPL_BUILD_BUILDER and OPL_BUILD_WORKDIR are installation facts for the build host.",
+    "Publishes the workspace image trust source admission for the repository each confirmed build artifact was published to. It reads the Control Plane's address from OPL_CONTROL_PLANE_URL and authenticates with the shared OPL_FABRIC_CAPABILITY_KEY it already holds as its peer credential."
    ],
    "transportPrincipal": "build",
    "daemonArgs": []

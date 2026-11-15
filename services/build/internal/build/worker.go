@@ -81,7 +81,9 @@ func (s *Service) RunOnce(ctx context.Context) error {
 			return unlockErr
 		}
 	}
-	return nil
+	// The admission intents are published after the jobs moved, so an unreachable
+	// Control Plane never delays a build that is already making progress.
+	return s.registerTrustSources(ctx)
 }
 func (s *Service) log(ctx context.Context, r *record, message string) error {
 	_, err := s.store.DB().ExecContext(ctx, `INSERT INTO build.build_logs(id,build_job_id,sequence,stage,level,message) SELECT $1,$2,COALESCE(MAX(sequence),-1)+1,$3,'info',$4 FROM build.build_logs WHERE build_job_id=$2`, id("log_"), r.Job.Id, r.Job.Stage, message)
@@ -274,6 +276,14 @@ func (s *Service) confirm(ctx context.Context, r *record, repository string, m M
 		return nil
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO build.build_artifacts(id,build_job_id,artifact_repository,artifact_digest,size_bytes,provenance,verification_evidence_ref,deployment_descriptor,deployment_descriptor_digest,deployment_descriptor_object_ref,descriptor_bytes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, artifactID, r.Job.Id, repository, m.Digest, m.Size, provenance, repository+"@"+m.Digest, bytes, dd, ref, bytes)
+	if err != nil {
+		return err
+	}
+	// The admission intent is written with the artifact, not after it: a confirmed
+	// artifact always carries exactly one intent, and a build that failed never
+	// carries one. The release version is the build job id, which is the version
+	// identity a reader can trace back to the job, its artifact and its digest.
+	_, err = tx.ExecContext(ctx, `INSERT INTO build.build_trust_source_registrations(id,build_job_id,release_repository,release_version) VALUES($1,$2,$3,$4) ON CONFLICT (build_job_id) DO NOTHING`, "tstr_"+r.Job.Id, r.Job.Id, repository, r.Job.Id)
 	if err != nil {
 		return err
 	}

@@ -32,21 +32,22 @@ type Service struct {
 	api.UnimplementedClaimUsageReadbackServer
 	api.UnimplementedOwnerCommitReadbackServer
 	api.UnimplementedDomainInboxServer
-	store      *ownerstore.Store
-	auth       *ownerservice.Authorizer
-	capability api.CapabilityCoordinationClient
-	versions   api.CapabilityProductServiceClient
-	inboxes    map[string]api.DomainInboxClient
-	identity   api.CloudIdentityAuthorizationClient
-	gateway    api.GatewayCoordinationClient
-	runner     *Runner
+	store       *ownerstore.Store
+	auth        *ownerservice.Authorizer
+	capability  api.CapabilityCoordinationClient
+	versions    api.CapabilityProductServiceClient
+	inboxes     map[string]api.DomainInboxClient
+	identity    api.CloudIdentityAuthorizationClient
+	gateway     api.GatewayCoordinationClient
+	runner      *Runner
+	trustSource TrustSourceRegistrar
 }
 
-func New(store *ownerstore.Store, auth *ownerservice.Authorizer, capability api.CapabilityCoordinationClient, versions api.CapabilityProductServiceClient, inboxes map[string]api.DomainInboxClient, identity api.CloudIdentityAuthorizationClient, gateway api.GatewayCoordinationClient, runner *Runner) (*Service, error) {
-	if store == nil || store.Schema() != "build" || capability == nil || versions == nil || identity == nil || gateway == nil || runner == nil {
-		return nil, errors.New("build store, Capability clients, identity and Gateway clients and isolated runner are required")
+func New(store *ownerstore.Store, auth *ownerservice.Authorizer, capability api.CapabilityCoordinationClient, versions api.CapabilityProductServiceClient, inboxes map[string]api.DomainInboxClient, identity api.CloudIdentityAuthorizationClient, gateway api.GatewayCoordinationClient, runner *Runner, trustSource TrustSourceRegistrar) (*Service, error) {
+	if store == nil || store.Schema() != "build" || capability == nil || versions == nil || identity == nil || gateway == nil || runner == nil || trustSource == nil {
+		return nil, errors.New("build store, Capability clients, identity and Gateway clients, isolated runner and trust source producer are required")
 	}
-	return &Service{store: store, auth: auth, capability: capability, versions: versions, inboxes: inboxes, identity: identity, gateway: gateway, runner: runner}, nil
+	return &Service{store: store, auth: auth, capability: capability, versions: versions, inboxes: inboxes, identity: identity, gateway: gateway, runner: runner, trustSource: trustSource}, nil
 }
 func (s *Service) Register(server *ownerservice.Server) error {
 	return server.RegisterGroup("BuildProductService", func(g *grpc.Server) {

@@ -370,6 +370,12 @@ services:
       OPL_TENANT_TOKEN: ${OPL_CLOUD_IDENTITY_TOKEN}
       OPL_GRPC_CERT_FILE: /pki/build.crt
       OPL_GRPC_KEY_FILE: /pki/build.key
+      # The Build owner publishes the workspace image trust source admission for
+      # the repository each confirmed build artifact was published to. It reads
+      # the Control Plane's address and authenticates with the shared credential
+      # the Control Plane and the Fabric owner already hold.
+      OPL_CONTROL_PLANE_URL: http://control-plane:8787
+      OPL_FABRIC_CAPABILITY_KEY: ${OPL_FABRIC_CAPABILITY_KEY:?Set OPL_FABRIC_CAPABILITY_KEY}
     volumes:
       - opl-cloud-local-v2-build:/var/lib/opl/build
       - type: bind

@@ -24,6 +24,6 @@ func TestOwnerDatabaseIsolation(t *testing.T) {
 		RuntimeRole:     "opl_build_runtime",
 		Source:          source,
 		OperationKind:   "build",
-		Tables:          []string{"build_jobs", "build_artifacts", "build_logs", "operations", "idempotency_records", "outbox_events", "outbox_deliveries", "inbox_events"},
+		Tables:          []string{"build_jobs", "build_artifacts", "build_logs", "operations", "idempotency_records", "outbox_events", "outbox_deliveries", "inbox_events", "build_trust_source_registrations"},
 	})
 }

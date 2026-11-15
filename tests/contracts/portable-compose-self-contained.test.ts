@@ -177,6 +177,8 @@ const expectedEnvironment: Record<string, string[]> = {
     "OPL_CAPABILITY_TOKEN",
     "OPL_CLOUD_IDENTITY_TOKEN",
     "OPL_CLOUD_IDENTITY_URL",
+    "OPL_CONTROL_PLANE_URL",
+    "OPL_FABRIC_CAPABILITY_KEY",
     "OPL_GRPC_CA_FILE",
     "OPL_GRPC_CERT_FILE",
     "OPL_GRPC_KEY_FILE",
