@@ -38,7 +38,7 @@ func workspaceImageTrustRequest(t *testing.T, method, url, token, body string) (
 		t.Fatal(err)
 	}
 	if token != "" {
-		request.Header.Set("x-opl-service-token", token)
+		request.Header.Set("Authorization", "Bearer "+token)
 	}
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
@@ -78,7 +78,7 @@ func workspaceImageTrustRepositories(t *testing.T, decoded map[string]any) []str
 // The registration is a service call. An unauthenticated write must not be
 // able to widen what a workspace is allowed to start.
 func TestWorkspaceImageTrustSourceRejectsWritesWithoutTheServiceToken(t *testing.T) {
-	t.Setenv("OPL_INTERNAL_SERVICE_TOKEN", workspaceImageTrustServiceToken)
+	t.Setenv("OPL_FABRIC_CAPABILITY_KEY", workspaceImageTrustServiceToken)
 	server, _ := workspaceImageTrustTestServer(t)
 	body := `{"releaseVersion":"customer-agent-2026.11.15","releaseRepository":"` + workspaceImageTrustRepository + `","expectedRevision":1,"reason":"customer agent build succeeded"}`
 	for name, token := range map[string]string{"no token": "", "wrong token": "not-the-service-token"} {
@@ -95,7 +95,7 @@ func TestWorkspaceImageTrustSourceRejectsWritesWithoutTheServiceToken(t *testing
 }
 
 func TestWorkspaceImageTrustSourceRejectsMalformedRegistrations(t *testing.T) {
-	t.Setenv("OPL_INTERNAL_SERVICE_TOKEN", workspaceImageTrustServiceToken)
+	t.Setenv("OPL_FABRIC_CAPABILITY_KEY", workspaceImageTrustServiceToken)
 	server, _ := workspaceImageTrustTestServer(t)
 	for name, body := range map[string]string{
 		"malformed json":    `{`,
@@ -121,7 +121,7 @@ func TestWorkspaceImageTrustSourceRejectsMalformedRegistrations(t *testing.T) {
 // the same repository again is the same fact and must not move it again, or
 // every retry would look like a new decision.
 func TestWorkspaceImageTrustSourceRegistrationIsRevisionedAuditedAndIdempotent(t *testing.T) {
-	t.Setenv("OPL_INTERNAL_SERVICE_TOKEN", workspaceImageTrustServiceToken)
+	t.Setenv("OPL_FABRIC_CAPABILITY_KEY", workspaceImageTrustServiceToken)
 	server, app := workspaceImageTrustTestServer(t)
 
 	response, decoded := workspaceImageTrustRequest(t, http.MethodPut, server.URL+"/internal/workspace-image-trust-source", workspaceImageTrustServiceToken,
@@ -193,7 +193,7 @@ func TestWorkspaceImageTrustSourceRegistrationIsRevisionedAuditedAndIdempotent(t
 }
 
 func TestWorkspaceImageTrustSourceReadbackMatchesTheSharedContractType(t *testing.T) {
-	t.Setenv("OPL_INTERNAL_SERVICE_TOKEN", workspaceImageTrustServiceToken)
+	t.Setenv("OPL_FABRIC_CAPABILITY_KEY", workspaceImageTrustServiceToken)
 	server, _ := workspaceImageTrustTestServer(t)
 	response, decoded := workspaceImageTrustRequest(t, http.MethodPut, server.URL+"/internal/workspace-image-trust-source", workspaceImageTrustServiceToken,
 		`{"releaseVersion":"customer-agent-2026.11.15","releaseRepository":"`+workspaceImageTrustRepository+`","expectedRevision":1,"reason":"customer agent build succeeded"}`)
@@ -224,7 +224,7 @@ func TestWorkspaceImageTrustSourceReadbackMatchesTheSharedContractType(t *testin
 }
 
 func TestWorkspaceImageTrustSourceInternalReadRequiresTheServiceToken(t *testing.T) {
-	t.Setenv("OPL_INTERNAL_SERVICE_TOKEN", workspaceImageTrustServiceToken)
+	t.Setenv("OPL_FABRIC_CAPABILITY_KEY", workspaceImageTrustServiceToken)
 	server, _ := workspaceImageTrustTestServer(t)
 	response, decoded := workspaceImageTrustRequest(t, http.MethodGet, server.URL+"/internal/workspace-image-trust-source", "", "")
 	if response.StatusCode != http.StatusUnauthorized {
@@ -232,73 +232,42 @@ func TestWorkspaceImageTrustSourceInternalReadRequiresTheServiceToken(t *testing
 	}
 }
 
-// The operator route is a read for a human. It is never a write path, and it
-// never reads without a session.
-func TestWorkspaceImageTrustSourceOperatorReadIsSessionBound(t *testing.T) {
-	t.Setenv("OPL_INTERNAL_SERVICE_TOKEN", workspaceImageTrustServiceToken)
-	server, app := workspaceImageTrustTestServer(t)
-
-	response, decoded := workspaceImageTrustRequest(t, http.MethodGet, server.URL+"/api/operator/workspace-image-trust-source", "", "")
-	if response.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("anonymous status=%d body=%#v want 401", response.StatusCode, decoded)
-	}
-
-	user, found, err := app.tables.GetUser(context.Background(), "usr-admin")
-	if err != nil || !found {
-		t.Fatalf("operator user missing: %v", err)
-	}
-	_, sessionID, err := app.createSession(user, "workspace-image-trust-source-test-token")
-	if err != nil {
-		t.Fatal(err)
-	}
-	request, err := http.NewRequest(http.MethodGet, server.URL+"/api/operator/workspace-image-trust-source", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request.AddCookie(sessionCookie(sessionID, 3600))
-	readback, err := http.DefaultClient.Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer readback.Body.Close()
-	if readback.StatusCode != http.StatusOK {
-		t.Fatalf("operator status=%d want 200", readback.StatusCode)
-	}
-	var envelope map[string]any
-	if err := json.NewDecoder(readback.Body).Decode(&envelope); err != nil {
-		t.Fatal(err)
-	}
-	data := workspaceImageTrustData(t, envelope)
-	if data["revision"] != float64(1) {
-		t.Fatalf("operator readback revision=%#v want 1", data["revision"])
-	}
-	if repositories := workspaceImageTrustRepositories(t, envelope); len(repositories) != 0 {
-		t.Fatalf("a fresh installation trusted something: %#v", repositories)
+// The registration is a service call, so the route lives under the internal
+// service surface and not under the operator surface. An operator route with
+// no production client is a surface nobody can reach, which is exactly what
+// the route ownership boundary refuses to let exist.
+func TestWorkspaceImageTrustSourceHasNoOperatorRoute(t *testing.T) {
+	t.Setenv("OPL_FABRIC_CAPABILITY_KEY", workspaceImageTrustServiceToken)
+	app := newControlPlaneAppEmpty()
+	mux := http.NewServeMux()
+	registerWorkspaceImageTrustSourceRoutes(mux, app)
+	for _, method := range []string{http.MethodGet, http.MethodPut} {
+		request := httptest.NewRequest(method, "/api/operator/workspace-image-trust-source", nil)
+		_, pattern := mux.Handler(request)
+		if pattern != "" {
+			t.Fatalf("the operator surface registered %q", pattern)
+		}
 	}
 }
 
-// The trust source must not be readable from a path that is not registered.
-func TestWorkspaceImageTrustSourceHasNoUnguardedWritePath(t *testing.T) {
-	t.Setenv("OPL_INTERNAL_SERVICE_TOKEN", workspaceImageTrustServiceToken)
-	server, _ := workspaceImageTrustTestServer(t)
-	for _, method := range []string{http.MethodPost, http.MethodPatch, http.MethodDelete} {
-		request, err := http.NewRequest(method, server.URL+"/api/operator/workspace-image-trust-source", bytes.NewBufferString(`{}`))
-		if err != nil {
-			t.Fatal(err)
-		}
-		response, err := http.DefaultClient.Do(request)
-		if err != nil {
-			t.Fatal(err)
-		}
-		response.Body.Close()
-		if response.StatusCode != http.StatusMethodNotAllowed && response.StatusCode != http.StatusUnauthorized {
-			t.Fatalf("%s on the operator route answered %d", method, response.StatusCode)
+// The registered route patterns and the shared contract constant must be the
+// same path. The provider reads the constant, so a drift between the two
+// would leave the provider calling a route nobody serves.
+func TestWorkspaceImageTrustSourceRouteIsTheSharedContractPath(t *testing.T) {
+	app := newControlPlaneAppEmpty()
+	mux := http.NewServeMux()
+	registerWorkspaceImageTrustSourceRoutes(mux, app)
+	for _, method := range []string{http.MethodGet, http.MethodPut} {
+		request := httptest.NewRequest(method, contracts.WorkspaceImageTrustSourcePath, nil)
+		_, pattern := mux.Handler(request)
+		if pattern != method+" "+contracts.WorkspaceImageTrustSourcePath {
+			t.Fatalf("registered pattern=%q want %q", pattern, method+" "+contracts.WorkspaceImageTrustSourcePath)
 		}
 	}
 }
 
 func TestWorkspaceImageTrustSourceRejectsAnUntrustedServiceTokenLength(t *testing.T) {
-	t.Setenv("OPL_INTERNAL_SERVICE_TOKEN", "short")
+	t.Setenv("OPL_FABRIC_CAPABILITY_KEY", "short")
 	server, _ := workspaceImageTrustTestServer(t)
 	response, decoded := workspaceImageTrustRequest(t, http.MethodPut, server.URL+"/internal/workspace-image-trust-source", "short",
 		`{"releaseVersion":"v1","releaseRepository":"`+workspaceImageTrustRepository+`","expectedRevision":1,"reason":"r"}`)

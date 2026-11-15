@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	workspaceImageTrustServiceToken = "workspace-image-trust-source-service-token-0001"
+	workspaceImageTrustServiceToken = "workspace-image-trust-source-capability-key-0001"
 	workspaceImageTrustRepository   = "127.0.0.1:5000/qualification/local-qualification"
 	workspaceImageTrustOtherRepo    = "127.0.0.1:5000/qualification/other-qualification"
 	// workspaceImageTrustDocumentedPath is written out literally on purpose:
@@ -37,7 +37,7 @@ func workspaceImageTrustControlPlaneStub(t *testing.T, repositories []string, re
 	// The stub answers only the documented path, so a client that calls a
 	// different one cannot pass by accident.
 	mux.HandleFunc("GET "+workspaceImageTrustDocumentedPath, func(w http.ResponseWriter, r *http.Request) {
-		*seen = append(*seen, r.Header.Get("x-opl-service-token"))
+		*seen = append(*seen, r.Header.Get("Authorization"))
 		source := contracts.WorkspaceImageTrustSource{SchemaVersion: 1, Revision: revision, Repositories: repositories}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -51,15 +51,26 @@ func workspaceImageTrustControlPlaneStub(t *testing.T, repositories []string, re
 }
 
 func workspaceImageTrustClientForTest(url, token string) *workspaceImageTrustSourceClient {
-	return newWorkspaceImageTrustSourceClient(func(name string) string {
-		switch name {
-		case "OPL_CONTROL_PLANE_URL":
-			return url
-		case "OPL_INTERNAL_SERVICE_TOKEN":
+	// The environment name is spelled out literally on purpose. If the shared
+	// contract constant drifted, the client would read a name this fake does
+	// not answer, and the guard would catch it instead of following the drift.
+	client := newWorkspaceImageTrustSourceClient(func(name string) string {
+		if name == "OPL_FABRIC_CAPABILITY_KEY" {
 			return token
 		}
 		return ""
 	})
+	client.url = url
+	return client
+}
+
+// The Control Plane's address is a fixed fact of the deployment topology, and
+// the fabric service is given no address for it, so there is nothing to read.
+func TestWorkspaceImageTrustSourceClientUsesTheFixedControlPlaneAddress(t *testing.T) {
+	client := newWorkspaceImageTrustSourceClient(nil)
+	if client.url != "http://control-plane:8787" {
+		t.Fatalf("control plane address=%q", client.url)
+	}
 }
 
 // The client reads the Control Plane's registered trust source over the shared
@@ -70,7 +81,7 @@ func TestWorkspaceImageTrustSourceClientReadsTheRegisteredSource(t *testing.T) {
 	if err := client.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(*seen) != 1 || (*seen)[0] != workspaceImageTrustServiceToken {
+	if len(*seen) != 1 || (*seen)[0] != "Bearer "+workspaceImageTrustServiceToken {
 		t.Fatalf("the client did not present the internal credential: %#v", *seen)
 	}
 	source := client.Source()

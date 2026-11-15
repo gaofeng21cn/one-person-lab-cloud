@@ -27,8 +27,11 @@ func TestWorkspaceImageTrustSourceWireContractIsPinned(t *testing.T) {
 	if WorkspaceImageTrustSourcePath != "/internal/workspace-image-trust-source" {
 		t.Fatalf("trust source path changed: %q", WorkspaceImageTrustSourcePath)
 	}
-	if WorkspaceImageTrustSourceTokenHeader != "x-opl-service-token" {
+	if WorkspaceImageTrustSourceTokenHeader != "Authorization" {
 		t.Fatalf("trust source credential header changed: %q", WorkspaceImageTrustSourceTokenHeader)
+	}
+	if WorkspaceImageTrustSourceTokenEnv != "OPL_FABRIC_CAPABILITY_KEY" {
+		t.Fatalf("trust source credential changed: %q", WorkspaceImageTrustSourceTokenEnv)
 	}
 }
 

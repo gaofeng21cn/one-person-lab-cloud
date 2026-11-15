@@ -16,8 +16,14 @@ const (
 	// from here, so the path cannot drift apart between them.
 	WorkspaceImageTrustSourcePath = "/internal/workspace-image-trust-source"
 	// WorkspaceImageTrustSourceTokenHeader carries the shared internal service
-	// credential on that call.
-	WorkspaceImageTrustSourceTokenHeader = "x-opl-service-token"
+	// credential on that call. It follows the product's service-to-service
+	// convention: a bearer credential in the Authorization header.
+	WorkspaceImageTrustSourceTokenHeader = "Authorization"
+	// WorkspaceImageTrustSourceTokenEnv is the environment name that carries
+	// the shared credential on both sides. It is the credential the Control
+	// Plane and the Fabric owner already hold as their shared secret, so
+	// neither side has to be handed a new one.
+	WorkspaceImageTrustSourceTokenEnv = "OPL_FABRIC_CAPABILITY_KEY"
 )
 
 var (

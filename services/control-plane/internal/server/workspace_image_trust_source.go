@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
+	"opl-cloud/packages/contracts/go/owneridentity"
 )
 
 // The workspace image trust source is the admission decision for images: which
@@ -91,14 +93,14 @@ func workspaceImageTrustSourceResponse(source contracts.WorkspaceImageTrustSourc
 }
 
 // requireInternalServiceToken authenticates a service-to-service call. The
-// token is the one internal credential both sides of the product already
-// share; every registration it accepts is audited and revisioned.
+// credential is the one the Control Plane and the Fabric owner already share
+// as their capability key, so neither side is handed a new secret for this
+// route. Every registration it accepts is audited and revisioned.
 func (app *controlPlaneServer) requireInternalServiceToken(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		expected := strings.TrimSpace(os.Getenv("OPL_INTERNAL_SERVICE_TOKEN"))
+		expected := strings.TrimSpace(os.Getenv(contracts.WorkspaceImageTrustSourceTokenEnv))
 		provided := strings.TrimSpace(r.Header.Get(contracts.WorkspaceImageTrustSourceTokenHeader))
-		if len(expected) < 32 || provided == "" ||
-			subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
+		if len(expected) < owneridentity.MinimumTokenLength || !bearerCredentialMatches(provided, expected) {
 			writeError(w, http.StatusUnauthorized, "service_token_invalid")
 			return
 		}
@@ -106,14 +108,26 @@ func (app *controlPlaneServer) requireInternalServiceToken(next http.HandlerFunc
 	}
 }
 
+// bearerCredentialMatches compares a presented bearer credential with the
+// expected one without leaking either through the comparison's timing.
+func bearerCredentialMatches(provided, expected string) bool {
+	want := sha256.Sum256([]byte("Bearer " + expected))
+	got := sha256.Sum256([]byte(provided))
+	return subtle.ConstantTimeCompare(got[:], want[:]) == 1
+}
+
 // registerWorkspaceImageTrustSourceRoutes installs the trust source surface.
 // The registration is a service call, not an operator action: the publisher
 // side registers a repository once its build succeeded, and no human edits an
 // environment file or an allowlist to make that image startable.
+//
+// The route patterns are written out literally because the route ownership
+// check reads the registrations with Go's parser: a pattern it cannot resolve
+// is a route it cannot see, and an invisible route is an unowned surface. The
+// shared contract constant is pinned against these literals by a guard test.
 func registerWorkspaceImageTrustSourceRoutes(mux *http.ServeMux, app *controlPlaneServer) {
-	mux.HandleFunc("GET "+contracts.WorkspaceImageTrustSourcePath, app.requireInternalServiceToken(app.getWorkspaceImageTrustSource))
-	mux.HandleFunc("PUT "+contracts.WorkspaceImageTrustSourcePath, app.requireInternalServiceToken(app.putWorkspaceImageTrustSource))
-	mux.HandleFunc("GET /api/operator/workspace-image-trust-source", app.protected(true, app.getWorkspaceImageTrustSource))
+	mux.HandleFunc("GET /internal/workspace-image-trust-source", app.requireInternalServiceToken(app.getWorkspaceImageTrustSource))
+	mux.HandleFunc("PUT /internal/workspace-image-trust-source", app.requireInternalServiceToken(app.putWorkspaceImageTrustSource))
 }
 
 func (app *controlPlaneServer) getWorkspaceImageTrustSource(w http.ResponseWriter, r *http.Request) {

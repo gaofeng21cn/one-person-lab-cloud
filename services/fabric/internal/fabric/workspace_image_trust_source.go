@@ -22,8 +22,10 @@ import (
 
 const (
 	// The Control Plane is a deployment unit of the product. Its address is
-	// fixed by the topology, and the environment may override it.
-	defaultControlPlaneURL = "http://control-plane:8787"
+	// fixed by the topology — every deployment that names it names it the same
+	// way — and the fabric service is not given an address for it, so there is
+	// nothing to read here.
+	controlPlaneTrustSourceURL = "http://control-plane:8787"
 	// A trust source older than this is refreshed before the next admission
 	// decision, so a registration takes effect without a restart.
 	workspaceImageTrustSourceTTL = 30 * time.Second
@@ -44,13 +46,9 @@ func newWorkspaceImageTrustSourceClient(getenv func(string) string) *workspaceIm
 	if getenv == nil {
 		getenv = func(string) string { return "" }
 	}
-	url := strings.TrimSpace(getenv("OPL_CONTROL_PLANE_URL"))
-	if url == "" {
-		url = defaultControlPlaneURL
-	}
 	return &workspaceImageTrustSourceClient{
-		url:    strings.TrimSuffix(url, "/"),
-		token:  strings.TrimSpace(getenv("OPL_INTERNAL_SERVICE_TOKEN")),
+		url:    controlPlaneTrustSourceURL,
+		token:  strings.TrimSpace(getenv(contracts.WorkspaceImageTrustSourceTokenEnv)),
 		client: &http.Client{Timeout: 3 * time.Second},
 	}
 }
@@ -69,7 +67,7 @@ func (c *workspaceImageTrustSourceClient) Refresh(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	request.Header.Set(contracts.WorkspaceImageTrustSourceTokenHeader, c.token)
+	request.Header.Set(contracts.WorkspaceImageTrustSourceTokenHeader, "Bearer "+c.token)
 	response, err := c.client.Do(request)
 	if err != nil {
 		return err
