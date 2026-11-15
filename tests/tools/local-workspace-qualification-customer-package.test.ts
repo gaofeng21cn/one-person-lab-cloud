@@ -391,3 +391,69 @@ test("the uploaded bytes are written through the requester the run supplies", as
   // The bytes the owner was promised are the bytes that were written.
   assert.equal(written[0].digest, uploaded.sha256);
 });
+
+test("the approved Runtime Release is read out of the catalog page", async () => {
+  // The owner publishes the approved Runtime Releases as one page and serves no
+  // route for a single release, so a chain that asked for one release by its
+  // id would read a 404 the owner never wrote.
+  const packageDir = fileURLToPath(new URL("./fixtures/customer-agent-package", import.meta.url));
+  const archive = await buildCustomerPackageArchive({
+    packageDir, probePath: "agent/provenance/probe.txt", probeContent: "nonce",
+  });
+  const asked = [];
+  const stop = new Error("stop_after_the_build_request");
+  let uploaded = null;
+  const http = {
+    json: async (path, init = {}) => {
+      asked.push(path);
+      if (path === "/api/v2/namespaces") return { payload: { items: [{ id: "ns_1", isDefault: true }] } };
+      if (path === "/api/v2/packages") return { payload: { id: "pkg_1" } };
+      if (path === "/api/v2/packages/pkg_1/uploads") {
+        uploaded = init.body;
+        return { payload: { id: "upload_1", packageVersionId: "pv_1", partSizeBytes: "16777216" } };
+      }
+      if (path === "/api/v2/uploads/upload_1/parts") return { payload: { url: "https://objects.test/part-1", method: "PUT", contentType: "application/octet-stream" } };
+      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
+      if (path === "/api/v2/package-versions/pv_1") return { payload: { id: "pv_1", packageId: "pkg_1", versionLabel: "1.0.0", sha256: uploaded?.sha256, sizeBytes: uploaded?.sizeBytes, status: "uploaded" } };
+      if (path === "/api/v2/catalog/build-policy") return { payload: { runtimeVersionId: "rt_1", defaultWebuiVersionId: "wu_1" } };
+      if (path === "/api/v2/catalog/runtime-versions?cursor=") {
+        return { payload: { items: [{ id: "rt_0" }], nextCursor: "rt_0" } };
+      }
+      if (path === "/api/v2/catalog/runtime-versions?cursor=rt_0") {
+        return { payload: { items: [{ id: "rt_1", publisherContract: { buildRecipe: { packageInput: { sourceRoot: "agent", targetPath: "/opt/opl" }, outputImageCommand: { entrypoint: ["/opt/opl/bin/runtime"] } } } }] } };
+      }
+      throw stop;
+    },
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ status: 200, headers: { get: () => "" } });
+  try {
+    await assert.rejects(runCustomerPackageEvidenceChain({
+      http,
+      auth: {},
+      wait: async () => {},
+      plan: {
+        mode: "directory", packageDir, probePath: "agent/provenance/probe.txt",
+        achievableEvidenceLevel: CUSTOMER_EVIDENCE_LEVEL_CONTENT,
+        requestedEvidenceLevel: CUSTOMER_EVIDENCE_LEVEL_CONTENT,
+        degradationReason: "",
+      },
+      packageName: "local-qualification-agent",
+      versionLabel: "1.0.0",
+      workspaceName: "local qualification",
+      provider: "local-docker",
+      billingMode: "LOCAL_NO_CHARGE",
+      computePlanId: "compute_1",
+      storagePlanId: "storage_1",
+      sourceSha: "a".repeat(40),
+    }), (error) => error === stop);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  // The release is on the second page of the catalog, so the chain has to
+  // walk the cursor to find it, and it never asks for a release by its id.
+  assert.equal(asked.includes("/api/v2/catalog/runtime-versions?cursor="), true);
+  assert.equal(asked.includes("/api/v2/catalog/runtime-versions?cursor=rt_0"), true);
+  assert.equal(asked.some((path) => path.startsWith("/api/v2/catalog/runtime-versions/")), false);
+  assert.equal(archive.entries.length, 3);
+});

@@ -2282,6 +2282,30 @@ export function assertCustomerPackageVersionReadback(readback, expected = {}) {
   return fields;
 }
 
+// The approved Runtime Release, read out of the catalog the installation
+// published.
+//
+// The owner publishes the approved Runtime Releases as one catalog page and
+// serves no route for a single release, so a chain that asked for one release
+// by its id would read a 404 the owner never wrote. The owner serves a bounded
+// page rather than the whole catalog, so the page is walked by cursor until
+// the release this Build names is found.
+export async function readRuntimeReleaseFromCatalog(http, auth, runtimeVersionId) {
+  const wanted = String(runtimeVersionId || "");
+  const seenCursors = new Set<string>();
+  let cursor = "";
+  for (;;) {
+    const page = (await http.json(`/api/v2/catalog/runtime-versions?cursor=${encodeURIComponent(cursor)}`, {}, auth)).payload;
+    const items = Array.isArray(page?.items) ? page.items : [];
+    const found = items.find((item) => String(item?.id || "") === wanted);
+    if (found) return found;
+    const next = typeof page?.nextCursor === "string" ? page.nextCursor : "";
+    if (!next || seenCursors.has(next)) return null;
+    seenCursors.add(next);
+    cursor = next;
+  }
+}
+
 // The deployed version identity.
 //
 // The Build this run asked for, the Capability Version that Build registered
@@ -2596,7 +2620,14 @@ export async function runCustomerPackageEvidenceChain({
   // copies the package from and the runtime it starts. The Runner refuses a
   // source root of ".", ".." or an absolute one, and the probe that carries
   // the nonce and the runtime must both live inside that one directory.
-  const runtimeVersion = (await http.json(`/api/v2/catalog/runtime-versions/${encodeURIComponent(runtimeVersionId)}`, {}, auth)).payload;
+  // The owner publishes the approved Runtime Releases as one catalog page and
+  // serves no route for a single release, so the release this Build names is
+  // read out of that page.
+  const runtimeVersion = await readRuntimeReleaseFromCatalog(http, auth, runtimeVersionId);
+  if (!runtimeVersion) {
+    throw namedQualificationError("local_v2_customer_runtime_version_unavailable",
+      "the approved Runtime Release this Build names is not in the catalog the installation published");
+  }
   const recipe = runtimeVersion?.publisherContract?.buildRecipe || null;
   const layout = assertCustomerPackageLayout({
     entries: plan.mode === "directory" ? archive.entries : null,
