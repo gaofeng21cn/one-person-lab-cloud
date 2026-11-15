@@ -1687,6 +1687,19 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       } catch (error) {
         customerBoundary = { code: String(error?.code || "local_v2_customer_chain_failed"), detail: redactedError(error), stage: "customer_package" };
         record("customer_package", "stopped", { code: customerBoundary.code, detail: customerBoundary.detail });
+        // What the chain bought before it stopped leaves the installation with
+        // it, so the owner is asked to delete it before the run ends.
+        const boughtWorkspaceId = String(customerReadback.customerOrder?.workspaceId || "");
+        if (boughtWorkspaceId) {
+          try {
+            await deleteWorkspaceOnOwnerRoute(http, auth, {
+              workspaceId: boughtWorkspaceId, confirmationName: customerWorkspaceName,
+              idempotencyKey: `local-v2-customer-delete:${options.sourceSha}:${String(customerReadback.upload?.packageVersionId || "stopped")}`, wait,
+            });
+          } catch {
+            // The host resources are cleaned below whatever the owner says.
+          }
+        }
       } finally {
         // Whatever this chain bought leaves the host with it. The qualification
         // is about an installation that holds nothing it did not declare.
@@ -2494,7 +2507,7 @@ export async function runCustomerPackageEvidenceChain({
   // The package.
   const packagePayload = (await http.json("/api/v2/packages", {
     method: "POST",
-    headers: { "idempotency-key": `local-v2-customer-package:${sourceSha}:${packageName}` },
+    headers: { "idempotency-key": `local-v2-customer-package-create:${sourceSha}:${packageName}` },
     body: { namespaceId, name: packageName, description: `uploaded by the local v2 qualification on behalf of ${packageName}` },
   }, auth, [200, 201, 202])).payload;
   const packageId = String(packagePayload?.id || "");
@@ -2677,7 +2690,17 @@ export async function runCustomerPackageEvidenceChain({
   if (opened.status !== 200) {
     throw namedQualificationError("local_v2_customer_entry_unreachable", `the published entry returned HTTP ${opened.status}`);
   }
-  readback.customerEntry = { ...readback.customerEntry, ...assertCustomerEntryContentProvenance(opened.text, nonce) };
+  try {
+    readback.customerEntry = { ...readback.customerEntry, ...assertCustomerEntryContentProvenance(opened.text, nonce) };
+  } catch (error) {
+    // The package did not carry this run's probe to its entry. When the caller
+    // asked for the content level, that is the answer it refuses to accept.
+    // When the caller accepted the artifact level, the chain keeps the
+    // identity it proved and says that the content it did not prove.
+    if (plan.requestedEvidenceLevel === CUSTOMER_EVIDENCE_LEVEL_CONTENT) throw error;
+    readback.evidenceLevel = CUSTOMER_EVIDENCE_LEVEL_ARTIFACT;
+    readback.degradationReason = "the published entry did not answer with this run's probe, so the entry content cannot be tied to this upload";
+  }
 
   // The deletion of what this chain bought.
   const deletion = await deleteWorkspaceOnOwnerRoute(http, auth, {

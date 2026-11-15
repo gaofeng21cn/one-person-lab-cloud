@@ -1,0 +1,32 @@
+#!/usr/bin/env node
+/*
+ * The customer agent of the fixture package.
+ *
+ * The probe convention is the package's own: the package carries a probe file
+ * and the runtime answers with the content of that file. The run that
+ * uploads the package replaces the probe file with a nonce it minted before
+ * the upload, so an answer that carries the nonce can only come from that
+ * upload.
+ *
+ * The probe file sits under the same directory as this script's package root,
+ * so the runtime finds it wherever the platform copies the package to. The
+ * runtime and the probe share one parent directory on purpose: the Build
+ * Runner copies exactly that directory into the image.
+ */
+const { readFileSync } = require("node:fs");
+const { createServer } = require("node:http");
+const { dirname, resolve } = require("node:path");
+
+const probePath = process.env.OPL_PROBE_FILE || resolve(__dirname, "..", "provenance", "probe.txt");
+let probe = "";
+try {
+  probe = readFileSync(probePath, "utf8").trim();
+} catch {
+  probe = "";
+}
+
+const port = Number(process.env.PORT || 3000);
+createServer((request, response) => {
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(JSON.stringify({ ok: true, path: request.url, probe }));
+}).listen(port, "0.0.0.0");

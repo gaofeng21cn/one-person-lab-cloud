@@ -23,6 +23,27 @@ on:
         type: choice
         options:
           - local-v2
+      customer_package_dir:
+        description: Directory of the customer package to upload, relative to the checkout; empty qualifies the repository fixture.
+        required: false
+        type: string
+      customer_package_url:
+        description: HTTPS URL of a customer package archive to qualify; empty qualifies the repository fixture.
+        required: false
+        type: string
+      customer_probe_path:
+        description: Path of the probe file inside the customer package that carries the run nonce.
+        required: false
+        default: agent/provenance/probe.txt
+        type: string
+      customer_evidence_level:
+        description: Evidence level this run has to reach for the customer package.
+        required: false
+        default: content-provenance
+        type: choice
+        options:
+          - content-provenance
+          - artifact-identity
 
 permissions:
   contents: read
@@ -77,6 +98,10 @@ jobs:
           repository="127.0.0.1:$port/opl-qualification-workspace"
           tag="$repository:fixture"
           printf 'image_tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+          # The lane registry serves plain HTTP on this host, and the Build
+          # owner may only pull from a host that is named here. The host is
+          # known here, where the registry was created, and nowhere else.
+          printf 'registry_host=127.0.0.1:%s\n' "$port" >> "$GITHUB_OUTPUT"
           docker build --file deploy/portable/qualification-workspace.Dockerfile \
             --label "org.opencontainers.image.revision=$PRODUCT_SHA" --tag "$tag" .
           docker push "$tag"
@@ -125,6 +150,42 @@ jobs:
           sudo chown "$(id -u):$(id -g)" "$qualification_root/storage"
           printf 'storage_root=%s\n' "$qualification_root/storage" >> "$GITHUB_OUTPUT"
 
+      - name: Prepare the customer package to qualify
+        id: customer
+        shell: bash
+        env:
+          CUSTOMER_PACKAGE_DIR: ${{ inputs.customer_package_dir }}
+          CUSTOMER_PACKAGE_URL: ${{ inputs.customer_package_url }}
+          CUSTOMER_PROBE_PATH: ${{ inputs.customer_probe_path }}
+        run: |
+          set -euo pipefail
+          package_root="$RUNNER_TEMP/customer-package"
+          rm -rf -- "$package_root"
+          mkdir -p "$package_root"
+          if [ -n "$CUSTOMER_PACKAGE_DIR" ]; then
+            # A package directory of the checkout. The probe path is the file
+            # inside it that carries the run nonce.
+            test -d "$CUSTOMER_PACKAGE_DIR"
+            printf 'package_dir=%s\n' "$PWD/$CUSTOMER_PACKAGE_DIR" >> "$GITHUB_OUTPUT"
+            printf 'probe_path=%s\n' "$CUSTOMER_PROBE_PATH" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -n "$CUSTOMER_PACKAGE_URL" ]; then
+            # A package archive. It is unpacked so the run can put its own
+            # nonce into the package before the package is uploaded.
+            curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+              "$CUSTOMER_PACKAGE_URL" --output "$package_root/package.zip"
+            unzip -q "$package_root/package.zip" -d "$package_root/extracted"
+            test -d "$package_root/extracted"
+            printf 'package_dir=%s\n' "$package_root/extracted" >> "$GITHUB_OUTPUT"
+            printf 'probe_path=%s\n' "$CUSTOMER_PROBE_PATH" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The repository fixture is one input of the same shape as any other
+          # customer package.
+          printf 'package_dir=%s\n' "$PWD/tests/tools/fixtures/customer-agent-package" >> "$GITHUB_OUTPUT"
+          printf 'probe_path=%s\n' "$CUSTOMER_PROBE_PATH" >> "$GITHUB_OUTPUT"
+
       - name: Prepare and exercise the native owner installation
         if: ${{ inputs.mode == 'local-v2' }}
         env:
@@ -134,6 +195,10 @@ jobs:
           WORKSPACE_IMAGE_REF: ${{ steps.workspace.outputs.image_ref }}
           STORAGE_ROOT: ${{ steps.storage.outputs.storage_root }}
           INSTALLER_SHA: ${{ github.sha }}
+          REGISTRY_HOST: ${{ steps.workspace.outputs.registry_host }}
+          CUSTOMER_PACKAGE_DIR: ${{ steps.customer.outputs.package_dir }}
+          CUSTOMER_PROBE_PATH: ${{ steps.customer.outputs.probe_path }}
+          CUSTOMER_EVIDENCE_LEVEL: ${{ inputs.customer_evidence_level }}
         shell: bash
         run: |
           set -euo pipefail
@@ -150,6 +215,11 @@ jobs:
           args=(--product-root "$PWD" --directory "$directory" --project "$project"
             --source-sha "$PRODUCT_SHA" --cloud-image "$CLOUD_IMAGE_REF"
             --workspace-image "$WORKSPACE_IMAGE_REF" --storage-root "$STORAGE_ROOT")
+          # The plain-HTTP host of the lane registry is named here, where the
+          # registry was created. A registry that serves TLS is not named.
+          if [ -n "$REGISTRY_HOST" ]; then
+            args+=(--insecure-http-hosts "$REGISTRY_HOST")
+          fi
           node "$installer/tools/local-v2-clean-host.ts" "${args[@]}"
           bash deploy/portable/local-v2-pki.sh "$directory/pki"
           curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
@@ -167,7 +237,14 @@ jobs:
             cp "$bootstrap" "$RUNNER_TEMP/local-workspace-qualification.json"
             exit 1
           fi
+          # The customer package chain runs on the qualified installation: the
+          # package the operator named is uploaded, built explicitly, and the
+          # Workspace that runs that exact version has to answer with the nonce
+          # this run put into the package.
           node tools/local-workspace-qualification.ts "${native_args[@]}" \
+            --customer-package-dir "$CUSTOMER_PACKAGE_DIR" \
+            --customer-probe-path "$CUSTOMER_PROBE_PATH" \
+            --customer-expected-evidence-level "$CUSTOMER_EVIDENCE_LEVEL" \
             --receipt "$RUNNER_TEMP/local-workspace-qualification.json"
 
       - name: Upload local qualification receipt
