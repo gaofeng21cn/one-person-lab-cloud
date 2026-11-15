@@ -17,7 +17,7 @@ on:
         required: false
         type: string
       mode:
-        description: The published installation is the only qualification; this input names it.
+        description: Native Local-Docker qualification using the declared local-v2 topology.
         required: false
         default: local-v2
         type: choice

@@ -46,10 +46,6 @@ export const LOCAL_DOCKER_QUALIFICATION_PROFILE = qualificationProviderProfile("
 });
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-// The Candidate file set this script qualifies: one base Compose file, the
-// deployment overlay, the Fabric provider overlay, and the Local-Workspace
-// overlay. The deployment and Fabric overlays are separate selections that the
-// script fixes to the Local installation it qualifies.
 // The v2 installation is one Compose file: its owners, its proxy, its fixture
 // authority and its PKI are all declared there, so a v2 run starts exactly this
 // file and no retained overlay.
@@ -61,13 +57,13 @@ export const LOCAL_V2_INSTALLATION_TEMPLATE = "deploy/portable/opl-cloud.env.exa
 
 // The driver runs one installation mode at a time, and the mode owns which
 // Compose files it starts, which endpoints it may call and which authority it
-// authenticates against. A mode is selected explicitly; nothing below infers
-// one from a partially configured environment, because a run that mixed the v2
+// authenticates against. The mode defaults to local-v2; nothing below infers
+// another from a partially configured environment, because a run that mixed the v2
 // owners with a retained Control Plane writer would price and charge a purchase
 // in the wrong authority.
 export const QUALIFICATION_MODE_LOCAL_V2 = "local-v2";
-// The retained version-one fixture and live runs are retired: the published
-// installation is the only qualification. Their names stay so a caller that
+// The version-one fixture and live runs are retired from this tool; local-v2
+// is its only mode. Their names stay so a caller that
 // still asks for one is told which mode it asked for, and that it is gone.
 export const QUALIFICATION_MODE_LEGACY_FIXTURE = "legacy-fixture";
 export const QUALIFICATION_MODE_LEGACY_LIVE = "legacy-live";
@@ -123,7 +119,7 @@ function retiredQualificationModeError(mode) {
   const name = String(mode || "").trim();
   if (name === QUALIFICATION_MODE_LEGACY_FIXTURE || name === QUALIFICATION_MODE_LEGACY_LIVE) {
     return namedQualificationError("local_qualification_mode_retired",
-      `qualification mode ${name} is retired; the published installation is the only qualification`);
+      `qualification mode ${name} is retired; this tool supports only local-v2`);
   }
   return namedQualificationError("local_qualification_mode_invalid",
     `qualification mode must be one of ${QUALIFICATION_MODES.join(", ")}`);

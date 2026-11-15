@@ -262,9 +262,8 @@ test("source image tag inspection hands off one exact immutable RepoDigest", () 
   }
 });
 
-test("the published installation is the default qualification", () => {
-  // The default is the published installation: a run names the declared
-  // installation and nothing else.
+test("the declared native topology is the default local qualification", () => {
+  // The default is local-v2: a run names the declared native installation.
   assert.deepEqual(parseLocalQualificationArgs([
     "--source-sha", sha,
     "--installation-env", "/tmp/installation.env",

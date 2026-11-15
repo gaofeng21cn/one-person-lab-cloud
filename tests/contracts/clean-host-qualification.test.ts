@@ -49,7 +49,7 @@ test("clean-host workflow delegates qualification to the reusable local runner",
   assert.equal(upload?.with?.["if-no-files-found"], "error");
 });
 
-test("clean-host workflow offers the published installation and no retired qualification", async () => {
+test("clean-host workflow offers native local-v2 and no retired qualification mode", async () => {
   const workflow = parse(await readFile(workflowPath, "utf8"));
   const trigger = workflow.on ?? workflow["on"];
   const job = workflow.jobs?.clean_host_qualification;
