@@ -2129,7 +2129,7 @@ export const CUSTOMER_EVIDENCE_LEVEL_ARTIFACT = "artifact-identity";
 export const CUSTOMER_EVIDENCE_LEVELS = Object.freeze([CUSTOMER_EVIDENCE_LEVEL_CONTENT, CUSTOMER_EVIDENCE_LEVEL_ARTIFACT]);
 
 // The states a Build reaches that are not "still working".
-const CUSTOMER_BUILD_TERMINAL = Object.freeze(["succeeded", "failed", "cancelled"]);
+const CUSTOMER_BUILD_TERMINAL = new Set(["succeeded", "failed", "cancelled"]);
 
 // The name the owner accepts for a package.
 const CUSTOMER_PACKAGE_NAME_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
