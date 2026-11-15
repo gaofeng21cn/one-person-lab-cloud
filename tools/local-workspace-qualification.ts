@@ -56,6 +56,15 @@ export const LOCAL_V2_QUALIFICATION_COMPOSE = "deploy/portable/compose.local-v2.
 // The entry may be published over plain HTTP or served by the installation's
 // own origin with its own certificate, so the request follows the URL it is
 // given and the certificate the installation declares.
+// The uploaded bytes go to the installation's own object origin, signed by the
+// installation's CA. A request that trusted the host store instead would fail
+// there, so the part is written through the same trust anchor as every other
+// request of the run.
+export function customerUploadRequest(url, init = {}, caFile = "") {
+  const ca = caFile ? readFileSync(caFile) : null;
+  return caRequest(url, init, new Headers(init.headers || {}), init.body, ca);
+}
+
 async function customerEntryRequest(url, headers, caFile) {
   const target = new URL(url);
   if (target.protocol === "https:") {
@@ -1670,6 +1679,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
           pollIntervalMs, pollAttempts,
           readback: customerReadback,
           fetchEntry: (url, headers) => customerEntryRequest(url, headers, caFile),
+          putPart: (url, init) => customerUploadRequest(url, init, caFile),
         });
         record("customer_package", customerReadback.degradationReason ? "degraded" : "confirmed", {
           evidenceLevel: String(customerReadback.evidenceLevel || ""),
@@ -2475,7 +2485,7 @@ export async function readCustomerPackageArchive(archivePath) {
 export async function runCustomerPackageEvidenceChain({
   http, auth, wait, plan, packageName, versionLabel, workspaceName, provider, billingMode,
   computePlanId, storagePlanId, sourceSha, pollIntervalMs = 3000, pollAttempts = 100, readback = {},
-  fetchEntry = null,
+  fetchEntry = null, putPart = null,
 }) {
   // The nonce is minted for this run and written into the package before the
   // package is uploaded. The receipt keeps its digest and never its value.
@@ -2548,7 +2558,8 @@ export async function runCustomerPackageEvidenceChain({
     const putHeaders = { "content-type": String(permit?.contentType || "application/octet-stream") };
     const checksumName = String(permit?.requiredChecksumHeaderName || "");
     if (checksumName) putHeaders[checksumName.toLowerCase()] = String(permit?.requiredChecksumHeaderValue || "");
-    const put = await fetch(url, { method: String(permit?.method || "PUT"), headers: putHeaders, body: slice });
+    const putInit = { method: String(permit?.method || "PUT"), headers: putHeaders, body: slice };
+    const put = putPart ? await putPart(url, putInit) : await fetch(url, putInit);
     if (put.status >= 300) {
       throw namedQualificationError("local_v2_customer_upload_part_refused", `part ${number} was refused with HTTP ${put.status}`);
     }
