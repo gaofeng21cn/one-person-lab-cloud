@@ -7,29 +7,17 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
-  continueWorkspaceDelete,
   assertLocalV2ComposeEnvironment,
   assertWorkspaceQualificationTopology,
   buildSourceImages,
   deleteWorkspaceOnOwnerRoute,
-  readWorkspaceRefundReceipt,
-  readWorkspaceEvidence,
   readWorkspaceDeletionEvidence,
-  cleanupLocalQualificationSecretRoot,
-  cleanupLocalQualificationPostgresRoot,
   createHTTP,
   exactRepoDigestFromInspection,
-  finishLocalWorkspaceQualification,
   immutableImageDigest,
-  liveAuthorityAdjustmentReadback,
   login,
   loadJ0ReadyReceipt,
-  openQualificationSessions,
-  loadSub2APISecretFile,
   localBuildProxyArgs,
-  localDockerInstallationInputs,
-  localQualificationComposeFiles,
-  qualificationEnvFileEntries,
   qualificationComposeEnvironment,
   parseLocalQualificationArgs,
   qualificationModeBinding,
@@ -43,21 +31,11 @@ import {
   LOCAL_V2_QUALIFICATION_SERVICES,
   LOCAL_V2_OWNER_STORES,
   redactedError,
-  runLocalWorkspaceJ1HTTPQualification,
-  readLocalQualificationAccount,
   sourceData,
-  stableID,
   validateQualificationSourceIdentity,
   validateJ0ReadyReceipt,
-  validateLocalJ1AccountingReadback,
   validateLocalQualificationReceipt,
-  workspaceDeleteFailureEvidence,
-  workspaceDeleteReceiptStagesMatch,
-  workspaceGatewaySecretRef,
-  workspaceReservedKeyName,
-  retainedWorkspaceKey
 } from "../../tools/local-workspace-qualification.ts";
-import { runLocalWorkspaceQualification } from "../../tools/local-workspace-qualification.ts";
 
 // The CloudIdentity login the browser performs. The in-memory fake answers it
 // the way the identity owner does: a login context carrying a double-submit
@@ -131,36 +109,6 @@ exit 0
   }
 });
 
-test("a restart still establishes the declared customer's CloudIdentity session", async () => {
-  const http = {
-    origin: "https://qualification.invalid",
-    async json(path) {
-      if (path === "/api/auth/login") {
-        return { response: { headers: new Headers({ "set-cookie": "opl_session=control-plane", "x-opl-csrf-token": "cp-csrf" }) },
-          payload: { user: { accountId: "acct-customer" } } };
-      }
-      if (path === "/api/v2/auth/context") {
-        return { response: { headers: ownerLoginContextHeaders() }, payload: { csrfToken: "owner-csrf-token" } };
-      }
-      if (path === "/api/v2/auth/login") {
-        return { response: { headers: ownerSessionHeaders() }, payload: ownerSessionPayload };
-      }
-      if (path === "/api/v2/auth/session") return { response: { headers: new Headers() }, payload: ownerSessionPayload };
-      if (path === "/api/auth/me") {
-        return { response: { headers: new Headers() }, payload: {
-          source: "sub2api", available: true, status: "available",
-          data: { accountId: "acct-customer", email: "customer@example.test", role: "owner", status: "active", sub2apiUserId: "41" },
-        } };
-      }
-      throw new Error(`unexpected request ${path}`);
-    },
-  };
-  const auth = await openQualificationSessions(http, "customer@example.test", "password", "acct-customer", "restart-key");
-  assert.match(auth.cookie, /opl_console_session=owner-session/,
-    "the restarted v2 requests carry the CloudIdentity cookie, not only the Control Plane one");
-  assert.match(auth.cookie, /opl_session=control-plane/);
-  assert.equal(auth.ownerCsrf, "owner-csrf-token");
-});
 
 test("the owner route mints the delete operation and the harness follows its identity", async () => {
   const accepted = {
@@ -228,24 +176,6 @@ test("the owner route mints the delete operation and the harness follows its ide
   }), /did not succeed/);
 });
 
-test("a Workspace refund binds Gateway's exact refund to the original charge", async () => {
-  const refund = {
-    id: "wallet-refund-alpha", workspaceId: "ws-alpha", kind: "refund", status: "confirmed",
-    amountUSDMicros: "52506972", receiptId: "receipt-refund", externalReference: "opl:refund-alpha",
-    originalChargeOperationId: "wallet-charge-alpha", createdAt: "2026-10-18T00:10:00Z",
-  };
-  const calls = [];
-  const http = { json: async (...args) => { calls.push(args); return { payload: { items: [refund] } }; } };
-  const binding = { workspaceId: "ws-alpha", chargeAmountUsdMicros: "52580000", chargeOperationId: "wallet-charge-alpha", refundOperationId: refund.id };
-  assert.deepEqual(await readWorkspaceRefundReceipt(http, null, binding), {
-    walletOperationId: refund.id, receiptId: refund.receiptId, amountUsdMicros: refund.amountUSDMicros,
-    code: refund.externalReference, originalChargeOperationId: refund.originalChargeOperationId,
-  });
-  assert.deepEqual(calls.map((args) => args[0]), ["/api/v2/workspaces/ws-alpha/transactions?limit=100"]);
-  for (const change of [{ originalChargeOperationId: "another-charge" }, { status: "unknown" }, { amountUSDMicros: "52580001" }]) {
-    await assert.rejects(() => readWorkspaceRefundReceipt({ json: async () => ({ payload: { items: [{ ...refund, ...change }] } }) }, null, binding), /refund receipt readback is invalid/);
-  }
-});
 
 test("deleted Workspace readback requires exact Ledger evidence and confirmed owner absence", async () => {
   const deletion = {
@@ -266,109 +196,9 @@ test("deleted Workspace readback requires exact Ledger evidence and confirmed ow
   ]) await assert.rejects(() => read(changed), /deletion receipt readback/);
 });
 
-test("owner delete continues only from exact durable compute pending evidence", async () => {
-  const path = "/api/workspaces/ws-alpha";
-  const init = { method: "DELETE", headers: { "idempotency-key": "delete-alpha" }, body: {} };
-  const auth = { cookie: "session=test", csrf: "csrf-test" };
-  const operationId = "workspace-delete-alpha";
-  const responses = [
-    { response: { status: 202, headers: new Headers({ "retry-after": "1" }) }, payload: { status: "pending", phase: "storage_absent", ownerStage: "compute", computeStatus: "destroying", operationId, workspaceId: "ws-alpha", computeReadbacks: 1, maxComputeReadbacks: 8 } },
-    { response: { status: 202, headers: new Headers({ "retry-after": "1" }) }, payload: { status: "pending", phase: "storage_absent", ownerStage: "compute", computeStatus: "destroying", operationId, workspaceId: "ws-alpha", computeReadbacks: 2, maxComputeReadbacks: 8 } },
-    { response: { status: 200, headers: new Headers() }, payload: { status: "deleted", operationId, workspaceId: "ws-alpha" } }
-  ];
-  const calls = [];
-  const waits = [];
-  const pendingEvidence = [];
-  const http = {
-    json: async (...args) => {
-      calls.push(args);
-      return responses.shift();
-    }
-  };
 
-  const deletion = await continueWorkspaceDelete(http, path, init, auth, {
-    operationId, workspaceId: "ws-alpha", onPending: (pending) => pendingEvidence.push(pending)
-  }, async (milliseconds) => waits.push(milliseconds));
-  assert.equal(deletion.status, "deleted");
-  assert.equal(calls.length, 3);
-  assert.deepEqual(waits, [1000, 1000]);
-  for (const call of calls) assert.deepEqual(call, [path, init, auth, [200, 202]]);
-  assert.equal(pendingEvidence.length, 2);
-  assert.deepEqual(pendingEvidence.at(-1), {
-    phase: "storage_absent", ownerStage: "compute", ordinal: 2, max: 8,
-    operationDigest: `sha256:${createHash("sha256").update(operationId).digest("hex")}`
-  });
-  assert.doesNotMatch(JSON.stringify(pendingEvidence), /workspace-delete-alpha|ws-alpha/);
-});
 
-test("owner delete response-loss continuation preserves the consumed read ordinal", async () => {
-  const responses = [
-    { response: { status: 202, headers: new Headers({ "retry-after": "1" }) }, payload: {
-      status: "pending", phase: "storage_absent", ownerStage: "compute", computeStatus: "destroying",
-      operationId: "workspace-delete-alpha", workspaceId: "ws-alpha", computeReadbacks: 2, maxComputeReadbacks: 8
-    } },
-    { response: { status: 200, headers: new Headers() }, payload: {
-      status: "deleted", operationId: "workspace-delete-alpha", workspaceId: "ws-alpha"
-    } }
-  ];
-  const waits = [];
-  const result = await continueWorkspaceDelete({ json: async () => responses.shift() }, "/api/workspaces/ws-alpha", {
-    method: "DELETE"
-  }, null, {
-    operationId: "workspace-delete-alpha", workspaceId: "ws-alpha", initialReadback: 1, initialMaxReadbacks: 8
-  }, async (milliseconds) => waits.push(milliseconds));
-  assert.equal(result.status, "deleted");
-  assert.deepEqual(waits, [1000]);
-  assert.deepEqual(workspaceDeleteFailureEvidence(new Error("The operation was aborted due to timeout")), {
-    status: 0, reasonCode: "request_timeout"
-  });
-});
 
-test("owner delete rejects pending identity, ordinal, and budget drift", async () => {
-  const base = { status: "pending", phase: "storage_absent", ownerStage: "compute", computeStatus: "destroying", operationId: "workspace-delete-alpha", workspaceId: "ws-alpha", computeReadbacks: 1, maxComputeReadbacks: 8 };
-  for (const [name, pending] of Object.entries({
-    identity: { ...base, operationId: "workspace-delete-other" },
-    ordinal: { ...base, computeReadbacks: 2 },
-    budget: { ...base, maxComputeReadbacks: 9 },
-    exhausted: { ...base, computeReadbacks: 8 }
-  })) {
-    const http = { json: async () => ({ response: { status: 202 }, payload: pending }) };
-    await assert.rejects(() => continueWorkspaceDelete(http, "/api/workspaces/ws-alpha", { method: "DELETE" }, null, {
-      operationId: "workspace-delete-alpha", workspaceId: "ws-alpha"
-    }), /pending evidence/, name);
-  }
-});
-
-test("owner delete failure keeps only redacted last pending evidence", async () => {
-  const operationId = "workspace-delete-secret-alpha";
-  const pending = {
-    status: "pending", phase: "storage_absent", ownerStage: "compute", computeStatus: "destroying",
-    operationId, workspaceId: "ws-secret-alpha", computeReadbacks: 1, maxComputeReadbacks: 8
-  };
-  const evidence = [];
-  const failures = [];
-  let calls = 0;
-  const http = {
-    json: async (_path, _init, _auth, statuses) => {
-      if (statuses.includes(202)) {
-        calls += 1;
-        if (calls === 1) return { response: { status: 202, headers: new Headers({ "retry-after": "1" }) }, payload: pending };
-        throw new Error(`HTTP DELETE /api/workspaces/${pending.workspaceId} returned 409: {"reasonCode":"fabric_compute_readback_unavailable","operationId":"${operationId}"}`);
-      }
-      throw new Error("unexpected status set");
-    }
-  };
-  await assert.rejects(() => continueWorkspaceDelete(http, "/api/workspaces/ws-secret-alpha", { method: "DELETE" }, null, {
-    operationId, workspaceId: pending.workspaceId, onPending: (value) => evidence.push(value), onFailure: (value) => failures.push(value)
-  }, async () => {}), /continuation failed/);
-  assert.equal(evidence.length, 1);
-  assert.deepEqual(failures, [{ status: 409, reasonCode: "fabric_compute_readback_unavailable" }]);
-  assert.deepEqual(evidence[0], {
-    phase: "storage_absent", ownerStage: "compute", ordinal: 1, max: 8,
-    operationDigest: `sha256:${createHash("sha256").update(operationId).digest("hex")}`
-  });
-  assert.doesNotMatch(JSON.stringify({ evidence, failures }), /workspace-delete-secret-alpha|ws-secret-alpha/);
-});
 
 test("qualification compose uses the runner-owned exact environment", () => {
   const exactSecretRoot = "/tmp/opl-qualification/fabric-secrets";
@@ -411,61 +241,7 @@ test("v2 store verification checks the owner schema and returns an explicit owne
   assert.ok(calls.some((args) => args.some((arg) => String(arg).includes("schemaname='workspace'"))));
 });
 
-test("qualification teardown clears the root-owned secret bind mount through Fabric", async () => {
-  const calls = [];
-  const compose = async (args, settings) => {
-    calls.push({ args, settings });
-    return { code: 0 };
-  };
-  await cleanupLocalQualificationSecretRoot(compose, "/tmp/opl-local-qualification-123/fabric-secrets");
-  assert.deepEqual(calls, [{
-    args: [
-      "exec", "-T", "--user", "root", "fabric", "sh", "-c",
-      'rm -rf -- "$1"/* "$1"/.[!.]* "$1"/..?*',
-      "opl-qualification-secret-cleanup", "/tmp/opl-local-qualification-123/fabric-secrets"
-    ],
-    settings: { allowFailure: true }
-  }]);
-  await assert.rejects(
-    () => cleanupLocalQualificationSecretRoot(async () => ({ code: 1 }), "/tmp/opl-local-qualification-123/fabric-secrets"),
-    /secret cleanup failed/
-  );
-});
 
-test("PostgreSQL teardown confines privileged cleanup to the exact data root and actual runner owner", async () => {
-  const scratch = await mkdtemp(join(tmpdir(), "opl-local-qualification-"));
-  const data = join(scratch, "postgres");
-  const outside = await mkdtemp(join(tmpdir(), "opl-postgres-outside-"));
-  await mkdir(data, { mode: 0o700 });
-  const owner = await lstat(scratch);
-  const calls = [];
-  const execute = async (command, args, settings) => {
-    calls.push({ command, args, settings });
-    return { code: 0 };
-  };
-  try {
-    await cleanupLocalQualificationPostgresRoot(scratch, data, execute);
-    assert.equal(calls.length, 1);
-    const { command, args, settings } = calls[0];
-    assert.equal(command, "docker");
-    assert.deepEqual(args.slice(0, 9), ["run", "--rm", "--network", "none", "--read-only", "--user", "0:0", "--mount", `type=bind,source=${await realpath(data)},target=/qualification-postgres`]);
-    assert.match(args[11], /^postgres:.*@sha256:[0-9a-f]{64}$/);
-    assert.deepEqual(args.slice(-2), [String(owner.uid), String(owner.gid)]);
-    assert.deepEqual(settings, { allowFailure: true });
-    await assert.rejects(() => cleanupLocalQualificationPostgresRoot(scratch, outside, execute), /exact run-owned data root/);
-    await rm(data, { recursive: true });
-    await symlink(outside, data);
-    await assert.rejects(() => cleanupLocalQualificationPostgresRoot(scratch, data, execute), /exact run-owned data root/);
-    assert.equal(calls.length, 1);
-    await rm(data);
-    await mkdir(data, { mode: 0o700 });
-    await assert.rejects(() => cleanupLocalQualificationPostgresRoot(scratch, data, async () => ({ code: 1 })),
-      new RegExp(`cleanup failed for .*postgres \\(owner ${owner.uid}:${owner.gid}\\)`));
-  } finally {
-    await rm(scratch, { recursive: true, force: true });
-    await rm(outside, { recursive: true, force: true });
-  }
-});
 
 test("source image tag inspection hands off one exact immutable RepoDigest", () => {
   const repository = "127.0.0.1:56287/opl-local-qualification-cloud";
@@ -486,223 +262,39 @@ test("source image tag inspection hands off one exact immutable RepoDigest", () 
   }
 });
 
-test("qualification selects the current Candidate overlay set", async () => {
-  const fixture = localQualificationComposeFiles("fixture");
-  assert.deepEqual(fixture, [
-    "compose.yaml",
-    "deploy/portable/compose.deployment-platform-owned.yaml",
-    "deploy/portable/compose.fabric-local-docker.yaml",
-    "deploy/portable/compose.local-workspace.yaml",
-    "deploy/portable/compose.local-qualification.yaml"
-  ]);
-  assert.deepEqual(localQualificationComposeFiles("live"), [
-    ...fixture.slice(0, -1),
-    "deploy/portable/compose.local-qualification-live.yaml"
-  ]);
-  assert.throws(() => localQualificationComposeFiles("staging"), /authority mode/);
-
-  // The selected overlays are the ones that carry the deployment mode and the
-  // Fabric provider the script fixes in its own environment, so a future split
-  // that moves either selection fails here instead of at provider startup.
-  const repository = new URL("../../", import.meta.url);
-  const [deployment, fabric] = await Promise.all([
-    readFile(new URL("deploy/portable/compose.deployment-platform-owned.yaml", repository), "utf8"),
-    readFile(new URL("deploy/portable/compose.fabric-local-docker.yaml", repository), "utf8")
-  ]);
-  assert.match(deployment, /OPL_DEPLOYMENT_MODE: platform_owned\b/);
-  assert.match(fabric, /OPL_FABRIC_PROVIDER: local-docker\b/);
-  for (const file of fixture) {
-    await readFile(new URL(file, repository), "utf8");
-  }
-});
-
-test("qualification passes its exact revision to Compose under the canonical name", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "opl-qualification-revision-"));
-  const binDirectory = join(directory, "bin");
-  const captured = join(directory, "compose-input.json");
-  await mkdir(binDirectory);
-  const cloudImage = `ghcr.io/example/cloud@${cloudDigest}`;
-  // Stop at the real Compose boundary, after the harness writes its environment.
-  // No container, provider or customer operation can run through this executable.
-  await writeFile(join(binDirectory, "docker"), `#!${process.execPath}
-const { readFileSync, writeFileSync } = require("node:fs");
-const args = process.argv.slice(2);
-if (args[0] === "version" || args[0] === "compose" && args[1] === "version") process.exit(0);
-if (args[0] === "image" && args[1] === "inspect") {
-  console.log(JSON.stringify([{ Id: args[2].split("@")[1], RepoDigests: [args[2]],
-    Config: { Labels: { "org.opencontainers.image.revision": ${JSON.stringify(sha)} } } }]));
-  process.exit(0);
-}
-if (args[0] === "context" && args[1] === "inspect") {
-  console.log("unix:///var/run/docker.sock");
-  process.exit(0);
-}
-if (args[0] === "compose" && args.includes("config")) {
-  const envFile = args[args.indexOf("--env-file") + 1];
-  writeFileSync(${JSON.stringify(captured)}, JSON.stringify({
-    file: readFileSync(envFile, "utf8"), environment: Object.fromEntries(
-      ["OPL_RELEASE_SHA", "OPL_QUALIFICATION_SOURCE_SHA", "OPL_LOCAL_V2_RELEASE_SHA"]
-        .filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]]))
-  }));
-  console.error("revision_capture_complete");
-  process.exit(1);
-}
-console.error("unexpected_docker_command");
-process.exit(1);
-`);
-  await chmod(join(binDirectory, "docker"), 0o700);
-  const replacement = {
-    PATH: `${binDirectory}:${process.env.PATH || ""}`,
-    OPL_RELEASE_SHA: "e".repeat(40),
-    OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: join(directory, "storage"),
-    OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: JSON.stringify({ schemaVersion: 1, packages: [{ id: "basic" }] })
-  };
-  const previous = Object.fromEntries(Object.keys(replacement).map((name) => [name, process.env[name]]));
-  Object.assign(process.env, replacement);
-  try {
-    await assert.rejects(() => runLocalWorkspaceQualification({
-      sourceSha: sha, cloudImage, workspaceImage: workspaceReference,
-      receiptPath: join(directory, "receipt.json"), buildSourceImages: false, authorityMode: "fixture"
-    }, {
-      readSourceIdentity: async () => ({ sha, tree: "d".repeat(40), clean: true })
-    }), /revision_capture_complete/);
-    const input = JSON.parse(await readFile(captured, "utf8"));
-    assert.deepEqual(input.file.split("\n").filter((line) => /^(?:OPL_RELEASE_SHA|OPL_QUALIFICATION_SOURCE_SHA|OPL_LOCAL_V2_RELEASE_SHA)=/.test(line)),
-      [`OPL_RELEASE_SHA=${sha}`]);
-    assert.equal(input.environment.OPL_RELEASE_SHA, sha, "the requested revision must override the ambient revision");
-    assert.equal(input.environment.OPL_QUALIFICATION_SOURCE_SHA, undefined);
-    assert.equal(input.environment.OPL_LOCAL_V2_RELEASE_SHA, undefined);
-  } finally {
-    for (const [name, value] of Object.entries(previous)) {
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
-    }
-    await rm(directory, { recursive: true, force: true });
-  }
-});
-
-test("qualification requires the installation-owned Local-Docker inputs", () => {
-  const profile = JSON.stringify({
-    schemaVersion: 1,
-    packages: [{ id: "basic", name: "Basic Workspace", available: true, compute: { id: "local-basic", server: "2c4g", cpu: 2, memoryGb: 4, instanceType: "local-2c4g" }, storage: { sizeGb: 10, quotaPolicy: "linux-project" } }]
-  });
-  assert.throws(() => localDockerInstallationInputs({}), (error) => error.code === "local_docker_storage_root_missing");
-  assert.throws(() => localDockerInstallationInputs({ OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: "relative/storage" }), (error) => error.code === "local_docker_storage_root_invalid");
-  assert.throws(() => localDockerInstallationInputs({ OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: "/srv/opl-workspaces" }), (error) => error.code === "local_docker_provider_profile_missing");
-  assert.throws(() => localDockerInstallationInputs({ OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: "/srv/opl-workspaces", OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: "{" }), (error) => error.code === "local_docker_provider_profile_invalid");
-  assert.throws(() => localDockerInstallationInputs({ OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: "/srv/opl-workspaces", OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: '{"schemaVersion":1,"packages":[]}' }), (error) => error.code === "local_docker_provider_profile_invalid");
-  assert.deepEqual(localDockerInstallationInputs({
-    OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: "  /srv/opl-workspaces  ",
-    OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: profile
-  }), { storageRoot: "/srv/opl-workspaces", providerProfileJSON: profile });
-});
-
-test("qualification stops at the installation preflight before it invokes Docker", async () => {
-  const root = await mkdtemp(join(tmpdir(), "opl-installation-preflight-test-"));
-  const receiptPath = join(root, "receipt.json");
-  const previous = {
-    storageRoot: process.env.OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT,
-    profile: process.env.OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON
-  };
-  let sourceReads = 0;
-  try {
-    delete process.env.OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT;
-    delete process.env.OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON;
-    await assert.rejects(() => runLocalWorkspaceQualification({
-      sourceSha: sha,
-      cloudImage: `ghcr.io/example/cloud@${cloudDigest}`,
-      workspaceImage: workspaceReference,
-      receiptPath,
-      buildSourceImages: false,
-      authorityMode: "fixture"
-    }, {
-      readSourceIdentity: async () => {
-        sourceReads += 1;
-        return { sha, tree: sha, clean: true };
-      }
-    }), (error) => error.code === "local_docker_storage_root_missing");
-    const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
-    assert.equal(receipt.status, "NOT_READY");
-    assert.equal(receipt.stage, "installation_preflight");
-    assert.equal(receipt.errorCode, "local_docker_storage_root_missing");
-    // Source identity is admitted first, and nothing beyond that runs: the
-    // script never reaches Docker, image admission, or Compose.
-    assert.equal(sourceReads, 1);
-    assert.equal(receipt.images.cloud.digest, cloudDigest);
-  } finally {
-    for (const [name, value] of Object.entries({
-      OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: previous.storageRoot,
-      OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: previous.profile
-    })) {
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
-    }
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-function liveAuthorityHistoryFetch({ duplicate = false } = {}) {
-  const requestedPages = [];
-  const request = async (input, init = {}) => {
-    const url = new URL(String(input));
-    if (url.pathname === "/api/v1/auth/login") {
-      assert.equal(init.method, "POST");
-      return new Response(JSON.stringify({ code: 0, data: { access_token: "test-access" } }), {
-        status: 200, headers: { "content-type": "application/json" }
-      });
-    }
-    assert.equal(url.pathname, "/api/v1/admin/users/41/balance-history");
-    assert.equal(url.searchParams.get("page_size"), "100");
-    assert.equal(url.searchParams.get("type"), "balance");
-    const page = Number(url.searchParams.get("page"));
-    assert.ok(Number.isInteger(page) && page >= 1 && page <= 3);
-    requestedPages.push(page);
-    const count = page === 3 ? 1 : 100;
-    const items = Array.from({ length: count }, (_, index) => {
-      const target = page === 2 && index === 42 || duplicate && page === 3;
-      return {
-        code: target ? "opl:target" : `opl:filler:${(page - 1) * 100 + index}`,
-        type: "balance", value: "-52.580000", status: "used", used_by: 41,
-        used_at: "2026-07-16T00:01:00Z", created_at: "2026-07-16T00:00:00Z"
-      };
-    });
-    return new Response(JSON.stringify({ code: 0, data: { items, total: 201, page, page_size: 100, pages: 3 } }), {
-      status: 200, headers: { "content-type": "application/json" }
-    });
-  };
-  return { request, requestedPages };
-}
-
-test("local qualification accepts exact source and immutable image identities", () => {
+test("the declared native topology is the default local qualification", () => {
+  // The default is local-v2: a run names the declared native installation.
   assert.deepEqual(parseLocalQualificationArgs([
     "--source-sha", sha,
-    "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
-    "--workspace-image", workspaceReference,
+    "--installation-env", "/tmp/installation.env",
+    "--application-contract", "/tmp/application.json",
+    "--project", "opl-native-1",
     "--receipt", "/tmp/qualification.json"
   ]), {
-    mode: "legacy-fixture",
+    mode: "local-v2",
     sourceSha: sha,
-    cloudImage: `ghcr.io/example/cloud@${cloudDigest}`,
-    workspaceImage: workspaceReference,
     receiptPath: "/tmp/qualification.json",
-    buildSourceImages: false,
-    authorityMode: "fixture",
-    j0ReadyReceipt: "",
-    sub2apiSecretFile: ""
+    installationEnv: "/tmp/installation.env",
+    applicationContract: "/tmp/application.json",
+    project: "opl-native-1",
+    workspaceName: ""
   });
   assert.equal(immutableImageDigest(`ghcr.io/example/cloud@${cloudDigest}`), cloudDigest);
   assert.equal(immutableImageDigest(workspaceDigest), workspaceDigest);
   assert.throws(() => parseLocalQualificationArgs(["--source-sha", "main"]), /source SHA/);
+  // The declared installation owns the images, so a second spelling of one is
+  // refused instead of silently overriding the declaration.
   assert.throws(() => parseLocalQualificationArgs([
-    "--source-sha", sha, "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`, "--workspace-image", workspaceReference,
-    "--receipt", "/tmp/qualification.json", "--authority-mode", "production"
-  ]), /authority mode/);
-  assert.throws(() => parseLocalQualificationArgs([
-    "--source-sha", sha,
-    "--cloud-image", "ghcr.io/example/cloud:latest",
-    "--workspace-image", workspaceReference,
+    "--source-sha", sha, "--installation-env", "/tmp/installation.env",
+    "--application-contract", "/tmp/application.json", "--project", "opl-native-1",
+    "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
     "--receipt", "/tmp/qualification.json"
-  ]), /immutable cloud image/);
+  ]), { code: "local_v2_images_are_declared" });
+  // A run that does not name the declared installation is refused before it
+  // starts: there is no other qualification to fall back to.
+  assert.throws(() => parseLocalQualificationArgs([
+    "--source-sha", sha, "--receipt", "/tmp/qualification.json"
+  ]), { code: "local_v2_installation_env_required" });
 });
 
 function j0ReadyReceipt(sourceSha = sha, sourceTree = "d".repeat(40)) {
@@ -718,29 +310,25 @@ function j0ReadyReceipt(sourceSha = sha, sourceTree = "d".repeat(40)) {
   };
 }
 
-test("live arguments require one external J0 READY receipt", () => {
-  const parsed = parseLocalQualificationArgs([
+test("the retired version-one qualification is refused by name", () => {
+  const installation = [
     "--source-sha", sha,
-    "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
-    "--workspace-image", workspaceReference,
-    "--receipt", "/tmp/qualification.json",
-    "--authority-mode", "live",
-    "--j0-ready-receipt", "/tmp/j0-ready.json"
-  ]);
-  assert.equal(parsed.j0ReadyReceipt, "/tmp/j0-ready.json");
-  assert.equal(parsed.mode, "legacy-live");
-  assert.throws(() => parseLocalQualificationArgs([
-    "--mode", "legacy-fixture", "--source-sha", sha,
-    "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`, "--workspace-image", workspaceReference,
-    "--receipt", "/tmp/qualification.json", "--authority-mode", "live", "--j0-ready-receipt", "/tmp/j0-ready.json"
-  ]), { code: "local_qualification_mode_conflict" });
-  assert.throws(() => parseLocalQualificationArgs([
-    "--source-sha", sha,
-    "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
-    "--workspace-image", workspaceReference,
-    "--receipt", "/tmp/qualification.json",
-    "--authority-mode", "live"
-  ]), /J0 READY receipt/);
+    "--installation-env", "/tmp/installation.env",
+    "--application-contract", "/tmp/application.json",
+    "--project", "opl-native-1",
+    "--receipt", "/tmp/qualification.json"
+  ];
+  // A retired mode is refused by name, so the caller is told which run it
+  // asked for and that the run is gone.
+  for (const mode of ["legacy-fixture", "legacy-live"]) {
+    assert.throws(() => parseLocalQualificationArgs(["--mode", mode, ...installation]), { code: "local_qualification_mode_retired" });
+  }
+  // An unknown mode is a different fact: it is refused as unknown.
+  assert.throws(() => parseLocalQualificationArgs(["--mode", "not-a-mode", ...installation]), { code: "local_qualification_mode_invalid" });
+  // The options that belonged to the retired runs are refused by name too.
+  for (const option of ["--authority-mode", "--j0-ready-receipt", "--sub2api-secret-file"]) {
+    assert.throws(() => parseLocalQualificationArgs([...installation, option, "/tmp/retired"]), { code: "local_qualification_option_retired" });
+  }
 });
 
 test("J0 READY admission binds exact clean source, authority, provider, and external 0600 file", async () => {
@@ -785,42 +373,6 @@ test("J0 READY admission binds exact clean source, authority, provider, and exte
   }
 });
 
-test("top-level live entry rejects J0 source drift before starting the J1 stack or HTTP", async () => {
-  const root = await mkdtemp(join(tmpdir(), "opl-j0-top-level-reject-"));
-  const path = join(root, "j0-ready.json");
-  const outputPath = join(root, "j1.json");
-  const baseOptions = {
-    sourceSha: sha,
-    cloudImage: `ghcr.io/example/cloud@${cloudDigest}`,
-    workspaceImage: workspaceReference,
-    receiptPath: outputPath,
-    buildSourceImages: false,
-    authorityMode: "live",
-    j0ReadyReceipt: path,
-    sub2apiSecretFile: ""
-  };
-  let stackStarts = 0;
-  const dependencies = {
-    loadLiveAuthority: async () => ({ baseURL: "https://sandbox.example.test", adminEmail: "admin@example.test", adminPassword: "password", authorityClass: "sandbox", qualificationUserEmail: "user@example.test", qualificationUserPassword: "password" }),
-    readSourceIdentity: async () => ({ sha, tree: "d".repeat(40), clean: true }),
-    runLiveJ1: async () => { stackStarts += 1; throw new Error("J1 stack must not start"); }
-  };
-  try {
-    for (const invalid of [
-      j0ReadyReceipt("b".repeat(40)),
-      j0ReadyReceipt(sha, "c".repeat(40))
-    ]) {
-      await writeFile(path, JSON.stringify(invalid), { mode: 0o600 });
-      await assert.rejects(() => runLocalWorkspaceQualification(baseOptions, dependencies), /j0_ready_receipt_invalid/);
-    }
-    assert.equal(stackStarts, 0);
-    const failureReceipt = JSON.parse(await readFile(outputPath, "utf8"));
-    assert.equal(failureReceipt.stage, "j0_ready_preflight");
-    assert.equal(failureReceipt.errorCode, "j0_ready_receipt_invalid");
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
 
 const sub2apiSecretValues = Object.freeze({
   OPL_SUB2API_BASE_URL: "https://sandbox.example.test",
@@ -835,171 +387,9 @@ function sub2apiSecretYAML(values = sub2apiSecretValues) {
   return Object.entries(values).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join("\n") + "\n";
 }
 
-test("live Sub2API secret file admission is exact and never creates a second env SSOT", async () => {
-  const root = await mkdtemp(join(tmpdir(), "opl-sub2api-secret-test-"));
-  const path = join(root, "sub2api.yaml");
-  const link = join(root, "sub2api-link.yaml");
-  try {
-    await writeFile(path, sub2apiSecretYAML(), { mode: 0o600 });
-    const admitted = await loadSub2APISecretFile(path, { environment: {} });
-    assert.deepEqual(admitted, {
-      baseURL: sub2apiSecretValues.OPL_SUB2API_BASE_URL,
-      adminEmail: sub2apiSecretValues.OPL_SUB2API_ADMIN_EMAIL,
-      adminPassword: sub2apiSecretValues.OPL_SUB2API_ADMIN_PASSWORD,
-      authorityClass: sub2apiSecretValues.OPL_QUALIFICATION_AUTHORITY_CLASS,
-      qualificationUserEmail: sub2apiSecretValues.OPL_QUALIFICATION_USER_EMAIL,
-      qualificationUserPassword: sub2apiSecretValues.OPL_QUALIFICATION_USER_PASSWORD
-    });
-    assert.deepEqual(parseLocalQualificationArgs([
-      "--source-sha", sha, "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
-      "--workspace-image", workspaceReference, "--receipt", "/tmp/qualification.json",
-      "--authority-mode", "live", "--j0-ready-receipt", "/tmp/j0-ready.json", "--sub2api-secret-file", path
-    ]).sub2apiSecretFile, path);
-    assert.throws(() => parseLocalQualificationArgs([
-      "--source-sha", sha, "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
-      "--workspace-image", workspaceReference, "--receipt", "/tmp/qualification.json",
-      "--sub2api-secret-file", path
-    ]), /live authority mode/);
-    assert.throws(() => parseLocalQualificationArgs([
-      "--source-sha", sha, "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
-      "--workspace-image", workspaceReference, "--receipt", "/tmp/qualification.json",
-      "--authority-mode", "live", "--j0-ready-receipt", "/tmp/j0-ready.json", "--sub2api-secret-file", "relative.yaml"
-    ]), /absolute/);
 
-    await assert.rejects(() => loadSub2APISecretFile(path, {
-      environment: { OPL_SUB2API_BASE_URL: "https://outer.example.test" }
-    }), /sub2api_secret_file_env_conflict/);
-    await assert.rejects(() => loadSub2APISecretFile(path, {
-      environment: {}, currentUid: typeof process.getuid === "function" ? process.getuid() + 1 : 1
-    }), /sub2api_secret_file_invalid/);
-    await assert.rejects(() => loadSub2APISecretFile(root, { environment: {} }), /sub2api_secret_file_invalid/);
 
-    await symlink(path, link);
-    await assert.rejects(() => loadSub2APISecretFile(link, { environment: {} }), /sub2api_secret_file_invalid/);
-    await chmod(path, 0o640);
-    await assert.rejects(() => loadSub2APISecretFile(path, { environment: {} }), /sub2api_secret_file_invalid/);
-    await chmod(path, 0o600);
 
-    for (const [name, values] of Object.entries({
-      unknown: { ...sub2apiSecretValues, UNKNOWN_FIELD: "forbidden" },
-      missing: Object.fromEntries(Object.entries(sub2apiSecretValues).slice(1)),
-      wrongType: { ...sub2apiSecretValues, OPL_SUB2API_ADMIN_PASSWORD: 42 }
-    })) {
-      await writeFile(path, sub2apiSecretYAML(values), { mode: 0o600 });
-      await assert.rejects(() => loadSub2APISecretFile(path, { environment: {} }), /sub2api_secret_file_schema_invalid/, name);
-    }
-
-    const envFileEntries = qualificationEnvFileEntries([
-      ...Object.entries(sub2apiSecretValues), ["OPL_CLOUD_IMAGE", "cloud-image"]
-    ], { authorityMode: "live", sub2apiSecretFile: path });
-    assert.deepEqual(envFileEntries, [["OPL_CLOUD_IMAGE", "cloud-image"]]);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test("Sub2API secret file failures redact the path and values before Docker", async () => {
-  const root = await mkdtemp(join(tmpdir(), "opl-sub2api-secret-redaction-"));
-  const path = join(root, "private-source.yaml");
-  const receiptPath = join(root, "receipt.json");
-  const previous = Object.fromEntries(Object.keys(sub2apiSecretValues).map((name) => [name, process.env[name]]));
-  for (const name of Object.keys(sub2apiSecretValues)) delete process.env[name];
-  try {
-    await writeFile(path, `${sub2apiSecretYAML()}UNKNOWN_FIELD: ${JSON.stringify("do-not-leak-value")}\n`, { mode: 0o600 });
-    await assert.rejects(() => runLocalWorkspaceQualification({
-      sourceSha: sha,
-      cloudImage: `ghcr.io/example/cloud@${cloudDigest}`,
-      workspaceImage: workspaceReference,
-      receiptPath,
-      buildSourceImages: false,
-      authorityMode: "live",
-      sub2apiSecretFile: path
-    }), /sub2api_secret_file_schema_invalid/);
-    const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
-    assert.equal(receipt.stage, "authority_preflight");
-    assert.equal(receipt.errorCode, "sub2api_secret_file_schema_invalid");
-    assert.equal(receipt.error, "sub2api_secret_file_schema_invalid");
-    assert.doesNotMatch(JSON.stringify(receipt), /private-source|do-not-leak-value|admin-password-not-real/);
-  } finally {
-    for (const [name, value] of Object.entries(previous)) {
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
-    }
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test("live authority adjustment readback counts the exact code through the final financial page", async () => {
-  const exact = liveAuthorityHistoryFetch();
-  const evidence = await liveAuthorityAdjustmentReadback(
-    "https://sandbox.example", "admin@example.test", "password", "41", "opl:target", "-52580000", exact.request
-  );
-  assert.deepEqual(exact.requestedPages, [1, 2, 3]);
-  assert.deepEqual(evidence, { code: "opl:target", userId: "41", valueUsdMicros: "-52580000", status: "used", count: 1 });
-
-  const duplicate = liveAuthorityHistoryFetch({ duplicate: true });
-  await assert.rejects(() => liveAuthorityAdjustmentReadback(
-    "https://sandbox.example", "admin@example.test", "password", "41", "opl:target", "-52580000", duplicate.request
-  ), /cardinality/);
-  assert.deepEqual(duplicate.requestedPages, [1, 2, 3]);
-});
-
-test("Local J1 accounting allows unrelated history and rejects duplicate operation evidence", () => {
-  const operationId = "workspace-launch-current";
-  const workspaceId = "ws-current";
-  const receiptId = "receipt-current";
-  const runtimeId = "runtime-current";
-  const applicationOperationId = "workspace-application-deploy-current";
-  const keyId = "700";
-  const keyName = workspaceReservedKeyName(workspaceId);
-  const entryUrl = "http://127.0.0.1:32776/";
-  const debitCode = "opl:current-debit";
-  const amountUsdMicros = "52580000";
-  const currentKey = { id: keyId, name: keyName, kind: "workspace", status: "active" };
-  const historicalKey = { id: "699", name: "opl-workspace-historical", kind: "workspace", status: "active" };
-  const currentReceipt = {
-    receiptId, operationId, workspaceId, type: "billing.workspace_purchased.v1", status: "completed",
-    chargeReference: debitCode, totalUsdMicros: amountUsdMicros,
-    fulfillment: { computeAllocationId: "compute-current", storageId: "storage-current", attachmentId: "attachment-current" }
-  };
-  const historicalReceipt = {
-    ...currentReceipt,
-    receiptId: "receipt-historical",
-    operationId: "workspace-launch-historical",
-    workspaceId: "ws-historical",
-    chargeReference: "opl:historical-debit",
-    fulfillment: { computeAllocationId: "compute-historical", storageId: "storage-historical", attachmentId: "attachment-historical" }
-  };
-  const input = {
-    operationId, workspaceId, receiptId, runtimeId, keyId, keyName, sub2apiUserId: "41", debitCode, amountUsdMicros,
-    beforeMicros: "1000000000", afterMicros: "947420001",
-    baselineKeys: [historicalKey],
-    keys: [historicalKey, currentKey], receipts: [historicalReceipt, currentReceipt],
-    key: currentKey, keyUsage: { totalRequests: 0 }, usage: { totalRequests: 0 },
-    history: { items: [{ valueUsdMicros: "-1000000", status: "used" }] },
-    debit: { count: 1, code: debitCode, userId: "41", amountUsdMicros },
-    evidence: {
-      operation: { owner: "workspace", kind: "create_workspace", operationId, resourceId: workspaceId, status: "succeeded" },
-      current: { status: "ready", entryUrl, operationId: applicationOperationId },
-      workspace: { url: entryUrl },
-      runtime: { runtimeId, currentApplication: { operationId: applicationOperationId } },
-      receipt: currentReceipt
-    }
-  };
-
-  assert.deepEqual(validateLocalJ1AccountingReadback(input), { walletExactDeltaObserved: false });
-  assert.throws(() => validateLocalJ1AccountingReadback({ ...input, keys: [...input.keys, currentKey] }), /key cardinality/);
-  assert.throws(() => validateLocalJ1AccountingReadback({ ...input, keys: [historicalKey, { ...currentKey, name: "opl-workspace-other" }] }), /key cardinality/);
-  assert.throws(() => validateLocalJ1AccountingReadback({ ...input, receipts: [...input.receipts, currentReceipt] }), /receipt cardinality/);
-  assert.throws(() => validateLocalJ1AccountingReadback({ ...input, debit: { ...input.debit, count: 2 } }), /debit cardinality/);
-  assert.throws(() => validateLocalJ1AccountingReadback({ ...input, baselineKeys: [...input.baselineKeys, currentKey] }), /predates/);
-  assert.throws(() => validateLocalJ1AccountingReadback({ ...input, baselineKeys: [...input.baselineKeys, { id: "698", name: keyName, kind: "workspace", status: "active" }] }), /predates/);
-  assert.throws(() => validateLocalJ1AccountingReadback({ ...input, receipts: [...input.receipts, { ...currentReceipt, receiptId: "receipt-duplicate" }] }), /receipt cardinality/);
-  assert.throws(() => validateLocalJ1AccountingReadback({
-    ...input,
-    evidence: { ...input.evidence, runtime: { runtimeId, currentApplication: { operationId: "workspace-application-deploy-other" } } }
-  }), /accounting binding/);
-});
 
 test("READY receipt binds the exact durable and accounting evidence", () => {
   const fixtureReceipt = {
@@ -1107,38 +497,6 @@ test("READY receipt binds the exact durable and accounting evidence", () => {
   }), /application installation/);
 });
 
-test("owner delete proves Gateway Secret removal and Gateway Key retention by their own owners", () => {
-  const workspaceId = "ws-alpha";
-  const keyName = workspaceReservedKeyName(workspaceId);
-  // The provider secret ref is derived from the Workspace identity, exactly like
-  // Contracts' WorkspaceGatewaySecretRef.
-  assert.equal(workspaceGatewaySecretRef(workspaceId), `opl-gateway-${createHash("sha256").update(workspaceId).digest("hex").slice(0, 16)}`);
-  // The authority's own key record is what the retention check reads: it has no
-  // Control Plane `kind` projection, and the exact record must be unchanged.
-  const authorityKey = { id: 71, userId: 41, name: keyName, groupId: 7, status: "active" };
-  const authorityKeyRecord = { ...authorityKey, status: "disabled" };
-  assert.equal(retainedWorkspaceKey([authorityKey], [authorityKeyRecord], workspaceId, "71"), true);
-  assert.equal(retainedWorkspaceKey([authorityKey], [{ ...authorityKey, status: "active" }], workspaceId, "71"), false);
-  assert.equal(retainedWorkspaceKey([authorityKey], [], workspaceId, "71"), false);
-  assert.equal(retainedWorkspaceKey([authorityKey], [{ ...authorityKey, id: 72 }], workspaceId, "71"), false);
-  assert.equal(retainedWorkspaceKey([authorityKey], [{ ...authorityKey, userId: 42 }], workspaceId, "71"), false);
-  assert.equal(retainedWorkspaceKey([authorityKey], [{ ...authorityKey, name: `${keyName}-other` }], workspaceId, "71"), false);
-  assert.equal(retainedWorkspaceKey([{ ...authorityKey, name: `${keyName}-other` }], [authorityKeyRecord], workspaceId, "71"), false);
-  assert.equal(retainedWorkspaceKey([authorityKey], [authorityKeyRecord, { id: 72, userId: 41, name: `${keyName}-second`, groupId: 7, status: "active" }], workspaceId, "71"), false);
-  assert.equal(retainedWorkspaceKey([authorityKey, { id: 72, userId: 41, name: `${keyName}-second`, groupId: 7, status: "active" }], [authorityKeyRecord], workspaceId, "71"), false);
-  const stages = [
-    { stage: "runtime_absent", result: "absent", evidenceKind: "provider_readback", observedAt: "t1", evidenceRef: "ref-1" },
-    { stage: "attachment_absent", result: "released", evidenceKind: "local_transition", observedAt: "t2", evidenceRef: "ref-2" },
-    { stage: "storage_absent", result: "absent", evidenceKind: "provider_readback", observedAt: "t3", evidenceRef: "ref-3" },
-    { stage: "compute_absent", result: "absent", evidenceKind: "provider_readback", observedAt: "t4", evidenceRef: "ref-4" },
-    { stage: "workspace_absent", result: "removed", evidenceKind: "local_transition", observedAt: "t5", evidenceRef: "ref-5" }
-  ];
-  assert.equal(workspaceDeleteReceiptStagesMatch(stages), true);
-  assert.equal(workspaceDeleteReceiptStagesMatch(stages.slice(0, 4)), false);
-  assert.equal(workspaceDeleteReceiptStagesMatch([...stages.slice(0, 4), { ...stages[4], stage: "receipt_recorded" }]), false);
-  assert.equal(workspaceDeleteReceiptStagesMatch([{ ...stages[0], evidenceRef: "" }, ...stages.slice(1)]), false);
-  assert.equal(workspaceDeleteReceiptStagesMatch([{ ...stages[0], result: "waiting" }, ...stages.slice(1)]), false);
-});
 
 test("local build proxy rejects credentials or URL parameters and errors redact the entire URL authority and query", () => {
   const previous = process.env.OPL_LOCAL_BUILD_PROXY;
@@ -1223,72 +581,8 @@ test("sourceData and createHTTP/login preserve account mapping scope without Wor
   }
 });
 
-test("qualification reads the preactivated account mapping across pages without issuing commands", async () => {
-  const email = "customer@example.test";
-  const accountId = "acct-qualification-owner-minted";
-  const mapping = { accountId, email, status: "active", sub2apiUserId: "41" };
-  const admin = { cookie: "admin=session", csrf: "csrf-admin" };
-  const requests = [];
-  const http = {
-    json: async (path, init, auth) => {
-      requests.push(path);
-      assert.deepEqual(init, {});
-      assert.equal(auth, admin);
-      const page = Number(new URL(path, "http://qualification.test").searchParams.get("page"));
-      return { payload: { source: "control-plane+sub2api", available: true, status: "available", data: {
-        items: page === 1 ? Array.from({ length: 50 }, (_, index) => ({ accountId: `acct-other-${index}`, email: `other-${index}@example.test` })) : [mapping],
-        total: 51, page, pageSize: 50
-      } } };
-    }
-  };
-  assert.deepEqual(await readLocalQualificationAccount(http, admin, " Customer@Example.Test "), { accountId, mapping });
-  assert.deepEqual(requests, ["/api/operator/accounts?page=1&pageSize=50", "/api/operator/accounts?page=2&pageSize=50"]);
-});
 
-for (const scenario of ["missing", "duplicate", "inactive", "unmapped", "missing account", "wrong email", "unavailable"]) {
-  test(`qualification refuses a ${scenario} preactivated account mapping`, async () => {
-    const email = "customer@example.test";
-    const accountId = `acct-${stableID("account", email).slice(0, 18)}`;
-    const mapping = { accountId, email, status: "active", sub2apiUserId: "41" };
-    const items = scenario === "missing" ? [] : scenario === "duplicate" ? [mapping, { ...mapping, accountId: "acct-second" }] : [{
-      ...mapping,
-      ...(scenario === "inactive" ? { status: "disabled" } : {}),
-      ...(scenario === "unmapped" ? { sub2apiUserId: "" } : {}),
-      ...(scenario === "missing account" ? { accountId: "" } : {}),
-      ...(scenario === "wrong email" ? { email: "other@example.test" } : {})
-    }];
-    const http = {
-      json: async (path, init) => {
-        assert.equal(path, "/api/operator/accounts?page=1&pageSize=50");
-        assert.deepEqual(init, {});
-        return { payload: { source: "control-plane+sub2api", available: scenario !== "unavailable", status: scenario === "unavailable" ? "unavailable" : "available", data: {
-          items, total: items.length, page: 1, pageSize: 50
-        } } };
-      }
-    };
-    await assert.rejects(() => readLocalQualificationAccount(http, {}, email), scenario === "unavailable" ? /unavailable/ : /requires an existing active account/);
-  });
-}
 
-for (const scenario of ["truncated page", "changed total", "wrong page"]) {
-  test(`qualification refuses a ${scenario} account inventory instead of accepting a partial mapping`, async () => {
-    const email = "customer@example.test";
-    const accountId = `acct-${stableID("account", email).slice(0, 18)}`;
-    const mapping = { accountId, email, status: "active", sub2apiUserId: "41" };
-    const http = {
-      json: async (path) => {
-        const pageNumber = Number(new URL(path, "http://qualification.test").searchParams.get("page"));
-        const items = pageNumber === 1 ? [mapping, ...Array.from({ length: 49 }, (_, index) => ({ accountId: `acct-other-${index}` }))] : [{ accountId: "acct-last" }];
-        return { payload: { source: "control-plane+sub2api", available: true, status: "available", data: {
-          items: scenario === "truncated page" ? [mapping] : items,
-          total: scenario === "changed total" && pageNumber === 2 ? 52 : 51,
-          page: scenario === "wrong page" ? 2 : pageNumber, pageSize: 50
-        } } };
-      }
-    };
-    await assert.rejects(() => readLocalQualificationAccount(http, {}, email), /account mapping readback is invalid/);
-  });
-}
 
 // Exercise the owner readbacks, including the existing purchase evidence binding.
 function workspaceEvidenceHTTP(page, options = {}) {
@@ -1336,670 +630,16 @@ function workspaceEvidenceHTTP(page, options = {}) {
   };
 }
 
-test("Workspace evidence uses the Serve current deployment outside the history page", async () => {
-  const current = { id: "deployment-current", workspaceId: "ws-evidence", status: "active",
-    runtimeInstanceId: "runtime-current", capabilityVersionId: "capability-current" };
-  for (const items of [[], [{ ...current, id: "failed-newer", status: "failed", runtimeInstanceId: "runtime-failed" }]]) {
-    const http = workspaceEvidenceHTTP({ items, currentDeployment: current, latestAttempt: items[0] ?? current });
-    const result = await readWorkspaceEvidence(http, http.auth, "operation-evidence", "ws-evidence", "receipt-evidence");
-    assert.equal(result.current.operationId, current.id);
-    assert.equal(result.current.applicationId, current.capabilityVersionId);
-    assert.equal(result.current.revision, current.capabilityVersionId);
-    assert.equal(result.current.entryUrl, "https://app.example.test/");
-    assert.equal(result.workspace.currentApplication.operationId, current.id);
-    assert.equal(result.runtime.runtimeId, current.runtimeInstanceId);
-    assert.equal(result.runtime.currentApplication.operationId, current.id);
-    assert.equal(result.receipt.receiptId, "receipt-evidence");
-    assert.equal(result.receipt.totalUsdMicros, "52580000");
-    assert.equal(http.calls.filter((path) => path.includes("/deployments")).length, 1);
-  }
-});
 
-test("Workspace evidence refuses missing or invalid Serve selection despite active history", async () => {
-  const current = { id: "deployment-current", workspaceId: "ws-evidence", status: "active", runtimeInstanceId: "runtime-current", capabilityVersionId: "capability-current" };
-  for (const selection of [
-    undefined, null,
-    { ...current, status: "verifying" },
-    { ...current, workspaceId: "ws-other" },
-    { ...current, id: undefined }, { ...current, id: "   " }, { ...current, id: 1 }, { ...current, id: {} },
-    { ...current, runtimeInstanceId: undefined }, { ...current, runtimeInstanceId: "   " },
-    { ...current, runtimeInstanceId: 1 }, { ...current, runtimeInstanceId: {} },
-  ]) {
-    const http = workspaceEvidenceHTTP({ items: [current], currentDeployment: selection, latestAttempt: current });
-    await assert.rejects(
-      readWorkspaceEvidence(http, http.auth, "operation-evidence", "ws-evidence", "receipt-evidence"),
-      /Workspace runtime readback is invalid/,
-    );
-    assert.equal(http.calls.length, 3, "invalid selection stops before financial evidence reads");
-  }
-});
 
-test("Workspace evidence binds the current application source and URL independently of the original order", async () => {
-  for (const source of [
-    { capabilityVersionId: "capability-current" },
-    { runtimeVersionId: "release-current" },
-    { capabilityVersionId: "", runtimeVersionId: "release-current" },
-  ]) {
-    const current = { id: "deployment-current", workspaceId: "ws-evidence", status: "active", runtimeInstanceId: "runtime-current", ...source };
-    for (const workspace of [
-      { capabilityVersionId: "capability-original" },
-      { capabilityVersionId: undefined, runtimeVersionId: "release-original" },
-      { capabilityVersionId: undefined, runtimeVersionId: undefined, accessUrl: undefined },
-    ]) {
-      const http = workspaceEvidenceHTTP({ items: [], currentDeployment: current }, { workspace });
-      const result = await readWorkspaceEvidence(http, http.auth, "operation-evidence", "ws-evidence", "receipt-evidence");
-      assert.equal(result.current.applicationId, source.capabilityVersionId || source.runtimeVersionId);
-      assert.equal(result.current.revision, result.current.applicationId);
-      assert.equal(result.current.entryUrl, "https://app.example.test/");
-      assert.equal(result.workspace.accessUrl, result.current.entryUrl);
-      assert.equal(result.workspace.url, result.current.entryUrl);
-      assert.equal(result.runtime.url, result.current.entryUrl);
-    }
-  }
-});
 
-test("Workspace access read retries retain a stable key scoped to the selected deployment", async () => {
-  for (const id of ["deployment-current", "deployment-replacement"]) {
-    const current = { id, workspaceId: "ws-evidence", status: "active", runtimeInstanceId: "runtime-current", runtimeVersionId: "release-current" };
-    const http = workspaceEvidenceHTTP({ items: [], currentDeployment: current }, {
-      access: { workspaceId: current.workspaceId, deploymentId: id, url: "https://app.example.test/" },
-    });
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const result = await readWorkspaceEvidence(http, http.auth, "operation-evidence", "ws-evidence", "receipt-evidence");
-      assert.equal(result.current.operationId, id);
-    }
-    assert.equal(http.calls.filter((path) => path.endsWith("/access")).length, 2);
-  }
-});
 
-test("Workspace evidence rejects absent, ambiguous and malformed current application sources", async () => {
-  for (const source of [
-    {}, { capabilityVersionId: "", runtimeVersionId: "" },
-    { capabilityVersionId: "capability-current", runtimeVersionId: "release-current" },
-    ...[null, 0, false, {}, [], "   "].flatMap((value) => [
-      { capabilityVersionId: value }, { runtimeVersionId: value },
-      { capabilityVersionId: value, runtimeVersionId: "release-current" },
-      { capabilityVersionId: "capability-current", runtimeVersionId: value },
-    ]),
-  ]) {
-    const current = { id: "deployment-current", workspaceId: "ws-evidence", status: "active", runtimeInstanceId: "runtime-current", ...source };
-    const http = workspaceEvidenceHTTP({ items: [], currentDeployment: current });
-    await assert.rejects(readWorkspaceEvidence(http, http.auth, "operation-evidence", "ws-evidence", "receipt-evidence"), /Workspace application readback is invalid/);
-    assert.equal(http.calls.length, 3, "invalid application sources stop before access and financial reads");
-  }
-});
 
-test("Workspace evidence rejects access from another generation and invalid access readbacks", async () => {
-  const current = { id: "deployment-current", workspaceId: "ws-evidence", status: "active", runtimeInstanceId: "runtime-current", runtimeVersionId: "release-current" };
-  const valid = { workspaceId: current.workspaceId, deploymentId: current.id, url: "https://app.example.test/" };
-  for (const access of [
-    undefined, null, {},
-    { ...valid, workspaceId: "ws-other" },
-    ...[undefined, null, "", "   ", 42, {}, "deployment-previous"].map((deploymentId) => ({ ...valid, deploymentId })),
-    ...[undefined, null, "", "   ", 42, {}, [], "/relative", "https://", "https://[invalid", "https:example.test", "ftp://app.example.test/", "javascript:alert(1)", "https://user:password@app.example.test/"].map((url) => ({ ...valid, url })),
-    // Even a URL also reported by Workspace cannot substitute for deployment identity.
-    { ...valid, deploymentId: "deployment-previous", url: "https://previous.example.test/" },
-  ]) {
-    const http = workspaceEvidenceHTTP({ items: [], currentDeployment: current }, { access });
-    await assert.rejects(readWorkspaceEvidence(http, http.auth, "operation-evidence", "ws-evidence", "receipt-evidence"), /Workspace access readback is invalid/);
-    assert.equal(http.calls.length, 4, "unconfirmed access stops before financial reads");
-  }
-  for (const url of ["http://app.example.test:8080/path", valid.url]) {
-    const http = workspaceEvidenceHTTP({ items: [], currentDeployment: current }, { access: { ...valid, url } });
-    const result = await readWorkspaceEvidence(http, http.auth, "operation-evidence", "ws-evidence", "receipt-evidence");
-    assert.equal(result.current.entryUrl, url);
-  }
-});
 
-for (const scenario of [
-  { name: "covers every live stage and validates exact local cleanup", status: 200, marker: true },
-  { name: "classifies HTTP 502 without a marker", status: 502, marker: false, errorCode: "workspace_open_http_failed", error: "Workspace Runtime open returned HTTP 502" },
-  { name: "rejects HTTP 502 even with the fixture marker", status: 502, marker: true, errorCode: "workspace_open_http_failed", error: "Workspace Runtime open returned HTTP 502" },
-  { name: "rejects HTTP 200 without the fixture marker", status: 200, marker: false, errorCode: "workspace_open_fixture_marker_missing", error: "Workspace Runtime open is missing the qualification fixture marker" },
-  { name: "rejects HTTP 204 without the fixture marker", status: 204, marker: false, errorCode: "workspace_open_fixture_marker_missing", error: "Workspace Runtime open is missing the qualification fixture marker" }
-]) {
-test(`canonical J1 HTTP preview ${scenario.name}`, async () => {
-  const accountEmail = "customer@example.test";
-  const accountPassword = "customer-password";
-  const accountId = `acct-${stableID("account", accountEmail).slice(0, 18)}`;
-  const launchKey = "local-qualification:j1";
-  // The owner mints the operation identity and the Workspace identity of a new
-  // purchase, so the fixture never derives them.
-  const operationId = "workspace-operation-j1";
-  const workspaceId = "ws-owner-j1";
-  const runtimeVersionId = "rv-j1";
-  const computePlanId = "cp-j1";
-  const storagePlanId = "sp-j1";
-  const receiptId = "receipt-j1";
-  const runtimeId = "runtime-j1";
-  const applicationOperationId = "workspace-application-deploy-j1";
-  const keyId = "700";
-  const keyName = workspaceReservedKeyName(workspaceId);
-  const debitCode = "opl:j1-debit";
-  const amountUsdMicros = "52580000";
-  let entryURL = "";
-  const resourceFulfillment = { computeAllocationId: "compute-j1", storageId: "storage-j1", attachmentId: "attachment-j1" };
-  const historicalKey = { id: "699", name: "opl-workspace-historical", kind: "workspace", status: "active" };
-  const historicalReceipt = {
-    receiptId: "receipt-historical", operationId: "workspace-launch-historical", workspaceId: "ws-historical",
-    type: "billing.workspace_purchased.v1", status: "completed", chargeReference: "opl:historical-debit",
-    totalUsdMicros: "52580000", fulfillment: { computeAllocationId: "compute-historical", storageId: "storage-historical", attachmentId: "attachment-historical" }
-  };
-  const requests = [];
-  const ownerCommands = [];
-  const counts = { quotePosts: 0, workspacePosts: 0, keyCreates: 0, debits: 0, refunds: 0, deletes: 0, restarts: 0 };
-  let ownerReads = 0;
-  let server;
-  const envelope = (source, data, status = "available") => ({ source, available: true, status, data });
-  const send = (response, status, payload, headers = {}) => {
-    response.writeHead(status, { "content-type": "application/json", ...headers });
-    response.end(JSON.stringify(payload));
-  };
-  const readBody = (request) => new Promise((resolvePromise) => {
-    let text = "";
-    request.on("data", (chunk) => { text += chunk; });
-    request.on("end", () => resolvePromise(text ? JSON.parse(text) : null));
-  });
-  const ownerOperation = (status = "succeeded") => ({
-    operationId, owner: "workspace", kind: "create_workspace", resourceId: workspaceId, status,
-    stage: status === "succeeded" ? "succeeded" : "creating", requestId: "request-j1"
-  });
-  const currentApplication = () => ({
-    operationId: applicationOperationId, applicationId: "opl-app", revision: "revision-j1", status: "ready", entryUrl: entryURL
-  });
-  server = createServer(async (request, response) => {
-    const url = new URL(request.url || "/", "http://qualification.test");
-    const method = request.method || "GET";
-    requests.push({ method, path: url.pathname });
-    if (method === "GET" && url.pathname === "/api/healthz") return send(response, 200, { status: "ok" });
-    if (method === "GET" && url.pathname === "/") { response.writeHead(200, { "content-type": "text/html" }); response.end("<div id=\"root\"><script src=\"/assets/app.js\"></script></div>"); return; }
-    if (method === "GET" && url.pathname === "/assets/app.js") { response.writeHead(200, { "content-type": "application/javascript" }); response.end("console.log('stub')"); return; }
-    if (method === "POST" && url.pathname === "/api/auth/login") {
-      const body = await new Promise((resolvePromise) => { let text = ""; request.on("data", (chunk) => { text += chunk; }); request.on("end", () => resolvePromise(JSON.parse(text))); });
-      const admin = body.email === "admin@example.test";
-      const customer = body.email === accountEmail;
-      if (!admin && !customer) return send(response, 401, { error: "invalid_credentials" });
-      return send(response, 200, { user: { accountId: admin ? "acct-admin" : accountId, role: admin ? "admin" : "owner" } }, { "set-cookie": `${admin ? "admin" : "customer"}=session; Path=/`, "x-opl-csrf-token": admin ? "csrf-admin" : "csrf-customer" });
-    }
-    if (method === "GET" && url.pathname === "/api/operator/accounts") {
-      return send(response, 200, envelope("control-plane+sub2api", { items: [{ accountId, email: accountEmail, status: "active", sub2apiUserId: "41" }], total: 1, page: 1, pageSize: 50 }));
-    }
-    if (method === "GET" && url.pathname === "/api/auth/me") return send(response, 200, envelope("sub2api", { accountId, email: accountEmail, role: "owner", status: "active", sub2apiUserId: "41" }));
-    // The CloudIdentity login the browser performs: a login context that carries
-    // a double-submit CSRF challenge, and a command that presents it beside the
-    // challenge cookie.
-    if (method === "GET" && url.pathname === "/api/v2/auth/context") {
-      return send(response, 200, { csrfToken: "owner-csrf-token" }, {
-        "set-cookie": [
-          "opl_login_context=challenge; Path=/api/v2/auth; HttpOnly",
-          "opl_login_csrf=challenge-hash; Path=/api/v2/auth; HttpOnly",
-        ],
-      });
-    }
-    if (method === "POST" && url.pathname === "/api/v2/auth/login") {
-      const body = await readBody(request);
-      if (body?.username !== accountEmail && body?.username !== "admin@example.test") {
-        return send(response, 401, { error: "invalid_credentials" });
-      }
-      return send(response, 200, {
-        actorId: "41", displayName: accountEmail, tenantId: "tenant-j1",
-        permissions: [], csrfToken: "owner-csrf-token", expiresAt: "2026-10-18T12:00:00Z",
-      }, { "set-cookie": "opl_console_session=owner-session; Path=/; HttpOnly" });
-    }
-    if (method === "GET" && url.pathname === "/api/v2/auth/session") {
-      return send(response, 200, {
-        actorId: "41", displayName: accountEmail, tenantId: "tenant-j1",
-        permissions: [], csrfToken: "owner-csrf-token", expiresAt: "2026-10-18T12:00:00Z",
-      });
-    }
-    if (method === "GET" && url.pathname === "/api/v2/tenant") {
-      return send(response, 200, { id: "tenant-j1", name: "J1 Tenant", status: "active", billingSub2apiUserId: "41" });
-    }
-    // The wallet the Gateway owner holds, read under the owner session.
-    if (method === "GET" && url.pathname === "/api/v2/wallet") {
-      return send(response, 200, {
-        source: "gateway", status: "available", balanceUSDMicros: counts.debits ? "947420000" : "1000000000",
-        currency: "USD", fetchedAt: "2026-10-18T00:00:00Z",
-      });
-    }
-    if (method === "GET" && url.pathname === "/api/gateway/wallet") return send(response, 200, envelope("sub2api", { userId: "41", currency: "USD", usdMicros: counts.debits ? "947420000" : "1000000000", status: "active" }));
-    if (method === "GET" && url.pathname === "/api/gateway/usage-summary") return send(response, 200, envelope("sub2api", { totalRequests: 0 }));
-    if (method === "GET" && url.pathname === "/api/gateway/keys") {
-      const items = counts.keyCreates ? [historicalKey, { id: keyId, name: keyName, kind: "workspace", status: "active" }] : [historicalKey];
-      return send(response, 200, envelope("sub2api", { items, total: items.length, page: 1, pageSize: 100, pages: 1 }));
-    }
-    if (method === "GET" && url.pathname === "/api/v2/catalog/runtime-versions") {
-      return send(response, 200, { items: [{ id: "rv-deprecated", status: "deprecated" }, { id: runtimeVersionId, status: "approved" }] });
-    }
-    if (method === "GET" && url.pathname === "/api/v2/catalog/compute-plans") {
-      return send(response, 200, { items: [{ id: "cp-retired", availability: "retired" }, { id: computePlanId, availability: "available" }] });
-    }
-    if (method === "GET" && url.pathname === "/api/v2/catalog/storage-plans") {
-      return send(response, 200, { items: [{ id: storagePlanId, availability: "available" }] });
-    }
-    if (method === "POST" && url.pathname === "/api/v2/quotes") {
-      counts.quotePosts += 1;
-      ownerCommands.push({ path: url.pathname, idempotencyKey: request.headers["idempotency-key"], body: await readBody(request) });
-      return send(response, 201, {
-        id: "quote-j1", purpose: "deploy", runtimeVersionId, computePlanId, storagePlanId,
-        modelSelections: [], periodMonths: 1, totalUSDMicros: amountUsdMicros, status: "offered"
-      });
-    }
-    if (method === "GET" && url.pathname === "/api/v2/quotes/quote-j1") {
-      return send(response, 200, { id: "quote-j1", purpose: "deploy", runtimeVersionId, computePlanId, storagePlanId,
-        modelSelections: [], periodMonths: 1, totalUSDMicros: amountUsdMicros, status: counts.workspacePosts ? "accepted" : "offered" });
-    }
-    if (method === "POST" && url.pathname === "/api/v2/workspaces") {
-      counts.workspacePosts += 1; counts.keyCreates += 1; counts.debits += 1;
-      ownerCommands.push({ path: url.pathname, idempotencyKey: request.headers["idempotency-key"], body: await readBody(request) });
-      return send(response, 202, ownerOperation("accepted"));
-    }
-    if (method === "GET" && url.pathname === `/api/v2/operations/workspace/${operationId}`) {
-      ownerReads += 1;
-      return send(response, 200, ownerOperation(ownerReads === 1 ? "accepted" : "succeeded"));
-    }
-    if (method === "GET" && url.pathname === `/api/v2/workspaces/${workspaceId}`) {
-      return send(response, 200, { id: workspaceId, name: "J1", status: "running",
-        runtimeVersionId, applicationAvailability: "available", accessUrl: "https://previous.example.test/" });
-    }
-    if (method === "GET" && url.pathname === `/api/v2/workspaces/${workspaceId}/deployments`) {
-      const current = { id: applicationOperationId, workspaceId, status: "active",
-        runtimeInstanceId: runtimeId, capabilityVersionId: "", runtimeVersionId };
-      return send(response, 200, { items: [current], currentDeployment: current, latestAttempt: current });
-    }
-    if (url.pathname === `/api/v2/workspaces/${workspaceId}/access`) {
-      assert.equal(method, "POST");
-      assert.equal(request.headers["idempotency-key"], `workspace-access:${applicationOperationId}`);
-      assert.match(String(request.headers.cookie), /opl_console_session=owner-session/);
-      assert.equal(request.headers["x-csrf-token"], "owner-csrf-token");
-      return send(response, 200, { workspaceId, deploymentId: applicationOperationId, url: entryURL });
-    }
-    if (method === "GET" && url.pathname === `/api/v2/workspaces/${workspaceId}/transactions`) {
-      return send(response, 200, { items: counts.debits ? [{
-        id: "wallet-charge-j1", workspaceId, kind: "charge", status: "confirmed",
-        amountUSDMicros: amountUsdMicros, receiptId, externalReference: debitCode,
-        createdAt: "2026-10-18T00:00:05Z", updatedAt: "2026-10-18T00:00:05Z",
-      }] : [] });
-    }
-    if (method === "GET" && url.pathname === `/api/v2/workspaces/${workspaceId}/financial-receipts/${receiptId}`) {
-      return send(response, 200, {
-        workspaceId,
-        receipt: { id: receiptId, kind: "wallet_action", owner: "workspace", outcome: "confirmed", operationId: operationId,
-          evidenceSummary: "confirmed charge", createdAt: "2026-10-18T00:00:05Z" },
-        walletOperation: { id: "wallet-charge-j1", workspaceId, kind: "charge", status: "confirmed",
-          amountUSDMicros: amountUsdMicros, receiptId, externalReference: debitCode,
-          createdAt: "2026-10-18T00:00:05Z", updatedAt: "2026-10-18T00:00:05Z" },
-        quote: { id: "quote-j1", status: "accepted", totalUSDMicros: amountUsdMicros, lineItems: [] },
-        evidenceDigest: `sha256:${"e".repeat(64)}`,
-      });
-    }
-    if (method === "GET" && url.pathname === `/api/billing/receipts/${receiptId}`) return send(response, 200, envelope("ledger", { receiptId, accountId, operationId, workspaceId, type: "billing.workspace_purchased.v1", status: "completed", chargeReference: debitCode, totalUsdMicros: amountUsdMicros, fulfillment: resourceFulfillment }));
-    if (method === "GET" && url.pathname === "/api/billing/receipts") {
-      const currentReceipt = { receiptId, accountId, operationId, workspaceId, type: "billing.workspace_purchased.v1", status: "completed", chargeReference: debitCode, totalUsdMicros: amountUsdMicros, fulfillment: resourceFulfillment };
-      return send(response, 200, envelope("ledger", { receipts: counts.debits ? [historicalReceipt, currentReceipt] : [historicalReceipt], hasMore: false, nextCursor: "" }));
-    }
-    if (method === "GET" && url.pathname === `/api/gateway/keys/${keyId}`) return send(response, 200, envelope("sub2api", { id: keyId, kind: "workspace", status: "active" }));
-    if (method === "GET" && url.pathname === `/api/gateway/keys/${keyId}/usage-summary`) return send(response, 200, envelope("sub2api", { totalRequests: 0 }));
-    if (method === "GET" && url.pathname === "/api/gateway/balance-history") return send(response, 200, envelope("sub2api", { items: [{ valueUsdMicros: `-${amountUsdMicros}`, status: "used" }], total: 1, page: 1, pageSize: 20, pages: 1 }));
-    return send(response, 404, { error: "not_found" });
-  });
-  const privateBody = "body-private-value https://private-entry.example.test/path?token=body-secret";
-  const privateHeader = "header-private-value";
-  const privateStatusText = "status-text-private-value";
-  let entryRequests = 0;
-  const entryServer = createServer((_request, response) => {
-    entryRequests += 1;
-    assert.equal(stages.at(-1), "workspace_open");
-    response.writeHead(scenario.status, privateStatusText, { "content-type": "text/html", "x-private-value": privateHeader });
-    response.end(`<html>${scenario.marker ? "OPL Workspace READY" : "unqualified application"} ${privateBody}</html>`);
-  });
-  await new Promise((resolvePromise, reject) => { entryServer.once("error", reject); entryServer.listen(0, "127.0.0.1", resolvePromise); });
-  entryURL = `http://127.0.0.1:${entryServer.address().port}/`;
-  await new Promise((resolvePromise, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolvePromise); });
-  const address = server.address();
-  const http = createHTTP(`http://127.0.0.1:${address.port}`);
-  const stages = [];
-  const cleanupCalls = [];
-  const j0Root = await mkdtemp(join(tmpdir(), "opl-j0-top-level-"));
-  const j0Path = join(j0Root, "ready.json");
-  const outputPath = join(j0Root, "j1.json");
-  await writeFile(j0Path, JSON.stringify(j0ReadyReceipt(sha, "d".repeat(40))), { mode: 0o600 });
-  const installation = {
-    OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: process.env.OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT,
-    OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: process.env.OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON
-  };
-  try {
-    const options = parseLocalQualificationArgs([
-      "--source-sha", sha, "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
-      "--workspace-image", workspaceReference, "--receipt", outputPath,
-      "--authority-mode", "live", "--j0-ready-receipt", j0Path
-    ]);
-    // The store stack binds the installation-owned Local-Docker facts, so a run
-    // that starts it has to supply them before Compose is invoked.
-    process.env.OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT = "/srv/opl-workspaces";
-    process.env.OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON = JSON.stringify({
-      schemaVersion: 1,
-      packages: [{ id: "basic", name: "Basic Workspace", available: true, compute: { id: "local-basic", server: "2c4g", cpu: 2, memoryGb: 4, instanceType: "local-2c4g" }, storage: { sizeGb: 10, quotaPolicy: "linux-project" } }]
-    });
-    let runtimeReadbacks = 0;
-    let debitReadbacks = 0;
-    const qualify = () => runLocalWorkspaceQualification(options, {
-      loadLiveAuthority: async () => ({ baseURL: "https://sandbox.example.test", adminEmail: "admin@example.test", adminPassword: "admin-password", authorityClass: "sandbox", qualificationUserEmail: "admin@example.test", qualificationUserPassword: "admin-password" }),
-      readSourceIdentity: async () => ({ sha, tree: "d".repeat(40), clean: true }),
-      runLiveJ1: async ({ j0Ready }) => runLocalWorkspaceJ1HTTPQualification({
-        http, adminEmail: "admin@example.test", adminPassword: "admin-password", qualificationEmail: accountEmail, qualificationPassword: accountPassword,
-        launchKey, workspaceName: "J1", wait: async () => {},
-        onStage: (stage) => stages.push(stage),
-        readRuntime: async ({ runtimeId: observedRuntimeId }) => {
-          runtimeReadbacks += 1;
-          if (observedRuntimeId !== runtimeId) throw new Error("Runtime readback identity is invalid");
-          return { runningDigest: workspaceDigest };
-        },
-        readDebit: async ({ code, sub2apiUserId, amountUsdMicros: value }) => {
-          debitReadbacks += 1;
-          return { code, userId: sub2apiUserId, amountUsdMicros: value, count: 1 };
-        },
-        cleanup: async (scope) => { cleanupCalls.push(scope); return { containers: 0, volumes: 0, networks: 0 }; },
-        receiptBase: {
-          schemaVersion: 1, status: "READY", source: { sha, tree: "d".repeat(40) },
-          images: { cloud: { input: `ghcr.io/example/cloud@${cloudDigest}`, repoDigest: `ghcr.io/example/cloud@${cloudDigest}`, digest: cloudDigest, runningDigest: cloudDigest }, workspace: { input: workspaceReference, repoDigest: workspaceReference, digest: workspaceDigest, runningDigest: workspaceDigest } },
-          command: "npm run qualify:local:workspace", processes: { console: "ready", controlPlane: "ready", fabric: "ready", ledger: "ready" }, stores: { controlPlane: "durable", fabric: "durable", ledger: "durable", ownerSeparated: true },
-          j0Ready: { ...j0Ready, digest: j0Ready.digest },
-          qualification: { authorityMode: "live", p0Ready: true }, deferred: []
-        }
-      })
-    });
-    if (scenario.errorCode) {
-      let failure;
-      await assert.rejects(qualify, (error) => {
-        failure = error;
-        assert.equal(error.code, scenario.errorCode);
-        assert.equal(error.message, scenario.error);
-        assert.equal(redactedError(error), scenario.error);
-        return true;
-      });
-      assert.deepEqual(stages, ["bootstrap_ready", "admin_login", "account_mapping_readback", "qualification_login", "wallet_usage_baseline", "catalog_resolution", "workspace_order", "application_installation", "terminal_readback", "workspace_open"]);
-      assert.equal(runtimeReadbacks, 1);
-      assert.equal(debitReadbacks, 0);
-      assert.equal(cleanupCalls.length, 1);
-      assert.equal(cleanupCalls[0].failed, true);
-      assert.equal(cleanupCalls[0].launchSubmitted, true);
-      assert.equal(cleanupCalls[0].accountId, accountId);
-      assert.equal(cleanupCalls[0].workspaceId, workspaceId);
-      // Settle the actual lifecycle failure through the same NOT_READY writer
-      // used by the Docker runner, including preservation through scratch failure.
-      await assert.rejects(() => finishLocalWorkspaceQualification({
-        ...qualificationSettlement(j0Root, outputPath, failure),
-        options,
-        stage: stages.at(-1)
-      }, {
-        removeScratch: async () => { throw Object.assign(new Error("scratch-private-value"), { code: "EACCES" }); }
-      }), (error) => error === failure);
-      const writtenReceipt = JSON.parse(await readFile(outputPath, "utf8"));
-      assert.equal(writtenReceipt.status, "NOT_READY");
-      assert.equal(writtenReceipt.stage, "workspace_open");
-      assert.equal(writtenReceipt.errorCode, scenario.errorCode);
-      assert.equal(writtenReceipt.error, scenario.error);
-      const diagnostics = JSON.stringify({ code: failure.code, error: redactedError(failure), stage: writtenReceipt.stage, errorCode: writtenReceipt.errorCode, receiptError: writtenReceipt.error });
-      for (const forbidden of [privateBody, "body-private-value", "private-entry.example.test", "body-secret", privateHeader, privateStatusText, entryURL, "127.0.0.1", accountPassword, "scratch-private-value"]) {
-        assert.equal(diagnostics.includes(forbidden), false, forbidden);
-      }
-    } else {
-      const result = await qualify();
-      assert.equal(result.status, "READY");
-      const writtenReceipt = JSON.parse(await readFile(outputPath, "utf8"));
-      assert.equal(writtenReceipt.j0Ready.digest, result.j0Ready.digest);
-      assert.deepEqual(writtenReceipt.j0Ready.source, { sha, tree: "d".repeat(40), clean: true });
-      // The recorded identities are the ones the owner minted for this purchase.
-      assert.equal(writtenReceipt.identities.operationId, operationId);
-      assert.equal(writtenReceipt.identities.workspaceId, workspaceId);
-      assert.equal(writtenReceipt.identities.runtimeVersionId, runtimeVersionId);
-      assert.equal(writtenReceipt.application.applicationId, runtimeVersionId);
-      assert.equal(writtenReceipt.application.revision, runtimeVersionId);
-      assert.equal(writtenReceipt.application.entryUrl, entryURL);
-      assert.equal(writtenReceipt.identities.computePlanId, computePlanId);
-      assert.equal(writtenReceipt.identities.storagePlanId, storagePlanId);
-      assert.equal(writtenReceipt.receipt.operationId, operationId);
-      assert.equal(writtenReceipt.debit.operationId, operationId);
-      assert.equal(writtenReceipt.mutationCounts.accountProvisionPosts, 0);
-      assert.deepEqual(stages, ["bootstrap_ready", "admin_login", "account_mapping_readback", "qualification_login", "wallet_usage_baseline", "catalog_resolution", "workspace_order", "application_installation", "terminal_readback", "workspace_open", "accounting_readback", "receipt_validation", "qualification_cleanup"]);
-      assert.deepEqual(cleanupCalls, [{ accountId, workspaceId }]);
-      assert.equal(runtimeReadbacks, 1);
-      assert.equal(debitReadbacks, 1);
-    }
-    assert.equal(entryRequests, 1);
-    assert.deepEqual(counts, { quotePosts: 1, workspacePosts: 1, keyCreates: 1, debits: 1, refunds: 0, deletes: 0, restarts: 0 });
-    assert.equal(requests.some(({ method, path }) => method === "POST" && path === "/api/operator/accounts"), false);
-    // The buyer declares the application and the plan pair it buys, and the
-    // owner prices and admits exactly that declaration.
-    assert.deepEqual(ownerCommands.map((command) => command.path), ["/api/v2/quotes", "/api/v2/workspaces"]);
-    assert.deepEqual(ownerCommands[0].body, {
-      purpose: "deploy",
-      applicationSelection: { kind: "opl_app", runtimeVersionId },
-      computePlanId, storagePlanId, modelSelections: [], periodMonths: 1
-    });
-    assert.deepEqual(ownerCommands[1].body, { name: "J1", quoteId: "quote-j1", renewalMode: "manual" });
-    // The buyer's own idempotency identity is stable across the two commands,
-    // so a repeated delivery replays the same quote and the same order.
-    assert.equal(ownerCommands[0].idempotencyKey, `${launchKey}:quote`);
-    assert.equal(ownerCommands[1].idempotencyKey, launchKey);
-    assert.equal(requests.filter((request) => request.method === "POST" && request.path === "/api/v2/workspaces").length, 1);
-    assert.equal(requests.filter((request) => request.method === "POST" && request.path === "/api/v2/quotes").length, 1);
-    assert.equal(requests.filter((request) => request.method === "GET" && request.path === `/api/v2/operations/workspace/${operationId}`).length >= 1, true);
-    assert.equal(requests.some((request) => request.path === "/api/workspace-launches"), false);
-    assert.equal(requests.some((request) => request.method === "DELETE"), false);
-    assert.equal(requests.some((request) => request.path.includes("refund")), false);
-  } finally {
-    for (const [name, value] of Object.entries(installation)) {
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
-    }
-    await new Promise((resolvePromise) => server.close(() => resolvePromise()));
-    await new Promise((resolvePromise) => entryServer.close(() => resolvePromise()));
-    await rm(j0Root, { recursive: true, force: true });
-  }
-});
-}
 
-test("canonical J1 HTTP preview requires an activated account before the owner Workspace order", async () => {
-  const cleanupCalls = [];
-  const http = {
-    json: async (path) => {
-      if (path === "/api/healthz") return { payload: { status: "ok" } };
-      throw new Error("unexpected request after conflict");
-    },
-    request: async (path) => path === "/" ? { response: { status: 200 }, text: "<div id=\"root\"><script src=\"/app.js\"></script></div>" } :
-      { response: { status: 200 }, text: "asset" }
-  };
-  http.json = async (path) => {
-    if (path === "/api/healthz") return { payload: { status: "ok" } };
-    if (path === "/api/auth/login") return { response: { headers: new Headers({ "set-cookie": "admin=session", "x-opl-csrf-token": "csrf" }) }, payload: { user: { accountId: "acct-admin" } } };
-    if (path.startsWith("/api/operator/accounts?")) return { payload: { source: "control-plane+sub2api", available: true, status: "available", data: { items: [], total: 0, page: 1, pageSize: 50 } } };
-    throw new Error("unexpected request after conflict");
-  };
-  await assert.rejects(() => runLocalWorkspaceJ1HTTPQualification({
-    http, adminEmail: "admin@example.test", adminPassword: "password", qualificationEmail: "customer@example.test", qualificationPassword: "password",
-    launchKey: "launch", workspaceName: "J1",
-    readRuntime: async () => ({}), readDebit: async () => ({}), cleanup: async (scope) => { cleanupCalls.push(scope); return { containers: 0, volumes: 0, networks: 0 }; }, receiptBase: {}
-  }), /requires an existing active account created through POST \/api\/v2\/operator\/accounts/);
-  assert.deepEqual(cleanupCalls, [{ failed: true, launchSubmitted: false, recoveryAuthority: null }]);
-  assert.throws(() => sourceData({ source: "control-plane+sub2api", available: true, status: "conflict", data: {} }, "control-plane+sub2api"), /unavailable/);
-});
 
-test("canonical J1 HTTP preview preserves the recovery scope after an owner Workspace order submission", async () => {
-  const accountId = `acct-${stableID("account", "customer@example.test").slice(0, 18)}`;
-  const cleanupCalls = [];
-  // The owner mints the operation identity and the Workspace identity, so the
-  // fixture states them instead of deriving them.
-  const operationId = "workspace-operation-owner";
-  const workspaceId = "ws-owner-minted";
-  const ownerCommands = [];
-  const http = {
-    request: async (path) => path === "/"
-      ? { response: { status: 200 }, text: '<div id="root"><script src="/app.js"></script></div>' }
-      : { response: { status: 200 }, text: "asset" },
-    json: async (path, init = {}) => {
-      if (path === "/api/healthz") return { payload: { status: "ok" } };
-      if (path === "/api/auth/login") return { response: { headers: new Headers({ "set-cookie": "session=test", "x-opl-csrf-token": "csrf" }) }, payload: { user: { accountId: init.body.email === "customer@example.test" ? accountId : "acct-admin" } } };
-      if (path === "/api/v2/auth/context") {
-        return { response: { headers: ownerLoginContextHeaders() }, payload: { csrfToken: "owner-csrf-token" } };
-      }
-      if (path === "/api/v2/auth/login") {
-        return { response: { headers: ownerSessionHeaders() }, payload: ownerSessionPayload };
-      }
-      if (path === "/api/v2/auth/session") {
-        return { payload: ownerSessionPayload };
-      }
-      if (path === "/api/v2/tenant") return { payload: { id: "tenant-j1", name: "J1 Tenant", status: "active", billingSub2apiUserId: "41" } };
-      if (path === "/api/v2/wallet") {
-        return { payload: ownerWalletPayload };
-      }
-      if (path.startsWith("/api/operator/accounts?")) return { payload: { source: "control-plane+sub2api", available: true, status: "available", data: { items: [{ accountId, email: "customer@example.test", status: "active", sub2apiUserId: "41" }], total: 1, page: 1, pageSize: 50 } } };
-      if (path === "/api/auth/me") return { payload: { source: "sub2api", available: true, status: "available", data: { accountId, email: "customer@example.test", role: "owner", status: "active", sub2apiUserId: "41" } } };
-      if (path === "/api/gateway/wallet") return { payload: { source: "sub2api", available: true, status: "available", data: { usdMicros: "100000000" } } };
-      if (path === "/api/gateway/usage-summary?period=month") return { payload: { source: "sub2api", available: true, status: "available", data: { totalRequests: 0 } } };
-      if (path === "/api/gateway/keys?page=1&pageSize=100") return { payload: { source: "sub2api", available: true, status: "available", data: { items: [], total: 0, page: 1, pageSize: 100, pages: 1 } } };
-      if (path === "/api/billing/receipts?limit=100") return { payload: { source: "ledger", available: true, status: "available", data: { receipts: [], hasMore: false } } };
-      if (path.startsWith("/api/v2/catalog/runtime-versions")) return { payload: { items: [{ id: "rv-owner", status: "approved" }] } };
-      if (path.startsWith("/api/v2/catalog/compute-plans")) return { payload: { items: [{ id: "cp-owner", availability: "available" }] } };
-      if (path.startsWith("/api/v2/catalog/storage-plans")) return { payload: { items: [{ id: "sp-owner", availability: "available" }] } };
-      if (path === "/api/v2/quotes") {
-        ownerCommands.push({ path, idempotencyKey: init.headers["idempotency-key"] });
-        return { payload: { id: "quote-owner", purpose: "deploy", runtimeVersionId: "rv-owner", computePlanId: "cp-owner", storagePlanId: "sp-owner", modelSelections: [], periodMonths: 1, totalUSDMicros: "52580000", status: "offered" } };
-      }
-      if (path === "/api/v2/quotes/quote-owner") return { payload: { id: "quote-owner", purpose: "deploy", runtimeVersionId: "rv-owner", computePlanId: "cp-owner", storagePlanId: "sp-owner", modelSelections: [], periodMonths: 1, totalUSDMicros: "52580000", status: "accepted" } };
-      if (path === "/api/v2/workspaces" && init.method === "POST") {
-        ownerCommands.push({ path, idempotencyKey: init.headers["idempotency-key"] });
-        return { payload: { operationId, owner: "workspace", kind: "create_workspace", resourceId: workspaceId, status: "accepted", stage: "creating" } };
-      }
-      if (path === `/api/v2/workspaces/${workspaceId}`) return { payload: null };
-      if (path === `/api/v2/operations/workspace/${operationId}`) {
-        return { payload: { operationId, owner: "workspace", kind: "create_workspace", resourceId: workspaceId, status: "succeeded", stage: "succeeded" } };
-      }
-      if (path.startsWith("/api/workspaces?")) return { payload: { source: "control-plane", available: true, status: "available", data: { items: [], total: 0, page: 1, pageSize: 20 } } };
-      throw new Error(`unexpected request ${path}`);
-    }
-  };
-  await assert.rejects(() => runLocalWorkspaceJ1HTTPQualification({
-    http, adminEmail: "admin@example.test", adminPassword: "password", qualificationEmail: "customer@example.test", qualificationPassword: "password",
-    launchKey: "launch", workspaceName: "J1",
-    wait: async () => {}, readRuntime: async () => ({}), readDebit: async () => ({}),
-    cleanup: async (scope) => { cleanupCalls.push(scope); return null; }, receiptBase: {}
-  }), /Workspace owner readback is invalid/);
-  assert.equal(cleanupCalls.length, 1);
-  assert.equal(cleanupCalls[0].failed, true);
-  assert.equal(cleanupCalls[0].launchSubmitted, true);
-  // The recovery scope names the identities the owner minted for this purchase.
-  assert.equal(cleanupCalls[0].operationId, operationId);
-  assert.equal(cleanupCalls[0].workspaceId, workspaceId);
-  // The owner operation does not publish the retained per-resource write
-  // counters, so the preserved stack remains the recovery authority.
-  assert.equal(cleanupCalls[0].recoveryAuthority, null);
-  // The purchase went to the owner and was admitted exactly once.
-  assert.deepEqual(ownerCommands.map((command) => command.path), ["/api/v2/quotes", "/api/v2/workspaces"]);
-  assert.deepEqual(ownerCommands.map((command) => command.idempotencyKey), ["launch:quote", "launch"]);
-});
 
-test("canonical J1 HTTP preview still forbids cleanup when the post-Create owner readback is unavailable", async () => {
-  let submitted = false;
-  const ownerCommands = [];
-  const cleanupCalls = [];
-  const accountId = `acct-${stableID("account", "customer@example.test").slice(0, 18)}`;
-  const http = {
-    request: async (path) => path === "/"
-      ? { response: { status: 200 }, text: '<div id="root"><script src="/app.js"></script></div>' }
-      : { response: { status: 200 }, text: "asset" },
-    json: async (path, init = {}) => {
-      if (path === "/api/healthz") return { payload: { status: "ok" } };
-      if (path === "/api/auth/login") return { response: { headers: new Headers({ "set-cookie": "session=test", "x-opl-csrf-token": "csrf" }) }, payload: { user: { accountId: init.body.email === "customer@example.test" ? accountId : "acct-admin" } } };
-      if (path === "/api/v2/auth/context") {
-        return { response: { headers: ownerLoginContextHeaders() }, payload: { csrfToken: "owner-csrf-token" } };
-      }
-      if (path === "/api/v2/auth/login") {
-        return { response: { headers: ownerSessionHeaders() }, payload: ownerSessionPayload };
-      }
-      if (path === "/api/v2/auth/session") {
-        return { payload: ownerSessionPayload };
-      }
-      if (path === "/api/v2/tenant") return { payload: { id: "tenant-j1", name: "J1 Tenant", status: "active", billingSub2apiUserId: "41" } };
-      if (path === "/api/v2/wallet") {
-        return { payload: ownerWalletPayload };
-      }
-      if (path.startsWith("/api/operator/accounts?")) return { payload: { source: "control-plane+sub2api", available: true, status: "available", data: { items: [{ accountId, email: "customer@example.test", status: "active", sub2apiUserId: "41" }], total: 1, page: 1, pageSize: 50 } } };
-      if (path === "/api/auth/me") return { payload: { source: "sub2api", available: true, status: "available", data: { accountId, email: "customer@example.test", role: "owner", status: "active", sub2apiUserId: "41" } } };
-      if (path === "/api/gateway/wallet") return { payload: { source: "sub2api", available: true, status: "available", data: { usdMicros: "100000000" } } };
-      if (path === "/api/gateway/usage-summary?period=month") return { payload: { source: "sub2api", available: true, status: "available", data: { totalRequests: 0 } } };
-      if (path === "/api/gateway/keys?page=1&pageSize=100") return { payload: { source: "sub2api", available: true, status: "available", data: { items: [], total: 0, page: 1, pageSize: 100, pages: 1 } } };
-      if (path === "/api/billing/receipts?limit=100") return { payload: { source: "ledger", available: true, status: "available", data: { receipts: [], hasMore: false } } };
-      if (path.startsWith("/api/v2/catalog/runtime-versions")) return { payload: { items: [{ id: "rv-owner", status: "approved" }] } };
-      if (path.startsWith("/api/v2/catalog/compute-plans")) return { payload: { items: [{ id: "cp-owner", availability: "available" }] } };
-      if (path.startsWith("/api/v2/catalog/storage-plans")) return { payload: { items: [{ id: "sp-owner", availability: "available" }] } };
-      if (path === "/api/v2/quotes") {
-        ownerCommands.push({ path, idempotencyKey: init.headers["idempotency-key"] });
-        return { payload: { id: "quote-owner", purpose: "deploy", runtimeVersionId: "rv-owner", computePlanId: "cp-owner", storagePlanId: "sp-owner", modelSelections: [], periodMonths: 1, totalUSDMicros: "52580000", status: "offered" } };
-      }
-      if (path === "/api/v2/workspaces" && init.method === "POST") {
-        submitted = true;
-        ownerCommands.push({ path, idempotencyKey: init.headers["idempotency-key"] });
-        throw new Error("response unavailable");
-      }
-      if (path.startsWith("/api/v2/operations/workspace/") && submitted) throw new Error("owner readback unavailable");
-      throw new Error(`unexpected request ${path}`);
-    }
-  };
-  await assert.rejects(() => runLocalWorkspaceJ1HTTPQualification({
-    http, adminEmail: "admin@example.test", adminPassword: "password", qualificationEmail: "customer@example.test", qualificationPassword: "password",
-    launchKey: "launch", workspaceName: "J1",
-    wait: async () => {}, readRuntime: async () => ({}), readDebit: async () => ({}),
-    cleanup: async (scope) => { cleanupCalls.push(scope); return null; }, receiptBase: {}
-  }), /response unavailable/);
-  assert.deepEqual(cleanupCalls, [{ accountId, idempotencyKey: "launch", quoteId: "quote-owner", workspaceName: "J1",
-    declaration: { applicationSelection: { kind: "opl_app", runtimeVersionId: "rv-owner" }, computePlanId: "cp-owner", storagePlanId: "sp-owner", periodMonths: 1, modelSelections: [] },
-    failed: true, launchSubmitted: true, recoveryAuthority: null }]);
-  // The order answer was lost, so the harness re-issues the same order under
-  // the same idempotency identity instead of buying a second Workspace.
-  assert.deepEqual(ownerCommands.filter((command) => command.path === "/api/v2/workspaces").map((command) => command.idempotencyKey), ["launch", "launch", "launch"]);
-  assert.deepEqual(ownerCommands.filter((command) => command.path === "/api/v2/quotes").map((command) => command.idempotencyKey), ["launch:quote", "launch:quote", "launch:quote"]);
-});
 
-test("live authority configuration fails closed before Docker and writes a redacted receipt", async () => {
-  const receiptPath = join(tmpdir(), `local-live-preflight-${process.pid}.json`);
-  const previous = {
-    baseURL: process.env.OPL_SUB2API_BASE_URL,
-    email: process.env.OPL_SUB2API_ADMIN_EMAIL,
-    password: process.env.OPL_SUB2API_ADMIN_PASSWORD,
-    authorityClass: process.env.OPL_QUALIFICATION_AUTHORITY_CLASS
-  };
-  delete process.env.OPL_SUB2API_BASE_URL;
-  delete process.env.OPL_SUB2API_ADMIN_EMAIL;
-  delete process.env.OPL_SUB2API_ADMIN_PASSWORD;
-  delete process.env.OPL_QUALIFICATION_AUTHORITY_CLASS;
-  try {
-    await assert.rejects(() => runLocalWorkspaceQualification({
-      sourceSha: sha,
-      cloudImage: `ghcr.io/example/cloud@${cloudDigest}`,
-      workspaceImage: workspaceReference,
-      receiptPath,
-      buildSourceImages: false,
-      authorityMode: "live"
-    }), /protected non-production Sub2API credentials/);
-    const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
-    assert.equal(receipt.status, "NOT_READY");
-    assert.equal(receipt.stage, "authority_preflight");
-    assert.equal(receipt.errorCode, "live_authority_configuration_missing");
-  } finally {
-    for (const [name, value] of Object.entries({
-      OPL_SUB2API_BASE_URL: previous.baseURL,
-      OPL_SUB2API_ADMIN_EMAIL: previous.email,
-      OPL_SUB2API_ADMIN_PASSWORD: previous.password,
-      OPL_QUALIFICATION_AUTHORITY_CLASS: previous.authorityClass
-    })) {
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
-    }
-    await rm(receiptPath, { force: true });
-  }
-});
 
 const qualificationSettlement = (root, receiptPath, failure) => ({
   options: {
@@ -2024,84 +664,9 @@ const qualificationSettlement = (root, receiptPath, failure) => ({
   preserveRecoveryAuthority: false
 });
 
-test("scratch cleanup failure preserves an earlier qualification stage failure", async () => {
-  const root = await mkdtemp(join(tmpdir(), "opl-qualification-settle-"));
-  const receiptPath = join(root, "receipt.json");
-  const earlier = new Error("Ledger deletion Receipt binding is invalid");
-  const denial = Object.assign(new Error(`EACCES: permission denied, scandir '${join(root, "scratch", "postgres")}'`), { code: "EACCES" });
-  try {
-    await assert.rejects(
-      () => finishLocalWorkspaceQualification({
-        ...qualificationSettlement(root, receiptPath, earlier),
-        ownerDeleteFailure: { status: 409, reasonCode: "fabric_compute_readback_unavailable" }
-      }, {
-        removeScratch: async () => { throw denial; }
-      }),
-      (error) => error === earlier
-    );
-    const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
-    assert.equal(receipt.status, "NOT_READY");
-    assert.equal(receipt.stage, "qualification_cleanup");
-    assert.equal(receipt.errorCode, "local_workspace_qualification_failed");
-    assert.equal(receipt.error, redactedError(earlier));
-    assert.deepEqual(receipt.ownerDeleteFailure, { status: 409, reasonCode: "fabric_compute_readback_unavailable" });
-    assert.doesNotMatch(receipt.error, /EACCES|permission denied/);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
 
-test("unconfirmed scratch cleanup fails an otherwise clean attempt with a receipt", async () => {
-  const root = await mkdtemp(join(tmpdir(), "opl-qualification-settle-"));
-  const receiptPath = join(root, "receipt.json");
-  const denial = Object.assign(new Error(`EACCES: permission denied, scandir '${join(root, "scratch", "postgres")}'`), { code: "EACCES" });
-  try {
-    await assert.rejects(
-      () => finishLocalWorkspaceQualification(qualificationSettlement(root, receiptPath, undefined), {
-        removeScratch: async () => { throw denial; }
-      }),
-      (error) => error === denial
-    );
-    const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
-    assert.equal(receipt.status, "NOT_READY");
-    assert.equal(receipt.stage, "qualification_cleanup");
-    assert.equal(receipt.errorCode, "local_workspace_qualification_failed");
-    assert.equal(receipt.error, redactedError(denial));
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
 
-test("confirmed scratch cleanup leaves the READY result untouched", async () => {
-  const root = await mkdtemp(join(tmpdir(), "opl-qualification-settle-"));
-  const receiptPath = join(root, "receipt.json");
-  const ready = { schemaVersion: 1, status: "READY", source: { sha, tree: "d".repeat(40) } };
-  const removed = [];
-  try {
-    const settled = await finishLocalWorkspaceQualification(
-      { ...qualificationSettlement(root, receiptPath, undefined), finalReceipt: ready },
-      { removeScratch: async (target) => { removed.push(target); } }
-    );
-    assert.equal(settled, ready);
-    assert.deepEqual(removed, [join(root, "scratch")]);
-    assert.deepEqual(JSON.parse(await readFile(receiptPath, "utf8")), ready);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
 
-test("scratch teardown retains recovery authority without attempting removal", async () => {
-  const root = await mkdtemp(join(tmpdir(), "opl-qualification-settle-"));
-  const earlier = new Error("launch recovery readback pending");
-  try {
-    await assert.rejects(() => finishLocalWorkspaceQualification({
-      ...qualificationSettlement(root, join(root, "receipt.json"), earlier), preserveRecoveryAuthority: true
-    }, { removeScratch: async () => assert.fail("recovery scratch must be retained") }), error => error === earlier);
-    assert.equal(JSON.parse(await readFile(join(root, "receipt.json"), "utf8")).status, "NOT_READY");
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
 
 
 test("v2 qualification refuses the old three-service topology before customer mutation", () => {
@@ -2128,16 +693,6 @@ test("local-v2 mode binds only v2 owner endpoints", () => {
   assert.equal(qualificationPathAllowed("local-v2", "/api/v2/operations/workspace/op_1"), true);
 });
 
-test("legacy mode keeps the retained Control Plane endpoints", () => {
-  const binding = qualificationModeBinding("legacy-fixture");
-  assert.deepEqual(binding.composeFiles, localQualificationComposeFiles("fixture"));
-  assert.equal(binding.installationEnvRequired, false);
-  assert.equal(binding.endpoints.login, "/api/auth/login");
-  assert.equal(binding.endpoints.accounts, "/api/operator/accounts");
-  assert.equal(binding.endpoints.wallet, "/api/gateway/wallet");
-  assert.equal(qualificationPathAllowed("legacy-fixture", "/api/auth/login"), true);
-  assert.throws(() => qualificationModeBinding("production"), { code: "local_qualification_mode_invalid" });
-});
 
 test("the local-v2 client refuses a retained endpoint before it opens a socket", async () => {
   const http = createHTTP("https://127.0.0.1:1", { mode: "local-v2" });
