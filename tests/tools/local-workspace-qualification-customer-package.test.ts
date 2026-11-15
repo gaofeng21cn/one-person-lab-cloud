@@ -132,6 +132,9 @@ test("the upload completion is the owner's own operation and names the uploaded 
   // The operation is not confirmed.
   refuses(() => assertCustomerCompleteUploadOperation({ ...operation, observationResult: "unconfirmed" }, { packageVersionId: "package-version-1" }),
     "local_v2_customer_upload_operation_unconfirmed");
+  // A completion without the owner's operation identity is not a usable readback.
+  refuses(() => assertCustomerCompleteUploadOperation({ ...operation, operationId: "" }, { packageVersionId: "package-version-1" }),
+    "local_v2_customer_upload_operation_invalid");
 });
 
 test("the uploaded version is read back and matches the uploaded bytes", () => {

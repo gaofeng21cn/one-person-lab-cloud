@@ -2238,17 +2238,18 @@ export function customerEvidencePlan({ packageDir = "", packageArchive = "", pro
 export function assertCustomerCompleteUploadOperation(operation, { packageVersionId } = {}) {
   const owner = String(operation?.owner || "");
   const kind = String(operation?.kind || "");
+  const operationId = String(operation?.operationId || "");
   const resourceId = String(operation?.resourceId || "");
   const status = String(operation?.status || "");
   const observationResult = String(operation?.observationResult || "");
-  if (owner !== "capability" || kind !== "complete_upload" || !resourceId || resourceId !== String(packageVersionId || "") || status !== "succeeded") {
+  if (!operationId || owner !== "capability" || kind !== "complete_upload" || !resourceId || resourceId !== String(packageVersionId || "") || status !== "succeeded") {
     throw namedQualificationError("local_v2_customer_upload_operation_invalid",
       "the upload completion operation does not name the capability owner, the complete_upload kind, the uploaded version and a succeeded status");
   }
   if (observationResult && observationResult !== "confirmed") {
     throw namedQualificationError("local_v2_customer_upload_operation_unconfirmed", "the upload completion operation is not confirmed");
   }
-  return { owner, kind, resourceId, status, observationResult, operationId: String(operation?.operationId || "") };
+  return { owner, kind, resourceId, status, observationResult, operationId };
 }
 
 // The uploaded version, read back from the owner that stored it.
