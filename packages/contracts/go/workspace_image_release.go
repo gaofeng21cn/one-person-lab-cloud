@@ -24,6 +24,15 @@ const (
 	// Plane and the Fabric owner already hold as their shared secret, so
 	// neither side has to be handed a new one.
 	WorkspaceImageTrustSourceTokenEnv = "OPL_FABRIC_CAPABILITY_KEY"
+	// WorkspaceImageTrustSourceURLEnv names the installation variable that
+	// carries the Control Plane's address. It is the same variable the
+	// Console BFF and the Workspace owner already read, so an installation
+	// that moves the Control Plane moves every owner with one fact.
+	WorkspaceImageTrustSourceURLEnv = "OPL_CONTROL_PLANE_URL"
+	// WorkspaceImageTrustSourceURLDefault is the address the deployment
+	// topology gives the Control Plane when the installation does not name
+	// one. Every Compose file that names the Control Plane names it this way.
+	WorkspaceImageTrustSourceURLDefault = "http://control-plane:8787"
 )
 
 var (

@@ -21,11 +21,6 @@ import (
 // directory, and its exact image match is unchanged.
 
 const (
-	// The Control Plane is a deployment unit of the product. Its address is
-	// fixed by the topology — every deployment that names it names it the same
-	// way — and the fabric service is not given an address for it, so there is
-	// nothing to read here.
-	controlPlaneTrustSourceURL = "http://control-plane:8787"
 	// A trust source older than this is refreshed before the next admission
 	// decision, so a registration takes effect without a restart.
 	workspaceImageTrustSourceTTL = 30 * time.Second
@@ -42,12 +37,25 @@ type workspaceImageTrustSourceClient struct {
 	refreshed time.Time
 }
 
+// newWorkspaceImageTrustSourceClient resolves the Control Plane's address and
+// the shared credential. Both come from the installation environment, the same
+// way the Console BFF and the Workspace owner resolve their Control Plane
+// address, so an installation that moves the Control Plane moves this owner
+// with it. The address falls back to the deployment topology's default when
+// the installation does not name one.
+//
+// The environment name is spelled out literally here because the owner
+// topology declaration is derived from the literal reads in the source.
 func newWorkspaceImageTrustSourceClient(getenv func(string) string) *workspaceImageTrustSourceClient {
 	if getenv == nil {
 		getenv = func(string) string { return "" }
 	}
+	url := strings.TrimSpace(getenv("OPL_CONTROL_PLANE_URL"))
+	if url == "" {
+		url = contracts.WorkspaceImageTrustSourceURLDefault
+	}
 	return &workspaceImageTrustSourceClient{
-		url:    controlPlaneTrustSourceURL,
+		url:    strings.TrimSuffix(url, "/"),
 		token:  strings.TrimSpace(getenv(contracts.WorkspaceImageTrustSourceTokenEnv)),
 		client: &http.Client{Timeout: 3 * time.Second},
 	}

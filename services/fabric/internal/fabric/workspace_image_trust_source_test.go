@@ -51,25 +51,47 @@ func workspaceImageTrustControlPlaneStub(t *testing.T, repositories []string, re
 }
 
 func workspaceImageTrustClientForTest(url, token string) *workspaceImageTrustSourceClient {
-	// The environment name is spelled out literally on purpose. If the shared
-	// contract constant drifted, the client would read a name this fake does
-	// not answer, and the guard would catch it instead of following the drift.
+	// The environment names are spelled out literally on purpose. If the source
+	// read a different name, this fake would not answer it and the guard would
+	// catch it instead of following the drift.
 	client := newWorkspaceImageTrustSourceClient(func(name string) string {
-		if name == "OPL_FABRIC_CAPABILITY_KEY" {
+		switch name {
+		case "OPL_FABRIC_CAPABILITY_KEY":
 			return token
+		case "OPL_CONTROL_PLANE_URL":
+			return url
 		}
 		return ""
 	})
-	client.url = url
 	return client
 }
 
-// The Control Plane's address is a fixed fact of the deployment topology, and
-// the fabric service is given no address for it, so there is nothing to read.
-func TestWorkspaceImageTrustSourceClientUsesTheFixedControlPlaneAddress(t *testing.T) {
-	client := newWorkspaceImageTrustSourceClient(nil)
-	if client.url != "http://control-plane:8787" {
-		t.Fatalf("control plane address=%q", client.url)
+// The Control Plane's address is an installation fact, read the same way the
+// other owners read it. An installation that names one gets that one; an
+// installation that names none gets the deployment topology's default.
+func TestWorkspaceImageTrustSourceClientReadsTheControlPlaneAddress(t *testing.T) {
+	configured := newWorkspaceImageTrustSourceClient(func(name string) string {
+		if name == "OPL_CONTROL_PLANE_URL" {
+			return "https://control-plane.internal:9443"
+		}
+		return ""
+	})
+	if configured.url != "https://control-plane.internal:9443" {
+		t.Fatalf("configured control plane address=%q", configured.url)
+	}
+	fallback := newWorkspaceImageTrustSourceClient(func(string) string { return "" })
+	if fallback.url != contracts.WorkspaceImageTrustSourceURLDefault {
+		t.Fatalf("fallback control plane address=%q", fallback.url)
+	}
+	// A trailing slash must not produce a double-slashed path.
+	trailing := newWorkspaceImageTrustSourceClient(func(name string) string {
+		if name == "OPL_CONTROL_PLANE_URL" {
+			return "https://control-plane.internal:9443/"
+		}
+		return ""
+	})
+	if trailing.url != "https://control-plane.internal:9443" {
+		t.Fatalf("trailing slash control plane address=%q", trailing.url)
 	}
 }
 

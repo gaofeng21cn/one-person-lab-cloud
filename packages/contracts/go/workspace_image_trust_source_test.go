@@ -33,6 +33,12 @@ func TestWorkspaceImageTrustSourceWireContractIsPinned(t *testing.T) {
 	if WorkspaceImageTrustSourceTokenEnv != "OPL_FABRIC_CAPABILITY_KEY" {
 		t.Fatalf("trust source credential changed: %q", WorkspaceImageTrustSourceTokenEnv)
 	}
+	if WorkspaceImageTrustSourceURLEnv != "OPL_CONTROL_PLANE_URL" {
+		t.Fatalf("trust source address variable changed: %q", WorkspaceImageTrustSourceURLEnv)
+	}
+	if WorkspaceImageTrustSourceURLDefault != "http://control-plane:8787" {
+		t.Fatalf("trust source address default changed: %q", WorkspaceImageTrustSourceURLDefault)
+	}
 }
 
 func TestWorkspaceImageReleaseActivationRequestCarriesRepositorySeparately(t *testing.T) {
