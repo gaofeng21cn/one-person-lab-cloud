@@ -126,6 +126,11 @@ jobs:
           PYTHONDONTWRITEBYTECODE: "1"
         run: python3 -m unittest discover -s tests/tools -p clean_host_qualification_recipe_test.py -v
 
+      - name: Validate the clean-host registry prefix
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python3 -m unittest discover -s tests/tools -p clean_host_registry_prefix_test.py -v
+
       - name: Validate source
         run: npm run verify:local -- --group source
 

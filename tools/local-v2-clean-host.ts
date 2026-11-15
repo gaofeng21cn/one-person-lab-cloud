@@ -21,6 +21,12 @@ export function cleanHostInstallation({ template, compose, directory, sourceSha,
     if (/(?:_PASSWORD|_TOKEN|_KEY|_SEED)$/.test(name)) values[name] ??= randomBytes(32).toString("hex");
   }
   const email = "local-qualification@example.test";
+  // The registry the User's OCI destination is bound to and the registry the
+  // Build owner may write into are one installation fact. The Build owner
+  // refuses any destination whose registry namespace is outside its approved
+  // prefix, so the two must name the same host and the same namespace.
+  const registryHost = workspaceImage.split("/")[0];
+  const registryNamespace = "qualification";
   const profile = {
     schemaVersion: 1, profileId: "local-docker/local", capabilityVersion: "local-docker/v1", region: "local",
     accountBindings: [{ tenantId, accountId: "local-host" }],
@@ -54,8 +60,8 @@ export function cleanHostInstallation({ template, compose, directory, sourceSha,
     OPL_DOCKER_SOCKET_PATH: "/var/run/docker.sock", OPL_FABRIC_DOCKER_BINARY: "/usr/local/bin/docker",
     OPL_CONSOLE_USERS_JSON: "[]", OPL_PLATFORM_ADMIN_SUBJECTS: "41", OPL_INVITATION_TTL: "168h",
     OPL_GATEWAY_WORKSPACE_KEY_GROUP: "Codex", OPL_WORKSPACE_APPLICATION_INGRESS_PEERS: "{}",
-    OPL_WORKSPACE_REGISTRY_HOST: workspaceImage.split("/")[0], OPL_WORKSPACE_REGISTRY_NAMESPACE: "qualification",
-    OPL_BUILD_BUILDER: "default", OPL_BUILD_REGISTRY_PREFIX: workspaceImage.split("@")[0],
+    OPL_WORKSPACE_REGISTRY_HOST: registryHost, OPL_WORKSPACE_REGISTRY_NAMESPACE: registryNamespace,
+    OPL_BUILD_BUILDER: "default", OPL_BUILD_REGISTRY_PREFIX: `${registryHost}/${registryNamespace}`,
   });
   const facts = localV2InstallationFacts({ template, compose, values });
   for (const name of facts.unresolved) {
