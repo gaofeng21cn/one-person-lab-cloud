@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "applicationId": "stage3-local-agent",
+  "version": "build_b3b08d7f3a739eff9525481b243a5165",
+  "platform": "linux/arm64",
+  "image": "127.0.0.1:5000/qualification/local-qualification@sha256:73219c72bb67cd7979d4353a5af31f2ff4c11fd8114a4d817240914cbbbcf1b6",
+  "exposurePolicy": "anonymous",
+  "ports": [
+    {
+      "name": "http",
+      "port": 3000,
+      "protocol": "TCP"
+    }
+  ],
+  "entryPort": "http",
+  "healthChecks": [
+    {
+      "port": 3000,
+      "path": "/"
+    }
+  ],
+  "persistentMounts": [
+    {
+      "name": "workspace-data",
+      "mountPath": "/data",
+      "readOnly": false
+    }
+  ],
+  "execution": {
+    "declared": false,
+    "observed": false,
+    "note": "The publisher contract's application revision template declares no process identity, and the product's deployment descriptor renders none. No uid/gid is claimed here: the image config declares no User, and the delivered container has never been observed running, so any number would be a capability the publisher never declared and nobody has watched. Declaring it requires a publisher-side contract field plus an observed run."
+  }
+}

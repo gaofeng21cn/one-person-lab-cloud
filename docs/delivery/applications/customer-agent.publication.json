@@ -1,0 +1,103 @@
+{
+  "schema": "customer-agent-publication.v1",
+  "applicationId": "stage3-local-agent",
+  "repository": "127.0.0.1:5000/qualification/local-qualification",
+  "tag": "build_b3b08d7f3a739eff9525481b243a5165",
+  "digest": "sha256:73219c72bb67cd7979d4353a5af31f2ff4c11fd8114a4d817240914cbbbcf1b6",
+  "platform": "linux/arm64",
+  "artifact_kind": "oci_image_manifest",
+  "manifest_media_type": "application/vnd.oci.image.manifest.v1+json",
+  "oci_index_digest": null,
+  "oci_index_child_manifest_linux_arm64": null,
+  "artifact_identity_note": "This publisher emits single-platform OCI image manifests, never an OCI index. services/build/internal/build/runner.go ReadManifest requests only application/vnd.oci.image.manifest.v1+json and application/vnd.docker.distribution.manifest.v2+json and rejects anything else with \"single-platform image manifest required\". The digest above is therefore the platform manifest identity itself. There is no index identity and no platform child manifest to compare it against; an index digest and a platform child manifest digest are two different identities and neither may stand in for the other.",
+  "config_digest": "sha256:5a6699f19bf67a994669c733d0eed14cd8031973d9f69553f97178b2402e1d57",
+  "size_bytes": 84323088,
+  "layer_count": 7,
+  "delivered_components": [
+    {
+      "component": "agent(主应用)",
+      "repository": "127.0.0.1:5000/qualification/local-qualification",
+      "reference": "127.0.0.1:5000/qualification/local-qualification@sha256:73219c72bb67cd7979d4353a5af31f2ff4c11fd8114a4d817240914cbbbcf1b6",
+      "tag": "build_b3b08d7f3a739eff9525481b243a5165",
+      "digest": "sha256:73219c72bb67cd7979d4353a5af31f2ff4c11fd8114a4d817240914cbbbcf1b6",
+      "platform": "linux/arm64",
+      "size_bytes": 84323088
+    }
+  ],
+  "build_inputs": {
+    "note": "Build inputs are not delivered components. They are the material the build consumed; none of them runs as a service of the delivered artifact, and none of them may be presented as part of the delivery.",
+    "runtime_base_image": {
+      "repository": "127.0.0.1:5000/opl-qualification-workspace",
+      "digest": "sha256:ae7b48c14ccb26e108a69bbad0ff88f2adae45cc4dfcf220d85213ed02f6b7b3",
+      "platform": "linux/arm64",
+      "role": "the base the agent was built FROM; its layers are already inside the delivered manifest",
+      "is_substitute": true,
+      "substitute_note": "Built locally from deploy/portable/qualification-workspace.Dockerfile (no RUN, no network). It stands in for the platform's published OPL App runtime image and is not one."
+    },
+    "webui_image": {
+      "repository": "127.0.0.1:5000/opl-qualification-workspace/webui",
+      "digest": "sha256:c2b819f4293f36212656abab0f918b9ab9513ec3e52085a6717874d450db23c2",
+      "platform": "linux/arm64",
+      "role": "static webui bundled into the agent image at /opt/opl/web"
+    },
+    "dockerfile_frontend_image": {
+      "repository": "127.0.0.1:5000/opl-qualification-workspace/dockerfile",
+      "digest": "sha256:e291cde6b1429712d3951bca77be92338719212df6654812f1a55874a481742d",
+      "platform": "linux/amd64",
+      "role": "the # syntax= frontend the recipe names"
+    },
+    "build_recipe_blob": {
+      "repository": "127.0.0.1:5000/opl-qualification-workspace/recipe",
+      "digest": "sha256:4e60cda483cc0bc0bcb59818bd7c42ed7574bef8ee1db7ea9ec0cf6745c96d48",
+      "media_type": "application/vnd.opl.build-recipe.v1+tar",
+      "role": "the recipe tar; its Dockerfile must be byte-identical to the product's Runner.FixedDockerfile rendering"
+    }
+  },
+  "previous_retained": {
+    "note": "No previous version of this artifact exists, so nothing is retained as a predecessor. The other four build jobs that produced the same digest (build_5ac665396e9ca855ff14050ad4a4a90d, build_8ba22ee027126a23682856f460882956, build_236fbafb12c5ab6ceefa4a96c50a364b, build_f210cc4fa898316424f2c658efdaa352) are the SAME artifact under different job ids, not retained versions. Retaining a predecessor requires a distinct digest."
+  },
+  "historical_must_not_be_presented_as_delivery": {
+    "note": "Two digests exist in this installation that must never be presented as this delivery.",
+    "runtime_base_image": {
+      "digest": "sha256:ae7b48c14ccb26e108a69bbad0ff88f2adae45cc4dfcf220d85213ed02f6b7b3",
+      "reason": "It is the base the agent was built FROM, not the agent. The delivered manifest already contains its layers."
+    },
+    "qualification_workspace_fixture": {
+      "digest": "sha256:ae7b48c14ccb26e108a69bbad0ff88f2adae45cc4dfcf220d85213ed02f6b7b3",
+      "reason": "The same digest as the runtime base image. Its CMD serves the platform fixture body 'OPL Workspace READY'; the delivered agent's entrypoint is the agent package's own runtime instead. A served body of 'OPL Workspace READY' is proof that the platform fixture is being served and the agent is not."
+    }
+  },
+  "deployment_descriptor": {
+    "file": "customer-agent.deployment-descriptor.json",
+    "digest": "sha256:37f8c298f7513f24bda6da04d76cc183ffb09196181c8dcf9c5da1dc2a385b6f",
+    "object_ref": "build-artifact://artifact_build_b3b08d7f3a739eff9525481b243a5165/descriptor@sha256:37f8c298f7513f24bda6da04d76cc183ffb09196181c8dcf9c5da1dc2a385b6f",
+    "schema_version": "opl-deployment-descriptor/v1",
+    "origin": "build.build_artifacts.descriptor_bytes, byte-for-byte"
+  },
+  "build": {
+    "build_job_id": "build_b3b08d7f3a739eff9525481b243a5165",
+    "artifact_id": "artifact_build_b3b08d7f3a739eff9525481b243a5165",
+    "operation_id": "op_d105f70381317ad5288b515fe74321b9",
+    "capability_version_id": "capv_19fe9d02c548e877b238ca68e7826a31",
+    "package_version_id": "pv_79fe03919bafd55de576274415579445",
+    "runtime_version_id": "runtime_c365af1b4617584a9d06ee99ca118003",
+    "webui_version_id": "webui_8969beb864a4392a39b22222b9cf2f9d",
+    "build_policy_id": "policy_3c943b37a6660b0d655e31c350f79f45",
+    "publisher_namespace_id": "publisher_b1662fd564c3e23d6c769cc9f07bf8bf",
+    "build_input_digest": "sha256:11423a6ea7630007540be2ae7f61492c65c46aeae7882d45c8050caa03467461",
+    "provenance": "build"
+  },
+  "capabilities": {
+    "application_access": "anonymous; the delivered revision declares exposurePolicy=anonymous and the runtime contract declares applicationAccess.mode=anonymous",
+    "serves": "the agent package's own runtime at /opt/opl/bin/runtime (entrypoint), cmd=serve",
+    "port": "3000/TCP, exposed by the image config",
+    "health_probe": "GET / on port 3000",
+    "data_mount": "/data, mount name workspace-data, concurrent writers not supported",
+    "data_schema_version": "opl-package/v1, rollback safe within opl-package/v1, upgrade mode compatible",
+    "configuration_inputs": "none declared",
+    "secret_inputs": "none declared",
+    "external_dependencies": "none declared",
+    "readback": "GET / on the served URL returns the agent's own JSON body"
+  },
+  "readback_method": "authenticated registry query of the pushed tag after publication, plus the OCI manifest child listing: read the manifest by tag, list its config digest and every layer digest, then read the config blob to confirm os/architecture and the entrypoint. The listing is of the manifest's config and layers; there is no OCI index child listing to perform, because this publisher emits single-platform image manifests and the build owner rejects an index with 'single-platform image manifest required'. The build owner requires the response Docker-Content-Digest to equal the digest of the manifest bytes it read, and requires the image config's os/architecture to equal the declared platform, before it accepts the artifact."
+}
