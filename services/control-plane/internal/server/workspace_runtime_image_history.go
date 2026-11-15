@@ -42,6 +42,7 @@ type workspaceRuntimeImageReplacementOperation struct {
 // registered even though no Cloud repository calls it.
 func registerWorkspaceImageHistoryRoutes(mux *http.ServeMux, app *controlPlaneServer) {
 	mux.HandleFunc("GET /api/operator/workspace-runtime-image-policy", app.protected(true, app.getWorkspaceImageReleasePolicy))
+	registerWorkspaceImageTrustSourceRoutes(mux, app)
 }
 
 func decodeWorkspaceRuntimeImageReplacementOperation(row map[string]any, accountID, workspaceID string) (workspaceRuntimeImageReplacementOperation, string, error) {

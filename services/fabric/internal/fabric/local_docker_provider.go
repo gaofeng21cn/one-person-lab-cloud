@@ -56,6 +56,10 @@ type LocalDockerProviderConfig struct {
 	WorkloadOwnership            localDockerWorkloadOwnership
 	TrustedWorkspaceImageSources []string
 	ProviderProfileJSON          []byte
+	// TrustSourceClient reads the Control Plane's registered workspace image
+	// trust source. It is optional: a provider built without one keeps the
+	// installation's own trust sources only.
+	TrustSourceClient *workspaceImageTrustSourceClient
 }
 
 type localDockerProviderProfile struct {
@@ -105,6 +109,7 @@ type LocalDockerProvider struct {
 	configureRuntimeGatewayEnabled    bool
 	trustedWorkspaceImageRepositories map[string]struct{}
 	trustedWorkspaceImageReferences   map[string]struct{}
+	workspaceImageTrustSource          *workspaceImageTrustSourceClient
 	now                               func() time.Time
 	storageQuota                      localDockerProjectQuota
 	workloadOwnership                 localDockerWorkloadOwnership
@@ -131,6 +136,7 @@ func NewLocalDockerProvider() *LocalDockerProvider {
 		ConfigureRuntimeGateway:      true,
 		TrustedWorkspaceImageSources: trustedSources,
 		ProviderProfileJSON:          []byte(strings.TrimSpace(os.Getenv(localDockerProviderProfileEnv))),
+		TrustSourceClient:            newWorkspaceImageTrustSourceClient(os.Getenv),
 	}, nil)
 }
 
@@ -176,6 +182,7 @@ func newLocalDockerProvider(config LocalDockerProviderConfig, runner dockerRunne
 		runtimeGatewayContainer:           strings.TrimSpace(config.RuntimeGatewayContainer),
 		configureRuntimeGatewayEnabled:    config.ConfigureRuntimeGateway,
 		trustedWorkspaceImageRepositories: trustedRepositories, trustedWorkspaceImageReferences: trustedReferences,
+		workspaceImageTrustSource:          config.TrustSourceClient,
 		profile: profile, plans: plans, profileErr: profileErr,
 		now: func() time.Time { return time.Now().UTC() },
 	}
@@ -313,7 +320,22 @@ func (p *LocalDockerProvider) ValidateWorkspaceImageReference(value string) bool
 		return true
 	}
 	_, trusted := p.trustedWorkspaceImageRepositories[repository]
-	return repository != "" && trusted
+	if repository != "" && trusted {
+		return true
+	}
+	// The registered trust source admits a repository: every image published
+	// to a trusted repository may start a workspace, which is what a
+	// publisher's own build output needs.
+	return p.workspaceImageTrustSource.admit(context.Background(), reference)
+}
+
+// RefreshWorkspaceImageTrust reads the Control Plane's registered trust
+// source, so a registration takes effect without editing an allowlist.
+func (p *LocalDockerProvider) RefreshWorkspaceImageTrust(ctx context.Context) error {
+	if p == nil || p.workspaceImageTrustSource == nil {
+		return nil
+	}
+	return p.workspaceImageTrustSource.Refresh(ctx)
 }
 
 func (*LocalDockerProvider) ValidateComputeAllocation(allocation ComputeAllocation, prepared ComputeAllocationPreparation) error {

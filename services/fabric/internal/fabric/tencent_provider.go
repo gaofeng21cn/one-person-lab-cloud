@@ -110,6 +110,10 @@ type TencentProvider struct {
 	namespace       string
 	provisionerPath string
 	installationErr error
+	// The Control Plane's registered workspace image trust source. It is the
+	// admission decision for images that are not in the published release
+	// catalog.
+	workspaceImageTrustSource *workspaceImageTrustSourceClient
 }
 
 func normalizeWorkspaceDomain(value string) string {
@@ -236,6 +240,7 @@ func NewTencentProvider() *TencentProvider {
 		workspaceImage: workspaceImage, workspaceImages: workspaceImages, workspaceDomain: workspaceDomain, namespace: namespaceValue,
 		provisionerPath: provisionerPath,
 		installationErr: installationErr,
+		workspaceImageTrustSource: newWorkspaceImageTrustSourceClient(os.Getenv),
 	}
 	provider.provision = func(ctx context.Context, request provisionerRequest) (provisionerResponse, error) {
 		if err := provider.validateInstallationConfig(); err != nil {
@@ -425,7 +430,25 @@ func validateTencentComputeAllocationIdentity(allocation ComputeAllocation, prep
 }
 
 func (p *TencentProvider) ValidateWorkspaceImageReference(value string) bool {
-	return p != nil && p.installationErr == nil && validWorkspaceRuntimeImageIdentity(value) && p.workspaceImages.ContainsImage(value)
+	if p == nil || p.installationErr != nil || !validWorkspaceRuntimeImageIdentity(value) {
+		return false
+	}
+	// The published release catalog stays an exact image match.
+	if p.workspaceImages.ContainsImage(value) {
+		return true
+	}
+	// The registered trust source admits a repository, so a publisher's own
+	// build output is startable without editing the release catalog.
+	return p.workspaceImageTrustSource.admit(context.Background(), value)
+}
+
+// RefreshWorkspaceImageTrust reads the Control Plane's registered trust
+// source, so a registration takes effect without editing an allowlist.
+func (p *TencentProvider) RefreshWorkspaceImageTrust(ctx context.Context) error {
+	if p == nil || p.workspaceImageTrustSource == nil {
+		return nil
+	}
+	return p.workspaceImageTrustSource.Refresh(ctx)
 }
 
 func boundedClaimReadbackWait(ctx context.Context, attempt int) error {
