@@ -171,8 +171,48 @@ test("the published installation hands the producer the Control Plane and the sh
   const compose = YAML.parse(await source(composePath));
   const build = compose.services.build.environment;
 
-  assert.equal(build.OPL_CONTROL_PLANE_URL, "http://control-plane:8787",
-    "the Build owner must reach the Control Plane of its own installation");
+  assert.match(String(build.OPL_CONTROL_PLANE_URL), /^\$\{OPL_CONTROL_PLANE_URL:-http:\/\/control-plane:8787\}$/,
+    "the Build owner must reach the Control Plane the installation names, with the topology default as the fallback");
   assert.match(String(build.OPL_FABRIC_CAPABILITY_KEY), /^\$\{OPL_FABRIC_CAPABILITY_KEY/,
     "the shared credential must come from the installation, not from a value the compose hardcodes");
+});
+
+// The producer has to be generic. The registration names the repository this
+// build published, so the code that publishes it may not carry one
+// installation's repository, image, host or digest: a literal like that would
+// make the trigger work for that installation only.
+const producerFiles = [
+  "services/build/internal/build/trust_source.go",
+  "services/build/internal/build/worker.go",
+  "services/build/internal/build/service.go",
+  "services/build/cmd/server/main.go",
+  "services/build/migrations/0003_trust_source.sql",
+];
+
+const instanceFacts: { pattern: RegExp; what: string }[] = [
+  { pattern: /[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?::\d+)?\/[a-z0-9._/-]+/i, what: "a repository or image reference" },
+  { pattern: /(?:\d{1,3}\.){3}\d{1,3}/, what: "an IP address" },
+  { pattern: /[a-z0-9.-]+:\d{2,5}\/[a-z0-9._/-]+/i, what: "a host:port repository reference" },
+  { pattern: /["'][^"']*[0-9a-f]{16,}[^"']*["']/, what: "a pinned digest or identifier" },
+];
+
+// literals returns the string literals of a Go or SQL file without the import
+// paths: a module path is not an instance fact.
+function literals(contents: string): string[] {
+  const withoutImports = contents.replace(/import\s*\([^)]*\)/gs, "").replace(/import\s+"[^"]*"/g, "");
+  return [
+    ...[...withoutImports.matchAll(/"(?:[^"\\]|\\.)*"/g)].map((match) => match[0]),
+    ...[...withoutImports.matchAll(/`(?:[^`\\]|\\.)*`/g)].map((match) => match[0]),
+  ];
+}
+
+test("the producer carries no instance fact of its own", async () => {
+  for (const path of producerFiles) {
+    const contents = await source(path);
+    for (const literal of literals(contents)) {
+      for (const { pattern, what } of instanceFacts) {
+        assert.doesNotMatch(literal, pattern, `${path} must not carry ${what}: ${literal}`);
+      }
+    }
+  }
 });

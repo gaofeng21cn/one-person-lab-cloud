@@ -372,9 +372,11 @@ services:
       OPL_GRPC_KEY_FILE: /pki/build.key
       # The Build owner publishes the workspace image trust source admission for
       # the repository each confirmed build artifact was published to. It reads
-      # the Control Plane's address and authenticates with the shared credential
-      # the Control Plane and the Fabric owner already hold.
-      OPL_CONTROL_PLANE_URL: http://control-plane:8787
+      # the Control Plane's address from the installation and authenticates with
+      # the shared credential the Control Plane and the Fabric owner already
+      # hold, so an installation that moves the Control Plane moves this owner
+      # with it.
+      OPL_CONTROL_PLANE_URL: ${OPL_CONTROL_PLANE_URL:-http://control-plane:8787}
       OPL_FABRIC_CAPABILITY_KEY: ${OPL_FABRIC_CAPABILITY_KEY:?Set OPL_FABRIC_CAPABILITY_KEY}
     volumes:
       - opl-cloud-local-v2-build:/var/lib/opl/build
