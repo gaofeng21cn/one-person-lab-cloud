@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
@@ -39,3 +40,22 @@ test("the published environment template names the plain-HTTP registry host list
   assert.match(template, new RegExp(`^${insecureHostsEnv}=`, "m"),
     `the published environment template must name ${insecureHostsEnv}`);
 });
+
+for (const composePath of ["deploy/portable/compose.cloud.yaml", "deploy/portable/compose.local-v2.yaml"]) {
+  test(`${composePath} passes optional plain-HTTP hosts to the Build process`, () => {
+    const variables = spawnSync("docker", ["compose", "--env-file", "/dev/null", "-f", composePath, "config", "--variables", "--format", "json"], { encoding: "utf8" });
+    assert.equal(variables.status, 0, variables.stderr);
+    const declared = JSON.parse(variables.stdout);
+    const clean = Object.fromEntries(Object.entries(process.env).filter(([name]) => !/^(OPL_|COMPOSE_)/.test(name)));
+    const env = Object.fromEntries(Object.values(declared).map((item: any) => [item.Name, item.DefaultValue || "fixture-value"]));
+    Object.assign(env, { OPL_CLOUD_IMAGE: "alpine:3", OPL_PROXY_PORT: "8443", OPL_DOCKER_SUBNET: "172.29.0.0/24", OPL_POSTGRES_HOST: "172.29.0.10", OPL_PKI_DIR: "/tmp/opl-fixture-pki" });
+    for (const value of [undefined, "", "registry.example.test:5000,other.example.test:5001"]) {
+      const selected = { ...env };
+      if (value === undefined) delete selected[insecureHostsEnv];
+      else selected[insecureHostsEnv] = value;
+      const resolved = spawnSync("docker", ["compose", "--env-file", "/dev/null", "-f", composePath, "config", "--format", "json"], { encoding: "utf8", env: { ...clean, ...selected } });
+      assert.equal(resolved.status, 0, resolved.stderr);
+      assert.equal(JSON.parse(resolved.stdout).services.build.environment[insecureHostsEnv], value ?? "");
+    }
+  });
+}
