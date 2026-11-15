@@ -31,6 +31,8 @@ import (
 )
 
 func TestLivePackageUploadObjectNamespace(t *testing.T) {
+	t.Setenv("OPL_BUILD_TEST_REGISTRY_HOST", "127.0.0.1:5000")
+	t.Setenv("OPL_BUILD_TEST_REGISTRY_NAMESPACE", "result")
 	dsn := ownerstoretest.EnsureAdminDSNOrSkip(os.Getenv, t.Skip)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
