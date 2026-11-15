@@ -11,6 +11,7 @@ const allowedWorkflows = new Set([
   "clean-host-qualification.yml",
   "cloud-business-readback.yml",
   "codeql.yml",
+  "customer-agent-lifecycle-qualification.yml",
   "daily-release.yml",
   "pull-request-ci.yml",
   "qualification.yml",

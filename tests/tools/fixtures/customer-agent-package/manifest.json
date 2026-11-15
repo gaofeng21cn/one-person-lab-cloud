@@ -1,0 +1,6 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "customer-agent-fixture",
+  "version": "1.0.0",
+  "description": "Fixture customer agent that echoes the probe file it was packaged with."
+}

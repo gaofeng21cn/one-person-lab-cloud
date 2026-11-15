@@ -1,0 +1,284 @@
+name: Customer Agent Lifecycle Qualification
+run-name: Customer agent lifecycle ${{ inputs.ref }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Exact 40-character Product candidate commit.
+        required: true
+        type: string
+      cloud_image_ref:
+        description: Exact immutable OPL Cloud image reference.
+        required: true
+        type: string
+      workspace_image_ref:
+        description: Exact immutable Workspace image reference; empty builds only the existing qualification fixture.
+        required: false
+        type: string
+      mode:
+        description: Native Local-Docker qualification using the declared local-v2 topology.
+        required: false
+        default: local-v2
+        type: choice
+        options:
+          - local-v2
+
+permissions:
+  contents: read
+
+concurrency:
+  group: customer-agent-lifecycle-${{ inputs.ref }}
+  cancel-in-progress: false
+
+jobs:
+  customer_agent_lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact product source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      # The same immutable Workspace image the clean-host qualification uses.
+      # The registry it is pushed to is the registry the customer binds, so the
+      # build output the lifecycle reads back is the one this host holds.
+      - name: Prepare immutable qualification Workspace image
+        id: workspace
+        shell: bash
+        env:
+          SUPPLIED_WORKSPACE_IMAGE: ${{ inputs.workspace_image_ref }}
+          PRODUCT_SHA: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "$SUPPLIED_WORKSPACE_IMAGE" ]; then
+            [[ "$SUPPLIED_WORKSPACE_IMAGE" =~ ^[a-z0-9.-]+(:[1-9][0-9]*)?/[a-z0-9._/-]+@sha256:[a-f0-9]{64}$ ]]
+            printf 'image_ref=%s\n' "$SUPPLIED_WORKSPACE_IMAGE" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          registry="opl-customer-agent-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          printf 'registry=%s\n' "$registry" >> "$GITHUB_OUTPUT"
+          docker run -d --name "$registry" -p 127.0.0.1::5000 \
+            registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
+          port="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "5000/tcp") 0).HostPort}}' "$registry")"
+          [[ "$port" =~ ^[1-9][0-9]*$ ]]
+          repository="127.0.0.1:$port/opl-customer-agent"
+          tag="$repository:fixture"
+          printf 'image_tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+          docker build --file deploy/portable/qualification-workspace.Dockerfile \
+            --label "org.opencontainers.image.revision=$PRODUCT_SHA" --tag "$tag" .
+          docker push "$tag"
+          image="$(docker image inspect --format '{{index .RepoDigests 0}}' "$tag")"
+          [[ "$image" == "$repository@sha256:"* ]]
+          [[ "${image##*@}" =~ ^sha256:[a-f0-9]{64}$ ]]
+          docker pull "$image"
+          printf 'image_ref=%s\n' "$image" >> "$GITHUB_OUTPUT"
+
+      # The quota-enabled Workspace storage root. This host has no project quota
+      # of its own, so the root is prepared here rather than inside the
+      # qualification.
+      - name: Prepare the Local-Docker storage root
+        id: storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          kernel_release="$(uname -r)"
+          if ! sudo modprobe -v quota_v2; then
+            if modinfo -k "$kernel_release" quota_v2; then
+              exit 1
+            fi
+            sudo apt-get update
+            sudo apt-get install --no-install-recommends -y "linux-modules-extra-$kernel_release"
+            sudo depmod -a "$kernel_release"
+            modinfo -k "$kernel_release" quota_v2
+            sudo modprobe -v quota_v2
+          fi
+          qualification_root="/tmp/opl-customer-agent-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test ! -e "$qualification_root"
+          available_bytes="$(df -B1 --output=avail /tmp | tail -n 1 | tr -d ' ')"
+          [[ "$available_bytes" =~ ^[0-9]+$ ]]
+          # Fail explicitly instead of relying on `set -e` to abort on a bare (( )).
+          if (( available_bytes < 14 * 1024 * 1024 * 1024 )); then
+            echo "insufficient free space for the Local-Docker storage root: ${available_bytes} bytes" >&2
+            exit 1
+          fi
+          mkdir -p "$qualification_root/storage"
+          printf 'OPL_QUALIFICATION_ROOT=%s\n' "$qualification_root" >> "$GITHUB_ENV"
+          quota_image="$qualification_root/quota.img"
+          truncate -s 12G "$quota_image"
+          mkfs.ext4 -F -q -O project,quota -E quotatype=prjquota "$quota_image"
+          sudo mount -o loop,prjquota "$quota_image" "$qualification_root/storage"
+          sudo chown "$(id -u):$(id -g)" "$qualification_root/storage"
+          printf 'storage_root=%s\n' "$qualification_root/storage" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare and exercise the native owner installation
+        if: ${{ inputs.mode == 'local-v2' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRODUCT_SHA: ${{ inputs.ref }}
+          CLOUD_IMAGE_REF: ${{ inputs.cloud_image_ref }}
+          WORKSPACE_IMAGE_REF: ${{ steps.workspace.outputs.image_ref }}
+          STORAGE_ROOT: ${{ steps.storage.outputs.storage_root }}
+          INSTALLER_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          installer="$RUNNER_TEMP/native-qualification-installer"
+          mkdir -p "$installer/tools"
+          # Installer control code is separately bound to the workflow revision;
+          # the product checkout and image remain the exact supplied Candidate.
+          for file in local-v2-clean-host.ts local-v2-installation-facts.ts; do
+            gh api "repos/$GITHUB_REPOSITORY/contents/tools/$file?ref=$INSTALLER_SHA" --jq .content |
+              base64 --decode > "$installer/tools/$file"
+          done
+          directory="$OPL_QUALIFICATION_ROOT/native"
+          project="opl-customer-agent-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          args=(--product-root "$PWD" --directory "$directory" --project "$project"
+            --source-sha "$PRODUCT_SHA" --cloud-image "$CLOUD_IMAGE_REF"
+            --workspace-image "$WORKSPACE_IMAGE_REF" --storage-root "$STORAGE_ROOT")
+          node "$installer/tools/local-v2-clean-host.ts" "${args[@]}"
+          bash deploy/portable/local-v2-pki.sh "$directory/pki"
+          curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
+            https://agent-plugins.org/schemas/1.0.0/plugin.schema.json --output "$directory/plugin.schema.json"
+          expected="$(awk -F= '$1 == "OPL_CAPABILITY_PACKAGE_SCHEMA_DIGEST" { print $2 }' "$directory/installation.env")"
+          printf '%s  %s\n' "${expected#sha256:}" "$directory/plugin.schema.json" | sha256sum --check
+          printf 'OPL_NATIVE_PROJECT=%s\n' "$project" >> "$GITHUB_ENV"
+          native_args=(--mode local-v2 --source-sha "$PRODUCT_SHA" --installation-env "$directory/installation.env"
+            --application-contract "$directory/application.json" --project "$project")
+          bootstrap="$RUNNER_TEMP/local-v2-bootstrap.json"
+          node tools/local-workspace-qualification.ts "${native_args[@]}" --receipt "$bootstrap" || true
+          # The first run obtains the Tenant from its real owner before this
+          # installation may bind Fabric to it. No purchase precedes that bind.
+          if ! node "$installer/tools/local-v2-clean-host.ts" "${args[@]}" --bind-from "$bootstrap"; then
+            cp "$bootstrap" "$RUNNER_TEMP/local-workspace-qualification.json"
+            exit 1
+          fi
+          node tools/local-workspace-qualification.ts "${native_args[@]}" \
+            --receipt "$RUNNER_TEMP/local-workspace-qualification.json"
+
+      # The evidence machine and the fixture it qualifies.
+      #
+      # The control code is bound to the workflow revision, not to the Product
+      # candidate: the candidate is the thing under test, and the harness has to
+      # be the one this workflow ships. The fixture package is the harness's own
+      # input and is bound to the same revision.
+      - name: Fetch the customer agent lifecycle harness and its fixture
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INSTALLER_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          harness="$RUNNER_TEMP/customer-agent-harness"
+          mkdir -p "$harness/tools" "$harness/packages/contracts" "$harness/fixture/bin" "$harness/fixture/provenance"
+          for file in local-customer-agent-lifecycle.ts local-workspace-qualification.ts \
+            workspace-purchase-core.ts local-workspace-recovery.ts workspace-qualification-contract.ts \
+            local-v2-installation-facts.ts local-v2-qualification-receipt.ts cloud-candidate-receipt.ts; do
+            gh api "repos/$GITHUB_REPOSITORY/contents/tools/$file?ref=$INSTALLER_SHA" --jq .content |
+              base64 --decode > "$harness/tools/$file"
+          done
+          gh api "repos/$GITHUB_REPOSITORY/contents/packages/contracts/opl-cloud-distribution-contract.json?ref=$INSTALLER_SHA" --jq .content |
+            base64 --decode > "$harness/packages/contracts/opl-cloud-distribution-contract.json"
+          for file in manifest.json bin/runtime provenance/probe.txt; do
+            gh api "repos/$GITHUB_REPOSITORY/contents/tests/tools/fixtures/customer-agent-package/$file?ref=$INSTALLER_SHA" --jq .content |
+              base64 --decode > "$harness/fixture/$file"
+          done
+          chmod 0755 "$harness/fixture/bin/runtime"
+          printf 'HARNESS_ROOT=%s\n' "$harness" >> "$GITHUB_ENV"
+
+      # The chain itself: upload, build, register, quote, buy, read the entry,
+      # delete, and read the absence back. The run writes its own receipt and
+      # exits non-zero when any step of the chain did not happen.
+      - name: Run the customer agent lifecycle evidence machine
+        if: ${{ inputs.mode == 'local-v2' }}
+        env:
+          PRODUCT_SHA: ${{ inputs.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          directory="$OPL_QUALIFICATION_ROOT/native"
+          # The probe path is the fixture's own convention: the fixture runtime
+          # echoes the probe file it was packaged with, and the harness writes
+          # this run's nonce into it before the upload.
+          node "$HARNESS_ROOT/tools/local-customer-agent-lifecycle.ts" \
+            --mode local-v2 \
+            --source-sha "$PRODUCT_SHA" \
+            --installation-env "$directory/installation.env" \
+            --package-dir "$HARNESS_ROOT/fixture" \
+            --probe-path "provenance/probe.txt" \
+            --expected-evidence-level "content-provenance" \
+            --receipt "$RUNNER_TEMP/customer-agent-lifecycle.json"
+
+      - name: Upload the customer agent lifecycle receipt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.6.2
+        with:
+          name: customer-agent-lifecycle
+          path: ${{ runner.temp }}/customer-agent-lifecycle.json
+          if-no-files-found: error
+
+      - name: Remove the Local-Docker storage root
+        if: ${{ always() }}
+        env:
+          PRODUCT_SHA: ${{ inputs.ref }}
+          CLOUD_IMAGE_REF: ${{ inputs.cloud_image_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          qualification_root="${OPL_QUALIFICATION_ROOT:-}"
+          # An earlier step may have failed before the root was created; cleanup
+          # succeeds without work in that case.
+          [ -n "$qualification_root" ] || exit 0
+          test "$qualification_root" = "/tmp/opl-customer-agent-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test ! -L "$qualification_root"
+          if [ -n "${OPL_NATIVE_PROJECT:-}" ]; then
+            test "$OPL_NATIVE_PROJECT" = "opl-customer-agent-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            docker compose --project-name "$OPL_NATIVE_PROJECT" \
+              --env-file "$qualification_root/native/installation.env" \
+              -f deploy/portable/compose.local-v2.yaml down --volumes --remove-orphans
+            if [ -f "$RUNNER_TEMP/local-workspace-qualification.json" ]; then
+              cleanup_receipt="$RUNNER_TEMP/local-workspace-qualification.json"
+              if [ -f "$cleanup_receipt.diagnostic.json" ]; then
+                cleanup_receipt="$cleanup_receipt.diagnostic.json"
+              fi
+              node "$RUNNER_TEMP/native-qualification-installer/tools/local-v2-clean-host.ts" \
+                --product-root "$PWD" --directory "$qualification_root/native" --project "$OPL_NATIVE_PROJECT" \
+                --source-sha "$PRODUCT_SHA" --cloud-image "$CLOUD_IMAGE_REF" \
+                --cleanup-from "$cleanup_receipt"
+            fi
+          fi
+          if mountpoint -q "$qualification_root/storage"; then
+            sudo umount "$qualification_root/storage"
+          fi
+          if test -d "$qualification_root"; then
+            sudo rm -rf --one-file-system -- "$qualification_root"
+          fi
+
+      - name: Remove run-owned Workspace fixture registry
+        if: ${{ always() && steps.workspace.outputs.registry != '' }}
+        shell: bash
+        env:
+          REGISTRY: ${{ steps.workspace.outputs.registry }}
+          IMAGE_TAG: ${{ steps.workspace.outputs.image_tag }}
+        run: |
+          set -euo pipefail
+          test "$REGISTRY" = "opl-customer-agent-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          if docker container inspect "$REGISTRY" >/dev/null 2>&1; then
+            docker rm --force "$REGISTRY"
+          fi
+          if [ -n "$IMAGE_TAG" ] && docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
+            docker image rm "$IMAGE_TAG"
+          fi
