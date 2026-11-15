@@ -2281,12 +2281,14 @@ export function assertCustomerPackageVersionReadback(readback, expected = {}) {
 export function assertCustomerDeployedVersionIdentity({ build, capabilityVersion, workspace } = {}) {
   const buildJobId = String(build?.id || "");
   const resultCapabilityVersionId = String(build?.resultCapabilityVersionId || "");
+  const buildPackageVersionId = String(build?.packageVersionId || "");
   const capabilityVersionId = String(capabilityVersion?.id || "");
   const workspaceCapabilityVersionId = String(workspace?.capabilityVersionId || "");
   const capabilityBuildJobId = String(capabilityVersion?.buildJobId || "");
   const capabilityPackageVersionId = String(capabilityVersion?.packageVersionId || "");
   if (!buildJobId || !resultCapabilityVersionId || capabilityVersionId !== resultCapabilityVersionId ||
-      capabilityBuildJobId !== buildJobId || !capabilityPackageVersionId ||
+      capabilityBuildJobId !== buildJobId || !buildPackageVersionId ||
+      capabilityPackageVersionId !== buildPackageVersionId ||
       workspaceCapabilityVersionId !== capabilityVersionId) {
     throw namedQualificationError("local_v2_customer_deployed_version_unbound",
       "the deployed Capability Version is not the one this Build registered");

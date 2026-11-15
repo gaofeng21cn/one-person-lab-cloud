@@ -173,6 +173,11 @@ test("the deployed version is the one this Build registered and not the first re
   refuses(() => assertCustomerDeployedVersionIdentity({
     build: { ...build, resultCapabilityVersionId: "" }, capabilityVersion, workspace: { capabilityVersionId: "capability-version-1" },
   }), "local_v2_customer_deployed_version_unbound");
+  // The Build registered a Capability Version from another uploaded package.
+  refuses(() => assertCustomerDeployedVersionIdentity({
+    build, capabilityVersion: { ...capabilityVersion, packageVersionId: "package-version-0" },
+    workspace: { capabilityVersionId: "capability-version-1" },
+  }), "local_v2_customer_deployed_version_unbound");
 });
 
 test("the entry answers with the nonce this run put into the package", () => {
