@@ -1,11 +1,11 @@
 import { spawn } from "node:child_process";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { constants, existsSync, readFileSync } from "node:fs";
-import { lstat, mkdir, mkdtemp, open, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { request as httpsRequest } from "node:https";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseDocument } from "yaml";
 
@@ -50,6 +50,21 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // authority and its PKI are all declared there, so a v2 run starts exactly this
 // file and no retained overlay.
 export const LOCAL_V2_QUALIFICATION_COMPOSE = "deploy/portable/compose.local-v2.yaml";
+
+// The entry of a Workspace the customer package chain bought.
+//
+// The entry may be published over plain HTTP or served by the installation's
+// own origin with its own certificate, so the request follows the URL it is
+// given and the certificate the installation declares.
+async function customerEntryRequest(url, headers, caFile) {
+  const target = new URL(url);
+  if (target.protocol === "https:") {
+    const response = await caRequest(url, { method: "GET" }, new Headers(headers || {}), undefined, caFile ? readFileSync(caFile) : undefined);
+    return { status: response.status, text: await response.text() };
+  }
+  const response = await fetch(url, { method: "GET", headers: headers || {}, redirect: "manual" });
+  return { status: response.status, text: await response.text() };
+}
 
 // The declaration template the installation is validated against: the file that
 // names every variable the Compose file requires.
@@ -198,7 +213,7 @@ function optionValues(args) {
       buildSourceImages = true;
       continue;
     }
-    if (!["--source-sha", "--cloud-image", "--workspace-image", "--receipt", "--authority-mode", "--j0-ready-receipt", "--sub2api-secret-file", "--mode", "--installation-env", "--application-contract", "--project", "--workspace-name"].includes(token)) {
+    if (!["--source-sha", "--cloud-image", "--workspace-image", "--receipt", "--authority-mode", "--j0-ready-receipt", "--sub2api-secret-file", "--mode", "--installation-env", "--application-contract", "--project", "--workspace-name", "--customer-package-dir", "--customer-package-archive", "--customer-probe-path", "--customer-package-name", "--customer-version-label", "--customer-expected-evidence-level"].includes(token)) {
       throw new Error(`unknown local qualification argument: ${token}`);
     }
     const value = args[index + 1];
@@ -244,7 +259,29 @@ export function parseLocalQualificationArgs(args = process.argv.slice(2)) {
   if (!project) throw namedQualificationError("local_v2_project_required", "--project must name the Compose project of the declared installation");
   if (cloudImage || workspaceImage) throw namedQualificationError("local_v2_images_are_declared", "the installation declaration owns OPL_CLOUD_IMAGE and OPL_WORKSPACE_IMAGE");
   if (buildSourceImages) throw namedQualificationError("local_v2_images_are_declared", "the installation declaration owns OPL_CLOUD_IMAGE and OPL_WORKSPACE_IMAGE");
-  return { mode, sourceSha, receiptPath, installationEnv, applicationContract, project, workspaceName };
+  // The customer package is an input of the run and not a fact this tool owns:
+  // which package is uploaded, where its probe sits and which evidence level
+  // the caller asked for all travel with the declaration.
+  const customer = customerEvidencePlan({
+    packageDir: String(values.get("--customer-package-dir") || "").trim(),
+    packageArchive: String(values.get("--customer-package-archive") || "").trim(),
+    probePath: String(values.get("--customer-probe-path") || "").trim(),
+    expectedEvidenceLevel: String(values.get("--customer-expected-evidence-level") || "").trim(),
+  });
+  if (customer.declared && customer.mode === "directory" && !isAbsolute(customer.packageDir)) {
+    throw namedQualificationError("local_v2_customer_package_dir_invalid", "--customer-package-dir must be an absolute path");
+  }
+  if (customer.declared && customer.mode === "archive" && !isAbsolute(customer.packageArchive)) {
+    throw namedQualificationError("local_v2_customer_package_archive_invalid", "--customer-package-archive must be an absolute path");
+  }
+  const customerPackageName = String(values.get("--customer-package-name") || "").trim();
+  const customerVersionLabel = String(values.get("--customer-version-label") || "").trim();
+  // A run that did not declare a customer package keeps the shape it had: the
+  // customer keys appear only when the caller asked for the chain.
+  if (!customer.declared) {
+    return { mode, sourceSha, receiptPath, installationEnv, applicationContract, project, workspaceName };
+  }
+  return { mode, sourceSha, receiptPath, installationEnv, applicationContract, project, workspaceName, customer, customerPackageName, customerVersionLabel };
 }
 
 function namedQualificationError(code, message) {
@@ -1104,7 +1141,14 @@ function usdMicrosFromDecimal(value) {
 }
 
 function receiptCommand(options) {
-  return `npm run qualify:local:workspace -- --mode local-v2 --source-sha ${options.sourceSha} --installation-env ${options.installationEnv} --application-contract ${options.applicationContract} --project ${options.project} --receipt ${options.receiptPath}`;
+  const base = `npm run qualify:local:workspace -- --mode local-v2 --source-sha ${options.sourceSha} --installation-env ${options.installationEnv} --application-contract ${options.applicationContract} --project ${options.project} --receipt ${options.receiptPath}`;
+  // The customer package is part of the command when it was declared, so the
+  // receipt names the package the run uploaded.
+  if (!options.customer?.declared) return base;
+  const customer = options.customer.mode === "directory"
+    ? `--customer-package-dir ${options.customer.packageDir} --customer-probe-path ${options.customer.probePath}`
+    : `--customer-package-archive ${options.customer.packageArchive}`;
+  return `${base} ${customer} --customer-expected-evidence-level ${options.customer.requestedEvidenceLevel}`;
 }
 
 // A declared installation environment file is one NAME=value entry per line, in
@@ -1368,6 +1412,10 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
   const record = (stage, status, detail = {}) => { stages.push({ ...detail, stage, status, observedAt: new Date().toISOString() }); };
   let stage = "installation_preflight";
   let boundary = null;
+  // The customer package chain keeps its own boundary. It is not merged into
+  // the run's boundary while the run continues, because a failure there is a
+  // fact of its own and the run's own stages still have something to say.
+  let customerBoundary = null;
   let failure = null;
   let composePrefix = [];
   let sourceTree = "unavailable";
@@ -1597,6 +1645,69 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     const billingMode = String(catalogProfile?.billingMode || "");
     if (provider !== "local-docker" || billingMode !== "LOCAL_NO_CHARGE") {
       throw namedQualificationError("local_v2_resource_catalog_profile_invalid", "the local-v2 installation must declare local-docker and LOCAL_NO_CHARGE");
+    }
+    // The customer package evidence chain.
+    //
+    // It runs where the plans are known and before this run's own purchase,
+    // and it owns every step of the customer loop: the uploaded package, the
+    // explicit Build it becomes, the exact Capability Version that Build
+    // registered, the Workspace that runs that version and the content its
+    // entry answers with. The purchase, the deletion and the receipt of this
+    // qualification are untouched by it.
+    if (options.customer?.declared) {
+      stage = "customer_package";
+      const customerReadback = {};
+      readbacks.customerPackage = customerReadback;
+      const customerWorkspaceName = `${workspaceName} customer package`;
+      try {
+        await runCustomerPackageEvidenceChain({
+          http, auth, wait, plan: options.customer,
+          packageName: customerPackageName(options.customer, options.customerPackageName),
+          versionLabel: String(options.customerVersionLabel || "").trim() || "1.0.0",
+          workspaceName: customerWorkspaceName,
+          provider, billingMode, computePlanId, storagePlanId,
+          sourceSha: options.sourceSha,
+          pollIntervalMs, pollAttempts,
+          readback: customerReadback,
+          fetchEntry: (url, headers) => customerEntryRequest(url, headers, caFile),
+        });
+        record("customer_package", customerReadback.degradationReason ? "degraded" : "confirmed", {
+          evidenceLevel: String(customerReadback.evidenceLevel || ""),
+          requestedEvidenceLevel: String(customerReadback.requestedEvidenceLevel || ""),
+          buildJobId: String(customerReadback.build?.buildJobId || ""),
+          capabilityVersionId: String(customerReadback.deployedVersion?.capabilityVersionId || ""),
+          workspaceId: String(customerReadback.customerOrder?.workspaceId || ""),
+        });
+        // A package that cannot carry this run's probe reaches the weaker
+        // evidence level on purpose. The run says so and stops short of a pass
+        // it did not earn.
+        if (customerReadback.degradationReason) {
+          customerBoundary = { code: "local_v2_customer_evidence_degraded", detail: customerReadback.degradationReason, stage: "customer_package" };
+        }
+      } catch (error) {
+        customerBoundary = { code: String(error?.code || "local_v2_customer_chain_failed"), detail: redactedError(error), stage: "customer_package" };
+        record("customer_package", "stopped", { code: customerBoundary.code, detail: customerBoundary.detail });
+        // What the chain bought before it stopped leaves the installation with
+        // it, so the owner is asked to delete it before the run ends.
+        const boughtWorkspaceId = String(customerReadback.customerOrder?.workspaceId || "");
+        if (boughtWorkspaceId) {
+          try {
+            await deleteWorkspaceOnOwnerRoute(http, auth, {
+              workspaceId: boughtWorkspaceId, confirmationName: customerWorkspaceName,
+              idempotencyKey: `local-v2-customer-delete:${options.sourceSha}:${String(customerReadback.upload?.packageVersionId || "stopped")}`, wait,
+            });
+          } catch {
+            // The host resources are cleaned below whatever the owner says.
+          }
+        }
+      } finally {
+        // Whatever this chain bought leaves the host with it. The qualification
+        // is about an installation that holds nothing it did not declare.
+        const customerWorkspaceId = String(customerReadback.customerOrder?.workspaceId || "");
+        if (customerWorkspaceId) {
+          await cleanupLocalQualificationResources(readbacks.accountBinding.accountId, customerWorkspaceId);
+        }
+      }
     }
     stage = "quote";
     const quote = (await http.json(binding.endpoints.quotes, {
@@ -1899,6 +2010,13 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     failure = error;
     if (!boundary) boundary = { code: String(error?.code || "local_v2_qualification_incomplete"), detail: String(error?.message || error), stage };
   }
+  // The customer package chain's boundary is the run's boundary. A run that
+  // could not tie the deployed version to this upload, or that could not tie
+  // the entry's content to it, has not earned a READY result.
+  if (customerBoundary) {
+    boundary = customerBoundary;
+    stage = customerBoundary.stage || stage;
+  }
   const result = {
     schemaVersion: 1,
     status: "NOT_READY",
@@ -1979,6 +2097,647 @@ async function declareOrRead(http, auth, collectionPath, matchKey, matchValue, b
 async function catalogIds(http, auth, path) {
   const page = (await http.json(`${path}?limit=100`, {}, auth)).payload;
   return (Array.isArray(page?.items) ? page.items : []).map((item) => String(item?.id || "")).filter(Boolean);
+}
+
+// ---------------------------------------------------------------------------
+// The customer package evidence chain.
+//
+// The qualification already proves that the installation prices a Workspace,
+// buys it, serves it and deletes it. This section adds the other half of the
+// customer loop: the package a customer uploads, the explicit Build it becomes,
+// the exact Capability Version that Build registers, the Workspace that runs
+// that exact version, and the content that Workspace's entry answers with.
+//
+// The tool carries no agent name, no package identity, no probe path and no
+// expected response content. The package and the probe path are inputs, the
+// only content the tool knows is the nonce it mints for this run, and the
+// entry is judged by whether it answers with that nonce.
+// ---------------------------------------------------------------------------
+
+export const CUSTOMER_EVIDENCE_LEVEL_CONTENT = "content-provenance";
+export const CUSTOMER_EVIDENCE_LEVEL_ARTIFACT = "artifact-identity";
+export const CUSTOMER_EVIDENCE_LEVELS = Object.freeze([CUSTOMER_EVIDENCE_LEVEL_CONTENT, CUSTOMER_EVIDENCE_LEVEL_ARTIFACT]);
+
+// The states a Build reaches that are not "still working".
+const CUSTOMER_BUILD_TERMINAL = Object.freeze(["succeeded", "failed", "cancelled"]);
+
+// The name the owner accepts for a package.
+const CUSTOMER_PACKAGE_NAME_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
+
+// The package name is derived from the package the caller named, so the run
+// carries no name of its own and a name the owner refuses is reported before
+// anything is uploaded.
+export function customerPackageName(plan, declared) {
+  const fallback = basename(plan.mode === "directory" ? plan.packageDir : plan.packageArchive).replace(/\.[A-Za-z0-9]+$/, "");
+  const name = String(declared || "").trim() || fallback;
+  if (!CUSTOMER_PACKAGE_NAME_PATTERN.test(name)) {
+    throw namedQualificationError("local_v2_customer_package_name_invalid",
+      "the customer package name must be 1-128 letters, digits, dots, hyphens or underscores");
+  }
+  return name;
+}
+
+// The probe path is the carrier of the run's content provenance, and it is an
+// input: this tool never names a file inside a package it did not receive.
+export function customerPackageProbePath(probePath) {
+  const path = String(probePath || "").trim();
+  if (!path) {
+    throw namedQualificationError("local_v2_customer_probe_path_required", "the customer package must name the probe path that carries the run nonce");
+  }
+  if (path.startsWith("/") || path.includes("\\") || path.split("/").some((part) => !part || part === "." || part === "..")) {
+    throw namedQualificationError("local_v2_customer_probe_path_invalid", "the customer package probe path must be a relative path inside the package");
+  }
+  return path;
+}
+
+// The entry the recipe starts, relative to the directory the package is
+// copied into. The recipe names an absolute path inside the image and the
+// target path the package is copied to, so the difference is the file the
+// package has to carry.
+export function customerEntrypointRelativePath(targetPath, entrypoint) {
+  const entry = Array.isArray(entrypoint) ? entrypoint.map((value) => String(value)).filter(Boolean) : [];
+  const first = entry[0] || "";
+  if (!first) return "";
+  const target = String(targetPath || "").replace(/\/+$/, "");
+  if (target && first.startsWith(`${target}/`)) return first.slice(target.length + 1);
+  return first.replace(/^\/+/, "");
+}
+
+// The package layout against the Runtime's recipe.
+//
+// The Build Runner copies one directory out of the package, and it refuses a
+// source root of ".", ".." or an absolute one. The probe that carries the
+// nonce and the runtime the recipe starts must both live inside that one
+// directory, so the package is checked against the root the recipe declares
+// before the Build is asked for. A package that spreads its runtime and its
+// probe over two roots is refused here rather than inside the Builder.
+export function assertCustomerPackageLayout({ entries, sourceRoot, targetPath, entrypoint, probePath } = {}) {
+  const root = String(sourceRoot || "");
+  if (!root) {
+    throw namedQualificationError("local_v2_customer_build_recipe_unavailable", "the approved Runtime declares no package source root, so a Build cannot copy this package");
+  }
+  if (root === "." || root === ".." || root.startsWith("/") || root.startsWith("../") || root.split("/").some((part) => !part || part === "..")) {
+    throw namedQualificationError("local_v2_customer_build_recipe_source_root_invalid", "the approved Runtime declares a package source root the Build Runner refuses");
+  }
+  const probe = String(probePath || "").trim();
+  if (probe) {
+    customerPackageProbePath(probe);
+    if (!probe.startsWith(`${root}/`)) {
+      throw namedQualificationError("local_v2_customer_probe_outside_source_root",
+        `the package carries its probe at ${probe}, the approved Runtime copies the package from ${root}`);
+    }
+  }
+  const relative = customerEntrypointRelativePath(targetPath, entrypoint);
+  const runtimePath = relative ? `${root}/${relative}` : "";
+  if (runtimePath && Array.isArray(entries) && !entries.includes(runtimePath)) {
+    throw namedQualificationError("local_v2_customer_runtime_outside_source_root",
+      `the package carries no ${runtimePath}, the approved Runtime starts ${runtimePath}`);
+  }
+  return { sourceRoot: root, probePath: probe, runtimePath };
+}
+
+// The plan is what the caller declared, and it is decided before anything is
+// uploaded: which package is uploaded, where its probe sits, which evidence
+// level the caller asked for and which one this package can reach. A package
+// that cannot carry the run's nonce reaches the weaker level, and the reason
+// travels with the run instead of the run reporting a pass it did not earn.
+export function customerEvidencePlan({ packageDir = "", packageArchive = "", probePath = "", expectedEvidenceLevel = "" } = {}) {
+  const directory = String(packageDir || "").trim();
+  const archive = String(packageArchive || "").trim();
+  if (directory && archive) {
+    throw namedQualificationError("local_v2_customer_package_ambiguous", "the customer package is declared either as a directory or as an archive, not both");
+  }
+  if (!directory && !archive) return { declared: false, mode: "", packageDir: "", packageArchive: "", probePath: "", sourceRoot: "", requestedEvidenceLevel: "", achievableEvidenceLevel: "", degradationReason: "" };
+  const mode = directory ? "directory" : "archive";
+  const probe = String(probePath || "").trim();
+  if (mode === "directory") {
+    if (!probe) {
+      throw namedQualificationError("local_v2_customer_probe_path_required", "a customer package directory must name the probe path that carries the run nonce");
+    }
+    customerPackageProbePath(probe);
+  }
+  const requested = String(expectedEvidenceLevel || "").trim() ||
+    (mode === "directory" ? CUSTOMER_EVIDENCE_LEVEL_CONTENT : CUSTOMER_EVIDENCE_LEVEL_ARTIFACT);
+  if (!CUSTOMER_EVIDENCE_LEVELS.includes(requested)) {
+    throw namedQualificationError("local_v2_customer_evidence_level_invalid", `the customer evidence level must be one of ${CUSTOMER_EVIDENCE_LEVELS.join(", ")}`);
+  }
+  // An archive is the bytes the caller handed over. This run cannot write its
+  // nonce into them, so the entry content cannot be tied to this upload.
+  const achievable = mode === "directory" ? CUSTOMER_EVIDENCE_LEVEL_CONTENT : CUSTOMER_EVIDENCE_LEVEL_ARTIFACT;
+  const degradationReason = achievable === requested ? "" :
+    "the supplied customer package archive is immutable and cannot carry this run's probe, so the entry content cannot be tied to this upload";
+  return {
+    declared: true, mode, packageDir: directory, packageArchive: archive, probePath: probe, sourceRoot: "",
+    requestedEvidenceLevel: requested, achievableEvidenceLevel: achievable, degradationReason,
+  };
+}
+
+// The upload completion is the owner's own operation. The owner, the kind, the
+// version it names and the status it reached are all asserted, because a
+// completion that names another version is a completion of another upload.
+export function assertCustomerCompleteUploadOperation(operation, { packageVersionId } = {}) {
+  const owner = String(operation?.owner || "");
+  const kind = String(operation?.kind || "");
+  const operationId = String(operation?.operationId || "");
+  const resourceId = String(operation?.resourceId || "");
+  const status = String(operation?.status || "");
+  const observationResult = String(operation?.observationResult || "");
+  if (!operationId || owner !== "capability" || kind !== "complete_upload" || !resourceId || resourceId !== String(packageVersionId || "") || status !== "succeeded") {
+    throw namedQualificationError("local_v2_customer_upload_operation_invalid",
+      "the upload completion operation does not name the capability owner, the complete_upload kind, the uploaded version and a succeeded status");
+  }
+  if (observationResult && observationResult !== "confirmed") {
+    throw namedQualificationError("local_v2_customer_upload_operation_unconfirmed", "the upload completion operation is not confirmed");
+  }
+  return { owner, kind, resourceId, status, observationResult, operationId };
+}
+
+// The uploaded version, read back from the owner that stored it.
+export function assertCustomerPackageVersionReadback(readback, expected = {}) {
+  const fields = {
+    id: String(readback?.id || ""),
+    packageId: String(readback?.packageId || ""),
+    versionLabel: String(readback?.versionLabel || ""),
+    sha256: String(readback?.sha256 || ""),
+    sizeBytes: String(readback?.sizeBytes ?? ""),
+    status: String(readback?.status || ""),
+  };
+  const sameDigest = (left, right) => String(left || "").replace(/^sha256:/, "") === String(right || "").replace(/^sha256:/, "");
+  if (fields.id !== String(expected.id || "") || fields.packageId !== String(expected.packageId || "") ||
+      fields.versionLabel !== String(expected.versionLabel || "") || !sameDigest(fields.sha256, expected.sha256) ||
+      fields.sizeBytes !== String(expected.sizeBytes ?? "") || fields.status !== "uploaded") {
+    throw namedQualificationError("local_v2_customer_package_version_mismatch",
+      "the read back package version does not match the uploaded bytes");
+  }
+  return fields;
+}
+
+// The deployed version identity.
+//
+// The Build this run asked for, the Capability Version that Build registered
+// and the Workspace that runs it are three different facts, and this is the
+// lock between them: the version is never chosen by readiness, it is the one
+// the Build names, the Build the Capability Version names, and the version the
+// Workspace runs.
+export function assertCustomerDeployedVersionIdentity({ build, capabilityVersion, workspace } = {}) {
+  const buildJobId = String(build?.id || "");
+  const resultCapabilityVersionId = String(build?.resultCapabilityVersionId || "");
+  const buildPackageVersionId = String(build?.packageVersionId || "");
+  const capabilityVersionId = String(capabilityVersion?.id || "");
+  const workspaceCapabilityVersionId = String(workspace?.capabilityVersionId || "");
+  const capabilityBuildJobId = String(capabilityVersion?.buildJobId || "");
+  const capabilityPackageVersionId = String(capabilityVersion?.packageVersionId || "");
+  if (!buildJobId || !resultCapabilityVersionId || capabilityVersionId !== resultCapabilityVersionId ||
+      capabilityBuildJobId !== buildJobId || !buildPackageVersionId ||
+      capabilityPackageVersionId !== buildPackageVersionId ||
+      workspaceCapabilityVersionId !== capabilityVersionId) {
+    throw namedQualificationError("local_v2_customer_deployed_version_unbound",
+      "the deployed Capability Version is not the one this Build registered");
+  }
+  return { buildJobId, capabilityVersionId, workspaceCapabilityVersionId, packageVersionId: capabilityPackageVersionId };
+}
+
+// The entry content.
+//
+// The only content the tool knows is the nonce it minted for this run and
+// wrote into the uploaded package. An answer that carries it can only come
+// from this upload, so the entry is judged by that and by nothing else.
+export function assertCustomerEntryContentProvenance(entryText, nonce) {
+  const body = String(entryText || "");
+  const value = String(nonce || "");
+  if (!value || !body.includes(value)) {
+    throw namedQualificationError("local_v2_customer_entry_content_unbound", "the published entry does not answer with this run's probe");
+  }
+  return { matched: true, responseBytes: Buffer.byteLength(body, "utf8") };
+}
+
+// The purchase guard.
+//
+// A quote that is not the local provider's free quote is refused before the
+// purchase, so a paid quote can never reach a purchase that reports itself as
+// a passed qualification.
+export function assertCustomerLocalNoChargeQuote(quote, { provider, billingMode } = {}) {
+  const totalUSDMicros = String(quote?.totalUSDMicros ?? "");
+  if (String(provider || "") !== "local-docker" || String(billingMode || "") !== "LOCAL_NO_CHARGE" || totalUSDMicros !== "0") {
+    throw namedQualificationError("local_v2_customer_quote_not_local_no_charge",
+      "the customer quote is not local-docker LOCAL_NO_CHARGE at zero total");
+  }
+  return { provider: String(provider), billingMode: String(billingMode), totalUSDMicros };
+}
+
+// The Workspace identity is the operation's resource id. The owner mints the
+// resource and names it there; the body of a purchase carries no identity of
+// its own.
+export function customerWorkspaceIdentity(operation) {
+  const operationId = String(operation?.operationId || "");
+  const workspaceId = String(operation?.resourceId || "");
+  if (!operationId || !workspaceId) {
+    throw namedQualificationError("local_v2_customer_workspace_identity_missing", "the purchase returned no operation identity");
+  }
+  return { operationId, workspaceId };
+}
+
+// The package archive.
+//
+// The package directory is mirrored into an archive and the probe file is
+// written into it, so the nonce travels with the bytes the platform builds.
+// The archive is written here because the platform uploads a package, not a
+// directory.
+const CRC32_TABLE = (() => {
+  const table = new Int32Array(256);
+  for (let index = 0; index < 256; index += 1) {
+    let value = index;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    }
+    table[index] = value;
+  }
+  return table;
+})();
+
+export function crc32(bytes) {
+  let value = 0xffffffff;
+  for (const byte of bytes) {
+    value = CRC32_TABLE[(value ^ byte) & 0xff] ^ (value >>> 8);
+  }
+  return (value ^ 0xffffffff) >>> 0;
+}
+
+function zipArchive(entries) {
+  const chunks = [];
+  const directory = [];
+  let offset = 0;
+  for (const entry of entries) {
+    const name = Buffer.from(entry.name, "utf8");
+    const data = entry.data;
+    const checksum = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(0, 8);
+    local.writeUInt16LE(0, 10);
+    local.writeUInt16LE(0x0021, 12);
+    local.writeUInt32LE(checksum, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(name.length, 26);
+    local.writeUInt16LE(0, 28);
+    chunks.push(local, name, data);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(0x0314, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0, 8);
+    central.writeUInt16LE(0, 10);
+    central.writeUInt16LE(0, 12);
+    central.writeUInt16LE(0x0021, 14);
+    central.writeUInt32LE(checksum, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(name.length, 28);
+    central.writeUInt16LE(0, 30);
+    central.writeUInt16LE(0, 32);
+    central.writeUInt16LE(0, 34);
+    central.writeUInt16LE(0, 36);
+    central.writeUInt32LE(((0o100000 | (entry.mode & 0o777)) << 16) >>> 0, 38);
+    central.writeUInt32LE(offset, 42);
+    directory.push(central, name);
+    offset += local.length + name.length + data.length;
+  }
+  const directoryBytes = Buffer.concat(directory);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(directoryBytes.length, 12);
+  end.writeUInt32LE(offset, 16);
+  end.writeUInt16LE(0, 20);
+  return Buffer.concat([...chunks, directoryBytes, end]);
+}
+
+function safeArchivePath(name) {
+  const normalized = String(name || "").replace(/\\/g, "/").replace(/^\.\//, "");
+  if (!normalized || normalized.startsWith("/") || normalized.includes("..") || normalized.includes(":")) {
+    throw namedQualificationError("local_v2_customer_package_path_invalid", `the package entry path is not a safe relative path: ${name}`);
+  }
+  return normalized;
+}
+
+async function collectPackageFiles(directory, prefix = "") {
+  const found = [];
+  const entries = await readdir(directory, { withFileTypes: true });
+  for (const entry of entries.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0))) {
+    const absolute = join(directory, entry.name);
+    const name = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      found.push(...await collectPackageFiles(absolute, name));
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    const info = await stat(absolute);
+    found.push({ name: safeArchivePath(name), data: await readFile(absolute), mode: info.mode });
+  }
+  return found;
+}
+
+// The uploaded bytes. The directory is mirrored into an archive and the probe
+// file is written into it, so the nonce the entry must answer with travels
+// with the bytes the platform builds.
+export async function buildCustomerPackageArchive({ packageDir, probePath, probeContent }) {
+  const root = resolve(packageDir);
+  const files = await collectPackageFiles(root);
+  const probe = safeArchivePath(probePath);
+  const entries = files.filter((file) => file.name !== probe).map((file) => ({ ...file }));
+  entries.push({ name: probe, data: Buffer.from(`${probeContent}\n`, "utf8"), mode: 0o644 });
+  entries.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
+  const bytes = zipArchive(entries);
+  const digest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+  return { bytes, digest, entries: entries.map((entry) => entry.name) };
+}
+
+// The archive the caller handed over. It is uploaded as it is.
+export async function readCustomerPackageArchive(archivePath) {
+  const bytes = await readFile(archivePath);
+  const digest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+  return { bytes, digest, entries: [] };
+}
+
+// The chain.
+//
+// It runs against the installation the qualification just built and it owns
+// every step of the customer loop: upload, read back, explicit Build, the
+// exact Capability Version that Build registered, the purchase of a Workspace
+// that runs that version, the content its entry answers with, and the deletion
+// of what it bought.
+export async function runCustomerPackageEvidenceChain({
+  http, auth, wait, plan, packageName, versionLabel, workspaceName, provider, billingMode,
+  computePlanId, storagePlanId, sourceSha, pollIntervalMs = 3000, pollAttempts = 100, readback = {},
+  fetchEntry = null,
+}) {
+  // The nonce is minted for this run and written into the package before the
+  // package is uploaded. The receipt keeps its digest and never its value.
+  const nonce = randomUUID();
+  const nonceDigest = `sha256:${createHash("sha256").update(nonce).digest("hex")}`;
+  readback.evidenceLevel = plan.achievableEvidenceLevel;
+  readback.requestedEvidenceLevel = plan.requestedEvidenceLevel;
+  readback.degradationReason = plan.degradationReason;
+  readback.nonceDigest = nonceDigest;
+
+  const archive = plan.mode === "directory"
+    ? await buildCustomerPackageArchive({ packageDir: plan.packageDir, probePath: plan.probePath, probeContent: nonce })
+    : await readCustomerPackageArchive(plan.packageArchive);
+  readback.package = {
+    name: packageName, versionLabel, source: plan.mode,
+    sizeBytes: String(archive.bytes.length), sha256: archive.digest, entries: archive.entries.length,
+  };
+
+  // The namespace the package belongs to.
+  const namespaces = (await http.json("/api/v2/namespaces", {}, auth)).payload;
+  const namespaceItems = Array.isArray(namespaces?.items) ? namespaces.items : [];
+  let namespaceId = String(namespaceItems.find((item) => item?.isDefault)?.id || namespaceItems[0]?.id || "");
+  if (!namespaceId) {
+    const created = (await http.json("/api/v2/namespaces", {
+      method: "POST", headers: { "idempotency-key": `local-v2-customer-namespace:${sourceSha}` }, body: { name: "local-v2-qualification" },
+    }, auth, [200, 201, 202])).payload;
+    namespaceId = String(created?.id || "");
+  }
+  if (!namespaceId) throw namedQualificationError("local_v2_customer_namespace_unavailable", "the owner holds no namespace for the uploaded package");
+  readback.namespace = { id: namespaceId };
+
+  // The package.
+  const packagePayload = (await http.json("/api/v2/packages", {
+    method: "POST",
+    headers: { "idempotency-key": `local-v2-customer-package-create:${sourceSha}:${packageName}` },
+    body: { namespaceId, name: packageName, description: `uploaded by the local v2 qualification on behalf of ${packageName}` },
+  }, auth, [200, 201, 202])).payload;
+  const packageId = String(packagePayload?.id || "");
+  if (!packageId) throw namedQualificationError("local_v2_customer_package_unavailable", "the owner created no package for the uploaded bytes");
+  readback.package.id = packageId;
+
+  // The upload session.
+  const session = (await http.json(`/api/v2/packages/${encodeURIComponent(packageId)}/uploads`, {
+    method: "POST",
+    headers: { "idempotency-key": `local-v2-customer-upload:${sourceSha}:${packageName}` },
+    body: { versionLabel, fileName: `${packageName}.zip`, sizeBytes: archive.bytes.length, sha256: archive.digest },
+  }, auth, [200, 201, 202])).payload;
+  const uploadId = String(session?.id || "");
+  const packageVersionId = String(session?.packageVersionId || "");
+  const partSize = Number(session?.partSizeBytes || 0);
+  if (!uploadId || !packageVersionId) {
+    throw namedQualificationError("local_v2_customer_upload_session_unavailable", "the owner created no upload session for the package");
+  }
+  readback.upload = { id: uploadId, packageVersionId, partSizeBytes: String(partSize) };
+
+  // The parts. The owner authorizes each part and the bytes go to the URL it
+  // names, with the checksum header it asked for.
+  const parts = [];
+  const partCount = partSize > 0 ? Math.ceil(archive.bytes.length / partSize) : 1;
+  for (let number = 1; number <= partCount; number += 1) {
+    const slice = archive.bytes.subarray((number - 1) * partSize, number * partSize);
+    const partDigest = `sha256:${createHash("sha256").update(slice).digest("hex")}`;
+    const permit = (await http.json(`/api/v2/uploads/${encodeURIComponent(uploadId)}/parts`, {
+      method: "POST",
+      headers: { "idempotency-key": `local-v2-customer-part:${sourceSha}:${uploadId}:${number}` },
+      body: { partNumber: number, sizeBytes: slice.length, sha256: partDigest },
+    }, auth, [200, 201, 202])).payload;
+    const url = String(permit?.url || "");
+    if (!url) throw namedQualificationError("local_v2_customer_upload_part_unauthorized", `the owner authorized no URL for part ${number}`);
+    const putHeaders = { "content-type": String(permit?.contentType || "application/octet-stream") };
+    const checksumName = String(permit?.requiredChecksumHeaderName || "");
+    if (checksumName) putHeaders[checksumName.toLowerCase()] = String(permit?.requiredChecksumHeaderValue || "");
+    const put = await fetch(url, { method: String(permit?.method || "PUT"), headers: putHeaders, body: slice });
+    if (put.status >= 300) {
+      throw namedQualificationError("local_v2_customer_upload_part_refused", `part ${number} was refused with HTTP ${put.status}`);
+    }
+    const etag = String(put.headers.get("etag") || "").trim() || partDigest.replace(/^sha256:/, "");
+    parts.push({ partNumber: number, etag, sizeBytes: slice.length, sha256: partDigest });
+  }
+
+  // The completion. The owner's operation names the version it completed.
+  const completed = (await http.json(`/api/v2/uploads/${encodeURIComponent(uploadId)}/complete`, {
+    method: "POST",
+    headers: { "idempotency-key": `local-v2-customer-complete:${sourceSha}:${uploadId}` },
+    body: { parts },
+  }, auth, [200, 201, 202])).payload;
+  readback.upload = { ...readback.upload, ...assertCustomerCompleteUploadOperation(completed, { packageVersionId }) };
+
+  // The uploaded version, read back from the owner that stored it.
+  const version = (await http.json(`/api/v2/package-versions/${encodeURIComponent(packageVersionId)}`, {}, auth)).payload;
+  readback.packageVersion = assertCustomerPackageVersionReadback(version, {
+    id: packageVersionId, packageId, versionLabel, sha256: archive.digest, sizeBytes: archive.bytes.length,
+  });
+
+  // The effective Runtime and the independent WebUI the installation approves
+  // for new builds. The Build below is explicit: the run asks for these three
+  // inputs and follows the job it gets.
+  const policy = (await http.json("/api/v2/catalog/build-policy", {}, auth)).payload;
+  const runtimeVersionId = String(policy?.runtimeVersionId || "");
+  const webuiVersionId = String(policy?.defaultWebuiVersionId || "");
+  if (!runtimeVersionId || !webuiVersionId) {
+    throw namedQualificationError("local_v2_customer_build_policy_unavailable", "the installation approves no Runtime and WebUI combination for a new Build");
+  }
+  readback.buildPolicy = { runtimeVersionId, webuiVersionId };
+
+  // The approved Runtime's recipe names the source root the Build Runner
+  // copies the package from and the runtime it starts. The Runner refuses a
+  // source root of ".", ".." or an absolute one, and the probe that carries
+  // the nonce and the runtime must both live inside that one directory.
+  const runtimeVersion = (await http.json(`/api/v2/catalog/runtime-versions/${encodeURIComponent(runtimeVersionId)}`, {}, auth)).payload;
+  const recipe = runtimeVersion?.publisherContract?.buildRecipe || null;
+  const layout = assertCustomerPackageLayout({
+    entries: plan.mode === "directory" ? archive.entries : null,
+    sourceRoot: String(recipe?.packageInput?.sourceRoot || ""),
+    targetPath: String(recipe?.packageInput?.targetPath || ""),
+    entrypoint: recipe?.outputImageCommand?.entrypoint,
+    probePath: plan.probePath,
+  });
+  readback.buildRecipe = {
+    sourceRoot: layout.sourceRoot, probePath: layout.probePath, runtimePath: layout.runtimePath,
+    packageSourceRoot: layout.sourceRoot,
+  };
+
+  // The explicit Build. Three inputs, one job, and this run follows that job.
+  const accepted = (await http.json("/api/v2/builds", {
+    method: "POST",
+    headers: { "idempotency-key": `local-v2-customer-build:${sourceSha}:${packageVersionId}` },
+    body: { packageVersionId, runtimeVersionId, webuiVersionId },
+  }, auth, [200, 201, 202])).payload;
+  const buildJobId = String(accepted?.id || "");
+  if (!buildJobId) throw namedQualificationError("local_v2_customer_build_unavailable", "the Build owner accepted no build job");
+  readback.build = {
+    buildJobId, status: String(accepted?.status || ""), stage: String(accepted?.stage || ""),
+    packageVersionId: String(accepted?.packageVersionId || packageVersionId),
+    runtimeVersionId: String(accepted?.runtimeVersionId || runtimeVersionId),
+    webuiVersionId: String(accepted?.webuiVersionId || webuiVersionId),
+    resultCapabilityVersionId: "",
+  };
+  let build = accepted;
+  for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
+    build = (await http.json(`/api/v2/builds/${encodeURIComponent(buildJobId)}`, {}, auth)).payload;
+    if (CUSTOMER_BUILD_TERMINAL.has(String(build?.status || ""))) break;
+    await wait(pollIntervalMs);
+  }
+  if (!CUSTOMER_BUILD_TERMINAL.has(String(build?.status || ""))) {
+    throw namedQualificationError("local_v2_customer_build_not_terminal", "the Build this run asked for did not reach a terminal state");
+  }
+  readback.build.status = String(build?.status || "");
+  readback.build.stage = String(build?.stage || "");
+  readback.build.resultCapabilityVersionId = String(build?.resultCapabilityVersionId || "");
+  if (String(build?.status || "") !== "succeeded" || !readback.build.resultCapabilityVersionId) {
+    throw namedQualificationError("local_v2_customer_build_failed",
+      `the Build ended ${readback.build.status} without registering a Capability Version`);
+  }
+
+  // The Capability Version that Build registered.
+  const capabilityVersion = (await http.json(`/api/v2/capability-versions/${encodeURIComponent(readback.build.resultCapabilityVersionId)}`, {}, auth)).payload;
+  readback.capabilityVersion = {
+    id: String(capabilityVersion?.id || ""), status: String(capabilityVersion?.status || ""),
+    buildJobId: String(capabilityVersion?.buildJobId || ""), packageVersionId: String(capabilityVersion?.packageVersionId || ""),
+    artifactDigest: String(capabilityVersion?.artifactDigest || ""),
+  };
+
+  // The quote for that exact version. The local provider's free quote is
+  // asserted before the purchase, so a paid quote can never be bought here.
+  const quote = (await http.json("/api/v2/quotes", {
+    method: "POST",
+    headers: { "idempotency-key": `local-v2-customer-quote:${sourceSha}:${packageVersionId}` },
+    body: { purpose: "deploy", capabilityVersionId: readback.build.resultCapabilityVersionId, computePlanId, storagePlanId, periodMonths: 1 },
+  }, auth, [200, 201, 202])).payload;
+  if (!quote?.id) throw namedQualificationError("local_v2_customer_quote_unavailable", "the Workspace owner returned no quote for the built version");
+  if (String(quote?.capabilityVersionId || "") !== readback.build.resultCapabilityVersionId) {
+    throw namedQualificationError("local_v2_customer_quote_version_mismatch", "the quote does not name the built Capability Version");
+  }
+  readback.customerQuote = { id: String(quote.id), ...assertCustomerLocalNoChargeQuote(quote, { provider, billingMode }) };
+
+  // The purchase. The Workspace identity is the operation's resource id.
+  const order = (await http.json("/api/v2/workspaces", {
+    method: "POST",
+    headers: { "idempotency-key": `local-v2-customer-order:${sourceSha}:${packageVersionId}` },
+    body: { name: workspaceName, quoteId: String(quote.id), renewalMode: "manual" },
+  }, auth, [202])).payload;
+  const { operationId, workspaceId } = customerWorkspaceIdentity(order);
+  readback.customerOrder = { operationId, workspaceId };
+
+  // The purchase reaches its terminal state before the entry is read.
+  let operation = order;
+  for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
+    operation = (await http.json(`/api/v2/operations/workspace/${encodeURIComponent(operationId)}`, {}, auth)).payload;
+    if (["succeeded", "failed", "cancelled"].includes(String(operation?.status || ""))) break;
+    await wait(pollIntervalMs);
+  }
+  readback.customerOperation = { status: String(operation?.status || ""), stage: String(operation?.stage || "") };
+  if (String(operation?.status || "") !== "succeeded") {
+    throw namedQualificationError("local_v2_customer_workspace_operation_failed",
+      `the purchase operation ended ${readback.customerOperation.status} ${readback.customerOperation.stage}`.trim());
+  }
+
+  // The Workspace that runs the built version.
+  const workspace = (await http.json(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}`, {}, auth)).payload;
+  readback.customerWorkspace = {
+    id: String(workspace?.id || ""), status: String(workspace?.status || ""),
+    capabilityVersionId: String(workspace?.capabilityVersionId || ""), accessUrl: String(workspace?.accessUrl || ""),
+  };
+  readback.deployedVersion = assertCustomerDeployedVersionIdentity({
+    build: { id: buildJobId, resultCapabilityVersionId: readback.build.resultCapabilityVersionId, packageVersionId },
+    capabilityVersion, workspace,
+  });
+
+  // The entry, and the content it answers with.
+  const entryUrl = String(workspace?.accessUrl || "");
+  if (!entryUrl) throw namedQualificationError("local_v2_customer_entry_unavailable", "the bought Workspace publishes no entry");
+  const opened = await fetchCustomerEntry(entryUrl, auth, fetchEntry);
+  readback.customerEntry = { url: entryUrl, status: opened.status };
+  if (opened.status !== 200) {
+    throw namedQualificationError("local_v2_customer_entry_unreachable", `the published entry returned HTTP ${opened.status}`);
+  }
+  try {
+    readback.customerEntry = { ...readback.customerEntry, ...assertCustomerEntryContentProvenance(opened.text, nonce) };
+  } catch (error) {
+    // The package did not carry this run's probe to its entry. When the caller
+    // asked for the content level, that is the answer it refuses to accept.
+    // When the caller accepted the artifact level, the chain keeps the
+    // identity it proved and says that the content it did not prove.
+    if (plan.requestedEvidenceLevel === CUSTOMER_EVIDENCE_LEVEL_CONTENT) throw error;
+    readback.evidenceLevel = CUSTOMER_EVIDENCE_LEVEL_ARTIFACT;
+    readback.degradationReason = "the published entry did not answer with this run's probe, so the entry content cannot be tied to this upload";
+  }
+
+  // The deletion of what this chain bought.
+  const deletion = await deleteWorkspaceOnOwnerRoute(http, auth, {
+    workspaceId, confirmationName: workspaceName,
+    idempotencyKey: `local-v2-customer-delete:${sourceSha}:${packageVersionId}`, wait,
+  });
+  readback.customerDeletion = { operationId: String(deletion?.operationId || ""), status: String(deletion?.status || "") };
+  const tombstone = (await http.request(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}`, {}, auth)).payload;
+  readback.customerDeletion.workspaceAbsent = String(tombstone?.status || "") === "deleted" || !String(tombstone?.accessUrl || "").trim();
+  if (!readback.customerDeletion.workspaceAbsent) {
+    throw namedQualificationError("local_v2_customer_workspace_absent_unconfirmed", "an owner still retains the Workspace this chain bought");
+  }
+  return readback;
+}
+
+// The entry of a bought Workspace. The session is offered first because the
+// entry may be private, and the entry is asked for again without it because
+// the entry may be published.
+async function fetchCustomerEntry(url, auth, fetchEntry) {
+  const attempts = [
+    { headers: { cookie: String(auth?.cookie || "") } },
+    { headers: {} },
+  ];
+  let last = null;
+  for (const attempt of attempts) {
+    if (typeof fetchEntry === "function") {
+      last = await fetchEntry(url, attempt.headers);
+    } else {
+      const response = await fetch(url, { method: "GET", headers: attempt.headers, redirect: "manual" });
+      last = { status: response.status, text: await response.text() };
+    }
+    if (last?.status !== 401 && last?.status !== 403) return last;
+  }
+  return last || { status: 0, text: "" };
 }
 
 async function main() {

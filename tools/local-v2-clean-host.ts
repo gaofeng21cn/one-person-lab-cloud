@@ -8,7 +8,7 @@ import {
 
 // Installation inputs for the existing native topology. These are run-owned
 // fixture facts; no production credential, provider or billing authority is used.
-export function cleanHostInstallation({ template, compose, directory, sourceSha, cloudImage, workspaceImage, storageRoot, project, publisherSchemaDigest, tenantId = "qualification-bootstrap" }) {
+export function cleanHostInstallation({ template, compose, directory, sourceSha, cloudImage, workspaceImage, storageRoot, project, publisherSchemaDigest, tenantId = "qualification-bootstrap", insecureHttpHosts = "" }) {
   if (!/^[0-9a-f]{40}$/.test(sourceSha)) throw new Error("clean_host_source_invalid");
   for (const image of [cloudImage, workspaceImage]) {
     if (!/^[^\s@]+@sha256:[0-9a-f]{64}$/.test(image)) throw new Error("clean_host_image_invalid");
@@ -27,6 +27,16 @@ export function cleanHostInstallation({ template, compose, directory, sourceSha,
   // prefix, so the two must name the same host and the same namespace.
   const registryHost = workspaceImage.split("/")[0];
   const registryNamespace = "qualification";
+  // The plain-HTTP hosts the Build owner may pull from.
+  //
+  // The value belongs to whoever created the registry: only that caller knows
+  // the host the registry really serves on, and a host that serves TLS does
+  // not belong here at all. The tool never guesses the host and never writes
+  // one into the published Compose file.
+  const insecureHosts = String(insecureHttpHosts || "").trim();
+  if (insecureHosts && !/^[A-Za-z0-9._:-]+(,[A-Za-z0-9._:-]+)*$/.test(insecureHosts)) {
+    throw new Error("clean_host_insecure_http_hosts_invalid");
+  }
   const profile = {
     schemaVersion: 1, profileId: "local-docker/local", capabilityVersion: "local-docker/v1", region: "local",
     accountBindings: [{ tenantId, accountId: "local-host" }],
@@ -63,6 +73,7 @@ export function cleanHostInstallation({ template, compose, directory, sourceSha,
     OPL_WORKSPACE_REGISTRY_HOST: registryHost, OPL_WORKSPACE_REGISTRY_NAMESPACE: registryNamespace,
     OPL_BUILD_BUILDER: "default", OPL_BUILD_REGISTRY_PREFIX: `${registryHost}/${registryNamespace}`,
   });
+  if (insecureHosts) values.OPL_BUILD_INSECURE_HTTP_HOSTS = insecureHosts;
   const facts = localV2InstallationFacts({ template, compose, values });
   for (const name of facts.unresolved) {
     if (referenced.has(name)) throw new Error(`clean_host_installation_fact_missing:${name}`);
@@ -146,7 +157,8 @@ async function main() {
   const schema = await readFile(resolve(productRoot, "docs/spec/target/contracts/publisher-contract.schema.json"));
   const facts = cleanHostInstallation({ template, compose, directory, sourceSha: options["source-sha"],
     cloudImage: options["cloud-image"], workspaceImage: options["workspace-image"], storageRoot: options["storage-root"], project: options.project,
-    publisherSchemaDigest: `sha256:${createHash("sha256").update(schema).digest("hex")}` });
+    publisherSchemaDigest: `sha256:${createHash("sha256").update(schema).digest("hex")}`,
+    insecureHttpHosts: options["insecure-http-hosts"] || "" });
   await writeFile(resolve(directory, "installation.env"), localV2EnvFile(facts), { mode: 0o600 });
   await writeFile(resolve(directory, "application.json"), `${JSON.stringify(cleanHostApplication(options["workspace-image"]))}\n`, { mode: 0o600 });
 }

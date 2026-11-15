@@ -1,0 +1,6 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "local-qualification-agent",
+  "version": "1.0.0",
+  "description": "A customer package that answers with the probe file it was packaged with."
+}
