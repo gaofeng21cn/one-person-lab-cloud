@@ -207,7 +207,19 @@ func (s *Server) registerPublisherRoutes(mux *http.ServeMux) {
 		return s.capability.CreateUploadPart(r.Context(), &api.CreateUploadPartRpcRequest{Context: c, UploadId: r.PathValue("uploadId"), Body: body.(*api.CreateUploadPartRequest)})
 	})
 	s.publisherRoute(mux, "POST /api/v2/uploads/{uploadId}/complete", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEUPLOAD, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE, "uploadId", func() proto.Message { return &api.CompleteUploadRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
-		return s.capability.CompleteUpload(r.Context(), &api.CompleteUploadRpcRequest{Context: c, UploadId: r.PathValue("uploadId"), Body: body.(*api.CompleteUploadRequest)})
+		operation, err := s.capability.CompleteUpload(r.Context(), &api.CompleteUploadRpcRequest{Context: c, UploadId: r.PathValue("uploadId"), Body: body.(*api.CompleteUploadRequest)})
+		if err != nil {
+			return nil, err
+		}
+		// The completed upload names the package version the operation belongs
+		// to, and that package version is built with the installation's
+		// effective build policy. A build that cannot start is an explicit
+		// failure: the package version is uploaded, and a silent skip would
+		// leave it unbuilt with nothing to act on.
+		if err := s.startAutomaticBuild(r.Context(), c, operation.GetResourceId()); err != nil {
+			return nil, err
+		}
+		return operation, nil
 	})
 	s.publisherRoute(mux, "GET /api/v2/catalog/webui-versions", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTWEBUIVERSIONS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.capability.ListWebuiVersions(r.Context(), &api.ListWebuiVersionsRpcRequest{Context: c, QueryCursor: proto.String(r.URL.Query().Get("cursor"))})
@@ -314,6 +326,14 @@ func publisherRequestID(r *http.Request) {
 // Workspace read both answer through it, so an owner's own decision and the
 // contract's public status stay identical on every route that calls an owner.
 func writeOwnerCallFailure(w http.ResponseWriter, r *http.Request, err error) {
+	// The automatic build names the installation fact that stopped it, so the
+	// caller can act on it: the package version is uploaded, and a generic
+	// message would leave it unbuilt with nothing to act on.
+	var failure *autoBuildFailure
+	if errors.As(err, &failure) {
+		writeJSON(w, failure.status, map[string]any{"code": failure.code, "message": failure.message, "requestId": r.Header.Get(requestIDHeader)})
+		return
+	}
 	if ownerCode, ok := owneridentity.ErrorCode(err); ok {
 		if httpStatus, declared := errorStatus[ownerCode]; declared {
 			// Keep the owner's typed decision and the contract's public status;
@@ -325,26 +345,30 @@ func writeOwnerCallFailure(w http.ResponseWriter, r *http.Request, err error) {
 			return
 		}
 	}
-	code := 502
+	writePublisherError(w, r, ownerCallStatus(err), "owner_request_failed", "publisher request could not be completed")
+}
+
+// ownerCallStatus maps an owner call failure to the public HTTP status.
+func ownerCallStatus(err error) int {
 	switch status.Code(err) {
 	case codes.InvalidArgument:
-		code = 400
+		return 400
 	case codes.Unauthenticated:
-		code = 401
+		return 401
 	case codes.PermissionDenied:
-		code = 403
+		return 403
 	case codes.NotFound:
-		code = 404
+		return 404
 	case codes.AlreadyExists, codes.Aborted:
-		code = 409
+		return 409
 	case codes.FailedPrecondition:
-		code = 422
+		return 422
 	case codes.ResourceExhausted:
-		code = 429
+		return 429
 	case codes.Unavailable, codes.DeadlineExceeded:
-		code = 503
+		return 503
 	}
-	writePublisherError(w, r, code, "owner_request_failed", "publisher request could not be completed")
+	return 502
 }
 
 func writePublisherIdentityError(w http.ResponseWriter, r *http.Request, err error) {
