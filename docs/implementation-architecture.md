@@ -2030,15 +2030,21 @@ separate [roadmap obligations](roadmap.md#original-order-workspace-closeout-1018
 ### Extracted Workspace deletion recovery
 
 The extracted Workspace service persists consecutive unconfirmed passes per
-pending deletion step in its own operation result. Twelve automatic passes stop
-at `needs_attention`; the worker does not automatically select that deletion
-again. This preserves the original unknown/rejected observation, frozen intent,
-owner references and refundable charge rather than marking deletion failed or
-inventing absence. Missing Fabric/CloudIdentity dependencies record a durable
-wait. A freshly authorized `DeleteWorkspace` request with the exact confirmation
-name and destruction acknowledgement may resume the existing attention-bound
-operation once, including when its original idempotency key is reused. A read or
-poll never resumes it. Successful confirmation clears that step's pending count.
+pending deletion step in its own operation result. An observation-only wait stays
+`awaiting_confirmation`: the worker selects that deletion again and observes the
+same owner under the same accepted operation and grant, so a late owner
+confirmation is consumed instead of parked. The recovery limit only slows that
+observation to a bounded cadence. A refusal, an invalidated authorization, an
+ownership conflict or invalid evidence stops the automatic recovery at
+`needs_attention` and keeps its reason, because an elapsed pass count can never
+authorize another mutation. This preserves the original unknown/rejected
+observation, frozen intent, owner references and refundable charge rather than
+marking deletion failed or inventing absence. Missing Fabric/CloudIdentity
+dependencies record a durable wait. A freshly authorized `DeleteWorkspace`
+request with the exact confirmation name and destruction acknowledgement may
+resume the existing attention-bound operation once, including when its original
+idempotency key is reused. A read or poll never resumes it. Successful
+confirmation clears that step's pending count.
 
 Fabric's `ReadResources` only reads persisted facts. When an already-dispatched
 delete remains unconfirmed, Workspace reads it first, then resumes Fabric using
@@ -2050,13 +2056,14 @@ absence, a real Gateway refund, deployment or Instance acceptance.
 
 The original #1042 deletion later completed after two explicit resumes, as
 recorded in [the November 12 closeout](status.md#workspace-1042-original-deletion-closeout-and-cloud-custody-2026-11-12).
-That observation does not change this scheduler behavior. Automatic consumption
-of a completed downstream result after an observation-only pause remains an
-[unattended recovery outcome](roadmap.md#unattended-deletion-recovery), distinct
-from authorization to repeat a provider mutation. Workspace owns the accepted
-deletion and aggregate progress; Fabric owns each resource action, its fresh
-provider observations and local finalization. Gateway owns the original refund
-and managed-Key coordination with Sub2API; Ledger owns the bound receipt.
+That observation does not change this scheduler behavior. The source now consumes
+a completed downstream result after an observation-only pause without a direct
+`Resume` or another DELETE; the installed unattended qualification of that path
+remains an [unattended recovery outcome](roadmap.md#unattended-deletion-recovery),
+distinct from authorization to repeat a provider mutation. Workspace owns the
+accepted deletion and aggregate progress; Fabric owns each resource action, its
+fresh provider observations and local finalization. Gateway owns the original
+refund and managed-Key coordination with Sub2API; Ledger owns the bound receipt.
 `resumeDeletion` invokes runtime retirement, resource absence, Key closeout,
 deletion receipt, Workspace deletion projection, original-charge refund and final
 operation completion. `recordDeletedWorkspace` may commit resource/data deletion

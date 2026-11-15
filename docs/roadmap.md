@@ -112,9 +112,12 @@ recovery outcome below is a general admission gate for a retirement slice.
 
 ### Unattended deletion recovery
 
-The current twelve-pass pause and worker exclusion are recorded in
-[the implementation reference](implementation-architecture.md#extracted-workspace-deletion-recovery).
-When this independent reliability outcome is selected, its runtime change
+The repaired source behavior is recorded in
+[the implementation reference](implementation-architecture.md#extracted-workspace-deletion-recovery):
+an observation-only wait keeps its automatic recovery on a bounded cadence, and a
+refusal, an invalidated authorization, an ownership conflict or invalid evidence
+stops it with its reason. The installed qualification of that behavior on one
+exact Candidate remains open. Its runtime change
 belongs to Workspace's existing recovery path and Fabric's existing
 action/readback boundary. It must distinguish these outcomes
 without treating every `needs_attention` operation as eligible for mutation:

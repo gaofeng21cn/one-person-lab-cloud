@@ -61,9 +61,19 @@ type deletionOrder struct {
 // deletionResult records the exact identities this deletion already obtained from
 // their owners. A resume replays these identities instead of issuing a second
 // retire, delete, receipt or refund.
-// Automatic recovery stops after twelve consecutive unconfirmed passes of one
-// step. This is an attention boundary, never proof of absence or refund failure.
+// A pending step is observed again until its owner answers, so the recovery limit
+// is where that observation slows down, not where the deletion stops. An elapsed
+// pass count is never proof of absence or of a refund failure.
 const deletionRecoveryLimit = 12
+
+const (
+	// deletionObservationSlowDelay is the cadence the observation falls back to
+	// once the recovery limit has passed. A long wait must cost the owners little.
+	deletionObservationSlowDelay = 30 * time.Second
+	// deletionObservationMaxDelay bounds that cadence, so a deletion that waits
+	// for hours still consumes its owner's late answer within a bounded time.
+	deletionObservationMaxDelay = 5 * time.Minute
+)
 
 type deletionResult struct {
 	PendingStep     string `json:"pendingStep,omitempty"`
@@ -641,9 +651,10 @@ func (s *Service) ensureDeletionGrant(ctx context.Context, op ownerstore.Operati
 
 // failedDeletionCall records the outcome of one failed deletion step. A
 // transport loss leaves an unknown provider outcome the worker must resolve
-// rather than a fabricated success.
+// rather than a fabricated success, and a refusal keeps the reason the owner
+// gave instead of being retried as if it were a wait.
 func (s *Service) failedDeletionCall(ctx context.Context, op ownerstore.Operation, token, step, stage string, result deletionResult, cause error) error {
-	state, observation, code := callFailure(step, cause)
+	state, observation, code := deletionStepFailure(cause)
 	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	if err := s.checkpointDeletion(writeCtx, op, token, step, stage, state, observation, "", code, &result); err != nil {
@@ -652,17 +663,64 @@ func (s *Service) failedDeletionCall(ctx context.Context, op ownerstore.Operatio
 	return cause
 }
 
+// deletionStepFailure classifies one failed deletion step by the answer its owner
+// actually gave.
+//
+// A pending or unanswered outcome is a wait: the worker observes the same owner
+// again under the same accepted operation and the same grant, so a late
+// confirmation is still consumed and no second command is invented. A refusal,
+// an invalidated authorization, an ownership conflict or invalid evidence is not a
+// wait: it needs a new decision, so the automatic recovery stops and the reason
+// stays with the original operation. Neither an elapsed pass count nor a retry
+// counter may authorize another mutation.
+func deletionStepFailure(cause error) (state, observation, code string) {
+	switch status.Code(cause) {
+	case codes.PermissionDenied:
+		return "needs_attention", "rejected", "FORBIDDEN"
+	case codes.Unauthenticated:
+		return "needs_attention", "rejected", "UNAUTHENTICATED"
+	case codes.NotFound:
+		return "needs_attention", "rejected", "NOT_FOUND"
+	case codes.InvalidArgument, codes.FailedPrecondition, codes.AlreadyExists:
+		return "needs_attention", "rejected", "VALIDATION_FAILED"
+	case codes.DataLoss:
+		return "needs_attention", "rejected", "VALIDATION_FAILED"
+	}
+	return "awaiting_confirmation", "unknown", "DEPENDENCY_UNAVAILABLE"
+}
+
+// deletionObservationDelay is the bounded cadence of one pending deletion step.
+// The first passes keep the worker's ordinary rhythm. After the recovery limit
+// the observation slows down, because a long wait must cost the owners little,
+// but it never stops: a late owner answer is the deletion's own evidence.
+func deletionObservationDelay(attempts int) time.Duration {
+	if attempts <= deletionRecoveryLimit {
+		return stepRetryDelay
+	}
+	delay := deletionObservationSlowDelay
+	for i := deletionRecoveryLimit + 1; i < attempts; i++ {
+		delay *= 2
+		if delay >= deletionObservationMaxDelay {
+			return deletionObservationMaxDelay
+		}
+	}
+	return delay
+}
+
 // checkpointDeletion persists one deletion result under the same worker lease as
 // every other step.
+//
+// An observation-only wait keeps the operation recoverable: it stays
+// awaiting_confirmation and the worker observes the same owner again, so a late
+// confirmation is still consumed. Only a refusal, an invalidated authorization, an
+// ownership conflict or invalid evidence stops the automatic recovery, and it
+// keeps its reason.
 func (s *Service) checkpointDeletion(ctx context.Context, op ownerstore.Operation, token, step, stage, state, observation, ownerRef, code string, result *deletionResult) error {
-	if state == "awaiting_confirmation" || state == "needs_attention" {
+	if state == "awaiting_confirmation" {
 		if result.PendingStep != step {
 			result.PendingStep, result.PendingAttempts = step, 0
 		}
 		result.PendingAttempts++
-		if result.PendingAttempts >= deletionRecoveryLimit {
-			state = "needs_attention"
-		}
 	} else if observation == "confirmed" && result.PendingStep == step {
 		result.PendingStep, result.PendingAttempts = "", 0
 	}
@@ -677,7 +735,7 @@ func (s *Service) checkpointDeletion(ctx context.Context, op ownerstore.Operatio
 	case "KEY_BINDING_UNRESOLVED", "KEY_CLOSEOUT_UNKNOWN", "KEY_CLOSEOUT_UNCONFIRMED":
 		operationCode = "DEPENDENCY_UNAVAILABLE"
 	}
-	return s.checkpointBytes(ctx, op, token, step, stage, state, observation, observation, ownerRef, operationCode, code, raw)
+	return s.checkpointBytes(ctx, op, token, step, stage, state, observation, observation, ownerRef, operationCode, code, raw, deletionObservationDelay(result.PendingAttempts))
 }
 
 // retireDeletedRuntime stops the one runtime this deletion froze. Serve's own
