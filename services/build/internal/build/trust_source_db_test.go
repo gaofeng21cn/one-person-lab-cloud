@@ -324,3 +324,48 @@ func TestTrustSourceRegistrationIsRecordedWithTheConfirmedArtifact(t *testing.T)
 		t.Fatalf("registered version = %q, want the build job id", version)
 	}
 }
+
+// TestTrustSourceAdmissionIsPublishedInTheConfirmationStep proves the order
+// the customer flow depends on: the admission is published in the same step
+// that confirms the artifact, so the trust source names the repository before
+// the artifact event can reach Capability, and therefore before a Capability
+// version, a quote and a workspace exist.
+func TestTrustSourceAdmissionIsPublishedInTheConfirmationStep(t *testing.T) {
+	db := buildTrustSourceDatabase(t)
+	ctx := context.Background()
+	digestValue := "sha256:" + strings.Repeat("a", 64)
+	if _, err := db.ExecContext(ctx, `INSERT INTO build.operations(id,tenant_id,actor_id,kind,resource_id,status,stage,request_id,accepted_input) VALUES('op_build_job_1','tenant','actor_1','build','build_job_1','running','building','request_1','{}'::jsonb)`); err != nil {
+		t.Fatalf("insert build operation: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO build.build_jobs(id,tenant_id,package_version_id,runtime_version_id,webui_version_id,input_digest,input_snapshot,status,stage,request_id,created_by,operation_id,catalog_policy_id) VALUES('build_job_1','tenant','pv_1','runtime_1','webui_1',$1,'{}'::jsonb,'building','building','request_1','actor_1','op_build_job_1','policy_1')`, digestValue); err != nil {
+		t.Fatalf("insert build job: %v", err)
+	}
+	store, err := ownerstore.New(db, "build")
+	if err != nil {
+		t.Fatal(err)
+	}
+	control := &fakeTrustSource{source: contracts.WorkspaceImageTrustSource{SchemaVersion: 1, Revision: 1}}
+	service := &Service{store: store, trustSource: control}
+	runtimeContract, webuiContract := gapContracts(t)
+	input := gapSnapshot(t, runtimeContract, webuiContract)
+	confirmed := &record{
+		Job:    &api.BuildJob{Id: "build_job_1", OperationId: "op_build_job_1", PackageVersionId: "pv_1", RuntimeVersionId: "runtime_1", WebuiVersionId: "webui_1"},
+		Input:  input,
+		Call:   &api.CallContext{RequestId: "request_1"},
+		Tenant: "tenant",
+		Actor:  "actor_1",
+	}
+	if err := service.confirmAndAdmit(ctx, confirmed, "registry.example.test/opl", Manifest{Digest: digestValue, Size: 1024}); err != nil {
+		t.Fatalf("confirm and admit: %v", err)
+	}
+	if len(control.registered) != 1 {
+		t.Fatalf("published %d registrations in the confirmation step, want 1", len(control.registered))
+	}
+	if control.registered[0].ReleaseRepository != "registry.example.test/opl" {
+		t.Fatalf("registered repository = %q, want the repository the artifact was published to", control.registered[0].ReleaseRepository)
+	}
+	status, revision, attempts, lastError, _ := registrationRow(t, db, "build_job_1")
+	if status != "registered" || !revision.Valid || revision.Int64 != 2 || attempts != 1 || lastError.Valid {
+		t.Fatalf("admission intent = status %q revision %v attempts %d error %v", status, revision, attempts, lastError)
+	}
+}

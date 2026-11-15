@@ -195,7 +195,7 @@ func (s *Service) advance(ctx context.Context, r *record) error {
 			}
 			return nil
 		}
-		return s.confirm(ctx, r, repo, manifest)
+		return s.confirmAndAdmit(ctx, r, repo, manifest)
 	}
 	if err := s.stage(ctx, r, "validating", "running", ""); err != nil {
 		return err
@@ -240,7 +240,7 @@ func (s *Service) advance(ctx context.Context, r *record) error {
 	if err := s.stage(finalCtx, r, "pushing", "running", ""); err != nil {
 		return err
 	}
-	return s.confirm(finalCtx, r, repo, result.Manifest)
+	return s.confirmAndAdmit(finalCtx, r, repo, result.Manifest)
 }
 func descriptor(in *api.BuildInputSnapshot, artifact *api.ArtifactReference, jobID string) *api.DeploymentDescriptor {
 	revision := proto.Clone(in.RuntimeContract.ApplicationRevisionTemplate).(*api.WorkspaceApplicationRevision)
@@ -301,6 +301,23 @@ func (s *Service) confirm(ctx context.Context, r *record, repository string, m M
 		return err
 	}
 	return tx.Commit()
+}
+
+// confirmAndAdmit confirms the build artifact and publishes its admission to
+// the workspace image trust source.
+//
+// The admission is published here, in the step that confirms the artifact, and
+// not on a later tick: the worker delivers its outbox events at the start of a
+// tick, so the artifact event this confirmation appends reaches Capability in
+// the next one. A Capability version is what a quote and a workspace need, so
+// publishing the admission in this step means the trust source names the
+// repository before any workspace can be opened against that image.
+func (s *Service) confirmAndAdmit(ctx context.Context, r *record, repository string, m Manifest) error {
+	if err := s.confirm(ctx, r, repository, m); err != nil {
+		return err
+	}
+	s.publishTrustSource(ctx, r.Job.Id)
+	return nil
 }
 func (s *Service) ReadArtifact(ctx context.Context, req *api.ReadBuildArtifactRequest) (*api.BuildArtifactReadback, error) {
 	if err := requirePeer(ctx, owneridentity.Capability, owneridentity.Ledger); err != nil {

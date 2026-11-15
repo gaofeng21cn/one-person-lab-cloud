@@ -238,24 +238,66 @@ func trustSourceRetryDelay(attempts int) time.Duration {
 	}
 }
 
+// registrationIntentColumns is the projection every admission intent is read
+// with: the intent itself, the package version it published, and the stage the
+// build job is in.
+const registrationIntentColumns = `r.id,r.build_job_id,j.package_version_id,r.release_repository,r.release_version,r.attempt_count,COALESCE(r.last_error_code,''),j.stage`
+
+// scanRegistrationIntent reads one admission intent row.
+func scanRegistrationIntent(row interface{ Scan(...any) error }) (registrationIntent, error) {
+	var intent registrationIntent
+	err := row.Scan(&intent.ID, &intent.BuildJobID, &intent.PackageVersionID, &intent.ReleaseRepository, &intent.ReleaseVersion, &intent.AttemptCount, &intent.LastErrorCode, &intent.JobStage)
+	return intent, err
+}
+
 // dueRegistrations reads the admission intents this producer still owes. The
 // trust source itself decides what is already admitted, so a producer that
 // restarts re-reads the same intents until the Control Plane confirms them.
 func dueRegistrations(ctx context.Context, db *sql.DB) ([]registrationIntent, error) {
-	rows, err := db.QueryContext(ctx, `SELECT r.id,r.build_job_id,j.package_version_id,r.release_repository,r.release_version,r.attempt_count,COALESCE(r.last_error_code,''),j.stage FROM build.build_trust_source_registrations r JOIN build.build_jobs j ON j.id=r.build_job_id WHERE r.status<>'registered' AND r.next_attempt_at<=now() ORDER BY r.next_attempt_at,r.id LIMIT 5`)
+	rows, err := db.QueryContext(ctx, `SELECT `+registrationIntentColumns+` FROM build.build_trust_source_registrations r JOIN build.build_jobs j ON j.id=r.build_job_id WHERE r.status<>'registered' AND r.next_attempt_at<=now() ORDER BY r.next_attempt_at,r.id LIMIT 5`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var intents []registrationIntent
 	for rows.Next() {
-		var intent registrationIntent
-		if err := rows.Scan(&intent.ID, &intent.BuildJobID, &intent.PackageVersionID, &intent.ReleaseRepository, &intent.ReleaseVersion, &intent.AttemptCount, &intent.LastErrorCode, &intent.JobStage); err != nil {
+		intent, err := scanRegistrationIntent(rows)
+		if err != nil {
 			return nil, err
 		}
 		intents = append(intents, intent)
 	}
 	return intents, rows.Err()
+}
+
+// registrationIntentFor reads one build job's open admission intent. It is
+// read by its build job rather than by the due scan, because a fresh
+// confirmation is a new fact to publish even when an earlier attempt is
+// waiting out its backoff.
+func registrationIntentFor(ctx context.Context, db *sql.DB, buildJobID string) (*registrationIntent, error) {
+	row := db.QueryRowContext(ctx, `SELECT `+registrationIntentColumns+` FROM build.build_trust_source_registrations r JOIN build.build_jobs j ON j.id=r.build_job_id WHERE r.build_job_id=$1 AND r.status<>'registered'`, buildJobID)
+	intent, err := scanRegistrationIntent(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &intent, nil
+}
+
+// publishTrustSource publishes one build job's admission intent now. A refused
+// or unreachable Control Plane leaves the intent open with its named failure
+// and the build job carrying the open item; the retry publishes it later.
+func (s *Service) publishTrustSource(ctx context.Context, buildJobID string) {
+	if s.trustSource == nil {
+		return
+	}
+	intent, err := registrationIntentFor(ctx, s.store.DB(), buildJobID)
+	if err != nil || intent == nil {
+		return
+	}
+	_ = registerOneTrustSource(ctx, s.store.DB(), s.trustSource, *intent)
 }
 
 // registerTrustSources publishes the admission intents this owner owes. The

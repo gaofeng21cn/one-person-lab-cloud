@@ -75,6 +75,22 @@ test("the producer publishes the admission from the worker loop, not from a requ
     "the producer must publish the intents that are still open and due");
 });
 
+test("the admission is published in the step that confirms the artifact", async () => {
+  const worker = await source(workerPath);
+  const producer = await source(producerPath);
+
+  assert.match(worker, /func \(s \*Service\) confirmAndAdmit\(/,
+    "the worker must confirm the artifact and admit it in one step");
+  assert.match(worker, /if err := s\.confirm\(ctx, r, repository, m\); err != nil \{\s*return err\s*\}\s*s\.publishTrustSource\(ctx, r\.Job\.Id\)/,
+    "the admission must be published right after the artifact is confirmed, not on a later tick");
+  assert.match(worker, /return s\.confirmAndAdmit\(/,
+    "the worker must confirm and admit in one step wherever an artifact is confirmed");
+  assert.match(producer, /func \(s \*Service\) publishTrustSource\(ctx context\.Context, buildJobID string\)/,
+    "the producer must publish one build job's own admission intent");
+  assert.match(producer, /WHERE r\.build_job_id=\$1 AND r\.status<>'registered'/,
+    "the confirmation step must publish the intent of its own build job");
+});
+
 test("the published admission carries the revision the producer read", async () => {
   const producer = await source(producerPath);
 
