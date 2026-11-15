@@ -364,6 +364,7 @@
     "OPL_FABRIC_PROVIDER",
     "OPL_INTERNAL_SERVICE_TOKEN",
     "OPL_FABRIC_CAPABILITY_KEY",
+    "OPL_CONTROL_PLANE_URL",
     "OPL_FABRIC_RUNNER_SERVICE_TOKEN",
     "OPL_AIONUI_ADMIN_PASSWORD_SEED",
     "OPL_CLOUD_IMAGE",
@@ -405,7 +406,8 @@
     "provider dispatchers"
    ],
    "notes": [
-    "Owns infrastructure resource mutation and readback only. The legacy signed HTTP application-runtime surface is the migration bridge that I06 retires."
+    "Owns infrastructure resource mutation and readback only. The legacy signed HTTP application-runtime surface is the migration bridge that I06 retires.",
+    "Reads the registered workspace image trust source from its single retained Control Plane owner over HTTP using OPL_CONTROL_PLANE_URL and the shared OPL_FABRIC_CAPABILITY_KEY both processes already hold. This read adds no writer and is outside the gRPC communication edges."
    ],
    "ownerName": "fabric",
    "ownerConstant": "OwnerFabric",
