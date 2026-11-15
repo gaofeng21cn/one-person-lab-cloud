@@ -34,6 +34,9 @@ import (
 type Runner struct {
 	Builder                           string
 	RegistryPrefix                    string
+	// StorageURL is the object namespace base, not the site origin. It already
+	// carries the /objects prefix the Capability data plane serves, so a read
+	// appends only the digest.
 	StorageURL                        string
 	StorageToken                      string
 	RegistryToken                     string
@@ -410,7 +413,7 @@ func (r *Runner) packageBytes(ctx context.Context, o *api.SourceObjectReference)
 	if o.GetStorageObjectId() != o.GetVersionId() || !digestPattern.MatchString(o.GetStorageObjectId()) {
 		return nil, errors.New("source object identity is not immutable")
 	}
-	endpoint := strings.TrimRight(r.StorageURL, "/") + "/objects/" + url.PathEscape(strings.TrimPrefix(o.GetStorageObjectId(), "sha256:"))
+	endpoint := strings.TrimRight(r.StorageURL, "/") + "/" + url.PathEscape(strings.TrimPrefix(o.GetStorageObjectId(), "sha256:"))
 	resp, err := r.request(ctx, endpoint, r.StorageToken, "")
 	if err != nil {
 		return nil, errors.New("source object read unavailable")
