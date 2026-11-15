@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   CUSTOMER_EVIDENCE_LEVEL_ARTIFACT,
@@ -17,6 +18,7 @@ import {
   customerPackageProbePath,
   customerWorkspaceIdentity,
   parseLocalQualificationArgs,
+  runCustomerPackageEvidenceChain,
 } from "../../tools/local-workspace-qualification.ts";
 
 const toolSource = new URL("../../tools/local-workspace-qualification.ts", import.meta.url);
@@ -264,4 +266,66 @@ test("the tool carries no agent name, no package identity and no expected respon
   // is the nonce it mints for the run.
   assert.equal(/"(?:service|body|payload|content)"\s*:\s*"/.test(code), false);
   assert.equal(/expect(?:ed|s)?[ _-]?(?:body|content|response)/i.test(code), false);
+});
+
+test("every size the chain sends to an owner is a decimal string", async () => {
+  // A 64-bit field is carried as a decimal string. The owners' strict JSON
+  // contract types its 64-bit fields as strings, and a JSON number is refused
+  // by the boundary before the owner ever sees the request, so a chain that
+  // sends one never reaches its Build.
+  const packageDir = fileURLToPath(new URL("./fixtures/customer-agent-package", import.meta.url));
+  const archive = await buildCustomerPackageArchive({
+    packageDir, probePath: "agent/provenance/probe.txt", probeContent: "nonce",
+  });
+  const sent = [];
+  const stop = new Error("stop_after_the_upload_completion");
+  let uploaded = null;
+  const http = {
+    json: async (path, init = {}) => {
+      if (init.body !== undefined) sent.push({ path, body: init.body });
+      if (path === "/api/v2/namespaces") return { payload: { items: [{ id: "ns_1", isDefault: true }] } };
+      if (path === "/api/v2/packages") return { payload: { id: "pkg_1" } };
+      if (path === "/api/v2/packages/pkg_1/uploads") {
+        uploaded = init.body;
+        return { payload: { id: "upload_1", packageVersionId: "pv_1", partSizeBytes: "16777216" } };
+      }
+      if (path === "/api/v2/uploads/upload_1/parts") return { payload: { url: "https://objects.test/part-1", method: "PUT", contentType: "application/octet-stream" } };
+      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
+      if (path === "/api/v2/package-versions/pv_1") return { payload: { id: "pv_1", packageId: "pkg_1", versionLabel: "1.0.0", sha256: uploaded?.sha256, sizeBytes: uploaded?.sizeBytes, status: "uploaded" } };
+      throw stop;
+    },
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ status: 200, headers: { get: () => "" } });
+  try {
+    await assert.rejects(runCustomerPackageEvidenceChain({
+      http,
+      auth: {},
+      wait: async () => {},
+      plan: {
+        mode: "directory", packageDir, probePath: "agent/provenance/probe.txt",
+        achievableEvidenceLevel: CUSTOMER_EVIDENCE_LEVEL_CONTENT,
+        requestedEvidenceLevel: CUSTOMER_EVIDENCE_LEVEL_CONTENT,
+        degradationReason: "",
+      },
+      packageName: "local-qualification-agent",
+      versionLabel: "1.0.0",
+      workspaceName: "local qualification",
+      provider: "local-docker",
+      billingMode: "LOCAL_NO_CHARGE",
+      computePlanId: "compute_1",
+      storagePlanId: "storage_1",
+      sourceSha: "a".repeat(40),
+    }), (error) => error === stop);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  const sizes = sent.flatMap(({ body }) => [
+    body?.sizeBytes,
+    ...(Array.isArray(body?.parts) ? body.parts.map((part) => part?.sizeBytes) : []),
+  ]).filter((value) => value !== undefined);
+  assert.ok(sizes.length >= 3, "the chain sent no size to an owner");
+  for (const size of sizes) {
+    assert.equal(typeof size, "string", `a 64-bit size must be a decimal string, got ${JSON.stringify(size)}`);
+  }
 });

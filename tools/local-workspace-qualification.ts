@@ -2521,7 +2521,7 @@ export async function runCustomerPackageEvidenceChain({
   const session = (await http.json(`/api/v2/packages/${encodeURIComponent(packageId)}/uploads`, {
     method: "POST",
     headers: { "idempotency-key": `local-v2-customer-upload:${sourceSha}:${packageName}` },
-    body: { versionLabel, fileName: `${packageName}.zip`, sizeBytes: archive.bytes.length, sha256: archive.digest },
+    body: { versionLabel, fileName: `${packageName}.zip`, sizeBytes: String(archive.bytes.length), sha256: archive.digest },
   }, auth, [200, 201, 202])).payload;
   const uploadId = String(session?.id || "");
   const packageVersionId = String(session?.packageVersionId || "");
@@ -2541,7 +2541,7 @@ export async function runCustomerPackageEvidenceChain({
     const permit = (await http.json(`/api/v2/uploads/${encodeURIComponent(uploadId)}/parts`, {
       method: "POST",
       headers: { "idempotency-key": `local-v2-customer-part:${sourceSha}:${uploadId}:${number}` },
-      body: { partNumber: number, sizeBytes: slice.length, sha256: partDigest },
+      body: { partNumber: number, sizeBytes: String(slice.length), sha256: partDigest },
     }, auth, [200, 201, 202])).payload;
     const url = String(permit?.url || "");
     if (!url) throw namedQualificationError("local_v2_customer_upload_part_unauthorized", `the owner authorized no URL for part ${number}`);
@@ -2553,7 +2553,7 @@ export async function runCustomerPackageEvidenceChain({
       throw namedQualificationError("local_v2_customer_upload_part_refused", `part ${number} was refused with HTTP ${put.status}`);
     }
     const etag = String(put.headers.get("etag") || "").trim() || partDigest.replace(/^sha256:/, "");
-    parts.push({ partNumber: number, etag, sizeBytes: slice.length, sha256: partDigest });
+    parts.push({ partNumber: number, etag, sizeBytes: String(slice.length), sha256: partDigest });
   }
 
   // The completion. The owner's operation names the version it completed.
