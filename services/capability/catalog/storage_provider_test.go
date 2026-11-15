@@ -21,9 +21,43 @@ var (
 	_ Storage = (*cosStorage)(nil)
 )
 
+func TestLocalProviderRequiresObjectNamespaceBase(t *testing.T) {
+	for _, endpoint := range []string{
+		"https://objects.example.test/objects",
+		"https://objects.example.test/objects/",
+		"https://objects.example.test/objects///",
+		"http://127.0.0.1:8281/objects",
+	} {
+		t.Run(endpoint, func(t *testing.T) {
+			store, err := newLocalStorage(t.TempDir(), endpoint, bytes.Repeat([]byte("k"), 32))
+			if err != nil {
+				t.Fatal(err)
+			}
+			auth, err := store.AuthorizePart(context.Background(), "upload-1", "", 1, 16, "sha256:"+strings.Repeat("a", 64), time.Now().Add(time.Minute))
+			if err != nil {
+				t.Fatal(err)
+			}
+			u, err := url.Parse(auth.URL)
+			if err != nil || u.Path != "/objects/parts" {
+				t.Fatalf("signed upload URL=%q, err=%v; want /objects/parts", auth.URL, err)
+			}
+		})
+	}
+	for _, suffix := range []string{"", "/", "/parts", "/other", "/objects/objects", "/other/../objects", "/%6fbjects", "/objects%2F", "/objects?", "/objects?x=1", "/objects#", "/objects#fragment"} {
+		t.Run("reject "+suffix, func(t *testing.T) {
+			if _, err := newLocalStorage(t.TempDir(), "https://objects.example.test"+suffix, bytes.Repeat([]byte("k"), 32)); err == nil {
+				t.Fatal("invalid object namespace base was accepted")
+			}
+		})
+	}
+	if _, err := newLocalStorage(t.TempDir(), "https://user:password@objects.example.test/objects", bytes.Repeat([]byte("k"), 32)); err == nil {
+		t.Fatal("object namespace base with user info was accepted")
+	}
+}
+
 func TestLocalProviderStreamsThroughCapability(t *testing.T) {
 	root := t.TempDir()
-	store, err := newLocalStorage(root, "https://capability.example.test", bytes.Repeat([]byte("k"), 32))
+	store, err := newLocalStorage(root, "https://capability.example.test/objects", bytes.Repeat([]byte("k"), 32))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +68,7 @@ func TestLocalProviderStreamsThroughCapability(t *testing.T) {
 
 func TestLocalProviderPromotesOnlyAfterValidationAndRetainsRetryInput(t *testing.T) {
 	ctx := context.Background()
-	store, err := newLocalStorage(t.TempDir(), "http://127.0.0.1:8281", bytes.Repeat([]byte("k"), 32))
+	store, err := newLocalStorage(t.TempDir(), "http://127.0.0.1:8281/objects", bytes.Repeat([]byte("k"), 32))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +118,7 @@ func TestLocalProviderPermitUsesConfiguredSigningKey(t *testing.T) {
 	if err := os.WriteFile(path, schema, 0600); err != nil {
 		t.Fatal(err)
 	}
-	objects, err := NewObjects(root, "http://127.0.0.1:8281", key, UploadPolicy{MaxBytes: 1 << 20, PartBytes: 1 << 20, MaxExpandedBytes: 2 << 20, MaxFiles: 128, TTL: time.Minute, ManifestPath: "manifest.json", SchemaPath: path, SchemaDigest: digest(schema)})
+	objects, err := NewObjects(root, "http://127.0.0.1:8281/objects", key, UploadPolicy{MaxBytes: 1 << 20, PartBytes: 1 << 20, MaxExpandedBytes: 2 << 20, MaxFiles: 128, TTL: time.Minute, ManifestPath: "manifest.json", SchemaPath: path, SchemaDigest: digest(schema)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,10 +145,10 @@ func TestLocalProviderPermitUsesConfiguredSigningKey(t *testing.T) {
 }
 
 func TestLocalProviderRejectsUnencryptedPublicEndpoint(t *testing.T) {
-	if _, err := newLocalStorage(t.TempDir(), "http://objects.example.test", bytes.Repeat([]byte("k"), 32)); err == nil {
+	if _, err := newLocalStorage(t.TempDir(), "http://objects.example.test/objects", bytes.Repeat([]byte("k"), 32)); err == nil {
 		t.Fatal("non-loopback http upload endpoint must be rejected")
 	}
-	if _, err := newLocalStorage(t.TempDir(), "http://127.0.0.1:8281", bytes.Repeat([]byte("k"), 32)); err != nil {
+	if _, err := newLocalStorage(t.TempDir(), "http://127.0.0.1:8281/objects", bytes.Repeat([]byte("k"), 32)); err != nil {
 		t.Fatalf("loopback http must be admitted for local development: %v", err)
 	}
 }

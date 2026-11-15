@@ -39,6 +39,12 @@ func TestObjectDataPlaneServesTheSignedUploadPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	preflight := httptest.NewRecorder()
+	handler.ServeHTTP(preflight, httptest.NewRequest(http.MethodOptions, signed.RequestURI(), nil))
+	if preflight.Code != http.StatusNoContent || preflight.Header().Get("Access-Control-Allow-Methods") != "PUT" {
+		t.Fatalf("signed upload preflight returned %d with methods %q", preflight.Code, preflight.Header().Get("Access-Control-Allow-Methods"))
+	}
+
 	// The signed path must be the ingest route, not the read route: an
 	// unsigned PUT proves the request reached the ingest handler, because that
 	// handler refuses it with 403 while the read pattern refuses it with 405.

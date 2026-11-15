@@ -32,8 +32,8 @@ import (
 // immutable inputs, never a database handle or Cloud credentials. The builder's
 // credential file may access only the approved registries and output namespace.
 type Runner struct {
-	Builder                           string
-	RegistryPrefix                    string
+	Builder        string
+	RegistryPrefix string
 	// StorageURL is the object namespace base, not the site origin. It already
 	// carries the /objects prefix the Capability data plane serves, so a read
 	// appends only the digest.
@@ -68,8 +68,11 @@ func (r *Runner) Validate() error {
 		return errors.New("isolated builder, registry, storage, credential directory and explicit worker limits are required")
 	}
 	u, err := url.Parse(r.StorageURL)
-	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Scheme != "https" && !(r.AllowHTTP && u.Scheme == "http")) {
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || strings.Contains(r.StorageURL, "#") || (u.Scheme != "https" && !(r.AllowHTTP && u.Scheme == "http")) {
 		return errors.New("invalid approved storage endpoint")
+	}
+	if strings.TrimRight(u.EscapedPath(), "/") != "/objects" {
+		return errors.New("approved storage endpoint must use the /objects namespace base")
 	}
 	return nil
 }
