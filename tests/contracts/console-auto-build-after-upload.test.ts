@@ -56,3 +56,41 @@ test("a missing or unusable build policy fails the upload instead of skipping th
   assert.match(autoBuild, /code: "BUILD_NOT_STARTED"/,
     "a build the owner refuses must be named to the caller");
 });
+
+// The automatic build has to be generic. It starts for any package version an
+// upload publishes and takes its runtime and WebUI versions from the
+// installation's effective build policy, so the code that starts it may not
+// carry one installation's package, repository, image, host or digest: a
+// literal like that would make the trigger work for that installation only.
+const triggerFiles = [
+  "apps/console-bff/internal/httpapi/auto_build.go",
+  "apps/console-bff/internal/httpapi/publisher.go",
+];
+
+const instanceFacts: { pattern: RegExp; what: string }[] = [
+  { pattern: /[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?::\d+)?\/[a-z0-9._/-]+/i, what: "a repository or image reference" },
+  { pattern: /(?:\d{1,3}\.){3}\d{1,3}/, what: "an IP address" },
+  { pattern: /[a-z0-9.-]+:\d{2,5}\/[a-z0-9._/-]+/i, what: "a host:port repository reference" },
+  { pattern: /["'][^"']*[0-9a-f]{16,}[^"']*["']/, what: "a pinned digest or identifier" },
+];
+
+// literals returns the string literals of a Go file without the import paths:
+// a module path is not an instance fact.
+function literals(contents: string): string[] {
+  const withoutImports = contents.replace(/import\s*\([^)]*\)/gs, "").replace(/import\s+"[^"]*"/g, "");
+  return [
+    ...[...withoutImports.matchAll(/"(?:[^"\\]|\\.)*"/g)].map((match) => match[0]),
+    ...[...withoutImports.matchAll(/`(?:[^`\\]|\\.)*`/g)].map((match) => match[0]),
+  ];
+}
+
+test("the automatic build carries no instance fact of its own", async () => {
+  for (const path of triggerFiles) {
+    const contents = await readFile(path, "utf8");
+    for (const literal of literals(contents)) {
+      for (const { pattern, what } of instanceFacts) {
+        assert.doesNotMatch(literal, pattern, `${path} must not carry ${what}: ${literal}`);
+      }
+    }
+  }
+});
