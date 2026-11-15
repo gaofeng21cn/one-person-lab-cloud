@@ -110,7 +110,9 @@
     "OPL_CAPABILITY_OBJECT_TOKEN",
     "OPL_LEDGER_ADDR"
    ],
-   "optionalEnv": [],
+   "optionalEnv": [
+    "OPL_BUILD_INSECURE_HTTP_HOSTS"
+   ],
    "externalEnv": [],
    "registers": [
     "BuildProductService",

@@ -660,3 +660,38 @@ test("installer accepts a reachable Sub2API authority and says exactly what it p
     } finally { await authority.close(); }
   });
 });
+
+for (const oldParser of [false, true]) {
+  test(`installer preserves optional empty defaults and registry hosts through ${oldParser ? "source discovery" : "Compose discovery"} and upgrades`, async () => {
+    const published = await readFile(sourceOf("compose.cloud.yaml"), "utf8");
+    const withEmptyDefault = published.replace("      OPL_BUILD_INSECURE_HTTP_HOSTS: ${OPL_BUILD_INSECURE_HTTP_HOSTS:-}",
+      "      OPL_BUILD_INSECURE_HTTP_HOSTS: ${OPL_BUILD_INSECURE_HTTP_HOSTS:-}\n      OPL_OPTIONAL_EMPTY_DEFAULT: ${OPL_OPTIONAL_EMPTY_DEFAULT-}");
+    assert.notEqual(withEmptyDefault, published);
+    await withBundle(async (bundle, root) => {
+      const mock = await writeDockerMock(root, { oldParser });
+      const env = { PATH: `${mock.bin}:${process.env.PATH}` };
+      const { installDir, statePath, state } = await fillInstallationFacts(bundle, root, env, INSTALLATION_FACTS.OPL_SUB2API_BASE_URL);
+      assert.ok(!("OPL_BUILD_INSECURE_HTTP_HOSTS" in state.values));
+      assert.ok(!("OPL_OPTIONAL_EMPTY_DEFAULT" in state.values));
+      await writePkiFixture(installDir);
+      for (const value of [undefined, "", "registry.example.test:5000"]) {
+        if (value === undefined) delete state.values.OPL_BUILD_INSECURE_HTTP_HOSTS;
+        else state.values.OPL_BUILD_INSECURE_HTTP_HOSTS = value;
+        await writeFile(statePath, JSON.stringify(state));
+        const result = run(bundle, installDir, ["--dry-run"], env);
+        assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
+        const updateBundle = await writeBundle(root, { "compose.cloud.yaml": withEmptyDefault }, `update-${value === undefined ? "absent" : value === "" ? "empty" : "configured"}`);
+        const updated = run(updateBundle, installDir, ["--dry-run"], env);
+        assert.equal(updated.status, 0, `${updated.stdout}${updated.stderr}`);
+        const saved = JSON.parse(await readFile(statePath, "utf8"));
+        assert.equal(saved.values.OPL_BUILD_INSECURE_HTTP_HOSTS, value);
+        const config = spawnSync("docker", ["compose", "--env-file", "/dev/null", "-f", join(updateBundle, "compose.cloud.yaml"), "config", "--format", "json"], { encoding: "utf8", env: { ...process.env, ...saved.values } });
+        assert.equal(config.status, 0, config.stderr);
+        assert.equal(JSON.parse(config.stdout).services.build.environment.OPL_BUILD_INSECURE_HTTP_HOSTS, value ?? "");
+      }
+      const calls = await mock.calls();
+      assert.ok(calls.some(args => args.includes("--variables")));
+      assert.ok(!calls.some(args => args.includes("pull") || args.includes("up")));
+    }, { "compose.cloud.yaml": withEmptyDefault });
+  });
+}

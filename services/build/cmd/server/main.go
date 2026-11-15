@@ -50,7 +50,7 @@ func main() {
 		if err != nil {
 			return err
 		}
-		runner := &buildservice.Runner{Builder: os.Getenv("OPL_BUILD_BUILDER"), RegistryPrefix: os.Getenv("OPL_BUILD_REGISTRY_PREFIX"), StorageURL: os.Getenv("OPL_CAPABILITY_OBJECT_URL"), StorageToken: os.Getenv("OPL_CAPABILITY_OBJECT_TOKEN"), RegistryToken: os.Getenv("OPL_BUILD_REGISTRY_TOKEN"), DockerConfig: os.Getenv("OPL_BUILD_DOCKER_CONFIG"), WorkDir: os.Getenv("OPL_BUILD_WORKDIR"), MaxPackageBytes: 1 << 30, MaxExpandedBytes: 4 << 30, MaxFiles: 100000, Timeout: 30 * time.Minute, AllowHTTP: os.Getenv("NODE_ENV") != "production"}
+		runner := &buildservice.Runner{Builder: os.Getenv("OPL_BUILD_BUILDER"), RegistryPrefix: os.Getenv("OPL_BUILD_REGISTRY_PREFIX"), StorageURL: os.Getenv("OPL_CAPABILITY_OBJECT_URL"), StorageToken: os.Getenv("OPL_CAPABILITY_OBJECT_TOKEN"), RegistryToken: os.Getenv("OPL_BUILD_REGISTRY_TOKEN"), DockerConfig: os.Getenv("OPL_BUILD_DOCKER_CONFIG"), WorkDir: os.Getenv("OPL_BUILD_WORKDIR"), MaxPackageBytes: 1 << 30, MaxExpandedBytes: 4 << 30, MaxFiles: 100000, Timeout: 30 * time.Minute, AllowHTTP: os.Getenv("NODE_ENV") != "production", InsecureHTTPHosts: buildservice.ParseInsecureHTTPHosts(os.Getenv("OPL_BUILD_INSECURE_HTTP_HOSTS"))}
 		if err := runner.Validate(); err != nil {
 			return err
 		}
