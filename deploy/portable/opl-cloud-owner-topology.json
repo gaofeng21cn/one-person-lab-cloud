@@ -584,7 +584,7 @@
      "capability"
     ],
     "browserFacing": false,
-    "evidence": "services/capability registers /objects/... on its own object-store listen address"
+    "evidence": "services/capability/catalog/data_plane.go registers the object data plane on its own object-store listen address: the signed upload ingest route /objects/parts and the read route GET /objects/{digest}."
    },
    {
     "prefix": "/healthz/",
@@ -636,14 +636,6 @@
     ],
     "browserFacing": false,
     "evidence": "services/control-plane/internal/server/routes_core.go registers the retained Workspace root entry /ws."
-   },
-   {
-    "prefix": "/parts/",
-    "processes": [
-     "capability"
-    ],
-    "browserFacing": false,
-    "evidence": "services/capability/catalog/data_plane.go registers the upload data-plane /parts handler."
    }
   ],
   "probes": [

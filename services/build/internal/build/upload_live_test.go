@@ -30,6 +30,24 @@ import (
 	"opl-cloud/services/internal/ownerstore/ownerstoretest"
 )
 
+func TestLivePackageUploadObjectNamespace(t *testing.T) {
+	t.Setenv("OPL_BUILD_TEST_REGISTRY_HOST", "127.0.0.1:5000")
+	t.Setenv("OPL_BUILD_TEST_REGISTRY_NAMESPACE", "result")
+	dsn := ownerstoretest.EnsureAdminDSNOrSkip(os.Getenv, t.Skip)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	data := packageZIP(t, zipEntry{"manifest.json", `{"name":"live-package"}`, 0644}, zipEntry{"src/payload.txt", "immutable package payload\n", 0644})
+	object, storageURL, token, _, _, _, _, _, _ := uploadLivePackage(t, ctx, dsn, data)
+	runner := &Runner{Builder: "isolated", RegistryPrefix: "registry.example.test/opl", StorageURL: storageURL, StorageToken: token, DockerConfig: t.TempDir(), WorkDir: t.TempDir(), MaxPackageBytes: 1 << 20, MaxExpandedBytes: 2 << 20, MaxFiles: 128, Timeout: time.Minute, AllowHTTP: true}
+	if err := runner.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	read, err := runner.packageBytes(ctx, object)
+	if err != nil || !bytes.Equal(read, data) {
+		t.Fatalf("Build read of the uploaded object differs: %v", err)
+	}
+}
+
 // CloudIdentity and Capability run their real handlers and restricted stores.
 // Only external Sub2API identity and existing test membership are fixtures.
 func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byte) (*api.SourceObjectReference, string, string, string, string, string, *catalog.Service, string, *liveIdentity) {
@@ -67,7 +85,7 @@ func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byt
 		schemaPath = configured
 	}
 	httpServer := httptest.NewUnstartedServer(nil)
-	httpURL := "http://" + httpServer.Listener.Addr().String()
+	httpURL := "http://" + httpServer.Listener.Addr().String() + "/objects"
 	partBytes := int64(128)
 	if os.Getenv("OPL_BUILD_TEST_PACKAGE") != "" {
 		partBytes = 16 << 10
@@ -191,7 +209,7 @@ func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byt
 	if version.Status != api.PackageVersionStatusEnum_PACKAGE_VERSION_STATUS_ENUM_UPLOADED {
 		t.Fatal("not uploaded")
 	}
-	objectURL := httpURL + "/objects/" + strings.TrimPrefix(version.Sha256, "sha256:")
+	objectURL := httpURL + "/" + strings.TrimPrefix(version.Sha256, "sha256:")
 	response, err := http.Get(objectURL)
 	if err != nil {
 		t.Fatal(err)

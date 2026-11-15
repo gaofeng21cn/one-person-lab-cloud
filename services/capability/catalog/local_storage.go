@@ -25,8 +25,11 @@ type localStorage struct {
 
 func newLocalStorage(root, publicURL string, signingKey []byte) (*localStorage, error) {
 	u, e := url.Parse(publicURL)
-	if e != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+	if e != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || strings.Contains(publicURL, "#") || (u.Scheme != "https" && u.Scheme != "http") {
 		return nil, fmt.Errorf("invalid public upload URL")
+	}
+	if strings.TrimRight(u.EscapedPath(), "/") != "/objects" {
+		return nil, fmt.Errorf("public upload URL must use the /objects namespace base")
 	}
 	if u.Scheme == "http" && u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1" && u.Hostname() != "::1" {
 		return nil, fmt.Errorf("unencrypted object endpoint is only allowed on loopback")

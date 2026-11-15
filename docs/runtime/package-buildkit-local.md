@@ -150,10 +150,18 @@ existing owner database, gRPC peers and approved Package schema configuration:
 - `OPL_CAPABILITY_STORAGE_KIND`: `local` (default) or `cos`. `local` keeps
   immutable bytes on a mounted volume; `cos` stores them in the instance Tencent
   COS bucket.
-- `OPL_CAPABILITY_OBJECT_URL`: for `local`, the externally reachable URL used for
-  signed upload-part URLs and Build object reads. HTTP is admitted only for
-  loopback; an installed instance supplies its TLS endpoint. For `cos`, it is
-  only the Build object-read endpoint because upload parts go straight to COS.
+- `OPL_CAPABILITY_OBJECT_URL`: the object namespace base URL, for example
+  `https://objects.example.test/objects`. Both the local Storage Provider and
+  Build require the pathname `/objects` (trailing slashes are allowed), without
+  user info, a query or a fragment. A pure site origin or another path is
+  rejected at startup; neither owner guesses or adds a missing namespace.
+  For `local`, Capability appends `/parts` to issue signed upload URLs; Build
+  appends `/<sha256-hex>` to read immutable objects. The portable Compose
+  topology supplies Build's base through `OPL_CAPABILITY_OBJECT_INTERNAL_URL`
+  under the same pathname contract. The public and internal hosts are
+  installation-owned and may differ. HTTP uploads are admitted only for
+  loopback; an installed instance supplies its TLS endpoint. For `cos`, Build
+  still reads the object namespace, while upload parts go straight to COS.
 - `OPL_CAPABILITY_OBJECT_TOKEN`: a dedicated service-only read token of at least
   32 bytes, supplied to both Capability and Build through the existing approved
   secret store. It is never returned in upload permits or customer responses.
@@ -166,12 +174,13 @@ only in the instance Secret store; it is never sent to a browser. Browser upload
 receive short-lived presigned URLs scoped to one upload part, so the bucket needs
 CORS permitting the Console origin with `PUT`/`GET`/`HEAD`, exposing `ETag`, and
 allowing the `X-OPL-SHA256` request header. With `cos`, Capability does not
-register `PUT /parts` at all, and immutable objects stay content-addressed by
+register `PUT /objects/parts` at all, and immutable objects stay content-addressed by
 SHA-256 (`objects/sha256/<hex>`) so Build reads them by digest alone. A completed
 assembly verifies the provider object's exact size and SHA-256 before it becomes
 immutable; the customer-declared checksum is never trusted on its own.
 
-With `local`, `PUT /parts` still requires its signed permit and exact checksum header.
+With `local`, `PUT /objects/parts` requires its signed permit and exact checksum header.
+`OPTIONS /objects/parts` verifies that permit before answering a browser preflight.
 `GET /objects/<sha256-hex>` requires the Build bearer token and an uploaded
 PackageVersion with that immutable object identity. It exposes no object list,
 write or deletion API. Build recomputes the object digest and length before
@@ -185,7 +194,7 @@ Its same-origin `/api/v2` requests must reach Console BFF. The existing BFF
 CloudIdentity and Capability/Build peer configuration supplies authority; browser
 actor/tenant headers and body fields are not accepted as identity. Upload parts
 use only the owner-issued signed PUT permit, omit browser credentials, reject
-redirects and verify the returned checksum identity. Only `/parts` permits
+redirects and verify the returned checksum identity. Only `/objects/parts` permits
 credentialless CORS and exposes its ETag; service-only object reads gain no CORS.
 
 Ledger retains its HTTP `LEDGER_ADDR` listener. Set `OPL_LEDGER_ADDR` to enable

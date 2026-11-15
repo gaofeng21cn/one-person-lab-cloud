@@ -18,10 +18,23 @@ func (s *Service) DataHandler(readToken string) (http.Handler, error) {
 		return nil, fmt.Errorf("a dedicated Build object-read token of at least 32 bytes is required")
 	}
 	mux := http.NewServeMux()
+	// The object data plane owns one namespace: /objects. The same-origin entry
+	// forwards a request's path verbatim, so the ingest route has to live in the
+	// same namespace as the read route. A separate /parts route would be
+	// shadowed by the read pattern: its path matches every /objects/{segment}
+	// request, and its method is GET, so the upload would be refused with 405.
+	//
+	// The router refuses a pair of patterns that overlap without one being
+	// strictly more specific, so the ingest route has to be method-scoped too:
+	// a method-less route under /objects/ conflicts with the read route's own
+	// path. PUT is the ingest method, and OPTIONS answers the browser's
+	// preflight, which the same handler serves.
+	//
 	// Direct-to-storage providers hand the browser a scoped presigned URL, so
 	// Capability never accepts part bytes and does not expose the ingest route.
 	if d, ok := s.Objects.store.(interface{ DirectUploadOnly() bool }); !ok || !d.DirectUploadOnly() {
-		mux.Handle("/parts", s.UploadHandler())
+		mux.Handle("PUT /objects/parts", s.UploadHandler())
+		mux.Handle("OPTIONS /objects/parts", s.UploadHandler())
 	}
 	mux.HandleFunc("GET /objects/{digest}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")

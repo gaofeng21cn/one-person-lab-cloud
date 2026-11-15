@@ -90,7 +90,7 @@ func testCandidateObjects(t *testing.T) *Objects {
 	if err := os.WriteFile(path, schema, 0600); err != nil {
 		t.Fatal(err)
 	}
-	objects, err := NewObjects(root, "http://127.0.0.1:1", bytes.Repeat([]byte("x"), 32), UploadPolicy{MaxBytes: 1 << 20, PartBytes: 1 << 20, MaxExpandedBytes: 2 << 20, MaxFiles: 128, TTL: time.Minute, ManifestPath: "manifest.json", SchemaPath: path, SchemaDigest: digest(schema)})
+	objects, err := NewObjects(root, "http://127.0.0.1:1/objects", bytes.Repeat([]byte("x"), 32), UploadPolicy{MaxBytes: 1 << 20, PartBytes: 1 << 20, MaxExpandedBytes: 2 << 20, MaxFiles: 128, TTL: time.Minute, ManifestPath: "manifest.json", SchemaPath: path, SchemaDigest: digest(schema)})
 	if err != nil {
 		t.Fatal(err)
 	}
