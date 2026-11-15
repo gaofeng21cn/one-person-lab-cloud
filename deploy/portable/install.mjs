@@ -194,7 +194,7 @@ async function requiredVariables(bundle, version) {
   if (raw !== null) { try { model = JSON.parse(raw); } catch { fail('compose_variables_invalid'); } }
   const required = new Set();
   if (model) {
-    for (const item of Object.values(model).filter(item => item.Required || (item.DefaultValue === '' && item.PresenceValue === ''))) required.add(item.Name);
+    for (const item of Object.values(model).filter(item => item.Required)) required.add(item.Name);
   }
   for (const file of ['compose.cloud.yaml']) {
     let text;
@@ -204,7 +204,7 @@ async function requiredVariables(bundle, version) {
       // A Compose variable is required when the file asks for it and no
       // default stands in for it. "$${...}" is an escaped shell variable,
       // not a Compose variable, and never a fact.
-      if (modifier === '' || modifier.startsWith(':?') || modifier.startsWith('?') || modifier === ':-' || modifier === '-') required.add(match[1]);
+      if (modifier === '' || modifier.startsWith(':?') || modifier.startsWith('?')) required.add(match[1]);
     }
   }
   for (const name of [...required]) if (name.startsWith('OPL_QUALIFICATION_') || ['OPL_WORKSPACE_APPLICATION_DOMAIN', 'OPL_WORKSPACE_APPLICATION_INGRESS_PEERS'].includes(name)) required.delete(name);

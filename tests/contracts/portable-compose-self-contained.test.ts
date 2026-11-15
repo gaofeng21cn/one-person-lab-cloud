@@ -167,6 +167,7 @@ const expectedEnvironment: Record<string, string[]> = {
     "OPL_BUILD_ADDR",
     "OPL_BUILD_BUILDER",
     "OPL_BUILD_DOCKER_CONFIG",
+    "OPL_BUILD_INSECURE_HTTP_HOSTS",
     "OPL_BUILD_PEER_TOKENS",
     "OPL_BUILD_REGISTRY_PREFIX",
     "OPL_BUILD_REGISTRY_TOKEN",

@@ -50,9 +50,10 @@ type Runner struct {
 	// InsecureHTTPHosts lists registry hosts that are reachable only over plain
 	// HTTP, for example a disposable loopback registry in an isolated test. It is
 	// per-host so one run can read such a fixture over HTTP while still writing
-	// its immutable output to a real HTTPS registry. When the list is empty the
-	// legacy AllowHTTP switch decides every host, so production behaviour is
-	// unchanged.
+	// its immutable output to a real HTTPS registry. The declaration is
+	// authoritative for that host, including for a redirect target on it. When
+	// the list is empty the legacy AllowHTTP switch decides every host, so
+	// production behaviour is unchanged.
 	InsecureHTTPHosts []string
 }
 
@@ -73,6 +74,14 @@ func (r *Runner) Validate() error {
 	}
 	if strings.TrimRight(u.EscapedPath(), "/") != "/objects" {
 		return errors.New("approved storage endpoint must use the /objects namespace base")
+	}
+
+	// A declared plain-HTTP host has to be an exact host name: a value the
+	// runner cannot match would silently leave that host unreachable.
+	for _, host := range r.InsecureHTTPHosts {
+		if !registryHostPattern.MatchString(host) {
+			return errors.New("an insecure registry host must be an exact host name")
+		}
 	}
 	return nil
 }
@@ -279,7 +288,7 @@ func (r *Runner) client() *http.Client {
 		if len(via) >= 5 {
 			return errors.New("too many registry redirects")
 		}
-		if req.URL.Scheme != "https" && !(r.AllowHTTP && req.URL.Scheme == "http") {
+		if req.URL.Scheme != "https" && !(r.AllowHTTP && req.URL.Scheme == "http") && !r.insecureHost(req.URL.Host) {
 			return errors.New("registry redirect target is not an approved scheme")
 		}
 		return nil
@@ -303,16 +312,45 @@ func (r *Runner) request(ctx context.Context, endpoint, token, accept string) (*
 // is authoritative; without one the legacy AllowHTTP switch applies to every
 // host.
 func (r *Runner) scheme(host string) string {
-	for _, candidate := range r.InsecureHTTPHosts {
-		if candidate == host {
-			return "http"
-		}
+	if r.insecureHost(host) {
+		return "http"
 	}
 	if len(r.InsecureHTTPHosts) == 0 && r.AllowHTTP {
 		return "http"
 	}
 	return "https"
 }
+
+// insecureHost reports whether one registry host is declared reachable only
+// over plain HTTP. The declaration is authoritative for that host, so a
+// redirect target on it is followed over plain HTTP as well.
+func (r *Runner) insecureHost(host string) bool {
+	for _, candidate := range r.InsecureHTTPHosts {
+		if candidate == host {
+			return true
+		}
+	}
+	return false
+}
+
+// ParseInsecureHTTPHosts reads the declared plain-HTTP registry hosts. The
+// value is a comma-separated list of exact host names. An absent or empty
+// value declares none, which leaves the legacy AllowHTTP switch in charge of
+// every host.
+func ParseInsecureHTTPHosts(raw string) []string {
+	var hosts []string
+	seen := map[string]bool{}
+	for _, part := range strings.Split(raw, ",") {
+		host := strings.TrimSpace(part)
+		if host == "" || seen[host] {
+			continue
+		}
+		seen[host] = true
+		hosts = append(hosts, host)
+	}
+	return hosts
+}
+
 func (r *Runner) registryURL(repository, kind, reference string) string {
 	parts := strings.SplitN(repository, "/", 2)
 	return r.scheme(parts[0]) + "://" + parts[0] + "/v2/" + parts[1] + "/" + kind + "/" + reference
