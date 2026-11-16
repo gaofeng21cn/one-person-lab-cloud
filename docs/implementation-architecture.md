@@ -2043,7 +2043,11 @@ marking deletion failed or inventing absence. Missing Fabric/CloudIdentity
 dependencies record a durable wait. A freshly authorized `DeleteWorkspace`
 request with the exact confirmation name and destruction acknowledgement may
 resume the existing attention-bound operation once, including when its original
-idempotency key is reused. A read or poll never resumes it. Successful
+idempotency key is reused. Legacy `needs_attention` deletions remain behind this
+explicit replay: the previous writer used `unknown/DEPENDENCY_UNAVAILABLE` both
+for retry-limit waits and for invalid owner evidence, so neither that code nor
+the pending count proves an observation-only wait. The worker does not revive
+those rows automatically. A read or poll never resumes them. Successful
 confirmation clears that step's pending count.
 
 Fabric's `ReadResources` only reads persisted facts. When an already-dispatched

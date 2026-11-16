@@ -46,15 +46,14 @@ func (s *Service) RunOnce(ctx context.Context) error {
 	if err := s.sweepWorkspaceLifecycle(ctx); err != nil {
 		return err
 	}
-	// A deletion that stopped on an observation-only wait keeps its automatic
-	// recovery: the owner may still answer later, and that late confirmation is
-	// the deletion's own evidence, so the worker observes it again. A deletion
-	// that stopped on a refusal, an invalidated authorization or invalid evidence
-	// is excluded, because only an authorized recovery may continue it.
+	// Pending deletions stay awaiting_confirmation and remain recoverable. Legacy
+	// needs_attention rows cannot distinguish a retry-limit wait from invalid
+	// owner evidence: both used unknown/DEPENDENCY_UNAVAILABLE. Keep every such
+	// row for the existing freshly authorized DeleteWorkspace replay instead of
+	// guessing its cause from a retry count and dispatching another owner call.
 	rows, err := s.Store.DB().QueryContext(ctx, `SELECT o.id FROM workspace.operations o
 		WHERE o.kind IN ('create_workspace','delete_workspace','suspend_workspace','resume_workspace') AND o.status IN ('accepted','running','awaiting_confirmation','needs_attention')
-		AND NOT (o.kind IN ('suspend_workspace','resume_workspace') AND o.status='needs_attention')
-		AND NOT (o.kind='delete_workspace' AND o.status='needs_attention' AND NOT (o.observation_result='unknown' AND o.error_code IN ('DEPENDENCY_UNAVAILABLE','EXTERNAL_OUTCOME_UNKNOWN')))
+		AND NOT (o.kind IN ('delete_workspace','suspend_workspace','resume_workspace') AND o.status='needs_attention')
 		AND (o.worker_lease_until IS NULL OR o.worker_lease_until<now())
 		AND NOT EXISTS (SELECT 1 FROM workspace.saga_steps st WHERE st.operation_id=o.id AND st.next_attempt_at>now())
 		ORDER BY o.updated_at,o.id LIMIT 20`)

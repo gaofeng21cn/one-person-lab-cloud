@@ -28,8 +28,11 @@ invalidated authorization, an ownership conflict or invalid evidence stops the
 automatic recovery at `needs_attention` with its own reason (`FORBIDDEN`,
 `UNAUTHENTICATED`, `NOT_FOUND`, `VALIDATION_FAILED`, or the owner's own code),
 because an elapsed pass count can never authorize another mutation. A deletion
-that an earlier build already parked on an observation-only wait is selected
-again by the same rule.
+that an earlier build already parked at `needs_attention` stays there until the
+existing freshly authorized DELETE replay. The previous writer used the same
+`unknown/DEPENDENCY_UNAVAILABLE` shape for retry-limit waits and invalid owner
+evidence, including conflicts after earlier waits; its counter cannot identify
+which case occurred safely.
 
 Proven by executed source tests over isolated PostgreSQL in
 `services/workspace/internal/launch`: a late owner confirmation is consumed by
@@ -39,7 +42,10 @@ concurrent workers keep one operation, one runtime retirement, one deletion
 receipt and one settlement, and a lost owner answer replays the same frozen
 command instead of retiring twice; an invalidated authorization and a conflicting
 owner answer keep an explicit reason and stop; the completed deletion reports
-retirement, absence, receipt, refund and Key closeout together.
+retirement, absence, receipt, refund and Key closeout together. Legacy parked
+rows trigger no automatic owner dispatch, including eleven pending answers
+followed by invalid evidence; an authorized replay continues the same operation,
+grant, frozen intent and settlement identities.
 `TestLiveDeletionBackwardOwnerCoupling` passes over real Workspace and Ledger
 gRPC handlers and separate owner databases.
 

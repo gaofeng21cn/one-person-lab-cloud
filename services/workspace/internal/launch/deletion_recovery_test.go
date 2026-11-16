@@ -3,9 +3,10 @@ package launch
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"sync"
-	"time"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -165,12 +166,20 @@ func TestDeletionContinuesAfterTheWorkerRestarts(t *testing.T) {
 		t.Fatal(err)
 	}
 	operationID := accepted.GetOperationId()
-	// The first process observes the pending owner across the recovery limit.
-	for pass := 0; pass < deletionRecoveryLimit; pass++ {
+	// The initial DELETE counts as the first observation. Restart while the
+	// deletion is still pending at the former recovery limit, before it completes.
+	for pass := 0; pass < deletionRecoveryLimit-1; pass++ {
 		advanceSchedulingGate(t, db, operationID)
 		if err = service.RunOnce(ctx); err != nil {
 			t.Fatal(err)
 		}
+	}
+	beforeRestart, err := service.Store.ReadOperation(ctx, operationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if beforeRestart.Status != "awaiting_confirmation" {
+		t.Fatalf("deletion status before restart=%s, want a pending operation", beforeRestart.Status)
 	}
 	// The worker restarts: a new process over the same persisted owner rows,
 	// carrying no state of the previous one.
@@ -205,27 +214,24 @@ func TestDeletionContinuesAfterTheWorkerRestarts(t *testing.T) {
 	}
 }
 
-// TestDeletionRecoversAnOperationThatAlreadyParked covers the installations that
-// already hold a deletion parked by the former recovery limit: the operation row
-// carries the observation-only shape that limit produced, and the repaired worker
-// must still observe its owner and consume the owner's late confirmation.
-//
-// The row is seeded to that shape on purpose; the recovery itself is still done
-// by the automatic worker, without a direct Resume, another DELETE or a
-// test-side reset of the operation's own progress.
-func TestDeletionRecoversAnOperationThatAlreadyParked(t *testing.T) {
+// The old retry limit and invalid owner evidence could produce the same parked
+// state. An existing parked deletion therefore needs an explicit authorized
+// replay, even when its owner can now confirm the original resources absent.
+func TestDeletionKeepsAnAlreadyParkedOperationForAuthorizedReplay(t *testing.T) {
 	db := runtimeDatabase(t)
 	service, call, ctx, _, _ := deletionWorkspace(t, db)
 	fabric := &lateConfirmationDeletionFabric{deletionFabricClient: &deletionFabricClient{present: true}}
 	service.Fabric = fabric
 	call.IdempotencyKey = "already-parked-delete"
-	accepted, err := service.DeleteWorkspace(ctx, &api.DeleteWorkspaceRpcRequest{Context: call, WorkspaceId: "workspace-original", Body: &api.DeleteWorkspaceRequest{ConfirmationName: "Original workspace", AcknowledgeDataDestruction: true}})
+	request := &api.DeleteWorkspaceRpcRequest{Context: call, WorkspaceId: "workspace-original", Body: &api.DeleteWorkspaceRequest{ConfirmationName: "Original workspace", AcknowledgeDataDestruction: true}}
+	accepted, err := service.DeleteWorkspace(ctx, request)
 	if err != nil {
 		t.Fatal(err)
 	}
 	operationID := accepted.GetOperationId()
-	// Observe the pending owner until the deletion has waited past the limit.
-	for pass := 0; pass < deletionRecoveryLimit; pass++ {
+	// The initial DELETE already observed the owner once. Reach the former
+	// limit while the owner still reports the original resources present.
+	for pass := 0; pass < deletionRecoveryLimit-1; pass++ {
 		advanceSchedulingGate(t, db, operationID)
 		if err = service.RunOnce(ctx); err != nil {
 			t.Fatal(err)
@@ -235,28 +241,136 @@ func TestDeletionRecoversAnOperationThatAlreadyParked(t *testing.T) {
 	if _, err = db.ExecContext(ctx, `UPDATE workspace.operations SET status='needs_attention',observation_result='unknown',error_code='DEPENDENCY_UNAVAILABLE' WHERE id=$1`, operationID); err != nil {
 		t.Fatal(err)
 	}
-	for pass := 0; pass < 3*deletionRecoveryLimit; pass++ {
+	before, err := service.Store.ReadOperation(ctx, operationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleteCalls, readCalls := fabric.deleteCalls, fabric.readCalls
+	for pass := 0; pass < 3; pass++ {
 		advanceSchedulingGate(t, db, operationID)
 		if err = service.RunOnce(ctx); err != nil {
 			t.Fatal(err)
 		}
-		stored, err := service.Store.ReadOperation(ctx, operationID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if stored.Status == "succeeded" {
-			break
-		}
+	}
+	parked, err := service.Store.ReadOperation(ctx, operationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parked.Status != "needs_attention" || string(parked.Result) != string(before.Result) || fabric.deleteCalls != deleteCalls || fabric.readCalls != readCalls {
+		t.Fatal("the worker resumed an ambiguous legacy parked deletion")
+	}
+	replayed, err := service.DeleteWorkspace(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The authorized replay resumed the original Fabric command; its next
+	// readback can now confirm absence through the ordinary automatic path.
+	advanceSchedulingGate(t, db, operationID)
+	if err = service.RunOnce(ctx); err != nil {
+		t.Fatal(err)
 	}
 	completed, err := service.Store.ReadOperation(ctx, operationID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if completed.Status != "succeeded" {
-		t.Fatalf("a parked deletion was not recovered by the automatic worker: status=%s error=%s", completed.Status, completed.ErrorCode)
+	if replayed.GetOperationId() != operationID || completed.Status != "succeeded" || string(completed.AcceptedInput) != string(before.AcceptedInput) {
+		t.Fatal("the authorized replay did not complete the original parked deletion")
 	}
 	if refunds := service.Gateway.(*deletionGatewayClient).refunds; refunds != 1 {
 		t.Fatalf("refunds=%d, want the one original settlement", refunds)
+	}
+}
+
+type pendingThenConflictingDeletionServe struct {
+	api.ServeAgentCoordinationClient
+	calls int
+}
+
+func (s *pendingThenConflictingDeletionServe) Retire(context.Context, *api.RuntimeStopCommand, ...grpc.CallOption) (*api.Operation, error) {
+	s.calls++
+	if s.calls < deletionRecoveryLimit {
+		return nil, status.Error(codes.Unavailable, "retirement answer is not available yet")
+	}
+	return &api.Operation{OperationId: "serve-retire-other", Owner: api.OperationOwnerEnum_OPERATION_OWNER_ENUM_SERVE, Kind: api.OperationKindEnum_OPERATION_KIND_ENUM_RUNTIME_RETIRE, ResourceId: "runtime-other", Status: api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED, Stage: api.OperationStageEnum_OPERATION_STAGE_ENUM_RETIREMENT, ObservationResult: api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_CONFIRMED.Enum()}, nil
+}
+
+// A retry count does not prove that an old needs_attention row was merely a
+// wait: eleven unavailable replies followed by invalid owner evidence also left
+// pendingAttempts=12, unknown and DEPENDENCY_UNAVAILABLE in the old writer.
+func TestDeletionDoesNotAutomaticallyResumeLegacyEvidenceConflictAfterPendingPasses(t *testing.T) {
+	db := runtimeDatabase(t)
+	service, call, ctx, _, _ := deletionWorkspace(t, db)
+	conflicting := &pendingThenConflictingDeletionServe{}
+	service.Serve = conflicting
+	call.IdempotencyKey = "legacy-conflict-after-pending-delete"
+	request := &api.DeleteWorkspaceRpcRequest{Context: call, WorkspaceId: "workspace-original", Body: &api.DeleteWorkspaceRequest{ConfirmationName: "Original workspace", AcknowledgeDataDestruction: true}}
+	accepted, err := service.DeleteWorkspace(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operationID := accepted.GetOperationId()
+	for conflicting.calls < deletionRecoveryLimit-1 {
+		advanceSchedulingGate(t, db, operationID)
+		if err = service.RunOnce(ctx); status.Code(err) != codes.Unavailable {
+			t.Fatalf("pending retirement error=%v, want unavailable", err)
+		}
+	}
+	waiting, err := service.Store.ReadOperation(ctx, operationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, result, err := decodeDeletion(waiting)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if waiting.Status != "awaiting_confirmation" || result.PendingAttempts != deletionRecoveryLimit-1 {
+		t.Fatalf("pending retirement=%+v result=%+v", waiting, result)
+	}
+	advanceSchedulingGate(t, db, operationID)
+	if err = service.RunOnce(ctx); status.Code(err) != codes.DataLoss {
+		t.Fatalf("conflicting retirement error=%v, want data loss", err)
+	}
+	// Reproduce the previous writer's persisted result for that final DataLoss.
+	// It incremented the same count and lost the distinction from a long wait.
+	result.PendingAttempts = deletionRecoveryLimit
+	raw, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.ExecContext(ctx, `UPDATE workspace.operations SET status='needs_attention',observation_result='unknown',error_code='DEPENDENCY_UNAVAILABLE',result=$2 WHERE id=$1`, operationID, raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.ExecContext(ctx, `UPDATE workspace.saga_steps SET observation_result='unknown',error_code='DEPENDENCY_UNAVAILABLE',next_attempt_at=NULL WHERE operation_id=$1 AND step_key='retire_runtime'`, operationID); err != nil {
+		t.Fatal(err)
+	}
+	healthy := &deletionServeClient{}
+	service.Serve = healthy
+	for pass := 0; pass < 3; pass++ {
+		if err = service.RunOnce(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	parked, err := service.Store.ReadOperation(ctx, operationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parked.Status != "needs_attention" || parked.Observation != "unknown" || parked.ErrorCode != "DEPENDENCY_UNAVAILABLE" || healthy.stops != 0 || service.Fabric.(*deletionFabricClient).deleteCalls != 0 || service.Ledger.(*deletionLedgerClient).appends != 0 || service.Gateway.(*deletionGatewayClient).refunds != 0 {
+		t.Fatal("the worker dispatched an owner mutation for an ambiguous legacy evidence conflict")
+	}
+	replayed, err := service.DeleteWorkspace(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed, err := service.Store.ReadOperation(ctx, operationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, completedResult, err := decodeDeletion(completed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replayed.GetOperationId() != operationID || completed.Status != "succeeded" || string(completed.AcceptedInput) != string(waiting.AcceptedInput) || completedResult.GrantID != result.GrantID || healthy.stops != 1 || service.Fabric.(*deletionFabricClient).deleteCalls != 1 || service.Ledger.(*deletionLedgerClient).appends != 1 || service.Gateway.(*deletionGatewayClient).refunds != 1 {
+		t.Fatal("the authorized replay changed the original deletion identity or repeated an effect")
 	}
 }
 
