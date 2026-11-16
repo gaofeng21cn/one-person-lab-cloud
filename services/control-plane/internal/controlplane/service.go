@@ -438,16 +438,3 @@ func (s *Service) WorkspaceRuntimeGatewaySecret(ctx context.Context, workspaceID
 	}
 	return client.WorkspaceRuntimeGatewaySecret(ctx, workspaceID)
 }
-
-func (s *Service) RecordWorkspaceGatewayKeyRotation(ctx context.Context, accountID, workspaceID, ownerID, operationID string, oldKeyID, newKeyID int64, fingerprint string) (clients.Receipt, error) {
-	if accountID == "" || workspaceID == "" || ownerID == "" || operationID == "" || oldKeyID <= 0 || newKeyID <= 0 || oldKeyID == newKeyID || fingerprint == "" {
-		return clients.Receipt{}, errors.New("workspace_gateway_key_rotation_evidence_invalid")
-	}
-	return s.ledger.RecordReceipt(ctx, clients.ReceiptInput{
-		Type: "workspace.gateway_key_rotated.v1", Status: "completed", Surface: "control_plane",
-		AccountID: accountID, WorkspaceID: workspaceID,
-		Execution:  map[string]any{"operationId": operationID, "oldKeyId": oldKeyID, "newKeyId": newKeyID},
-		OutputRefs: map[string]any{"secretFingerprint": fingerprint},
-		Owner:      map[string]any{"userId": ownerID},
-	}, operationID+":receipt")
-}
