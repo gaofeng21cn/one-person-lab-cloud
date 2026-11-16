@@ -72,8 +72,12 @@ published URL; a different DNS spelling alone does not refresh Console access.
 
 This document describes the implementation that exists, not completed target architecture
 migration. The adopted target keeps all Cloud product code in one GitHub
-repository, `one-person-lab-cloud`, while retaining independent service modules and
-processes. Its canonical directory/deployment-unit map is
+repository, `one-person-lab-cloud`, with logical owner modules. The current
+implementation runs independent processes; the 2026-11-16
+[deployment decision](architecture.md#deployment-unit-composition) instead
+selects one default business backend deployment unit, with privileged build and
+customer application execution isolated. That consolidation is not implemented.
+Its canonical directory/deployment-unit map is
 [Repository And Instance Topology](architecture.md#repository-and-instance-topology).
 Capability, Build, Runtime Control, Workspace, Resource Catalog and Serve have
 independent owner processes and the Console BFF is implemented. Resource Catalog

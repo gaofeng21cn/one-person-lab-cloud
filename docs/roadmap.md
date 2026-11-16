@@ -23,6 +23,24 @@ Use the following order when a source, document and receipt disagree:
 A passing test, generated contract, merged PR or queued workflow proves only its
 own layer. It does not close an Instance or production outcome.
 
+## Consolidated backend deployment
+
+The [2026-11-16 architecture decision](architecture.md#deployment-unit-composition)
+selects one default Cloud business deployment unit. Current independent owner
+processes and the Instance's twelve-workload installation remain implementation
+facts, not a required target topology. No Cloud consolidation is included in the
+first Link single-container change.
+
+Cloud must supply the composition entrypoint and preserve owner authorization,
+single writers, accepted-operation recovery and persistence. Instance must
+switch the real API routes and configuration, retain existing databases and
+Secrets, and prove upgrade/rollback and the customer lifecycle against the
+exact candidate. BuildKit's privileged executor and each customer's application
+execution remain isolated. Combining existing processes first can simplify
+installation; reducing their process and connection-pool overhead is a separate
+implementation step. No savings or high availability is claimed without runtime
+and billing evidence.
+
 ## Agent read carrier adoption
 
 Cloud owns the authenticated, stateless read-only MCP endpoint and exact quote
