@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -328,4 +329,65 @@ test("every size the chain sends to an owner is a decimal string", async () => {
   for (const size of sizes) {
     assert.equal(typeof size, "string", `a 64-bit size must be a decimal string, got ${JSON.stringify(size)}`);
   }
+});
+
+test("the uploaded bytes are written through the requester the run supplies", async () => {
+  // The object origin is served by the installation's own CA. A request that
+  // trusted the host store would fail there, so the run's own requester writes
+  // the part and the host-trusting default is never used.
+  const packageDir = fileURLToPath(new URL("./fixtures/customer-agent-package", import.meta.url));
+  const archive = await buildCustomerPackageArchive({
+    packageDir, probePath: "agent/provenance/probe.txt", probeContent: "nonce",
+  });
+  const written = [];
+  const stop = new Error("stop_after_the_upload_completion");
+  let uploaded = null;
+  const http = {
+    json: async (path, init = {}) => {
+      if (path === "/api/v2/namespaces") return { payload: { items: [{ id: "ns_1", isDefault: true }] } };
+      if (path === "/api/v2/packages") return { payload: { id: "pkg_1" } };
+      if (path === "/api/v2/packages/pkg_1/uploads") {
+        uploaded = init.body;
+        return { payload: { id: "upload_1", packageVersionId: "pv_1", partSizeBytes: "16777216" } };
+      }
+      if (path === "/api/v2/uploads/upload_1/parts") return { payload: { url: "https://objects.test/part-1", method: "PUT", contentType: "application/octet-stream" } };
+      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
+      if (path === "/api/v2/package-versions/pv_1") return { payload: { id: "pv_1", packageId: "pkg_1", versionLabel: "1.0.0", sha256: uploaded?.sha256, sizeBytes: uploaded?.sizeBytes, status: "uploaded" } };
+      throw stop;
+    },
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error("the host-trusting default must not write the part"); };
+  try {
+    await assert.rejects(runCustomerPackageEvidenceChain({
+      http,
+      auth: {},
+      wait: async () => {},
+      plan: {
+        mode: "directory", packageDir, probePath: "agent/provenance/probe.txt",
+        achievableEvidenceLevel: CUSTOMER_EVIDENCE_LEVEL_CONTENT,
+        requestedEvidenceLevel: CUSTOMER_EVIDENCE_LEVEL_CONTENT,
+        degradationReason: "",
+      },
+      packageName: "local-qualification-agent",
+      versionLabel: "1.0.0",
+      workspaceName: "local qualification",
+      provider: "local-docker",
+      billingMode: "LOCAL_NO_CHARGE",
+      computePlanId: "compute_1",
+      storagePlanId: "storage_1",
+      sourceSha: "a".repeat(40),
+      putPart: async (url, init) => {
+        written.push({ url, method: init.method, digest: `sha256:${createHash("sha256").update(init.body).digest("hex")}` });
+        return { status: 200, headers: { get: () => "" } };
+      },
+    }), (error) => error === stop || error?.message === "the read back package version does not match the uploaded bytes");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(written.length, 1);
+  assert.equal(written[0].url, "https://objects.test/part-1");
+  assert.equal(written[0].method, "PUT");
+  // The bytes the owner was promised are the bytes that were written.
+  assert.equal(written[0].digest, uploaded.sha256);
 });
