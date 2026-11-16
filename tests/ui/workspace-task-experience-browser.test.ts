@@ -9,8 +9,6 @@ import type {
   RuntimeVersionDTO,
   WorkspaceQuoteDTO,
   WorkspaceQuoteRequestDTO,
-  PricingCatalogResponse,
-  PricingPreviewResponse,
   RuntimeCredentialResponse,
   SourceEnvelope,
   WorkspaceDTO,
@@ -53,31 +51,6 @@ const pendingLaunch: WorkspaceLaunchResponse = {
   checks: [{ name: "fabric_runtime_ready", ok: false }],
   createdAt: "2026-09-01T00:00:00Z",
   updatedAt: "2026-09-01T00:01:00Z"
-};
-
-const customerOwnedCatalog: PricingCatalogResponse = {
-  priceVersion: "pilot-usd-2026-07-v1",
-  billingUnit: "calendar_month",
-  displayCurrency: "USD",
-  walletCurrency: "USD",
-  currency: "USD",
-  resourceBillingMode: "none",
-  packages: [
-    { id: "basic", name: "Basic", available: true },
-    { id: "pro", name: "Pro", available: true }
-  ]
-};
-
-const billedCatalog: PricingCatalogResponse = {
-  ...customerOwnedCatalog,
-  resourceBillingMode: "enabled"
-};
-
-const unavailablePreview: PricingPreviewResponse = {
-  resourceType: "workspace",
-  packageId: "basic",
-  priceVersion: "pilot-usd-2026-07-v1",
-  currency: "USD"
 };
 
 interface BrowserAudit {

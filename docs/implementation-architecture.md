@@ -422,8 +422,9 @@ namespaces, environment variables and runner labels.
 profile, region and resource ids, the enabled subset of Cloud-defined plans,
 image pins, secret references, promotion policy, and deployment receipts. The
 extracted plans and versioned policies are implemented by Resource Catalog;
-Control Plane retains its legacy prices and `priceVersion` for existing callers.
-An Instance does not override either catalog. Instance repositories
+Control Plane retains accepted legacy prices and `priceVersion` decoding for
+historical consumers; it publishes no current package-price catalog or preview.
+An Instance does not override either owner's accepted pricing facts. Instance repositories
 consume exact Cloud candidates for pre-publication qualification
 and digest-addressed Releases after publication. Their internal artifacts may use the
 `opl-cloud` identifier, but they never copy runtime code, product contracts, or
@@ -519,7 +520,7 @@ The current identity and writer boundary is:
 | Team Workspace transactions | Gateway reads original charge/refund records through BFF under the current Tenant owner/admin role, including retired bindings and deleted-Workspace history | Original receipt references and confirmed/requested/unknown states are preserved. A separate typed Ledger reader returns existing funded-charge Receipt, WalletOperation and accepted Quote under fresh Tenant authorization; private execution evidence keeps its actor fence. Missing receipt kinds return unavailable |
 | Personal balance history and Gateway endpoint | Session-bound BFF calls the retained provider adapter using the proven logged-in User | Missing upstream data is unavailable, never a successful empty balance history |
 | Announcements and read acknowledgements | BFF calls the retained publication/ACK owner with live identity proof; proven historical ACKs retain their original timestamps | No Tenant membership or OCI destination is required for personal announcements; installation still needs the independent transport material |
-| Package pricing catalog and preview | Legacy identity only: retained Control Plane `/api/pricing/*`. A CloudIdentity build records `pricing_catalog_owner_unavailable` and prices through the Resource Catalog plan reads and `POST /api/v2/quotes` | Cloud has no package-pricing catalog owner yet; the retained package routes must never be called from a CloudIdentity session |
+| Package pricing catalog and preview | Withdrawn: the Control Plane publishes no current price and no preview. The Resource Catalog owns new compute/storage prices and quotes a purchase through the Resource Catalog plan reads and `POST /api/v2/quotes`; the retained Console presents an accepted operation's own terms instead of a quoted price | There is no current price to publish; the retained price-version decoders stay for accepted charges, and no Console source may read the retired routes again |
 
 The Tenant and Gateway databases have separate migrations, connection pools and
 writers even though they share a transport principal and deployment unit. A
@@ -1600,11 +1601,11 @@ operations, data or financial evidence.
 | --- | --- | --- | --- |
 | Fresh purchase | Resource Catalog creates the quote; Workspace accepts the order through BFF `/api/v2/quotes` and `/api/v2/workspaces`; UI `createWorkspaceQuote` and Instance `cloud-workspace-launch-readback.mjs` use those routes | CP `POST /api/workspace-launches` only replays an existing account/key-bound operation, otherwise refuses before pricing/payment/provider/persistence. PR #1061 already removed `createWorkspaceLaunch` and fresh-create claim machinery | Already removed; do not implement another fence or preserve a creator for tests |
 | Application revision, deployment and current selection | Runtime Control supplies approved default-App releases; Capability/Build supplies Agent descriptors; Workspace calls Serve Reserve/Deploy. BFF `serve_update.go` delegates version updates to Serve | R1a/R1b remove CP operator admission/new deployments, default installer and Console commands; R1d removes the generic deployment builder. No Key rotation can create a same-selection child; accepted deployments retain the shared worker and activation. Claim/activation requires a retained CP Workspace row and binding/predecessor checks. Instance #674 removes the installer caller at source | R1: retire the legacy deployment capability after caller/accepted-operation disposition; no proof of a duplicate native writer follows from old columns |
-| Application credentials, runtime maintenance and image policy | Workspace/Serve reveal the exact current ready runtime's credentials; Serve owns approved version replacement/readiness/access | CP credential reveal and original Launch repair remain; R2a removes password-rotation creation. R2c removes CP image replacement creation/preview/dispatch/retry worker with Console/BFF callers; direct policy/history reads, policy activation for original Launch recovery, and safety barriers remain | R2: Instance #675 caller withdrawal is MERGED, CI 2/2 SUCCESS; Cloud entrypoint-removal adoption remains unproven; check in-flight legacy executions before that adoption. Accepted credential deployments retain recovery; native reveal/update does not establish legacy command parity |
+| Application credentials, runtime maintenance and image policy | Workspace/Serve reveal the exact current ready runtime's credentials; Serve owns approved version replacement/readiness/access | CP credential reveal and original Launch repair remain; R2a removes password-rotation creation. R2c removes CP image replacement creation/preview/dispatch/retry worker with Console/BFF callers; the direct persisted-policy read, operation decoders and safety barriers remain. Merged #1177/#1179 withdrew the policy activation command and its orphan store; original Launch replay keeps its frozen image authorization | R2: Instance #675 caller withdrawal is MERGED, CI 2/2 SUCCESS; Cloud entrypoint-removal adoption remains unproven; check in-flight legacy executions before that adoption. Accepted credential deployments retain recovery; native reveal/update does not establish legacy command parity |
 | Workspace managed Key | Workspace coordinates intent through Gateway Integration; external Gateway owns effective Key/Group state | R3a removes CP fresh rotation acceptance and its store claim. The original POST resumed only an existing account/Workspace/request-bound rotation and is no longer registered; retained Launch Key stages remain, and accepted rotations stay readable as history. This is distinct from personal user Key CRUD | R3: finish original-operation disposition before removing recovery, deployment binding and lineage consumers; native disable/reveal is not replacement-Key rotation |
 | Personal Gateway Keys, account activation and wallet administration | Gateway Integration owns Cloud mappings; Sub2API remains Key/wallet truth. Cloud activation still has an original-owner BFF bridge | CP user-Key routes, delegated user identity, activation/admin commands and recovery remain separate capabilities; Cloud browser guards do not remove backend entrypoints | R4: identify which public/admin capabilities are still required before choosing withdrawal or migration; no blanket Gateway or Account file deletion |
 | Retained purchase recovery, expiry/renewal, deletion and settlement | Workspace owns native lifecycle; native BFF deletion/readback and Instance `workspace-native-delete.mjs` use its API; Gateway/Fabric/Ledger own their effects/readbacks | CP original Launch replay/resume, renewal/expiry and delete/refund workers remain registered. Original operations/charges must not be replaced by native re-purchase/refund | R5: finish the all-object/operation census, then remove the retained execution slice and its external callers; the three #1018 selectors are already closed |
-| Legacy package pricing | Resource Catalog owns new compute/storage prices and quotes | Legacy UI and Instance `fresh-workspace-admission.mjs` still read `/api/pricing/catalog` and POST preview; preview is computation/read, not a purchase | R6: remove old pricing callers/adapters with their exclusive model, while preserving accepted historical quote/terms decoding |
+| Legacy package pricing | Resource Catalog owns new compute/storage prices and quotes | Withdrawn in this slice: the Control Plane publishes no current price and no preview, and neither the legacy Console nor Instance `fresh-workspace-admission.mjs` reads `/api/pricing/catalog` or POSTs the preview. Preview was computation/read, not a purchase, so no accepted charge moved | R6 pricing half is delivered; the purchase-eligibility policy writer in `routes_admin.go` / `workspace_purchase_eligibility.go` stays the sole Account policy writer until its own owner/caller migration completes |
 | History, announcements and shared identity/read transport | BFF still calls original-owner billing, personal Gateway history/endpoint, announcements and ACK/activation adapters | `apps/console-bff/internal/clients/legacy_billing.go`, `personal_gateway_reads.go`, `announcements.go`, `operator.go` and the CP proof/Account/receipt readers are live source callers. ACK and activation are real remaining writes | R7: retain in this retirement scope; removing Workspace execution does not retire the CP process, shared transport or these independent capabilities |
 | Fixed-slot provider acceptance | Native business uses Catalog/Workspace and bounded protected execution | [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) removes the route/executor, dedicated token/configuration, unused create-claim machinery and exclusive tests; a named history-only identity helper preserves billing/access readers | R8: the fresh protected observation excludes accepted slot operations in the current installed owner table; source withdrawal can proceed, with installation remaining separate |
 | Test-only Key lifecycle prototype and retired activation alias | Native managed-Key lifecycle lives in Gateway Integration; native BFF activation still invokes the original provisioning writer | [Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112) removes the test-only prototype; [Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114) separately removes the public refusal alias and stale callers, and makes qualification read an existing activated account | R9: independent proposals; internal activation, Tenant/wallet binding and native Key lifecycle remain |
@@ -1703,20 +1704,20 @@ worker startup and `OPL_WORKSPACE_RUNTIME_IMAGE_REPLACEMENT_WORKER_ENABLED`
 leave with the Console command controllers and all Console/BFF/internal Cloud
 policy, preview and replacement-result adapters.
 
-`workspace_runtime_image_history.go` retains only the direct CP operator GETs
-for policy and an existing Workspace replacement operation, plus historical
-operation decoding/projection. `workspace_image_release_policy.go` keeps catalog
-and persisted-policy validation/readback for Instance registry retention,
-node-cache retirement and original Launch image-revision recovery. Its existing
-operator policy-activation POST and atomic mutation/audit store remain because
-a persisted policy can otherwise prevent selecting a newer qualified recovery image.
-The catalog, revision and idempotency guards remain unchanged; writer retirement
-requires migration of this actual original-operation consumer. Pending
-transition detection in `operator_runtime_observations.go` still recognizes valid
-`started` image operations; `workspace_resource_reconcile.go` still blocks on
-image-action rows marked `started`. Invalid historical decoding fails the GET.
-Original records, audit evidence and schema are preserved. Fabric's own
-replacement/provider execution, journal, locks and strict readback remain.
+`workspace_runtime_image_history.go` retains operation decoding and safety
+barriers; its replacement-history GET is no longer registered.
+`workspace_image_release_policy.go` keeps catalog and persisted-policy
+validation for the direct policy GET used by Instance registry retention and
+node-cache retirement. Merged Cloud #1177 retired the clientless policy
+activation POST, and #1179 removed its orphan mutation/audit implementation.
+Original Launch replay uses the exact image in its persisted
+`ResumeAuthorization`, rather than reading the current active policy; it does
+not require restoring that command or changing a frozen recovery grant.
+Pending-transition detection still recognizes valid `started` image operations,
+and resource reconciliation still blocks on image-action rows marked `started`.
+Malformed persisted policy and operation evidence remain errors. Original
+records, audit evidence and schema are preserved. Fabric's own replacement/provider
+execution, journal, locks and strict readback remain.
 
 Instance #675 caller withdrawal is MERGED with 2/2 CI checks SUCCESS. The configured workflow/tool callers are withdrawn at source. Cloud adoption
 remains unproven; check in-flight legacy executions before adopting the version
@@ -1831,6 +1832,18 @@ Native Workspace new-purchase admission now consumes it through
 audit custody can retire only with that policy's complete owner/caller migration,
 not merely with retained Launch creation or Account readers. Resource Catalog quotes cover
 new resources; they do not prove arbitrary legacy package-pricing UI parity.
+
+Pricing withdrawal delivered: `GET /api/pricing/catalog` and
+`POST /api/pricing/preview` are no longer registered, and `pricing.go` keeps
+only the versioned catalog and the computation that re-derives an accepted
+charge from the price version it was charged at. The accepted Launch readback,
+the billing history and the entitlement decoders still call those readers, so
+the historical price facts stay readable and no accepted record changes. The
+Console reads an accepted operation's own terms instead of a quoted price, and
+the Instance withdraws the old fresh-admission producer and its workflow caller.
+Historical admission validation and post-activation readback remain available for
+accepted operations. A historical receipt is not a quote for a new purchase. The
+purchase-eligibility policy writer is untouched by this withdrawal.
 
 **R8 — fixed-slot provider procurement source withdrawal.**
 Merged source: `8913c7f0ba090c3eb0a83e41f6ad65aefe389fb2`, following current-head
@@ -1952,10 +1965,10 @@ surfaces, and their census and caller withdrawal are unchanged by this slice.
 | Capability | Configured external caller | Coupled cleanup and retained consumers |
 | --- | --- | --- |
 | R1 deployment | `.github/workflows/workspace-application-install.yml` → `tools/workspace-application-install.mjs:244` submits old application-deployments; legacy UI submits/retries the same owner | Remove the workflow/tool and `tests/workspace-application-install.test.mjs` if the capability is withdrawn, or switch a still-required caller to the actual owner. Update operator docs and `tools/validate-workflow-boundary.mjs` registrations; retain archived receipts |
-| R2c image command withdrawal | Baseline callers: `workspace-image-rollout.yml` → `workspace-image-rollout.mjs` / `workspace-runtime-image-client.mjs`; `workspace-runtime-image-rollback.yml` → `workspace-runtime-image-rollback.mjs:356`. Instance #675 rollout/rollback and policy-mutation caller withdrawal is MERGED, CI 2/2 SUCCESS; Cloud adoption remains unproven | Check in-flight legacy executions before adopting the Cloud entrypoint-removal version through the existing Instance process. Retain the shared client and direct CP policy GET for image-retention/node-cache retirement, historical replacement GET/decoders and original Launch revision recovery. Do not equate passing source CI with caller withdrawal in the installation |
+| R2c image command withdrawal | Baseline callers: `workspace-image-rollout.yml` → `workspace-image-rollout.mjs` / `workspace-runtime-image-client.mjs`; `workspace-runtime-image-rollback.yml` → `workspace-runtime-image-rollback.mjs:356`. Instance #675 rollout/rollback and policy-mutation caller withdrawal is MERGED, CI 2/2 SUCCESS; Cloud adoption remains unproven | Check in-flight legacy executions before adopting the Cloud entrypoint-removal version through the existing Instance process. Retain the shared client and direct CP policy GET for image-retention/node-cache retirement, historical operation decoders and original Launch revision recovery. The replacement GET and policy activation POST are no longer registered; current policy is not reapplied to a frozen recovery grant. Do not equate passing source CI with caller withdrawal in the installation |
 | R2 legacy application reads | `workspace-application-login-readback.mjs`, `project-explorer-persistence-acceptance.mjs` reveal CP credentials; `workspace-application-preflight.yml` invokes `workspace-application-delivery.mjs` | Move necessary reads to native credential/deployment/access readback, or retire their callers/tests. Preserve real persistence acceptance and shared origin/receipt decoders when still consumed |
 | R5 original recovery/delete | `resume-original-workspace-launch.yml` / matching tool; `workspace-delete-refund.yml` → `workspace-delete-refund.mjs:566` sends the retained DELETE | Remove exclusive workflows/tools and matching `*-workflow.test.mjs` / command tests when their responsibilities end. `workspace-retained-launch-recovery-readback.mjs` imports delete-tool helpers; preserve/move the still-needed historical decoder. Keep native delete and its tests |
-| R5/R6 old qualification reads | `verify.yml` invokes `fresh-workspace-admission.mjs`; `fresh-workspace-readback.mjs` and `workspace-special-chain-acceptance.mjs` consume old Launch/runtime/deletion projections; `qualification-decision.mjs` and tests consume their receipts | Remove or migrate the specific old read/receipt consumers before removing the API; do not delete an entire qualification/Release consumer, change a receipt schema or discard original closeout evidence as incidental cleanup |
+| R5/R6 old qualification reads | Instance withdraws the old fresh-admission job and producer with the pricing callers. `fresh-workspace-admission.mjs` retains historical schema/baseline validation; `fresh-workspace-readback.mjs`, post-activation verification, `workspace-special-chain-acceptance.mjs` and `qualification-decision.mjs` keep their accepted-operation/receipt consumers | Preserve historical receipt schemas and exact original admission evidence. Do not infer a new purchase price or native Workspace qualification from an old receipt; current native qualification remains with its Cloud-owned lane |
 
 These are current **source** consumers, not proof that each workflow ran in a
 production interval. Instance owns its workflow/configuration removal. No local

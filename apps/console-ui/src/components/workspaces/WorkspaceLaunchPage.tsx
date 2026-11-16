@@ -9,7 +9,7 @@ import { cloudIdentity } from "../../app/console-identity.ts";
 import { isAgentLaunchSurface } from "../../app/workspace-launch-controller-model.ts";
 import type { AgentWorkspaceLaunchController } from "../../app/use-workspace-launch-controller.ts";
 import {
-  presentWorkspaceApplicationInstallation, presentWorkspaceLaunch, presentWorkspaceLaunchStage, presentWorkspaceQuote
+  presentWorkspaceApplicationInstallation, presentWorkspaceLaunch, presentWorkspaceLaunchStage
 } from "../../app/workspace-experience-model.ts";
 import { Alert, Button, Checkbox, Field } from "../ui/index.ts";
 import { formatDate, formatUsdMicros } from "../../console-model.ts";
@@ -31,58 +31,28 @@ function WorkspaceLaunchSteps({ current }: { current: "configure" | "confirm" | 
   );
 }
 
+// The retained Console presents an accepted operation's own terms. It holds no
+// price for a purchase: the Control Plane withdrew its package-pricing catalog
+// and preview in the R6 slice, and the Resource Catalog prices new resources.
 function WorkspaceOrderSummary({
   action,
-  controller,
-  mode = "quote"
+  controller
 }: {
   action?: ReactNode;
   controller: WorkspaceLaunchController;
-  mode?: "quote" | "operation";
 }) {
-  const operation = mode === "operation" ? controller.launchOperation : null;
-  const planId = operation?.packageId || controller.selectedPlan?.id;
-  const plan = planId ? controller.catalog.value?.packages.find((item) => item.id === planId) : null;
-  const preview = planId ? controller.previews[planId] : undefined;
-  const quote = mode === "quote" ? presentWorkspaceQuote({
-    selectedPriceUsdMicros: controller.selectedPrice,
-    customerOwned: controller.customerOwned
-  }) : null;
-  const total = operation?.totalChargeUsdMicros ?? quote?.totalUsdMicros ?? null;
-  const billingCycle = preview?.billingUnit === "calendar_month" ? "按自然月计费" : "暂不可用";
+  const operation = controller.launchOperation;
+  const total = operation?.totalChargeUsdMicros ?? null;
 
   return (
     <aside className="workspace-order-summary">
-      <header><span>{mode === "operation" ? "开通摘要" : "订单摘要"}</span><strong>{plan?.name || operation?.packageId?.toUpperCase() || "暂未选择"}</strong></header>
-      {mode === "quote" ? (
-        <>
-          <section className="workspace-order-summary__prices">
-            <h3>价格构成（参考）</h3>
-            <dl>
-              <div><dt>计算</dt><dd>{preview?.compute ? formatUsdMicros(preview.compute.chargeUsdMicros) : "暂不可用"}</dd></div>
-              <div><dt>存储</dt><dd>{preview?.storage ? formatUsdMicros(preview.storage.chargeUsdMicros) : "暂不可用"}</dd></div>
-              <div className="workspace-order-summary__total"><dt>实际应付</dt><dd>{total !== null ? formatUsdMicros(total) : "暂不可用"}</dd></div>
-            </dl>
-          </section>
-          <dl className="workspace-order-summary__facts">
-            {controller.customerOwned ? (
-              <div><dt>开通方式</dt><dd>客户权益（无需预付）</dd></div>
-            ) : (
-              <div><dt>可用余额</dt><dd>{controller.walletUsdMicros ? formatUsdMicros(controller.walletUsdMicros) : "暂不可用"}</dd></div>
-            )}
-            <div><dt>计费周期</dt><dd>{billingCycle}</dd></div>
-            <div><dt>续费</dt><dd>{controller.customerOwned ? "不适用" : controller.launchAutoRenew ? "自动续费开启" : "自动续费关闭"}</dd></div>
-          </dl>
-          {quote?.kind === "prepaid" && controller.balanceSufficient === false ? <p className="workspace-order-summary__warning">余额不足，请联系管理员处理。</p> : null}
-        </>
-      ) : (
-        <dl className="workspace-order-summary__facts">
-          <div><dt>工作空间</dt><dd>{operation?.name || "暂不可用"}</dd></div>
-          <div><dt>月度总额</dt><dd>{total !== null ? formatUsdMicros(total) : "暂不可用"}</dd></div>
-          <div><dt>价格版本</dt><dd>{operation?.priceVersion || "暂不可用"}</dd></div>
-          {!operation?.closeout || operation.closeout.status === "fulfilled" ? <div><dt>续费</dt><dd>{operation?.autoRenew ? "自动续费开启" : "自动续费关闭"}</dd></div> : null}
-        </dl>
-      )}
+      <header><span>开通摘要</span><strong>{operation?.packageId?.toUpperCase() || "暂未选择"}</strong></header>
+      <dl className="workspace-order-summary__facts">
+        <div><dt>工作空间</dt><dd>{operation?.name || "暂不可用"}</dd></div>
+        <div><dt>月度总额</dt><dd>{total !== null ? formatUsdMicros(total) : "暂不可用"}</dd></div>
+        <div><dt>价格版本</dt><dd>{operation?.priceVersion || "暂不可用"}</dd></div>
+        {!operation?.closeout || operation.closeout.status === "fulfilled" ? <div><dt>续费</dt><dd>{operation?.autoRenew ? "自动续费开启" : "自动续费关闭"}</dd></div> : null}
+      </dl>
       {action ? <div className="workspace-order-summary__action">{action}</div> : null}
     </aside>
   );
@@ -344,7 +314,7 @@ export function LaunchOperation({
       <WorkspaceLaunchSteps current="operation" />
       <div className="workspace-launch-layout workspace-launch-layout--operation">
         {content}
-        <WorkspaceOrderSummary controller={controller} mode="operation" />
+        <WorkspaceOrderSummary controller={controller} />
       </div>
     </>
   );

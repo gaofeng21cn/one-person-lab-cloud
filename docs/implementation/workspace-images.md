@@ -1,13 +1,12 @@
 # Workspace Image Lifecycle
 
-This reference owns the retained Control Plane image-policy and replacement
-history reads, their safety consumers and Fabric's image capability. The source
-withdrawal is based on `173d1afbcbd3dc120f0839707c9e69eb2ba2787b`;
+This reference owns the retained Control Plane image-policy read, historical
+replacement decoding, their safety consumers and Fabric's image capability.
 [status](../status.md#retained-runtime-image-command-withdrawal-2026-11-04)
-separates that source change from verification and installed adoption.
+separates source withdrawal from verification and installed adoption.
 [Runtime access](workspace-runtime-access.md) owns routing and credentials;
-[Launch recovery](workspace-launch-recovery.md) owns image revision while an
-original purchase is still non-terminal.
+[Launch recovery](workspace-launch-recovery.md) owns continuation of an original
+purchase that is still non-terminal.
 
 ## Retained CP reads and withdrawn commands
 
@@ -19,22 +18,19 @@ CP Fabric client/service wrapper leave together.
 Console no longer reads image policy, preview or replacement results through
 either its legacy API adapter or the BFF.
 
-The operator-authenticated policy activation POST and its atomic revision/audit
-store remain with the original Launch recovery consumer. A persisted active policy
-can differ from a newer installed default: changing installation configuration alone
-does not advance it. The existing activation command selects an approved catalog
-release with expected-revision and idempotency checks before the original Launch
-can authorize that image. This preserves the current owner and authorization rule;
-it does not restore existing-Workspace replacement or a Console controller. Retire
-this writer only after the original recovery selection authority migrates.
+Cloud #1177 retired `POST /api/operator/workspace-image-release-activations`
+and the unused replacement-history GET; #1179 removed their orphaned activation
+store and original Launch resume admission. The retired POST returns 404,
+including a replay with a valid operator session, CSRF token and idempotency key.
+Existing policy records and audit history remain stored.
 
 One direct, operator-authenticated CP read remains:
 
 - `GET /api/operator/workspace-runtime-image-policy` serves the validated catalog
-  and retained active policy. The Instance runtime-image client consumes it, and
-  original Launch image-revision recovery still consumes the policy/catalog
-  validation. The schema-1 `OPL_WORKSPACE_IMAGE_RELEASES_JSON` catalog and
-  immutable image validation stay.
+  and retained active policy to the Instance registry-retention and node-cache
+  readers. A persisted policy can differ from a newer installed default;
+  changing installation configuration alone does not advance it. The schema-1
+  `OPL_WORKSPACE_IMAGE_RELEASES_JSON` catalog and immutable image validation stay.
 
 One operator-authenticated CP read is retired:
 
@@ -43,14 +39,15 @@ One operator-authenticated CP read is retired:
   accepted nor dispatched a replacement, and no production client called it, so it
   is retired and no longer registered.
 
-`workspace_runtime_image_history.go` retains the operation decoder and response
-projection; invalid history decoding still fails the decoder. Pending-transition
+`workspace_runtime_image_history.go` retains the operation decoder; invalid
+history decoding still fails the decoder. Pending-transition
 detection recognizes valid `started` image operations, and resource reconciliation
 still blocks on image-action rows marked `started`. Policy decoding remains in
 `workspace_image_release_policy.go`. Original operations, policy records,
 audits and schema remain unchanged. Failed historical records do not acquire a
-new CP retry path. Original Launch revision recovery remains a separate live
-caller and is not retired by removing existing-Workspace replacement.
+new CP retry path. Original Launch reconciliation can continue a persisted resume
+authorization using its frozen replacement image digest. It does not consult the
+active policy or admit a new image selection.
 
 Instance #675 has merged its rollout/rollback and policy-mutation caller
 withdrawal, with 2/2 CI checks SUCCESS; [status](../status.md#retained-runtime-image-command-withdrawal-2026-11-04)

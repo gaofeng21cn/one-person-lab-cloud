@@ -45,9 +45,6 @@ import type {
   WorkspaceLaunchRecoveryRequest,
   OperatorAccountsData,
   OperationStatusDTO,
-  PricingCatalogResponse,
-  PricingPreviewRequest,
-  PricingPreviewResponse,
   SourceEnvelope,
   UpdateGatewayKeyRequest
 } from "./dtos.ts";
@@ -356,33 +353,11 @@ export function markAnnouncementRead(announcementId: string, csrfToken: string, 
   return postJson<unknown>(`${announcementReadRoute(cloudIdentity)}/${encodeURIComponent(announcementId)}/read`, {}, csrfToken, idempotencyKey).then(decodeDto<AnnouncementReadDTO>);
 }
 
-// The retained Control Plane owns the legacy package pricing catalog and its
-// preview. A CloudIdentity session has no retained Account session there, and
-// Cloud has no package-pricing catalog owner yet, so a cloud build refuses this
-// read instead of falling back to a route that answers 401. The cloud launch
-// surface prices through the Resource Catalog quote (`POST /api/v2/quotes`) and
-// the Resource Catalog plan reads, so no price is lost or invented.
-export type PackagePricingReadPlan =
-  | { state: "read"; owner: "control_plane" }
-  | { state: "unavailable"; owner: "resource_catalog"; reasonCode: "pricing_catalog_owner_unavailable" };
-
-export function packagePricingReadPlan(cloud: boolean): PackagePricingReadPlan {
-  return cloud
-    ? { state: "unavailable", owner: "resource_catalog", reasonCode: "pricing_catalog_owner_unavailable" }
-    : { state: "read", owner: "control_plane" };
-}
-
-export function getPricingCatalog(cloud: boolean = cloudIdentity): Promise<PricingCatalogResponse> {
-  const plan = packagePricingReadPlan(cloud);
-  if (plan.state === "unavailable") return Promise.reject(new Error(plan.reasonCode));
-  return getJson<unknown>("/api/pricing/catalog").then(decodeDto<PricingCatalogResponse>);
-}
-
-export function previewPricing(input: PricingPreviewRequest, csrfToken: string, cloud: boolean = cloudIdentity): Promise<PricingPreviewResponse> {
-  const plan = packagePricingReadPlan(cloud);
-  if (plan.state === "unavailable") return Promise.reject(new Error(plan.reasonCode));
-  return postJson<unknown>("/api/pricing/preview", input, csrfToken).then(decodeDto<PricingPreviewResponse>);
-}
+// The Control Plane published a package-pricing catalog and a price preview
+// until the R6 withdrawal. The Resource Catalog is the pricing owner now: it
+// publishes the plan reads and quotes a purchase (`POST /api/v2/quotes`), and
+// the cloud launch surface prices through it. The retained Console reads an
+// accepted operation's own terms instead, so no price is lost or invented.
 
 // The operator console reads resolve exactly like the wallet and billing reads:
 // a cloud build asks the BFF, which authorizes the CloudIdentity session as a

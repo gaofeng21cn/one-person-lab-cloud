@@ -20,7 +20,6 @@ import {
   presentWorkspaceLaunchStage,
   presentWorkspaceLifecycle,
   presentWorkspaceDeliveryModel,
-  presentWorkspaceQuote,
   presentWorkspaceRenewal,
   presentWorkspaceRuntime
 } from "../../apps/console-ui/src/app/workspace-experience-model.ts";
@@ -488,65 +487,6 @@ test("Workspace budget inputs convert exact USD decimals without floating point 
   for (const invalid of ["", " ", "-1", ".5", "1.", "01", "1.0000001", "NaN", "9007199254.740992"]) {
     assert.equal(parseWorkspaceBudgetUsdInput(invalid), null);
   }
-});
-
-test("Workspace quote presentation preserves unavailable, included zero, and prepaid totals", () => {
-  assert.deepEqual(presentWorkspaceQuote({
-    selectedPriceUsdMicros: null,
-    customerOwned: false
-  }), {
-    kind: "unavailable",
-    totalUsdMicros: null,
-    confirmationLabel: "价格确认后才能开通工作空间",
-    submitLabel: "价格暂不可用",
-    requiresPrepayment: false,
-    canConfirm: false
-  });
-
-  assert.deepEqual(presentWorkspaceQuote({
-    selectedPriceUsdMicros: 0,
-    customerOwned: true
-  }), {
-    kind: "included",
-    totalUsdMicros: 0,
-    confirmationLabel: "我确认使用当前客户权益开通工作空间（无需预付）",
-    submitLabel: "确认并开通",
-    requiresPrepayment: false,
-    canConfirm: true
-  });
-
-  assert.deepEqual(presentWorkspaceQuote({
-    selectedPriceUsdMicros: 9_000_000,
-    customerOwned: false
-  }), {
-    kind: "prepaid",
-    totalUsdMicros: 9_000_000,
-    confirmationLabel: "我确认一次性预付工作空间月度总额并开通",
-    submitLabel: "确认预付并开通",
-    requiresPrepayment: true,
-    canConfirm: true
-  });
-});
-
-test("Workspace quote presentation rejects price and ownership contradictions", () => {
-  const unconfirmed = {
-    kind: "unconfirmed",
-    totalUsdMicros: null,
-    confirmationLabel: "价格结果待确认，暂不能开通工作空间",
-    submitLabel: "价格待确认",
-    requiresPrepayment: false,
-    canConfirm: false
-  } as const;
-
-  assert.deepEqual(presentWorkspaceQuote({
-    selectedPriceUsdMicros: 9_000_000,
-    customerOwned: true
-  }), unconfirmed);
-
-  assert.deepEqual(presentWorkspaceQuote({
-    selectedPriceUsdMicros: 0,
-    customerOwned: false
-  }), unconfirmed);
 });
 
 function configuration(overrides: Partial<WorkspaceModelConfigurationDTO> = {}): WorkspaceModelConfigurationDTO {

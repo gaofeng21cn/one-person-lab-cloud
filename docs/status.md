@@ -8,6 +8,7 @@ Snapshot reconciliation date: 2026-11-10
 Scoped Workspace deletion update: 2026-11-12 (installed product source `8db78b34c7be640948f349436af7cd4fcadd584d`)
 Scoped lifecycle ownership review: 2026-11-12 (source inspection, not a new runtime qualification)
 Scoped Workspace deletion recovery source repair: 2026-11-16 (source behavior over isolated PostgreSQL, not a new runtime qualification)
+Scoped retained image-policy reconciliation: 2026-11-16 (retired routes and preserved PostgreSQL records, not installed adoption)
 
 Each observation below retains its original source, run and environment; the
 reviewed source baseline does not requalify those receipts. The Workspace deletion
@@ -16,6 +17,22 @@ Instance installation and customer acceptance prove separate layers; none alone
 establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
+
+## Retained image-policy source reconciliation (2026-11-16)
+
+Cloud #1177 retired the policy-activation POST and replacement-history GET;
+#1179 removed the orphaned activation store and original Launch resume admission.
+The operator policy GET remains for Instance retention/cache readers. Historical
+policy, replacement and audit records, their decoders and safety barriers remain;
+an existing Launch authorization continues with its frozen image digest.
+
+Isolated PostgreSQL tests verify that valid old activation requests, replay,
+changed intent and a new key all return 404 without changing policy or audit
+rows. Rebuilding the server preserves policy GET revision/image readback while
+the historical replacement GET stays 404. The route/client ownership check also
+passes. These source checks do not establish a Candidate, Instance adoption,
+zero traffic or clearance of historical obligations; the remaining acceptance
+stays in [roadmap](roadmap.md#retained-code-removal-review-2026-11-03).
 
 ## Backend deployment decision (2026-11-16)
 
@@ -891,16 +908,15 @@ The R2c source change is based on
 The source withdrawal removes CP existing-Workspace image replacement
 creation, preview, dispatch and retry/worker execution, and the exclusive CP
 replacement service/client/configuration and
-Console/BFF/internal Cloud callers. The [image reference](implementation/workspace-images.md)
-names the retained direct CP policy and historical-operation GETs, policy/history
-decoders, pending-transition and resource-reconcile barriers. Original Launch
-image-revision recovery and Instance registry-retention/node-cache readers keep
-their policy/catalog consumer. The existing operator policy-activation command
-and atomic revision/audit writer remain necessary: original Launch recovery
-requires the approved target to equal the persisted active policy, which installation
-configuration alone cannot advance. This writer is not retired before that consumer
-and its selection authority migrate. Fabric's own replacement/provider capability,
-journal and strict readback remain; persisted records and audit history stay.
+Console/BFF/internal Cloud callers. Cloud #1177 subsequently retired the unused
+historical-operation GET and policy-activation POST; #1179 removed the orphaned
+activation store and original Launch resume admission. The
+[image reference](implementation/workspace-images.md) owns the current policy
+GET, retained decoders, pending-transition and resource-reconcile barriers.
+Instance registry-retention/node-cache readers retain the policy/catalog read;
+original Launch reconciliation uses a previously authorized frozen digest.
+Fabric's own replacement/provider capability, journal and strict readback remain;
+persisted records and audit history stay.
 
 GitHub readback records Instance #675 as MERGED at
 `2026-11-04T04:46:45Z` (Beijing `2026-11-04 12:46:45`), with head

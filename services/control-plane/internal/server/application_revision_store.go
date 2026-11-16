@@ -48,8 +48,3 @@ func decodeApplicationRevisionPayload(payload string) (contracts.WorkspaceApplic
 	}
 	return revision, true
 }
-
-// ClaimWorkspaceApplicationDeploymentIntent creates the deployment intent's
-// runtime-operation row if the identity is free. An existing row means a
-// concurrent claim won; the caller compares the persisted request hash for the
-// idempotent replay decision.
