@@ -17,6 +17,15 @@ establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
 
+## Backend deployment decision (2026-11-16)
+
+The [target](architecture.md#deployment-unit-composition) now prefers one modular
+business backend deployment unit, with privileged build and customer application
+execution isolated. Current owner binaries and the Instance's multi-Deployment
+installation have not been consolidated. The [remaining work](roadmap.md#consolidated-backend-deployment)
+requires product implementation and separate Instance adoption; this scoped
+documentation update does not change production or qualify a new candidate.
+
 ## Customer upload completion source repair (2026-11-16)
 
 Capability's upload completion now emits and persists the API contract's

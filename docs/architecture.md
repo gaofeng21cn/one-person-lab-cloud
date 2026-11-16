@@ -277,22 +277,35 @@ Where an Instance verification path provides both `OPL_RUNTIME_PROVIDER` and
 
 ### Deployment Unit Composition
 
-An Instance deployment unit carries a service only once that service's
-capability and real callers have moved to it; the target service set is not
-deployed ahead of the migration. Each service enters the `opl-instance-medopl`
-unit in the same change that moves its capability off Control Plane, so the unit
-never runs a process with no current caller, and the manifest, Secret references
-and readback are reviewed with the capability they carry. Cloud owns which
-capability each service owns; `opl-instance-medopl` owns the concrete unit.
+The deployment decision adopted on 2026-11-16 is a modular Cloud backend with
+one default business deployment unit. Domain ownership does not require a
+separate process, container, Kubernetes Deployment or network hop. Console/BFF,
+identity, catalog, Workspace/Serve control, Fabric and Ledger may share that
+unit while retaining authorization, single-writer, persistence and idempotency
+boundaries. Container count follows those requirements rather than the domain count.
+
+Keep privileged build execution (currently BuildKit) and customer Workspace
+application execution outside the ordinary backend's privilege and resource
+boundary. A Workspace controller module is not a customer's running container.
+Further separation needs a demonstrated permission, load, lifecycle or failure
+requirement. A shared unit accepts a shared restart/upgrade boundary and does
+not imply high availability.
+
+Cloud owns reusable backend composition; `opl-instance-medopl` owns installation
+configuration, Secrets, deployment and rollback. Consolidation must retain
+accepted operations, persistent data, authorization and external APIs. The
+present multi-process/Deployment implementation remains current until its real
+callers and installation move together. This decision does not claim that the
+backend has already been consolidated.
 
 Cloud declares current owner binaries, addresses, HTTP surfaces, databases and
 peer requirements in `deploy/portable/opl-cloud-owner-topology.json`. The exact
 image declares whether its Console uses `legacy` or `cloud` identity. An
 installation must route the APIs required by that identity and run the owners
 that serve those capabilities; binary presence alone does not enable them.
-The latest retained Instance install inspection still shows only Control Plane,
-Fabric and Ledger. That dated observation and the remaining installation gap
-belong to [status](status.md) and [roadmap](roadmap.md), not this target map.
+Current implementation and dated installation evidence belong to
+[status](status.md); the remaining consolidation work belongs to
+[roadmap](roadmap.md#consolidated-backend-deployment).
 
 ## Development And Supply-Chain Authority
 
