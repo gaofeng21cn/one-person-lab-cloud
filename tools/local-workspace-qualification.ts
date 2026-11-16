@@ -2251,15 +2251,16 @@ export function assertCustomerCompleteUploadOperation(operation, { packageVersio
   const operationId = String(operation?.operationId || "");
   const resourceId = String(operation?.resourceId || "");
   const status = String(operation?.status || "");
+  const stage = String(operation?.stage || "");
   const observationResult = String(operation?.observationResult || "");
-  if (!operationId || owner !== "capability" || kind !== "complete_upload" || !resourceId || resourceId !== String(packageVersionId || "") || status !== "succeeded") {
+  if (!operationId || owner !== "capability" || kind !== "complete_upload" || !resourceId || resourceId !== String(packageVersionId || "") || status !== "succeeded" || stage !== "succeeded") {
     throw namedQualificationError("local_v2_customer_upload_operation_invalid",
-      "the upload completion operation does not name the capability owner, the complete_upload kind, the uploaded version and a succeeded status");
+      "the upload completion operation does not name the capability owner, the complete_upload kind, the uploaded version and a succeeded status and stage");
   }
-  if (observationResult && observationResult !== "confirmed") {
+  if (observationResult !== "confirmed") {
     throw namedQualificationError("local_v2_customer_upload_operation_unconfirmed", "the upload completion operation is not confirmed");
   }
-  return { owner, kind, resourceId, status, observationResult, operationId };
+  return { owner, kind, resourceId, status, stage, observationResult, operationId };
 }
 
 // The uploaded version, read back from the owner that stored it.

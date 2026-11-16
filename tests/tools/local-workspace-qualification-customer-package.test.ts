@@ -114,11 +114,11 @@ test("the uploaded archive carries the nonce in the probe path the caller named"
 test("the upload completion is the owner's own operation and names the uploaded version", () => {
   const operation = {
     operationId: "op-1", owner: "capability", kind: "complete_upload",
-    resourceId: "package-version-1", status: "succeeded", observationResult: "confirmed",
+    resourceId: "package-version-1", status: "succeeded", stage: "succeeded", observationResult: "confirmed",
   };
   assert.deepEqual(assertCustomerCompleteUploadOperation(operation, { packageVersionId: "package-version-1" }), {
     owner: "capability", kind: "complete_upload", resourceId: "package-version-1",
-    status: "succeeded", observationResult: "confirmed", operationId: "op-1",
+    status: "succeeded", stage: "succeeded", observationResult: "confirmed", operationId: "op-1",
   });
   // The owner is not the capability owner.
   refuses(() => assertCustomerCompleteUploadOperation({ ...operation, owner: "build" }, { packageVersionId: "package-version-1" }),
@@ -135,6 +135,15 @@ test("the upload completion is the owner's own operation and names the uploaded 
   // The operation is not confirmed.
   refuses(() => assertCustomerCompleteUploadOperation({ ...operation, observationResult: "unconfirmed" }, { packageVersionId: "package-version-1" }),
     "local_v2_customer_upload_operation_unconfirmed");
+  // A success status alone cannot prove the owner's terminal stage or observation.
+  for (const stage of [undefined, "", "receipt", "upload_verification"]) {
+    refuses(() => assertCustomerCompleteUploadOperation({ ...operation, stage }, { packageVersionId: "package-version-1" }),
+      "local_v2_customer_upload_operation_invalid");
+  }
+  for (const observationResult of [undefined, "", "unknown", "rejected"]) {
+    refuses(() => assertCustomerCompleteUploadOperation({ ...operation, observationResult }, { packageVersionId: "package-version-1" }),
+      "local_v2_customer_upload_operation_unconfirmed");
+  }
   // A completion without the owner's operation identity is not a usable readback.
   refuses(() => assertCustomerCompleteUploadOperation({ ...operation, operationId: "" }, { packageVersionId: "package-version-1" }),
     "local_v2_customer_upload_operation_invalid");
@@ -291,7 +300,7 @@ test("every size the chain sends to an owner is a decimal string", async () => {
         return { payload: { id: "upload_1", packageVersionId: "pv_1", partSizeBytes: "16777216" } };
       }
       if (path === "/api/v2/uploads/upload_1/parts") return { payload: { url: "https://objects.test/part-1", method: "PUT", contentType: "application/octet-stream" } };
-      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
+      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", stage: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
       if (path === "/api/v2/package-versions/pv_1") return { payload: { id: "pv_1", packageId: "pkg_1", versionLabel: "1.0.0", sha256: uploaded?.sha256, sizeBytes: uploaded?.sizeBytes, status: "uploaded" } };
       throw stop;
     },
@@ -351,7 +360,7 @@ test("the uploaded bytes are written through the requester the run supplies", as
         return { payload: { id: "upload_1", packageVersionId: "pv_1", partSizeBytes: "16777216" } };
       }
       if (path === "/api/v2/uploads/upload_1/parts") return { payload: { url: "https://objects.test/part-1", method: "PUT", contentType: "application/octet-stream" } };
-      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
+      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", stage: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
       if (path === "/api/v2/package-versions/pv_1") return { payload: { id: "pv_1", packageId: "pkg_1", versionLabel: "1.0.0", sha256: uploaded?.sha256, sizeBytes: uploaded?.sizeBytes, status: "uploaded" } };
       throw stop;
     },
