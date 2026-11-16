@@ -67,9 +67,10 @@ sides are retired together:
 | `GET /api/operator/workspace-launches/{operationId}/resume-authorizations/{authorizationId}` | `tools/resume-original-workspace-launch.mjs:147`, `:155` | Cloud route retired in #1177; the workflow and its tool are being retired in the Instance PR. |
 | `GET /api/operator/workspace-launches/{operationId}/stage-observation` | `tools/resume-original-workspace-launch.mjs:226`, `tools/workspace-launch-stage-observation.mjs:487` | Cloud route retired in #1177; both workflows and their tools are being retired in the Instance PR. |
 
-The Cloud handler implementations behind those three routes stay in the source
-for now and are unreferenced. They are listed for the dead-code retirement
-slice, not for this one.
+The Cloud handler implementations behind those three routes are gone. They were
+removed together with the other implementations that #1177 orphaned, and the
+Control Plane dead-code guard now reports no unreachable implementation in
+`services/control-plane/internal/server` at all.
 
 The other cross-repository call the two workflows make,
 `GET /api/management/state`, stays registered: three of its four Instance call

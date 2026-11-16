@@ -19,6 +19,10 @@ import (
 // by the same token and expiry; a late worker cannot overwrite its successor.
 const resumeTimeout = 45 * time.Second
 
+// stepRetryDelay is the cadence the worker re-observes a pending step at. The
+// deletion path replaces it with its own bounded observation cadence.
+const stepRetryDelay = 5 * time.Second
+
 func (s *Service) Run(ctx context.Context) error {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -42,6 +46,11 @@ func (s *Service) RunOnce(ctx context.Context) error {
 	if err := s.sweepWorkspaceLifecycle(ctx); err != nil {
 		return err
 	}
+	// Pending deletions stay awaiting_confirmation and remain recoverable. Legacy
+	// needs_attention rows cannot distinguish a retry-limit wait from invalid
+	// owner evidence: both used unknown/DEPENDENCY_UNAVAILABLE. Keep every such
+	// row for the existing freshly authorized DeleteWorkspace replay instead of
+	// guessing its cause from a retry count and dispatching another owner call.
 	rows, err := s.Store.DB().QueryContext(ctx, `SELECT o.id FROM workspace.operations o
 		WHERE o.kind IN ('create_workspace','delete_workspace','suspend_workspace','resume_workspace') AND o.status IN ('accepted','running','awaiting_confirmation','needs_attention')
 		AND NOT (o.kind IN ('delete_workspace','suspend_workspace','resume_workspace') AND o.status='needs_attention')
@@ -315,7 +324,7 @@ func (s *Service) readResourceCloseout(ctx context.Context, op ownerstore.Operat
 	}
 	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	if saveErr := s.checkpointOutcome(writeCtx, op, token, "read_resources", "original_action_readback", "needs_attention", "rejected", stepObservation, result.ResourceSetID, permissionCode, stepCode, *result); saveErr != nil {
+	if saveErr := s.checkpointOutcome(writeCtx, op, token, "read_resources", "original_action_readback", "needs_attention", "rejected", stepObservation, result.ResourceSetID, permissionCode, stepCode, *result, stepRetryDelay); saveErr != nil {
 		return saveErr
 	}
 	return err
@@ -445,20 +454,22 @@ func fenced(result sql.Result, err error) error {
 }
 
 func (s *Service) checkpoint(ctx context.Context, op ownerstore.Operation, token, step, stage, state, observation, ownerRef, code string, result orderResult) error {
-	return s.checkpointOutcome(ctx, op, token, step, stage, state, observation, observation, ownerRef, code, code, result)
+	return s.checkpointOutcome(ctx, op, token, step, stage, state, observation, observation, ownerRef, code, code, result, stepRetryDelay)
 }
 
-func (s *Service) checkpointOutcome(ctx context.Context, op ownerstore.Operation, token, step, stage, state, operationObservation, stepObservation, ownerRef, operationCode, stepCode string, result orderResult) error {
+func (s *Service) checkpointOutcome(ctx context.Context, op ownerstore.Operation, token, step, stage, state, operationObservation, stepObservation, ownerRef, operationCode, stepCode string, result orderResult, retryDelay time.Duration) error {
 	raw, err := json.Marshal(result)
 	if err != nil {
 		return status.Error(codes.Internal, "Workspace result cannot be encoded")
 	}
-	return s.checkpointBytes(ctx, op, token, step, stage, state, operationObservation, stepObservation, ownerRef, operationCode, stepCode, raw)
+	return s.checkpointBytes(ctx, op, token, step, stage, state, operationObservation, stepObservation, ownerRef, operationCode, stepCode, raw, retryDelay)
 }
 
 // checkpointBytes persists one fenced step outcome. The caller owns the result
-// encoding, so every operation kind records its own durable result.
-func (s *Service) checkpointBytes(ctx context.Context, op ownerstore.Operation, token, step, stage, state, operationObservation, stepObservation, ownerRef, operationCode, stepCode string, raw []byte) error {
+// encoding, so every operation kind records its own durable result. The retry
+// delay is the cadence the worker may re-observe this step at; a pending step
+// schedules its next observation with it.
+func (s *Service) checkpointBytes(ctx context.Context, op ownerstore.Operation, token, step, stage, state, operationObservation, stepObservation, ownerRef, operationCode, stepCode string, raw []byte, retryDelay time.Duration) error {
 	tx, err := s.Store.DB().BeginTx(ctx, nil)
 	if err != nil {
 		return dbError(err)
@@ -469,7 +480,7 @@ func (s *Service) checkpointBytes(ctx context.Context, op ownerstore.Operation, 
 	if err = fenced(res, err); err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE workspace.saga_steps SET observation_result=$3,owner_result_ref=NULLIF($4,''),error_code=NULLIF($5,''),confirmed_at=CASE WHEN $3='confirmed' THEN now() ELSE NULL END,next_attempt_at=CASE WHEN $3='unknown' THEN now()+interval '5 seconds' ELSE NULL END,updated_at=now() WHERE operation_id=$1 AND step_key=$2`, op.ID, step, stepObservation, ownerRef, stepCode)
+	_, err = tx.ExecContext(ctx, `UPDATE workspace.saga_steps SET observation_result=$3,owner_result_ref=NULLIF($4,''),error_code=NULLIF($5,''),confirmed_at=CASE WHEN $3='confirmed' THEN now() ELSE NULL END,next_attempt_at=CASE WHEN $3='unknown' THEN now()+make_interval(secs=>$6) ELSE NULL END,updated_at=now() WHERE operation_id=$1 AND step_key=$2`, op.ID, step, stepObservation, ownerRef, stepCode, retryDelay.Seconds())
 	if err != nil {
 		return dbError(err)
 	}

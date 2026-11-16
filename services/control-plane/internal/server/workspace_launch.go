@@ -117,12 +117,6 @@ func terminalWorkspaceLaunchStatus(status string) bool {
 	}
 }
 
-func workspaceBillingStateMatchesLaunch(workspace, expected map[string]any) bool {
-	currentJSON, currentErr := encodeWorkspaceBillingState(workspace)
-	expectedJSON, expectedErr := encodeWorkspaceBillingState(expected)
-	return currentErr == nil && expectedErr == nil && currentJSON == expectedJSON
-}
-
 func workspaceLaunchResponse(row map[string]any) (map[string]any, error) {
 	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
 	if err != nil {

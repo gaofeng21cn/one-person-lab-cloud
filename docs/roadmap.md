@@ -112,9 +112,12 @@ recovery outcome below is a general admission gate for a retirement slice.
 
 ### Unattended deletion recovery
 
-The current twelve-pass pause and worker exclusion are recorded in
-[the implementation reference](implementation-architecture.md#extracted-workspace-deletion-recovery).
-When this independent reliability outcome is selected, its runtime change
+The repaired source behavior is recorded in
+[the implementation reference](implementation-architecture.md#extracted-workspace-deletion-recovery):
+an observation-only wait keeps its automatic recovery on a bounded cadence, and a
+refusal, an invalidated authorization, an ownership conflict or invalid evidence
+stops it with its reason. The installed qualification of that behavior on one
+exact Candidate remains open. Its runtime change
 belongs to Workspace's existing recovery path and Fabric's existing
 action/readback boundary. It must distinguish these outcomes
 without treating every `needs_attention` operation as eligible for mutation:
@@ -125,6 +128,7 @@ without treating every `needs_attention` operation as eligible for mutation:
 | Downstream operation completed while Workspace has an older pending result | Consume the exact owner's confirmed result, clear only the resolved pending step and continue the original deletion |
 | A mutation response is lost or its side effects are unknown | Read/reconcile that original action; an already-consumed one-send fence never permits another provider call |
 | The accepted-operation grant is expired/revoked, an owner denies the action, ownership conflicts, evidence is invalid, or a new decision is required | Preserve the explicit reason and original operation for authorized recovery; elapsed time or a retry counter cannot authorize another mutation |
+| An earlier build left `needs_attention` with `unknown/DEPENDENCY_UNAVAILABLE` | Keep the operation for the existing authorized DELETE replay; the old writer used this same shape for waits and invalid evidence, so a counter cannot establish automatic recovery authority |
 
 An interactive session ending does not itself cancel the deletion's valid,
 restricted accepted-operation grant. Conversely, an expired or revoked grant
@@ -142,11 +146,13 @@ a successful workflow implies that those independent obligations are settled.
 
 Acceptance requires:
 
-- A local regression first reproduces downstream success after Workspace has
-  parked, using the real persisted input/result shapes. The repaired owner path
-  then advances the same deletion through `RunOnce` after restart, without a
-  direct `Resume`, another DELETE or a test-side state reset for an
-  observation-only wait; terminal refusals still retain their reason.
+- A local regression first reproduces downstream success after the former
+  recovery limit, using the real persisted input/result shapes. New
+  observation-only waits stay `awaiting_confirmation` and advance the same
+  deletion through `RunOnce` after restart, without a direct `Resume`, another
+  DELETE or a test-side state reset. Legacy attention rows, including eleven
+  waits followed by invalid owner evidence, remain unchanged until an authorized
+  DELETE replay; terminal refusals retain their reason.
 - Isolated PostgreSQL and real owner-client integration cover restart, concurrent
   workers, delayed observations, lost provider/refund replies and authorization
   refusal. Original operation/command identities and permanent action fences

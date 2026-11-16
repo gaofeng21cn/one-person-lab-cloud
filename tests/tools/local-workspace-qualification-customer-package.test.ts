@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -113,11 +114,11 @@ test("the uploaded archive carries the nonce in the probe path the caller named"
 test("the upload completion is the owner's own operation and names the uploaded version", () => {
   const operation = {
     operationId: "op-1", owner: "capability", kind: "complete_upload",
-    resourceId: "package-version-1", status: "succeeded", observationResult: "confirmed",
+    resourceId: "package-version-1", status: "succeeded", stage: "succeeded", observationResult: "confirmed",
   };
   assert.deepEqual(assertCustomerCompleteUploadOperation(operation, { packageVersionId: "package-version-1" }), {
     owner: "capability", kind: "complete_upload", resourceId: "package-version-1",
-    status: "succeeded", observationResult: "confirmed", operationId: "op-1",
+    status: "succeeded", stage: "succeeded", observationResult: "confirmed", operationId: "op-1",
   });
   // The owner is not the capability owner.
   refuses(() => assertCustomerCompleteUploadOperation({ ...operation, owner: "build" }, { packageVersionId: "package-version-1" }),
@@ -134,6 +135,15 @@ test("the upload completion is the owner's own operation and names the uploaded 
   // The operation is not confirmed.
   refuses(() => assertCustomerCompleteUploadOperation({ ...operation, observationResult: "unconfirmed" }, { packageVersionId: "package-version-1" }),
     "local_v2_customer_upload_operation_unconfirmed");
+  // A success status alone cannot prove the owner's terminal stage or observation.
+  for (const stage of [undefined, "", "receipt", "upload_verification"]) {
+    refuses(() => assertCustomerCompleteUploadOperation({ ...operation, stage }, { packageVersionId: "package-version-1" }),
+      "local_v2_customer_upload_operation_invalid");
+  }
+  for (const observationResult of [undefined, "", "unknown", "rejected"]) {
+    refuses(() => assertCustomerCompleteUploadOperation({ ...operation, observationResult }, { packageVersionId: "package-version-1" }),
+      "local_v2_customer_upload_operation_unconfirmed");
+  }
   // A completion without the owner's operation identity is not a usable readback.
   refuses(() => assertCustomerCompleteUploadOperation({ ...operation, operationId: "" }, { packageVersionId: "package-version-1" }),
     "local_v2_customer_upload_operation_invalid");
@@ -290,7 +300,7 @@ test("every size the chain sends to an owner is a decimal string", async () => {
         return { payload: { id: "upload_1", packageVersionId: "pv_1", partSizeBytes: "16777216" } };
       }
       if (path === "/api/v2/uploads/upload_1/parts") return { payload: { url: "https://objects.test/part-1", method: "PUT", contentType: "application/octet-stream" } };
-      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
+      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", stage: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
       if (path === "/api/v2/package-versions/pv_1") return { payload: { id: "pv_1", packageId: "pkg_1", versionLabel: "1.0.0", sha256: uploaded?.sha256, sizeBytes: uploaded?.sizeBytes, status: "uploaded" } };
       throw stop;
     },
@@ -328,4 +338,296 @@ test("every size the chain sends to an owner is a decimal string", async () => {
   for (const size of sizes) {
     assert.equal(typeof size, "string", `a 64-bit size must be a decimal string, got ${JSON.stringify(size)}`);
   }
+});
+
+test("the uploaded bytes are written through the requester the run supplies", async () => {
+  // The object origin is served by the installation's own CA. A request that
+  // trusted the host store would fail there, so the run's own requester writes
+  // the part and the host-trusting default is never used.
+  const packageDir = fileURLToPath(new URL("./fixtures/customer-agent-package", import.meta.url));
+  const archive = await buildCustomerPackageArchive({
+    packageDir, probePath: "agent/provenance/probe.txt", probeContent: "nonce",
+  });
+  const written = [];
+  const stop = new Error("stop_after_the_upload_completion");
+  let uploaded = null;
+  const http = {
+    json: async (path, init = {}) => {
+      if (path === "/api/v2/namespaces") return { payload: { items: [{ id: "ns_1", isDefault: true }] } };
+      if (path === "/api/v2/packages") return { payload: { id: "pkg_1" } };
+      if (path === "/api/v2/packages/pkg_1/uploads") {
+        uploaded = init.body;
+        return { payload: { id: "upload_1", packageVersionId: "pv_1", partSizeBytes: "16777216" } };
+      }
+      if (path === "/api/v2/uploads/upload_1/parts") return { payload: { url: "https://objects.test/part-1", method: "PUT", contentType: "application/octet-stream" } };
+      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", stage: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
+      if (path === "/api/v2/package-versions/pv_1") return { payload: { id: "pv_1", packageId: "pkg_1", versionLabel: "1.0.0", sha256: uploaded?.sha256, sizeBytes: uploaded?.sizeBytes, status: "uploaded" } };
+      throw stop;
+    },
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error("the host-trusting default must not write the part"); };
+  try {
+    await assert.rejects(runCustomerPackageEvidenceChain({
+      http,
+      auth: {},
+      wait: async () => {},
+      plan: {
+        mode: "directory", packageDir, probePath: "agent/provenance/probe.txt",
+        achievableEvidenceLevel: CUSTOMER_EVIDENCE_LEVEL_CONTENT,
+        requestedEvidenceLevel: CUSTOMER_EVIDENCE_LEVEL_CONTENT,
+        degradationReason: "",
+      },
+      packageName: "local-qualification-agent",
+      versionLabel: "1.0.0",
+      workspaceName: "local qualification",
+      provider: "local-docker",
+      billingMode: "LOCAL_NO_CHARGE",
+      computePlanId: "compute_1",
+      storagePlanId: "storage_1",
+      sourceSha: "a".repeat(40),
+      putPart: async (url, init) => {
+        written.push({ url, method: init.method, digest: `sha256:${createHash("sha256").update(init.body).digest("hex")}` });
+        return { status: 200, headers: { get: () => "" } };
+      },
+    }), (error) => error === stop || error?.message === "the read back package version does not match the uploaded bytes");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(written.length, 1);
+  assert.equal(written[0].url, "https://objects.test/part-1");
+  assert.equal(written[0].method, "PUT");
+  // The bytes the owner was promised are the bytes that were written.
+  assert.equal(written[0].digest, uploaded.sha256);
+});
+
+test("the approved Runtime Release is read out of the catalog page", async () => {
+  // The owner publishes the approved Runtime Releases as one page and serves no
+  // route for a single release, so a chain that asked for one release by its
+  // id would read a 404 the owner never wrote.
+  const packageDir = fileURLToPath(new URL("./fixtures/customer-agent-package", import.meta.url));
+  const archive = await buildCustomerPackageArchive({
+    packageDir, probePath: "agent/provenance/probe.txt", probeContent: "nonce",
+  });
+  const asked = [];
+  const stop = new Error("stop_after_the_build_request");
+  let uploaded = null;
+  const http = {
+    json: async (path, init = {}) => {
+      asked.push(path);
+      if (path === "/api/v2/namespaces") return { payload: { items: [{ id: "ns_1", isDefault: true }] } };
+      if (path === "/api/v2/packages") return { payload: { id: "pkg_1" } };
+      if (path === "/api/v2/packages/pkg_1/uploads") {
+        uploaded = init.body;
+        return { payload: { id: "upload_1", packageVersionId: "pv_1", partSizeBytes: "16777216" } };
+      }
+      if (path === "/api/v2/uploads/upload_1/parts") return { payload: { url: "https://objects.test/part-1", method: "PUT", contentType: "application/octet-stream" } };
+      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", stage: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
+      if (path === "/api/v2/package-versions/pv_1") return { payload: { id: "pv_1", packageId: "pkg_1", versionLabel: "1.0.0", sha256: uploaded?.sha256, sizeBytes: uploaded?.sizeBytes, status: "uploaded" } };
+      if (path === "/api/v2/catalog/build-policy") return { payload: { runtimeVersionId: "rt_1", defaultWebuiVersionId: "wu_1" } };
+      if (path === "/api/v2/catalog/runtime-versions?cursor=") {
+        return { payload: { items: [{ id: "rt_0" }], nextCursor: "rt_0" } };
+      }
+      if (path === "/api/v2/catalog/runtime-versions?cursor=rt_0") {
+        return { payload: { items: [{ id: "rt_1", publisherContract: { buildRecipe: { packageInput: { sourceRoot: "agent", targetPath: "/opt/opl" }, outputImageCommand: { entrypoint: ["/opt/opl/bin/runtime"] } } } }] } };
+      }
+      throw stop;
+    },
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ status: 200, headers: { get: () => "" } });
+  try {
+    await assert.rejects(runCustomerPackageEvidenceChain({
+      http,
+      auth: {},
+      wait: async () => {},
+      plan: {
+        mode: "directory", packageDir, probePath: "agent/provenance/probe.txt",
+        achievableEvidenceLevel: CUSTOMER_EVIDENCE_LEVEL_CONTENT,
+        requestedEvidenceLevel: CUSTOMER_EVIDENCE_LEVEL_CONTENT,
+        degradationReason: "",
+      },
+      packageName: "local-qualification-agent",
+      versionLabel: "1.0.0",
+      workspaceName: "local qualification",
+      provider: "local-docker",
+      billingMode: "LOCAL_NO_CHARGE",
+      computePlanId: "compute_1",
+      storagePlanId: "storage_1",
+      sourceSha: "a".repeat(40),
+    }), (error) => error === stop);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  // The release is on the second page of the catalog, so the chain has to
+  // walk the cursor to find it, and it never asks for a release by its id.
+  assert.equal(asked.includes("/api/v2/catalog/runtime-versions?cursor="), true);
+  assert.equal(asked.includes("/api/v2/catalog/runtime-versions?cursor=rt_0"), true);
+  assert.equal(asked.some((path) => path.startsWith("/api/v2/catalog/runtime-versions/")), false);
+  assert.equal(archive.entries.length, 3);
+});
+
+test("the run follows the Build it asked for to the version that Build registered", async () => {
+  // The Build poll is where the run decides whether the job it asked for ever
+  // reached a terminal state. A membership test that is not a membership test
+  // ends the run with a TypeError instead of the owner's answer, so the chain
+  // is driven across that poll here.
+  const packageDir = fileURLToPath(new URL("./fixtures/customer-agent-package", import.meta.url));
+  const asked = [];
+  const stop = new Error("stop_after_the_capability_version_read");
+  let uploaded = null;
+  const http = {
+    json: async (path, init = {}) => {
+      asked.push(path);
+      if (path === "/api/v2/namespaces") return { payload: { items: [{ id: "ns_1", isDefault: true }] } };
+      if (path === "/api/v2/packages") return { payload: { id: "pkg_1" } };
+      if (path === "/api/v2/packages/pkg_1/uploads") {
+        uploaded = init.body;
+        return { payload: { id: "upload_1", packageVersionId: "pv_1", partSizeBytes: "16777216" } };
+      }
+      if (path === "/api/v2/uploads/upload_1/parts") return { payload: { url: "https://objects.test/part-1", method: "PUT", contentType: "application/octet-stream" } };
+      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", stage: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
+      if (path === "/api/v2/package-versions/pv_1") return { payload: { id: "pv_1", packageId: "pkg_1", versionLabel: "1.0.0", sha256: uploaded?.sha256, sizeBytes: uploaded?.sizeBytes, status: "uploaded" } };
+      if (path === "/api/v2/catalog/build-policy") return { payload: { runtimeVersionId: "rt_1", defaultWebuiVersionId: "wu_1" } };
+      if (path === "/api/v2/catalog/runtime-versions?cursor=") {
+        return { payload: { items: [{ id: "rt_1", publisherContract: { buildRecipe: { packageInput: { sourceRoot: "agent", targetPath: "/opt/opl" }, outputImageCommand: { entrypoint: ["/opt/opl/bin/runtime"] } } } }] } };
+      }
+      if (path === "/api/v2/builds") {
+        return { payload: { id: "build_1", status: "queued", packageVersionId: "pv_1", runtimeVersionId: "rt_1", webuiVersionId: "wu_1" } };
+      }
+      if (path === "/api/v2/builds/build_1") {
+        return { payload: { id: "build_1", status: "succeeded", stage: "delivered", packageVersionId: "pv_1", runtimeVersionId: "rt_1", webuiVersionId: "wu_1", resultCapabilityVersionId: "cv_1" } };
+      }
+      throw stop;
+    },
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ status: 200, headers: { get: () => "" } });
+  try {
+    await assert.rejects(runCustomerPackageEvidenceChain({
+      http,
+      auth: {},
+      wait: async () => {},
+      plan: {
+        mode: "directory", packageDir, probePath: "agent/provenance/probe.txt",
+        achievableEvidenceLevel: CUSTOMER_EVIDENCE_LEVEL_CONTENT,
+        requestedEvidenceLevel: CUSTOMER_EVIDENCE_LEVEL_CONTENT,
+        degradationReason: "",
+      },
+      packageName: "local-qualification-agent",
+      versionLabel: "1.0.0",
+      workspaceName: "local qualification",
+      provider: "local-docker",
+      billingMode: "LOCAL_NO_CHARGE",
+      computePlanId: "compute_1",
+      storagePlanId: "storage_1",
+      sourceSha: "a".repeat(40),
+    }), (error) => error === stop);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  // One Build was asked for, that job was followed, and the Capability Version
+  // that job registered was the next thing the run read.
+  assert.equal(asked.includes("/api/v2/builds"), true);
+  assert.equal(asked.includes("/api/v2/builds/build_1"), true);
+  assert.equal(asked.includes("/api/v2/capability-versions/cv_1"), true);
+});
+
+test("the customer chain reads the launch boundary the owner declares", async () => {
+  // The Workspace owner parks a Local no-charge order at its activation
+  // boundary on purpose, and this tool's own Local phase already reads that
+  // boundary as the launch. The customer chain has to read the same boundary,
+  // or a purchase the owner confirmed never reaches the entry it published.
+  const packageDir = fileURLToPath(new URL("./fixtures/customer-agent-package", import.meta.url));
+  const asked = [];
+  let uploaded = null;
+  let nonce = "";
+  const http = {
+    json: async (path, init = {}) => {
+      asked.push(path);
+      if (path === "/api/v2/namespaces") return { payload: { items: [{ id: "ns_1", isDefault: true }] } };
+      if (path === "/api/v2/packages") return { payload: { id: "pkg_1" } };
+      if (path === "/api/v2/packages/pkg_1/uploads") {
+        uploaded = init.body;
+        return { payload: { id: "upload_1", packageVersionId: "pv_1", partSizeBytes: "16777216" } };
+      }
+      if (path === "/api/v2/uploads/upload_1/parts") return { payload: { url: "https://objects.test/part-1", method: "PUT", contentType: "application/octet-stream" } };
+      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", stage: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
+      if (path === "/api/v2/package-versions/pv_1") return { payload: { id: "pv_1", packageId: "pkg_1", versionLabel: "1.0.0", sha256: uploaded?.sha256, sizeBytes: uploaded?.sizeBytes, status: "uploaded" } };
+      if (path === "/api/v2/catalog/build-policy") return { payload: { runtimeVersionId: "rt_1", defaultWebuiVersionId: "wu_1" } };
+      if (path === "/api/v2/catalog/runtime-versions?cursor=") {
+        return { payload: { items: [{ id: "rt_1", publisherContract: { buildRecipe: { packageInput: { sourceRoot: "agent", targetPath: "/opt/opl" }, outputImageCommand: { entrypoint: ["/opt/opl/bin/runtime"] } } } }] } };
+      }
+      if (path === "/api/v2/builds") {
+        return { payload: { id: "build_1", status: "queued", packageVersionId: "pv_1", runtimeVersionId: "rt_1", webuiVersionId: "wu_1" } };
+      }
+      if (path === "/api/v2/builds/build_1") {
+        return { payload: { id: "build_1", status: "succeeded", stage: "delivered", packageVersionId: "pv_1", runtimeVersionId: "rt_1", webuiVersionId: "wu_1", resultCapabilityVersionId: "cv_1" } };
+      }
+      if (path === "/api/v2/capability-versions/cv_1") {
+        return { payload: { id: "cv_1", status: "ready", buildJobId: "build_1", packageVersionId: "pv_1", artifactDigest: `sha256:${"a".repeat(64)}` } };
+      }
+      if (path === "/api/v2/quotes") {
+        return { payload: { id: "quote_1", capabilityVersionId: "cv_1", provider: "local-docker", billingMode: "LOCAL_NO_CHARGE", totalUSDMicros: "0", status: "offered", purpose: "deploy" } };
+      }
+      if (path === "/api/v2/workspaces") return { payload: { operationId: "op_ws_1", resourceId: "ws_1", status: "accepted" } };
+      if (path === "/api/v2/operations/workspace/op_ws_1") {
+        return { payload: { operationId: "op_ws_1", resourceId: "ws_1", status: "awaiting_confirmation", stage: "activation", observationResult: "confirmed", errorCode: "DEPENDENCY_UNAVAILABLE" } };
+      }
+      if (path === "/api/v2/operations/workspace/op_del_1") {
+        return { payload: { operationId: "op_del_1", owner: "workspace", kind: "delete_workspace", resourceId: "ws_1", status: "succeeded", stage: "succeeded" } };
+      }
+      if (path === "/api/v2/workspaces/ws_1" && init.method === "DELETE") {
+        return { payload: { operationId: "op_del_1", owner: "workspace", kind: "delete_workspace", resourceId: "ws_1", status: "accepted" } };
+      }
+      if (path === "/api/v2/workspaces/ws_1") {
+        return { payload: { id: "ws_1", status: "provisioning", capabilityVersionId: "cv_1", accessUrl: "http://127.0.0.1:32774/" } };
+      }
+      throw new Error(`unexpected request ${path}`);
+    },
+    request: async (path) => {
+      asked.push(path);
+      if (path === "/api/v2/workspaces/ws_1") return { payload: { id: "ws_1", status: "deleted", accessUrl: "" } };
+      throw new Error(`unexpected request ${path}`);
+    },
+  };
+  const readback = {};
+  await runCustomerPackageEvidenceChain({
+    http,
+    auth: {},
+    wait: async () => {},
+    readback,
+    plan: {
+      mode: "directory", packageDir, probePath: "agent/provenance/probe.txt",
+      achievableEvidenceLevel: CUSTOMER_EVIDENCE_LEVEL_CONTENT,
+      requestedEvidenceLevel: CUSTOMER_EVIDENCE_LEVEL_CONTENT,
+      degradationReason: "",
+    },
+    packageName: "local-qualification-agent",
+    versionLabel: "1.0.0",
+    workspaceName: "local qualification",
+    provider: "local-docker",
+    billingMode: "LOCAL_NO_CHARGE",
+    computePlanId: "compute_1",
+    storagePlanId: "storage_1",
+    sourceSha: "a".repeat(40),
+    putPart: async (_url, init) => {
+      const found = Buffer.from(init.body).toString("latin1")
+        .match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/);
+      if (found) nonce = found[0];
+      return { status: 200, headers: { get: () => "" } };
+    },
+    fetchEntry: async () => ({ status: 200, text: nonce }),
+  });
+  // The owner confirmed the launch at its activation boundary, so the chain
+  // read that boundary as the launch, read the Workspace it published, and
+  // proved the entry answers with this run's nonce.
+  assert.equal(readback.customerOperation.status, "awaiting_confirmation");
+  assert.equal(readback.customerOperation.stage, "activation");
+  assert.equal(readback.customerOperation.observationResult, "confirmed");
+  assert.equal(readback.customerOperation.activationBoundary, true);
+  assert.equal(readback.customerWorkspace.capabilityVersionId, "cv_1");
+  assert.equal(readback.customerEntry.status, 200);
+  assert.equal(readback.customerEntry.matched, true);
+  assert.equal(asked.includes("/api/v2/workspaces/ws_1"), true);
 });

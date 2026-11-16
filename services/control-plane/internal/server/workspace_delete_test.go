@@ -2140,7 +2140,7 @@ func TestWorkspaceRenewalWorkerSkipsActiveDeleteV2(t *testing.T) {
 		t.Fatal(err)
 	}
 	beforeEvents := len(*fixture.events)
-	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead)); err != nil {
+	if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead)); err != nil {
 		t.Fatal(err)
 	}
 	operations, err := fixture.app.tables.ListRuntimeOperations(context.Background())

@@ -56,6 +56,15 @@ export const LOCAL_V2_QUALIFICATION_COMPOSE = "deploy/portable/compose.local-v2.
 // The entry may be published over plain HTTP or served by the installation's
 // own origin with its own certificate, so the request follows the URL it is
 // given and the certificate the installation declares.
+// The uploaded bytes go to the installation's own object origin, signed by the
+// installation's CA. A request that trusted the host store instead would fail
+// there, so the part is written through the same trust anchor as every other
+// request of the run.
+export function customerUploadRequest(url, init = {}, caFile = "") {
+  const ca = caFile ? readFileSync(caFile) : null;
+  return caRequest(url, init, new Headers(init.headers || {}), init.body, ca);
+}
+
 async function customerEntryRequest(url, headers, caFile) {
   const target = new URL(url);
   if (target.protocol === "https:") {
@@ -1670,6 +1679,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
           pollIntervalMs, pollAttempts,
           readback: customerReadback,
           fetchEntry: (url, headers) => customerEntryRequest(url, headers, caFile),
+          putPart: (url, init) => customerUploadRequest(url, init, caFile),
         });
         record("customer_package", customerReadback.degradationReason ? "degraded" : "confirmed", {
           evidenceLevel: String(customerReadback.evidenceLevel || ""),
@@ -2119,7 +2129,7 @@ export const CUSTOMER_EVIDENCE_LEVEL_ARTIFACT = "artifact-identity";
 export const CUSTOMER_EVIDENCE_LEVELS = Object.freeze([CUSTOMER_EVIDENCE_LEVEL_CONTENT, CUSTOMER_EVIDENCE_LEVEL_ARTIFACT]);
 
 // The states a Build reaches that are not "still working".
-const CUSTOMER_BUILD_TERMINAL = Object.freeze(["succeeded", "failed", "cancelled"]);
+const CUSTOMER_BUILD_TERMINAL = new Set(["succeeded", "failed", "cancelled"]);
 
 // The name the owner accepts for a package.
 const CUSTOMER_PACKAGE_NAME_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
@@ -2241,15 +2251,16 @@ export function assertCustomerCompleteUploadOperation(operation, { packageVersio
   const operationId = String(operation?.operationId || "");
   const resourceId = String(operation?.resourceId || "");
   const status = String(operation?.status || "");
+  const stage = String(operation?.stage || "");
   const observationResult = String(operation?.observationResult || "");
-  if (!operationId || owner !== "capability" || kind !== "complete_upload" || !resourceId || resourceId !== String(packageVersionId || "") || status !== "succeeded") {
+  if (!operationId || owner !== "capability" || kind !== "complete_upload" || !resourceId || resourceId !== String(packageVersionId || "") || status !== "succeeded" || stage !== "succeeded") {
     throw namedQualificationError("local_v2_customer_upload_operation_invalid",
-      "the upload completion operation does not name the capability owner, the complete_upload kind, the uploaded version and a succeeded status");
+      "the upload completion operation does not name the capability owner, the complete_upload kind, the uploaded version and a succeeded status and stage");
   }
-  if (observationResult && observationResult !== "confirmed") {
+  if (observationResult !== "confirmed") {
     throw namedQualificationError("local_v2_customer_upload_operation_unconfirmed", "the upload completion operation is not confirmed");
   }
-  return { owner, kind, resourceId, status, observationResult, operationId };
+  return { owner, kind, resourceId, status, stage, observationResult, operationId };
 }
 
 // The uploaded version, read back from the owner that stored it.
@@ -2270,6 +2281,30 @@ export function assertCustomerPackageVersionReadback(readback, expected = {}) {
       "the read back package version does not match the uploaded bytes");
   }
   return fields;
+}
+
+// The approved Runtime Release, read out of the catalog the installation
+// published.
+//
+// The owner publishes the approved Runtime Releases as one catalog page and
+// serves no route for a single release, so a chain that asked for one release
+// by its id would read a 404 the owner never wrote. The owner serves a bounded
+// page rather than the whole catalog, so the page is walked by cursor until
+// the release this Build names is found.
+export async function readRuntimeReleaseFromCatalog(http, auth, runtimeVersionId) {
+  const wanted = String(runtimeVersionId || "");
+  const seenCursors = new Set<string>();
+  let cursor = "";
+  for (;;) {
+    const page = (await http.json(`/api/v2/catalog/runtime-versions?cursor=${encodeURIComponent(cursor)}`, {}, auth)).payload;
+    const items = Array.isArray(page?.items) ? page.items : [];
+    const found = items.find((item) => String(item?.id || "") === wanted);
+    if (found) return found;
+    const next = typeof page?.nextCursor === "string" ? page.nextCursor : "";
+    if (!next || seenCursors.has(next)) return null;
+    seenCursors.add(next);
+    cursor = next;
+  }
 }
 
 // The deployed version identity.
@@ -2335,6 +2370,27 @@ export function customerWorkspaceIdentity(operation) {
     throw namedQualificationError("local_v2_customer_workspace_identity_missing", "the purchase returned no operation identity");
   }
   return { operationId, workspaceId };
+}
+
+// The launch boundary of a purchase.
+//
+// The Workspace owner parks a Local no-charge order at its activation boundary
+// on purpose: the zero-fee period of that order is a separate product decision,
+// so the order never reaches a paid order's terminal "succeeded". What the owner
+// does publish there is its own confirmed readiness of the deployed runtime.
+//
+// The launch of a built Agent is therefore read the way this tool already reads
+// the launch of the default App in its own Local phase: the boundary the owner
+// declares, with the confirmed observation that proves it. A purchase that ends
+// in any other state, including a state the owner marks as needing attention,
+// is still a failed purchase.
+export function customerLaunchReached(operation) {
+  const status = String(operation?.status || "");
+  const stage = String(operation?.stage || "");
+  const observation = String(operation?.observationResult || "");
+  if (observation !== "confirmed") return false;
+  if (status === "succeeded") return true;
+  return status === "awaiting_confirmation" && stage === LOCAL_V2_ACTIVATION_STAGE;
 }
 
 // The package archive.
@@ -2475,7 +2531,7 @@ export async function readCustomerPackageArchive(archivePath) {
 export async function runCustomerPackageEvidenceChain({
   http, auth, wait, plan, packageName, versionLabel, workspaceName, provider, billingMode,
   computePlanId, storagePlanId, sourceSha, pollIntervalMs = 3000, pollAttempts = 100, readback = {},
-  fetchEntry = null,
+  fetchEntry = null, putPart = null,
 }) {
   // The nonce is minted for this run and written into the package before the
   // package is uploaded. The receipt keeps its digest and never its value.
@@ -2548,7 +2604,8 @@ export async function runCustomerPackageEvidenceChain({
     const putHeaders = { "content-type": String(permit?.contentType || "application/octet-stream") };
     const checksumName = String(permit?.requiredChecksumHeaderName || "");
     if (checksumName) putHeaders[checksumName.toLowerCase()] = String(permit?.requiredChecksumHeaderValue || "");
-    const put = await fetch(url, { method: String(permit?.method || "PUT"), headers: putHeaders, body: slice });
+    const putInit = { method: String(permit?.method || "PUT"), headers: putHeaders, body: slice };
+    const put = putPart ? await putPart(url, putInit) : await fetch(url, putInit);
     if (put.status >= 300) {
       throw namedQualificationError("local_v2_customer_upload_part_refused", `part ${number} was refused with HTTP ${put.status}`);
     }
@@ -2585,7 +2642,14 @@ export async function runCustomerPackageEvidenceChain({
   // copies the package from and the runtime it starts. The Runner refuses a
   // source root of ".", ".." or an absolute one, and the probe that carries
   // the nonce and the runtime must both live inside that one directory.
-  const runtimeVersion = (await http.json(`/api/v2/catalog/runtime-versions/${encodeURIComponent(runtimeVersionId)}`, {}, auth)).payload;
+  // The owner publishes the approved Runtime Releases as one catalog page and
+  // serves no route for a single release, so the release this Build names is
+  // read out of that page.
+  const runtimeVersion = await readRuntimeReleaseFromCatalog(http, auth, runtimeVersionId);
+  if (!runtimeVersion) {
+    throw namedQualificationError("local_v2_customer_runtime_version_unavailable",
+      "the approved Runtime Release this Build names is not in the catalog the installation published");
+  }
   const recipe = runtimeVersion?.publisherContract?.buildRecipe || null;
   const layout = assertCustomerPackageLayout({
     entries: plan.mode === "directory" ? archive.entries : null,
@@ -2661,15 +2725,20 @@ export async function runCustomerPackageEvidenceChain({
   const { operationId, workspaceId } = customerWorkspaceIdentity(order);
   readback.customerOrder = { operationId, workspaceId };
 
-  // The purchase reaches its terminal state before the entry is read.
+  // The purchase reaches the owner's launch boundary before the entry is read.
   let operation = order;
   for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
     operation = (await http.json(`/api/v2/operations/workspace/${encodeURIComponent(operationId)}`, {}, auth)).payload;
-    if (["succeeded", "failed", "cancelled"].includes(String(operation?.status || ""))) break;
+    if (customerLaunchReached(operation) || LOCAL_V2_TERMINAL_OPERATION.has(String(operation?.status || ""))) break;
     await wait(pollIntervalMs);
   }
-  readback.customerOperation = { status: String(operation?.status || ""), stage: String(operation?.stage || "") };
-  if (String(operation?.status || "") !== "succeeded") {
+  readback.customerOperation = {
+    status: String(operation?.status || ""), stage: String(operation?.stage || ""),
+    observationResult: String(operation?.observationResult || ""), errorCode: String(operation?.errorCode || ""),
+    activationBoundary: String(operation?.status || "") === "awaiting_confirmation" &&
+      String(operation?.stage || "") === LOCAL_V2_ACTIVATION_STAGE,
+  };
+  if (!customerLaunchReached(operation)) {
     throw namedQualificationError("local_v2_customer_workspace_operation_failed",
       `the purchase operation ended ${readback.customerOperation.status} ${readback.customerOperation.stage}`.trim());
   }

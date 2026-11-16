@@ -52,7 +52,6 @@ type workspaceSettlementState string
 
 const (
 	workspaceSettlementSettled      workspaceSettlementState = "settled"
-	workspaceSettlementOutOfWindow  workspaceSettlementState = "out_of_window"
 	workspaceSettlementInFlight     workspaceSettlementState = "in_flight"
 	workspaceSettlementUnconfirmed  workspaceSettlementState = "unconfirmed"
 	workspaceSettlementUnattributed workspaceSettlementState = "unattributed"
@@ -219,15 +218,6 @@ func refundOverflowOperations(settlements []billingSettlement) map[string]bool {
 
 // projectWorkspaceSettlementTrend reads only owner facts. It never settles,
 // refunds, retries or writes anything, and it stays scoped to one account.
-func (app *controlPlaneServer) projectWorkspaceSettlementTrend(
-	ctx context.Context,
-	service *controlplane.Service,
-	accountID string,
-	now time.Time,
-) (workspaceSettlementTrend, error) {
-	return app.projectWorkspaceSettlementTrendForOwner(ctx, service, accountID, "", now)
-}
-
 func (app *controlPlaneServer) projectWorkspaceSettlementTrendForOwner(ctx context.Context, service *controlplane.Service, accountID, ownerUserID string, now time.Time) (workspaceSettlementTrend, error) {
 	trend := newWorkspaceSettlementTrend(now)
 	if accountID == "" {

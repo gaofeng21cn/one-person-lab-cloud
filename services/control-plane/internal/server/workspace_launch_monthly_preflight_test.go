@@ -565,7 +565,7 @@ func TestWorkspaceLaunchMonthlyPreflightRunsBeforeDebitAndProviderStages(t *test
 
 	handler := server.(*controlPlaneHTTPHandler)
 	for range 20 {
-		if err := handler.app.runWorkspaceLaunchesOnce(context.Background(), handler.service); err != nil {
+		if err := runWorkspaceLaunchRound(context.Background(), handler.app, handler.service); err != nil {
 			t.Fatalf("run launch: %v", err)
 		}
 		if len(*events) >= 10 {
@@ -619,7 +619,7 @@ func TestWorkspaceLaunchSameAccountSequentialPurchasesCreateIndependentWorkspace
 		}
 		operationID := workspaceLaunchOperationID("acct-alpha", key)
 		for range 20 {
-			if err := handler.app.runWorkspaceLaunchesOnce(context.Background(), handler.service); err != nil {
+			if err := runWorkspaceLaunchRound(context.Background(), handler.app, handler.service); err != nil {
 				t.Fatalf("run launch %s: %v", key, err)
 			}
 			row, found, err := store.GetRuntimeOperation(context.Background(), operationID)
@@ -732,7 +732,7 @@ func TestWorkspaceLaunchRetainedFullWorkerContinuesFreshRuntimePendingReadOnly(t
 	handler := server.(*controlPlaneHTTPHandler)
 	var pending workspaceLaunchReconcileOperation
 	for range len(workspaceLaunchReconcileStages) {
-		if err := handler.app.runWorkspaceLaunchesOnce(context.Background(), handler.service); err != nil {
+		if err := runWorkspaceLaunchRound(context.Background(), handler.app, handler.service); err != nil {
 			t.Fatalf("run launch to runtime pending: %v", err)
 		}
 		rows, err := queryRuntimeOperations(context.Background(), store, runtimeOperationQuery{Action: "workspace.launch.v2"})
@@ -757,7 +757,7 @@ func TestWorkspaceLaunchRetainedFullWorkerContinuesFreshRuntimePendingReadOnly(t
 	}
 
 	fabric.runtimeReady = true
-	if err := handler.app.runWorkspaceLaunchesOnce(context.Background(), handler.service); err != nil {
+	if err := runWorkspaceLaunchRound(context.Background(), handler.app, handler.service); err != nil {
 		t.Fatalf("continue runtime owner read: %v", err)
 	}
 	rows, err := queryRuntimeOperations(context.Background(), store, runtimeOperationQuery{Action: "workspace.launch.v2"})
@@ -772,7 +772,7 @@ func TestWorkspaceLaunchRetainedFullWorkerContinuesFreshRuntimePendingReadOnly(t
 			workspaceLaunchReconcileResultSummary(continued), fabric.runtimeEnsureCalls, fabric.runtimeReadCalls, err, *events)
 	}
 	for range 2 {
-		if err := handler.app.runWorkspaceLaunchesOnce(context.Background(), handler.service); err != nil {
+		if err := runWorkspaceLaunchRound(context.Background(), handler.app, handler.service); err != nil {
 			t.Fatalf("complete launch after runtime ready: %v", err)
 		}
 	}
@@ -814,7 +814,7 @@ func TestWorkspaceLaunchWorkerAutoRecoversManualReviewWhenRuntimeBecomesReady(t 
 	handler := server.(*controlPlaneHTTPHandler)
 	var reviewed workspaceLaunchReconcileOperation
 	for range len(workspaceLaunchReconcileStages) + workspaceLaunchAuthoritativeReadBudget {
-		if err := handler.app.runWorkspaceLaunchesOnce(context.Background(), handler.service); err != nil {
+		if err := runWorkspaceLaunchRound(context.Background(), handler.app, handler.service); err != nil {
 			t.Fatalf("run launch to Runtime manual review: %v", err)
 		}
 		rows, err := queryRuntimeOperations(context.Background(), store, runtimeOperationQuery{Action: "workspace.launch.v2"})
@@ -836,7 +836,7 @@ func TestWorkspaceLaunchWorkerAutoRecoversManualReviewWhenRuntimeBecomesReady(t 
 	}
 
 	fabric.runtimeReady = true
-	if err := handler.app.runWorkspaceLaunchesOnce(context.Background(), handler.service); err != nil {
+	if err := runWorkspaceLaunchRound(context.Background(), handler.app, handler.service); err != nil {
 		t.Fatalf("auto recover ready Runtime: %v", err)
 	}
 	rows, err := queryRuntimeOperations(context.Background(), store, runtimeOperationQuery{Action: "workspace.launch.v2"})
@@ -854,7 +854,7 @@ func TestWorkspaceLaunchWorkerAutoRecoversManualReviewWhenRuntimeBecomesReady(t 
 	}
 
 	for range 2 {
-		if err := handler.app.runWorkspaceLaunchesOnce(context.Background(), handler.service); err != nil {
+		if err := runWorkspaceLaunchRound(context.Background(), handler.app, handler.service); err != nil {
 			t.Fatalf("complete recovered launch: %v", err)
 		}
 	}

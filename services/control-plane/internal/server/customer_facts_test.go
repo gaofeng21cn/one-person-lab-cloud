@@ -287,13 +287,15 @@ func newBillingReconciliationFixture(t *testing.T) *billingReconciliationFixture
 	renewal := newWorkspaceRenewalWorkerFixture(t, []int64{200_000_000, 147_420_000})
 	ledger := &customerFactsLedger{}
 	renewal.service = controlplane.NewService(ledger, renewal.fabric, renewal.sub2API)
-	mustStore(t, renewal.app.runMonthlyBillingOnce(context.Background(), renewal.service, renewal.paidThrough.Add(-monthlyRenewalLead)))
+	_, renewalErr := renewal.app.runMonthlyBillingSweep(context.Background(), renewal.service, renewal.paidThrough.Add(-monthlyRenewalLead))
+	mustStore(t, renewalErr)
 	first := d1RenewalOperation(t, renewal)
 	secondThrough := nextBillingMonth(renewal.renewedThrough, renewal.paidThrough.Day())
 	renewal.fabric.computeRenew.Deadline = secondThrough.Format(time.RFC3339)
 	renewal.fabric.storageRenew.Deadline = renewal.fabric.computeRenew.Deadline
 	renewal.fabric.computeSync, renewal.fabric.storageSync = renewal.fabric.computeRenew, renewal.fabric.storageRenew
-	mustStore(t, renewal.app.runMonthlyBillingOnce(context.Background(), renewal.service, renewal.renewedThrough.Add(-monthlyRenewalLead)))
+	_, renewalErr = renewal.app.runMonthlyBillingSweep(context.Background(), renewal.service, renewal.renewedThrough.Add(-monthlyRenewalLead))
+	mustStore(t, renewalErr)
 	rows, err := queryRuntimeOperations(context.Background(), renewal.app.tables, runtimeOperationQuery{Action: "workspace.renewal"})
 	if err != nil || len(rows) != 2 || len(ledger.page.Receipts) != 2 {
 		t.Fatalf("two completed billing periods: rows=%d receipts=%d err=%v", len(rows), len(ledger.page.Receipts), err)

@@ -759,9 +759,24 @@ func TestConcurrentDeletionIntentsShareOneWorkspaceOperation(t *testing.T) {
 
 }
 
-// A persistent dependency refusal cannot keep the automatic worker issuing
-// commands forever. Attention retains the original identities and unknown fact;
-// an explicitly authorized replay may resume them after the owner is repaired.
+// unreachableDeletionFabric is an owner that cannot answer right now. It is
+// reachable, so the deletion records its command against it and waits for its
+// own answer instead of inventing one.
+type unreachableDeletionFabric struct {
+	*deletionFabricClient
+	calls int
+}
+
+func (f *unreachableDeletionFabric) DeleteResources(context.Context, *api.MutateResourcesCommand, ...grpc.CallOption) (*api.Operation, error) {
+	f.calls++
+	return nil, status.Error(codes.Unavailable, "Fabric cannot answer right now")
+}
+
+// A persistent dependency refusal must not turn into an unbounded stream of
+// commands, and it must not park the deletion either: the owner may still answer
+// later. The deletion therefore keeps observing its owner on a bounded cadence,
+// retains its original identities and its unknown fact, and the scheduled
+// observation continues the same original intent once the owner is repaired.
 type refusingDeletionLedger struct {
 	*deletionLedgerClient
 	calls int
@@ -771,20 +786,18 @@ func (l *refusingDeletionLedger) AppendReceipt(context.Context, *api.AppendRecei
 	l.calls++
 	return nil, status.Error(codes.Unavailable, "Ledger temporarily unavailable")
 }
-func TestDeletionRecoveryStopsAndExplicitReplayUsesOriginalIntent(t *testing.T) {
-	for _, missingFabric := range []bool{false, true} {
-		name := "ledger_refusal"
-		if missingFabric {
-			name = "missing_fabric"
-		}
-		t.Run(name, func(t *testing.T) {
+
+func TestDeletionRecoveryKeepsObservingItsOwnerAndContinuesTheOriginalIntent(t *testing.T) {
+	for _, owner := range []string{"ledger_refusal", "fabric_unreachable"} {
+		t.Run(owner, func(t *testing.T) {
 			db := runtimeDatabase(t)
 			service, call, ctx, _, _ := deletionWorkspace(t, db)
 			fabric := service.Fabric
 			ledger := service.Ledger
 			refusing := &refusingDeletionLedger{deletionLedgerClient: &deletionLedgerClient{}}
-			if missingFabric {
-				service.Fabric = nil
+			unreachable := &unreachableDeletionFabric{deletionFabricClient: &deletionFabricClient{}}
+			if owner == "fabric_unreachable" {
+				service.Fabric = unreachable
 			} else {
 				service.Ledger = refusing
 			}
@@ -799,7 +812,7 @@ func TestDeletionRecoveryStopsAndExplicitReplayUsesOriginalIntent(t *testing.T) 
 			if err != nil {
 				t.Fatal(err)
 			}
-			for attempt := 1; attempt < deletionRecoveryLimit; attempt++ {
+			for attempt := 1; attempt <= deletionRecoveryLimit+1; attempt++ {
 				// Advance only the test clock's persisted scheduling gate, without sleep.
 				if _, err = db.ExecContext(ctx, `UPDATE workspace.saga_steps SET next_attempt_at=NULL WHERE operation_id=$1`, operationID); err != nil {
 					t.Fatal(err)
@@ -814,8 +827,23 @@ func TestDeletionRecoveryStopsAndExplicitReplayUsesOriginalIntent(t *testing.T) 
 			if err != nil {
 				t.Fatal(err)
 			}
-			if stored.Status != "needs_attention" || stored.Observation != "unknown" {
+			// The deletion is still an observation-only wait: it keeps its original
+			// identities and its unknown fact. An elapsed pass count is not a
+			// decision, so it never becomes attention and it never stops.
+			if stored.Status != "awaiting_confirmation" || stored.Observation != "unknown" || stored.ErrorCode != "DEPENDENCY_UNAVAILABLE" {
 				t.Fatalf("unconfirmed recovery=%+v result=%+v", stored, result)
+			}
+			if result.PendingAttempts < deletionRecoveryLimit {
+				t.Fatalf("pending attempts=%d, want the recorded wait to count", result.PendingAttempts)
+			}
+			// The observation is bounded: the worker schedules its next look instead
+			// of asking the owner again and again.
+			var nextAttempt time.Time
+			if err = db.QueryRowContext(ctx, `SELECT next_attempt_at FROM workspace.saga_steps WHERE operation_id=$1 AND next_attempt_at IS NOT NULL ORDER BY next_attempt_at DESC LIMIT 1`, operationID).Scan(&nextAttempt); err != nil {
+				t.Fatal(err)
+			}
+			if until := time.Until(nextAttempt); until < 25*time.Second {
+				t.Fatalf("the next observation is scheduled in %s, want the bounded slow cadence", until)
 			}
 			if service.Gateway.(*deletionGatewayClient).refunds != 0 {
 				t.Fatal("refunded without Ledger/absence evidence")
@@ -827,6 +855,8 @@ func TestDeletionRecoveryStopsAndExplicitReplayUsesOriginalIntent(t *testing.T) 
 			if workspaceState != "deleting" {
 				t.Fatalf("workspace=%s", workspaceState)
 			}
+			// A read-only poll before the scheduled observation asks the owner
+			// nothing and changes nothing.
 			before := refusing.calls
 			for i := 0; i < 3; i++ {
 				if err = service.RunOnce(ctx); err != nil {
@@ -838,27 +868,39 @@ func TestDeletionRecoveryStopsAndExplicitReplayUsesOriginalIntent(t *testing.T) 
 				t.Fatal(err)
 			}
 			if refusing.calls != before || string(after.Result) != string(stored.Result) {
-				t.Fatal("automatic worker continued after attention")
+				t.Fatal("the worker observed the owner before the scheduled observation")
 			}
-			// Read-only polls do not resume. Restoring the dependency alone does not
-			// authorize another automatic command after the attention boundary.
+			// The repaired owner is answered by the scheduled observation, which
+			// continues the same original intent: the same operation, the same
+			// accepted input, one effect each.
 			service.Fabric, service.Ledger = fabric, ledger
-			if err = service.RunOnce(ctx); err != nil {
+			if _, err = db.ExecContext(ctx, `UPDATE workspace.saga_steps SET next_attempt_at=NULL WHERE operation_id=$1`, operationID); err != nil {
 				t.Fatal(err)
 			}
-			replayed, err := service.DeleteWorkspace(ctx, request)
-			if err != nil {
+			if err = service.RunOnce(ctx); err != nil {
 				t.Fatal(err)
 			}
 			completed, err := service.Store.ReadOperation(ctx, operationID)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if replayed.GetOperationId() != operationID || completed.Status != "succeeded" || string(completed.AcceptedInput) != string(original.AcceptedInput) {
-				t.Fatal("replay did not complete the original immutable intent")
+			if completed.Status != "succeeded" || string(completed.AcceptedInput) != string(original.AcceptedInput) {
+				t.Fatalf("the scheduled observation did not complete the original immutable intent: %+v", completed)
 			}
 			if service.Serve.(*deletionServeClient).stops != 1 || service.Fabric.(*deletionFabricClient).deleteCalls != 1 || service.Gateway.(*deletionGatewayClient).refunds != 1 {
 				t.Fatal("recovery duplicated retirement/deletion/refund")
+			}
+			// An explicitly authorized replay returns that same original operation
+			// and mints no second cleanup.
+			replayed, err := service.DeleteWorkspace(ctx, request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if replayed.GetOperationId() != operationID {
+				t.Fatal("the replay did not return the original operation")
+			}
+			if service.Serve.(*deletionServeClient).stops != 1 || service.Fabric.(*deletionFabricClient).deleteCalls != 1 || service.Gateway.(*deletionGatewayClient).refunds != 1 {
+				t.Fatal("the replay duplicated retirement/deletion/refund")
 			}
 		})
 	}

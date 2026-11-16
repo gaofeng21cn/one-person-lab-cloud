@@ -1604,6 +1604,7 @@ operations, data or financial evidence.
 | History, announcements and shared identity/read transport | BFF still calls original-owner billing, personal Gateway history/endpoint, announcements and ACK/activation adapters | `apps/console-bff/internal/clients/legacy_billing.go`, `personal_gateway_reads.go`, `announcements.go`, `operator.go` and the CP proof/Account/receipt readers are live source callers. ACK and activation are real remaining writes | R7: retain in this retirement scope; removing Workspace execution does not retire the CP process, shared transport or these independent capabilities |
 | Fixed-slot provider acceptance | Native business uses Catalog/Workspace and bounded protected execution | [Cloud #1113](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1113) removes the route/executor, dedicated token/configuration, unused create-claim machinery and exclusive tests; a named history-only identity helper preserves billing/access readers | R8: the fresh protected observation excludes accepted slot operations in the current installed owner table; source withdrawal can proceed, with installation remaining separate |
 | Test-only Key lifecycle prototype and retired activation alias | Native managed-Key lifecycle lives in Gateway Integration; native BFF activation still invokes the original provisioning writer | [Cloud #1112](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1112) removes the test-only prototype; [Cloud #1114](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1114) separately removes the public refusal alias and stale callers, and makes qualification read an existing activated account | R9: independent proposals; internal activation, Tenant/wallet binding and native Key lifecycle remain |
+| Control Plane resource facts and worker entrypoints | The provider reconcile worker is the CP's only live resource-fact writer and writes compute and storage facts; the CP's monthly billing and Launch each run one worker | Attachment facts have no CP writer left, so `control_plane_storage_attachments` is read-only history through `/api/management/state`. The CP's monthly billing and Launch each have exactly one entrypoint, the worker sweep and the worker scheduler | D0: the unreachable-code boundary is closed and this records the resulting ownership. It does not retire the CP tables, the retained CP process or the R5/R6 surfaces |
 
 Cloud/legacy browser routing is a build-time choice (`VITE_CONSOLE_IDENTITY`).
 `operatorWriteRoute(cloud=true)` refuses before fetch, and cloud Workspace
@@ -1904,6 +1905,44 @@ configuration is not proof of a second model-configuration command. Preserve
 the native model, deletion, credentials, Serve, Fabric and Ledger implementations
 and their behavior tests.
 
+**D0 — Control Plane unreachable-code boundary (2026-11-16).**
+`services/control-plane/internal/tools/deadcode` reports every production
+declaration in `services/control-plane/internal/server` that no source in that
+package can reach, and the `go` group of `npm run verify:local` runs it. Its
+allowlist carried the remaining pre-existing debt; this slice removes that debt
+and empties the allowlist, so the guard now states that the package has no
+unreachable implementation at all.
+
+Twenty-seven production declarations are gone: the eleven allowlisted ones and
+the sixteen that only existed to serve them. The guard reports the resulting
+package as 1408 reachable declarations.
+
+What the removal changes about ownership, all inside the retained Control Plane
+and none of it touching a table, a customer fact or an accepted operation:
+
+| Retained CP surface | Before | After |
+| --- | --- | --- |
+| Monthly billing | `runMonthlyBillingOnce` and the worker sweep were two entrypoints; only the worker's sweep ran | One entrypoint, the worker sweep `runMonthlyBillingSweep`. The renewal and billing tests call that sweep |
+| Workspace Launch | `runWorkspaceLaunchesOnce` was a second command beside the worker scheduler | One entrypoint, the launch worker's scheduler round. The launch tests drive that scheduler |
+| Operator view | `operatorSummary` projected a second operator summary; `GET /api/operator/overview` serves `operatorOverview` | Only `operatorOverview`. The monthly renewal alert observer and notification summary it fed were log-only, never persisted, and are gone with it |
+| Resource facts | `saveComputeFact` and `saveStorageFact` are written by the provider reconcile worker; the attachment fact writer had no production caller | `control_plane_storage_attachments` has no writer in the CP. The provider reconcile worker still writes compute and storage facts, so a provider-reported loss of either still suspends the Workspace and withdraws its renewal authorization. Attachment rows stay readable as history through the retained `/api/management/state` projection |
+| Settlement trend | `projectWorkspaceSettlementTrend` wrapped the owner-scoped projection | One projection, `projectWorkspaceSettlementTrendForOwner` |
+
+The rules the removed code enforced have a retained owner. A lost compute or
+storage volume still suspends the Workspace and withdraws renewal
+authorization through `markWorkspacesStorageDestroyed` and
+`suspendWorkspacesForCompute`, and the retained test asserts that a lost
+resource leaves the canonical billing record itself intact. The removed
+attachment path had no such live trigger, because nothing wrote or detached an
+attachment in the first place.
+
+This is source reachability, not installed adoption. No production database,
+object, image, volume or Secret was read or changed to make this slice, and the
+records of the retired writers stay in place for the readers that still name
+them. The retained CP still runs five workers and still owns its own tables;
+R5 and R6 still own the retained Launch, renewal, settlement and pricing
+surfaces, and their census and caller withdrawal are unchanged by this slice.
+
 #### Instance callers that must leave with a retired capability
 
 | Capability | Configured external caller | Coupled cleanup and retained consumers |
@@ -2030,15 +2069,25 @@ separate [roadmap obligations](roadmap.md#original-order-workspace-closeout-1018
 ### Extracted Workspace deletion recovery
 
 The extracted Workspace service persists consecutive unconfirmed passes per
-pending deletion step in its own operation result. Twelve automatic passes stop
-at `needs_attention`; the worker does not automatically select that deletion
-again. This preserves the original unknown/rejected observation, frozen intent,
-owner references and refundable charge rather than marking deletion failed or
-inventing absence. Missing Fabric/CloudIdentity dependencies record a durable
-wait. A freshly authorized `DeleteWorkspace` request with the exact confirmation
-name and destruction acknowledgement may resume the existing attention-bound
-operation once, including when its original idempotency key is reused. A read or
-poll never resumes it. Successful confirmation clears that step's pending count.
+pending deletion step in its own operation result. An observation-only wait stays
+`awaiting_confirmation`: the worker selects that deletion again and observes the
+same owner under the same accepted operation and grant, so a late owner
+confirmation is consumed instead of parked. The recovery limit only slows that
+observation to a bounded cadence. A refusal, an invalidated authorization, an
+ownership conflict or invalid evidence stops the automatic recovery at
+`needs_attention` and keeps its reason, because an elapsed pass count can never
+authorize another mutation. This preserves the original unknown/rejected
+observation, frozen intent, owner references and refundable charge rather than
+marking deletion failed or inventing absence. Missing Fabric/CloudIdentity
+dependencies record a durable wait. A freshly authorized `DeleteWorkspace`
+request with the exact confirmation name and destruction acknowledgement may
+resume the existing attention-bound operation once, including when its original
+idempotency key is reused. Legacy `needs_attention` deletions remain behind this
+explicit replay: the previous writer used `unknown/DEPENDENCY_UNAVAILABLE` both
+for retry-limit waits and for invalid owner evidence, so neither that code nor
+the pending count proves an observation-only wait. The worker does not revive
+those rows automatically. A read or poll never resumes them. Successful
+confirmation clears that step's pending count.
 
 Fabric's `ReadResources` only reads persisted facts. When an already-dispatched
 delete remains unconfirmed, Workspace reads it first, then resumes Fabric using
@@ -2050,13 +2099,14 @@ absence, a real Gateway refund, deployment or Instance acceptance.
 
 The original #1042 deletion later completed after two explicit resumes, as
 recorded in [the November 12 closeout](status.md#workspace-1042-original-deletion-closeout-and-cloud-custody-2026-11-12).
-That observation does not change this scheduler behavior. Automatic consumption
-of a completed downstream result after an observation-only pause remains an
-[unattended recovery outcome](roadmap.md#unattended-deletion-recovery), distinct
-from authorization to repeat a provider mutation. Workspace owns the accepted
-deletion and aggregate progress; Fabric owns each resource action, its fresh
-provider observations and local finalization. Gateway owns the original refund
-and managed-Key coordination with Sub2API; Ledger owns the bound receipt.
+That observation does not change this scheduler behavior. The source now consumes
+a completed downstream result after an observation-only pause without a direct
+`Resume` or another DELETE; the installed unattended qualification of that path
+remains an [unattended recovery outcome](roadmap.md#unattended-deletion-recovery),
+distinct from authorization to repeat a provider mutation. Workspace owns the
+accepted deletion and aggregate progress; Fabric owns each resource action, its
+fresh provider observations and local finalization. Gateway owns the original
+refund and managed-Key coordination with Sub2API; Ledger owns the bound receipt.
 `resumeDeletion` invokes runtime retirement, resource absence, Key closeout,
 deletion receipt, Workspace deletion projection, original-charge refund and final
 operation completion. `recordDeletedWorkspace` may commit resource/data deletion
