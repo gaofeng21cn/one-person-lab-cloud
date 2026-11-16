@@ -198,8 +198,8 @@ func TestPostgresRetainedImageReadersPreserveRecordsAcrossServerRestart(t *testi
 			t.Fatalf("restart %d policy=%d %s", restart, response.Code, response.Body.String())
 		}
 		response = requestWithSession(t, server, operator, http.MethodGet, "/api/operator/workspaces/ws-alpha/runtime-image-replacements/image-replacement-original", "")
-		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"operationId":"image-replacement-original"`) {
-			t.Fatalf("restart %d history=%d %s", restart, response.Code, response.Body.String())
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("restart %d retired history read=%d %s", restart, response.Code, response.Body.String())
 		}
 		for _, original := range []map[string]any{policyRow, historyRow} {
 			after, found, err := store.GetRuntimeOperation(context.Background(), stringValue(original["id"]))

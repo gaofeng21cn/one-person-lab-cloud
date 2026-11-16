@@ -788,18 +788,6 @@ export async function apiFixture(route, state, session = state) {
       updatedBy: "fixture-operator"
     }, "control-plane"));
   }
-  const workspaceImagePreviewMatch = path.match(/^\/api\/operator\/workspaces\/([^/]+)\/runtime-image-replacements\/preview$/);
-  if (workspaceImagePreviewMatch && method === "GET") {
-    return fulfillJson(route, source({
-      workspaceId: workspaceImagePreviewMatch[1],
-      workspaceStatus: "running",
-      runtimeId: "runtime-fixture",
-      runtimeStatus: "running",
-      currentImageDigest: WORKSPACE_IMAGE,
-      targetImageDigest: WORKSPACE_IMAGE,
-      canReplace: false
-    }, "control-plane+fabric"));
-  }
   if (path === "/api/operator/workspaces/ws-1") return fulfillJson(route, source(operatorWorkspace(), "control-plane+fabric+ledger+sub2api"));
   if (path === "/api/operator/workspace-launches/launch-resume-fixture/recovery" && method === "GET") {
     const recovery: WorkspaceLaunchRecoveryDTO = {

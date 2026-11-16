@@ -686,6 +686,14 @@
       "evidence": [
        "opl-instance-medopl tools/workspace-runtime-image-client.mjs:135"
       ]
+     },
+     {
+      "method": "POST",
+      "path": "/api/operator/workspace-image-release-activations",
+      "evidence": [
+       "opl-instance-medopl tools/workspace-runtime-image-client.mjs:253",
+       "The policy-mutation caller was withdrawn at source by Instance #675, merged 2026-11-04 with 2/2 CI checks SUCCESS. The withdrawal is a source change: the installed Instance has not adopted it. The Cloud keeps the operator policy-activation command and its atomic revision/audit writer registered, because a persisted active policy that cannot be advanced would otherwise keep an original Launch recovery from selecting a newer qualified recovery image. The declaration owns the Cloud route, not the survival of its call sites."
+      ]
      }
     ]
    }

@@ -43,8 +43,8 @@ One operator-authenticated CP read is retired:
   accepted nor dispatched a replacement, and no production client called it, so it
   is retired and no longer registered.
 
-`workspace_runtime_image_history.go` retains the operation decoder and response
-projection; invalid history decoding still fails the decoder. Pending-transition
+`workspace_runtime_image_history.go` retains the operation decoder; invalid history
+decoding still fails the decoder. Pending-transition
 detection recognizes valid `started` image operations, and resource reconciliation
 still blocks on image-action rows marked `started`. Policy decoding remains in
 `workspace_image_release_policy.go`. Original operations, policy records,

@@ -17,6 +17,82 @@ establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
 
+## Retained Runtime Image Command Withdrawal Reconciliation (2026-11-16)
+
+The R2c withdrawal itself is unchanged and already merged: Cloud #1121
+(`f7f2f150`, `6a05a009`, merged as `e38d9598`) removed CP existing-Workspace
+image replacement creation, preview, dispatch and retry/worker execution with
+its exclusive CP service/client/configuration and the Console/BFF/internal Cloud
+policy, preview and replacement-result adapters. Nothing in this change restores
+a withdrawn replacement command. CP still creates, previews, dispatches and
+retries no image replacement, and Fabric's own provider/replacement capability,
+journal and strict readback are untouched.
+
+What this change repairs is the rest of the same slice. The image reference
+owns the retained CP image routes and source semantics, and it states that the
+operator-authenticated policy activation POST and its atomic revision/audit
+store remain with the original Launch recovery consumer, and that this writer is
+retired only after the original recovery selection authority migrates. The
+clientless-route retirement `2555840a` unregistered
+`POST /api/operator/workspace-image-release-activations`, and the orphan
+retirement `2b56ab84` removed the activation handler, its atomic
+mutation/audit store and the memory-store implementation behind them, without
+recording that retirement in the image reference. The writer was therefore
+retired before its selection authority migrated, which the reference forbids.
+
+The policy activation command and its atomic revision/audit writer are restored
+exactly as R2c left them: the handler, the revision and audit helpers, the
+PostgreSQL transaction that writes the policy row and its audit event under one
+lock, and the memory-store implementation the acceptance tests exercise. The
+route ownership contract stays satisfied by declaring the restored route in the
+owner topology under `externalConsumers`. The declaration names the Instance
+call site that Instance #675 withdrew at source and records that the withdrawal
+is a source change whose installation adoption is still unproven, in the same
+form the topology already uses for a route whose call sites are partly retired.
+The last caller of a withdrawn command is removed as well: the Console browser
+QA harness no longer serves the withdrawn replacement preview route.
+
+The historical replacement GET stays retired. The image reference records that
+it read an existing persisted operation, that it neither accepted nor
+dispatched a replacement, and that no production client called it, so it is
+retired and no longer registered. Its persisted operation, audit and history
+records stay, the operation decoder stays with the pending-transition detection
+that reads valid `started` image operations, and the resource-reconcile barrier
+still blocks on image-action rows marked `started`. The acceptance test that
+covered it now proves that retirement instead of expecting the route.
+
+One summary still disagrees with the image reference on that point: the
+architecture R2 section and the roadmap R2c entry still name the historical
+replacement GET among the retained reads, because both were written on
+2026-11-04 and neither was revised when the route ownership guardrail retired
+the read. This change leaves those summaries alone, because the reference that
+owns the retained image routes is the image reference, and the owner owns that
+reconciliation. The code follows the image reference in both directions: the
+historical replacement GET is retired and the policy activation writer remains.
+
+`TestPostgresWorkspaceImageReleaseActivationPersistsPolicyAndAuditReplay` and
+`TestRetainedImagePolicyActivationPreservesRevisionAndIdempotency` fail on
+`main` with HTTP 404, because they only run against a PostgreSQL DSN and the
+default local run never reached them. They pass again against real PostgreSQL
+here, and the route ownership contract test passes with the restored route
+registered.
+
+One retained relation stays open and is reported rather than changed here. The
+persisted active policy has to equal the approved recovery target so that
+original Launch recovery cannot select an image the operator never activated.
+That equality lived in the operator resume path, which the clientless-route
+retirement removed because its only caller was a fixture, so restoring it would
+mean re-adding a withdrawn entrypoint or adding a new check to the live
+reconciler path. Neither belongs to this withdrawal, and the original Launch
+recovery keeps its reconciler-side image-revision machinery, the persisted
+records and the audit history.
+
+This is a source reconciliation only. It publishes no Candidate, installs
+nothing into an Instance and proves no installed adoption, no zero traffic and
+no archive disposition. The seven historical image operations in observation
+`41750316687` remain five succeeded and two failed, none started, all on
+currently `data_deleted` old Workspaces.
+
 ## Customer upload completion source repair (2026-11-16)
 
 Capability's upload completion now emits and persists the API contract's
