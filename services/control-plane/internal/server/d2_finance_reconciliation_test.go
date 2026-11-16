@@ -144,7 +144,7 @@ func TestD2FinanceBusinessChain(t *testing.T) {
 		ledger := &d2ReconciliationLedger{LedgerClient: receiptOwner, list: receiptList, rejectAccountScan: true, failNextReceipt: true}
 		fixture.service = controlplane.NewService(ledger, fixture.fabric, fixture.sub2API)
 		now := fixture.paidThrough.Add(-monthlyRenewalLead)
-		if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now); err == nil {
+		if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now); err == nil {
 			t.Fatal("injected receipt write failure did not surface")
 		}
 		pending := d1RenewalOperation(t, fixture)
@@ -166,7 +166,7 @@ func TestD2FinanceBusinessChain(t *testing.T) {
 		if numberField(mapField(mapField(body, "report"), "counts"), "pending", -1) != 1 || ledger.receiptWrites != beforeWrites || len(*fixture.events) != beforeEvents {
 			t.Fatalf("normal settlement progress blocked buyers or reconciliation performed writes: %s", mustJSON(body))
 		}
-		if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now.Add(time.Second)); err != nil {
+		if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now.Add(time.Second)); err != nil {
 			t.Fatal(err)
 		}
 		completed := d1RenewalOperation(t, fixture)
@@ -191,7 +191,7 @@ func TestD2FinanceBusinessChain(t *testing.T) {
 		fixture.service = controlplane.NewService(ledger, fixture.fabric, fixture.sub2API)
 		fixture.fabric.computeRenewErr = fmt.Errorf("injected provider failure")
 		fixture.fabric.computeSync = clients.ComputeAllocation{ID: stringValue(fixture.compute["id"]), AccountID: "acct-monthly", WorkspaceID: "workspace-monthly", Status: "external_deleted"}
-		if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead)); err != nil {
+		if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead)); err != nil {
 			t.Fatal(err)
 		}
 		operation := d1RenewalOperation(t, fixture)
@@ -208,7 +208,7 @@ func TestD2FinanceBusinessChain(t *testing.T) {
 		fixture := newWorkspaceRenewalWorkerFixture(t, []int64{200_000_000, 147_420_000})
 		ledger := &d2ReconciliationLedger{LedgerClient: owner, list: list, rejectAccountScan: true}
 		fixture.service = controlplane.NewService(ledger, fixture.fabric, fixture.sub2API)
-		if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead)); err != nil {
+		if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead)); err != nil {
 			t.Fatal(err)
 		}
 		first := d1RenewalOperation(t, fixture)
@@ -219,7 +219,7 @@ func TestD2FinanceBusinessChain(t *testing.T) {
 		fixture.fabric.computeRenew.Deadline = secondThrough.Format("2006-01-02T15:04:05Z07:00")
 		fixture.fabric.storageRenew.Deadline = fixture.fabric.computeRenew.Deadline
 		fixture.fabric.computeSync, fixture.fabric.storageSync = fixture.fabric.computeRenew, fixture.fabric.storageRenew
-		if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, fixture.renewedThrough.Add(-monthlyRenewalLead)); err != nil {
+		if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, fixture.renewedThrough.Add(-monthlyRenewalLead)); err != nil {
 			t.Fatal(err)
 		}
 		rows, err := queryRuntimeOperations(context.Background(), fixture.app.tables, runtimeOperationQuery{Action: "workspace.renewal"})

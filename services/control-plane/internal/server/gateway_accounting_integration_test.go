@@ -91,7 +91,7 @@ func TestGatewayAccountingAuthoritativeLocalChain(t *testing.T) {
 		if stringValue(replay["operationId"]) != launchID {
 			t.Fatalf("replay operation = %#v, want %s", replay, launchID)
 		}
-		if err := process.handler.app.runWorkspaceLaunchesOnce(context.Background(), process.handler.service); err != nil {
+		if err := runWorkspaceLaunchRound(context.Background(), process.handler.app, process.handler.service); err != nil {
 			t.Fatalf("replay worker: %v", err)
 		}
 		if afterReplay := fixture.writeCounts(t); afterReplay != beforeReplay || afterReplay.charges != 1 || afterReplay.refunds != 0 {
@@ -122,7 +122,7 @@ func TestGatewayAccountingAuthoritativeLocalChain(t *testing.T) {
 		if stringValue(replay["operationId"]) != launchID || stringValue(replay["status"]) != "manual_review" {
 			t.Fatalf("unknown replay response = %#v", replay)
 		}
-		if err := process.handler.app.runWorkspaceLaunchesOnce(context.Background(), process.handler.service); err != nil {
+		if err := runWorkspaceLaunchRound(context.Background(), process.handler.app, process.handler.service); err != nil {
 			t.Fatalf("manual-review worker replay: %v", err)
 		}
 		if counts := fixture.writeCounts(t); counts.charges != 1 || counts.refunds != 0 {
@@ -569,7 +569,7 @@ func runGatewayAccountingLaunch(t *testing.T, process *gatewayAccountingControlP
 	}
 	var operation workspaceLaunchReconcileOperation
 	for range 12 {
-		err := process.handler.app.runWorkspaceLaunchesOnce(context.Background(), process.handler.service)
+		err := runWorkspaceLaunchRound(context.Background(), process.handler.app, process.handler.service)
 		row, found, readErr := process.store.GetRuntimeOperation(context.Background(), operationID)
 		if readErr != nil || !found {
 			t.Fatalf("read launch found=%t err=%v", found, readErr)

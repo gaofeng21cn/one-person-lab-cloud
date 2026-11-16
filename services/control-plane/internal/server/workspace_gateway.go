@@ -259,28 +259,6 @@ func (app *controlPlaneServer) suspendWorkspacesForCompute(computeID string) err
 	}
 	return nil
 }
-
-func (app *controlPlaneServer) clearWorkspacesForAttachment(attachmentID string) error {
-	for _, workspace := range app.listWorkspaces("") {
-		if stringValue(workspace["currentAttachmentId"]) == attachmentID || stringValue(workspace["attachmentId"]) == attachmentID {
-			canonicalBilling := workspaceAcceptedBillingState(workspace) != nil
-			workspace["currentAttachmentId"] = ""
-			workspace["attachmentId"] = ""
-			if canonicalBilling {
-				workspace["autoRenew"] = false
-			}
-			if stringValue(workspace["state"]) != "data_deleted" {
-				workspace["state"] = "suspended"
-				workspace["status"] = "suspended"
-			}
-			if err := app.tables.SaveWorkspace(context.Background(), workspace); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 func (app *controlPlaneServer) markWorkspacesStorageDestroyed(storageID string) error {
 	for _, workspace := range app.listWorkspaces("") {
 		if stringValue(workspace["storageId"]) == storageID {

@@ -164,7 +164,7 @@ func TestD4ExpiredWorkspaceRequiresExplicitOriginalRenewalAfterTopUp(t *testing.
 	wallet := newD4RenewalWalletHTTP(t, 10_000_000)
 	fixture.service = controlplane.NewService(fixture.ledger, fixture.fabric, wallet.client)
 	fixture.app, _ = newControlPlaneAppWithStore(store)
-	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead)); err != nil {
+	if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead)); err != nil {
 		t.Fatal(err)
 	}
 	if len(wallet.writes) != 0 {
@@ -175,7 +175,7 @@ func TestD4ExpiredWorkspaceRequiresExplicitOriginalRenewalAfterTopUp(t *testing.
 	// periods as the calendar advances, changing which renewal operation the
 	// test observes.
 	now := fixture.paidThrough.Add(time.Second)
-	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now); err != nil {
+	if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now); err != nil {
 		t.Fatal(err)
 	}
 	expired := d1RenewalOperation(t, fixture)
@@ -183,7 +183,7 @@ func TestD4ExpiredWorkspaceRequiresExplicitOriginalRenewalAfterTopUp(t *testing.
 		t.Fatalf("unpaid expiry=%#v", expired)
 	}
 	wallet.balance = 100_000_000
-	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now.Add(time.Second)); err != nil {
+	if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	workspace, _ := fixture.app.getWorkspace(expired.WorkspaceID)
@@ -208,7 +208,7 @@ func TestD4ExpiredWorkspaceRequiresExplicitOriginalRenewalAfterTopUp(t *testing.
 	}
 	wallet.loseResponse = true
 	fixture.app, _ = newControlPlaneAppWithStore(store)
-	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now.Add(2*time.Second)); !errors.Is(err, clients.ErrSub2APIChargeUnknown) {
+	if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now.Add(2*time.Second)); !errors.Is(err, clients.ErrSub2APIChargeUnknown) {
 		t.Fatalf("lost response err=%v", err)
 	}
 	pending := d1RenewalOperation(t, fixture)
@@ -220,7 +220,7 @@ func TestD4ExpiredWorkspaceRequiresExplicitOriginalRenewalAfterTopUp(t *testing.
 		t.Fatal(err)
 	}
 	fixture.app = restarted
-	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now.Add(3*time.Second)); err != nil {
+	if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now.Add(3*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	completed := d1RenewalOperation(t, fixture)
@@ -232,7 +232,7 @@ func TestD4ExpiredWorkspaceRequiresExplicitOriginalRenewalAfterTopUp(t *testing.
 	if replay.Code != 200 || replay.Body.String() != response.Body.String() {
 		t.Fatalf("authorization replay changed: %d %s", replay.Code, replay.Body.String())
 	}
-	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now.Add(4*time.Second)); err != nil {
+	if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now.Add(4*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if len(wallet.writes) != 1 || len(fixture.ledger.receipts) != 2 {
@@ -249,13 +249,13 @@ func TestD4RenewalRechecksResourcesAndNeverRetriesUnknownDebit(t *testing.T) {
 				fixture.sub2API.balances = []int64{100_000_000}
 				fixture.sub2API.chargeErrors = []error{clients.ErrSub2APIChargeUnknown}
 			}
-			firstErr := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now)
+			_, firstErr := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now)
 			if lostResponse && !errors.Is(firstErr, clients.ErrSub2APIChargeUnknown) {
 				t.Fatalf("initial err=%v", firstErr)
 			}
 			before := len(fixture.sub2API.charges)
 			fixture.fabric.storageRenew.Status = "external_deleted"
-			_ = fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now.Add(time.Second))
+			_, _ = fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now.Add(time.Second))
 			operation := d1RenewalOperation(t, fixture)
 			expectedReason := "workspace_renewal_resources_reclaimed"
 			if lostResponse {
@@ -389,7 +389,7 @@ func d4WorkspaceExistingWebSocketAtPaidThrough(t *testing.T, renew bool) {
 	}
 	if renew {
 		oldDeadline := deadline
-		if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, time.Now().UTC()); err != nil {
+		if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, time.Now().UTC()); err != nil {
 			t.Fatal(err)
 		}
 		renewal := d1RenewalOperation(t, fixture)
@@ -581,7 +581,7 @@ func TestD4ExpiryRecoversLostStopResponseAfterPostgresRestart(t *testing.T) {
 	fabric := &d4LostPowerResponseFabric{monthlyFabric: fixture.fabric}
 	fixture.service = controlplane.NewService(fixture.ledger, fabric, fixture.sub2API)
 	now := fixture.paidThrough.Add(time.Second)
-	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now); err == nil {
+	if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now); err == nil {
 		t.Fatal("lost Runtime stop response was treated as success")
 	}
 	pending := d1RenewalOperation(t, fixture)
@@ -595,7 +595,7 @@ func TestD4ExpiryRecoversLostStopResponseAfterPostgresRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	for attempt := range 2 {
-		if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now.Add(time.Duration(attempt+1)*time.Second)); err != nil {
+		if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now.Add(time.Duration(attempt+1)*time.Second)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -623,7 +623,7 @@ func TestD4ExpiryStopsPreviouslyCompletedUnpaidWorkspaceWithoutReplacingReceipt(
 			mustStore(t, fixture.app.tables.SaveWorkspace(context.Background(), fixture.workspace))
 			mustStore(t, fixture.app.tables.SaveRuntimeOperation(context.Background(), workspaceRenewalOperationRow(operation)))
 			for attempt := range 2 {
-				if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now.Add(time.Duration(attempt)*time.Second)); err != nil {
+				if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now.Add(time.Duration(attempt)*time.Second)); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -670,7 +670,7 @@ func TestD4ExpiryUsesPersistedRuntimeRepairBinding(t *testing.T) {
 			}
 			mustStore(t, fixture.app.tables.SaveRuntimeOperation(context.Background(), row))
 			fixture.fabric.runtimePowerIdentity.RuntimeOperationID = repairedBinding
-			err = fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, fixture.paidThrough.Add(time.Second))
+			_, err = fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, fixture.paidThrough.Add(time.Second))
 			if bindingCase != "repaired" {
 				if err == nil || len(fixture.fabric.runtimePowerCalls) != 0 || len(fixture.ledger.receipts) != 0 || len(fixture.sub2API.charges) != 0 {
 					t.Fatalf("unproven Runtime binding mutated: err=%v power=%#v", err, fixture.fabric.runtimePowerCalls)
@@ -745,7 +745,8 @@ func TestD4UnexpiredPostgresConcurrentRenewalKeepsWorkspaceRunning(t *testing.T)
 		wg.Add(1)
 		go func(app *controlPlaneServer) {
 			defer wg.Done()
-			errs <- app.runMonthlyBillingOnce(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead))
+			_, err := app.runMonthlyBillingSweep(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead))
+			errs <- err
 		}(app)
 	}
 	wg.Wait()

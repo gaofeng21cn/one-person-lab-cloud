@@ -92,7 +92,7 @@ func TestMonthlyBillingScanPagesNonCandidatesWithoutOperationFanout(t *testing.T
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := app.runMonthlyBillingOnce(context.Background(), newTestService(fakeLedgerClient{}, &fakeFabricClient{}), time.Now().UTC()); err != nil {
+			if _, err := app.runMonthlyBillingSweep(context.Background(), newTestService(fakeLedgerClient{}, &fakeFabricClient{}), time.Now().UTC()); err != nil {
 				t.Fatal(err)
 			}
 			wantPages := (total + 49) / 50
@@ -278,7 +278,7 @@ func TestSinglePodCapacity(t *testing.T) {
 
 			counter.reset()
 			renewalStarted := time.Now()
-			if err := app.runMonthlyBillingOnce(ctx, service, now); err != nil {
+			if _, err := app.runMonthlyBillingSweep(ctx, service, now); err != nil {
 				t.Fatal(err)
 			}
 			renewalDuration := time.Since(renewalStarted)

@@ -149,10 +149,6 @@ func workspaceLaunchAccessProjectionMismatchFields(operation workspaceLaunchReco
 	return mismatches
 }
 
-func workspaceLaunchStableProjectionMatches(operation workspaceLaunchReconcileOperation, workspace map[string]any) bool {
-	return len(workspaceLaunchStableProjectionMismatchFields(operation, workspace)) == 0
-}
-
 func workspaceLaunchStableProjectionMismatchFields(operation workspaceLaunchReconcileOperation, workspace map[string]any) []string {
 	checks := []struct {
 		field string
