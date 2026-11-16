@@ -1179,13 +1179,3 @@ func (s *memoryTableStore) ApplyWorkspaceApplicationActivation(_ context.Context
 	operation["result"], operation["status"] = string(encoded), "running"
 	return nil
 }
-
-func (s *memoryTableStore) AdmittedApplicationDataMaterial(_ context.Context, applicationID, version string) (map[string]any, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	row := s.applicationDataMaterials[applicationID+"@"+version]
-	if row == nil {
-		return nil, false, nil
-	}
-	return cloneMap(row), true, nil
-}
