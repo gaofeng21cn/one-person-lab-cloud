@@ -2,13 +2,23 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"reflect"
 	"testing"
 
 	"opl-cloud/services/control-plane/internal/domain/application"
 )
+
+// The operator revision surface is retired: the route that served the
+// operator revision read is no longer registered. The persisted revision and
+// the decoder stay readable through the retained store path.
+//
+// The memory-store variant runs without a database, so the retained read path
+// stays proven in the database-free CI lane.
+
+func TestApplicationRevisionStoreAndHistoryMemory(t *testing.T) {
+	testApplicationRevisionStoreAndHistory(t, newMemoryTableStore())
+}
 
 func TestApplicationRevisionStoreAndHistoryPostgres(t *testing.T) {
 	store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)
@@ -42,17 +52,12 @@ func testApplicationRevisionStoreAndHistory(t *testing.T, store controlPlaneTabl
 		t.Fatal(err)
 	}
 	operator := operatorSessionForTest(t, server)
+	// The retired operator revision route stays retired. The retained history
+	// is served by the deployment history route, not by an operator revision
+	// admission surface.
 	read := requestWithSession(t, server, operator, http.MethodGet, "/api/operator/application-revisions/knowledge-app/1.0.0", "")
-	var response struct {
-		Decision string         `json:"decision"`
-		Revision map[string]any `json:"revision"`
-	}
-	if read.Code != http.StatusOK || json.Unmarshal(read.Body.Bytes(), &response) != nil || response.Decision != "identical" || response.Revision["payload"] != first["payload"] || response.Revision["digest"] != digest {
-		t.Fatalf("history read status=%d body=%s", read.Code, read.Body.String())
-	}
-	missing := requestWithSession(t, server, operator, http.MethodGet, "/api/operator/application-revisions/knowledge-app/9.9.9", "")
-	if missing.Code != http.StatusNotFound {
-		t.Fatalf("missing history status=%d", missing.Code)
+	if read.Code != http.StatusNotFound {
+		t.Fatalf("retired operator revision route status=%d body=%s", read.Code, read.Body.String())
 	}
 }
 
