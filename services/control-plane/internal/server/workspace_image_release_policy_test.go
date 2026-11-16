@@ -4,47 +4,79 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"testing"
 
 	contracts "opl-cloud/packages/contracts/go"
 )
 
-func TestPostgresWorkspaceImageReleaseActivationPersistsPolicyAndAuditReplay(t *testing.T) {
-	const currentImage = "registry.example/workspace@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	const rollbackImage = "registry.example/workspace@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	catalogJSON, err := json.Marshal(contracts.WorkspaceImageReleaseCatalog{SchemaVersion: 1, Releases: []contracts.WorkspaceImageRelease{
-		{Version: "26.8.26", Image: currentImage},
-		{Version: "26.8.4", Image: rollbackImage},
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("OPL_WORKSPACE_IMAGE", currentImage)
-	t.Setenv(contracts.WorkspaceImageReleasesEnv, string(catalogJSON))
+func TestPostgresRetiredImagePolicyActivationPreservesStoredPolicyAndAudit(t *testing.T) {
+	configureRetainedImageCatalog(t)
+	ctx := context.Background()
 	store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)
-	server, err := NewPersistentServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}), store)
+	mustStore(t, store.SaveRuntimeOperation(ctx, retainedImagePolicyRow()))
+	mustStore(t, store.SaveAuditEvent(ctx, map[string]any{
+		"id": "retained-image-policy-audit", "actorUserId": "usr-admin", "actorRole": "operator",
+		"action": "workspace.image_release_activation", "resourceKind": "workspace_image_release_policy",
+		"resourceId": workspaceImageReleasePolicyID, "result": "succeeded",
+		"before": map[string]any{"revision": 6},
+		"after":  map[string]any{"revision": 7, "activeImage": retainedImageActive},
+	}))
+	server := newServerForRetainedImages(t, store)
+	operator := reservedOperatorSessionForTest(t, server)
+	beforePolicy, found, err := store.GetRuntimeOperation(ctx, workspaceImageReleasePolicyID)
+	if err != nil || !found {
+		t.Fatalf("load retained policy: found=%v err=%v", found, err)
+	}
+	beforeAudit, err := store.ListAuditEvents(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	operator := reservedOperatorSessionForTest(t, server)
-	body := workspaceImageReleaseActivationBodyForTest(t, "26.8.4", 1, "rollback PostgreSQL Workspace release")
-	first := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/workspace-image-release-activations", body, "workspace-release-postgres")
-	if first.Code != http.StatusOK {
-		t.Fatalf("first status=%d body=%s", first.Code, first.Body.String())
+	if len(beforeAudit) != 1 || beforeAudit[0]["id"] != "retained-image-policy-audit" {
+		t.Fatalf("retained audit missing: %#v", beforeAudit)
 	}
-	handler := server.(*controlPlaneHTTPHandler)
-	policy, _, _, err := handler.app.currentWorkspaceImageReleasePolicy(context.Background())
-	if err != nil || policy.Revision != 2 || policy.ActiveVersion != "26.8.4" || policy.ActiveImage != rollbackImage {
-		t.Fatalf("persisted policy=%#v err=%v", policy, err)
+	assertUnchanged := func(t *testing.T) {
+		t.Helper()
+		afterPolicy, found, err := store.GetRuntimeOperation(ctx, workspaceImageReleasePolicyID)
+		if err != nil || !found || !reflect.DeepEqual(afterPolicy, beforePolicy) {
+			t.Fatalf("retired activation changed policy: %#v err=%v", afterPolicy, err)
+		}
+		afterAudit, err := store.ListAuditEvents(ctx, "")
+		if err != nil || !reflect.DeepEqual(afterAudit, beforeAudit) {
+			t.Fatalf("retired activation changed audit: %#v err=%v", afterAudit, err)
+		}
 	}
-	replayed := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/workspace-image-release-activations", body, "workspace-release-postgres")
-	if replayed.Code != http.StatusOK {
-		t.Fatalf("replay status=%d body=%s", replayed.Code, replayed.Body.String())
+	body := workspaceImageReleaseActivationBodyForTest(t, "26.8.26", 7, "activate approved PostgreSQL Workspace release")
+	changedBody := workspaceImageReleaseActivationBodyForTest(t, "26.8.4", 7, "retain approved PostgreSQL Workspace release")
+	for _, request := range []struct {
+		name, body, key string
+	}{
+		{"first request", body, "workspace-release-postgres"},
+		{"same request replay", body, "workspace-release-postgres"},
+		{"changed intent", changedBody, "workspace-release-postgres"},
+		{"new key", body, "workspace-release-postgres-new"},
+	} {
+		t.Run(request.name, func(t *testing.T) {
+			response := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/workspace-image-release-activations", request.body, request.key)
+			if response.Code != http.StatusNotFound {
+				t.Fatalf("retired activation status=%d body=%s", response.Code, response.Body.String())
+			}
+			assertUnchanged(t)
+		})
 	}
-	policy, _, _, err = handler.app.currentWorkspaceImageReleasePolicy(context.Background())
-	if err != nil || policy.Revision != 2 || policy.ActiveImage != rollbackImage {
-		t.Fatalf("replayed policy=%#v err=%v", policy, err)
+	server = newServerForRetainedImages(t, store)
+	operator = reservedOperatorSessionForTest(t, server)
+	response := requestWithSession(t, server, operator, http.MethodGet, "/api/operator/workspace-runtime-image-policy", "")
+	var envelope struct {
+		Data workspaceImageReleasePolicyDTO `json:"data"`
 	}
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &envelope) != nil {
+		t.Fatalf("retained policy read=%d %s", response.Code, response.Body.String())
+	}
+	if policy := envelope.Data; policy.Revision != 7 || policy.Active.Version != "26.8.4" || policy.Active.Image != retainedImageActive || policy.InstalledDefault.Image != retainedImageInstalled {
+		t.Fatalf("retained policy changed after restart: %#v", policy)
+	}
+	assertUnchanged(t)
 }
 
 func workspaceImageReleaseActivationBodyForTest(t *testing.T, releaseVersion string, expectedRevision int, reason string) string {
