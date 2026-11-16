@@ -17,6 +17,22 @@ establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
 
+## Customer upload completion source repair (2026-11-16)
+
+Capability's upload completion now emits and persists the API contract's
+`succeeded/succeeded/confirmed` operation. Rejected uploads report
+`failed/upload_verification/rejected` with the public `VALIDATION_FAILED` code;
+PackageVersion retains the specific validation cause. The qualification
+consumer requires the terminal stage and explicit confirmation before following
+the uploaded version into Build. Missing observation evidence is refused.
+
+Isolated PostgreSQL tests cover the public JSON response, both idempotent replay
+paths, the persisted operation and the owner operations reader. Historical
+operation and idempotency records are unchanged; an old response that lacks the
+required evidence remains insufficient for the stricter qualification consumer.
+This source evidence does not requalify an existing installation or replay a
+customer upload.
+
 ## Workspace deletion unattended recovery source repair (2026-11-16)
 
 Workspace's existing recovery path now keeps an observation-only deletion
