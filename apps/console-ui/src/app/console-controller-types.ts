@@ -25,8 +25,6 @@ import type {
   OperatorWorkspaceDTO,
   OperatorWorkspacePageDTO,
   PlanId,
-  PricingCatalogResponse,
-  PricingPlan,
   SourceEnvelope,
   WalletAdjustmentOperationDTO,
   WorkspaceCredentialAccess,
@@ -38,7 +36,6 @@ import type {
   WorkspaceModelConfigurationDTO,
   WorkspaceModelSelectionDTO,
   WorkspaceOwnerOperationDTO,
-  WorkspacePricePreview,
   WorkspaceListData,
   WorkspaceRuntimeDTO,
   WorkspaceRenewalReadDTO,
@@ -144,8 +141,6 @@ export interface ConsoleTransientState {
 }
 
 export interface WorkspaceLaunchController {
-  catalog: RemoteState<PricingCatalogResponse>;
-  previews: Partial<Record<PlanId, WorkspacePricePreview>>;
   launchName: string;
   setLaunchName: (value: string) => void;
   launchPlan: PlanId;
@@ -156,10 +151,8 @@ export interface WorkspaceLaunchController {
   setLaunchStep: (value: WorkspaceLaunchStep) => void;
   launchConfirmed: boolean;
   setLaunchConfirmed: (value: boolean) => void;
-  selectedPlan: PricingPlan | null;
-  selectedPrice: number | null;
+  selectedPlanId: PlanId;
   walletUsdMicros: string | null;
-  balanceSufficient: boolean | null;
   customerOwned: boolean;
   launchOperation: WorkspaceLaunchResponse | null;
   launchRecoveryState: WorkspaceLaunchRecoveryState;

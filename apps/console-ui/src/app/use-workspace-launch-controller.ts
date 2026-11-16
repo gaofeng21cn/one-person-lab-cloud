@@ -4,13 +4,11 @@ import type {
   AuthSession,
   GatewayWallet,
   PlanId,
-  PricingCatalogResponse,
   SourceEnvelope,
   CapabilityVersionDTO,
   ComputePlanDTO,
   StoragePlanDTO,
   LaunchModelDTO,
-  WorkspacePricePreview,
   WorkspaceQuoteDTO,
   WorkspaceOwnerOperationDTO,
   WorkspaceOwnerDTO,
@@ -19,7 +17,6 @@ import type {
   RuntimeVersionDTO,
   WorkspaceLaunchResponse
 } from "../api/dtos.ts";
-import { getPricingCatalog, packagePricingReadPlan, previewPricing } from "../api/console-read-api.ts";
 import { cloudIdentity } from "./console-identity.ts";
 import {
   createAgentWorkspace,
@@ -41,13 +38,9 @@ import {
   canCreateAgentWorkspace,
   canSubmitWorkspaceLaunch,
   operationPollDelayMs,
-  workspaceLaunchBalance,
-  workspaceLaunchPricingSelection,
-  workspaceLaunchPreviewRequest,
   workspaceLaunchReviewBlocked,
   workspaceLaunchReviewReadiness,
   workspaceLaunchSubmission,
-  workspacePricePreview,
   type AgentLaunchReadiness,
   type WorkspaceLaunchReviewState
 } from "./workspace-launch-controller-model.ts";
@@ -122,8 +115,6 @@ export interface WorkspaceLaunchCapability extends AgentWorkspaceLaunchControlle
   reset: () => void;
 }
 
-const emptyCatalog = (): RemoteState<PricingCatalogResponse> => ({ value: null, loading: false, error: "" });
-
 // A package purchase is prepaid from the customer's own Gateway balance. An
 // unavailable envelope carries no balance rather than a zero balance.
 function gatewayBalanceMicros(wallet: RemoteState<SourceEnvelope<GatewayWallet>>): string | null {
@@ -152,8 +143,6 @@ export function useWorkspaceLaunchController({
   flash,
   friendlyError
 }: WorkspaceLaunchDependencies): WorkspaceLaunchCapability {
-  const [catalog, setCatalog] = useState<RemoteState<PricingCatalogResponse>>(emptyCatalog);
-  const [previews, setPreviews] = useState<Partial<Record<PlanId, WorkspacePricePreview>>>({});
   const [launchName, setLaunchName] = useState("");
   const [launchAutoRenew, setLaunchAutoRenew] = useState(false);
   const [launchStep, setLaunchStep] = useState<WorkspaceLaunchStep>("configure");
@@ -197,8 +186,6 @@ export function useWorkspaceLaunchController({
 
   const reset = () => {
     quoteRevision.current += 1;
-    setCatalog(emptyCatalog());
-    setPreviews({});
     setLaunchName("");
     setLaunchAutoRenew(false);
     setLaunchStep("configure");
@@ -228,44 +215,8 @@ export function useWorkspaceLaunchController({
     intent.current = null;
   };
 
-  // Retained Control Plane package pricing is read only by its own identity.
   // CloudIdentity launch consumes Catalog workspaceOffers and its exact quote;
   // it never crosses to a retained Account session for missing native data.
-  const loadPricingCatalog = async (generation: number, activeSession: AuthSession) => {
-    const plan = packagePricingReadPlan(cloudIdentity);
-    if (plan.state === "unavailable") {
-      if (!isRequestCurrent(generation, activeSession.user.id)) return;
-      setCatalog({ value: null, loading: false, error: plan.reasonCode });
-      setPreviews({});
-      return;
-    }
-    setCatalog((current) => ({ ...current, loading: true, error: "" }));
-    try {
-      const priced = await getPricingCatalog();
-      if (!isRequestCurrent(generation, activeSession.user.id)) return;
-      const entries = await Promise.all(priced.packages.filter((plan) => plan.available).map(async (plan) => {
-        try {
-          const preview = await previewPricing(workspaceLaunchPreviewRequest(plan.id), activeSession.csrfToken);
-          return [plan.id, workspacePricePreview(preview)] as const;
-        } catch {
-          return [plan.id, null] as const;
-        }
-      }));
-      if (!isRequestCurrent(generation, activeSession.user.id)) return;
-      const unread = entries.filter((entry) => entry[1] === null).map(([planId]) => planId);
-      setPreviews(Object.fromEntries(entries.filter((entry): entry is readonly [PlanId, WorkspacePricePreview] => entry[1] !== null)));
-      setCatalog({
-        value: priced,
-        loading: false,
-        error: unread.length ? `unpriced_packages:${unread.join(",")}` : ""
-      });
-    } catch (error) {
-      if (!isRequestCurrent(generation, activeSession.user.id)) return;
-      setCatalog({ value: null, loading: false, error: friendlyError(error) });
-      setPreviews({});
-    }
-  };
-
   const loadAgentCatalog = async (generation: number, activeSession: AuthSession) => {
     invalidateQuote();
     setAgentSourceLoading(true);
@@ -315,7 +266,7 @@ export function useWorkspaceLaunchController({
   // The baked Console identity selects its owner. A refused retained read cannot
   // erase the native Catalog offer, and native facts never price retained orders.
   const loadCatalog = async (generation: number, activeSession: AuthSession) => {
-    await Promise.all([loadPricingCatalog(generation, activeSession), loadAgentCatalog(generation, activeSession)]);
+    await loadAgentCatalog(generation, activeSession);
   };
 
   const readAccess = async (workspaceId: string, generation: number, activeSession: AuthSession) => {
@@ -567,8 +518,7 @@ export function useWorkspaceLaunchController({
       const { launchWorkspace } = await import("../api/workspaces-api.ts");
       const operation = await launchWorkspace(
         workspaceLaunchSubmission(
-          { name: launchName.trim(), packageId: normalLaunchPlan, autoRenew: launchAutoRenew },
-          catalog.value?.resourceBillingMode ?? "enabled"
+          { name: launchName.trim(), packageId: normalLaunchPlan, autoRenew: launchAutoRenew }
         ),
         session.csrfToken,
         workspaceLaunchIdempotencyKey()
@@ -596,28 +546,15 @@ export function useWorkspaceLaunchController({
     navigate(`/console/workspaces/${normalLaunchOperation.workspaceId}`);
   };
 
-  // Determine selectedPlan from catalog
-  const { selectedPlan, selectedPrice } = workspaceLaunchPricingSelection({ catalog: catalog.value, planId: normalLaunchPlan, previews });
-  const customerOwned = false;
-  const balanceSufficient = workspaceLaunchBalance({
-    resourceBillingMode: catalog.value?.resourceBillingMode,
-    customerOwned,
-    selectedPrice,
-    walletUsdMicros: gatewayBalanceMicros(wallet)
-  });
   const launchBusy = normalLaunchBusy || agentBusy;
   const reviewState: WorkspaceLaunchReviewState = {
     launchRecoveryState: "clear",
     launchName,
-    selectedPlan,
-    selectedPrice,
-    balanceSufficient
+    selectedPlanId: normalLaunchPlan
   };
 
 
   return {
-    catalog,
-    previews,
     launchName,
     setLaunchName,
     launchPlan: normalLaunchPlan,
@@ -628,11 +565,9 @@ export function useWorkspaceLaunchController({
     setLaunchStep,
     launchConfirmed,
     setLaunchConfirmed,
-    selectedPlan,
-    selectedPrice,
+    selectedPlanId: normalLaunchPlan,
     walletUsdMicros: gatewayBalanceMicros(wallet),
-    balanceSufficient,
-    customerOwned,
+    customerOwned: false,
     launchOperation: normalLaunchOperation,
     launchRecoveryState: "clear",
     launchPollIssue: "",

@@ -44,8 +44,8 @@ and [`console-read-api.ts`](../../apps/console-ui/src/api/console-read-api.ts).
 | Workspace settlement trend | `use-billing-controller` | `GET /api/v2/legacy-billing/workspace-settlements` | `GET /api/billing/workspace-settlements` | BFF calls the retained Control Plane settlement projection; source `control_plane` | Fresh CloudIdentity proof and reciprocal mapping | Yes: original owner is retained behind the Cloud route |
 | Announcement list | `use-customer-announcement-controller` | `GET /api/v2/announcements` | `GET /api/announcements` | BFF calls the retained original announcement owner; source `control-plane` | Live CloudIdentity proof; no Tenant membership required | Yes: original publication owner is retained behind the Cloud route |
 | Announcement acknowledgement | `use-customer-announcement-controller` | `POST /api/v2/announcements/{announcementId}/read` | `POST /api/announcements/{announcementId}/read` | BFF calls the retained original ACK owner; source `control-plane` | Live CloudIdentity proof, same-origin CSRF and idempotency key | Yes: original ACK owner is retained behind the Cloud route |
-| Package pricing catalog | `use-workspace-launch-controller.loadPricingCatalog` | None | `GET /api/pricing/catalog` | Retained Control Plane only | Retained Account session | Yes: legacy-only; no Cloud package-pricing catalog owner exists yet |
-| Package price preview | `use-workspace-launch-controller.loadPricingCatalog` | None | `POST /api/pricing/preview` | Retained Control Plane only | Retained Account session | Yes: legacy-only; Cloud prices through the Resource Catalog quote |
+| Package pricing catalog | None: withdrawn | None | None | Withdrawn: the Control Plane publishes no current price | None | No: the route is not registered; the Resource Catalog owns new resource prices and quotes them |
+| Package price preview | None: withdrawn | None | None | Withdrawn: the Control Plane publishes no preview | None | No: the route is not registered; the Cloud launch path prices through the Resource Catalog quote |
 | Workspace list and detail | `use-customer-workspace-read-controller` | `GET /api/v2/workspaces`, `GET /api/v2/workspaces/{workspaceId}` | `GET /api/workspaces`, page scan | Workspace owner | Live CloudIdentity proof and Workspace owner authorization | No |
 | Workspace operation readback | `use-customer-workspace-read-controller`, launch controller | `GET /api/v2/operations/workspace/{operationId}` | None | Workspace owner | Live CloudIdentity proof | No |
 | Workspace models | `use-workspace-models-controller` | `GET /api/v2/workspaces/{workspaceId}/models` | None | Workspace owner | Live CloudIdentity proof | No |
@@ -104,11 +104,10 @@ surfaces. Installed authenticated acceptance remains in the single Cloud deliver
   (`status: "unavailable"`, `available: false`, `reasonCode`, no `data`). The
   controllers report that state and offer a retry; they never substitute a zero,
   an empty collection or cached data.
-- The package pricing catalog has no Cloud owner yet. A cloud build returns the
-  explicit `pricing_catalog_owner_unavailable` state before issuing a request;
-  it does not fall back to the retained route that answers a CloudIdentity
-  session with 401. The cloud launch surface prices the same purchase through
-  `POST /api/v2/quotes` and the Resource Catalog plan reads.
+- The package pricing catalog and preview are withdrawn. The Control Plane
+  publishes no current price and no preview; the Cloud launch surface prices a
+  purchase through `POST /api/v2/quotes` and the Resource Catalog plan reads,
+  and the legacy launch surface presents an accepted operation's own terms.
 
 ## Transitional Reads
 

@@ -327,7 +327,6 @@ export function createConsoleFixtureState({ faultInjection = true, seedDemoData 
     workspacePasswords: new Map(Object.entries(WORKSPACE_PASSWORDS)),
     workspaceCredentialVersions: new Map(Object.keys(WORKSPACE_PASSWORDS).map((workspaceId) => [workspaceId, 1])),
     announcements: seedDemoData ? [demoAnnouncement()] : [],
-    basicPlanAvailable: true,
     faultInjection,
     operatorAccounts: [operatorAccount("acct-1", "active"), operatorAccount("acct-2", "disabled")],
     gatewayWrites: new Set(), walletWrites: new Set(), lostGatewayResponses: new Set(), lostWalletResponses: new Set(),
@@ -581,33 +580,6 @@ export async function apiFixture(route, state, session = state) {
         account: session.accountId, username: "opl", password, credentialStatus: "configured",
         credentialVersion: String(state.workspaceCredentialVersions.get(workspaceId) || 1)
       }
-    });
-  }
-  if (path === "/api/pricing/catalog") return fulfillJson(route, {
-    priceVersion: "pilot-usd-2026-07-v1", billingUnit: "calendar_month", displayCurrency: "USD", walletCurrency: "USD", currency: "USD",
-    packages: [
-      { id: "basic", name: "Basic", available: state.basicPlanAvailable, cpu: 2, memoryGb: 4, diskGb: 10, server: "2c4g", price: { priceVersion: "pilot-usd-2026-07-v1", currency: "USD", chargeUsdMicros: 52_580_000 } },
-      { id: "pro", name: "Pro", available: true, cpu: 8, memoryGb: 16, diskGb: 100, server: "8c16g", price: { priceVersion: "pilot-usd-2026-07-v1", currency: "USD", chargeUsdMicros: 240_080_000 } }
-    ]
-  });
-  if (path === "/api/pricing/preview" && method === "POST") {
-    const previewRequest = route.request().postDataJSON();
-    const packageId = previewRequest?.packageId === "pro" ? "pro" : "basic";
-    const computeChargeUsdMicros = packageId === "pro" ? 214_280_000 : 50_000_000;
-    const storageChargeUsdMicros = packageId === "pro" ? 25_800_000 : 2_580_000;
-    const sizeGb = packageId === "pro" ? 100 : 10;
-    return fulfillJson(route, {
-      resourceType: "workspace", packageId, priceVersion: "pilot-usd-2026-07-v1", currency: "USD",
-      displayCurrency: "USD", billingUnit: "calendar_month",
-      compute: {
-        resourceType: "compute", packageId, priceVersion: "pilot-usd-2026-07-v1", currency: "USD",
-        displayCurrency: "USD", billingUnit: "calendar_month", chargeUsdMicros: computeChargeUsdMicros
-      },
-      storage: {
-        resourceType: "storage", packageId, priceVersion: "pilot-usd-2026-07-v1", currency: "USD",
-        displayCurrency: "USD", billingUnit: "calendar_month", chargeUsdMicros: storageChargeUsdMicros, sizeGb
-      },
-      totalChargeUsdMicros: computeChargeUsdMicros + storageChargeUsdMicros
     });
   }
   if (path === "/api/billing/receipts") {
@@ -1348,7 +1320,6 @@ export async function runConsoleBrowserQa({
   try {
     browser = await browserFactory();
     for (const [name, viewport] of Object.entries(VIEWPORTS)) {
-      state.basicPlanAvailable = name !== "mobile";
       const context = await browser.newContext({ viewport, permissions: ["clipboard-read", "clipboard-write"] });
       const page = await context.newPage();
       await installFixturePage(page, state, server.origin);
