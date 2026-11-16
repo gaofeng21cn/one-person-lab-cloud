@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,11 +15,15 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/packages/contracts/go/publicjson"
 	"opl-cloud/services/internal/ownerservice"
 )
 
@@ -187,6 +192,75 @@ func providerShardCount(t *testing.T, service *Service, upload, digest string) i
 	return len(view.Parts)
 }
 
+type uploadOperationIdentity struct {
+	api.CloudIdentityAuthorizationClient
+}
+
+func (*uploadOperationIdentity) AuthorizeAction(_ context.Context, r *api.AuthorizationRequest, _ ...grpc.CallOption) (*api.AuthorizationDecision, error) {
+	return &api.AuthorizationDecision{Issuer: api.AuthorizationIssuer_AUTHORIZATION_ISSUER_CLOUD_IDENTITY, Result: api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED, ActorId: r.ActorId, Scope: r.Scope, SessionId: r.SessionId, AudienceOwner: r.AudienceOwner, Action: r.Action, Resource: r.Resource, PermissionVersion: 1, IssuedAt: timestamppb.New(time.Now().Add(-time.Second)), ExpiresAt: timestamppb.New(time.Now().Add(time.Minute))}, nil
+}
+
+// Completion, both replay paths and the shared owner read must expose the same
+// terminal evidence. Marshal through the BFF's public serializer as well: enum
+// defaults or an unknown persisted error must not turn a valid owner result into
+// a missing field or an unreadable operation.
+func assertUploadCompletionEvidence(t *testing.T, service *Service, ctx context.Context, call *api.CallContext, uploadID string, parts []*api.UploadPart, operation *api.Operation, succeeded bool) {
+	t.Helper()
+	wantStatus, wantStage, wantObservation, wantError := "succeeded", "succeeded", "confirmed", ""
+	if !succeeded {
+		wantStatus, wantStage, wantObservation, wantError = "failed", "upload_verification", "rejected", "VALIDATION_FAILED"
+	}
+	assertPublic := func(label string, result *api.Operation) {
+		t.Helper()
+		raw, err := publicjson.Marshal(result)
+		if err != nil {
+			t.Fatalf("%s public operation: %v", label, err)
+		}
+		var body map[string]any
+		if err = json.Unmarshal(raw, &body); err != nil {
+			t.Fatal(err)
+		}
+		if body["operationId"] != operation.OperationId || body["resourceId"] != operation.ResourceId || body["owner"] != "capability" || body["kind"] != "complete_upload" || body["status"] != wantStatus || body["stage"] != wantStage || body["observationResult"] != wantObservation || result.PollAfterSeconds != nil {
+			t.Fatalf("%s terminal evidence=%s", label, raw)
+		}
+		if wantError == "" && result.ErrorCode != nil || wantError != "" && body["errorCode"] != wantError {
+			t.Fatalf("%s error evidence=%s", label, raw)
+		}
+	}
+	assertPublic("completion", operation)
+	for _, key := range []string{call.IdempotencyKey, call.IdempotencyKey + "-completed-replay"} {
+		replayCall := proto.Clone(call).(*api.CallContext)
+		replayCall.IdempotencyKey = key
+		replayCall.RequestId = "request-" + key
+		replayed, err := service.CompleteUpload(ctx, &api.CompleteUploadRpcRequest{Context: replayCall, UploadId: uploadID, Body: &api.CompleteUploadRequest{Parts: parts}})
+		if err != nil || !proto.Equal(replayed, operation) {
+			t.Fatalf("completion replay %q=%v error=%v, want %v", key, replayed, err, operation)
+		}
+		assertPublic("replay", replayed)
+	}
+	stored, err := service.Store.ReadOperation(ctx, operation.OperationId)
+	if err != nil || stored.Status != wantStatus || stored.Stage != wantStage || stored.Observation != wantObservation || stored.ErrorCode != wantError || stored.CompletedAt.IsZero() {
+		t.Fatalf("stored terminal evidence=%+v error=%v", stored, err)
+	}
+	persisted := &api.Operation{}
+	if err = protojson.Unmarshal(stored.Result, persisted); err != nil || !proto.Equal(persisted, operation) {
+		t.Fatalf("persisted completion=%v error=%v", persisted, err)
+	}
+	operations, err := ownerservice.NewOperations(ownerservice.OwnerCapability, service.Store, ownerservice.NewAuthorizer(ownerservice.OwnerCapability, &uploadOperationIdentity{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	readback, err := operations.Read(ctx, &api.OwnerOperationRequest{Context: call, OperationId: operation.OperationId})
+	if err != nil {
+		t.Fatalf("owner operation readback: %v", err)
+	}
+	assertPublic("owner readback", readback)
+	var count int
+	if err = service.DB.QueryRowContext(ctx, `SELECT count(*) FROM capability.operations WHERE resource_id=$1 AND kind='complete_upload'`, operation.ResourceId).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("completion replay operation count=%d error=%v", count, err)
+	}
+}
+
 func TestCompleteUploadFinalizesDirectProviderUploadAndReadsBack(t *testing.T) {
 	db := capabilityClaimDB(t)
 	server := httptest.NewTLSServer(newFakeCOS())
@@ -230,6 +304,7 @@ func TestCompleteUploadFinalizesDirectProviderUploadAndReadsBack(t *testing.T) {
 	if operation.Status != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
 		t.Fatalf("operation=%v", operation)
 	}
+	assertUploadCompletionEvidence(t, service, ctx, call, session.Id, readback.CompletedParts, operation, true)
 
 	var state, objectRef string
 	if err = db.QueryRowContext(ctx, `SELECT status,object_ref FROM capability.package_versions WHERE id=$1`, session.PackageVersionId).Scan(&state, &objectRef); err != nil {
@@ -378,6 +453,7 @@ func TestCompleteUploadRejectsWrongDeclaredDigest(t *testing.T) {
 	if operation.Status != api.OperationStatusEnum_OPERATION_STATUS_ENUM_FAILED {
 		t.Fatalf("wrong declared digest must fail the operation: %v", operation)
 	}
+	assertUploadCompletionEvidence(t, service, ctx, call, session.Id, parts, operation, false)
 	var state, validation string
 	if err = db.QueryRowContext(ctx, `SELECT status,COALESCE(validation_error_code,'') FROM capability.package_versions WHERE id=$1`, session.PackageVersionId).Scan(&state, &validation); err != nil {
 		t.Fatal(err)

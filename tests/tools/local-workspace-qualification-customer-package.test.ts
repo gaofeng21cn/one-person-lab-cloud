@@ -422,7 +422,7 @@ test("the approved Runtime Release is read out of the catalog page", async () =>
         return { payload: { id: "upload_1", packageVersionId: "pv_1", partSizeBytes: "16777216" } };
       }
       if (path === "/api/v2/uploads/upload_1/parts") return { payload: { url: "https://objects.test/part-1", method: "PUT", contentType: "application/octet-stream" } };
-      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
+      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", stage: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
       if (path === "/api/v2/package-versions/pv_1") return { payload: { id: "pv_1", packageId: "pkg_1", versionLabel: "1.0.0", sha256: uploaded?.sha256, sizeBytes: uploaded?.sizeBytes, status: "uploaded" } };
       if (path === "/api/v2/catalog/build-policy") return { payload: { runtimeVersionId: "rt_1", defaultWebuiVersionId: "wu_1" } };
       if (path === "/api/v2/catalog/runtime-versions?cursor=") {
@@ -486,7 +486,7 @@ test("the run follows the Build it asked for to the version that Build registere
         return { payload: { id: "upload_1", packageVersionId: "pv_1", partSizeBytes: "16777216" } };
       }
       if (path === "/api/v2/uploads/upload_1/parts") return { payload: { url: "https://objects.test/part-1", method: "PUT", contentType: "application/octet-stream" } };
-      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
+      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", stage: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
       if (path === "/api/v2/package-versions/pv_1") return { payload: { id: "pv_1", packageId: "pkg_1", versionLabel: "1.0.0", sha256: uploaded?.sha256, sizeBytes: uploaded?.sizeBytes, status: "uploaded" } };
       if (path === "/api/v2/catalog/build-policy") return { payload: { runtimeVersionId: "rt_1", defaultWebuiVersionId: "wu_1" } };
       if (path === "/api/v2/catalog/runtime-versions?cursor=") {
@@ -552,7 +552,7 @@ test("the customer chain reads the launch boundary the owner declares", async ()
         return { payload: { id: "upload_1", packageVersionId: "pv_1", partSizeBytes: "16777216" } };
       }
       if (path === "/api/v2/uploads/upload_1/parts") return { payload: { url: "https://objects.test/part-1", method: "PUT", contentType: "application/octet-stream" } };
-      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
+      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", stage: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
       if (path === "/api/v2/package-versions/pv_1") return { payload: { id: "pv_1", packageId: "pkg_1", versionLabel: "1.0.0", sha256: uploaded?.sha256, sizeBytes: uploaded?.sizeBytes, status: "uploaded" } };
       if (path === "/api/v2/catalog/build-policy") return { payload: { runtimeVersionId: "rt_1", defaultWebuiVersionId: "wu_1" } };
       if (path === "/api/v2/catalog/runtime-versions?cursor=") {

@@ -339,16 +339,23 @@ func (s *Service) CompleteUpload(ctx context.Context, r *api.CompleteUploadRpcRe
 		out.Kind = api.OperationKindEnum_OPERATION_KIND_ENUM_COMPLETE_UPLOAD
 		out.ResourceId = u.PackageVersionId
 		out.Status = api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED
-		out.Stage = api.OperationStageEnum_OPERATION_STAGE_ENUM_UPLOAD_VERIFICATION
+		out.Stage = api.OperationStageEnum_OPERATION_STAGE_ENUM_SUCCEEDED
+		out.ObservationResult = api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_CONFIRMED.Enum()
 		out.RequestId = r.Context.RequestId
 		out.CreatedAt = timestamppb.New(now)
 		out.UpdatedAt = timestamppb.New(now)
 		st := "succeeded"
+		stage := "succeeded"
 		obs := "confirmed"
+		operationError := ""
 		if validation != "" {
 			st = "failed"
+			stage = "upload_verification"
 			obs = "rejected"
+			operationError = "VALIDATION_FAILED"
 			out.Status = api.OperationStatusEnum_OPERATION_STATUS_ENUM_FAILED
+			out.Stage = api.OperationStageEnum_OPERATION_STAGE_ENUM_UPLOAD_VERIFICATION
+			out.ObservationResult = api.OperationObservationResultEnum_OPERATION_OBSERVATION_RESULT_ENUM_REJECTED.Enum()
 			code := api.ErrorCodeEnum_ERROR_CODE_ENUM_VALIDATION_FAILED
 			out.ErrorCode = &code
 			if _, e = tx.ExecContext(ctx, `UPDATE capability.package_versions SET status='rejected',validation_error_code=$1,updated_at=now() WHERE id=$2`, validation, u.PackageVersionId); e != nil {
@@ -370,7 +377,7 @@ func (s *Service) CompleteUpload(ctx context.Context, r *api.CompleteUploadRpcRe
 		if _, e = tx.ExecContext(ctx, `UPDATE capability.upload_sessions SET status='completed',updated_at=now() WHERE id=$1`, u.Id); e != nil {
 			return dbError(e)
 		}
-		_, e = tx.ExecContext(ctx, `INSERT INTO capability.operations(id,tenant_id,actor_id,kind,resource_id,status,stage,error_code,observation_result,request_id,accepted_input,result,started_at,completed_at) VALUES($1,$2,$3,'complete_upload',$4,$5,'upload_verification',$6,$7,$8,$9,$10,now(),now())`, out.OperationId, tenant(r.Context), r.Context.ActorId, u.PackageVersionId, st, nullable(validation), obs, r.Context.RequestId, jsonBytes(r.Body), jsonBytes(out))
+		_, e = tx.ExecContext(ctx, `INSERT INTO capability.operations(id,tenant_id,actor_id,kind,resource_id,status,stage,error_code,observation_result,request_id,accepted_input,result,started_at,completed_at) VALUES($1,$2,$3,'complete_upload',$4,$5,$6,$7,$8,$9,$10,$11,now(),now())`, out.OperationId, tenant(r.Context), r.Context.ActorId, u.PackageVersionId, st, stage, nullable(operationError), obs, r.Context.RequestId, jsonBytes(r.Body), jsonBytes(out))
 		return dbError(e)
 	})
 	return out, e
