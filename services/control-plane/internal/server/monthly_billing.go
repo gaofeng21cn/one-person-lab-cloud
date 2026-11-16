@@ -6,83 +6,11 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"opl-cloud/services/control-plane/internal/clients"
-	"opl-cloud/services/control-plane/internal/controlplane"
 )
 
 var (
-	errMonthlyInsufficientBalance             = errors.New("monthly_balance_insufficient")
-	errMonthlyAccountUnmapped                 = errors.New("sub2api_account_mapping_required")
-	errWorkspaceLaunchMonthlyPreflightInvalid = errors.New("fabric_monthly_preflight_invalid")
-	errBillingReviewNotFound                  = errors.New("billing_review_not_found")
-	errBillingReviewNotPending                = errors.New("billing_review_not_pending")
-	errBillingReviewIdentity                  = errors.New("billing_review_identity_mismatch")
-	errBillingReviewChargeFact                = errors.New("billing_review_charge_fact_unconfirmed")
-	errBillingReviewProviderFact              = errors.New("billing_review_provider_fact_unconfirmed")
-	errBillingReviewReceipt                   = errors.New("billing_review_receipt_pending")
-	errInvalidBillingReview                   = errors.New("invalid_billing_review_request")
+	errMonthlyAccountUnmapped = errors.New("sub2api_account_mapping_required")
 )
-
-const billingReviewActivateCharged = "activate_charged_resource"
-
-type billingReviewResolutionInput struct {
-	ResourceType       string
-	ResourceID         string
-	AccountID          string
-	BillingOperationID string
-	Decision           string
-	EvidenceRef        string
-	IdempotencyKey     string
-	Reviewer           string
-}
-
-func monthlyPreflightConfirmed(input clients.MonthlyPreflightInput, result clients.MonthlyPreflight) bool {
-	return result.ResourceType == input.ResourceType && result.PackageID == input.PackageID && result.SizeGB == input.SizeGB &&
-		result.Zone == input.Zone && result.Available
-}
-
-// workspaceLaunchProviderZone returns the zone the selected provider orders the
-// monthly resource in. Each provider owns its zone: Tencent orders against the
-// installation's Tencent zone and fails closed without it, while Local-Docker
-// places every allocation in its fixed local zone, which its Fabric monthly
-// preflight records. Fabric rejects a monthly preflight that names no zone, so
-// a profile outside this mapping fails closed here instead of dispatching a
-// zone-less request.
-func workspaceLaunchProviderZone(operation workspaceLaunchReconcileOperation) (string, error) {
-	switch fabricProvider(operation.stringFact("providerProfileRef")) {
-	case fabricTencentTKE:
-		zone := controlplane.ProviderAcceptanceLaunchZone()
-		if zone == "" {
-			return "", errWorkspaceLaunchMonthlyPreflightInvalid
-		}
-		return zone, nil
-	case fabricLocalDocker:
-		return fabricLocalDockerZone, nil
-	default:
-		return "", errWorkspaceLaunchMonthlyPreflightInvalid
-	}
-}
-
-func (a *controlPlaneWorkspaceLaunchStageAdapter) preflightWorkspaceLaunchMonthly(ctx context.Context, operation workspaceLaunchReconcileOperation) error {
-	zone, err := workspaceLaunchProviderZone(operation)
-	if err != nil {
-		return err
-	}
-	for _, input := range []clients.MonthlyPreflightInput{
-		{ResourceType: "compute", PackageID: operation.stringFact("packageId"), Zone: zone},
-		{ResourceType: "storage", PackageID: operation.stringFact("packageId"), SizeGB: operation.intFact("sizeGb"), Zone: zone},
-	} {
-		result, err := a.service.PreflightMonthlyResource(ctx, input)
-		if err != nil {
-			return err
-		}
-		if !monthlyPreflightConfirmed(input, result) {
-			return errWorkspaceLaunchMonthlyPreflightInvalid
-		}
-	}
-	return nil
-}
 
 func monthlyChargeConfirmationMatches(confirmation map[string]any, code string, userID, chargeUSDMicros int64) bool {
 	return len(confirmation) == 4 && code != "" && chargeUSDMicros > 0 && stringValue(confirmation["code"]) == code &&

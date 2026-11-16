@@ -4,81 +4,10 @@ import type {
   PricingPlan,
   PricingPreviewRequest,
   PricingPreviewResponse,
-  WorkspaceLaunchRequest,
-  WorkspaceLaunchResponse,
   WorkspacePricePreview
 } from "../api/dtos.ts";
-import { isTerminalWorkspaceLaunch } from "../api/workspaces-api.ts";
-
-export interface WorkspaceLaunchIntent {
-  readonly input: Readonly<WorkspaceLaunchRequest>;
-  readonly idempotencyKey: string;
-}
-
-export type WorkspaceLaunchIntentResolution =
-  | { kind: "ready"; intent: WorkspaceLaunchIntent }
-  | { kind: "conflict" };
-
-export type WorkspaceLaunchRecovery =
-  | { kind: "none" }
-  | { kind: "resume"; operation: WorkspaceLaunchResponse }
-  | { kind: "conflict" };
 
 export type WorkspaceLaunchRecoveryState = "idle" | "checking" | "clear" | "conflict" | "unavailable";
-
-export interface WorkspaceLaunchReviewReadiness {
-  recoveryState: WorkspaceLaunchRecoveryState;
-  hasName: boolean;
-  hasSelectedPlan: boolean;
-  selectedPriceKnown: boolean;
-  balanceSufficient: boolean;
-}
-
-export interface WorkspaceLaunchSubmitReadiness extends WorkspaceLaunchReviewReadiness {
-  sessionAvailable: boolean;
-  busy: boolean;
-  step: "configure" | "confirm";
-  confirmed: boolean;
-}
-
-function sameWorkspaceLaunchInput(left: WorkspaceLaunchRequest, right: WorkspaceLaunchRequest): boolean {
-  return left.name === right.name
-    && left.packageId === right.packageId
-    && left.autoRenew === right.autoRenew
-    && left.provisioningMode === right.provisioningMode;
-}
-
-export function resolveWorkspaceLaunchIntent(
-  current: WorkspaceLaunchIntent | null,
-  input: WorkspaceLaunchRequest,
-  createIdempotencyKey: () => string
-): WorkspaceLaunchIntentResolution {
-  if (current) {
-    return sameWorkspaceLaunchInput(current.input, input)
-      ? { kind: "ready", intent: current }
-      : { kind: "conflict" };
-  }
-  return {
-    kind: "ready",
-    intent: { input: { ...input }, idempotencyKey: createIdempotencyKey() }
-  };
-}
-
-export function canReviewWorkspaceLaunch(readiness: WorkspaceLaunchReviewReadiness): boolean {
-  return readiness.recoveryState === "clear"
-    && readiness.hasName
-    && readiness.hasSelectedPlan
-    && readiness.selectedPriceKnown
-    && readiness.balanceSufficient;
-}
-
-export function canSubmitWorkspaceLaunch(readiness: WorkspaceLaunchSubmitReadiness): boolean {
-  return readiness.sessionAvailable
-    && !readiness.busy
-    && readiness.step === "confirm"
-    && readiness.confirmed
-    && canReviewWorkspaceLaunch(readiness);
-}
 
 // workspacePricePreview keeps a quote only when the owner priced it in full.
 // "No price" means the owner returned no total or no components, and that is
@@ -115,33 +44,6 @@ export function workspaceLaunchPricingSelection(state: {
   return { selectedPlan, selectedPrice };
 }
 
-// WorkspaceLaunchReviewState is what a caller already holds. WorkspaceLaunchController
-// satisfies it structurally, so the page and the controller read the same fields.
-export interface WorkspaceLaunchReviewState {
-  launchRecoveryState: WorkspaceLaunchRecoveryState;
-  launchName: string;
-  selectedPlan: PricingPlan | null;
-  selectedPrice: number | null;
-  balanceSufficient: boolean | null;
-}
-
-export function workspaceLaunchReviewReadiness(state: WorkspaceLaunchReviewState): WorkspaceLaunchReviewReadiness {
-  return {
-    recoveryState: state.launchRecoveryState,
-    hasName: Boolean(state.launchName.trim()),
-    hasSelectedPlan: Boolean(state.selectedPlan),
-    selectedPriceKnown: state.selectedPrice !== null,
-    balanceSufficient: state.balanceSufficient === true
-  };
-}
-
-// The confirm button and the controller's own review action ask this one
-// function, so the page can no longer offer a step the controller refuses, and a
-// second readiness expression cannot drift away from the model.
-export function workspaceLaunchReviewBlocked(state: WorkspaceLaunchReviewState): boolean {
-  return !canReviewWorkspaceLaunch(workspaceLaunchReviewReadiness(state));
-}
-
 function micros(value: string | null): bigint | null {
   return value !== null && /^\d+$/.test(value) ? BigInt(value) : null;
 }
@@ -173,64 +75,11 @@ export function workspaceLaunchBalance(state: {
   return balance === null ? null : balance >= BigInt(state.selectedPrice);
 }
 
-export function shouldRetainWorkspaceLaunchIntent(error: unknown): boolean {
-  if (!error || typeof error !== "object" || !("payload" in error)) return false;
-  const payload = (error as { payload?: unknown }).payload;
-  return Boolean(
-    payload
-    && typeof payload === "object"
-    && "status" in payload
-    && payload.status === "unknown"
-  );
-}
-
-export function classifyWorkspaceLaunchRecovery(
-  operations: WorkspaceLaunchResponse[]
-): WorkspaceLaunchRecovery {
-  const active = operations.filter((operation) => !isTerminalWorkspaceLaunch(operation.status));
-  if (active.length === 0) return { kind: "none" };
-  if (active.length === 1) return { kind: "resume", operation: active[0] };
-  return { kind: "conflict" };
-}
-
-export function shouldPollWorkspaceLaunch(operation: WorkspaceLaunchResponse): boolean {
-  return operation.status !== "manual_review" && !isTerminalWorkspaceLaunch(operation.status);
-}
-
-// workspaceLaunchProvisioningMode is the one place this client states its
-// provisioning shape. A new customer Launch confirms an application and a plan
-// in one step: with neither a Package nor a separate WebUI selected, Cloud
-// deploys the exact approved OPL App Runtime Release
-// (docs/spec/target/00_master_index.md D01, 04_frontend_interaction_spec.md:15,
-// 11_ui_ux_design.md:89). The Control Plane runs its default application
-// reconciliation branch for every mode other than resource_only
-// (routes_workspace_launch.go:45-49), so this states that default App product.
-// resource_only is the retained historical contract for pre-existing
-// resource-only purchases (docs/spec/target/09_legacy_migration.md:9) and must
-// not be sent for a new Launch.
-export const workspaceLaunchProvisioningMode = "full" as const;
-
-// WorkspaceLaunchIntentInput is what a customer chooses: a name, a plan and
-// whether the monthly charge renews. The provisioning shape is not theirs to
-// pick, so submission is the single owner that composes the wire request.
-export type WorkspaceLaunchIntentInput = Omit<WorkspaceLaunchRequest, "provisioningMode">;
-
 // workspaceLaunchPreviewRequest asks for the package purchase itself. A
 // component preview carries no total, so asking the owner for the wrong resource
 // type would return a number this client cannot turn into a price.
 export function workspaceLaunchPreviewRequest(planId: PlanId): PricingPreviewRequest {
   return { resourceType: "workspace", packageId: planId };
-}
-
-export function workspaceLaunchSubmission(
-  input: WorkspaceLaunchIntentInput,
-  resourceBillingMode: PricingCatalogResponse["resourceBillingMode"]
-): WorkspaceLaunchRequest {
-  const submitted: WorkspaceLaunchRequest = {
-    ...input,
-    provisioningMode: workspaceLaunchProvisioningMode
-  };
-  return resourceBillingMode === "none" ? { ...submitted, autoRenew: false } : submitted;
 }
 
 export type AgentLaunchStep = "configure" | "quote" | "operation";

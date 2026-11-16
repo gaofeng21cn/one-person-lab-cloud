@@ -16,8 +16,7 @@ import type {
   WorkspaceOwnerDTO,
   WorkspaceOwnerAccessDTO,
   GatewayWalletReadbackDTO,
-  RuntimeVersionDTO,
-  WorkspaceLaunchResponse
+  RuntimeVersionDTO
 } from "../api/dtos.ts";
 import { getPricingCatalog, packagePricingReadPlan, previewPricing } from "../api/console-read-api.ts";
 import { cloudIdentity } from "./console-identity.ts";
@@ -39,17 +38,12 @@ import type { RemoteState, WorkspaceLaunchController, WorkspaceLaunchStep } from
 import {
   canCreateAgentQuote,
   canCreateAgentWorkspace,
-  canSubmitWorkspaceLaunch,
   operationPollDelayMs,
   workspaceLaunchBalance,
   workspaceLaunchPricingSelection,
   workspaceLaunchPreviewRequest,
-  workspaceLaunchReviewBlocked,
-  workspaceLaunchReviewReadiness,
-  workspaceLaunchSubmission,
   workspacePricePreview,
-  type AgentLaunchReadiness,
-  type WorkspaceLaunchReviewState
+  type AgentLaunchReadiness
 } from "./workspace-launch-controller-model.ts";
 
 type ApplicationReadSource = "app" | "agent" | "models" | "wallet";
@@ -185,8 +179,6 @@ export function useWorkspaceLaunchController({
   const quoteRevision = useRef(0);
   // Normal workspace launch state
   const [normalLaunchPlan, setNormalLaunchPlan] = useState<PlanId>("basic");
-  const [normalLaunchBusy, setNormalLaunchBusy] = useState(false);
-  const [normalLaunchOperation, setNormalLaunchOperation] = useState<WorkspaceLaunchResponse | null>(null);
 
   const invalidateQuote = () => {
     quoteRevision.current += 1;
@@ -545,57 +537,6 @@ export function useWorkspaceLaunchController({
     window.open(agentAccess.url, "_blank", "noopener,noreferrer");
   };
 
-  // Normal workspace launch implementation
-  const reviewNormalWorkspaceLaunch = () => {
-    if (workspaceLaunchReviewBlocked(reviewState)) return;
-    setLaunchStep("confirm");
-  };
-
-  const submitNormalWorkspaceLaunch = async () => {
-    if (!session || !canSubmitWorkspaceLaunch({
-      ...workspaceLaunchReviewReadiness(reviewState),
-      sessionAvailable: true,
-      busy: launchBusy,
-      step: launchStep,
-      confirmed: launchConfirmed
-    })) return;
-
-    const stillCurrent = currentMutationRequest();
-    setNormalLaunchBusy(true);
-
-    try {
-      const { launchWorkspace } = await import("../api/workspaces-api.ts");
-      const operation = await launchWorkspace(
-        workspaceLaunchSubmission(
-          { name: launchName.trim(), packageId: normalLaunchPlan, autoRenew: launchAutoRenew },
-          catalog.value?.resourceBillingMode ?? "enabled"
-        ),
-        session.csrfToken,
-        workspaceLaunchIdempotencyKey()
-      );
-
-      if (!stillCurrent()) {
-        return;
-      }
-
-      setNormalLaunchOperation(operation);
-      setLaunchStep("confirm");
-      flash("工作空间创建请求已提交", "good");
-    } catch (error) {
-      if (!stillCurrent()) return;
-      flash(friendlyError(error), "danger");
-    } finally {
-      if (stillCurrent()) {
-        setNormalLaunchBusy(false);
-      }
-    }
-  };
-
-  const openNormalWorkspace = async () => {
-    if (!normalLaunchOperation?.workspaceId) return;
-    navigate(`/console/workspaces/${normalLaunchOperation.workspaceId}`);
-  };
-
   // Determine selectedPlan from catalog
   const { selectedPlan, selectedPrice } = workspaceLaunchPricingSelection({ catalog: catalog.value, planId: normalLaunchPlan, previews });
   const customerOwned = false;
@@ -605,15 +546,7 @@ export function useWorkspaceLaunchController({
     selectedPrice,
     walletUsdMicros: gatewayBalanceMicros(wallet)
   });
-  const launchBusy = normalLaunchBusy || agentBusy;
-  const reviewState: WorkspaceLaunchReviewState = {
-    launchRecoveryState: "clear",
-    launchName,
-    selectedPlan,
-    selectedPrice,
-    balanceSufficient
-  };
-
+  const launchBusy = agentBusy;
 
   return {
     catalog,
@@ -633,14 +566,10 @@ export function useWorkspaceLaunchController({
     walletUsdMicros: gatewayBalanceMicros(wallet),
     balanceSufficient,
     customerOwned,
-    launchOperation: normalLaunchOperation,
     launchRecoveryState: "clear",
     launchPollIssue: "",
     launchSessionAvailable: Boolean(session),
     busy: launchBusy,
-    reviewWorkspaceLaunch: reviewNormalWorkspaceLaunch,
-    submitWorkspaceLaunch: submitNormalWorkspaceLaunch,
-    openLaunchedWorkspace: openNormalWorkspace,
     openLaunchBilling: () => navigate("/console/billing"),
     prepareNewWorkspaceLaunch: () => { if (agentRecoveryPending) return; setAgentOperation(null); setAgentWorkspace(null); setAgentAccess(null); setLaunchStep("configure"); setAgentConfirmed(false); },
     agentCapabilityVersions,

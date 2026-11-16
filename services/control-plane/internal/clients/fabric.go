@@ -70,24 +70,6 @@ type FabricMonthlyPreflightClient interface {
 	MonthlyPreflight(context.Context, MonthlyPreflightInput) (MonthlyPreflight, error)
 }
 
-type FabricWorkspaceDeleteClient interface {
-	DestroyWorkspaceRuntime(context.Context, string, string, string) (WorkspaceRuntime, error)
-	DetachStorageAttachment(context.Context, string, string, string, string) (StorageAttachment, error)
-	DestroyStorageVolume(context.Context, string, string, string, string) (StorageVolume, error)
-	ReadStorageVolume(context.Context, string) (StorageVolume, error)
-	DestroyComputeAllocation(context.Context, string, string, string, string) (ComputeAllocation, error)
-	ReadComputeAllocation(context.Context, string) (ComputeAllocation, error)
-	// ReadComputeDestroyStatus is the provider-authoritative, read-only absence
-	// readback for a destroyed Workspace compute.
-	ReadComputeDestroyStatus(context.Context, string) (ComputeAllocation, error)
-}
-
-type FabricWorkspaceDeleteObservationClient interface {
-	ObserveWorkspaceRuntime(context.Context, string) (WorkspaceRuntimeObservation, error)
-	ObserveWorkspaceRuntimeGatewaySecret(context.Context, string) (WorkspaceRuntimeGatewaySecretObservation, error)
-	ObserveWorkspaceRuntimeDelete(context.Context, string) (WorkspaceRuntimeDeleteObservation, error)
-}
-
 type FabricHTTPError struct {
 	StatusCode int
 	Body       string
@@ -503,21 +485,6 @@ func (c *fabricHTTPClient) RenewComputeAllocation(ctx context.Context, accountID
 	return result, err
 }
 
-func (c *fabricHTTPClient) DestroyComputeAllocation(ctx context.Context, accountID, workspaceID, id, idempotencyKey string) (ComputeAllocation, error) {
-	var result ComputeAllocation
-	input := map[string]string{"accountId": accountID, "workspaceId": workspaceID}
-	err := c.postMutation(ctx, "/fabric/compute-allocations/"+url.PathEscape(id)+"/destroy", input, idempotencyKey, fabricMutationScope{
-		AccountID: accountID, WorkspaceID: workspaceID, ResourceKind: "compute_allocation", ResourceID: id, Action: "destroy_compute_allocation",
-	}, &result)
-	return result, err
-}
-
-func (c *fabricHTTPClient) ReadComputeAllocation(ctx context.Context, id string) (ComputeAllocation, error) {
-	var result ComputeAllocation
-	err := c.get(ctx, "/fabric/compute-allocations/"+url.PathEscape(id), &result)
-	return result, err
-}
-
 func (c *fabricHTTPClient) CreateStorageVolume(ctx context.Context, input StorageVolumeInput, idempotencyKey string) (StorageVolume, error) {
 	var result StorageVolume
 	err := c.postMutation(ctx, "/fabric/storage-volumes", input, idempotencyKey, fabricMutationScope{
@@ -535,44 +502,10 @@ func (c *fabricHTTPClient) RenewStorageVolume(ctx context.Context, accountID, wo
 	return result, err
 }
 
-func (c *fabricHTTPClient) DestroyStorageVolume(ctx context.Context, accountID, workspaceID, id, idempotencyKey string) (StorageVolume, error) {
-	var result StorageVolume
-	input := map[string]string{"accountId": accountID, "workspaceId": workspaceID}
-	err := c.postMutation(ctx, "/fabric/storage-volumes/"+url.PathEscape(id)+"/destroy", input, idempotencyKey, fabricMutationScope{
-		AccountID: accountID, WorkspaceID: workspaceID, ResourceKind: "storage_volume", ResourceID: id, Action: "destroy_storage_volume",
-	}, &result)
-	return result, err
-}
-
-func (c *fabricHTTPClient) ReadComputeDestroyStatus(ctx context.Context, id string) (ComputeAllocation, error) {
-	var result ComputeAllocation
-	if err := c.get(ctx, "/fabric/compute-allocations/"+url.PathEscape(id)+"/destroy-status", &result); err != nil {
-		return ComputeAllocation{}, err
-	}
-	return result, nil
-}
-
-func (c *fabricHTTPClient) ReadStorageVolume(ctx context.Context, id string) (StorageVolume, error) {
-	var result StorageVolume
-	if err := c.get(ctx, "/fabric/storage-volumes/"+url.PathEscape(id), &result); err != nil {
-		return StorageVolume{}, err
-	}
-	return result, nil
-}
-
 func (c *fabricHTTPClient) CreateStorageAttachment(ctx context.Context, input StorageAttachmentInput, idempotencyKey string) (StorageAttachment, error) {
 	var result StorageAttachment
 	err := c.postMutation(ctx, "/fabric/storage-attachments", input, idempotencyKey, fabricMutationScope{
 		AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, ResourceKind: "storage_attachment", ResourceID: input.ComputeID + ":" + input.VolumeID, Action: "create_storage_attachment",
-	}, &result)
-	return result, err
-}
-
-func (c *fabricHTTPClient) DetachStorageAttachment(ctx context.Context, accountID, workspaceID, id, idempotencyKey string) (StorageAttachment, error) {
-	var result StorageAttachment
-	input := map[string]string{"accountId": accountID, "workspaceId": workspaceID}
-	err := c.postMutation(ctx, "/fabric/storage-attachments/"+url.PathEscape(id)+"/detach", input, idempotencyKey, fabricMutationScope{
-		AccountID: accountID, WorkspaceID: workspaceID, ResourceKind: "storage_attachment", ResourceID: id, Action: "detach_storage_attachment",
 	}, &result)
 	return result, err
 }
@@ -606,42 +539,6 @@ func (c *fabricHTTPClient) WorkspaceRuntimeGatewaySecret(ctx context.Context, wo
 	var result WorkspaceRuntimeGatewaySecretBinding
 	err := c.get(ctx, "/fabric/workspace-runtimes/"+url.PathEscape(workspaceID)+"/gateway-secret", &result)
 	return result, err
-}
-
-func (c *fabricHTTPClient) ObserveWorkspaceRuntime(ctx context.Context, workspaceID string) (WorkspaceRuntimeObservation, error) {
-	var result WorkspaceRuntimeObservation
-	err := c.get(ctx, "/fabric/workspace-runtimes/"+url.PathEscape(workspaceID)+"/observation", &result)
-	if err != nil {
-		return WorkspaceRuntimeObservation{}, err
-	}
-	if !validWorkspaceRuntimeObservation(result, workspaceID) {
-		return WorkspaceRuntimeObservation{}, errors.New("fabric_workspace_runtime_observation_invalid")
-	}
-	return result, nil
-}
-
-func (c *fabricHTTPClient) ObserveWorkspaceRuntimeGatewaySecret(ctx context.Context, workspaceID string) (WorkspaceRuntimeGatewaySecretObservation, error) {
-	var result WorkspaceRuntimeGatewaySecretObservation
-	err := c.get(ctx, "/fabric/workspace-runtimes/"+url.PathEscape(workspaceID)+"/gateway-secret/observation", &result)
-	if err != nil {
-		return WorkspaceRuntimeGatewaySecretObservation{}, err
-	}
-	if !validWorkspaceRuntimeGatewaySecretObservation(result, workspaceID) {
-		return WorkspaceRuntimeGatewaySecretObservation{}, errors.New("fabric_workspace_runtime_gateway_secret_observation_invalid")
-	}
-	return result, nil
-}
-
-func (c *fabricHTTPClient) ObserveWorkspaceRuntimeDelete(ctx context.Context, workspaceID string) (WorkspaceRuntimeDeleteObservation, error) {
-	var result WorkspaceRuntimeDeleteObservation
-	err := c.get(ctx, "/fabric/workspace-runtimes/"+url.PathEscape(workspaceID)+"/delete-observation", &result)
-	if err != nil {
-		return WorkspaceRuntimeDeleteObservation{}, err
-	}
-	if !validWorkspaceRuntimeDeleteObservation(result, workspaceID) {
-		return WorkspaceRuntimeDeleteObservation{}, errors.New("fabric_workspace_runtime_delete_observation_invalid")
-	}
-	return result, nil
 }
 
 func validWorkspaceOwnerObservationState(state string) bool {
@@ -755,15 +652,6 @@ func (c *fabricHTTPClient) RepairWorkspaceRuntime(ctx context.Context, input Wor
 	var result WorkspaceRuntime
 	err := c.postMutation(ctx, "/fabric/workspace-runtimes/"+url.PathEscape(input.WorkspaceID)+"/repair", input, idempotencyKey, fabricMutationScope{
 		AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, ResourceKind: "workspace_runtime", ResourceID: input.WorkspaceID, Action: "repair_workspace_runtime",
-	}, &result)
-	return result, err
-}
-
-func (c *fabricHTTPClient) DestroyWorkspaceRuntime(ctx context.Context, accountID, workspaceID, idempotencyKey string) (WorkspaceRuntime, error) {
-	var result WorkspaceRuntime
-	input := map[string]string{"accountId": accountID, "workspaceId": workspaceID}
-	err := c.postMutation(ctx, "/fabric/workspace-runtimes/"+url.PathEscape(workspaceID)+"/destroy", input, idempotencyKey, fabricMutationScope{
-		AccountID: accountID, WorkspaceID: workspaceID, ResourceKind: "workspace_runtime", ResourceID: workspaceID, Action: "destroy_workspace_runtime",
 	}, &result)
 	return result, err
 }

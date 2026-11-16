@@ -175,12 +175,15 @@ export function useWorkspaceDeleteController({
   };
 
   const deleteCurrentWorkspace = async () => {
-    const canResumeAttention = cloudIdentity && readback.operation?.status === "manual_review";
+    // The Control Plane's own deletion command retired with the retained CP
+    // execution slice. The Workspace owner owns the deletion, the refund and the
+    // operation, so this command is the owner's command and only the cloud
+    // identity has an owner to call.
+    if (!cloudIdentity) return;
+    const canResumeAttention = readback.operation?.status === "manual_review";
     if (!session || !workspace || workspace.id !== activeWorkspaceId || busy || loading
       || readback.workspaceId !== activeWorkspaceId || readback.operation && !canResumeAttention || issue === "unconfirmed") return;
-    const refundNotice = cloudIdentity
-      ? "资源删除与退款分别确认；符合原单退款政策时自动处理，退款结果以原单回读为准。"
-      : "删除和退款是独立操作；删除完成不代表退款完成，退款结果以原单回读为准。";
+    const refundNotice = "资源删除与退款分别确认；符合原单退款政策时自动处理，退款结果以原单回读为准。";
     if (!window.confirm(`确认删除工作空间“${workspace.name || workspace.id}”？请先自行下载需要的数据。删除后数据无法恢复，关闭页面后仍会继续处理。${refundNotice}`)) return;
 
     const requestStillCurrent = currentMutationRequest();
@@ -198,14 +201,8 @@ export function useWorkspaceDeleteController({
     setIssue("");
 
     try {
-      const result = await deleteWorkspace(workspaceId, workspace.name ?? "", csrfToken, resolved.idempotencyKey);
+      await deleteWorkspace(workspaceId, workspace.name ?? "", csrfToken, resolved.idempotencyKey);
       if (!requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) return;
-      if (!result.available) {
-        if (intents.current.get(workspaceId) === resolved) intents.current.delete(workspaceId);
-        setIssue("unavailable");
-        flash("Workspace 删除暂不可用", "danger");
-        return;
-      }
       await readDeletion(workspaceId, generation, requestStillCurrent, userId, csrfToken, true);
     } catch (error) {
       if (!requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) return;

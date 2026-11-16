@@ -17,6 +17,63 @@ establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
 
+## R5 retained Control Plane execution withdrawal (2026-11-17)
+
+The Control Plane's retained Launch, renewal/expiry, deletion and refund
+execution slice is withdrawn in source ([Cloud PR #1232](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1232)).
+The launch service, reconciler, account and Fabric stage drivers, activation
+and closeout writers, the three workspace workers (launch replay/resume, delete,
+renewal/expiry) and the renewal and deletion execution leave the Control Plane
+with their store claim/CAS/refund-reservation methods, their Fabric client
+wrappers, their canonical repair, disposable reset and stage diagnostic
+dispatch, their worker startup calls and their worker enable/interval/lead
+settings in the portable topology, Compose overlays and environment example.
+The five command registrations (`POST /api/workspace-launches`,
+`POST /api/operator/workspace-launches/{id}/recover`,
+`POST /api/operator/billing-reviews/{resourceType}/{id}/resolve`,
+`DELETE /api/workspaces/{workspaceId}` and
+`POST /api/workspaces/{workspaceId}/auto-renew`) are unregistered, and the
+legacy Console launch, renewal and delete command branches and the old tool
+branches in `deployed-workspace-purchase.ts`,
+`workspace-qualification-orchestrator.ts` and `local-workspace-recovery.ts`
+leave with them. The operator reconciliation queue no longer offers a Control
+Plane action, and the recovery read offers none either: the historical state
+stays readable and nothing can be commanded.
+
+The history is untouched. The strict historical decoders and the receipt
+builders that the billing readers, the settlement trend and the historical
+authorization coverage depend on now live in `workspace_launch_history.go`,
+`workspace_delete_history.go` and `workspace_renewal_history.go`, independently
+of the retired mutation functions; the original records, attempts, receipts and
+audit history are unchanged; `GET /api/workspace-launches`,
+`GET /api/workspace-launches/{id}`, `GET /api/operator/workspace-launches/{id}/recovery`,
+`GET /api/workspaces/{id}/deletion` and `GET /api/workspaces/{id}/renewal` stay
+registered; `d2_historical_settlement_test.go`, the billing trend coverage and
+the native owner behavior tests stay. The native v2 purchase core and the native
+delete are untouched.
+
+The retired writers also retire the cases that only existed by running them. The
+D1/D4 renewal and finance-chain names leave the database-free lane's declared
+money-chain list in the same change, and the D2 finance-chain and refund
+reconciliation cases retire with the launch writer and the monthly billing sweep
+their fixtures needed. The customer billing receipt cases stay and now seed their
+original order as the persisted facts the retained readers decode, so the retained
+receipt projection keeps its coverage without the retired execution. The legacy
+Console's renewal and delete browser cases follow the same rule: the recovery
+read, the deletion readback and their generation guards keep their coverage, and
+the cases that drove the retired commands leave with them.
+
+The precondition this scope asks for is only partly met. The three #1018
+orders are closed with their own completed readbacks and must not be purchased,
+deleted or refunded again, and the accepted operations and historical GET
+consumers have an explicit disposition. The all-object and all-operation census
+and the zero-new-business acceptance interval are still uncollected, so this
+withdrawal does not establish that no other paid renewal or financial
+obligation remains; that census stays open in
+[roadmap.md](roadmap.md#remaining-review-scopes). The Instance workflows that
+still call the retired commands (`resume-original-workspace-launch.yml`,
+`workspace-delete-refund.yml`) are withdrawn on the Instance side.
+
 ## Backend deployment decision (2026-11-16)
 
 The [target](architecture.md#deployment-unit-composition) now prefers one modular

@@ -14,7 +14,6 @@ import (
 	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
-	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 	"opl-cloud/services/control-plane/internal/domain"
 )
@@ -366,16 +365,6 @@ func workspaceRotationBudgetSnapshotValid(operation workspaceKeyRotationOperatio
 	return (operation.RateLimit5hUSDMicros == 0 || operation.Usage5hUSDMicros == 0) &&
 		(operation.RateLimit1dUSDMicros == 0 || operation.Usage1dUSDMicros == 0) &&
 		(operation.RateLimit7dUSDMicros == 0 || operation.Usage7dUSDMicros == 0)
-}
-
-func workspaceKeysNamed(keys []clients.Sub2APIWorkspaceKey, name string) []clients.Sub2APIWorkspaceKey {
-	matches := make([]clients.Sub2APIWorkspaceKey, 0, 1)
-	for _, key := range keys {
-		if key.Name == name {
-			matches = append(matches, key)
-		}
-	}
-	return matches
 }
 
 func (app *controlPlaneServer) proxyWorkspace(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {

@@ -41,30 +41,6 @@ func (s *Service) RefundSub2API(ctx context.Context, input clients.Sub2APIRefund
 	return client.Refund(ctx, input)
 }
 
-func (s *Service) PreflightMonthlyResource(ctx context.Context, input clients.MonthlyPreflightInput) (clients.MonthlyPreflight, error) {
-	client, ok := s.fabric.(clients.FabricMonthlyPreflightClient)
-	if !ok {
-		return clients.MonthlyPreflight{}, errors.New("fabric_monthly_preflight_unavailable")
-	}
-	return client.MonthlyPreflight(ctx, input)
-}
-
-func (s *Service) RenewMonthlyCompute(ctx context.Context, accountID, workspaceID, id, key string) (clients.ProviderResourceMutation, error) {
-	client, ok := s.fabric.(clients.FabricRenewalClient)
-	if !ok {
-		return clients.ProviderResourceMutation{}, errors.New("fabric_renewal_unavailable")
-	}
-	return client.RenewComputeAllocation(ctx, accountID, workspaceID, id, key)
-}
-
-func (s *Service) RenewMonthlyStorage(ctx context.Context, accountID, workspaceID, id, key string) (clients.ProviderResourceMutation, error) {
-	client, ok := s.fabric.(clients.FabricRenewalClient)
-	if !ok {
-		return clients.ProviderResourceMutation{}, errors.New("fabric_renewal_unavailable")
-	}
-	return client.RenewStorageVolume(ctx, accountID, workspaceID, id, key)
-}
-
 func (s *Service) RecordMonthlyReceipt(ctx context.Context, input clients.ReceiptInput, key string) (clients.Receipt, error) {
 	return s.ledger.RecordReceipt(ctx, input, key)
 }

@@ -435,10 +435,6 @@ export interface WorkspaceDeletionDTO {
   refundPolicyVersion?: string;
 }
 
-export type WorkspaceDeleteCommandResult =
-  | { available: true; data: WorkspaceDeleteResponse }
-  | { available: false; reasonCode: "workspace_delete_unavailable" };
-
 export interface WorkspaceLaunchOperationDTO extends WorkspaceLaunchResponse {
   workspaceApiKeyId?: string;
   workspaceKeyStatus?: string;
@@ -446,10 +442,6 @@ export interface WorkspaceLaunchOperationDTO extends WorkspaceLaunchResponse {
 }
 
 export type WorkspaceLaunchListResponse = WorkspaceLaunchResponse[];
-
-export interface WorkspaceRenewalRequest {
-  autoRenew: boolean;
-}
 
 export interface WorkspaceRenewalResponse {
   autoRenew: boolean;
@@ -465,9 +457,6 @@ export interface WorkspaceRenewalReadDTO extends WorkspaceRenewalResponse {
     reason: string;
   };
 }
-
-export type WorkspaceAutoRenewRequest = WorkspaceRenewalRequest;
-export type WorkspaceAutoRenewCommandDTO = WorkspaceRenewalResponse;
 
 export interface RuntimeCheck {
   name: string;
@@ -1114,8 +1103,7 @@ export interface OperatorReconciliationItemDTO {
   billingOperationId: string;
   phase: string;
   errorCode: string;
-  progressionOwner: "control_plane_launch_reconciler" | "operator_recovery" | "none";
-  allowedActions: Array<"resume_workspace_launch" | "resolve_billing_review">;
+  allowedActions: Array<"read_workspace_launch_recovery">;
   operationRef?: string;
   receiptRef?: string;
 }
@@ -1127,26 +1115,15 @@ export interface OperatorReconciliationPageDTO {
   pageSize: number;
 }
 
+// The recovery command retired with the retained CP launch execution, so the
+// recovery read reports the accepted order's own state and offers no action.
 export interface WorkspaceLaunchRecoveryDTO {
   operationId: string;
   launchVersion: number;
   status: string;
   stage: string;
-  allowedActions: Array<"check_result" | "close_unfulfilled">;
+  allowedActions: string[];
   closeout?: WorkspaceLaunchCloseoutDTO;
-}
-
-export interface WorkspaceLaunchRecoveryRequest {
-  action: "check_result" | "close_unfulfilled";
-  launchVersion: number;
-  reason: string;
-}
-
-export interface BillingReviewResolutionRequest {
-  accountId: string;
-  billingOperationId: string;
-  decision: "activate_charged_resource" | "terminate_uncharged_absent" | "refund_charged_absent";
-  evidenceRef: string;
 }
 
 export interface ReadinessFact {

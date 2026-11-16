@@ -341,25 +341,6 @@ func TestWorkspaceResourceReconcileRejectsMismatchedRuntimeReadback(t *testing.T
 	assertResourceReconcileNoFinancialOrResourceMutation(t, fixture)
 }
 
-func TestWorkspaceResourceReconcileStorageLossRemainsTerminalThroughExpiry(t *testing.T) {
-	fixture, fabric := newWorkspaceResourceReconcileFixture(t)
-	fabric.facts[0].Facts.Status = "external_deleted"
-	if err := fixture.app.runProviderReconcileOnce(context.Background(), fixture.service, time.Now().UTC()); err != nil {
-		t.Fatal(err)
-	}
-	stale := cloneMap(fixture.workspace)
-	stale["state"], stale["status"] = "suspended", "suspended"
-	mustStore(t, fixture.app.tables.SaveWorkspace(context.Background(), stale))
-	after, _ := fixture.app.getWorkspace(stringValue(fixture.workspace["id"]))
-	if after["state"] != "data_deleted" || after["autoRenew"] != false {
-		t.Fatal("stale suspended projection downgraded destroyed storage")
-	}
-	paidThrough, _ := parseTimeString(stringValue(after["paidThrough"]))
-	if err := fixture.app.processWorkspaceRenewal(context.Background(), fixture.service, stringValue(after["id"]), paidThrough.Add(time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	after, _ = fixture.app.getWorkspace(stringValue(fixture.workspace["id"]))
-	if after["state"] != "data_deleted" || after["status"] != "unrecoverable" || after["autoRenew"] != false || len(fixture.sub2API.charges) != 0 || len(fixture.sub2API.refunds) != 0 || len(fixture.fabric.computeRenewKeys) != 0 || len(fixture.fabric.storageRenewKeys) != 0 {
-		t.Fatal("expiry reopened destroyed storage or attempted financial recovery")
-	}
-}
+// monthlyRenewalLead was the renewal worker's scheduling lead. The worker
+// is retired; the reconciliation suite still measures the same boundary.
+const monthlyRenewalLead = 24 * time.Hour

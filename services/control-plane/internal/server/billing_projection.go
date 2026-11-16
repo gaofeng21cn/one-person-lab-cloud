@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"opl-cloud/services/control-plane/internal/clients"
-	"opl-cloud/services/control-plane/internal/controlplane"
 )
 
 // A settlement is one original debit or refund, independent of the current
@@ -170,43 +169,6 @@ func validSettlementPeriod(start, end string) bool {
 	from, err := time.Parse(time.RFC3339, start)
 	through, endErr := time.Parse(time.RFC3339, end)
 	return err == nil && endErr == nil && through.After(from)
-}
-
-func sub2APIReconciliationCode(row map[string]any, userID int64, history map[string]clients.Sub2APIBalanceHistoryEntry) string {
-	code := stringValue(row["sub2apiRedeemCode"])
-	entry, found := history[code]
-	if !found {
-		return "sub2api_charge_missing"
-	}
-	charge, validCharge := requiredNonNegativeInteger(row, "chargeUsdMicros")
-	if !validCharge || entry.Code != code || entry.Type != "balance" || entry.Status != "used" || entry.UsedBy == nil || *entry.UsedBy != userID || entry.ValueUSDMicros != -charge {
-		return "sub2api_charge_mismatch"
-	}
-	return ""
-}
-
-func reconciliationLedgerReceipts(ctx context.Context, service *controlplane.Service, query clients.ReceiptQuery) ([]clients.Receipt, error) {
-	if query.AccountID == "" || query.RequestID == "" && query.WorkspaceID == "" {
-		return nil, errors.New("ledger_receipt_scope_required")
-	}
-	receipts := []clients.Receipt{}
-	query.Limit = 100
-	seen := map[string]bool{}
-	for {
-		page, err := service.BillingReceipts(ctx, query)
-		if err != nil {
-			return nil, err
-		}
-		receipts = append(receipts, page.Receipts...)
-		if !page.HasMore {
-			return receipts, nil
-		}
-		if page.NextCursor == "" || seen[page.NextCursor] {
-			return nil, errors.New("ledger_receipt_pagination_invalid")
-		}
-		seen[page.NextCursor] = true
-		query.Cursor = page.NextCursor
-	}
 }
 
 func (app *controlPlaneServer) reconciliationProjectionLocked() map[string]any {

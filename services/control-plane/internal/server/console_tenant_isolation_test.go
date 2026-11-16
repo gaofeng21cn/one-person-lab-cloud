@@ -260,28 +260,6 @@ func TestCustomerWorkspaceListContainsOnlySessionTenant(t *testing.T) {
 	}
 }
 
-func TestRetainedLaunchRefusalDoesNotLeakGlobalReconciliationProjection(t *testing.T) {
-	store := newMemoryTableStore()
-	seedTenantMember(t, store, "acct-alpha", "org-alpha", "usr-alpha", "alpha@example.com")
-	row := billingReconciliationRowForTest("global", "mismatch", "private-operator-reason")
-	row["message"] = map[string]any{"author": "operator-secret", "text": "cross-tenant-private-report"}
-	applyBillingReconciliationForTest(t, store, row, "")
-	server, err := NewPersistentServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}), store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	member := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
-	rec := requestWithSession(t, server, member, http.MethodPost, "/api/workspace-launches", `{"name":"Alpha","packageId":"basic","autoRenew":false}`)
-	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), retainedWorkspaceLaunchNewPurchaseRetired) {
-		t.Fatalf("retained new purchase status=%d body=%s", rec.Code, rec.Body.String())
-	}
-	for _, secret := range []string{"billingReconciliation", "private-operator-reason", "operator-secret", "cross-tenant-private-report", "messageText", "messageAuthor"} {
-		if strings.Contains(rec.Body.String(), secret) {
-			t.Fatalf("blocked launch leaked %q: %s", secret, rec.Body.String())
-		}
-	}
-}
-
 func seedTenantMember(t *testing.T, store controlPlaneTableStore, accountID, _ string, userID, email string) {
 	t.Helper()
 	account := map[string]any{"id": accountID, "ownerUserId": userID, "sub2apiUserId": testSub2APIUserID(email), "status": "active", "workspacePurchaseEnabled": true}

@@ -25,7 +25,6 @@ import type {
   GatewayWalletReadbackDTO,
   AnnouncementDraftRequest,
   AnnouncementScheduleRequest,
-  BillingReviewResolutionRequest,
   ProvisionAccountRequest,
   OperatorAccountCommandDTO,
   OperatorProvisionAccountCommandDTO,
@@ -42,7 +41,6 @@ import type {
   WalletAdjustmentRecoveryRequest,
   WalletAdjustmentRequest,
   WorkspaceLaunchRecoveryDTO,
-  WorkspaceLaunchRecoveryRequest,
   OperatorAccountsData,
   OperationStatusDTO,
   PricingCatalogResponse,
@@ -471,18 +469,14 @@ export function setOperatorWorkspacePurchaseEligibility(accountId: string, enabl
   return postJson<unknown>(operatorWriteRoute(cloud, `/accounts/${encodeURIComponent(accountId)}/workspace-purchase-eligibility`), { confirmationAccountId: accountId, enabled, reason }, csrfToken, idempotencyKey).then(decodeDto<OperatorWorkspacePurchaseEligibilityCommandDTO>);
 }
 
-export function resolveBillingReview(resourceType: string, resourceId: string, input: BillingReviewResolutionRequest, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperationStatusDTO> {
-  return postJson<unknown>(operatorWriteRoute(cloud, `/billing-reviews/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}/resolve`), input, csrfToken, idempotencyKey).then(decodeDto<OperationStatusDTO>);
-}
-
 function decodeWorkspaceLaunchRecovery(value: unknown, operationId: string): WorkspaceLaunchRecoveryDTO {
   const result = decodeDto<WorkspaceLaunchRecoveryDTO>(value);
+  // The recovery command retired with the retained CP execution slice, so the
+  // recovery read offers no action. An action in the payload would be a command
+  // this Console cannot take, so the read is rejected instead of displayed.
   if (!result || result.operationId !== operationId || !Number.isSafeInteger(result.launchVersion) || result.launchVersion < 1
     || typeof result.status !== "string" || !result.status || typeof result.stage !== "string" || !result.stage
-    || !Array.isArray(result.allowedActions) || result.allowedActions.length > 2
-    || result.allowedActions.some((action) => action !== "check_result" && action !== "close_unfulfilled")
-    || new Set(result.allowedActions).size !== result.allowedActions.length
-    || result.status !== "manual_review" && result.allowedActions.length > 0) {
+    || !Array.isArray(result.allowedActions) || result.allowedActions.length > 0) {
     throw new Error("invalid_workspace_launch_recovery");
   }
   return result;
@@ -490,11 +484,6 @@ function decodeWorkspaceLaunchRecovery(value: unknown, operationId: string): Wor
 
 export function getWorkspaceLaunchRecovery(operationId: string, signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<WorkspaceLaunchRecoveryDTO> {
   return getJson<unknown>(`${operatorReadRoute(cloud)}/workspace-launches/${encodeURIComponent(operationId)}/recovery`, { signal })
-    .then((value) => decodeWorkspaceLaunchRecovery(value, operationId));
-}
-
-export function recoverWorkspaceLaunch(operationId: string, input: WorkspaceLaunchRecoveryRequest, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<WorkspaceLaunchRecoveryDTO> {
-  return postJson<unknown>(operatorWriteRoute(cloud, `/workspace-launches/${encodeURIComponent(operationId)}/recover`), input, csrfToken, idempotencyKey)
     .then((value) => decodeWorkspaceLaunchRecovery(value, operationId));
 }
 

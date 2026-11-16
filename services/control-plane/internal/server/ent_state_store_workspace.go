@@ -12,7 +12,6 @@ import (
 
 	contracts "opl-cloud/packages/contracts/go"
 	controlplaneent "opl-cloud/services/control-plane/ent"
-	"opl-cloud/services/control-plane/ent/adminauditevent"
 	"opl-cloud/services/control-plane/ent/computeallocation"
 	"opl-cloud/services/control-plane/ent/runtimeoperation"
 	"opl-cloud/services/control-plane/ent/storageattachment"
@@ -533,84 +532,6 @@ func (s *postgresEntStateStore) SaveWorkspace(ctx context.Context, row map[strin
 	defer func() { _ = tx.Rollback() }()
 	if err := saveWorkspaceRecord(ctx, tx.Client(), row); err != nil {
 		return err
-	}
-	return tx.Commit()
-}
-
-func (s *postgresEntStateStore) ApplyWorkspaceRenewalIntent(ctx context.Context, update workspaceRenewalIntentCAS) error {
-	tx, err := s.client.Tx(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	client := tx.Client()
-	entity, err := client.Workspace.Query().Where(workspace.IDEQ(update.WorkspaceID), lockRowForUpdate).Only(ctx)
-	if err != nil {
-		if controlplaneent.IsNotFound(err) {
-			return errWorkspaceRenewalCASConflict
-		}
-		return err
-	}
-	current := recordFromEnt(entity, workspaceEntFields)
-	currentAutoRenew, validAutoRenew := current["autoRenew"].(bool)
-	if stringValue(current["accountId"]) != update.AccountID || stringValue(current["ownerUserId"]) != update.OwnerUserID ||
-		stringValue(current["paidThrough"]) != update.ExpectedPaidThrough || !validAutoRenew || currentAutoRenew != update.ExpectedAutoRenew {
-		return errWorkspaceRenewalCASConflict
-	}
-	operationEntities, err := client.RuntimeOperation.Query().Where(runtimeoperation.WorkspaceIDEQ(update.WorkspaceID), lockRowForUpdate).All(ctx)
-	if err != nil {
-		return err
-	}
-	operations := make([]map[string]any, 0, len(operationEntities))
-	for _, operation := range operationEntities {
-		row := recordFromEnt(operation, runtimeOpEntFields)
-		if stringValue(row["id"]) == stringValue(update.CommandOperation["id"]) {
-			return errWorkspaceRenewalCASConflict
-		}
-		operations = append(operations, row)
-	}
-	if runtimeOperationsVersion(operations, update.WorkspaceID) != update.ExpectedOperationsVersion {
-		return errWorkspaceRenewalCASConflict
-	}
-	desired := cloneMap(current)
-	desired["autoRenew"], desired["authorizedBy"], desired["authorizedAt"] = update.WorkspacePatch.AutoRenew, update.WorkspacePatch.AuthorizedBy, update.WorkspacePatch.AuthorizedAt
-	if err := validateWorkspaceBillingState(desired); err != nil {
-		return err
-	}
-	if err := validateWorkspaceRenewalIntentAudit(update, current); err != nil {
-		return err
-	}
-	auditID := stringValue(update.AuditEvent["id"])
-	auditExists := false
-	auditEntity, err := client.AdminAuditEvent.Query().Where(adminauditevent.IDEQ(auditID), lockRowForUpdate).Only(ctx)
-	if err == nil {
-		auditExists = true
-		if !workspaceRenewalIntentAuditIdentityMatches(recordFromEnt(auditEntity, auditEntFields), update.AuditEvent) {
-			return errIdempotencyConflict
-		}
-	} else if !controlplaneent.IsNotFound(err) {
-		return err
-	}
-	builder := client.Workspace.UpdateOneID(update.WorkspaceID)
-	setRecordFieldsWithEmptyText(builder, desired, workspaceEntFields, true)
-	if err := execCreate(ctx, builder); err != nil {
-		return err
-	}
-	command := controlPlaneRecord(update.CommandOperation)
-	if err := saveRecord(ctx, stringValue(command["id"]), command, client.RuntimeOperation.Create(), runtimeOpEntFields); err != nil {
-		if controlplaneent.IsConstraintError(err) {
-			return errWorkspaceRenewalCASConflict
-		}
-		return err
-	}
-	if !auditExists {
-		audit := controlPlaneRecord(update.AuditEvent)
-		if err := saveRecord(ctx, auditID, audit, client.AdminAuditEvent.Create(), auditEntFields); err != nil {
-			if controlplaneent.IsConstraintError(err) {
-				return errIdempotencyConflict
-			}
-			return err
-		}
 	}
 	return tx.Commit()
 }

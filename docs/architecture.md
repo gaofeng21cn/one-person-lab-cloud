@@ -268,9 +268,8 @@ its current provider and readiness facts. Control Plane's readiness projection
 reads that provider fact and compares it with its configured
 `OPL_FABRIC_PROVIDER`; a mismatch marks the readiness result failed as
 `provider_consistency_failure` without provider mutation. This read-only check
-is not fresh-purchase admission: a new `POST /api/workspace-launches` key is
-refused at the Launch route fence, and new Workspace purchases belong to the
-Workspace owner route.
+is not fresh-purchase admission: the Launch command route is not registered
+any more, and new Workspace purchases belong to the Workspace owner route.
 Where an Instance verification path provides both `OPL_RUNTIME_PROVIDER` and
 `OPL_FABRIC_PROVIDER`, it only verifies that they agree;
 `OPL_RUNTIME_PROVIDER` is not a third Provider.
@@ -1116,10 +1115,11 @@ Historical read/list preserves the recorded original operation identity and
 persisted result. Ordinary same-key replay returns that recorded operation
 without advancing it; only the retained pending Key or customer-owned
 Key/Secret unknown branch may continue it. Operator-authorized Resume and
-worker reconciliation advance the same original operation through the
-Reconciler. A fresh Create is not a Control Plane entry: a new
-`POST /api/workspace-launches` key is refused at the route fence, and new
-Workspace purchases belong to the Workspace owner route.
+worker reconciliation advanced the same original operation through the
+Reconciler. Both the worker and the Reconciler left the source tree with the
+R5 withdrawal, and the Launch command route is not registered any more, so a
+fresh Create is not a Control Plane entry and new Workspace purchases belong
+to the Workspace owner route.
 The Reconciler coordinates separate physical owners rather than implementing
 their work. This is a source-level retirement of the fresh-create writer and
 claim path; it does not establish Candidate qualification, Instance deployment,

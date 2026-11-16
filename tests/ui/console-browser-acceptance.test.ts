@@ -80,28 +80,25 @@ test("Console fake refuses new Launch intent without writes and retains original
     assert.ok(result);
     return result;
   }
-  const fence = {
-    status: 409,
-    body: { error: "workspace_launch_new_purchase_retired", owner: "workspace", next: ["POST /api/v2/quotes", "POST /api/v2/workspaces"] }
-  };
+  // The Control Plane launch command and its resume command retired with the
+  // retained execution slice: neither route is registered any more.
+  const retired = { status: 404, body: { error: "console_route_not_found" } };
   const beforeNewIntent = structuredClone(state);
-  assert.deepEqual(await request("/api/workspace-launches", "POST", "fresh-key"), fence);
+  assert.deepEqual(await request("/api/workspace-launches", "POST", "fresh-key"), retired);
   assert.deepEqual(state, beforeNewIntent, "refusal must not allocate a Workspace, Key, operation or any write state");
 
   state.launches = [historical];
   const beforeHistory = structuredClone(state);
   assert.deepEqual(await request("/api/workspace-launches"), { status: 200, body: [historical] });
   assert.deepEqual(await request("/api/workspace-launches/launch-historical"), { status: 200, body: historical });
-  assert.deepEqual(await request("/api/workspace-launches", "POST", "original-key"), { status: 202, body: historical });
-  assert.deepEqual(await request("/api/workspace-launches/launch-historical/resume", "POST", "resume-key"), { status: 202, body: historical });
-  assert.deepEqual(await request("/api/workspace-launches", "POST", "original-key", { ...input, name: "Different Workspace" }), { status: 409, body: { error: "idempotency_conflict" } });
-  assert.deepEqual(await request("/api/workspace-launches", "POST", "another-key"), fence);
+  assert.deepEqual(await request("/api/workspace-launches", "POST", "original-key"), retired);
+  assert.deepEqual(await request("/api/workspace-launches/launch-historical/resume", "POST", "resume-key"), retired);
   session.accountId = "acct-2";
   session.consoleUserId = "user-other";
   assert.deepEqual(await request("/api/workspace-launches"), { status: 200, body: [] });
   assert.deepEqual(await request("/api/workspace-launches/launch-historical"), { status: 404, body: { error: "workspace_launch_not_found" } });
-  assert.deepEqual(await request("/api/workspace-launches/launch-historical/resume", "POST", "resume-key"), { status: 404, body: { error: "workspace_launch_not_found" } });
-  assert.deepEqual(await request("/api/workspace-launches", "POST", "original-key"), fence);
+  assert.deepEqual(await request("/api/workspace-launches/launch-historical/resume", "POST", "resume-key"), retired);
+  assert.deepEqual(await request("/api/workspace-launches", "POST", "original-key"), retired);
   assert.deepEqual(state, beforeHistory, "historical fixture requests must retain the pre-seeded identities and resources");
 });
 

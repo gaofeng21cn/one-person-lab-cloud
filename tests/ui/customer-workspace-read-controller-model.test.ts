@@ -9,13 +9,10 @@ import type {
 import {
   CUSTOMER_WORKSPACE_LIST_PAGE_SIZE,
   applyCustomerWorkspaceCompletion,
-  commitCustomerWorkspaceDetailProjectionLease,
   createCustomerWorkspaceDetailScope,
-  createCustomerWorkspaceDetailProjectionLease,
   createCustomerWorkspaceListScope,
   createCustomerWorkspaceReadState,
   customerWorkspaceRouteReadPlan,
-  customerWorkspaceDetailProjectionLeaseIsCurrent,
   customerWorkspaceScopeIsCurrent,
   customerWorkspaceSourceMatchesScope,
   invalidateCustomerWorkspaceReadEpoch,
@@ -224,23 +221,6 @@ test("Session, route, request, and Workspace identity are all part of freshness"
   assert.equal(customerWorkspaceScopeIsCurrent(scope, createCustomerWorkspaceDetailScope({
     ...epoch(), requestGeneration: 6, workspaceId: beta.id
   })), false);
-});
-
-test("a committed detail projection lease invalidates the older detail refresh", () => {
-  const staleRefreshScope = createCustomerWorkspaceDetailScope({
-    ...epoch(),
-    requestGeneration: 6,
-    workspaceId: alpha.id
-  });
-  const lease = createCustomerWorkspaceDetailProjectionLease(staleRefreshScope);
-
-  assert.equal(customerWorkspaceDetailProjectionLeaseIsCurrent(lease, staleRefreshScope), true);
-  const committedScope = commitCustomerWorkspaceDetailProjectionLease(lease, staleRefreshScope);
-  assert.ok(committedScope);
-  assert.equal(committedScope.requestGeneration, staleRefreshScope.requestGeneration + 1);
-  assert.equal(customerWorkspaceDetailProjectionLeaseIsCurrent(lease, committedScope), false);
-  assert.equal(customerWorkspaceScopeIsCurrent(staleRefreshScope, committedScope), false);
-  assert.equal(commitCustomerWorkspaceDetailProjectionLease(lease, committedScope), null);
 });
 
 test("reset invalidates old leases and production settlement keeps empty, absence, and unavailable distinct", () => {

@@ -1129,7 +1129,7 @@ test("multiple App versions stay in collapsed details and quote the explicitly s
   assertNativeLaunchFixtureClean(fixture);
 });
 
-test("Workspace detail fails closed without exposing Runtime or delete reason codes by default", { timeout: 30_000 }, async () => {
+test("Workspace detail fails closed without exposing Runtime reason codes by default", { timeout: 30_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await launchBrowser({ headless: true });
   try {
@@ -1145,19 +1145,6 @@ test("Workspace detail fails closed without exposing Runtime or delete reason co
       };
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(unavailableRuntime) });
     });
-    let deleteWrites = 0;
-    await page.route("**/api/workspaces/ws-1", async (route) => {
-      if (route.request().method() !== "DELETE") {
-        await route.fallback();
-        return;
-      }
-      deleteWrites += 1;
-      await route.fulfill({
-        status: 405,
-        contentType: "application/json",
-        body: JSON.stringify({ error: "method_not_allowed" })
-      });
-    });
 
     await login(page, demo.origin);
     await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "networkidle" });
@@ -1166,21 +1153,9 @@ test("Workspace detail fails closed without exposing Runtime or delete reason co
     assert.equal(await page.getByRole("button", { name: "打开工作空间", exact: true }).isDisabled(), true);
     assert.equal(await visibleTextCount(page, "fabric_runtime_temporarily_unavailable"), 0);
 
-    const advanced = page.locator("details.workspace-advanced-details");
-    await advanced.locator("summary").click();
-    page.once("dialog", (dialog) => { void dialog.accept(); });
-    const deletePanel = page.locator(".workspace-delete-panel");
-    await deletePanel.getByRole("button", { name: "删除工作空间", exact: true }).click();
-    await deletePanel.getByText("工作空间删除暂不可用", { exact: true }).waitFor({ state: "visible" });
-    assert.equal(deleteWrites, 1);
-    assert.equal(await visibleTextCount(page, "workspace_delete_unavailable"), 0);
-
     const technical = page.locator("details.workspace-technical-details");
     await technical.locator("summary").click();
     await technical.getByText("fabric_runtime_temporarily_unavailable", { exact: true }).waitFor({ state: "visible" });
-    await technical.getByText("workspace_delete_unavailable", { exact: true }).waitFor({ state: "visible" });
-    assert.deepEqual(audit.consoleErrors, ["Failed to load resource: the server responded with a status of 405 (Method Not Allowed)"]);
-    audit.consoleErrors.length = 0;
     assertBrowserAuditClean(audit);
   } finally {
     await browser.close();
@@ -1516,7 +1491,6 @@ async function verifyWorkspaceDetailExperience() {
       await advanced.getByText("$0.25", { exact: true }).waitFor({ state: "visible" });
       const budgetPanel = advanced.locator(".workspace-budget-panel");
       const maintenancePanel = advanced.locator(".workspace-maintenance-panel");
-      const deletePanel = page.locator(".workspace-delete-panel");
       await budgetPanel.getByRole("heading", { name: "预算设置", exact: true }).waitFor({ state: "visible" });
       const quotaInput = budgetPanel.getByLabel("总额度（美元）");
       await quotaInput.waitFor({ state: "visible" });
@@ -1542,15 +1516,16 @@ async function verifyWorkspaceDetailExperience() {
       assert.equal(await maintenancePanel.getByRole("button", { name: "重置总额度用量", exact: true }).count(), 1);
       assert.equal(await maintenancePanel.getByRole("button", { name: "重置滚动窗口用量", exact: true }).count(), 1);
       assert.equal(await maintenancePanel.getByRole("button", { name: "保存预算", exact: true }).count(), 0);
-      assert.equal(await advanced.getByRole("button", { name: "删除工作空间", exact: true }).count(), 0);
-      await deletePanel.getByRole("button", { name: "删除工作空间", exact: true }).waitFor({ state: "visible" });
+      // The Control Plane deletion command retired with the retained CP
+      // execution slice, so the legacy Workspace detail keeps no delete panel.
+      assert.equal(await page.locator(".workspace-delete-panel").count(), 0);
+      assert.equal(await page.getByRole("button", { name: "删除工作空间", exact: true }).count(), 0);
 
       if (viewport.name === "mobile") {
         await assertAboveMobileNavigation(page, page.getByRole("button", { name: "工作空间列表", exact: true }));
         await assertAboveMobileNavigation(page, quotaInput);
         await assertAboveMobileNavigation(page, maintenancePanel.getByRole("button", { name: "重置总额度用量", exact: true }));
         await assertAboveMobileNavigation(page, maintenancePanel.getByRole("button", { name: "重置滚动窗口用量", exact: true }));
-        await assertAboveMobileNavigation(page, deletePanel.getByRole("button", { name: "删除工作空间", exact: true }));
       }
 
       const technical = page.locator("details.workspace-technical-details");
@@ -1580,7 +1555,6 @@ async function verifyWorkspaceDetailExperience() {
         "panel workspace-access-panel",
         "panel workspace-plan-panel",
         "panel workspace-settings-panel",
-        "panel workspace-delete-panel",
         "panel workspace-technical-panel"
       ]);
       await assertNoHorizontalOverflow(page);

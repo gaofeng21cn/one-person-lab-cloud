@@ -17,7 +17,6 @@ import {
 } from "./workspace-purchase-core.ts";
 
 import {
-  createLocalJ1RecoveryArtifact,
   createLocalJ1RecoveryReadbackPendingArtifact,
   localJ1CleanupPlan,
   localJ1RecoveryArtifactPath,

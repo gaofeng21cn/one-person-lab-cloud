@@ -7,7 +7,6 @@ import type { WorkspaceDTO } from "../../api/dtos.ts";
 import { SourceState } from "../source/SourceState.tsx";
 import { Badge, Button } from "../ui/index.ts";
 import { formatCount, formatDate } from "../../console-model.ts";
-import { LaunchOperation } from "./WorkspaceLaunchPage.tsx";
 import { PageLink, Pagination } from "./workspace-shared.tsx";
 
 type WorkspaceSummaryController = Pick<ConsoleController, "navigate">;
@@ -29,9 +28,6 @@ export function WorkspaceListPage({ controller }: { controller: WorkspaceListCon
     <section className="workspace-list-page" data-slide="C-WS-01">
       <div className="page-toolbar"><p>工作空间总数：{workspaceRead.workspaces.value?.available ? formatCount(workspaceRead.workspaces.value.data.total) : "暂不可用"}</p>{cloudIdentity || workspacesUnavailable ? <Button color="primary" disabled={workspacesPending && !workspacesUnavailable} onClick={() => workspacesUnavailable ? void workspaceRead.refresh() : controller.navigate("/console/workspaces/new")}>{workspacesUnavailable ? <RefreshCw aria-hidden size={16} /> : <Plus aria-hidden size={16} />}{workspacesUnavailable ? "重试读取" : workspacesPending ? "正在读取" : "新建工作空间"}</Button> : null}</div>
       {cloudIdentity ? <p><PageLink controller={controller} path="/console/publisher">发布 Package</PageLink></p> : null}
-      {controller.workspaceLaunch.launchOperation && !["succeeded", "failed", "refunded"].includes(controller.workspaceLaunch.launchOperation.status) ? (
-        <LaunchOperation controller={controller.workspaceLaunch} compact onBack={() => controller.navigate("/console/workspaces")} onRefresh={controller.refreshCurrentPage} />
-      ) : null}
       <section className="panel workspace-list-panel">
         <div className="workspace-list-head"><span>工作空间</span><span>{cloudIdentity ? "交付模式" : "套餐"}</span><span>当前状态</span><span>已付至</span><span /></div>
         <SourceState

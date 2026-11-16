@@ -77,40 +77,51 @@ test("Retained Control Plane launch entry refuses new purchases and points to th
   }
 });
 
-test("Workspace delete adapter sends one typed Control Plane command", async () => {
+test("Workspace delete adapter sends one typed owner command", async () => {
   const requests: Array<{ path: string; init?: RequestInit }> = [];
   globalThis.fetch = async (input, init) => {
     requests.push({ path: String(input), init });
     return new Response(JSON.stringify({
-      workspaceId: "workspace / alpha",
-      status: "deleted",
-      operationId: "delete-alpha"
-    }), { status: 200, headers: { "content-type": "application/json" } });
+      operationId: "delete-alpha",
+      owner: "workspace",
+      kind: "delete_workspace",
+      resourceId: "workspace / alpha",
+      status: "running",
+      stage: "compute_deletion",
+      pollAfterSeconds: 1,
+      createdAt: "2026-10-19T00:00:00Z",
+      updatedAt: "2026-10-19T00:00:00Z"
+    }), { status: 202, headers: { "content-type": "application/json" } });
   };
 
   const result = await workspaceApi.deleteWorkspace("workspace / alpha", "Alpha Workspace", "csrf-alpha", "delete-once");
 
-  assert.deepEqual(result, {
-    available: true,
-    data: { workspaceId: "workspace / alpha", status: "deleted", operationId: "delete-alpha" }
-  });
+  assert.deepEqual(result, { workspaceId: "workspace / alpha", status: "running", operationId: "delete-alpha" });
   assert.equal(requests.length, 1);
-  assert.equal(requests[0].path, "/api/workspaces/workspace%20%2F%20alpha");
+  assert.equal(requests[0].path, "/api/v2/workspaces/workspace%20%2F%20alpha");
   assert.equal(requests[0].init?.method, "DELETE");
-  assert.equal(new Headers(requests[0].init?.headers).get("x-opl-csrf"), "csrf-alpha");
+  assert.equal(new Headers(requests[0].init?.headers).get("X-CSRF-Token"), "csrf-alpha");
   assert.equal(new Headers(requests[0].init?.headers).get("Idempotency-Key"), "delete-once");
+  assert.deepEqual(JSON.parse(String(requests[0].init?.body)), { confirmationName: "Alpha Workspace", acknowledgeDataDestruction: true });
 });
 
-test("Workspace delete adapter reports an unlanded backend route as unavailable", async () => {
-  globalThis.fetch = async () => new Response(JSON.stringify({ error: "method_not_allowed" }), {
-    status: 405,
-    headers: { "content-type": "application/json" }
-  });
+test("Workspace delete adapter rejects an owner answer that is not a deletion operation", async () => {
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    operationId: "delete-alpha",
+    owner: "workspace",
+    kind: "launch_workspace",
+    resourceId: "workspace-alpha",
+    status: "running",
+    stage: "compute_deletion",
+    pollAfterSeconds: 1,
+    createdAt: "2026-10-19T00:00:00Z",
+    updatedAt: "2026-10-19T00:00:00Z"
+  }), { status: 202, headers: { "content-type": "application/json" } });
 
-  assert.deepEqual(await workspaceApi.deleteWorkspace("workspace-alpha", "Alpha Workspace", "csrf-alpha", "delete-once"), {
-    available: false,
-    reasonCode: "workspace_delete_unavailable"
-  });
+  await assert.rejects(
+    () => workspaceApi.deleteWorkspace("workspace-alpha", "Alpha Workspace", "csrf-alpha", "delete-once"),
+    /invalid_workspace_delete_response/
+  );
 });
 
 test("Workspace delete does not relabel an owner not-found response as route unavailability", async () => {
@@ -166,145 +177,8 @@ test("Workspace owner deletion separates resource facts from refund and operatio
   assert.equal(workspaceApi.projectWorkspaceOwnerDeletion({ ...deletion, dataDeletionStatus: "unknown" }, operation).status, "manual_review");
 });
 
-test("Workspace delete scopes busy and reuses its intent after a late response", async () => {
-  const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await launchBrowser({ headless: true });
-  let releaseDelete: (() => void) | undefined;
-  let releaseListRefresh: (() => void) | undefined;
-  try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    let workspaceListReads = 0;
-    page.on("request", (request) => {
-      const url = new URL(request.url());
-      if (request.method() === "GET" && url.pathname === "/api/workspaces") workspaceListReads += 1;
-    });
 
-    await page.goto(`${demo.origin}/login`, { waitUntil: "networkidle" });
-    await page.getByLabel("邮箱").fill(CONSOLE_DEMO_CREDENTIALS.customer.email);
-    await page.getByLabel("密码").fill(CONSOLE_DEMO_CREDENTIALS.customer.password);
-    await page.getByRole("button", { name: "登录", exact: true }).click();
-    await page.waitForURL(/\/console\/overview$/);
-    await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "networkidle" });
-    await openAdvancedSettings(page);
-
-    const deleteResponse: WorkspaceDeleteResponse = {
-      workspaceId: "ws-1",
-      status: "deleted",
-      operationId: "delete-ws-1"
-    };
-    const idempotencyKeys: string[] = [];
-    let deletion: WorkspaceDeletionDTO | null = null;
-    await page.route("**/api/workspaces/ws-1/deletion", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(deletion) }));
-    let holdDelete: (() => void) | undefined;
-    let observeRetry: (() => void) | undefined;
-    const deleteHeld = new Promise<void>((resolve) => { holdDelete = resolve; });
-    const retryObserved = new Promise<void>((resolve) => { observeRetry = resolve; });
-    const deleteReleased = new Promise<void>((resolve) => { releaseDelete = resolve; });
-    await page.route("**/api/workspaces/ws-1", async (route) => {
-      if (route.request().method() !== "DELETE") {
-        await route.continue();
-        return;
-      }
-      idempotencyKeys.push(route.request().headers()["idempotency-key"] || "");
-      const firstAttempt = idempotencyKeys.length === 1;
-      if (firstAttempt) {
-        holdDelete?.();
-        await deleteReleased;
-      } else {
-        demo.state.workspaces = demo.state.workspaces.filter((workspace) => workspace.id !== "ws-1");
-        deletion = { workspaceId: "ws-1", operationId: "delete-ws-1", status: "deleted", phase: "complete", receiptId: "receipt-delete-ws-1" };
-      }
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(deleteResponse)
-      });
-      if (!firstAttempt) observeRetry?.();
-    });
-
-    page.once("dialog", (dialog) => { void dialog.accept(); });
-    const firstDelete = page.getByRole("button", { name: "删除工作空间", exact: true });
-    await firstDelete.click();
-    await deleteHeld;
-    await page.getByRole("heading", { name: "正在提交删除请求", exact: true }).waitFor({ state: "visible" });
-
-    await page.getByRole("button", { name: "工作空间列表", exact: true }).click();
-    await page.waitForURL(/\/console\/workspaces$/);
-    await page.locator(".workspace-list-row").filter({ hasText: "Second Workspace" }).click();
-    await page.waitForURL(/\/console\/workspaces\/ws-2$/);
-    await page.getByRole("heading", { name: "Second Workspace", exact: true }).waitFor({ state: "visible" });
-    await openAdvancedSettings(page);
-
-    const secondDelete = page.getByRole("button", { name: "删除工作空间", exact: true });
-    assert.equal(await secondDelete.getAttribute("aria-busy"), null);
-    assert.equal(await secondDelete.isDisabled(), false);
-    const readsBeforeRelease = workspaceListReads;
-
-    const lateDeleteResponse = page.waitForResponse((response) => {
-      const request = response.request();
-      return request.method() === "DELETE" && new URL(response.url()).pathname === "/api/workspaces/ws-1";
-    });
-    releaseDelete?.();
-    await lateDeleteResponse;
-    await page.evaluate(() => new Promise<void>((resolve) => {
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-    }));
-
-    assert.equal(await secondDelete.isDisabled(), false);
-    assert.equal(workspaceListReads, readsBeforeRelease);
-    assert.match(page.url(), /\/console\/workspaces\/ws-2$/);
-    assert.equal(await page.locator(".toast").count(), 0);
-    assert.equal(await page.getByText("Workspace 已删除", { exact: true }).count(), 0);
-    assert.equal(await page.getByText("删除结果尚未获得权威回读确认", { exact: true }).count(), 0);
-
-    await page.getByRole("button", { name: "工作空间列表", exact: true }).click();
-    await page.waitForURL(/\/console\/workspaces$/);
-    await page.locator(".workspace-list-row").filter({ hasText: "Pilot Workspace" }).click();
-    await page.waitForURL(/\/console\/workspaces\/ws-1$/);
-    await page.getByRole("heading", { name: "Pilot Workspace", exact: true }).waitFor({ state: "visible" });
-    await openAdvancedSettings(page);
-
-    // Deletion confirmation precedes the list route's own authoritative read.
-    // Hold that response so the assertions cannot race its rendering commit.
-    let observeListRefresh: (() => void) | undefined;
-    const listRefreshHeld = new Promise<void>((resolve) => { observeListRefresh = resolve; });
-    const listRefreshReleased = new Promise<void>((resolve) => { releaseListRefresh = resolve; });
-    await page.route("**/api/workspaces?*", async (route) => {
-      if (new URL(route.request().url()).searchParams.get("pageSize") !== String(CUSTOMER_WORKSPACE_LIST_PAGE_SIZE)) return route.continue();
-      const response = await route.fetch();
-      observeListRefresh?.();
-      await listRefreshReleased;
-      await route.fulfill({ response });
-    });
-
-    page.once("dialog", (dialog) => { void dialog.accept(); });
-    const retryDelete = page.getByRole("button", { name: "删除工作空间", exact: true });
-    assert.equal(await retryDelete.getAttribute("aria-busy"), null);
-    assert.equal(await retryDelete.isDisabled(), false);
-    await retryDelete.click();
-    await retryObserved;
-    await page.waitForURL(/\/console\/workspaces$/);
-    await page.getByText("Workspace 已删除", { exact: true }).waitFor({ state: "visible" });
-    await listRefreshHeld;
-    await page.locator(".workspace-list-page").waitFor({ state: "visible" });
-    assert.equal(await page.getByRole("button", { name: "新建工作空间", exact: true }).count(), 0);
-    releaseListRefresh?.();
-    await page.locator(".workspace-list-row").filter({ hasText: "Second Workspace" }).waitFor({ state: "visible" });
-    assert.equal(await page.getByRole("button", { name: "新建工作空间", exact: true }).count(), 0);
-
-    assert.equal(idempotencyKeys.length, 2);
-    assert.match(idempotencyKeys[0], /^workspace-delete:/);
-    assert.equal(idempotencyKeys[1], idempotencyKeys[0]);
-    assert.equal(await page.locator(".workspace-list-row").filter({ hasText: "Pilot Workspace" }).count(), 0);
-  } finally {
-    releaseDelete?.();
-    releaseListRefresh?.();
-    await browser.close();
-    await demo.close();
-  }
-});
-
-test("Workspace deletion survives closing the page and remains pending until its original receipt and absence are confirmed", { timeout: 90_000 }, async () => {
+test("Workspace deletion read stays pending until its original receipt and absence are confirmed", { timeout: 90_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await launchBrowser({ headless: true });
   try {
@@ -313,7 +187,13 @@ test("Workspace deletion survives closing the page and remains pending until its
       const pageErrors: string[] = [];
       const externalRequests: string[] = [];
       context.on("page", (page) => page.on("pageerror", (error) => pageErrors.push(error.message)));
-      let deletion: WorkspaceDeletionDTO | null = null;
+      // The Control Plane deletion command retired with the retained CP execution
+      // slice. A historical deletion operation is still read back, but the legacy
+      // Console may no longer start one, so the page offers the readback only.
+      let deletion: WorkspaceDeletionDTO | null = {
+        workspaceId: "ws-1", operationId: "delete-original-ws-1", status: "pending", phase: "runtime_secret_absent",
+        stage: "runtime_absent", pageState: "waiting", refundStatus: "blocked"
+      };
       let absent = false;
       let writes = 0;
       await context.route("**/*", async (route) => {
@@ -337,15 +217,12 @@ test("Workspace deletion survives closing the page and remains pending until its
       });
       await context.route("**/api/workspaces/ws-1/deletion", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(deletion) }));
       await context.route("**/api/workspaces/ws-1", async (route) => {
-        assert.equal(route.request().method(), "DELETE");
+        if (route.request().method() !== "DELETE") {
+          await route.continue();
+          return;
+        }
         writes += 1;
-        assert.ok(route.request().headers()["idempotency-key"]);
-        assert.ok(route.request().headers()["x-opl-csrf"]);
-        deletion = {
-          workspaceId: "ws-1", operationId: "delete-original-ws-1", status: "pending", phase: "runtime_secret_absent",
-          stage: "runtime_absent", pageState: "waiting", refundStatus: "blocked"
-        };
-        await route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify(deletion) });
+        await route.fulfill({ status: 405, contentType: "application/json", body: JSON.stringify({ error: "method_not_allowed" }) });
       });
       let page = await context.newPage();
       await page.goto(`${demo.origin}/login`, { waitUntil: "domcontentloaded" });
@@ -354,22 +231,11 @@ test("Workspace deletion survives closing the page and remains pending until its
       await page.getByRole("button", { name: "登录", exact: true }).click();
       await page.waitForURL(/\/console\/overview$/);
       await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "domcontentloaded" });
-      await page.getByRole("button", { name: "删除工作空间", exact: true }).waitFor({ state: "visible" });
-      assert.match(await page.locator(".workspace-delete-panel").innerText(), /删除和退款是独立操作/);
-      assert.doesNotMatch(await page.locator(".workspace-delete-panel").innerText(), /符合原单退款政策时自动处理|不会自动退款/);
-      page.once("dialog", (dialog) => {
-        assert.match(dialog.message(), /请先自行下载/);
-        assert.match(dialog.message(), /关闭页面后仍会继续处理/);
-        assert.match(dialog.message(), /删除和退款是独立操作/);
-        assert.match(dialog.message(), /退款结果以原单回读为准/);
-        assert.doesNotMatch(dialog.message(), /符合原单退款政策时自动处理|不会自动退款/);
-        void dialog.accept();
-      });
-      await page.getByRole("button", { name: "删除工作空间", exact: true }).click();
       await page.getByRole("heading", { name: "正在删除工作空间", exact: true }).waitFor({ state: "visible" });
-      assert.equal(writes, 1);
-      assert.equal(await page.getByRole("button", { name: "打开工作空间", exact: true }).count(), 0);
+      await page.getByText("正在释放应用运行环境", { exact: true }).waitFor({ state: "visible" });
+      await page.getByText("退款等待资源删除确认", { exact: true }).waitFor({ state: "visible" });
       assert.equal(await page.getByRole("button", { name: "删除工作空间", exact: true }).count(), 0);
+      assert.equal(writes, 0, "the retired deletion command must never be issued");
       await page.close();
 
       // A converging readback is retrying: the page names the stage, the scheduled
@@ -383,7 +249,7 @@ test("Workspace deletion survives closing the page and remains pending until its
       await page.getByRole("heading", { name: "正在重试删除", exact: true }).waitFor({ state: "visible" });
       await page.getByText("正在等待数据盘解绑并销毁", { exact: true }).waitFor({ state: "visible" });
       await page.getByText("退款等待资源删除确认", { exact: true }).waitFor({ state: "visible" });
-      assert.equal(writes, 1, "reopening reads the original operation without resubmitting DELETE");
+      assert.equal(writes, 0, "reopening reads the original operation without resubmitting DELETE");
       assert.equal(await page.getByRole("button", { name: "删除工作空间", exact: true }).count(), 0);
       absent = true;
       deletion = { ...deletion, phase: "workspace_absent", stage: "workspace_absent" };
@@ -411,7 +277,7 @@ test("Workspace deletion survives closing the page and remains pending until its
       await page.waitForURL(/\/console\/workspaces$/);
       await page.getByText("Workspace 已删除", { exact: true }).waitFor({ state: "visible" });
       assert.equal(await page.locator(".workspace-list-row").filter({ hasText: "Pilot Workspace" }).count(), 0);
-      assert.equal(writes, 1);
+      assert.equal(writes, 0);
       assert.deepEqual(pageErrors, []);
       assert.deepEqual(externalRequests, []);
       await context.close();
@@ -421,7 +287,6 @@ test("Workspace deletion survives closing the page and remains pending until its
     await demo.close();
   }
 });
-
 async function startCloudWorkspaceDeleteBrowser() {
   const session: AuthSession = {
     user: { id: "user-customer", accountId: "acct-1", role: "", email: "customer@example.invalid", status: "active" },

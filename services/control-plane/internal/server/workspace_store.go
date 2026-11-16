@@ -48,7 +48,6 @@ type WorkspaceStore interface {
 	CountWorkspacesByAccount(ctx context.Context, accountIDs []string) (map[string]int, error)
 	SaveWorkspace(ctx context.Context, row map[string]any) error
 	ApplyWorkspaceResourceReconcile(ctx context.Context, mutation workspaceResourceReconcileMutation) error
-	ApplyWorkspaceRenewalIntent(ctx context.Context, update workspaceRenewalIntentCAS) error
 	PersistWorkspaceLaunchReconcile(ctx context.Context, update workspaceLaunchReconcileCAS) error
 	ClaimWorkspaceRenewal(ctx context.Context, claim workspaceRenewalClaimCAS) error
 	PersistWorkspaceRenewal(ctx context.Context, update workspaceRenewalPersistCAS) error

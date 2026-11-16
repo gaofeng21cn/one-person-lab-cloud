@@ -29,11 +29,6 @@
  * identity any more, because a buyer that derived one would be reproducing an
  * interop contract the owner no longer offers.
  *
- * The retained Control Plane launch route is no longer a purchase command. It
- * is still read, for the orders it admitted before the cutover, because the
- * owner cannot resume an order it never issued and an owner command for a
- * purchase that route already admitted would be a second purchase.
- *
  * It buys and it does nothing else. It does not delete, does not refund, does
  * not provision an account, does not touch a database and does not assert that
  * the Workspace is good. Those belong to the owners of those facts.
@@ -48,7 +43,6 @@ import {
   quoteAmountUsdMicros,
   quoteWorkspaceOrder,
   readWorkspacePurchaseEvidence,
-  stableID,
   submitWorkspaceOrder,
   workspaceDeclaration,
 } from "./workspace-purchase-core.ts";
@@ -70,10 +64,6 @@ const OPAQUE_ID = /^\S(?:.*\S)?$/;
 // anything that later treats it as one. The identities the owner mints are
 // opaque and are not held to this.
 const DECLARED_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
-// The retained Control Plane launch identity, kept so the orders that route
-// admitted before the cutover can still be addressed. This one is the buyer's
-// own derivation, not the owner's, so its shape is the buyer's to keep.
-const RETAINED_OPERATION_ID = /^workspace-launch-[0-9a-f]{18}$/;
 
 const TARGET_ERROR = "deployed purchase target is not a deployed production target";
 
@@ -395,49 +385,6 @@ async function quoteState(http, auth, quoteId) {
 }
 
 /*
- * The retained Control Plane launch read.
- *
- * The retained route is no longer a purchase command, but the orders it
- * admitted before the cutover are still there and still belong to the account
- * that bought them. The owner keeps its own idempotency record and cannot
- * resume an order it never issued, so an owner command for a declared purchase
- * that route already admitted would be a second purchase rather than a replay.
- * The buyer reads the retained order and refuses instead.
- *
- * The retained identity is still derived the way the Control Plane derived it,
- * because that is the only way to address an order that route admitted.
- */
-function retainedLaunchOperationId(accountId, idempotencyKey) {
-  return `workspace-launch-${stableID(accountId, idempotencyKey).slice(0, 18)}`;
-}
-
-async function readRetainedLaunch(http, auth, operationId) {
-  let result;
-  try {
-    result = await http.request(`/api/workspace-launches/${encodeURIComponent(operationId)}`, {}, auth);
-  } catch {
-    throw purchaseError(
-      "deployed_purchase_launch_readback_unavailable",
-      "deployed purchase could not read the retained launch",
-    );
-  }
-  const status = Number(result?.response?.status || 0);
-  if (status === 404) return null;
-  if (status !== 200) {
-    throw purchaseError(
-      "deployed_purchase_launch_readback_unavailable",
-      "deployed purchase could not read the retained launch",
-    );
-  }
-  const launch = result?.payload;
-  if (!launch || !RETAINED_OPERATION_ID.test(String(launch.operationId || "")) ||
-      launch.operationId !== operationId) {
-    throw purchaseError("deployed_purchase_operation_mismatch", "deployed purchase read a retained order that is not its own");
-  }
-  return launch;
-}
-
-/*
  * The financial evidence for this exact Workspace order, read from the owners
  * that hold it.
  *
@@ -590,18 +537,7 @@ export async function runDeployedWorkspacePurchase(request, caller) {
   // The Control Plane session proves which customer account is speaking, and
   // the owner session proves it is the same customer the owner route will
   // authorize.
-  const { accountId, identityDigest } = await readDeclaredCustomer(http, auth, request);
-
-  // A purchase the retained route already admitted belongs to that route. The
-  // owner cannot resume an order it never issued, so buying it again here
-  // would be a second purchase for one declared purchase.
-  const retained = await readRetainedLaunch(http, auth, retainedLaunchOperationId(accountId, idempotencyKey));
-  if (retained) {
-    throw purchaseError(
-      "deployed_purchase_retained_order_exists",
-      "deployed purchase found an order the retained Control Plane route already admitted",
-    );
-  }
+  const { identityDigest } = await readDeclaredCustomer(http, auth, request);
 
   // The declaration names exactly what the owner prices. The shape is built
   // before the quote because the quote's own idempotency record decides whether

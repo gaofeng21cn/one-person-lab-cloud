@@ -287,31 +287,42 @@ func newBillingReconciliationFixture(t *testing.T) *billingReconciliationFixture
 	renewal := newWorkspaceRenewalWorkerFixture(t, []int64{200_000_000, 147_420_000})
 	ledger := &customerFactsLedger{}
 	renewal.service = controlplane.NewService(ledger, renewal.fabric, renewal.sub2API)
-	_, renewalErr := renewal.app.runMonthlyBillingSweep(context.Background(), renewal.service, renewal.paidThrough.Add(-monthlyRenewalLead))
-	mustStore(t, renewalErr)
-	first := d1RenewalOperation(t, renewal)
-	secondThrough := nextBillingMonth(renewal.renewedThrough, renewal.paidThrough.Day())
-	renewal.fabric.computeRenew.Deadline = secondThrough.Format(time.RFC3339)
-	renewal.fabric.storageRenew.Deadline = renewal.fabric.computeRenew.Deadline
-	renewal.fabric.computeSync, renewal.fabric.storageSync = renewal.fabric.computeRenew, renewal.fabric.storageRenew
-	_, renewalErr = renewal.app.runMonthlyBillingSweep(context.Background(), renewal.service, renewal.renewedThrough.Add(-monthlyRenewalLead))
-	mustStore(t, renewalErr)
-	rows, err := queryRuntimeOperations(context.Background(), renewal.app.tables, runtimeOperationQuery{Action: "workspace.renewal"})
-	if err != nil || len(rows) != 2 || len(ledger.page.Receipts) != 2 {
-		t.Fatalf("two completed billing periods: rows=%d receipts=%d err=%v", len(rows), len(ledger.page.Receipts), err)
+	// The renewal worker is retired with the renewal execution, so the fixture
+	// seeds the two completed billing periods directly. Every receipt is built
+	// by the same production builder the renewal execution used.
+	periods := []struct {
+		id                       string
+		periodStart, paidThrough string
+		renewedThrough           string
+	}{
+		{id: "renewal-first", periodStart: renewal.paidThrough.AddDate(0, -1, 0).Format(time.RFC3339), paidThrough: renewal.paidThrough.Format(time.RFC3339), renewedThrough: renewal.renewedThrough.Format(time.RFC3339)},
+		{id: "renewal-second", periodStart: renewal.paidThrough.Format(time.RFC3339), paidThrough: renewal.renewedThrough.Format(time.RFC3339), renewedThrough: renewal.renewedThrough.AddDate(0, 1, 0).Format(time.RFC3339)},
 	}
-	operations := []workspaceRenewalOperation{first}
-	for _, row := range rows {
-		operation, err := decodeWorkspaceRenewalOperation(row)
-		if err != nil || operation.Status != "active" || operation.Phase != "complete" {
-			t.Fatalf("real renewal did not complete: operation=%+v err=%v", operation, err)
+	operations := make([]workspaceRenewalOperation, 0, len(periods))
+	for _, period := range periods {
+		redeemCode := monthlyRedeemCode(monthlyEnvironment(), period.id)
+		operation := workspaceRenewalOperation{
+			ID: period.id, Status: "active", Phase: "complete", RequestHash: "renewal-hash-" + period.id,
+			AccountID: "acct-monthly", OwnerUserID: "usr-monthly-owner", WorkspaceID: "workspace-monthly",
+			PackageID: "basic", StorageGB: 10, ComputeID: "compute-workspace-monthly", StorageID: "storage-workspace-monthly",
+			PriceVersion: pricingCatalogVersion, ComputeUSDMicros: 40_000_000, StorageUSDMicros: 12_580_000, TotalUSDMicros: 52_580_000,
+			PeriodStart: period.periodStart, PaidThrough: period.paidThrough, RenewedThrough: period.renewedThrough,
+			RedeemCode: redeemCode, ChargeAttempted: true,
+			ChargeConfirmation:   map[string]any{"code": redeemCode, "userId": int64(41), "chargeUsdMicros": int64(52_580_000), "status": "used"},
+			EntitlementCommitted: true, ReceiptID: "receipt-" + period.id, CreatedAt: period.periodStart,
 		}
-		if operation.ID != first.ID {
-			operations = append(operations, operation)
+		row := workspaceRenewalOperationRow(operation)
+		mustStore(t, renewal.app.tables.SaveRuntimeOperation(context.Background(), row))
+		decoded, err := decodeWorkspaceRenewalOperation(row)
+		if err != nil {
+			t.Fatalf("seeded renewal is not a decodable historical period: %v", err)
 		}
+		receipt := clients.Receipt{ReceiptInput: workspaceRenewalReceiptInput(decoded, 41), ReceiptID: operation.ReceiptID, CreatedAt: operation.CreatedAt}
+		ledger.page.Receipts = append(ledger.page.Receipts, receipt)
+		operations = append(operations, decoded)
 	}
 	usedBy := int64(41)
-	history := make([]clients.Sub2APIBalanceHistoryEntry, 0, 2)
+	history := make([]clients.Sub2APIBalanceHistoryEntry, 0, len(operations))
 	for _, operation := range operations {
 		history = append(history, clients.Sub2APIBalanceHistoryEntry{Code: operation.RedeemCode, Type: "balance", ValueUSDMicros: -operation.TotalUSDMicros, Status: "used", UsedBy: &usedBy, UsedAt: &renewal.paidThrough, CreatedAt: renewal.paidThrough})
 	}
@@ -330,7 +341,6 @@ func newBillingReconciliationFixture(t *testing.T) *billingReconciliationFixture
 	member := loginForTest(t, server, "monthly-owner@example.com", "CorrectHorseBatteryStaple!")
 	return &billingReconciliationFixture{server: server, member: member, store: store, ledger: ledger, sub2API: sub2API, fabric: fabric, calls: calls, operations: operations}
 }
-
 func reconciliationProviderFact(resourceType string, row map[string]any) clients.ProviderFact {
 	return clients.ProviderFact{
 		AccountID: stringValue(row["accountId"]), WorkspaceID: stringValue(row["workspaceId"]), ResourceType: resourceType, ResourceID: stringValue(row["id"]), Available: true,

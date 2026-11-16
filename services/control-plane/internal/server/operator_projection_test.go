@@ -1074,7 +1074,9 @@ func TestOperatorReconciliationIgnoresHistoricalResourceBillingReviews(t *testin
 	}
 	item := byID["ws-alpha"]
 	actions, _ := item["allowedActions"].([]any)
-	if item["resourceType"] != "workspace" || item["status"] != "manual_review" || len(actions) != 1 || actions[0] != "resolve_billing_review" {
+	// The renewal command retired with the retained CP execution slice, so the
+	// review queue keeps the operation and offers no action for it.
+	if item["resourceType"] != "workspace" || item["status"] != "manual_review" || len(actions) != 0 {
 		t.Fatalf("workspace renewal review=%#v", item)
 	}
 	if byID["ws-alpha"]["billingOperationId"] != renewal.ID || byID["ws-alpha"]["operationRef"] != renewal.ID {

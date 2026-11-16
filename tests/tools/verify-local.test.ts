@@ -400,17 +400,17 @@ function coverageEvents(...events: Record<string, unknown>[]) {
     { Action: events.some(event => event.Action === "fail") ? "fail" : "pass", Package: coveragePackage }
   ];
 }
-const fixtureAbsent = "  d1_finance_chain_test.go:28: CONTROL_PLANE_TEST_DATABASE_URL or OPL_POSTGRES_TESTS=1 is required for PostgreSQL tests\n";
-const skipDeclared = "  d2_finance_chain_test.go:20: PostgreSQL test gate is not configured\n";
+const fixtureAbsent = "  console_tenant_isolation_test.go:543: CONTROL_PLANE_TEST_DATABASE_URL or OPL_POSTGRES_TESTS=1 with PGHOST, PGPORT, PGUSER, PGDATABASE, and PGSSLMODE is required for PostgreSQL tests\n";
+const skipDeclared = "  d2_historical_settlement_test.go:20: PostgreSQL test gate is not configured\n";
 
 test("database-free coverage separates executed, capability-excluded and failed tests", () => {
   const coverage = databaseFreeCoverage(coverageEvents(
     { Action: "run", Test: "TestGatewayRevealFailsClosed" },
     { Action: "output", Test: "TestGatewayRevealFailsClosed", Output: "=== RUN   TestGatewayRevealFailsClosed\n" },
     { Action: "pass", Test: "TestGatewayRevealFailsClosed" },
-    { Action: "run", Test: "TestD1FinanceBusinessChain" },
-    { Action: "output", Test: "TestD1FinanceBusinessChain", Output: skipDeclared },
-    { Action: "skip", Test: "TestD1FinanceBusinessChain" },
+    { Action: "run", Test: "TestD2HistoricalWorkspaceSettlementsThroughLedgerHTTP" },
+    { Action: "output", Test: "TestD2HistoricalWorkspaceSettlementsThroughLedgerHTTP", Output: skipDeclared },
+    { Action: "skip", Test: "TestD2HistoricalWorkspaceSettlementsThroughLedgerHTTP" },
     { Action: "run", Test: "TestD1RefundReservationPostgres" },
     { Action: "output", Test: "TestD1RefundReservationPostgres", Output: "=== RUN   TestD1RefundReservationPostgres\n" },
     { Action: "fail", Test: "TestD1RefundReservationPostgres" },
@@ -423,26 +423,22 @@ test("database-free coverage separates executed, capability-excluded and failed 
   ), { declared: declaredMoneyChainTests });
   assert.deepEqual(coverage.executed, ["TestGatewayRevealFailsClosed"]);
   assert.deepEqual(coverage.excluded.map((entry) => entry.name), [
-    "TestD1FinanceBusinessChain", "TestD1RefundReservationPostgres", "TestD1RefundReservationPostgres/postgres"
+    "TestD1RefundReservationPostgres", "TestD1RefundReservationPostgres/postgres", "TestD2HistoricalWorkspaceSettlementsThroughLedgerHTTP"
   ]);
   assert.equal(coverage.excluded[0].capability, "isolated-owner-postgres");
   // A parent fails only because its capability-gated child never ran.
-  assert.equal(coverage.excluded[1].reason, "children require isolated-owner-postgres");
+  assert.equal(coverage.excluded[0].reason, "children require isolated-owner-postgres");
   assert.deepEqual(coverage.failed.map((entry) => entry.name), ["TestSettlementRoundTrips"]);
   assert.deepEqual(coverage.declared.missing, [
-    "TestD1RenewalRejectsConflictingTransactionBeforeFulfillment",
-    "TestD1RenewalRefundRequiresTheOriginalConfirmedDebit",
-    "TestD1RenewalUnknownDebitWaitsForAuthoritativeHistoryAcrossRestart",
-    "TestD4ExpiredWorkspaceRequiresExplicitOriginalRenewalAfterTopUp",
     "TestGatewayRevealAuditFailureDoesNotReturnKey",
     "TestGatewayRevealDoesNotLeakAcrossAccounts"
   ]);
   // A real failure outranks every other finding.
   assert.equal(coverage.reason, "Go tests failed: TestSettlementRoundTrips");
   const report = databaseFreeCoverageReport(coverage);
-  assert.match(report, /database-free coverage: executed=1 excluded=3 declared=3\/9/);
+  assert.match(report, /database-free coverage: executed=1 excluded=3 declared=2\/4/);
   assert.match(report, /excluded by unprovisioned capability isolated-owner-postgres: 3/);
-  assert.match(report, /\n {4}TestD1FinanceBusinessChain \(PostgreSQL test gate is not configured\)/);
+  assert.match(report, /\n {4}TestD2HistoricalWorkspaceSettlementsThroughLedgerHTTP \(PostgreSQL test gate is not configured\)/);
   assert.match(report, /failed TestSettlementRoundTrips/);
   assert.match(report, /declared but not accounted for TestGatewayRevealAuditFailureDoesNotReturnKey$/m);
 });
@@ -524,10 +520,10 @@ test("the real database-free lane executes the Gateway reveal family and names i
     assert.ok(!coverage.failed.some((entry) => entry.name === name), `${name} must not fail`);
   }
   assert.deepEqual(coverage.declared.missing, []);
-  const excluded = coverage.excluded.find((entry) => entry.name === "TestD1FinanceBusinessChain");
+  const excluded = coverage.excluded.find((entry) => entry.name === "TestD2HistoricalWorkspaceSettlementsThroughLedgerHTTP");
   assert.equal(excluded?.capability, "isolated-owner-postgres");
   assert.ok(coverage.executed.length > 1000, `only ${coverage.executed.length} tests executed`);
-  assert.match(databaseFreeCoverageReport(coverage), /declared=9\/9/);
+  assert.match(databaseFreeCoverageReport(coverage), /declared=4\/4/);
 });
 
 test("the control-plane lane keeps its executed-test floor without the duplicate run", () => {

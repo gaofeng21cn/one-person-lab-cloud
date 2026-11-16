@@ -10,57 +10,11 @@ import (
 	"opl-cloud/services/control-plane/internal/clients"
 )
 
-func d2CustomerRefundOriginal(t *testing.T, renewal bool) map[string]any {
-	t.Helper()
-	if renewal {
-		return workspaceRenewalOperationRow(workspaceRenewalOperation{
-			ID: "original-order", Status: "active", Phase: "complete", RequestHash: "local-renewal-hash",
-			AccountID: "acct-alpha", WorkspaceID: "ws-deleted", PriceVersion: "pricing-v1", TotalUSDMicros: 52_580_000,
-			PeriodStart: "2026-07-01T00:00:00Z", PaidThrough: "2026-08-01T00:00:00Z", RenewedThrough: "2026-09-01T00:00:00Z",
-		})
-	}
-	command := workspaceLaunchUnitCommand()
-	command.OperationID, command.AccountID, command.WorkspaceID = "original-order", "acct-alpha", "ws-deleted"
-	operation, err := newWorkspaceLaunchFixtureOperation(command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	row, err := workspaceLaunchReconcileOperationRow(operation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	reconciler := NewWorkspaceLaunchReconciler(&workspaceLaunchUnitStore{row: row}, &workspaceLaunchUnitAdapter{})
-	for range workspaceLaunchReconcileStages {
-		if operation.Status != "pending" {
-			break
-		}
-		operation, err = reconciler.Reconcile(context.Background(), operation.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	operation.raw["periodStart"] = mustJSON("2026-08-01T00:00:00Z")
-	operation.raw["paidThrough"] = mustJSON("2026-09-01T00:00:00Z")
-	if operation.Status != "succeeded" {
-		t.Fatalf("original purchase did not complete: %s", operation.Status)
-	}
-	row, err = workspaceLaunchReconcileOperationRow(operation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return row
-}
-
-func d2CustomerRefundReceipt() clients.Receipt {
-	return clients.Receipt{
-		ReceiptInput: walletAdjustmentReceipt("refund-order", walletAdjustmentOperation{
-			AccountID: "acct-alpha", ActorUserID: "operator-private", Kind: "business_refund", AmountUSDMicros: 3_000_000,
-			RelatedOperationID: "original-order", BalanceHistoryRef: "private-upstream-history",
-		}),
-		ReceiptID: "refund-receipt", CreatedAt: "2026-08-02T00:00:00Z",
-	}
-}
-
+// The customer billing receipt surface is a reader. It resolves the original
+// paid order from the stored history and publishes the refund against it, so it
+// must keep its coverage independently of the retired Control Plane launch
+// writer: the original order is seeded as the persisted facts the retained
+// readers decode, never by running the retired execution again.
 func TestD2CustomerPartialRefundKeepsOriginalOrderAfterWorkspaceDeletion(t *testing.T) {
 	for _, renewal := range []bool{false, true} {
 		name := "purchase"

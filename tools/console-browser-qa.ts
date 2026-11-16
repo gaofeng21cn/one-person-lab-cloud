@@ -447,6 +447,11 @@ export async function apiFixture(route, state, session = state) {
   if (path === "/api/workspace-launches" && method === "GET") {
     return fulfillJson(route, state.launches.filter((item) => item.accountId === session.accountId));
   }
+  // The Control Plane launch command and its resume command retired with the
+  // retained execution slice, so neither route is registered any more.
+  if ((path === "/api/workspace-launches" && method === "POST") || /^\/api\/workspace-launches\/[^/]+\/resume$/.test(path)) {
+    return fulfillJson(route, { error: "console_route_not_found" }, 404);
+  }
   const deliveryMatch = path.match(/^\/api\/v2\/delivery\/([^/]+)$/);
   if (deliveryMatch && method === "GET") {
     const workspaceId = deliveryMatch[1];
@@ -471,45 +476,6 @@ export async function apiFixture(route, state, session = state) {
         details: { buildId: `build-${workspaceId}`, stage: "published", artifactDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", operationId: `operation-${workspaceId}` }
       }
     });
-  }
-  if (path === "/api/workspace-launches" && method === "POST") {
-    const idempotencyKey = request.headers()["idempotency-key"] || "";
-    if (!idempotencyKey) return fulfillJson(route, { error: "idempotency_key_required" }, 400);
-    const input = request.postDataJSON();
-    if (input.accountId !== undefined && input.accountId !== session.accountId) {
-      return fulfillJson(route, { error: "account_scope_forbidden" }, 403);
-    }
-    if (typeof input.name !== "string" || !input.name.trim() || typeof input.packageId !== "string" || !input.packageId.trim()
-      || typeof input.autoRenew !== "boolean" || Object.hasOwn(input, "sizeGb")
-      || (input.provisioningMode !== undefined && !["", "full", "resource_only"].includes(input.provisioningMode))) {
-      return fulfillJson(route, { error: "invalid_pricing_input" }, 400);
-    }
-    if (Object.hasOwn(input, "priceVersion") || Object.hasOwn(input, "totalChargeUsdMicros")) {
-      return fulfillJson(route, { error: "client_pricing_forbidden" }, 400);
-    }
-    const operation = state.launches.find((item) => item.accountId === session.accountId && item.idempotencyKey === idempotencyKey);
-    if (!operation) return fulfillJson(route, {
-      error: "workspace_launch_new_purchase_retired",
-      owner: "workspace",
-      next: ["POST /api/v2/quotes", "POST /api/v2/workspaces"]
-    }, 409);
-    if (operation.ownerUserId !== session.consoleUserId || operation.name !== input.name.trim()
-      || operation.packageId !== input.packageId.trim() || operation.autoRenew !== input.autoRenew
-      || operation.provisioningMode !== (input.provisioningMode || "full")) {
-      return fulfillJson(route, { error: "idempotency_conflict" }, 409);
-    }
-    return fulfillJson(route, operation, 202);
-  }
-  const launchResumeMatch = path.match(/^\/api\/workspace-launches\/([^/]+)\/resume$/);
-  if (launchResumeMatch && method === "POST") {
-    if (!request.headers()["idempotency-key"]) return fulfillJson(route, { error: "idempotency_key_required" }, 400);
-    const operation = state.launches.find((item) => item.operationId === launchResumeMatch[1] && item.accountId === session.accountId);
-    if (!operation) return fulfillJson(route, { error: "workspace_launch_not_found" }, 404);
-    if (operation.ownerUserId !== session.consoleUserId) return fulfillJson(route, { error: "account_scope_forbidden" }, 403);
-    if (operation.status !== "pending" || !["key", "storage", "attachment", "secret", "runtime"].includes(operation.phase)) {
-      return fulfillJson(route, { error: "workspace_launch_not_recoverable" }, 409);
-    }
-    return fulfillJson(route, operation, 202);
   }
   const launchMatch = path.match(/^\/api\/workspace-launches\/([^/]+)$/);
   if (launchMatch && method === "GET") {
@@ -810,7 +776,7 @@ export async function apiFixture(route, state, session = state) {
   if (path === "/api/operator/reconciliation") return fulfillJson(route, source({ items: [{
     id: "review-resume-fixture", resourceType: "workspace", status: "manual_review", accountId: "acct-operator",
     billingOperationId: "launch-resume-fixture", phase: "manual_review", errorCode: "workspace_launch_manual_review",
-    progressionOwner: "control_plane_launch_reconciler", allowedActions: ["resume_workspace_launch"], operationRef: "launch-resume-fixture", receiptRef: "receipt-resume-fixture"
+    allowedActions: ["read_workspace_launch_recovery"], operationRef: "launch-resume-fixture", receiptRef: "receipt-resume-fixture"
   }], total: 1, page: 1, pageSize: 20 }, "control-plane"));
   if (path === "/api/operator/announcements" && method === "GET") {
     const data = { items: state.announcements, total: state.announcements.length, page: 1, pageSize: 20 };
@@ -1234,24 +1200,13 @@ async function exerciseHighRiskWriteFlows(browser, serverOrigin) {
         const response = await fetch(path, init);
         return { status: response.status, body: await response.json() };
       };
-      const input: WorkspaceLaunchRequest = {
-        name: operation.name, packageId: operation.packageId, autoRenew: operation.autoRenew, provisioningMode: operation.provisioningMode
-      };
       return {
         list: await read("/api/workspace-launches"),
-        detail: await read(`/api/workspace-launches/${operation.operationId}`),
-        replay: await read("/api/workspace-launches", {
-          method: "POST", headers: { "content-type": "application/json", "idempotency-key": operation.idempotencyKey }, body: JSON.stringify(input)
-        }),
-        resume: await read(`/api/workspace-launches/${operation.operationId}/resume`, {
-          method: "POST", headers: { "idempotency-key": "resume-historical-fixture" }
-        })
+        detail: await read(`/api/workspace-launches/${operation.operationId}`)
       };
     }, historical);
     assert.deepEqual(readback.list, { status: 200, body: [historical] });
     assert.deepEqual(readback.detail, { status: 200, body: historical });
-    assert.deepEqual(readback.replay, { status: 202, body: historical });
-    assert.deepEqual(readback.resume, { status: 202, body: historical });
     await page.goto(`${serverOrigin}/console/workspaces/ws-1`, { waitUntil: "networkidle" });
     await waitForText(page, "Pilot Workspace");
     await assertWorkspaceTechnicalDetails(page, "https://workspace.example.invalid/w/ws-1/");

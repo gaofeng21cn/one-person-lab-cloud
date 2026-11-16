@@ -77,14 +77,15 @@ export const databaseFreeCapabilityMarkers = Object.freeze([
  * test, or as a test excluded by a declared capability marker. A name that
  * stops running, is renamed, or is filtered away fails the gate rather than
  * quietly reducing coverage.
+ *
+ * The R5 withdrawal (2026-11-17) removed the retained Launch/renewal writer
+ * chain with its source, so the D1/D4 renewal and finance-chain names that
+ * only covered those writers left this list in the same change. The generic
+ * wallet-adjustment refund reservation and the Gateway reveal family stay:
+ * both outlive the retired R5 slice.
  */
 export const declaredMoneyChainTests = Object.freeze([
-  "TestD1FinanceBusinessChain",
   "TestD1RefundReservationPostgres",
-  "TestD1RenewalRejectsConflictingTransactionBeforeFulfillment",
-  "TestD1RenewalRefundRequiresTheOriginalConfirmedDebit",
-  "TestD1RenewalUnknownDebitWaitsForAuthoritativeHistoryAcrossRestart",
-  "TestD4ExpiredWorkspaceRequiresExplicitOriginalRenewalAfterTopUp",
   "TestGatewayRevealAuditFailureDoesNotReturnKey",
   "TestGatewayRevealDoesNotLeakAcrossAccounts",
   "TestGatewayRevealFailsClosed"

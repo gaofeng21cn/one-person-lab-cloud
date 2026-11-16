@@ -33,7 +33,11 @@ test("portable Local-Docker assets configure from a standalone download director
   assert.match(environmentSource, /^OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST=127\.0\.0\.1$/m);
   assert.match(environmentSource, /^OPL_FABRIC_LOCAL_DOCKER_ALLOW_UNBOUNDED_SWAP=0$/m);
   assert.equal(deployment.services["control-plane"].labels["opl.cloud.deployment-mode"], "customer_owned");
-  assert.equal(overlay.services["control-plane"].environment.OPL_WORKSPACE_LAUNCH_WORKER_ENABLED, "1");
+  // The retained Control Plane launch and monthly billing workers retired with
+  // the retained execution slice, so the local-workspace overlay declares
+  // neither of them any more.
+  assert.equal("OPL_WORKSPACE_LAUNCH_WORKER_ENABLED" in overlay.services["control-plane"].environment, false);
+  assert.equal("OPL_MONTHLY_BILLING_WORKER_ENABLED" in overlay.services["control-plane"].environment, false);
 
   const downloadRoot = await mkdtemp(join(tmpdir(), "opl-cloud-portable-assets-"));
   try {

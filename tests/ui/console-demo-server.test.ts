@@ -7,8 +7,6 @@ import test from "node:test";
 import type {
   OperatorAccountPageDTO,
   SourceEnvelope,
-  WorkspaceLaunchRequest,
-  WorkspaceLaunchResponse
 } from "../../apps/console-ui/src/api/dtos.ts";
 import {
   CONSOLE_DEMO_CREDENTIALS,
@@ -88,19 +86,6 @@ function seedOwnerScopedWorkspaceHistory(state: DemoState) {
   const admin = historicalLaunch(adminWorkspace);
   state.launches = [customer, admin];
   return { customer, admin };
-}
-
-async function replayHistoricalLaunch(client: DemoClient, launch: HistoricalLaunch) {
-  const input: WorkspaceLaunchRequest = {
-    name: launch.name, packageId: launch.packageId,
-    autoRenew: launch.autoRenew, provisioningMode: launch.provisioningMode
-  };
-  const response = await client.postCommandJson("/api/workspace-launches", input, launch.idempotencyKey);
-  assert.equal(response.status, 202);
-  const readback = await response.json() as WorkspaceLaunchResponse;
-  assert.deepEqual(readback, launch);
-  assert.ok(readback.workspaceId);
-  return readback;
 }
 
 async function listen(server: ReturnType<typeof createHttpServer>) {
@@ -257,10 +242,10 @@ test("Console demo retains unique owner-scoped Workspace Keys for historical Wor
     assert.equal((await customerClient.postJson("/api/auth/login", CONSOLE_DEMO_CREDENTIALS.customer)).status, 200);
     assert.equal((await adminClient.postJson("/api/auth/login", CONSOLE_DEMO_CREDENTIALS.admin)).status, 200);
 
-    const beforeReplay = structuredClone(demo.state);
-    const customerLaunch = await replayHistoricalLaunch(customerClient, history.customer);
-    const adminLaunch = await replayHistoricalLaunch(adminClient, history.admin);
-    assert.deepEqual(demo.state, beforeReplay);
+    const beforeRead = structuredClone(demo.state);
+    const customerLaunch = history.customer;
+    const adminLaunch = history.admin;
+    assert.deepEqual(demo.state, beforeRead);
     const customerWorkspaceId = customerLaunch.workspaceId;
     const adminWorkspaceId = adminLaunch.workspaceId;
     const customerWorkspaces = (await (await customerClient.request("/api/workspaces?page=1&pageSize=20")).json()).data.items;
@@ -288,10 +273,10 @@ test("Console demo keeps a unique persistent Runtime credential per Workspace", 
     assert.equal((await customerClient.postJson("/api/auth/login", CONSOLE_DEMO_CREDENTIALS.customer)).status, 200);
     assert.equal((await adminClient.postJson("/api/auth/login", CONSOLE_DEMO_CREDENTIALS.admin)).status, 200);
 
-    const beforeReplay = structuredClone(demo.state);
-    const customerWorkspaceId = (await replayHistoricalLaunch(customerClient, history.customer)).workspaceId;
-    const adminWorkspaceId = (await replayHistoricalLaunch(adminClient, history.admin)).workspaceId;
-    assert.deepEqual(demo.state, beforeReplay);
+    const beforeRead = structuredClone(demo.state);
+    const customerWorkspaceId = history.customer.workspaceId;
+    const adminWorkspaceId = history.admin.workspaceId;
+    assert.deepEqual(demo.state, beforeRead);
 
     assert.equal((await customerClient.postJson(`/api/workspaces/${adminWorkspaceId}/runtime-credentials/reveal`, {})).status, 404);
     assert.equal((await adminClient.postJson(`/api/workspaces/${customerWorkspaceId}/runtime-credentials/reveal`, {})).status, 404);
@@ -323,10 +308,10 @@ test("Console demo preserves owner-scoped launch records across accounts", async
     assert.equal((await customerClient.postJson("/api/auth/login", CONSOLE_DEMO_CREDENTIALS.customer)).status, 200);
     assert.equal((await adminClient.postJson("/api/auth/login", CONSOLE_DEMO_CREDENTIALS.admin)).status, 200);
 
-    const beforeReplay = structuredClone(demo.state);
-    const customerLaunch = await replayHistoricalLaunch(customerClient, history.customer);
-    const adminLaunch = await replayHistoricalLaunch(adminClient, history.admin);
-    assert.deepEqual(demo.state, beforeReplay);
+    const beforeRead = structuredClone(demo.state);
+    const customerLaunch = history.customer;
+    const adminLaunch = history.admin;
+    assert.deepEqual(demo.state, beforeRead);
     const customerLaunches = await (await customerClient.request("/api/workspace-launches")).json();
     const adminLaunches = await (await adminClient.request("/api/workspace-launches")).json();
     assert.deepEqual(customerLaunches.map((item) => item.operationId), [customerLaunch.operationId]);

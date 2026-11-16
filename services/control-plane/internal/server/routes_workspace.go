@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -56,9 +55,6 @@ func registerWorkspaceRoutes(mux *http.ServeMux, app *controlPlaneServer, servic
 		writeSourceEnvelope(w, http.StatusOK, "control-plane", status, map[string]any{"items": items, "total": workspacePage.Total, "page": page, "pageSize": pageSize})
 	}))
 	mux.HandleFunc("GET /api/workspaces/{workspaceId}/deletion", app.protected(false, func(w http.ResponseWriter, r *http.Request) { app.workspaceDeletionStatus(w, r) }))
-	mux.HandleFunc("DELETE /api/workspaces/{workspaceId}", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
-		app.deleteWorkspace(w, r, service)
-	}))
 	mux.HandleFunc("GET /api/workspaces/{workspaceId}/runtime-status", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
 		workspaceID := strings.TrimSpace(r.PathValue("workspaceId"))
 		user, ok := app.sessionUserContext(r)
@@ -201,118 +197,6 @@ func registerWorkspaceRoutes(mux *http.ServeMux, app *controlPlaneServer, servic
 		response["recovery"] = app.workspaceRenewalRecoveryState(r.Context(), service, workspace, operations, now)
 		w.Header().Set("Cache-Control", "private, no-store")
 		writeJSON(w, http.StatusOK, response)
-	}))
-	mux.HandleFunc("POST /api/workspaces/{workspaceId}/auto-renew", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
-		input := decodeJSON(r)
-		key, ok := requiredMutationKey(w, r)
-		if !ok {
-			return
-		}
-		autoRenew, ok := input["autoRenew"].(bool)
-		if !ok {
-			writeError(w, http.StatusBadRequest, "autoRenew_required")
-			return
-		}
-		workspaceID := r.PathValue("workspaceId")
-		workspace, ok := app.getWorkspace(workspaceID)
-		if !ok {
-			writeError(w, http.StatusNotFound, "workspace_not_found")
-			return
-		}
-		if !app.canAccessResource(r, workspace) {
-			writeError(w, http.StatusForbidden, "account_scope_forbidden")
-			return
-		}
-		user, ok := app.sessionUserContext(r)
-		if !ok || firstNonEmpty(stringValue(workspace["ownerUserId"]), stringValue(workspace["ownerId"])) != stringValue(user["id"]) {
-			writeError(w, http.StatusForbidden, "workspace_owner_required")
-			return
-		}
-		if autoRenew && workspace["resourceBillingEnabled"] == false {
-			writeError(w, http.StatusConflict, "autoRenew_unavailable")
-			return
-		}
-		operationID := workspaceAutoRenewCommandID(workspaceID, key)
-		requestHash := workspaceAutoRenewRequestHash(workspaceID, autoRenew)
-		for range 3 {
-			workspace, ok = app.getWorkspace(workspaceID)
-			if !ok || !app.canAccessResource(r, workspace) {
-				writeError(w, http.StatusForbidden, "account_scope_forbidden")
-				return
-			}
-			command, found, err := app.tables.GetRuntimeOperation(r.Context(), operationID)
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, "state_read_failed")
-				return
-			}
-			if found {
-				result, err := decodeWorkspaceAutoRenewCommand(command)
-				if err != nil {
-					writeError(w, http.StatusInternalServerError, "state_read_failed")
-					return
-				}
-				if result.RequestHash != requestHash {
-					writeError(w, http.StatusConflict, errIdempotencyConflict.Error())
-					return
-				}
-				writeJSON(w, http.StatusOK, result.Response)
-				return
-			}
-			paidThrough, paidThroughErr := time.Parse(time.RFC3339, stringValue(workspace["paidThrough"]))
-			expired := paidThroughErr == nil && !time.Now().UTC().Before(paidThrough)
-			if workspace["autoRenew"] == autoRenew && !expired {
-				paidThrough, parseErr := time.Parse(time.RFC3339, stringValue(workspace["paidThrough"]))
-				if parseErr != nil {
-					writeError(w, http.StatusConflict, "workspace_billing_state_invalid")
-					return
-				}
-				operation, found, queryErr := app.tables.GetRuntimeOperation(r.Context(), workspaceRenewalOperationID(workspaceID, paidThrough))
-				if queryErr != nil {
-					writeError(w, http.StatusInternalServerError, "state_read_failed")
-					return
-				}
-				operations := []map[string]any(nil)
-				if found {
-					operations = append(operations, operation)
-				}
-				response, responseErr := workspaceAutoRenewResponse(workspace, operations, autoRenew, time.Now().UTC())
-				if responseErr != nil {
-					writeError(w, http.StatusConflict, "workspace_billing_state_invalid")
-					return
-				}
-				writeJSON(w, http.StatusOK, response)
-				return
-			}
-			operations, err := queryRuntimeOperations(r.Context(), app.tables, runtimeOperationQuery{WorkspaceID: workspaceID})
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, "state_read_failed")
-				return
-			}
-			if expired && autoRenew {
-				recovery := app.workspaceRenewalRecoveryState(r.Context(), service, workspace, operations, time.Now().UTC())
-				if recovery.State != "recoverable" && recovery.State != "pending" {
-					writeError(w, http.StatusConflict, recovery.Reason)
-					return
-				}
-			}
-			update, response, err := planWorkspaceRenewalIntent(workspace, user, operations, autoRenew, key, time.Now().UTC())
-			if err != nil {
-				writeError(w, http.StatusConflict, "workspace_billing_state_invalid")
-				return
-			}
-			before := workspaceRenewalIntentState(workspace["autoRenew"] == true, stringValue(workspace["authorizedBy"]), stringValue(workspace["authorizedAt"]))
-			after := workspaceRenewalIntentState(update.WorkspacePatch.AutoRenew, update.WorkspacePatch.AuthorizedBy, update.WorkspacePatch.AuthorizedAt)
-			update.AuditEvent = bindWorkspaceAutoRenewAudit(update.CommandOperation, app.auditEvent(r, "workspace.auto_renew", "workspace", workspaceID, stringValue(workspace["accountId"]), before, after, "succeeded"))
-			if err := app.tables.ApplyWorkspaceRenewalIntent(r.Context(), update); errors.Is(err, errWorkspaceRenewalCASConflict) {
-				continue
-			} else if err != nil {
-				writeError(w, http.StatusInternalServerError, "state_persist_failed")
-				return
-			}
-			writeJSON(w, http.StatusOK, response)
-			return
-		}
-		writeError(w, http.StatusConflict, errWorkspaceRenewalCASConflict.Error())
 	}))
 }
 

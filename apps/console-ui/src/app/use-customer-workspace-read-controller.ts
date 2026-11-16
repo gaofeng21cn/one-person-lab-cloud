@@ -13,18 +13,15 @@ import {
   readCustomerWorkspaceOwnerList
 } from "../api/workspaces-api.ts";
 import { cloudIdentity } from "./console-identity.ts";
-import type { CustomerWorkspaceReadController, WorkspaceSourceProjectionLease } from "./console-controller-types.ts";
+import type { CustomerWorkspaceReadController } from "./console-controller-types.ts";
 import {
   CUSTOMER_WORKSPACE_LIST_PAGE_SIZE,
   applyCustomerWorkspaceCompletion,
-  commitCustomerWorkspaceDetailProjectionLease,
   createCustomerWorkspaceDetailScope,
-  createCustomerWorkspaceDetailProjectionLease,
   createCustomerWorkspaceListScope,
   createCustomerWorkspaceReadState,
   customerWorkspaceRouteReadPlan,
   customerWorkspaceRouteScopeKey,
-  customerWorkspaceDetailProjectionLeaseIsCurrent,
   customerWorkspaceScopeIsCurrent,
   customerWorkspaceSourceMatchesScope,
   isValidCustomerWorkspacePage,
@@ -46,8 +43,6 @@ interface CustomerWorkspaceReadDependencies {
 
 export interface CustomerWorkspaceReadCapability extends CustomerWorkspaceReadController {
   load: () => Promise<SourceEnvelope<WorkspaceDTO | null> | null>;
-  workspaceDetailProjectionLease: () => WorkspaceSourceProjectionLease;
-  applyWorkspaceReadback: (readback: SourceEnvelope<WorkspaceDTO | null>) => boolean;
   reset: () => void;
 }
 
@@ -318,91 +313,6 @@ export function useCustomerWorkspaceReadController({
     await loadList(nextPage, CUSTOMER_WORKSPACE_LIST_PAGE_SIZE);
   }, [loadList]);
 
-  const workspaceDetailProjectionLease = useCallback((): WorkspaceSourceProjectionLease => {
-    const activeSession = currentSession();
-    const activeScope = scopeRef.current;
-    const requestRouteKey = customerWorkspaceRouteScopeKey(activeScope);
-    const epoch = currentEpoch();
-    const userId = activeSession?.user.id || "";
-    const csrfToken = activeSession?.csrfToken || "";
-    const workspaceId = activeScope.kind === "detail" ? activeScope.workspaceId : "";
-
-    const currentDetailScope = () => createCustomerWorkspaceDetailScope({
-      sessionGeneration: sessionGeneration.current,
-      routeGeneration: routeGeneration.current,
-      requestGeneration: detailGeneration.current,
-      workspaceId
-    });
-    const lease = createCustomerWorkspaceDetailProjectionLease(createCustomerWorkspaceDetailScope({
-      ...epoch,
-      requestGeneration: detailGeneration.current,
-      workspaceId
-    }));
-
-    const isCurrent = () => {
-      const session = currentSession();
-      return Boolean(workspaceId)
-        && session?.user.id === userId
-        && session.csrfToken === csrfToken
-        && customerWorkspaceRouteScopeKey(scopeRef.current) === requestRouteKey
-        && sessionGeneration.current === epoch.sessionGeneration
-        && routeGeneration.current === epoch.routeGeneration
-        && customerWorkspaceDetailProjectionLeaseIsCurrent(lease, currentDetailScope());
-    };
-
-    return {
-      isCurrent,
-      commit: () => {
-        if (!isCurrent()) return false;
-        const committedScope = commitCustomerWorkspaceDetailProjectionLease(lease, currentDetailScope());
-        if (!committedScope) return false;
-        detailGeneration.current = committedScope.requestGeneration;
-        return true;
-      }
-    };
-  }, [currentEpoch, currentSession]);
-
-  const applyWorkspaceReadback = useCallback((
-    readback: SourceEnvelope<WorkspaceDTO | null>
-  ): boolean => {
-    const activeScope = scopeRef.current;
-    if (activeScope.kind !== "detail" || !readback.available || !readback.data) return false;
-    const validationScope = createCustomerWorkspaceDetailScope({
-      ...currentEpoch(),
-      requestGeneration: detailGeneration.current,
-      workspaceId: activeScope.workspaceId
-    });
-    if (!customerWorkspaceSourceMatchesScope({
-      kind: "detail",
-      sourceOwner: customerWorkspaceSourceOwner,
-      scope: validationScope,
-      source: readback
-    })) return false;
-
-    const workspace = readback.data;
-    setState((current) => {
-      const list = current.workspaces.value;
-      const workspaces = list?.available
-        ? {
-            ...current.workspaces,
-            value: {
-              ...list,
-              data: {
-                ...list.data,
-                items: list.data.items.map((item) => item.id === workspace.id ? workspace : item)
-              }
-            }
-          }
-        : current.workspaces;
-      return {
-        ...current,
-        workspaces,
-        detail: { value: readback, loading: false, error: "" }
-      };
-    });
-    return true;
-  }, [currentEpoch]);
-
   const activeWorkspace = scope.kind === "detail"
     && state.detail.value?.available
     && state.detail.value.data?.id === scope.workspaceId
@@ -421,8 +331,6 @@ export function useCustomerWorkspaceReadController({
     load,
     refresh: load,
     changePage,
-    workspaceDetailProjectionLease,
-    applyWorkspaceReadback,
     reset
   };
 }

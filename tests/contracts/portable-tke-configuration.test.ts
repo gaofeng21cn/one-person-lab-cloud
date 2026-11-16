@@ -142,7 +142,7 @@ test("base Compose forwards the application-origin domain the Control Plane and 
   assert.match(serveReader, /"OPL_WORKSPACE_APPLICATION_DOMAIN"/);
 });
 
-test("managed-TKE deployment explicitly enables the Workspace progression workers", async () => {
+test("managed-TKE deployment enables the application deployment worker and no retired worker", async () => {
   const base = YAML.parse(await readFile("compose.yaml", "utf8"));
   const overlay = YAML.parse(await readFile("deploy/portable/compose.deployment-managed-tke.yaml", "utf8"));
   const overlayEnvironment = overlay.services["control-plane"].environment;
@@ -150,13 +150,14 @@ test("managed-TKE deployment explicitly enables the Workspace progression worker
     ...base.services["control-plane"].environment,
     ...overlayEnvironment
   };
-  for (const name of [
-    "OPL_WORKSPACE_LAUNCH_WORKER_ENABLED",
-    "OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED",
-    "OPL_MONTHLY_BILLING_WORKER_ENABLED"
-  ]) {
-    assert.equal(overlayEnvironment[name], "1", `${name} must be declared by the managed-TKE deployment overlay`);
-    assert.equal(environment[name], "1", `${name} must be enabled by the managed-TKE deployment overlay`);
+  const name = "OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED";
+  assert.equal(overlayEnvironment[name], "1", `${name} must be declared by the managed-TKE deployment overlay`);
+  assert.equal(environment[name], "1", `${name} must be enabled by the managed-TKE deployment overlay`);
+  // The retained Control Plane launch and monthly billing workers retired with
+  // the retained execution slice.
+  for (const retired of ["OPL_WORKSPACE_LAUNCH_WORKER_ENABLED", "OPL_MONTHLY_BILLING_WORKER_ENABLED"]) {
+    assert.equal(retired in overlayEnvironment, false, `${retired} must not be declared by the managed-TKE deployment overlay`);
+    assert.equal(retired in environment, false, `${retired} must not be enabled by the managed-TKE deployment overlay`);
   }
 });
 
@@ -198,9 +199,9 @@ test("managed-TKE portable bundle resolves the runtime inputs and fails closed w
       assert.ok(!("TENCENTCLOUD_SECRET_ID" in service.environment), `${serviceName} must not receive provider credentials`);
       assert.ok(!("TENCENTCLOUD_SECRET_KEY" in service.environment), `${serviceName} must not receive provider credentials`);
     }
-    assert.equal(controlPlaneEnvironment.OPL_WORKSPACE_LAUNCH_WORKER_ENABLED, "1");
     assert.equal(controlPlaneEnvironment.OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED, "1");
-    assert.equal(controlPlaneEnvironment.OPL_MONTHLY_BILLING_WORKER_ENABLED, "1");
+    assert.equal("OPL_WORKSPACE_LAUNCH_WORKER_ENABLED" in controlPlaneEnvironment, false);
+    assert.equal("OPL_MONTHLY_BILLING_WORKER_ENABLED" in controlPlaneEnvironment, false);
     for (const [name, value] of Object.entries(releaseIdentity)) {
       assert.equal(controlPlaneEnvironment[name], value, `${name} must reach the managed workers unchanged`);
     }

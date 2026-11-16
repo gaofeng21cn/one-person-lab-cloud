@@ -30,14 +30,12 @@ type WorkspaceDetailController = Pick<ConsoleController,
   | "refreshWorkspaceDeletion"
   | "refreshWorkspaceRenewal"
   | "sources"
-  | "updateCurrentWorkspaceRenewal"
   | "updateWorkspaceBudget"
   | "workspaceBudgetBusy"
   | "workspaceDeleteBusy"
   | "workspaceDeleteIssue"
   | "workspaceDeletion"
   | "workspaceDeletionLoading"
-  | "workspaceRenewalBusy"
   | "workspaceRenewalIssue"
   | "workspaceRenewalRead"
   | "workspaceRenewalLoading"
@@ -170,7 +168,7 @@ function WorkspaceTechnicalDetails({ controller, detail, runtime }: {
         <div><dt>quotaUsedUsdMicros</dt><dd><code>{budget?.quotaUsedUsdMicros || "-"}</code></dd></div>
         <div><dt>runtime source reason</dt><dd><code>{runtimeSource?.available === false ? runtimeSource.reasonCode : controller.fabricRuntimeRead.runtime.error || "-"}</code></dd></div>
         <div><dt>budget source reason</dt><dd><code>{budgetSource?.available === false ? budgetSource.reasonCode : controller.sources.workspaceBudget.error || "-"}</code></dd></div>
-        <div><dt>delete reason</dt><dd><code>{controller.workspaceDeleteIssue === "unavailable" ? "workspace_delete_unavailable" : controller.workspaceDeleteIssue || "-"}</code></dd></div>
+        <div><dt>delete reason</dt><dd><code>{controller.workspaceDeleteIssue || "-"}</code></dd></div>
         <div><dt>delete stage</dt><dd><code>{controller.workspaceDeletion?.stage || "-"}</code></dd></div>
         <div><dt>delete phase</dt><dd><code>{controller.workspaceDeletion?.phase || "-"}</code></dd></div>
         <div><dt>delete block reason</dt><dd><code>{controller.workspaceDeletion?.reasonCode || "-"}</code></dd></div>
@@ -252,7 +250,7 @@ function WorkspaceDeletePanel({ controller }: { controller: WorkspaceDetailContr
   const refundNotice = cloudIdentity
     ? "资源删除与退款分别确认；符合原单退款政策时自动处理，退款结果以原单回读为准。"
     : "删除和退款是独立操作；删除完成不代表退款完成，退款结果以原单回读为准。";
-  return <section className="panel workspace-delete-panel"><div className="workspace-settings-heading"><h3>删除工作空间</h3><p>请先自行下载需要的数据。删除后数据无法恢复，关闭页面后仍会继续处理。{refundNotice}</p></div>{controller.workspaceDeleteIssue === "unavailable" ? <Alert color="warning" indicator={<AlertCircle size={18} />} title="工作空间删除暂不可用" description="当前无法执行删除，请稍后重试。" /> : null}<Button busy={controller.workspaceDeleteBusy} color="danger" disabled={controller.workspaceRenewalBusy || controller.workspaceRenewalRead?.recovery.state === "pending"} onClick={() => void controller.deleteCurrentWorkspace()} variant="outline"><Trash2 aria-hidden size={16} />删除工作空间</Button></section>;
+  return <section className="panel workspace-delete-panel"><div className="workspace-settings-heading"><h3>删除工作空间</h3><p>请先自行下载需要的数据。删除后数据无法恢复，关闭页面后仍会继续处理。{refundNotice}</p></div><Button busy={controller.workspaceDeleteBusy} color="danger" disabled={controller.workspaceRenewalRead?.recovery.state === "pending"} onClick={() => void controller.deleteCurrentWorkspace()} variant="outline"><Trash2 aria-hidden size={16} />删除工作空间</Button></section>;
 }
 
 function WorkspaceDeletionProgress({ controller }: { controller: WorkspaceDetailController }) {
@@ -344,16 +342,14 @@ function ControlPlaneWorkspaceDetailPage({ controller }: { controller: Workspace
           {controller.workspaceRenewalIssue === "unconfirmed" ? <Alert color="warning" indicator={<AlertCircle size={18} />} title="续费结果待确认" description="工作空间的续费设置尚未获得确认，请稍后刷新。" /> : null}
           {recoveryPresentation ? <Alert color="warning" title={recoveryPresentation.title} description={recoveryPresentation.description} /> : null}
           {recovery?.state !== "not_required" || controller.workspaceRenewalIssue ? <div className="workspace-actions">
-            {recovery?.state === "recoverable" ? <Button busy={controller.workspaceRenewalBusy} color="primary" disabled={controller.workspaceRenewalLoading || controller.workspaceRenewalIssue === "unconfirmed" || !Number.isSafeInteger(detail.totalUsdMicros) || (detail.totalUsdMicros || 0) < 0} onClick={() => { if (window.confirm(`确认支付 ${formatUsdMicros(detail.totalUsdMicros)} 续费并恢复原工作空间？这会开启后续自动续费。充值本身不会恢复使用，原数据不提供恢复保证。`)) void controller.updateCurrentWorkspaceRenewal(true); }}>续费并恢复</Button> : null}
-            <Button busy={controller.workspaceRenewalLoading} disabled={controller.workspaceRenewalBusy} onClick={() => void controller.refreshWorkspaceRenewal()} variant="outline">刷新续费条件</Button>
+            <Button busy={controller.workspaceRenewalLoading} onClick={() => void controller.refreshWorkspaceRenewal()} variant="outline">刷新续费条件</Button>
           </div> : null}
-          <dl className="data-list"><div><dt>{renewalPresentation.kind === "manual" ? "续费方式" : "续费状态"}</dt><dd>{renewalPresentation.label}</dd></div>{renewalPresentation.kind === "active" && recovery?.state === "not_required" ? <div><dt>自动续费</dt><dd><Checkbox checked={detail.autoRenew === true} disabled={controller.workspaceRenewalBusy || controller.workspaceRenewalLoading || controller.workspaceDeleteBusy} label={detail.autoRenew ? "已开启" : "已关闭"} onChange={() => void controller.updateCurrentWorkspaceRenewal(!detail.autoRenew)} /></dd></div> : null}<div><dt>持久存储</dt><dd>{detail.storageGb ? `${detail.storageGb} GB` : "-"}</dd></div></dl>
+          <dl className="data-list"><div><dt>{renewalPresentation.kind === "manual" ? "续费方式" : "续费状态"}</dt><dd>{renewalPresentation.label}</dd></div><div><dt>持久存储</dt><dd>{detail.storageGb ? `${detail.storageGb} GB` : "-"}</dd></div></dl>
           {renewalPresentation.kind === "expired_unpaid"
             ? <Alert color="warning" title="到期后的数据责任" description="数据应在到期前由您自行下载并妥善保存。到期后，平台不承担数据保管或恢复责任。" />
             : renewalPresentation.kind !== "not_applicable" ? <p>请在权益到期前自行从工作空间下载并妥善保存数据。到期后，平台不承担数据保管或恢复责任。</p> : null}
         </section>
         {paidAccess && gateway && currentRuntime ? <section className="panel workspace-settings-panel"><details className="workspace-advanced-details"><summary><span>预算与用量</span><ChevronDown aria-hidden size={16} /></summary><div className="workspace-advanced-details__body"><WorkspaceBudgetPanel controller={controller} /><WorkspaceMaintenancePanel controller={controller} /></div></details></section> : null}
-        <WorkspaceDeletePanel controller={controller} />
         <section className="panel workspace-technical-panel"><WorkspaceTechnicalDetails controller={controller} detail={detail} runtime={runtime} /></section>
       </div>
     </section>

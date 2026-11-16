@@ -1,6 +1,6 @@
 import type { SourceEnvelope, WorkspaceDTO, WorkspaceDeletionDTO, WorkspaceDeletionPageState, WorkspaceDeletionStage } from "../api/dtos.ts";
 
-export type WorkspaceDeleteIssue = "" | "unavailable" | "unconfirmed";
+export type WorkspaceDeleteIssue = "" | "unconfirmed";
 
 export interface WorkspaceDeleteIntent {
   readonly workspaceId: string;

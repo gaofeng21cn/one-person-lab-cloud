@@ -92,7 +92,7 @@ export type QualificationPurchaseCaller = Readonly<{
   wait?: (milliseconds: number) => Promise<void>;
 }>;
 
-export const QUALIFICATION_IDENTITY_SPACES = Object.freeze(["workspace_owner", "control_plane"]);
+export const QUALIFICATION_IDENTITY_SPACES = Object.freeze(["workspace_owner"]);
 
 export type QualificationPurchaseResult = Readonly<{
   idempotencyKey: string;
@@ -595,78 +595,17 @@ async function readPurchaseChargeReceipt(http, auth, binding) {
 }
 
 /*
- * The retained Control Plane order, for an operation that already exists.
- *
- * A new purchase is admitted by the Workspace owner and is read back from the
- * owner. An order that the retained Control Plane admitted before the cutover
- * keeps its own identity and its own owner, so it is still readable and still
- * recoverable through the route that created it. The readback dispatches on the
- * identity space the order was recorded in rather than on a global URL, and the
- * original order identity is never rewritten.
- *
- * When the platform names a Workspace and it is not this run's, the answer is
- * refused here rather than followed.
- */
-async function readAdmittedLaunch(http, operationId, workspaceId, auth) {
-  const result = await http.request(`/api/workspace-launches/${encodeURIComponent(operationId)}`, {}, auth);
-  const status = Number(result?.response?.status || 0);
-  if (status === 404) return null;
-  if (status !== 200 || !result?.payload) throw adapterError("owner_readback_unavailable");
-  // The answer has to be the order that was asked for. A launch that comes back
-  // under another operation identity, or naming another Workspace, is not this
-  // run's order whatever else it says, and following it would attribute another
-  // launch's purchase to this request.
-  if (result.payload.operationId !== operationId) throw adapterError("launch_identity_mismatch");
-  if (result.payload.workspaceId !== undefined && result.payload.workspaceId !== workspaceId) {
-    throw adapterError("launch_identity_mismatch");
-  }
-  return result.payload;
-}
-
-/*
- * Following a retained Control Plane order to its own end.
- *
- * The retained route is read, never written: an operation that already exists
- * is followed under its own identity rather than read as finished or
- * reissued. The window is bounded, so an order that never reaches a terminal
- * state is a refusal rather than an infinite poll.
- */
-const RETAINED_ORDER_POLL_ATTEMPTS = 180;
-const RETAINED_ORDER_POLL_INTERVAL_MS = 1_000;
-const RETAINED_ORDER_STOPPED = ["manual_review", "failed", "refunded"];
-
-async function followRetainedOrder(http, operationId, workspaceId, auth, wait) {
-  const pause = wait || defaultWait;
-  for (let attempt = 0; attempt < RETAINED_ORDER_POLL_ATTEMPTS; attempt += 1) {
-    const launch = await readAdmittedLaunch(http, operationId, workspaceId, auth);
-    if (!launch) throw adapterError("purchase_receipt_missing");
-    if (launch.status === "succeeded" && launch.phase === "succeeded") return launch;
-    if (RETAINED_ORDER_STOPPED.includes(String(launch.status || ""))) {
-      throw adapterError("launch_stopped");
-    }
-    await pause(RETAINED_ORDER_POLL_INTERVAL_MS);
-  }
-  throw adapterError("mutation_unaccounted");
-}
-
-/*
  * The order this run bought, read from the owner that owns it.
  *
  * An owner-route order is read from the Workspace owner, which reports the
  * owner's own vocabulary: a terminal success is `succeeded`, a stop is
  * `needs_attention`, `failed` or `cancelled`, and the rest are still in flight.
- * A retained Control Plane order is read from its own owner and reports the
- * Control Plane's own phase and status.
+ *
+ * The Control Plane admitted no order of its own after the cutover, so there is
+ * no Control Plane order left to follow: the qualification buys through the
+ * Workspace owner and reads the order back from that owner.
  */
-async function readPurchaseOperation(http, { operationId, workspaceId, identitySpace }, auth, wait) {
-  if (identitySpace === "control_plane") {
-    const launch = await followRetainedOrder(http, operationId, workspaceId, auth, wait);
-    return {
-      status: String(launch.status || ""),
-      stage: String(launch.phase || ""),
-      receiptId: String(launch.receiptId || ""),
-    };
-  }
+async function readPurchaseOperation(http, { operationId, workspaceId }, auth) {
   const operation = await readOwnerWorkspaceOperation(http, operationId, workspaceId, auth);
   if (!operation) return null;
   if (operation.status !== "succeeded") {
@@ -784,8 +723,8 @@ export async function runWorkspaceQualification({ request, adapter }, { wait, pu
         // so the charge and delivery evidence still comes from an owner rather
         // than from the buyer's receipt.
         const owned = await readPurchaseOperation(http, {
-          operationId: operation.operationId, workspaceId: operation.workspaceId, identitySpace,
-        }, auth, wait);
+          operationId: operation.operationId, workspaceId: operation.workspaceId,
+        }, auth);
         if (!owned) throw adapterError("purchase_receipt_missing");
         purchaseEvidence = {
           idempotencyKey: operation.idempotencyKey,

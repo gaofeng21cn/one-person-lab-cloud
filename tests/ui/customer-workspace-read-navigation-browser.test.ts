@@ -9,7 +9,7 @@ import type {
   WorkspaceDTO,
   WorkspaceGatewayBudgetDTO,
   WorkspaceListData,
-  WorkspaceRenewalResponse,
+  WorkspaceRenewalReadDTO,
   WorkspaceRuntimeDTO
 } from "../../apps/console-ui/src/api/dtos.ts";
 import {
@@ -257,18 +257,26 @@ test("Renewal readback invalidates an older Workspace detail refresh", { timeout
       });
     });
 
-    const renewalResponse: WorkspaceRenewalResponse = {
-      autoRenew: true,
-      effectiveAfter: renewed.updatedAt,
-      nextRenewalAt: renewed.nextRenewalAt!,
-      paidThrough: renewed.paidThrough!,
-      renewalStatus: renewed.renewalStatus!
-    };
-    await page.route("**/api/workspaces/ws-1/auto-renew", async (route) => {
+    // The renewal readback is the only renewal signal the legacy Console has:
+    // the Control Plane auto-renew command retired with the retained CP
+    // execution slice, so the recovery read decides when the paid period
+    // returns and the Console refreshes the Workspace detail.
+    let renewalReads = 0;
+    await page.route("**/api/workspaces/ws-1/renewal", async (route) => {
+      renewalReads += 1;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(renewalResponse)
+        body: JSON.stringify({
+          autoRenew: renewed.autoRenew,
+          effectiveAfter: renewed.updatedAt,
+          nextRenewalAt: renewed.nextRenewalAt!,
+          paidThrough: renewed.paidThrough!,
+          renewalStatus: renewed.renewalStatus!,
+          recovery: renewalReads === 1
+            ? { state: "pending", reason: "workspace_renewal_pending" }
+            : { state: "not_required", reason: "workspace_paid_period_active" }
+        } satisfies WorkspaceRenewalReadDTO)
       });
     });
 
@@ -276,9 +284,8 @@ test("Renewal readback invalidates an older Workspace detail refresh", { timeout
     await page.getByRole("heading", { name: initial.name!, exact: true }).waitFor();
     await page.getByRole("main").getByRole("button", { name: "刷新", exact: true }).click();
     await staleRefreshHeld.promise;
-    await page.getByRole("checkbox", { name: "已关闭", exact: true }).click();
+    await page.getByRole("button", { name: "刷新续费条件", exact: true }).click();
     await page.getByRole("heading", { name: renewed.name!, exact: true }).waitFor();
-    await page.getByRole("checkbox", { name: "已开启", exact: true }).waitFor();
 
     releaseStaleRefresh.resolve();
     await staleRefreshSettled.promise;
@@ -286,14 +293,12 @@ test("Renewal readback invalidates an older Workspace detail refresh", { timeout
 
     assert.equal(await page.getByRole("heading", { name: renewed.name!, exact: true }).count(), 1);
     assert.equal(await page.getByText(stale.name!, { exact: true }).count(), 0);
-    assert.equal(await page.getByRole("checkbox", { name: "已开启", exact: true }).count(), 1);
   } finally {
     releaseStaleRefresh.resolve();
     await browser.close();
     await demo.close();
   }
 });
-
 test("Workspace password and Key reveal and copy use owner routes without changing projections", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await launchBrowser({ headless: true });

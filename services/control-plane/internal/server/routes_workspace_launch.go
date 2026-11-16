@@ -2,128 +2,11 @@ package server
 
 import (
 	"net/http"
-	"strings"
 
-	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
 
 func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
-	mux.HandleFunc("POST /api/workspace-launches", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
-		input := decodeJSON(r)
-		key, ok := requiredMutationKey(w, r)
-		if !ok {
-			return
-		}
-		accountID, ok := app.scopedAccountID(w, r, input)
-		if !ok {
-			return
-		}
-		user, ok := app.sessionUserContext(r)
-		if !ok {
-			writeError(w, http.StatusUnauthorized, "not_authenticated")
-			return
-		}
-		name, validName := input["name"].(string)
-		packageID, validPackage := input["packageId"].(string)
-		name, packageID = strings.TrimSpace(name), strings.TrimSpace(packageID)
-		autoRenew, validAutoRenew := input["autoRenew"].(bool)
-		if !validName || !validPackage || name == "" || packageID == "" || !validAutoRenew {
-			writeError(w, http.StatusBadRequest, "invalid_pricing_input")
-			return
-		}
-		provisioningMode := ""
-		if rawMode, supplied := input["provisioningMode"]; supplied {
-			mode, isText := rawMode.(string)
-			if !isText || mode != "" && mode != string(contracts.WorkspaceProvisioningFull) && mode != string(contracts.WorkspaceProvisioningResourceOnly) {
-				writeError(w, http.StatusBadRequest, "invalid_pricing_input")
-				return
-			}
-			if mode == string(contracts.WorkspaceProvisioningResourceOnly) {
-				provisioningMode = mode
-			}
-		}
-		resourceOnly := provisioningMode == string(contracts.WorkspaceProvisioningResourceOnly)
-		if _, supplied := input["sizeGb"]; supplied {
-			writeError(w, http.StatusBadRequest, "invalid_pricing_input")
-			return
-		}
-		if _, supplied := input["priceVersion"]; supplied {
-			writeError(w, http.StatusBadRequest, "client_pricing_forbidden")
-			return
-		}
-		if _, supplied := input["totalChargeUsdMicros"]; supplied {
-			writeError(w, http.StatusBadRequest, "client_pricing_forbidden")
-			return
-		}
-		ownerUserID := stringValue(user["id"])
-		account, found, err := app.tables.GetAccount(r.Context(), accountID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "state_read_failed")
-			return
-		}
-		if !found || stringValue(account["status"]) != "active" || stringValue(account["ownerUserId"]) != ownerUserID {
-			writeError(w, http.StatusForbidden, "account_scope_forbidden")
-			return
-		}
-		unlock := app.lockResource("workspace-launch", accountID)
-		defer unlock()
-		operationID := workspaceLaunchOperationID(accountID, key)
-		row, found, err := app.tables.GetRuntimeOperation(r.Context(), operationID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "state_read_failed")
-			return
-		}
-		if found {
-			persisted, decodeErr := decodeWorkspaceLaunchReconcileOperation(row)
-			matchingMode := contracts.WorkspaceProvisioningMode(provisioningMode)
-			defaultRow, defaultFound, defaultErr := app.tables.GetRuntimeOperation(r.Context(), workspaceDefaultApplicationOperationID(operationID))
-			if defaultErr != nil {
-				writeError(w, http.StatusInternalServerError, "state_read_failed")
-				return
-			}
-			if defaultFound {
-				defaultRequest, err := decodeWorkspaceDefaultApplication(defaultRow)
-				if err != nil || resourceOnly || defaultRequest.AccountID != accountID {
-					writeError(w, http.StatusConflict, errIdempotencyConflict.Error())
-					return
-				}
-				matchingMode = contracts.WorkspaceProvisioningResourceOnly
-			}
-
-			if decodeErr != nil || !workspaceLaunchReconcileRequestMatches(persisted, accountID, ownerUserID, name, packageID, autoRenew, matchingMode) {
-				writeError(w, http.StatusConflict, errIdempotencyConflict.Error())
-				return
-			}
-			if (persisted.Status == contracts.StatusPending && persisted.Stage == contracts.StageKey) || (app.deployment.customerOwned() && persisted.Status == contracts.StatusManualReview && (persisted.Stage == contracts.StageKey || persisted.Stage == contracts.StageSecret) && persisted.Observations[persisted.Stage].State == workspaceLaunchStageUnknown) {
-				credentialUser, sub2APIUserID, credential, credentialOK := app.gatewayUserContext(w, r)
-				if !credentialOK {
-					return
-				}
-				if stringValue(credentialUser["accountId"]) != accountID || sub2APIUserID != persisted.int64Fact("sub2apiUserId") {
-					writeError(w, http.StatusForbidden, "account_scope_forbidden")
-					return
-				}
-				continued, reconcileErr := app.workspaceLaunchReconciler(service, credential, sub2APIUserID).Reconcile(r.Context(), persisted.ID)
-				if reconcileErr != nil {
-					writeError(w, http.StatusInternalServerError, "state_persist_failed")
-					return
-				}
-				persisted = continued
-			}
-			app.respondWorkspaceLaunchContinuation(w, r, persisted)
-			return
-		}
-		// This route remains the owner of the Launch obligations it admitted
-		// before the purchase cutover, and the block above replays or continues
-		// exactly those operations. A key with no persisted operation is a new
-		// purchase command. The Workspace owner now prices and admits those
-		// purchases, so refuse here before pricing, payment, provider or
-		// persistence work can create a second writer.
-		writeRetainedWorkspaceLaunchNewPurchaseRetired(w)
-		return
-	}))
-
 	mux.HandleFunc("GET /api/workspace-launches", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
 		accountID, ok := app.scopedAccountID(w, r, nil)
 		if !ok {
@@ -168,32 +51,4 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 		writeError(w, http.StatusNotFound, "workspace_launch_not_found")
 	}))
 
-}
-
-func (app *controlPlaneServer) respondWorkspaceLaunchContinuation(w http.ResponseWriter, r *http.Request, operation workspaceLaunchReconcileOperation) {
-	row, found, err := app.tables.GetRuntimeOperation(r.Context(), operation.ID)
-	if err != nil || !found {
-		writeError(w, http.StatusInternalServerError, "state_read_failed")
-		return
-	}
-	body, err := workspaceLaunchResponse(row)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "state_read_failed")
-		return
-	}
-	writeJSON(w, http.StatusAccepted, body)
-}
-
-// retainedWorkspaceLaunchNewPurchaseRetired is the stable refusal for a new
-// purchase command on the retained Launch route. The route still replays and
-// continues the operations it admitted before the cutover, but new purchases
-// belong to the Workspace owner.
-const retainedWorkspaceLaunchNewPurchaseRetired = "workspace_launch_new_purchase_retired"
-
-func writeRetainedWorkspaceLaunchNewPurchaseRetired(w http.ResponseWriter) {
-	writeJSON(w, http.StatusConflict, map[string]any{
-		"error": retainedWorkspaceLaunchNewPurchaseRetired,
-		"owner": "workspace",
-		"next":  []string{"POST /api/v2/quotes", "POST /api/v2/workspaces"},
-	})
 }

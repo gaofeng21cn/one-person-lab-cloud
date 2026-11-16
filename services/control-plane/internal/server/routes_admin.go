@@ -35,64 +35,6 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 	mux.HandleFunc("GET /api/operator/workspace-launches/{operationId}/recovery", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		app.writeOperatorWorkspaceLaunchRecovery(w, r, service)
 	}))
-	mux.HandleFunc("POST /api/operator/workspace-launches/{operationId}/recover", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		key, ok := requiredMutationKey(w, r)
-		if !ok {
-			return
-		}
-		input := decodeJSON(r)
-		launchVersion, validVersion := positiveIntegerField(input, "launchVersion")
-		reason := stringValue(input["reason"])
-		if len(r.Header.Values("Idempotency-Key")) != 1 || !validBillingReviewOpaqueID(key) ||
-			!exactWorkspaceComputeClaimKeys(input, []string{"action", "launchVersion", "reason"}) ||
-			(stringValue(input["action"]) != "check_result" && stringValue(input["action"]) != "close_unfulfilled") || !validVersion || launchVersion > int64(^uint(0)>>1) ||
-			reason == "" || reason != strings.TrimSpace(reason) {
-			writeError(w, http.StatusBadRequest, errInvalidBillingReview.Error())
-			return
-		}
-		operationID := strings.TrimSpace(r.PathValue("operationId"))
-		row, found, err := app.tables.GetRuntimeOperation(r.Context(), operationID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "state_read_failed")
-			return
-		}
-		if !found {
-			writeError(w, http.StatusNotFound, "workspace_launch_not_found")
-			return
-		}
-		operation, err := decodeWorkspaceLaunchReconcileOperation(row)
-		if err != nil {
-			writeError(w, http.StatusConflict, errInvalidWorkspaceLaunchOperation.Error())
-			return
-		}
-		authorization := workspaceLaunchResumeAuthorization{
-			AuthorizationID: key, LaunchVersion: int(launchVersion), AuthorizedStage: operation.Stage,
-			AuthorizedBy: app.sessionUserID(r), AuthorizedAt: time.Now().UTC().Format(time.RFC3339), Reason: reason,
-			AuthoritativeReadBudget: workspaceLaunchAuthoritativeReadBudget,
-		}
-		if existing, _, exists := operation.resultCheckByID(key); exists {
-			authorization.AuthorizedStage = existing.AuthorizedStage
-			authorization.AuthorizedAt = existing.AuthorizedAt
-			authorization.ReadbacksAtAuthorization = existing.ReadbacksAtAuthorization
-		}
-		var result workspaceLaunchReconcileOperation
-		if stringValue(input["action"]) == "close_unfulfilled" {
-			result, err = app.closeWorkspaceLaunch(r.Context(), service, operationID, key, app.sessionUserID(r), reason, int(launchVersion))
-		} else {
-			result, err = app.workspaceLaunchReconciler(service, clients.SessionDelegatedCredential{}, 0).CheckResult(r.Context(), operationID, authorization)
-		}
-		if err != nil {
-			if errors.Is(err, errBillingReviewNotFound) {
-				writeError(w, http.StatusNotFound, "workspace_launch_not_found")
-			} else if errors.Is(err, errWorkspaceLaunchGrantConflict) || errors.Is(err, errWorkspaceLaunchCASConflict) || errors.Is(err, errInvalidWorkspaceLaunchOperation) {
-				writeError(w, http.StatusConflict, err.Error())
-			} else {
-				writeError(w, http.StatusInternalServerError, "state_persist_failed")
-			}
-			return
-		}
-		writeJSON(w, http.StatusOK, app.workspaceLaunchRecovery(r.Context(), service, result))
-	}))
 	mux.HandleFunc("POST /api/operator/accounts/{accountId}/wallet-adjustments", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		app.createWalletAdjustment(w, r, service)
 	}))
@@ -205,58 +147,6 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 		}
 		writeJSON(w, http.StatusOK, result)
 	}))
-	mux.HandleFunc("POST /api/operator/billing-reviews/{resourceType}/{id}/resolve", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		input := decodeJSON(r)
-		if !billingReviewRequestShapeValid(input) {
-			writeError(w, http.StatusBadRequest, errInvalidBillingReview.Error())
-			return
-		}
-		key := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
-		if key == "" {
-			writeError(w, http.StatusBadRequest, "missing Idempotency-Key")
-			return
-		}
-		if !validBillingReviewOpaqueID(key) {
-			writeError(w, http.StatusBadRequest, "invalid_idempotency_key")
-			return
-		}
-		evidenceRef := strings.TrimSpace(stringValue(input["evidenceRef"]))
-		if !validBillingReviewEvidenceRef(evidenceRef) {
-			writeError(w, http.StatusBadRequest, "invalid_evidence_ref")
-			return
-		}
-		resolution := billingReviewResolutionInput{
-			ResourceType: strings.TrimSpace(r.PathValue("resourceType")), ResourceID: strings.TrimSpace(r.PathValue("id")),
-			AccountID: strings.TrimSpace(stringValue(input["accountId"])), BillingOperationID: strings.TrimSpace(stringValue(input["billingOperationId"])),
-			Decision: strings.TrimSpace(stringValue(input["decision"])), EvidenceRef: evidenceRef, IdempotencyKey: key, Reviewer: app.sessionUserID(r),
-		}
-		if resolution.ResourceType != "workspace" {
-			writeError(w, http.StatusBadRequest, errInvalidBillingReview.Error())
-			return
-		}
-		result, err := app.resolveWorkspaceRenewalReview(r.Context(), service, resolution)
-		if err != nil {
-			writeBillingReviewResolutionError(w, err)
-			return
-		}
-		if err := app.appendBillingReviewResolutionAudit(r, key, result); err != nil {
-			writeError(w, http.StatusInternalServerError, "state_persist_failed")
-			return
-		}
-		writeJSON(w, http.StatusOK, result)
-	}))
-}
-
-func exactWorkspaceComputeClaimKeys(input map[string]any, want []string) bool {
-	if len(input) != len(want) {
-		return false
-	}
-	for _, key := range want {
-		if _, ok := input[key]; !ok {
-			return false
-		}
-	}
-	return true
 }
 
 func operatorPagination(w http.ResponseWriter, r *http.Request) (int, int, bool) {
@@ -1067,13 +957,11 @@ type workspaceLaunchRecoveryDTO struct {
 	AllowedActions []string                    `json:"allowedActions"`
 }
 
+// The recovery command is retired with the retained CP launch execution, so the
+// recovery read offers no action. It keeps the accepted operation's own
+// history: its status, its stage and the closeout it already recorded.
 func workspaceLaunchRecoveryResponse(operation workspaceLaunchReconcileOperation) workspaceLaunchRecoveryDTO {
-	actions := []string{}
-	if !workspaceLaunchCloseoutActive(operation) && operation.Status == contracts.StatusManualReview && operation.RuntimeRepair == nil &&
-		(operation.ResumeAuthorization == nil || operation.ResumeAuthorizationConsumedAt != "") {
-		actions = append(actions, "check_result")
-	}
-	return workspaceLaunchRecoveryDTO{workspaceLaunchCloseoutResponse(operation), operation.ID, operation.Version, operation.Status, operation.Stage, actions}
+	return workspaceLaunchRecoveryDTO{workspaceLaunchCloseoutResponse(operation), operation.ID, operation.Version, operation.Status, operation.Stage, []string{}}
 }
 
 func availableEnvelopeData(value any) (map[string]any, bool) {
@@ -1095,14 +983,19 @@ func (app *controlPlaneServer) operatorReconciliationPage(ctx context.Context, p
 		if resourceID == "" || accountID == "" || operationID == "" {
 			return
 		}
-		progressionOwner := "operator_recovery"
-		if action == "resume_workspace_launch" {
-			progressionOwner = "control_plane_launch_reconciler"
+		// The Control Plane no longer progresses these operations: the retained
+		// launch, renewal and billing-review commands are retired. A launch
+		// operation keeps one affordance, the historical recovery read, because
+		// the operator still has to see what the accepted order became; every
+		// other review item keeps its operation and offers no action.
+		actions := []string{}
+		if action != "" {
+			actions = append(actions, action)
 		}
 		item := map[string]any{
 			"id": resourceID, "resourceType": resourceType, "status": "manual_review", "accountId": accountID,
-			"billingOperationId": operationID, "phase": phase, "errorCode": errorCode, "allowedActions": []string{action},
-			"progressionOwner": progressionOwner, "operationRef": operationID,
+			"billingOperationId": operationID, "phase": phase, "errorCode": errorCode, "allowedActions": actions,
+			"operationRef": operationID,
 		}
 		if receiptID != "" {
 			item["receiptRef"] = receiptID
@@ -1124,14 +1017,14 @@ func (app *controlPlaneServer) operatorReconciliationPage(ctx context.Context, p
 			appendReview(
 				"workspace", operationID, firstNonEmpty(stringValue(operation["accountId"]), stringValue(details["accountId"])), operationID,
 				firstNonEmpty(stringValue(details["stage"]), "manual_review"), "workspace_launch_manual_review",
-				"resume_workspace_launch", firstNonEmpty(stringValue(operation["receiptId"]), stringValue(details["receiptId"])),
+				"read_workspace_launch_recovery", firstNonEmpty(stringValue(operation["receiptId"]), stringValue(details["receiptId"])),
 			)
 		case "workspace.renewal":
 			appendReview(
 				"workspace", firstNonEmpty(stringValue(operation["workspaceId"]), stringValue(details["workspaceId"])),
 				firstNonEmpty(stringValue(operation["accountId"]), stringValue(details["accountId"])), operationID,
 				firstNonEmpty(stringValue(details["phase"]), "manual_review"), firstNonEmpty(stringValue(details["errorCode"]), stringValue(details["lastBillingError"])),
-				"resolve_billing_review", firstNonEmpty(stringValue(operation["receiptId"]), stringValue(details["receiptId"])),
+				"", firstNonEmpty(stringValue(operation["receiptId"]), stringValue(details["receiptId"])),
 			)
 		}
 	}
@@ -1141,8 +1034,8 @@ func (app *controlPlaneServer) operatorReconciliationPage(ctx context.Context, p
 		items = append(items, map[string]any{
 			"id": stringValue(reconciliation["id"]), "resourceType": "workspace", "status": stringValue(reconciliation["status"]),
 			"accountId": "", "billingOperationId": stringValue(reconciliation["id"]), "phase": stringValue(reconciliation["status"]),
-			"errorCode":        firstNonEmpty(stringValue(reconciliation["reason"]), stringValue(reconciliation["status"])),
-			"progressionOwner": "none", "allowedActions": []string{},
+			"errorCode":      firstNonEmpty(stringValue(reconciliation["reason"]), stringValue(reconciliation["status"])),
+			"allowedActions": []string{},
 		})
 	}
 	sort.Slice(items, func(i, j int) bool {
@@ -1219,19 +1112,6 @@ func (app *controlPlaneServer) operatorRuntimeHealth(ctx context.Context, servic
 	return sourceEnvelope("runtime", "available", data, "")
 }
 
-func billingReviewRequestShapeValid(input map[string]any) bool {
-	if len(input) != 4 {
-		return false
-	}
-	for _, key := range []string{"accountId", "billingOperationId", "decision", "evidenceRef"} {
-		value, ok := input[key].(string)
-		if !ok || value == "" || value != strings.TrimSpace(value) {
-			return false
-		}
-	}
-	return true
-}
-
 func validBillingReviewEvidenceRef(value string) bool {
 	return billingReviewEvidenceRefPattern.MatchString(value)
 }
@@ -1247,21 +1127,6 @@ func validBillingReviewOpaqueID(value string) bool {
 		}
 	}
 	return true
-}
-
-func writeBillingReviewResolutionError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, errInvalidBillingReview):
-		writeError(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, errBillingReviewNotFound):
-		writeError(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, errIdempotencyConflict), errors.Is(err, errBillingReviewNotPending), errors.Is(err, errBillingReviewIdentity), errors.Is(err, errBillingReviewChargeFact), errors.Is(err, errBillingReviewProviderFact):
-		writeError(w, http.StatusConflict, err.Error())
-	case errors.Is(err, errBillingReviewReceipt):
-		writeError(w, http.StatusBadGateway, err.Error())
-	default:
-		writeError(w, http.StatusInternalServerError, "state_persist_failed")
-	}
 }
 
 func (app *controlPlaneServer) writeOperatorWorkspaceLaunchRecovery(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
@@ -1280,7 +1145,7 @@ func (app *controlPlaneServer) writeOperatorWorkspaceLaunchRecovery(w http.Respo
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, app.workspaceLaunchRecovery(r.Context(), service, operation))
+	writeJSON(w, http.StatusOK, app.workspaceLaunchRecovery(operation))
 }
 
 func (app *controlPlaneServer) writeOperatorRuntimeObservations(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {

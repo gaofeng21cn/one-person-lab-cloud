@@ -10,7 +10,6 @@ import {
   quoteDeployedWorkspacePurchase,
   runDeployedPurchaseTransport,
 } from "../../tools/deployed-workspace-purchase-transport.ts";
-import { stableID } from "../../tools/workspace-purchase-core.ts";
 
 /*
  * The transport is the only piece that turns a customer's credential into a
@@ -37,6 +36,8 @@ const TENANT_ID = "tenant-declared";
 const BILLING_SUBJECT_ID = "billing-subject-88";
 const RECEIPT_ID = "receipt-declared-charge";
 const IDENTITY = "declared-identity";
+// The buyer's own idempotency identity.
+const IDEMPOTENCY_KEY = `deployed-workspace:${CANDIDATE_HEX}:${IDENTITY}`;
 const WORKSPACE_NAME = "Declared workspace";
 
 // The identities the Workspace owner and the catalog owners mint. They are
@@ -52,11 +53,6 @@ const QUOTE_ID = `quote_${"4".repeat(32)}`;
 // own would fail in this file rather than in a customer's receipt.
 const OPERATION_ID = "op-1a2b3c4d-5e6f-7890-abcd-123456789abc";
 const WORKSPACE_ID = "workspace-abcdef01-2345-6789-abcd-ef0123456789";
-
-// The buyer's own idempotency identity, and the retained Control Plane launch
-// identity it derives for the orders that route admitted before the cutover.
-const IDEMPOTENCY_KEY = `deployed-workspace:${CANDIDATE_HEX}:${IDENTITY}`;
-const RETAINED_OPERATION_ID = `workspace-launch-${stableID(ACCOUNT_ID, IDEMPOTENCY_KEY).slice(0, 18)}`;
 
 const ENVIRONMENT = {
   OPL_DEPLOYED_PURCHASE_BASE_URL: BASE_URL,
@@ -189,9 +185,6 @@ function fakePlatform({
         currency: "USD", fetchedAt: "2026-10-18T00:00:00Z",
       });
     }
-    // The retained Control Plane route is read for the orders it admitted
-    // before the cutover. It is never a purchase command.
-    if (path === `/api/workspace-launches/${RETAINED_OPERATION_ID}`) return notFound();
     return notFound();
   };
 

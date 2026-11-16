@@ -167,7 +167,6 @@ export function createFixturePlatform({
   quoteMicros = QUOTE_MICROS,
   losePurchaseResponse = false,
   failOwnerReadbackAfterPurchase = false,
-  retainedOrderExists = false,
   unavailableRuntimeStatus = false,
   undeclaredKeyFulfillment = false,
 } = {}) {
@@ -376,17 +375,6 @@ export function createFixturePlatform({
       if (failOwnerReadbackAfterPurchase) return { status: 500, payload: null };
       return { status: 200, payload: ownerOperation(admitted) };
     }
-    // The retained route no longer admits purchases. The orders it admitted
-    // before the cutover are still there and still belong to the account that
-    // bought them, so a buyer has to be able to see that one exists.
-    if (/^\/api\/workspace-launches\/[^/]+$/.test(path)) {
-      if (!retainedOrderExists) return { status: 404, payload: null };
-      const operationId = decodeURIComponent(path.split("/").pop() as string);
-      return { status: 200, payload: {
-        operationId, workspaceId: "workspace-retained-0001", status: "succeeded", phase: "succeeded",
-        receiptId: "rcpt-retained-0001", provisioningMode: "resource_only",
-      } };
-    }
     // The new order is read from the Workspace, Serve and Ledger owner routes.
     // The retained Control Plane projections stay empty for a new order: a
     // fixture that filled them would let a buyer pass by reading the wrong
@@ -500,14 +488,6 @@ export function createFixturePlatform({
       if (!admitted) return { response: { status: 404 }, payload: null };
       if (failOwnerReadbackAfterPurchase) return { response: { status: 500 }, payload: null };
       return { response: { status: 200 }, payload: ownerOperation(admitted) };
-    }
-    if (/^\/api\/workspace-launches\/[^/]+$/.test(path)) {
-      if (!retainedOrderExists) return { response: { status: 404 }, payload: null };
-      const operationId = decodeURIComponent(path.split("/").pop() as string);
-      return { response: { status: 200 }, payload: {
-        operationId, workspaceId: "workspace-retained-0001", status: "succeeded", phase: "succeeded",
-        receiptId: "rcpt-retained-0001", provisioningMode: "resource_only",
-      } };
     }
     throw new Error(`unexpected request ${path}`);
   };

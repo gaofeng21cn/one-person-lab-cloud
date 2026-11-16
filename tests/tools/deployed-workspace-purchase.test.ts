@@ -10,7 +10,6 @@ import {
   runDeployedWorkspacePurchase,
   validateDeployedPurchaseReceipt,
 } from "../../tools/deployed-workspace-purchase.ts";
-import { stableID } from "../../tools/workspace-purchase-core.ts";
 
 // The deployed entry is the only automated buyer that may reach a real customer.
 // Its guard is deliberately the mirror image of the local harness's: the local
@@ -76,10 +75,6 @@ const QUOTE_ID = `quote_${"4".repeat(32)}`;
 const OPERATION_ID = "op-1a2b3c4d-5e6f-7890-abcd-123456789abc";
 const WORKSPACE_ID = "workspace-abcdef01-2345-6789-abcd-ef0123456789";
 const AMOUNT = "52580000";
-// The retained Control Plane launch identity, derived the way the Control
-// Plane derived it. The buyer still reads that route for the orders it
-// admitted before the cutover.
-const RETAINED_OPERATION_ID = `workspace-launch-${stableID(ACCOUNT.accountId, IDEMPOTENCY_KEY).slice(0, 18)}`;
 
 function declaredRequest(overrides = {}) {
   return {
@@ -165,7 +160,6 @@ function deployedPlatform({
   wallet = { status: 200, body: WALLET },
   tenant = { status: 200, body: TENANT },
   ownerSession = { status: 200, body: OWNER_SESSION },
-  retainedLaunch = null,
   runtimeVersions = { items: [{ id: RUNTIME_VERSION_ID, status: "approved" }] },
   computePlans = { items: [{ id: COMPUTE_PLAN_ID, availability: "available" }] },
   storagePlans = { items: [{ id: STORAGE_PLAN_ID, availability: "available" }] },
@@ -188,9 +182,6 @@ function deployedPlatform({
     if (path === "/api/v2/auth/session") return respond(ownerSession.status, ownerSession.body);
     if (path === "/api/v2/tenant") return respond(tenant.status, tenant.body);
     if (path === "/api/v2/wallet") return respond(wallet.status, wallet.body);
-    if (path === `/api/workspace-launches/${RETAINED_OPERATION_ID}`) {
-      return retainedLaunch ? respond(200, retainedLaunch) : respond(404, { error: "workspace_launch_not_found" });
-    }
     throw new Error(`unexpected request ${path}`);
   };
 
@@ -430,7 +421,6 @@ test("the buyer reads the owner envelope and buys one declared Workspace through
       "request /api/auth/me",
       "json /api/v2/auth/session",
       "json /api/v2/tenant",
-      `request /api/workspace-launches/${RETAINED_OPERATION_ID}`,
       "json /api/v2/quotes POST",
       `json /api/v2/quotes/${QUOTE_ID}`,
       "json /api/v2/workspaces POST",
@@ -440,12 +430,12 @@ test("the buyer reads the owner envelope and buys one declared Workspace through
     ],
   );
 
-  // The retained Control Plane route is read for the orders it admitted before
-  // the cutover. It is never a purchase command.
+  // The Control Plane admitted no order of its own after the cutover, so the
+  // buyer never reaches that route at all.
   assert.equal(
-    platform.calls.some((call) => call.path === "/api/workspace-launches" && call.init?.method === "POST"),
+    platform.calls.some((call) => call.path.startsWith("/api/workspace-launches")),
     false,
-    "the retained route must never be issued as a purchase command",
+    "the buyer must not reach the retired Control Plane launch route",
   );
 
   const quote = platform.calls.find((call) => call.path === "/api/v2/quotes" && call.init.method === "POST");
@@ -644,7 +634,6 @@ test("a replay of the same declared identity resumes its own order and buys noth
       "request /api/auth/me",
       "json /api/v2/auth/session",
       "json /api/v2/tenant",
-      `request /api/workspace-launches/${RETAINED_OPERATION_ID}`,
       "json /api/v2/quotes",
       `json /api/v2/quotes/${QUOTE_ID}`,
       "json /api/v2/workspaces",
@@ -758,30 +747,6 @@ test("an automatic renewal is refused loudly rather than bought as a manual one"
     { code: "deployed_purchase_automatic_renewal_unsupported" },
   );
   assert.equal(platform.calls.length, 0, "the refusal costs no read and no money");
-  assert.equal(platform.commands(), 0);
-});
-
-test("an order the retained route already admitted is refused rather than bought again", async () => {
-  const platform = deployedPlatform({
-    retainedLaunch: {
-      operationId: RETAINED_OPERATION_ID,
-      workspaceId: `ws-${"7".repeat(18)}`,
-      accountId: ACCOUNT.accountId,
-      name: "Declared workspace",
-      packageId: "pro",
-      autoRenew: false,
-      status: "succeeded",
-      phase: "succeeded",
-      currency: "USD",
-      totalChargeUsdMicros: 52580000,
-      receiptId: "rcpt_declared_purchase",
-    },
-  });
-  await assert.rejects(
-    runDeployedWorkspacePurchase(declaredRequest(), callerFor(platform)),
-    { code: "deployed_purchase_retained_order_exists" },
-  );
-  assert.equal(platform.calls.some((call) => call.path === "/api/v2/workspaces"), false);
   assert.equal(platform.commands(), 0);
 });
 

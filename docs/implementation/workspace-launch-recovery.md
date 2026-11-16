@@ -1,14 +1,25 @@
 # Workspace Launch Recovery Reference
 
+> **Execution withdrawn (2026-11-17, Cloud PR #1232).** The Control Plane's
+> retained Launch, renewal/expiry, deletion and refund execution left the source
+> tree with the R5 withdrawal. The command routes this reference describes are
+> no longer registered, the Launch worker and the Reconciler no longer exist, and
+> no route performs a result check, a resume or a closeout any more. What the
+> reference still owns is the history: the strict decoders, the receipt
+> builders, the persisted records and the retained reads. Native purchases use
+> Workspace's v2 quote/order surfaces, and the native delete stays with the
+> Workspace owner. The sections below are kept as the record of how the retired
+> execution behaved and of the shape the persisted rows still have.
+
 This reference owns retained Control Plane Launch binding and recovery behavior.
-New purchase intent on `POST /api/workspace-launches` returns HTTP 409
-`workspace_launch_new_purchase_retired` before any business mutation. Existing
-same-key replay, historical list/detail, resume and original settlement continue
-under CP; native purchases use Workspace's v2 quote/order surfaces. The fence
-does not remove historical rows, workers, refunds or the retained DELETE path.
-[The reconciler](../../services/control-plane/internal/server/workspace_launch_reconciler.go)
-and [its focused tests](../../services/control-plane/internal/server/workspace_launch_reconciler_test.go)
-are the current source; production execution remains Instance-owned.
+New purchase intent on `POST /api/workspace-launches` is not registered any
+more, so the request finds no route at all. Historical list/detail, the
+original settlement and the persisted records continue under CP; native
+purchases use Workspace's v2 quote/order surfaces. The withdrawal does not
+remove historical rows, refunds or the retained readers.
+[The historical decoders](../../services/control-plane/internal/server/workspace_launch_history.go)
+are the current source; the reconciler and the Launch worker left with the
+retired execution.
 
 ## Stage Binding
 
@@ -89,9 +100,10 @@ If an exhausted Runtime read budget was owned by a failed fresh typed-pending
 continuation, the READY transition also marks that continuation consumed so its
 persisted state remains coherent.
 
-## Worker Recovery
+## Worker Recovery (retired execution)
 
-The Workspace Launch worker is the single background Launch entry. Its keyset
+The Workspace Launch worker was the single background Launch entry. It is gone
+with the R5 withdrawal; the paragraphs below record how it behaved. Its keyset
 cursor (`createdAt`, `id`) reads four operations per page and runs at most four
 accounts concurrently. Completion dispatches the next operation in the current
 round; a new round waits for the configured interval, avoiding hot polling.
@@ -134,11 +146,13 @@ the same auto-recovery eligibility decision and one safe block-reason
 enum. It performs no persistence or provider/Kubernetes mutation and exposes no
 operation, provider, or customer identity.
 
-## Operator Result Check
+## Operator Result Check (retired command)
 
-Ordinary authenticated operators use `GET .../workspace-launches/{id}/recovery`
-and `POST .../workspace-launches/{id}/recover`. The server returns the current
-version, stage and allowed actions. `check_result` accepts only that version,
+`GET .../workspace-launches/{id}/recovery` stays registered and returns the
+current version, stage and the allowed actions, which are now always empty: the
+command that consumed them is gone. `POST .../workspace-launches/{id}/recover`
+is not registered any more. The command used to work like this:
+`check_result` accepted only that version,
 a reason and an idempotency key. It supplies its own zero mutation/replay
 budgets, reads the original owner and records the operator check in the original
 operation's result-check history, separate from recovery authorization lineage. Confirmed ready advances the original
@@ -149,11 +163,13 @@ Console never constructs technical budgets or reads Acceptance B capability
 endpoints. Customers can close the page and return to the original Launch;
 front-end polling expiry is not fulfillment failure.
 
-## End An Unfulfilled Launch
+## End An Unfulfilled Launch (retired command)
 
-The ordinary operator recovery API also returns `close_unfulfilled` when the
-current original operation and Fabric's read-only preview admit closure. The
-POST accepts the same version, reason and idempotency key as result checking.
+The ordinary operator recovery API used to return `close_unfulfilled` when the
+current original operation and Fabric's read-only preview admitted closure. The
+action and the command that consumed it are gone with the R5 withdrawal; the
+paragraphs below record how the closure behaved. The POST accepted the same
+version, reason and idempotency key as result checking.
 It records the authorization in `closeout` on the schema-3 Launch using the
 existing original-row CAS. The single Launch worker continues the same record:
 `freeze -> resources -> refund -> receipt -> complete`. An authorized

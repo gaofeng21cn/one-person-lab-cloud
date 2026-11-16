@@ -2,10 +2,8 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -78,135 +76,6 @@ func sessionDelegatedCredentialForTest(t *testing.T, server http.Handler, sessio
 	return clients.SessionDelegatedCredential{}
 }
 
-func TestRetainedWorkspaceLaunchRefusesFreshPurchaseBeforeAnyWriter(t *testing.T) {
-	server, store, client, _, events := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
-	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
-	beforeOperations, err := store.ListRuntimeOperations(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	beforeWorkspaces, err := store.ListWorkspaces(context.Background(), "acct-alpha")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches",
-		`{"name":"Fresh purchase","packageId":"basic","autoRenew":false}`, "fresh-purchase-fence")
-	if response.Code != http.StatusConflict {
-		t.Fatalf("fresh purchase status=%d body=%s", response.Code, response.Body.String())
-	}
-	var body map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body["error"] != retainedWorkspaceLaunchNewPurchaseRetired {
-		t.Fatalf("fresh purchase error=%#v body=%s", body["error"], response.Body.String())
-	}
-	if body["owner"] != "workspace" {
-		t.Fatalf("fresh purchase did not name the owner: %#v", body)
-	}
-	next, _ := body["next"].([]any)
-	if len(next) != 2 || next[0] != "POST /api/v2/quotes" || next[1] != "POST /api/v2/workspaces" {
-		t.Fatalf("fresh purchase did not name the owner route: %#v", body["next"])
-	}
-
-	afterOperations, err := store.ListRuntimeOperations(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	afterWorkspaces, err := store.ListWorkspaces(context.Background(), "acct-alpha")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(afterOperations) != len(beforeOperations) || len(afterWorkspaces) != len(beforeWorkspaces) {
-		t.Fatalf("refused purchase persisted facts: operations=%d->%d workspaces=%d->%d",
-			len(beforeOperations), len(afterOperations), len(beforeWorkspaces), len(afterWorkspaces))
-	}
-	if len(client.charges) != 0 || len(*events) != 0 {
-		t.Fatalf("refused purchase crossed a financial or provider boundary: charges=%#v events=%#v", client.charges, *events)
-	}
-}
-
-func TestRetainedWorkspaceLaunchReplaysOnlyTheHistoricalKey(t *testing.T) {
-	server, store, client, _, events := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
-	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
-	historical := seedRetainedWorkspaceLaunchForTest(t, server, "acct-alpha", "usr-alpha", 41, "Historical purchase", "basic", "historical-purchase", false)
-	eventsBefore, chargesBefore := len(*events), len(client.charges)
-
-	replay := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches",
-		`{"name":"Historical purchase","packageId":"basic","autoRenew":false,"provisioningMode":"resource_only"}`, "historical-purchase")
-	if replay.Code != http.StatusAccepted {
-		t.Fatalf("historical replay status=%d body=%s", replay.Code, replay.Body.String())
-	}
-	var replayed map[string]any
-	if err := json.Unmarshal(replay.Body.Bytes(), &replayed); err != nil {
-		t.Fatal(err)
-	}
-	if stringValue(replayed["operationId"]) != historical.ID {
-		t.Fatalf("historical replay returned operation %q, want %q", stringValue(replayed["operationId"]), historical.ID)
-	}
-	operations, err := store.ListRuntimeOperations(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(operations) != 1 {
-		t.Fatalf("historical replay created another operation: %#v", operations)
-	}
-	if len(client.charges) != chargesBefore || len(*events) != eventsBefore {
-		t.Fatalf("historical replay crossed a new boundary: charges=%#v events=%#v", client.charges, *events)
-	}
-
-	conflict := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches",
-		`{"name":"Different purchase","packageId":"basic","autoRenew":false,"provisioningMode":"resource_only"}`, "historical-purchase")
-	assertErrorResponse(t, conflict.Code, conflict.Body.String(), http.StatusConflict, errIdempotencyConflict.Error())
-
-	fresh := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches",
-		`{"name":"Another purchase","packageId":"basic","autoRenew":false}`, "another-purchase")
-	if fresh.Code != http.StatusConflict || !strings.Contains(fresh.Body.String(), retainedWorkspaceLaunchNewPurchaseRetired) {
-		t.Fatalf("fresh purchase after replay status=%d body=%s", fresh.Code, fresh.Body.String())
-	}
-}
-
-func TestRetainedWorkspaceLaunchReplayPreservesDefaultApplicationHistory(t *testing.T) {
-	server, store, client, fabric, events := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
-	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
-	historical := seedRetainedWorkspaceLaunchWithDefaultApplicationForTest(t, server, session, "acct-alpha", "usr-alpha", 41, "Historical default application", "basic", "historical-default-application", false)
-	ctx := context.Background()
-	before, err := store.ListRuntimeOperations(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	eventsBefore, chargesBefore, keysBefore, receiptsBefore := len(*events), len(client.charges), len(client.keys), fabric.receiptLedger.writes
-	handler := server.(*controlPlaneHTTPHandler)
-	scan := &retiredDefaultApplicationScanStore{controlPlaneTableStore: store}
-	handler.app.tables = scan
-	for range 2 {
-		response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches", `{"name":"Historical default application","packageId":"basic","autoRenew":false}`, "historical-default-application")
-		if response.Code != http.StatusAccepted {
-			t.Fatalf("historical default replay=%d %s", response.Code, response.Body.String())
-		}
-		var body map[string]any
-		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-			t.Fatal(err)
-		}
-		if stringValue(body["operationId"]) != historical.ID {
-			t.Fatal("replay lost original order identity")
-		}
-	}
-	after, err := store.ListRuntimeOperations(ctx)
-	if err != nil || !reflect.DeepEqual(after, before) {
-		t.Fatal("replay changed default installation or original order history", err)
-	}
-	if len(*events) != eventsBefore || len(client.charges) != chargesBefore || len(client.keys) != keysBefore || fabric.receiptLedger.writes != receiptsBefore || len(fabric.stageResults) != 0 {
-		t.Fatalf("replay executed installation/payment/provider effects: events=%v", *events)
-	}
-	for _, action := range scan.actions {
-		if action == workspaceDefaultApplicationAction {
-			t.Fatal("replay scanned historical default requests for installation")
-		}
-	}
-}
-
 func TestRetainedWorkspaceLaunchKeepsHistoricalReadsAndCrossAccountIsolation(t *testing.T) {
 	server, store, _, _, _ := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
 	historical := seedRetainedWorkspaceLaunchForTest(t, server, "acct-alpha", "usr-alpha", 41, "Historical purchase", "basic", "historical-read", false)
@@ -227,14 +96,6 @@ func TestRetainedWorkspaceLaunchKeepsHistoricalReadsAndCrossAccountIsolation(t *
 	if crossRead.Code != http.StatusNotFound {
 		t.Fatalf("cross-account read status=%d body=%s", crossRead.Code, crossRead.Body.String())
 	}
-	crossReplay := requestWithMutationKeyForTest(t, server, otherSession, http.MethodPost, "/api/workspace-launches",
-		`{"name":"Historical purchase","packageId":"basic","autoRenew":false}`, "historical-read")
-	if crossReplay.Code != http.StatusConflict || !strings.Contains(crossReplay.Body.String(), retainedWorkspaceLaunchNewPurchaseRetired) {
-		t.Fatalf("cross-account replay status=%d body=%s", crossReplay.Code, crossReplay.Body.String())
-	}
-	if strings.Contains(crossReplay.Body.String(), historical.ID) {
-		t.Fatalf("cross-account refusal leaked the historical operation: %s", crossReplay.Body.String())
-	}
 }
 
 func seedTenantMemberForFenceTest(t *testing.T, store controlPlaneTableStore, accountID, userID, email string) string {
@@ -243,30 +104,6 @@ func seedTenantMemberForFenceTest(t *testing.T, store controlPlaneTableStore, ac
 	return email
 }
 
-func TestRetainedWorkspaceLaunchRefusalStillRequiresSessionAndCSRF(t *testing.T) {
-	server, _, _, _, _ := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
-	withoutSession := httptest.NewRequest(http.MethodPost, "/api/workspace-launches", strings.NewReader(`{"name":"Fresh","packageId":"basic","autoRenew":false}`))
-	withoutSession.Header.Set("Content-Type", "application/json")
-	withoutSession.Header.Set("Idempotency-Key", "fence-without-session")
-	withoutSessionRec := httptest.NewRecorder()
-	server.ServeHTTP(withoutSessionRec, withoutSession)
-	assertErrorResponse(t, withoutSessionRec.Code, withoutSessionRec.Body.String(), http.StatusUnauthorized, "not_authenticated")
-
-	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
-	withoutCSRF := httptest.NewRequest(http.MethodPost, "/api/workspace-launches", strings.NewReader(`{"name":"Fresh","packageId":"basic","autoRenew":false}`))
-	withoutCSRF.Header.Set("Content-Type", "application/json")
-	withoutCSRF.Header.Set("Idempotency-Key", "fence-without-csrf")
-	addSessionCookies(withoutCSRF, session)
-	withoutCSRFRec := httptest.NewRecorder()
-	server.ServeHTTP(withoutCSRFRec, withoutCSRF)
-	if withoutCSRFRec.Code != http.StatusForbidden {
-		t.Fatalf("fence without CSRF status=%d body=%s", withoutCSRFRec.Code, withoutCSRFRec.Body.String())
-	}
-}
-
-// codexKeyGroupIDForTest resolves the active Codex key group of a user. The
-// Workspace Gateway key rotation that resolved it in production is retired,
-// so the historical fixture resolves the group itself.
 func codexKeyGroupIDForTest(t *testing.T, ctx context.Context, service *controlplane.Service, credential clients.SessionDelegatedCredential, userID int64) int64 {
 	t.Helper()
 	groups, err := service.GatewayUserGroups(ctx, credential, userID)
@@ -332,9 +169,18 @@ func seedRetainedWorkspaceLaunchFixture(
 		AccountID: accountID, WorkspaceID: descriptor.WorkspaceID, PackageID: packageID, SizeGB: storageGB,
 		WorkspaceImageDigest: imageDigest, ProvisioningMode: string(mode), RequestHash: descriptor.RequestHash,
 	}
-	preflight, err := handler.service.PreflightWorkspaceLaunch(ctx, preflightInput)
-	if err != nil {
-		t.Fatal(err)
+	// The retained launch execution that called the provider preflight is
+	// retired, so the historical seed records the same confirmed provider
+	// binding the Fabric owner returned instead of calling it again.
+	preflight := clients.WorkspaceLaunchPreflight{
+		SchemaVersion:      clients.WorkspaceLaunchFabricSchemaVersion,
+		Available:          true,
+		Reason:             "none",
+		LaunchOperationID:  descriptor.OperationID,
+		RequestHash:        descriptor.RequestHash,
+		ProviderProfileRef: "provider-profile",
+		BindingRef:         "workspace-binding-" + stableID(descriptor.OperationID)[:12],
+		SpecDigest:         strings.Repeat("a", 64),
 	}
 	if !workspaceLaunchPreflightConfirmed(preflightInput, preflight) {
 		t.Fatalf("historical preflight was not confirmed: %+v", preflight)

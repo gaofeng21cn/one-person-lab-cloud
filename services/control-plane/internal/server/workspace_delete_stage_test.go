@@ -8,7 +8,6 @@ import (
 	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
-	"opl-cloud/services/control-plane/internal/clients"
 )
 
 // The published stage must name the stage the operation is working on right now.
@@ -49,27 +48,33 @@ func TestWorkspaceDeleteStageInProgressNamesTheCurrentStage(t *testing.T) {
 // The deletion status is a pure store read: reading progress never contacts the
 // provider, because only the owning worker performs provider reads.
 func TestWorkspaceDeletionStatusServesEveryStageWithoutProviderReads(t *testing.T) {
-	absent := false
 	fabric := newWorkspaceDeleteRefundFabric()
+	fixture, _, _ := newWorkspaceDeleteCompletionFixtureWith(t, newMemoryTableStore(), fabric)
 	// The Machine is gone but TKE still reports the node: the deletion is waiting on
 	// compute, which is exactly the case a phase-driven projection mislabelled.
-	fabric.computeReadbackResults = []clients.ComputeAllocation{
-		{Status: "present", TKEStatus: "RUNNING", MachinePresent: &absent, DestroyState: clients.StorageDestroyStatePendingRetry},
-	}
-	fixture, _, _ := newWorkspaceDeleteCompletionFixtureWith(t, newMemoryTableStore(), fabric)
-	response := requestWithMutationKeyForTest(t, fixture.server, fixture.session, http.MethodDelete, "/api/workspaces/ws-alpha", `{}`, "delete-stage-evidence")
-	if response.Code != http.StatusAccepted {
-		t.Fatalf("delete status=%d body=%s", response.Code, response.Body.String())
-	}
-	duringDelete := len(fabric.recordedCalls())
+	nextRetryAt := time.Now().UTC().Add(2 * time.Minute).Format(time.RFC3339Nano)
+	seedWorkspaceDeleteOperationForTest(t, fixture, func(operation *workspaceDeleteOperation) {
+		operation.Phase = "storage_absent"
+		operation.Status = "running"
+		operation.RuntimeStatus, operation.SecretStatus = "absent", "absent"
+		operation.AttachmentStatus, operation.StorageStatus = "absent", "absent"
+		operation.ComputeStatus = "destroying"
+		operation.ComputeReadbacks, operation.MaxComputeReadbacks = 1, workspaceDeleteComputeReadbackBudget
+		operation.ComputeReadbackNotBefore = nextRetryAt
+		operation.StageEvidence = []contracts.WorkspaceDeleteStageEvidence{{
+			Stage: contracts.WorkspaceDeleteStageStorageAbsent, Result: "absent", EvidenceKind: "provider_readback",
+			ResourceID: "storage-alpha", ObservedAt: time.Now().UTC().Format(time.RFC3339Nano), ReadAttempts: 1,
+		}}
+	})
+	before := len(fabric.recordedCalls())
 
 	status := requestWithSession(t, fixture.server, fixture.session, http.MethodGet, "/api/workspaces/ws-alpha/deletion", "")
 	var dto workspaceDeletionStatusDTO
 	if json.Unmarshal(status.Body.Bytes(), &dto) != nil || status.Code != http.StatusOK {
 		t.Fatalf("deletion status=%d body=%s", status.Code, status.Body.String())
 	}
-	if len(fabric.recordedCalls()) != duringDelete {
-		t.Fatalf("status read contacted Fabric: before=%d after=%d", duringDelete, len(fabric.recordedCalls()))
+	if len(fabric.recordedCalls()) != before {
+		t.Fatalf("status read contacted Fabric: before=%d after=%d", before, len(fabric.recordedCalls()))
 	}
 	if dto.Stage != contracts.WorkspaceDeleteStageComputeAbsent || dto.PageState != contracts.WorkspaceDeletePageStateRetrying ||
 		dto.Phase != "storage_absent" || dto.NextRetryAt == "" || dto.ReasonCode != "" {
@@ -93,12 +98,13 @@ func TestWorkspaceDeletionStatusServesEveryStageWithoutProviderReads(t *testing.
 // reports the stage and the scheduled retry from store state alone.
 func TestWorkspaceDeletionStatusReportsStorageWaitFromStoreState(t *testing.T) {
 	fabric := newWorkspaceDeleteRefundFabric()
-	fabric.storageResults = []workspaceDeleteStorageResult{{Status: "ready", DestroyState: clients.StorageDestroyStatePendingRetry}}
 	fixture, _, _ := newWorkspaceDeleteCompletionFixtureWith(t, newMemoryTableStore(), fabric)
-	response := requestWithMutationKeyForTest(t, fixture.server, fixture.session, http.MethodDelete, "/api/workspaces/ws-alpha", `{}`, "delete-stage-storage")
-	if response.Code != http.StatusAccepted {
-		t.Fatalf("delete status=%d body=%s", response.Code, response.Body.String())
-	}
+	seedWorkspaceDeleteOperationForTest(t, fixture, func(operation *workspaceDeleteOperation) {
+		operation.Phase = "attachment_absent"
+		operation.Status = "running"
+		operation.RuntimeStatus, operation.SecretStatus = "absent", "absent"
+		operation.AttachmentStatus = "absent"
+	})
 	before := len(fabric.recordedCalls())
 	status := requestWithSession(t, fixture.server, fixture.session, http.MethodGet, "/api/workspaces/ws-alpha/deletion", "")
 	var dto workspaceDeletionStatusDTO
@@ -115,7 +121,6 @@ func TestWorkspaceDeletionStatusReportsStorageWaitFromStoreState(t *testing.T) {
 	if dto.PageState != contracts.WorkspaceDeletePageStateWaiting {
 		t.Fatalf("page state=%q (no failure was recorded yet)", dto.PageState)
 	}
-	_ = context.Background()
 }
 
 // The admin Runtime detail receives the same persisted deletion facts as the
@@ -123,11 +128,11 @@ func TestWorkspaceDeletionStatusReportsStorageWaitFromStoreState(t *testing.T) {
 // the most recent readback and the scheduled retry. Reading them is a store read,
 // so it never drives the deletion forward.
 func TestOperatorRuntimeObservationPublishesDeletionProgress(t *testing.T) {
-	absent := false
-	present := true
+	observedAt := time.Now().UTC().Format(time.RFC3339Nano)
+	nextRetryAt := time.Now().UTC().Add(2 * time.Minute).Format(time.RFC3339Nano)
 	for _, testCase := range []struct {
 		name       string
-		mutate     func(*workspaceDeleteFabric)
+		seed       func(*workspaceDeleteOperation)
 		wantStatus string
 		wantReason string
 		wantStage  string
@@ -136,17 +141,34 @@ func TestOperatorRuntimeObservationPublishesDeletionProgress(t *testing.T) {
 	}{
 		{
 			name: "compute still terminating",
-			mutate: func(f *workspaceDeleteFabric) {
-				f.computeReadbackResults = []clients.ComputeAllocation{{Status: "present", TKEStatus: "RUNNING", MachinePresent: &absent, DestroyState: clients.StorageDestroyStatePendingRetry}}
+			seed: func(operation *workspaceDeleteOperation) {
+				operation.Phase = "storage_absent"
+				operation.Status = "running"
+				operation.RuntimeStatus, operation.SecretStatus = "absent", "absent"
+				operation.AttachmentStatus, operation.StorageStatus = "absent", "absent"
+				operation.ComputeStatus = "destroying"
+				operation.ComputeReadbacks, operation.MaxComputeReadbacks = 1, workspaceDeleteComputeReadbackBudget
+				operation.ComputeReadbackNotBefore = nextRetryAt
+				operation.StageEvidence = []contracts.WorkspaceDeleteStageEvidence{{
+					Stage: contracts.WorkspaceDeleteStageStorageAbsent, Result: "absent", EvidenceKind: "provider_readback",
+					ResourceID: "storage-alpha", ObservedAt: observedAt, ReadAttempts: 1,
+				}}
 			},
 			wantStatus: "pending", wantReason: "workspace_delete_in_progress",
 			wantStage: contracts.WorkspaceDeleteStageComputeAbsent, wantState: contracts.WorkspaceDeletePageStateRetrying, wantRetry: true,
 		},
 		{
 			name: "storage identity conflict",
-			mutate: func(f *workspaceDeleteFabric) {
-				_ = present
-				f.storageDestroyResourceID = "disk-other"
+			seed: func(operation *workspaceDeleteOperation) {
+				operation.Phase = "attachment_absent"
+				operation.Status = "manual_review"
+				operation.LastErrorCode = "fabric_storage_identity_conflict"
+				operation.RuntimeStatus, operation.SecretStatus = "absent", "absent"
+				operation.AttachmentStatus = "absent"
+				operation.StageEvidence = []contracts.WorkspaceDeleteStageEvidence{{
+					Stage: contracts.WorkspaceDeleteStageAttachmentAbsent, Result: "identity_conflict", ReasonCode: "fabric_storage_identity_conflict",
+					EvidenceKind: "provider_readback", ResourceID: "attachment-alpha", ProviderResourceID: "disk-other", ObservedAt: observedAt, ReadAttempts: 1,
+				}}
 			},
 			wantStatus: "attention", wantReason: "workspace_delete_identity_conflict",
 			wantStage: contracts.WorkspaceDeleteStageStorageAbsent, wantState: contracts.WorkspaceDeletePageStateBlocked,
@@ -154,15 +176,8 @@ func TestOperatorRuntimeObservationPublishesDeletionProgress(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			fabric := newWorkspaceDeleteRefundFabric()
-			testCase.mutate(fabric)
 			fixture, _, _ := newWorkspaceDeleteCompletionFixtureWith(t, newMemoryTableStore(), fabric)
-			if testCase.name == "storage identity conflict" {
-				seedWorkspaceDeleteStorageProviderResourceID(t, fixture, "disk-alpha")
-			}
-			response := requestWithMutationKeyForTest(t, fixture.server, fixture.session, http.MethodDelete, "/api/workspaces/ws-alpha", `{}`, "operator-delete-"+stableID(testCase.name))
-			if response.Code == http.StatusOK {
-				t.Fatalf("fixture completed the deletion: %s", response.Body.String())
-			}
+			seedWorkspaceDeleteOperationForTest(t, fixture, testCase.seed)
 			handler := fixture.server.(*controlPlaneHTTPHandler)
 			before := len(fabric.recordedCalls())
 			observations, err := handler.app.operatorRuntimeObservations(context.Background(), handler.service, time.Now().UTC())

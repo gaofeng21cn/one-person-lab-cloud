@@ -175,15 +175,6 @@ func workspaceLaunchReconcileResponse(operation workspaceLaunchReconcileOperatio
 	return response, nil
 }
 
-func workspaceLaunchReconcileRequestMatches(operation workspaceLaunchReconcileOperation, accountID, ownerUserID, name, packageID string, autoRenew bool, mode contracts.WorkspaceProvisioningMode) bool {
-	if mode == "" {
-		mode = contracts.WorkspaceProvisioningFull
-	}
-	return operation.stringFact("accountId") == accountID && operation.stringFact("ownerUserId") == ownerUserID &&
-		operation.stringFact("name") == name && operation.stringFact("packageId") == packageID &&
-		operation.boolFact("autoRenew") == autoRenew && operation.provisioningMode() == mode
-}
-
 func workspaceLaunchPreflightConfirmed(input clients.WorkspaceLaunchPreflightInput, result clients.WorkspaceLaunchPreflight) bool {
 	return result.SchemaVersion == clients.WorkspaceLaunchFabricSchemaVersion && result.Available && result.Reason == "none" &&
 		result.LaunchOperationID == input.LaunchOperationID && result.RequestHash == input.RequestHash &&

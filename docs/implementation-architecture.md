@@ -996,13 +996,14 @@ provider-specific mechanics do not add CPU, memory, or disk HTTP routes.
 
 ## Launch Integration
 
-Control Plane's `POST /api/workspace-launches` now admits only replay of an
-existing original operation. A fresh idempotency key returns HTTP 409 with
-`workspace_launch_new_purchase_retired`, owner `workspace` and the v2 quote/
-Workspace routes, before pricing, payment, provider dispatch or persistence.
-Authentication, CSRF, account ownership and existing payload-conflict checks
-remain. Historical list/detail, resume, reconciliation and retained DELETE keep
-their original owner and identities; no Launch or financial table is erased.
+The Control Plane's `POST /api/workspace-launches` used to admit only a replay
+of an existing original operation and refused a fresh idempotency key with HTTP
+409 `workspace_launch_new_purchase_retired` before pricing, payment, provider
+dispatch or persistence. With the R5 withdrawal the route is not registered at
+all: the retained Launch execution, its worker, its Reconciler and the
+reconciliation path left the source tree. Historical list/detail, the retained
+recovery read, the original settlement and the persisted rows keep their
+original owner and identities; no Launch or financial table is erased.
 The legacy Console removes fresh/repurchase affordances and does not load the
 native catalog or recover a native locator under its CP session. Cloud keeps
 its native purchase surface. Customer auto-discovery of old Launch operations
@@ -1598,7 +1599,7 @@ operations, data or financial evidence.
 
 | Fact/capability | Current owner and new caller | Retained writer/caller and object boundary | Review disposition |
 | --- | --- | --- | --- |
-| Fresh purchase | Resource Catalog creates the quote; Workspace accepts the order through BFF `/api/v2/quotes` and `/api/v2/workspaces`; UI `createWorkspaceQuote` and Instance `cloud-workspace-launch-readback.mjs` use those routes | CP `POST /api/workspace-launches` only replays an existing account/key-bound operation, otherwise refuses before pricing/payment/provider/persistence. PR #1061 already removed `createWorkspaceLaunch` and fresh-create claim machinery | Already removed; do not implement another fence or preserve a creator for tests |
+| Fresh purchase | Resource Catalog creates the quote; Workspace accepts the order through BFF `/api/v2/quotes` and `/api/v2/workspaces`; UI `createWorkspaceQuote` and Instance `cloud-workspace-launch-readback.mjs` use those routes | CP `POST /api/workspace-launches` only replayed an existing account/key-bound operation and refused a fresh key before pricing/payment/provider/persistence; PR #1061 removed `createWorkspaceLaunch` and the fresh-create claim machinery, and the R5 withdrawal unregistered the route | Already removed; do not implement another fence or preserve a creator for tests. The Instance buyer of that route is withdrawn on the Instance side |
 | Application revision, deployment and current selection | Runtime Control supplies approved default-App releases; Capability/Build supplies Agent descriptors; Workspace calls Serve Reserve/Deploy. BFF `serve_update.go` delegates version updates to Serve | R1a/R1b remove CP operator admission/new deployments, default installer and Console commands; R1d removes the generic deployment builder. No Key rotation can create a same-selection child; accepted deployments retain the shared worker and activation. Claim/activation requires a retained CP Workspace row and binding/predecessor checks. Instance #674 removes the installer caller at source | R1: retire the legacy deployment capability after caller/accepted-operation disposition; no proof of a duplicate native writer follows from old columns |
 | Application credentials, runtime maintenance and image policy | Workspace/Serve reveal the exact current ready runtime's credentials; Serve owns approved version replacement/readiness/access | CP credential reveal and original Launch repair remain; R2a removes password-rotation creation. R2c removes CP image replacement creation/preview/dispatch/retry worker with Console/BFF callers; direct policy/history reads, policy activation for original Launch recovery, and safety barriers remain | R2: Instance #675 caller withdrawal is MERGED, CI 2/2 SUCCESS; Cloud entrypoint-removal adoption remains unproven; check in-flight legacy executions before that adoption. Accepted credential deployments retain recovery; native reveal/update does not establish legacy command parity |
 | Workspace managed Key | Workspace coordinates intent through Gateway Integration; external Gateway owns effective Key/Group state | R3a removes CP fresh rotation acceptance and its store claim. The original POST resumed only an existing account/Workspace/request-bound rotation and is no longer registered; retained Launch Key stages remain, and accepted rotations stay readable as history. This is distinct from personal user Key CRUD | R3: finish original-operation disposition before removing recovery, deployment binding and lineage consumers; native disable/reveal is not replacement-Key rotation |
@@ -1818,6 +1819,47 @@ Ledger/Gateway receipt validation. Fabric legacy-stage/closeout HTTP adapters
 and tests may leave only after their CP consumers retire; native resource
 dispatch, deletion, provider mutation journals and application Secret cleanup
 still use shared Fabric code.
+
+R5 source withdrawal (2026-11-17, Cloud PR #1232): the retained Launch,
+renewal/expiry, deletion and refund execution slice leaves the Control Plane.
+`workspace_launch_{service,reconciler,account_stages,fabric_stages,activation,closeout}.go`,
+`workspace_launch_worker.go`, `workspace_delete_worker.go`, `renewal_worker.go`
+and the renewal/delete execution in `workspace_renewal.go`, `workspace_delete.go`
+and `workspace_delete_refund.go` are gone, with their store claim/CAS/refund
+reservation methods, their Fabric client wrappers and their canonical
+repair/disposable-reset/diagnostic dispatch. The `create`, `replay`, `resume`,
+`recovery` and `repair` command registrations leave
+`routes_workspace_launch.go` and `routes_admin.go`; the worker startup calls
+leave `server.go`, and the worker enable/interval/lead settings leave the
+portable topology, Compose overlays and environment example. The legacy Console
+launch/renewal/delete command branches and the old tool branches in
+`deployed-workspace-purchase.ts`, `workspace-qualification-orchestrator.ts` and
+`local-workspace-recovery.ts` leave with them, and the operator reconciliation
+queue no longer offers a Control Plane action: a launch review keeps only the
+historical recovery read.
+
+What stays is the history: `workspace_launch_history.go`,
+`workspace_delete_history.go` and `workspace_renewal_history.go` hold the strict
+historical decoders and the receipt builders that the billing readers, the
+settlement trend and the retained GET routes depend on, and the original
+records, attempts, receipts and audit history are unchanged. The retained
+`GET /api/workspace-launches`, `GET /api/workspace-launches/{id}`,
+`GET /api/operator/workspace-launches/{operationId}/recovery`,
+`GET /api/workspaces/{workspaceId}/deletion` and
+`GET /api/workspaces/{workspaceId}/renewal` routes stay registered, and the
+native v2 purchase core and the native delete stay untouched. The all-object
+and all-operation census this scope asks for is still an open evidence item;
+the three #1018 orders remain closed and must not be purchased, deleted or
+refunded again.
+
+The retired writers also retire the cases that only existed by running them. The
+D1/D4 renewal and finance-chain names leave the database-free lane's declared
+money-chain list in the same change, and the D2 finance-chain and refund
+reconciliation cases retire with the launch writer and the monthly billing sweep
+their fixtures needed. The customer billing receipt cases stay: their subject is
+the retained receipt projection, so their original order is now seeded as the
+persisted facts the retained readers decode instead of being produced by the
+retired execution.
 
 **R6 — retained pricing preview and purchase eligibility.**
 Remove the catalog/preview route blocks in `routes_state.go`, only the live

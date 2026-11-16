@@ -182,7 +182,6 @@ function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MI
   });
   // The retained route still holds the orders it admitted before the cutover.
   // This account holds none, so its read answers with nothing.
-  const retainedLaunch = () => ({ response: { status: 404 }, payload: null });
 
   // The owner's own answer to one request. The route decides what the owner
   // says, and the caller decides which status it is willing to read.
@@ -385,7 +384,6 @@ function controlPlane({ walletBeforeMicros = "999999999", quoteMicros = QUOTE_MI
         const workspaceId = decodeURIComponent(path.split("/")[4]);
         return { response: { status: 200 }, payload: deploymentPage(workspaceId) };
       }
-      if (/^\/api\/workspace-launches\/[^/]+$/.test(path)) return retainedLaunch();
       throw new Error(`unexpected request ${path}`);
     },
     async json(path, init = {}, auth = null, statuses = [200]) {

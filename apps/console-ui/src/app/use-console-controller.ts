@@ -328,14 +328,9 @@ export function useConsoleController() {
 
   const workspaceRenewalCapability = useWorkspaceRenewalController({
     session,
-    workspace: controlPlaneWorkspace,
     activeWorkspaceId: controlPlaneWorkspaceId,
     currentMutationRequest,
-    workspaceDetailProjectionLease: customerWorkspaceReadCapability.workspaceDetailProjectionLease,
-    onWorkspaceReadback: customerWorkspaceReadCapability.applyWorkspaceReadback,
-    onRecovered: () => refreshCurrentPage(),
-    flash,
-    mutationError
+    onRecovered: () => refreshCurrentPage()
   });
   const workspaceRenewal: WorkspaceRenewalController = workspaceRenewalCapability;
 
@@ -738,12 +733,10 @@ export function useConsoleController() {
     workspaceDeletionLoading: workspaceDelete.loading,
     refreshWorkspaceDeletion: workspaceDelete.refresh,
     deleteCurrentWorkspace: workspaceDelete.deleteCurrentWorkspace,
-    workspaceRenewalBusy: workspaceRenewal.busy,
     workspaceRenewalIssue: workspaceRenewal.issue,
     workspaceRenewalRead: workspaceRenewal.renewal,
     workspaceRenewalLoading: workspaceRenewal.loading,
     refreshWorkspaceRenewal: workspaceRenewal.refresh,
-    updateCurrentWorkspaceRenewal: workspaceRenewal.updateCurrentWorkspaceRenewal,
     workspaceSecrets,
     workspaceBudgetBusy: workspaceBudget.busy,
     updateWorkspaceBudget: workspaceBudget.update,

@@ -8,7 +8,7 @@ import type {
   WorkspaceDTO,
   WorkspaceGatewayBudgetDTO,
   WorkspaceListData,
-  WorkspaceRenewalResponse
+  WorkspaceRenewalReadDTO
 } from "../../apps/console-ui/src/api/dtos.ts";
 import {
   CONSOLE_DEMO_CREDENTIALS,
@@ -190,13 +190,6 @@ test("Renewal projection commit rejects an older in-flight Workspace refresh", {
       paidThrough: "2026-09-01T00:00:00Z",
       nextRenewalAt: "2026-09-01T00:00:00Z"
     };
-    const renewalResponse: WorkspaceRenewalResponse = {
-      autoRenew: true,
-      effectiveAfter: "2026-08-26T00:02:00Z",
-      nextRenewalAt: renewedWorkspace.nextRenewalAt!,
-      paidThrough: renewedWorkspace.paidThrough!,
-      renewalStatus: renewedWorkspace.renewalStatus!
-    };
 
     const staleRefreshHeld = deferred<Route>();
     const staleRefreshRelease = deferred<void>();
@@ -224,32 +217,38 @@ test("Renewal projection commit rejects an older in-flight Workspace refresh", {
       });
     });
 
-    const renewalRequested = deferred<Route>();
-    await page.route("**/api/workspaces/ws-1/auto-renew", async (route) => {
-      renewalRequested.resolve(route);
+    // The renewal readback is the only renewal signal the legacy Console has:
+    // the Control Plane auto-renew command retired with the retained CP
+    // execution slice, so the recovery read decides when the paid period
+    // returns and the Console commits a newer Workspace projection.
+    let renewalReads = 0;
+    await page.route("**/api/workspaces/ws-1/renewal", async (route) => {
+      renewalReads += 1;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(renewalResponse)
+        body: JSON.stringify({
+          autoRenew: renewedWorkspace.autoRenew,
+          effectiveAfter: "2026-08-26T00:02:00Z",
+          nextRenewalAt: renewedWorkspace.nextRenewalAt!,
+          paidThrough: renewedWorkspace.paidThrough!,
+          renewalStatus: renewedWorkspace.renewalStatus!,
+          recovery: renewalReads === 1
+            ? { state: "pending", reason: "workspace_renewal_pending" }
+            : { state: "not_required", reason: "workspace_paid_period_active" }
+        } satisfies WorkspaceRenewalReadDTO)
       });
     });
 
     await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "domcontentloaded" });
-    const disabledRenewal = page.getByRole("checkbox", { name: "已关闭", exact: true });
-    await disabledRenewal.waitFor({ state: "visible" });
+    await page.getByRole("heading", { name: initialWorkspace.name!, exact: true }).waitFor({ state: "visible" });
+    await page.getByText("正在处理续费恢复", { exact: true }).waitFor({ state: "visible" });
 
     await page.getByRole("main").getByRole("button", { name: "刷新", exact: true }).click();
     const staleRefreshRoute = await staleRefreshHeld.promise;
     assert.equal(staleRefreshRoute.request().method(), "GET");
 
-    await disabledRenewal.click();
-    const renewalRoute = await renewalRequested.promise;
-    assert.equal(renewalRoute.request().method(), "POST");
-    assert.deepEqual(renewalRoute.request().postDataJSON(), { autoRenew: true });
-
-    const enabledRenewal = page.getByRole("checkbox", { name: "已开启", exact: true });
-    await enabledRenewal.waitFor({ state: "visible" });
-    await page.getByRole("status").filter({ hasText: "自动续费已开启" }).waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "刷新续费条件", exact: true }).click();
     await page.getByRole("heading", { name: renewedWorkspace.name!, exact: true }).waitFor({ state: "visible" });
     assert.equal(workspaceReads, 3);
 
@@ -263,7 +262,6 @@ test("Renewal projection commit rejects an older in-flight Workspace refresh", {
     await staleRefreshResponse;
     await page.waitForTimeout(100);
 
-    assert.equal(await enabledRenewal.isChecked(), true);
     assert.equal(await page.getByRole("heading", { name: renewedWorkspace.name!, exact: true }).count(), 1);
     assert.equal(await page.getByText(staleWorkspace.name!, { exact: true }).count(), 0);
     const runtimeState = page.locator(".workspace-identity-panel .workspace-availability strong");

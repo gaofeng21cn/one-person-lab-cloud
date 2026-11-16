@@ -34,7 +34,6 @@ import type {
   WorkspaceDeletionDTO,
   WorkspaceGatewayBudgetDTO,
   WorkspaceGatewayBudgetUpdateRequest,
-  WorkspaceLaunchResponse,
   WorkspaceModelConfigurationDTO,
   WorkspaceModelSelectionDTO,
   WorkspaceOwnerOperationDTO,
@@ -161,14 +160,10 @@ export interface WorkspaceLaunchController {
   walletUsdMicros: string | null;
   balanceSufficient: boolean | null;
   customerOwned: boolean;
-  launchOperation: WorkspaceLaunchResponse | null;
   launchRecoveryState: WorkspaceLaunchRecoveryState;
   launchPollIssue: "" | "error" | "timeout" | "readback";
   launchSessionAvailable: boolean;
   busy: boolean;
-  reviewWorkspaceLaunch: () => void;
-  submitWorkspaceLaunch: () => Promise<void>;
-  openLaunchedWorkspace: () => Promise<void>;
   openLaunchBilling: () => void;
   prepareNewWorkspaceLaunch: () => void;
 }
@@ -183,12 +178,10 @@ export interface WorkspaceDeleteController {
 }
 
 export interface WorkspaceRenewalController {
-  busy: boolean;
   issue: "" | "unconfirmed";
   loading: boolean;
   renewal: WorkspaceRenewalReadDTO | null;
   refresh: () => Promise<void>;
-  updateCurrentWorkspaceRenewal: (autoRenew: boolean) => Promise<boolean>;
 }
 
 export interface WorkspaceBudgetController {

@@ -88,11 +88,11 @@ func TestWorkspaceSettlementTrendKeepsConfirmedHistoryBesideUnverifiedLegacyMone
 			return
 		}
 		requests++
-		entry := d1FinancialTransaction{Code: "upstream-confirmed", Type: "admin_balance", Value: json.Number(fmt.Sprintf("-%d.%06d", purchaseCharge/1_000_000, purchaseCharge%1_000_000)), Status: "used", UsedBy: 41, UsedAt: usedAt, CreatedAt: usedAt, Notes: "OPL Cloud balance adjustment: " + purchaseCode}
+		entry := financialTransactionListItem{Code: "upstream-confirmed", Type: "admin_balance", Value: json.Number(fmt.Sprintf("-%d.%06d", purchaseCharge/1_000_000, purchaseCharge%1_000_000)), Status: "used", UsedBy: 41, UsedAt: usedAt, CreatedAt: usedAt, Notes: "OPL Cloud balance adjustment: " + purchaseCode}
 		if r.URL.Query().Get("type") == "balance" {
 			entry.Code, entry.Type, entry.Notes = "opl:renewal-charge-legacy-unknown", "balance", ""
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"items": []d1FinancialTransaction{entry}, "total": 1, "page": 1, "page_size": 100, "pages": 1}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"items": []financialTransactionListItem{entry}, "total": 1, "page": 1, "page_size": 100, "pages": 1}})
 	}))
 	t.Cleanup(remote.Close)
 	lookup, err := clients.NewSub2APIHTTPClient(clients.Sub2APIConfig{BaseURL: remote.URL, AdminEmail: "admin@example.test", AdminPassword: "synthetic", Timeout: time.Second}, remote.Client())

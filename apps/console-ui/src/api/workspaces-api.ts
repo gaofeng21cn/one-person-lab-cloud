@@ -3,10 +3,8 @@ import type {
   AvailableSource,
   RuntimeCredentialResponse,
   SourceEnvelope,
-  WorkspaceLaunchRequest,
   WorkspaceLaunchListResponse,
   WorkspaceLaunchResponse,
-  WorkspaceDeleteCommandResult,
   WorkspaceDeleteResponse,
   WorkspaceDeletionDTO,
   WorkspaceGatewayBudgetDTO,
@@ -16,8 +14,6 @@ import type {
   WorkspaceModelConfigurationDTO,
   WorkspaceModelSelectionDTO,
   WorkspaceModelUpdateRequest,
-  WorkspaceRenewalRequest,
-  WorkspaceRenewalResponse,
   WorkspaceRenewalReadDTO,
   WorkspaceRuntimeDTO
 } from "./dtos.ts";
@@ -434,22 +430,6 @@ export function workspaceDeleteIdempotencyKey(workspaceId: string): string {
   return `workspace-delete:${workspaceId}:${crypto.randomUUID()}`;
 }
 
-export async function launchWorkspace(
-  input: WorkspaceLaunchRequest,
-  csrfToken: string,
-  idempotencyKey: string
-): Promise<WorkspaceLaunchResponse> {
-  try {
-    return decodeDto<WorkspaceLaunchResponse>(await postJson<unknown>("/api/workspace-launches", input, csrfToken, idempotencyKey, 60_000));
-  } catch (error) {
-    const apiError = error as ApiError;
-    if (apiError.payload !== undefined) throw error;
-    const unknown: ApiError = new Error("workspace_launch_unknown", { cause: error });
-    unknown.payload = { status: "unknown", retryable: true };
-    throw unknown;
-  }
-}
-
 export function getWorkspaceLaunch(operationId: string): Promise<WorkspaceLaunchResponse> {
   return getJson<unknown>(`/api/workspace-launches/${encodeURIComponent(operationId)}`).then(decodeDto<WorkspaceLaunchResponse>);
 }
@@ -461,65 +441,29 @@ export function getWorkspaceLaunches(): Promise<WorkspaceLaunchListResponse> {
   });
 }
 
-function workspaceDeleteUnavailable(error: ApiError): boolean {
-  if (error.status === 405 || error.status === 501) return true;
-  if (error.status !== 404) return false;
-  const payload = error.payload && typeof error.payload === "object"
-    ? error.payload as Record<string, unknown>
-    : null;
-  return payload?.error !== "workspace_not_found";
-}
-
 // The cloud-identity delete command reaches the Workspace owner through the
 // migrated BFF surface. The owner owns the deletion, the refund and the
 // operation; Console forwards the caller's exact Workspace name and explicit
 // data-destruction acknowledgement rather than deciding either itself, then
-// reports the owner's own operation status.
+// reports the owner's own operation status. The Control Plane's own deletion
+// command retired with the retained CP execution slice, so it has no caller.
 export async function deleteWorkspace(
   workspaceId: string,
   workspaceName: string,
   csrfToken: string,
   idempotencyKey: string
-): Promise<WorkspaceDeleteCommandResult> {
-  if (cloudIdentity) {
-    if (!workspaceName.trim()) throw new Error("workspace_delete_name_required");
-    const operation = decodeWorkspaceOwnerOperation(await deleteJson<unknown>(
-      `/api/v2/workspaces/${encodeURIComponent(workspaceId)}`,
-      csrfToken,
-      idempotencyKey,
-      { confirmationName: workspaceName, acknowledgeDataDestruction: true }
-    ));
-    if (operation.kind !== "delete_workspace" || operation.resourceId !== workspaceId) {
-      throw new Error("invalid_workspace_delete_response");
-    }
-    return {
-      available: true,
-      data: { workspaceId, status: operation.status, operationId: operation.operationId } satisfies WorkspaceDeleteResponse
-    };
+): Promise<WorkspaceDeleteResponse> {
+  if (!workspaceName.trim()) throw new Error("workspace_delete_name_required");
+  const operation = decodeWorkspaceOwnerOperation(await deleteJson<unknown>(
+    `/api/v2/workspaces/${encodeURIComponent(workspaceId)}`,
+    csrfToken,
+    idempotencyKey,
+    { confirmationName: workspaceName, acknowledgeDataDestruction: true }
+  ));
+  if (operation.kind !== "delete_workspace" || operation.resourceId !== workspaceId) {
+    throw new Error("invalid_workspace_delete_response");
   }
-  try {
-    const dto = decodeDto<Record<string, unknown>>(await deleteJson<unknown>(
-      `/api/workspaces/${encodeURIComponent(workspaceId)}`,
-      csrfToken,
-      idempotencyKey
-    ));
-    if (dto.workspaceId !== workspaceId || typeof dto.status !== "string" || !dto.status.trim()) {
-      throw new Error("invalid_workspace_delete_response");
-    }
-    return {
-      available: true,
-      data: {
-        workspaceId,
-        status: dto.status,
-        ...(typeof dto.operationId === "string" && dto.operationId ? { operationId: dto.operationId } : {})
-      } satisfies WorkspaceDeleteResponse
-    };
-  } catch (error) {
-    if (workspaceDeleteUnavailable(error as ApiError)) {
-      return { available: false, reasonCode: "workspace_delete_unavailable" };
-    }
-    throw error;
-  }
+  return { workspaceId, status: operation.status, operationId: operation.operationId };
 }
 
 const workspaceDeletionStages = ["runtime_absent", "attachment_absent", "storage_absent", "compute_absent", "workspace_absent", "receipt_recorded"];
@@ -736,18 +680,4 @@ export function revealWorkspaceCredentials(
     csrfToken,
     idempotencyKey
   ).then(decodeDto<RuntimeCredentialResponse>);
-}
-
-export function updateWorkspaceRenewal(
-  workspaceId: string,
-  input: WorkspaceRenewalRequest,
-  csrfToken: string,
-  idempotencyKey = `workspace-renewal:${crypto.randomUUID()}`
-): Promise<WorkspaceRenewalResponse> {
-  return postJson<unknown>(
-    `/api/workspaces/${encodeURIComponent(workspaceId)}/auto-renew`,
-    input,
-    csrfToken,
-    idempotencyKey
-  ).then(decodeDto<WorkspaceRenewalResponse>);
 }

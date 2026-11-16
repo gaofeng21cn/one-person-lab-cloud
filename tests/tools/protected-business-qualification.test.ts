@@ -1027,12 +1027,11 @@ test("the shared qualification flow runs for the provider the deployment binding
     assert.ok(mintedOperationId, "the owner minted the operation identity");
     assert.ok(calls.some((call) => call.endsWith(`/api/v2/operations/workspace/${mintedOperationId}`)));
     assert.ok(calls.some((call) => call === `request:/api/v2/operations/workspace/${mintedOperationId}`));
-    // The retained Control Plane route is consulted for the order it may have
-    // admitted before the cutover, and for nothing else. It never admits a
-    // purchase here.
-    assert.ok(calls.some((call) => /^request:\/api\/workspace-launches\/workspace-launch-[0-9a-f]{18}$/.test(call)));
-    assert.equal(calls.includes("/api/workspace-launches"), false, "the retained route never admits a purchase");
-    assert.equal(calls.includes("/api/pricing/preview"), false, "the retained route never prices a purchase");
+    // The Control Plane admitted no order of its own after the cutover, so the
+    // qualification never reaches that route, and it never prices a purchase.
+    assert.equal(calls.some((call) => call.startsWith("/api/workspace-launches")), false,
+      "the retired Control Plane launch route is not consulted");
+    assert.equal(calls.includes("/api/pricing/preview"), false, "the Control Plane never prices a purchase");
     // The Ledger receipt is found in the Workspace transaction list and read
     // back from the typed financial-receipt route.
     assert.ok(calls.some((call) => /^\/api\/v2\/workspaces\/[^/]+\/transactions\?limit=100$/.test(call)));

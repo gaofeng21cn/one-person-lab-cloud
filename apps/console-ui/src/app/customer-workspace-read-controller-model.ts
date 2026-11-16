@@ -109,35 +109,6 @@ export function customerWorkspaceScopeIsCurrent(
   return customerWorkspaceScopeKey(expected) === customerWorkspaceScopeKey(current);
 }
 
-export interface CustomerWorkspaceDetailProjectionLease {
-  readonly scope: CustomerWorkspaceDetailScope;
-}
-
-export function createCustomerWorkspaceDetailProjectionLease(
-  scope: CustomerWorkspaceDetailScope
-): CustomerWorkspaceDetailProjectionLease {
-  return { scope };
-}
-
-export function customerWorkspaceDetailProjectionLeaseIsCurrent(
-  lease: CustomerWorkspaceDetailProjectionLease,
-  currentScope: CustomerWorkspaceDetailScope
-): boolean {
-  return customerWorkspaceScopeIsCurrent(lease.scope, currentScope);
-}
-
-export function commitCustomerWorkspaceDetailProjectionLease(
-  lease: CustomerWorkspaceDetailProjectionLease,
-  currentScope: CustomerWorkspaceDetailScope
-): CustomerWorkspaceDetailScope | null {
-  if (!customerWorkspaceDetailProjectionLeaseIsCurrent(lease, currentScope)) return null;
-  return createCustomerWorkspaceDetailScope({
-    sessionGeneration: currentScope.sessionGeneration,
-    routeGeneration: currentScope.routeGeneration,
-    requestGeneration: currentScope.requestGeneration + 1,
-    workspaceId: currentScope.workspaceId
-  });
-}
 
 export function invalidateCustomerWorkspaceReadEpoch(
   epoch: CustomerWorkspaceReadEpoch

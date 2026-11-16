@@ -144,7 +144,7 @@ function controlPlane({
   const state = {
     orders: new Map(), byKey: new Map(), posted: 0, charges: [], commands: [], quotes: [],
     wallet: walletBeforeMicros, workspaceId: "", operationId: "", responsesLost: false,
-    pageReads: 0, logins: 0, minted: 0, retainedReads: 0, ownerReads: 0, serveReads: [],
+    pageReads: 0, logins: 0, minted: 0, ownerReads: 0, serveReads: [],
   };
 
   // One shape for the owner operation, so both seams answer the same operation.
@@ -175,14 +175,6 @@ function controlPlane({
       if (path === "/") {
         state.pageReads += 1;
         return { response: { status: 200 }, payload: null, text: '<div id="root"></div>' };
-      }
-      const match = /^\/api\/workspace-launches\/([^/]+)$/.exec(path);
-      if (match) {
-        state.retainedReads += 1;
-        const admitted = state.orders.get(decodeURIComponent(match[1]));
-        return admitted
-          ? { response: { status: 200 }, payload: admitted }
-          : { response: { status: 404 }, payload: null };
       }
       const ownerOperation = /^\/api\/v2\/operations\/workspace\/([^/]+)$/.exec(path);
       if (ownerOperation) {
@@ -483,7 +475,6 @@ test("the Local-Docker adapter satisfies the shared seam and settles the shared 
   assert.ok(platform.state.operationId, "the owner minted the operation identity");
   assert.ok(platform.state.workspaceId, "the owner minted the Workspace identity");
   assert.ok(platform.state.ownerReads >= 1, "the owner operation was read back");
-  assert.equal(platform.state.retainedReads, 0, "a new purchase is not read back through the retained launch route");
   assert.equal(boundary.calls.up, 1);
   assert.equal(boundary.calls.login, 1, "the authenticated transport comes from the login flow");
   assert.equal(boundary.calls.down, 1, "the boundary that started the stack closes it");

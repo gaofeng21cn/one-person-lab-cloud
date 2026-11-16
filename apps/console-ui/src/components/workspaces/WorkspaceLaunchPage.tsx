@@ -1,16 +1,12 @@
 import {
-  AlertCircle, ChevronLeft, CircleCheck, CircleX, RefreshCw
+  AlertCircle, ChevronLeft, RefreshCw
 } from "lucide-react";
 import { RadioGroup } from "@openai/apps-sdk-ui/components/RadioGroup";
-import type { ReactNode } from "react";
 
 import type { WorkspaceLaunchController } from "../../app/console-controller-types.ts";
 import { cloudIdentity } from "../../app/console-identity.ts";
 import { isAgentLaunchSurface } from "../../app/workspace-launch-controller-model.ts";
 import type { AgentWorkspaceLaunchController } from "../../app/use-workspace-launch-controller.ts";
-import {
-  presentWorkspaceApplicationInstallation, presentWorkspaceLaunch, presentWorkspaceLaunchStage, presentWorkspaceQuote
-} from "../../app/workspace-experience-model.ts";
 import { Alert, Button, Checkbox, Field } from "../ui/index.ts";
 import { formatDate, formatUsdMicros } from "../../console-model.ts";
 
@@ -31,62 +27,6 @@ function WorkspaceLaunchSteps({ current }: { current: "configure" | "confirm" | 
   );
 }
 
-function WorkspaceOrderSummary({
-  action,
-  controller,
-  mode = "quote"
-}: {
-  action?: ReactNode;
-  controller: WorkspaceLaunchController;
-  mode?: "quote" | "operation";
-}) {
-  const operation = mode === "operation" ? controller.launchOperation : null;
-  const planId = operation?.packageId || controller.selectedPlan?.id;
-  const plan = planId ? controller.catalog.value?.packages.find((item) => item.id === planId) : null;
-  const preview = planId ? controller.previews[planId] : undefined;
-  const quote = mode === "quote" ? presentWorkspaceQuote({
-    selectedPriceUsdMicros: controller.selectedPrice,
-    customerOwned: controller.customerOwned
-  }) : null;
-  const total = operation?.totalChargeUsdMicros ?? quote?.totalUsdMicros ?? null;
-  const billingCycle = preview?.billingUnit === "calendar_month" ? "按自然月计费" : "暂不可用";
-
-  return (
-    <aside className="workspace-order-summary">
-      <header><span>{mode === "operation" ? "开通摘要" : "订单摘要"}</span><strong>{plan?.name || operation?.packageId?.toUpperCase() || "暂未选择"}</strong></header>
-      {mode === "quote" ? (
-        <>
-          <section className="workspace-order-summary__prices">
-            <h3>价格构成（参考）</h3>
-            <dl>
-              <div><dt>计算</dt><dd>{preview?.compute ? formatUsdMicros(preview.compute.chargeUsdMicros) : "暂不可用"}</dd></div>
-              <div><dt>存储</dt><dd>{preview?.storage ? formatUsdMicros(preview.storage.chargeUsdMicros) : "暂不可用"}</dd></div>
-              <div className="workspace-order-summary__total"><dt>实际应付</dt><dd>{total !== null ? formatUsdMicros(total) : "暂不可用"}</dd></div>
-            </dl>
-          </section>
-          <dl className="workspace-order-summary__facts">
-            {controller.customerOwned ? (
-              <div><dt>开通方式</dt><dd>客户权益（无需预付）</dd></div>
-            ) : (
-              <div><dt>可用余额</dt><dd>{controller.walletUsdMicros ? formatUsdMicros(controller.walletUsdMicros) : "暂不可用"}</dd></div>
-            )}
-            <div><dt>计费周期</dt><dd>{billingCycle}</dd></div>
-            <div><dt>续费</dt><dd>{controller.customerOwned ? "不适用" : controller.launchAutoRenew ? "自动续费开启" : "自动续费关闭"}</dd></div>
-          </dl>
-          {quote?.kind === "prepaid" && controller.balanceSufficient === false ? <p className="workspace-order-summary__warning">余额不足，请联系管理员处理。</p> : null}
-        </>
-      ) : (
-        <dl className="workspace-order-summary__facts">
-          <div><dt>工作空间</dt><dd>{operation?.name || "暂不可用"}</dd></div>
-          <div><dt>月度总额</dt><dd>{total !== null ? formatUsdMicros(total) : "暂不可用"}</dd></div>
-          <div><dt>价格版本</dt><dd>{operation?.priceVersion || "暂不可用"}</dd></div>
-          {!operation?.closeout || operation.closeout.status === "fulfilled" ? <div><dt>续费</dt><dd>{operation?.autoRenew ? "自动续费开启" : "自动续费关闭"}</dd></div> : null}
-        </dl>
-      )}
-      {action ? <div className="workspace-order-summary__action">{action}</div> : null}
-    </aside>
-  );
-}
 
 
 function AgentLaunchPage({
@@ -237,9 +177,6 @@ export function WorkspaceLaunchPage({
   if (isAgentLaunchSurface({ ...agentController, cloudIdentity })) {
     return <AgentLaunchPage controller={agentController as AgentWorkspaceLaunchController} onBack={onBack} onRefresh={onRefresh} />;
   }
-  if (controller.launchOperation) {
-    return <section className="workspace-launch-page" data-slide="C-WS-04"><LaunchOperation controller={controller} onBack={onBack} onRefresh={onRefresh} /></section>;
-  }
   if (controller.launchRecoveryState !== "clear") {
     const checking = controller.launchRecoveryState === "idle" || controller.launchRecoveryState === "checking";
     const conflict = controller.launchRecoveryState === "conflict";
@@ -273,79 +210,5 @@ export function WorkspaceLaunchPage({
         description="请使用新版 Cloud 控制台购买工作空间。历史订单仍由原服务保留，可通过历史工作空间和运维页面查看与核对。"
       />
     </section>
-  );
-}
-
-export function LaunchOperation({
-  compact,
-  controller,
-  onBack,
-  onRefresh
-}: {
-  compact?: boolean;
-  controller: WorkspaceLaunchController;
-  onBack: () => void;
-  onRefresh: () => Promise<void>;
-}) {
-  const operation = controller.launchOperation;
-  if (!operation) return null;
-  const operationPresentation = presentWorkspaceLaunch(operation);
-  const presentation = controller.launchPollIssue
-    ? presentWorkspaceLaunch({ status: "unconfirmed", workspaceId: undefined })
-    : operationPresentation;
-  const stagePresentation = presentWorkspaceLaunchStage(operation.phase);
-  const resultUnconfirmed = presentation.kind === "unconfirmed";
-  const installation = operation.applicationInstallation ? presentWorkspaceApplicationInstallation(operation.applicationInstallation) : null;
-  const content = (
-    <section className={`launch-operation ${compact ? "launch-operation--compact" : ""}`} data-slide="C-WS-04">
-      <div className="launch-operation-head"><div><h2>{presentation.title}</h2><p>{presentation.summary}</p></div></div>
-      {installation ? <Alert color={installation.tone} title={installation.title} description={installation.description} /> : null}
-      {!operation.closeout ? <div className="launch-current-phase"><span>当前进度</span><strong>{stagePresentation.label}</strong></div> : null}
-      <details className="launch-technical-details">
-        <summary>技术详情</summary>
-        <div className="launch-technical-details__body">
-          <dl className="operation-readback">
-            <div><dt>operation ID</dt><dd><code>{operation.operationId}</code></dd></div>
-            <div><dt>status</dt><dd><code>{operation.status}</code></dd></div>
-            <div><dt>phase</dt><dd><code>{operation.phase}</code></dd></div>
-            <div><dt>errorCode</dt><dd><code>{operation.errorCode || "无"}</code></dd></div>
-            <div><dt>blockReason</dt><dd><code>{operation.blockReason || "无"}</code></dd></div>
-            <div><dt>failureStage</dt><dd><code>{operation.failureStage || "无"}</code></dd></div>
-            <div><dt>创建时间</dt><dd>{formatDate(operation.createdAt, true)}</dd></div>
-            <div><dt>最后更新</dt><dd>{formatDate(operation.updatedAt, true)}</dd></div>
-          </dl>
-          <section aria-label="开通检查" className="launch-diagnostic">
-            <header><span>checks</span></header>
-          {operation.checks?.length ? (
-            <ul>
-              {operation.checks.map((check) => (
-                <li className={check.ok ? "is-ready" : "is-blocked"} key={check.name}>
-                  {check.ok ? <CircleCheck aria-hidden size={16} /> : <CircleX aria-hidden size={16} />}
-                  <code>{check.name}</code>
-                  <span>{check.ok ? "通过" : "未通过"}</span>
-                </li>
-              ))}
-            </ul>
-            ) : <p>暂无检查记录</p>}
-          </section>
-        </div>
-      </details>
-      <div className="launch-operation-actions">
-        {!resultUnconfirmed && operationPresentation.canOpenWorkspace ? <Button color="primary" onClick={() => void controller.openLaunchedWorkspace()}>查看工作空间</Button> : null}
-        <Button onClick={() => void (controller.launchPollIssue === "readback" ? controller.openLaunchedWorkspace() : onRefresh())} variant="outline"><RefreshCw aria-hidden size={16} />刷新状态</Button>
-        {operation.closeout ? <Button onClick={controller.openLaunchBilling} variant="outline">查看费用</Button> : null}
-        {!resultUnconfirmed && ["failed", "refunded"].includes(operationPresentation.kind) ? <Button onClick={onBack} variant="outline">返回列表</Button> : null}
-      </div>
-    </section>
-  );
-  if (compact) return content;
-  return (
-    <>
-      <WorkspaceLaunchSteps current="operation" />
-      <div className="workspace-launch-layout workspace-launch-layout--operation">
-        {content}
-        <WorkspaceOrderSummary controller={controller} mode="operation" />
-      </div>
-    </>
   );
 }
