@@ -7,6 +7,7 @@ Reviewed source baseline: `3773966a31e2a5d6630038decfa0a812c1488830` on `main`
 Snapshot reconciliation date: 2026-11-10
 Scoped Workspace deletion update: 2026-11-12 (installed product source `8db78b34c7be640948f349436af7cd4fcadd584d`)
 Scoped lifecycle ownership review: 2026-11-12 (source inspection, not a new runtime qualification)
+Scoped Workspace deletion recovery source repair: 2026-11-16 (source behavior over isolated PostgreSQL, not a new runtime qualification)
 
 Each observation below retains its original source, run and environment; the
 reviewed source baseline does not requalify those receipts. The Workspace deletion
@@ -15,6 +16,40 @@ Instance installation and customer acceptance prove separate layers; none alone
 establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
+
+## Workspace deletion unattended recovery source repair (2026-11-16)
+
+Workspace's existing recovery path now keeps an observation-only deletion
+recoverable. A pending deletion step stays `awaiting_confirmation`, the worker
+selects that deletion again and observes the same owner under the same accepted
+operation and grant, and the recovery limit only slows that observation to a
+bounded cadence (30 seconds doubling to a 5 minute ceiling). A refusal, an
+invalidated authorization, an ownership conflict or invalid evidence stops the
+automatic recovery at `needs_attention` with its own reason (`FORBIDDEN`,
+`UNAUTHENTICATED`, `NOT_FOUND`, `VALIDATION_FAILED`, or the owner's own code),
+because an elapsed pass count can never authorize another mutation. A deletion
+that an earlier build already parked on an observation-only wait is selected
+again by the same rule.
+
+Proven by executed source tests over isolated PostgreSQL in
+`services/workspace/internal/launch`: a late owner confirmation is consumed by
+`RunOnce` without a direct `Resume`, another DELETE or a test-side state reset; a
+restarted worker continues the same operation and the same accepted intent;
+concurrent workers keep one operation, one runtime retirement, one deletion
+receipt and one settlement, and a lost owner answer replays the same frozen
+command instead of retiring twice; an invalidated authorization and a conflicting
+owner answer keep an explicit reason and stop; the completed deletion reports
+retirement, absence, receipt, refund and Key closeout together.
+`TestLiveDeletionBackwardOwnerCoupling` passes over real Workspace and Ledger
+gRPC handlers and separate owner databases.
+
+Not proven here: no provider absence, no real Gateway refund, no installed
+Candidate and no customer order were exercised. The fresh unattended lifecycle
+qualification on one exact installed Candidate remains the open
+[roadmap obligation](roadmap.md#unattended-deletion-recovery). This change does
+not touch the Instance repository, so it leaves no Instance transport CI affected.
+The `TestLiveAcceptedWorkspaceResourceReference` failure is present on `main` as
+well and is not affected by this change.
 
 ## Installation chain source boundary (2026-11-13)
 
