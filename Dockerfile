@@ -5,7 +5,7 @@
 # cannot disagree.
 ARG OPL_SOURCE_SHA
 
-FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:dc0963f32053e4bc451d24d87e3892d42d01021b61f093e98eb95c0352bb84b0 AS fabric-build
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS fabric-build
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -30,7 +30,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X opl-cl
   && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-fabric ./cmd/fabric \
   && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-node-image-retire ./cmd/opl-node-image-retire
 
-FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:dc0963f32053e4bc451d24d87e3892d42d01021b61f093e98eb95c0352bb84b0 AS control-plane-build
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS control-plane-build
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -46,7 +46,7 @@ RUN GOPROXY="$GOPROXY" go mod download
 COPY services/control-plane ./
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-control-plane ./cmd/control-plane
 
-FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:dc0963f32053e4bc451d24d87e3892d42d01021b61f093e98eb95c0352bb84b0 AS ledger-build
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS ledger-build
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -66,7 +66,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X opl-cl
 
 # The publisher lane is shipped as independent owner executables in the same
 # portable product image. Instance chooses which processes to run.
-FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:dc0963f32053e4bc451d24d87e3892d42d01021b61f093e98eb95c0352bb84b0 AS publisher-build
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS publisher-build
 ARG TARGETOS
 ARG TARGETARCH
 ARG GOPROXY=https://proxy.golang.org,direct
