@@ -50,10 +50,10 @@ routes; Billing and announcements read the Cloud BFF routes that carry a live
 CloudIdentity proof to the retained original owner. The legacy identity keeps
 the retained Control Plane `/api/*` adapters. The launch flow's own BFF
 wallet/catalog read is a separate caller and does not go through Gateway Account
-Read. The package pricing catalog and preview remain retained-Control-Plane
-only: a CloudIdentity build records the explicit
-`pricing_catalog_owner_unavailable` state before requesting them, and the cloud
-launch surface prices through the Resource Catalog quote instead. The exact
+Read. The package pricing catalog and preview are withdrawn: the Control Plane
+publishes no current price and no preview, the cloud launch surface prices
+through the Resource Catalog quote, and the legacy launch surface presents an
+accepted operation's own terms. The exact
 caller, owner, route and transitional status for every customer read is the
 [Console customer read inventory (#840)](./840-console-customer-reads.md); this
 composition does not prove that a deployment exposes or authorizes any retained

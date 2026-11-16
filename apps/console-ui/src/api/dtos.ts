@@ -575,66 +575,6 @@ export interface WorkspaceFilesystemUsageDTO {
   measuredAt: string;
 }
 
-export interface PricingPlan {
-  id: PlanId;
-  name: string;
-  available: boolean;
-}
-
-export interface PricingCatalogResponse {
-  priceVersion: string;
-  billingUnit: string;
-  displayCurrency: "USD";
-  walletCurrency: "USD";
-  currency: "USD";
-  packages: PricingPlan[];
-  deploymentMode?: "platform_owned" | "managed_tke" | "customer_owned";
-  fabricProvider?: "local-docker" | "tencent-tke";
-  resourceBillingMode?: "enabled" | "none";
-}
-
-export interface WorkspacePricePreview {
-  resourceType: "workspace";
-  priceVersion: string;
-  packageId: PlanId;
-  currency: "USD";
-  displayCurrency: "USD";
-  billingUnit: string;
-  compute: PricingComponentPreview;
-  storage: PricingComponentPreview & { sizeGb?: number };
-  totalChargeUsdMicros: number;
-}
-
-export interface PricingComponentPreview {
-  resourceType: "compute" | "storage";
-  packageId: PlanId;
-  priceVersion: string;
-  currency: "USD";
-  displayCurrency: "USD";
-  billingUnit: string;
-  chargeUsdMicros: number;
-  sizeGb?: number;
-}
-
-export interface PricingPreviewRequest {
-  resourceType: "workspace" | "compute" | "storage";
-  packageId: PlanId;
-  sizeGb?: number;
-}
-
-export interface PricingPreviewResponse {
-  chargeUsdMicros?: number;
-  resourceType: "workspace" | "compute" | "storage";
-  packageId: PlanId;
-  priceVersion: string;
-  currency: "USD";
-  totalChargeUsdMicros?: number;
-  displayCurrency?: "USD";
-  billingUnit?: string;
-  compute?: PricingComponentPreview;
-  storage?: PricingComponentPreview & { sizeGb?: number };
-}
-
 export interface GatewayWallet {
   // The Gateway owner readback that now serves this projection carries no user
   // identifier; the projection is already scoped to the caller's own session.

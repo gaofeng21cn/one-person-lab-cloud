@@ -1,12 +1,24 @@
 package server
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"math"
 	"strings"
 )
+
+// This file keeps only the versioned price facts the Control Plane still owns
+// as history: the catalog of a known price version and the computation that
+// re-derives an accepted charge from it. The live pricing surface
+// (`GET /api/pricing/catalog`, `POST /api/pricing/preview`) was withdrawn in
+// the R6 slice: the Resource Catalog prices new resources and quotes them,
+// and the Control Plane no longer publishes a current price or a preview.
+//
+// Accepted operations, their receipts and the billing history still carry the
+// price version they were charged at, so the decoders below stay the one place
+// that turns a stored price version back into the amount the customer was
+// charged. They are readers, not a pricing writer: nothing here accepts a
+// price from a client, and nothing here decides what a new purchase costs.
 
 const (
 	pricingCatalogVersion = "pilot-usd-2026-07-v1"
@@ -15,10 +27,7 @@ const (
 	pricingBillingUnit    = "calendar_month"
 )
 
-var (
-	errInvalidPricingInput = errors.New("invalid pricing input")
-	errPackageUnavailable  = errors.New("package unavailable")
-)
+var errInvalidPricingInput = errors.New("invalid pricing input")
 
 type pricingCatalogData struct {
 	Version                    string
@@ -45,6 +54,9 @@ func defaultPricingCatalog() pricingCatalogData {
 	return catalog
 }
 
+// pricingCatalogByVersion resolves the catalog of one accepted price version.
+// An unknown version resolves to nothing: a stored charge is only re-derived
+// under the version it was accepted with.
 func pricingCatalogByVersion(priceVersion string) (pricingCatalogData, bool) {
 	switch priceVersion {
 	case pricingCatalogVersion:
@@ -59,98 +71,6 @@ func pricingCatalogByVersion(priceVersion string) (pricingCatalogData, bool) {
 	default:
 		return pricingCatalogData{}, false
 	}
-}
-
-func pricingCatalogResponse() map[string]any { return pricingCatalogDTO(defaultPricingCatalog()) }
-
-func (app *controlPlaneServer) pricingCatalogResponse(_ context.Context, computePools []any) (map[string]any, error) {
-	response := pricingCatalogResponse()
-	response["packages"] = packageRowsForComputePools(defaultPricingCatalog(), computePools)
-	response["deploymentMode"] = string(app.deployment.Mode)
-	response["fabricProvider"] = string(app.deployment.FabricProvider)
-	response["resourceBillingMode"] = map[bool]string{true: "enabled", false: "none"}[app.deployment.resourceBillingEnabled()]
-	return response, nil
-}
-
-func pricingCatalogDTO(catalog pricingCatalogData) map[string]any {
-	return map[string]any{
-		"priceVersion": catalog.Version, "billingUnit": catalog.BillingUnit,
-		"displayCurrency": catalog.Currency, "walletCurrency": catalog.WalletCurrency,
-		"currency":            catalog.Currency,
-		"storageSize":         map[string]any{"minimumGb": catalog.StorageBlockGB, "stepGb": catalog.StorageBlockGB},
-		"storageBlockMonthly": map[string]any{"priceVersion": catalog.Version, "currency": catalog.Currency, "displayCurrency": catalog.Currency, "blockSizeGb": catalog.StorageBlockGB, "usdMicros": catalog.StorageBlockPriceUSDMicros},
-		"packages":            packageRows(catalog),
-	}
-}
-
-func pricingPreviewResponse(input map[string]any) (map[string]any, error) {
-	return pricingPreviewFromCatalog(defaultPricingCatalog(), input)
-}
-
-func (app *controlPlaneServer) pricingPreviewResponse(_ context.Context, input map[string]any, computePools []any) (map[string]any, error) {
-	resourceType, validResourceType := input["resourceType"].(string)
-	packageID, validPackage := input["packageId"].(string)
-	if !validResourceType || !validPackage || strings.TrimSpace(packageID) == "" {
-		return nil, errInvalidPricingInput
-	}
-	switch resourceType {
-	case "compute":
-		if _, available := providerPackageAvailable(computePools, packageID); !available {
-			return nil, errPackageUnavailable
-		}
-	case "storage", "workspace":
-		if resourceType == "workspace" {
-			if _, supplied := input["sizeGb"]; supplied {
-				return nil, errInvalidPricingInput
-			}
-			if _, supplied := input["sizeGB"]; supplied {
-				return nil, errInvalidPricingInput
-			}
-			sizeGB, available := providerPackageStorageGB(computePools, packageID)
-			if !available {
-				return nil, errPackageUnavailable
-			}
-			input = cloneMap(input)
-			input["sizeGb"] = sizeGB
-		} else {
-			if _, available := providerPackageAvailable(computePools, packageID); !available {
-				return nil, errPackageUnavailable
-			}
-			if _, validSize := positiveIntegerField(input, "sizeGb"); !validSize {
-				return nil, errInvalidPricingInput
-			}
-		}
-	default:
-		return nil, errInvalidPricingInput
-	}
-	preview, err := pricingPreviewResponse(input)
-	if err != nil {
-		return nil, err
-	}
-	return app.applyResourceBillingQuote(customerPricingPreviewDTO(preview)), nil
-}
-
-func (app *controlPlaneServer) applyResourceBillingQuote(preview map[string]any) map[string]any {
-	if app == nil || app.deployment.resourceBillingEnabled() {
-		return preview
-	}
-	zero := func(value map[string]any) {
-		if value == nil {
-			return
-		}
-		value["chargeUsdMicros"] = int64(0)
-	}
-	for _, key := range []string{"compute", "storage"} {
-		component, _ := preview[key].(map[string]any)
-		zero(component)
-		if snapshot, _ := component["priceSnapshot"].(map[string]any); snapshot != nil {
-			zero(snapshot)
-		}
-	}
-	preview["chargeUsdMicros"] = int64(0)
-	preview["totalChargeUsdMicros"] = int64(0)
-	preview["resourceBillingMode"] = "none"
-	return preview
 }
 
 func pricingPreviewFromCatalog(catalog pricingCatalogData, input map[string]any) (map[string]any, error) {
@@ -247,6 +167,9 @@ func checkedAddInt64(left, right int64) (int64, bool) {
 	return left + right, true
 }
 
+// packageRows projects the catalog's packages into the Console's package
+// identity rows. The rows carry no price: the price of a new resource is the
+// Resource Catalog's to publish.
 func packageRows(catalog pricingCatalogData) []any {
 	rows := make([]any, 0, len(catalog.Packages))
 	for _, plan := range catalog.Packages {
@@ -282,35 +205,6 @@ func packageRowsForComputePools(catalog pricingCatalogData, computePools []any) 
 	return rows
 }
 
-func providerPackageAvailable(computePools []any, packageID string) (bool, bool) {
-	found, available := false, false
-	for _, raw := range computePools {
-		pool, _ := raw.(map[string]any)
-		if stringValue(pool["packageId"]) != packageID {
-			continue
-		}
-		found = true
-		available = available || pool["available"] == true
-	}
-	return found, available
-}
-
-func providerPackageStorageGB(computePools []any, packageID string) (int, bool) {
-	found, available, sizeGB := false, false, 0
-	for _, raw := range computePools {
-		pool, _ := raw.(map[string]any)
-		if stringValue(pool["packageId"]) != packageID {
-			continue
-		}
-		candidate := int(numberField(pool, "sizeGb", 0))
-		if candidate <= 0 || float64(candidate) != numberField(pool, "sizeGb", 0) || found && sizeGB != candidate {
-			return 0, false
-		}
-		found, available, sizeGB = true, available || pool["available"] == true, candidate
-	}
-	return sizeGB, found && available
-}
-
 func packageByIDFromCatalog(catalog pricingCatalogData, packageID string) (pricingPackageData, bool) {
 	for _, plan := range catalog.Packages {
 		if plan.ID == packageID {
@@ -318,32 +212,4 @@ func packageByIDFromCatalog(catalog pricingCatalogData, packageID string) (prici
 		}
 	}
 	return pricingPackageData{}, false
-}
-
-func customerPricingPreviewDTO(preview map[string]any) map[string]any {
-	result := map[string]any{
-		"resourceType": preview["resourceType"], "priceVersion": preview["priceVersion"], "packageId": preview["packageId"],
-		"currency": preview["currency"], "displayCurrency": preview["displayCurrency"], "billingUnit": preview["billingUnit"],
-	}
-	if stringValue(preview["resourceType"]) == "workspace" {
-		result["compute"] = customerPricingPreviewDTO(mapField(preview, "compute"))
-		result["storage"] = customerPricingPreviewDTO(mapField(preview, "storage"))
-		result["totalChargeUsdMicros"] = preview["totalChargeUsdMicros"]
-		return result
-	}
-	result["chargeUsdMicros"] = preview["chargeUsdMicros"]
-	result["priceSnapshot"] = customerPricingSnapshotDTO(mapField(preview, "priceSnapshot"))
-	return result
-}
-
-func customerPricingSnapshotDTO(snapshot map[string]any) map[string]any {
-	result := map[string]any{
-		"resourceType": snapshot["resourceType"], "priceVersion": snapshot["priceVersion"], "packageId": snapshot["packageId"],
-		"currency": snapshot["currency"], "displayCurrency": snapshot["displayCurrency"], "billingUnit": snapshot["billingUnit"],
-		"chargeUsdMicros": snapshot["chargeUsdMicros"],
-	}
-	if sizeGB, ok := snapshot["sizeGb"]; ok {
-		result["sizeGb"] = sizeGB
-	}
-	return result
 }

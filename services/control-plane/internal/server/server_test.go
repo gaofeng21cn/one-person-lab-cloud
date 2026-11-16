@@ -329,45 +329,54 @@ func (s *failingAuditStore) SaveAuditEvent(context.Context, map[string]any) erro
 	return errors.New("audit write failed")
 }
 func TestPricingPackageAvailabilityFollowsFabricComputePools(t *testing.T) {
+	server := NewServer(newTestService(fakeLedgerClient{}, &unavailableProCatalogFabricClient{}))
+	response := requestWithSession(t, server, operatorSessionForTest(t, server), http.MethodGet, "/api/management/state", "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	var body map[string]any
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	packages, _ := body["packages"].([]any)
+	availability := map[string]bool{}
+	for _, raw := range packages {
+		pkg, _ := raw.(map[string]any)
+		availability[stringValue(pkg["id"])] = pkg["available"] == true
+	}
+	if !availability["basic"] || availability["pro"] {
+		t.Fatalf("package availability=%#v body=%#v", availability, body)
+	}
+}
+
+// The old package-pricing routes were withdrawn in the R6 slice: the Resource
+// Catalog prices new resources, so the Control Plane publishes no current
+// price and no preview. The accepted history still decodes the price version
+// it was charged at.
+func TestRetiredPackagePricingRoutesAreNotRegistered(t *testing.T) {
+	server := NewServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}))
+	session := tenantAdminSessionForTest(t, server)
 	for _, tc := range []struct {
-		name string
-		path string
+		name, method, path, body string
 	}{
-		{name: "pricing catalog", path: "/api/pricing/catalog"},
+		{name: "pricing catalog", method: http.MethodGet, path: "/api/pricing/catalog"},
+		{name: "pricing preview", method: http.MethodPost, path: "/api/pricing/preview", body: `{"resourceType":"workspace","packageId":"basic"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			server := NewServer(newTestService(fakeLedgerClient{}, &unavailableProCatalogFabricClient{}))
-			response := requestWithSession(t, server, tenantAdminSessionForTest(t, server), http.MethodGet, tc.path, "")
-			if response.Code != http.StatusOK {
+			response := requestWithSession(t, server, session, tc.method, tc.path, tc.body)
+			if response.Code != http.StatusNotFound {
 				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
-			}
-			var body map[string]any
-			if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
-				t.Fatal(err)
-			}
-			packages, _ := body["packages"].([]any)
-			availability := map[string]bool{}
-			for _, raw := range packages {
-				pkg, _ := raw.(map[string]any)
-				availability[stringValue(pkg["id"])] = pkg["available"] == true
-			}
-			if !availability["basic"] || availability["pro"] {
-				t.Fatalf("package availability=%#v body=%#v", availability, body)
 			}
 		})
 	}
 }
 
-func TestUnavailablePackageStopsPreviewAndLaunchBeforeExternalCalls(t *testing.T) {
+func TestUnavailablePackageStopsLaunchBeforeExternalCalls(t *testing.T) {
 	calls := []string{}
 	fabric := &unavailableProCatalogFabricClient{fakeFabricClient{calls: &calls}}
 	server := NewServer(newTestService(fakeLedgerClient{}, fabric))
 	session := tenantAdminSessionForTest(t, server)
 
-	preview := requestWithSession(t, server, session, http.MethodPost, "/api/pricing/preview", `{"resourceType":"workspace","packageId":"pro"}`)
-	if preview.Code != http.StatusConflict || !strings.Contains(preview.Body.String(), `"error":"package_unavailable"`) {
-		t.Fatalf("Pro preview status=%d body=%s", preview.Code, preview.Body.String())
-	}
 	launch := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches", `{"name":"Pro","packageId":"pro","autoRenew":false}`, "unavailable-pro")
 	if launch.Code != http.StatusConflict || !strings.Contains(launch.Body.String(), retainedWorkspaceLaunchNewPurchaseRetired) {
 		t.Fatalf("retained Pro purchase status=%d body=%s", launch.Code, launch.Body.String())
@@ -1667,7 +1676,9 @@ func TestProtectedAPIRoutesRequireSessionCSRFAndAdminRole(t *testing.T) {
 		t.Fatalf("admin route as owner status = %d, want 403: %s", adminReqRec.Code, adminReqRec.Body.String())
 	}
 
-	allowed := requestWithSession(t, server, admin, http.MethodPost, "/api/pricing/preview", `{"resourceType":"workspace","packageId":"basic"}`)
+	// The retained package-pricing routes are gone, so the guard is proved with
+	// a retained write that a valid session and CSRF token reach.
+	allowed := requestWithSession(t, server, admin, http.MethodPost, "/api/auth/logout", "")
 	if allowed.Code != http.StatusOK {
 		t.Fatalf("admin csrf request did not reach protected route: status=%d body=%s", allowed.Code, allowed.Body.String())
 	}

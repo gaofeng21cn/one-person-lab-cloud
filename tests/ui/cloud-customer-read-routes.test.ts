@@ -9,9 +9,6 @@ import {
   gatewayUsageSummaryRoute,
   getAnnouncements,
   getBillingReceipts,
-  getPricingCatalog,
-  packagePricingReadPlan,
-  previewPricing,
   walletReadRoute
 } from "../../apps/console-ui/src/api/console-read-api.ts";
 import { cloudIdentity } from "../../apps/console-ui/src/app/console-identity.ts";
@@ -66,52 +63,6 @@ test("no customer read chooses the same path for both identities", () => {
   }
 });
 
-// Cloud has no package-pricing catalog owner yet, so the legacy catalog and
-// preview must fail closed. They must not fall back to the retained route whose
-// Account session a CloudIdentity build does not hold.
-test("the cloud identity refuses the retained package pricing catalog and preview before any request", async () => {
-  const requested: string[] = [];
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
-    requested.push(String(input));
-    throw new Error("unexpected_retained_pricing_request");
-  }) as typeof fetch;
-
-  assert.deepEqual(packagePricingReadPlan(true), {
-    state: "unavailable",
-    owner: "resource_catalog",
-    reasonCode: "pricing_catalog_owner_unavailable"
-  });
-  await assert.rejects(getPricingCatalog(true), /pricing_catalog_owner_unavailable/);
-  await assert.rejects(
-    previewPricing({ resourceType: "workspace", packageId: "basic" }, "csrf-1", true),
-    /pricing_catalog_owner_unavailable/
-  );
-  assert.deepEqual(requested, []);
-});
-
-test("the retained identity still prices through the Control Plane package routes", async () => {
-  const requested: string[] = [];
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
-    const path = String(input);
-    requested.push(path);
-    if (path === "/api/pricing/catalog") {
-      return new Response(JSON.stringify({ priceVersion: "2026-10", packages: [] }), {
-        status: 200,
-        headers: { "content-type": "application/json" }
-      });
-    }
-    return new Response(JSON.stringify({ chargeUsdMicros: 1 }), {
-      status: 200,
-      headers: { "content-type": "application/json" }
-    });
-  }) as typeof fetch;
-
-  assert.deepEqual(packagePricingReadPlan(false), { state: "read", owner: "control_plane" });
-  assert.equal((await getPricingCatalog(false)).priceVersion, "2026-10");
-  assert.equal((await previewPricing({ resourceType: "workspace", packageId: "basic" }, "csrf-1", false)).chargeUsdMicros, 1);
-  assert.deepEqual(requested, ["/api/pricing/catalog", "/api/pricing/preview"]);
-});
-
 test("the billing and announcement readers use the identity route decision", async () => {
   const requested: string[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -140,18 +91,23 @@ test("the billing and announcement readers use the identity route decision", asy
   assert.deepEqual(requested, ["/api/billing/receipts?limit=20", "/api/announcements?page=1&pageSize=20"]);
 });
 
-test("the launch controller refuses the package pricing read before it reaches the API", () => {
+// The Control Plane withdrew its package-pricing catalog and preview in the
+// R6 slice: the Resource Catalog prices new resources. The Console must not
+// ask the retired routes for a price again.
+test("the launch controller no longer reads the retired package pricing routes", () => {
   const controller = readFileSync(
     new URL("../../apps/console-ui/src/app/use-workspace-launch-controller.ts", import.meta.url),
     "utf8"
   );
-  const decision = controller.indexOf("packagePricingReadPlan(cloudIdentity)");
-  const read = controller.indexOf("getPricingCatalog(");
+  const readApi = readFileSync(
+    new URL("../../apps/console-ui/src/api/console-read-api.ts", import.meta.url),
+    "utf8"
+  );
 
-  assert.notEqual(decision, -1, "the controller must make the identity decision explicitly");
-  assert.notEqual(read, -1, "the legacy branch still reads the package pricing catalog");
-  assert.ok(decision < read, "the identity decision must run before the retained pricing read");
-  assert.match(controller, /plan\.state === "unavailable"/);
+  for (const retired of ["/api/pricing/catalog", "/api/pricing/preview", "getPricingCatalog", "previewPricing", "packagePricingReadPlan"]) {
+    assert.equal(controller.includes(retired), false, `the launch controller still reaches ${retired}`);
+    assert.equal(readApi.includes(retired), false, `the read API still reaches ${retired}`);
+  }
 });
 
 test("an unavailable owner answer stays an explicit unavailable source with no data", () => {

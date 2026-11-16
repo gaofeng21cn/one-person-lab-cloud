@@ -1,45 +1,12 @@
 package server
 
 import (
-	"errors"
 	"net/http"
 
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
 
 func registerStateRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
-	mux.HandleFunc("GET /api/pricing/catalog", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
-		computePools, ok := fabricComputePools(w, r, service)
-		if !ok {
-			return
-		}
-		catalog, err := app.pricingCatalogResponse(r.Context(), computePools)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "pricing_catalog_unavailable")
-			return
-		}
-		writeJSON(w, http.StatusOK, catalog)
-	}))
-	mux.HandleFunc("POST /api/pricing/preview", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
-		if !limitJSONBody(w, r) {
-			return
-		}
-		input := decodeJSON(r)
-		_, ok := app.scopedAccountID(w, r, input)
-		if !ok {
-			return
-		}
-		computePools, ok := fabricComputePools(w, r, service)
-		if !ok {
-			return
-		}
-		preview, err := app.pricingPreviewResponse(r.Context(), input, computePools)
-		if err != nil {
-			writePricingError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, preview)
-	}))
 	// The Instance installation reads this surface directly, so the route stays
 	// registered even though no Cloud repository calls it.
 	mux.HandleFunc("GET /api/management/state", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
@@ -49,16 +16,4 @@ func registerStateRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 		}
 		writeJSON(w, http.StatusOK, app.managementState(r.URL.Query().Get("includeDeleted") == "true", computePools))
 	}))
-}
-
-func writePricingError(w http.ResponseWriter, err error) {
-	if errors.Is(err, errPackageUnavailable) {
-		writeError(w, http.StatusConflict, "package_unavailable")
-		return
-	}
-	if errors.Is(err, errInvalidPricingInput) {
-		writeError(w, http.StatusBadRequest, "invalid_pricing_input")
-		return
-	}
-	writeError(w, http.StatusInternalServerError, "pricing_catalog_unavailable")
 }

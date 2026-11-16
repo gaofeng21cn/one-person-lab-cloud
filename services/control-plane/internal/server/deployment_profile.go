@@ -63,7 +63,6 @@ func deploymentProfileFromEnv() (deploymentProfile, error) {
 	}
 }
 
-func (profile deploymentProfile) customerOwned() bool          { return profile.Mode == deploymentCustomerOwned }
-func (profile deploymentProfile) resourceBillingEnabled() bool { return !profile.customerOwned() }
+func (profile deploymentProfile) customerOwned() bool { return profile.Mode == deploymentCustomerOwned }
 
 func boolPtr(value bool) *bool { return &value }

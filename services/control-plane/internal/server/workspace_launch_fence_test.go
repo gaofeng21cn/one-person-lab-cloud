@@ -282,6 +282,26 @@ func codexKeyGroupIDForTest(t *testing.T, ctx context.Context, service *controlp
 	return 0
 }
 
+// testProviderPackageStorageGB reads the storage size a provider package
+// declares. The Control Plane publishes no current price and no preview, so
+// the provider catalog is the only source of a package's storage size, and
+// only the historical Launch fixture still needs it.
+func testProviderPackageStorageGB(computePools []any, packageID string) (int, bool) {
+	found, available, sizeGB := false, false, 0
+	for _, raw := range computePools {
+		pool, _ := raw.(map[string]any)
+		if stringValue(pool["packageId"]) != packageID {
+			continue
+		}
+		candidate := int(numberField(pool, "sizeGb", 0))
+		if candidate <= 0 || float64(candidate) != numberField(pool, "sizeGb", 0) || found && sizeGB != candidate {
+			return 0, false
+		}
+		found, available, sizeGB = true, available || pool["available"] == true, candidate
+	}
+	return sizeGB, found && available
+}
+
 // seedRetainedWorkspaceLaunchFixture persists the historical Launch operation
 // pair the retained route admitted before the purchase cutover.
 func seedRetainedWorkspaceLaunchFixture(
@@ -306,16 +326,18 @@ func seedRetainedWorkspaceLaunchFixture(
 		t.Fatal(err)
 	}
 	pools := computePoolsFromFabricCatalog(catalog)
-	storageGB, available := providerPackageStorageGB(pools, packageID)
+	storageGB, available := testProviderPackageStorageGB(pools, packageID)
 	if !available {
 		t.Fatalf("package %q is not available in the test catalog", packageID)
 	}
-	quote, err := handler.app.pricingPreviewResponse(ctx, map[string]any{"resourceType": "workspace", "packageId": packageID}, pools)
+	acceptedCatalog, ok := pricingCatalogByVersion(pricingCatalogVersion)
+	if !ok {
+		t.Fatal("accepted price version is not registered")
+	}
+	quote, err := workspacePricingPreview(acceptedCatalog, map[string]any{"packageId": packageID, "sizeGb": storageGB})
 	if err != nil {
 		t.Fatal(err)
 	}
-	quote = customerPricingPreviewDTO(quote)
-	quote = handler.app.applyResourceBillingQuote(quote)
 	imageDigest := ""
 	if mode != contracts.WorkspaceProvisioningResourceOnly {
 		imageDigest = "repo.example/workspace@sha256:" + strings.Repeat("b", 64)
@@ -340,7 +362,9 @@ func seedRetainedWorkspaceLaunchFixture(
 		t.Fatalf("historical preflight was not confirmed: %+v", preflight)
 	}
 	preChargeBalance := int64(0)
-	if handler.app.deployment.resourceBillingEnabled() {
+	// A customer-owned deployment charges nothing for the customer's resources.
+	resourceBillingEnabled := !handler.app.deployment.customerOwned()
+	if resourceBillingEnabled {
 		balance, err := handler.service.Sub2APIBalance(ctx, sub2APIUserID)
 		if err != nil {
 			t.Fatal(err)
@@ -371,7 +395,7 @@ func seedRetainedWorkspaceLaunchFixture(
 		PriceVersion: stringValue(quote["priceVersion"]), TotalChargeUSDMicros: int64(numberField(quote, "totalChargeUsdMicros", 0)),
 		ProviderProfileRef: preflight.ProviderProfileRef, PreflightBindingRef: preflight.BindingRef, SpecDigest: preflight.SpecDigest,
 		WorkspaceImageDigest: imageDigest, WorkspaceKeyGroupID: workspaceKeyGroupID, PreChargeBalanceMicros: preChargeBalance,
-		ResourceBillingEnabled: boolPtr(handler.app.deployment.resourceBillingEnabled()),
+		ResourceBillingEnabled: boolPtr(resourceBillingEnabled),
 		Mode:                   mode,
 	})
 	if err != nil {
