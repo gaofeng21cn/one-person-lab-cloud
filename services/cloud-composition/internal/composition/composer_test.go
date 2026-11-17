@@ -161,7 +161,11 @@ func TestComposerFailsFastNamingTheOwnerThatNeverBecomesReady(t *testing.T) {
 		Interval:        time.Millisecond,
 		ShutdownTimeout: 50 * time.Millisecond,
 	}
-	err := composer.Run(context.Background())
+	// The composition is bounded, so a gate that does not hold stops the
+	// composition instead of running it forever.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := composer.Run(ctx)
 	if err == nil {
 		t.Fatal("the composition must fail when a required owner never becomes ready")
 	}
@@ -204,7 +208,11 @@ func TestComposerDoesNotStartADependentOwnerBeforeItsDependencyIsReady(t *testin
 		Interval:        time.Millisecond,
 		ShutdownTimeout: 50 * time.Millisecond,
 	}
-	err := composer.Run(context.Background())
+	// The composition is bounded, so a gate that does not hold stops the
+	// composition instead of running it forever.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := composer.Run(ctx)
 	if err == nil {
 		t.Fatal("the composition must fail when a dependency is not ready")
 	}
