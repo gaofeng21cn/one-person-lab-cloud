@@ -512,6 +512,195 @@
    "daemonArgs": []
   }
  ],
+ "readinessCriteria": {
+  "rule": "Every declared process carries exactly one readiness criterion: the check an installation runs to decide whether the process is ready to serve, and the check that decides whether it is only alive. A criterion names the process it belongs to, its kind, and the concrete checks it makes. Every check names the transport it uses, whether it answers the readiness question or the liveness question, and the address environment name this contract already declares for that process, whether that is the process's own listen address or one of its additional listeners. A criterion therefore never introduces an address of its own: the effective address resolves from the same declaration the process reads. A gRPC check is the owner's own health service; an HTTP check is a route the owning source registers. A check marked as a projection reports another owner's readiness state rather than an aggregate of Cloud owners, and names the Go type its body carries. Cloud declares no aggregate readiness surface: /readyz belongs to the Ledger owner alone.",
+  "criteria": [
+   {
+    "process": "capability",
+    "kind": "ownerGrpcHealth",
+    "checks": [
+     {
+      "transport": "grpc",
+      "role": "readiness",
+      "addressEnv": "OPL_CAPABILITY_ADDR",
+      "service": "grpc.health.v1.Health",
+      "method": "Check"
+     }
+    ],
+    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/capability/cmd/server/main.go starts that server."
+   },
+   {
+    "process": "build",
+    "kind": "ownerGrpcHealth",
+    "checks": [
+     {
+      "transport": "grpc",
+      "role": "readiness",
+      "addressEnv": "OPL_BUILD_ADDR",
+      "service": "grpc.health.v1.Health",
+      "method": "Check"
+     }
+    ],
+    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/build/cmd/server/main.go starts that server."
+   },
+   {
+    "process": "runtime-control",
+    "kind": "ownerGrpcHealth",
+    "checks": [
+     {
+      "transport": "grpc",
+      "role": "readiness",
+      "addressEnv": "OPL_RUNTIME_CONTROL_ADDR",
+      "service": "grpc.health.v1.Health",
+      "method": "Check"
+     }
+    ],
+    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/runtime-control/cmd/server/main.go starts that server."
+   },
+   {
+    "process": "workspace",
+    "kind": "ownerGrpcHealth",
+    "checks": [
+     {
+      "transport": "grpc",
+      "role": "readiness",
+      "addressEnv": "OPL_WORKSPACE_ADDR",
+      "service": "grpc.health.v1.Health",
+      "method": "Check"
+     }
+    ],
+    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/workspace/cmd/server/main.go starts that server."
+   },
+   {
+    "process": "serve",
+    "kind": "ownerGrpcHealth",
+    "checks": [
+     {
+      "transport": "grpc",
+      "role": "readiness",
+      "addressEnv": "OPL_SERVE_ADDR",
+      "service": "grpc.health.v1.Health",
+      "method": "Check"
+     }
+    ],
+    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/serve/cmd/server/main.go starts that server."
+   },
+   {
+    "process": "resource-catalog",
+    "kind": "ownerGrpcHealth",
+    "checks": [
+     {
+      "transport": "grpc",
+      "role": "readiness",
+      "addressEnv": "OPL_RESOURCE_CATALOG_ADDR",
+      "service": "grpc.health.v1.Health",
+      "method": "Check"
+     }
+    ],
+    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/resource-catalog/cmd/server/main.go starts that server."
+   },
+   {
+    "process": "gateway-integration",
+    "kind": "ownerGrpcHealth",
+    "checks": [
+     {
+      "transport": "grpc",
+      "role": "readiness",
+      "addressEnv": "OPL_TENANT_ADDR",
+      "service": "grpc.health.v1.Health",
+      "method": "Check"
+     }
+    ],
+    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/gateway-integration/cmd/server/main.go starts that server."
+   },
+   {
+    "process": "ledger",
+    "kind": "ownerHttpHealth",
+    "checks": [
+     {
+      "transport": "http",
+      "role": "liveness",
+      "addressEnv": "LEDGER_ADDR",
+      "method": "GET",
+      "path": "/healthz"
+     },
+     {
+      "transport": "http",
+      "role": "readiness",
+      "addressEnv": "LEDGER_ADDR",
+      "method": "GET",
+      "path": "/readyz"
+     }
+    ],
+    "evidence": "services/ledger/internal/http/server.go registers GET /healthz and GET /readyz on the Ledger HTTP listener, whose address this contract declares as LEDGER_ADDR. The Ledger domain listener (services/ledger/eventconsumer/server.go) registers the Ledger product, coordination and inbox services and no gRPC health service, so this owner's criterion is its HTTP surface."
+   },
+   {
+    "process": "fabric",
+    "kind": "ownerGrpcHealthAndHttpHealth",
+    "checks": [
+     {
+      "transport": "grpc",
+      "role": "readiness",
+      "addressEnv": "OPL_FABRIC_ADDR",
+      "service": "grpc.health.v1.Health",
+      "method": "Check"
+     },
+     {
+      "transport": "http",
+      "role": "liveness",
+      "addressEnv": "FABRIC_ADDR",
+      "method": "GET",
+      "path": "/healthz"
+     }
+    ],
+    "evidence": "services/fabric/coordination/process.go starts the shared owner server, which registers the gRPC health service on the Fabric domain listener; services/fabric/internal/http/server.go registers GET /healthz on the Fabric HTTP listener, whose address this contract declares as FABRIC_ADDR."
+   },
+   {
+    "process": "control-plane",
+    "kind": "deploymentUnitHttpHealthAndFabricReadiness",
+    "checks": [
+     {
+      "transport": "http",
+      "role": "liveness",
+      "addressEnv": "CONTROL_PLANE_ADDR",
+      "method": "GET",
+      "path": "/api/healthz"
+     },
+     {
+      "transport": "http",
+      "role": "readiness",
+      "addressEnv": "CONTROL_PLANE_ADDR",
+      "method": "GET",
+      "path": "/api/runtime/readiness",
+      "projection": "contracts.FabricReadiness"
+     },
+     {
+      "transport": "http",
+      "role": "readiness",
+      "addressEnv": "CONTROL_PLANE_ADDR",
+      "method": "GET",
+      "path": "/api/production/readiness",
+      "projection": "contracts.FabricReadiness"
+     }
+    ],
+    "evidence": "services/control-plane/internal/server/routes_core.go registers GET /api/healthz, GET /api/runtime/readiness and GET /api/production/readiness. The two readiness routes carry the Fabric provider's readiness state (contracts.FabricReadiness), not an aggregate of the Cloud owners, so they are declared as projections."
+   },
+   {
+    "process": "console-bff",
+    "kind": "deploymentUnitHttpHealth",
+    "checks": [
+     {
+      "transport": "http",
+      "role": "readiness",
+      "addressEnv": "OPL_BFF_ADDR",
+      "method": "GET",
+      "path": "/healthz"
+     }
+    ],
+    "evidence": "apps/console-bff/internal/httpapi/server.go registers GET /healthz on the Console BFF listener, whose address this contract declares as OPL_BFF_ADDR. The BFF owns no business data and publishes no owner identity, so its criterion is its own HTTP surface."
+   }
+  ]
+ },
  "consoleBundle": {
   "buildArg": "VITE_CONSOLE_IDENTITY",
   "values": [

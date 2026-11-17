@@ -39,12 +39,31 @@ type ProcessEntry = {
   externalEnv?: string[];
   registers?: string[];
   notes?: string[];
+  transportPrincipal?: string;
+  additionalListeners?: ListenerEntry[];
+};
+type ListenerEntry = { addressEnv: string; defaultAddress?: string; valueSemantics?: string };
+type ReadinessCheck = {
+  transport: string;
+  role: string;
+  addressEnv: string;
+  service?: string;
+  method?: string;
+  path?: string;
+  projection?: string;
+};
+type ReadinessCriterion = {
+  process: string;
+  kind: string;
+  checks: ReadinessCheck[];
+  evidence?: string;
 };
 type SurfaceEntry = { prefix: string; processes: string[]; browserFacing: boolean; evidence: string };
 type Topology = {
   sharedEnv: Record<string, string | string[]>;
   derivedEnv: { address: string; peerTokens: string };
   processes: ProcessEntry[];
+  readinessCriteria: { rule: string; criteria: ReadinessCriterion[] };
   consoleBundle: {
     buildArg: string;
     values: string[];
@@ -668,4 +687,266 @@ test("every environment name the owner topology declares resolves in the install
     .filter((name) => !declared.has(name) && !hostProvided.has(name) && !buildArgs.has(name) && !derived.has(name))
     .sort();
   assert.deepEqual(unresolved, [], "every environment name the owner topology declares must resolve in the installation");
+});
+
+
+// The readiness criterion of an owner is a product fact: which check answers
+// "is this process ready", on which transport, and on which of the addresses
+// the process already declares. It used to live hardcoded in the owner probe
+// and in the installer's address list, which made those two a second writer of
+// the topology. The owner topology contract is that single writer now, and the
+// assertions below read the owning Go source so the declaration cannot drift
+// from what the processes actually serve.
+
+// declaredListenAddresses returns the address environment names the contract
+// declares for one process, split by the transport each one carries: the
+// owner's gRPC address and the HTTP addresses the process listens on. The
+// split is read from the declaration itself (kind, rpcAddressEnv, addressEnv
+// and the additional listeners) rather than restated per process.
+function declaredListenAddresses(process: ProcessEntry): { grpc: Set<string>; http: Set<string> } {
+  const grpc = new Set<string>();
+  const http = new Set<string>();
+  if (process.rpcAddressEnv) grpc.add(process.rpcAddressEnv);
+  if (process.kind === "ownerservice") {
+    if (process.addressEnv) grpc.add(process.addressEnv);
+  } else if (process.addressEnv) {
+    http.add(process.addressEnv);
+  }
+  for (const listener of process.additionalListeners ?? []) http.add(listener.addressEnv);
+  return { grpc, http };
+}
+
+// declaredDefaultAddresses returns every default listen address the contract
+// declares for one address environment name of a process. A criterion may only
+// name an environment the contract declares, so a criterion never introduces an
+// address of its own.
+function declaredDefaultAddresses(process: ProcessEntry, addressEnv: string): string[] {
+  const defaults: string[] = [];
+  if (process.addressEnv === addressEnv && process.defaultAddress) defaults.push(process.defaultAddress);
+  if (process.rpcAddressEnv === addressEnv && process.defaultRPCAddress) defaults.push(process.defaultRPCAddress);
+  for (const listener of process.additionalListeners ?? []) {
+    if (listener.addressEnv === addressEnv && listener.defaultAddress) defaults.push(listener.defaultAddress);
+  }
+  return defaults;
+}
+
+// readinessGaps reports the declared processes that carry no readiness
+// criterion and the criteria that name no declared process.
+function readinessGaps(processes: ProcessEntry[], criteria: ReadinessCriterion[]): { missing: string[]; unknown: string[] } {
+  const declared = new Set(processes.map((process) => process.service));
+  const named = new Set(criteria.map((criterion) => criterion.process));
+  return {
+    missing: [...declared].filter((service) => !named.has(service)).sort(),
+    unknown: [...named].filter((service) => !declared.has(service)).sort()
+  };
+}
+
+// servesOwnerHealthService reports whether the process's own source starts the
+// shared owner server, which is the only server that registers the gRPC health
+// service.
+async function servesOwnerHealthService(directory: string): Promise<boolean> {
+  for (const file of await goFiles(directory)) {
+    const source = await readFile(file, "utf8");
+    if (/ownerservice\.(?:Start|StartWithDatabase|NewServer)\(/.test(source)) return true;
+  }
+  return false;
+}
+
+// registersRoute reports whether the process's own source registers one HTTP
+// route, in the literal form Go's ServeMux uses.
+async function registersRoute(directory: string, method: string, routePath: string): Promise<boolean> {
+  const literal = `"${method} ${routePath}"`;
+  for (const file of await goFiles(directory)) {
+    const source = await readFile(file, "utf8");
+    if (source.includes(literal)) return true;
+  }
+  return false;
+}
+
+// ownerProcessDirectory is the source tree that owns one declared process.
+function ownerProcessDirectory(service: string): string {
+  const entry = ownerProcessDirectories.find(([name]) => name === service);
+  assert.ok(entry, `${service} must be a known owner process directory`);
+  return entry![1];
+}
+
+test("every declared process declares exactly one readiness criterion, and every criterion names a declared process", async () => {
+  const topology = await loadTopology();
+  const declared = topology.readinessCriteria?.criteria;
+  assert.ok(Array.isArray(declared), `${topologyPath} must declare the readiness criteria`);
+  assert.ok(topology.readinessCriteria.rule.length > 0, "the readiness declaration must state the rule it follows");
+  const named = declared!.map((criterion) => criterion.process);
+  assert.deepEqual(named.filter((service, index) => named.indexOf(service) !== index), [],
+    "no process may carry two readiness criteria");
+  const gaps = readinessGaps(topology.processes, declared!);
+  assert.deepEqual(gaps.missing, [], "every declared process must carry a readiness criterion");
+  assert.deepEqual(gaps.unknown, [], "every readiness criterion must name a declared process");
+});
+
+test("every readiness check names the addresses this contract already declares for that process", async () => {
+  const topology = await loadTopology();
+  const byService = new Map(topology.processes.map((process) => [process.service, process]));
+  for (const criterion of topology.readinessCriteria.criteria) {
+    const process = byService.get(criterion.process);
+    assert.ok(process, `${criterion.process} must be a declared process`);
+    assert.ok(criterion.kind.length > 0, `${criterion.process} must declare a readiness criterion kind`);
+    assert.ok(criterion.evidence && criterion.evidence.length > 0,
+      `${criterion.process} must carry the evidence that establishes its criterion`);
+    assert.ok(criterion.checks.length > 0, `${criterion.process} must declare at least one readiness check`);
+    assert.ok(criterion.checks.some((check) => check.role === "readiness"),
+      `${criterion.process} must declare at least one readiness check`);
+    const addresses = declaredListenAddresses(process!);
+    for (const check of criterion.checks) {
+      assert.ok(check.transport === "grpc" || check.transport === "http",
+        `${criterion.process} check must name the transport it uses`);
+      assert.ok(check.role === "readiness" || check.role === "liveness",
+        `${criterion.process} check must name whether it answers the readiness or the liveness question`);
+      const allowed = check.transport === "grpc" ? addresses.grpc : addresses.http;
+      assert.ok(allowed.has(check.addressEnv),
+        `${criterion.process} ${check.transport} check names ${check.addressEnv}, which the contract does not declare as a ${check.transport} address of that process`);
+      const defaults = declaredDefaultAddresses(process!, check.addressEnv);
+      assert.equal(defaults.length, 1,
+        `${criterion.process} must declare exactly one default listen address for ${check.addressEnv}`);
+      assert.match(defaults[0], /^:[0-9]{2,5}$/,
+        `${criterion.process} default listen address for ${check.addressEnv} must be a listen port`);
+      if (check.transport === "grpc") {
+        assert.equal(check.service, "grpc.health.v1.Health");
+        assert.equal(check.method, "Check");
+        assert.equal(check.path, undefined);
+      } else {
+        assert.equal(check.method, "GET");
+        assert.ok(check.path && check.path.startsWith("/"),
+          `${criterion.process} HTTP check must name the route it calls`);
+        assert.equal(check.service, undefined);
+      }
+    }
+  }
+});
+
+test("the declared readiness kind matches the checks the criterion actually makes", async () => {
+  const topology = await loadTopology();
+  const byService = new Map(topology.processes.map((process) => [process.service, process]));
+  for (const criterion of topology.readinessCriteria.criteria) {
+    const process = byService.get(criterion.process);
+    assert.ok(process, `${criterion.process} must be a declared process`);
+    const transports = new Set(criterion.checks.map((check) => check.transport));
+    const projections = criterion.checks.filter((check) => check.projection !== undefined);
+    const isOwner = process!.ownerName !== undefined;
+    let expected: string;
+    if (transports.has("grpc")) {
+      expected = transports.has("http") ? "ownerGrpcHealthAndHttpHealth" : "ownerGrpcHealth";
+    } else if (projections.length > 0) {
+      expected = "deploymentUnitHttpHealthAndFabricReadiness";
+    } else {
+      expected = isOwner ? "ownerHttpHealth" : "deploymentUnitHttpHealth";
+    }
+    assert.equal(criterion.kind, expected,
+      `${criterion.process} declares kind ${criterion.kind} but its own checks make ${expected}`);
+    // A deployment unit publishes no owner identity, so it serves no owner gRPC
+    // health service and cannot be probed by one.
+    if (!isOwner) {
+      assert.ok(!transports.has("grpc"),
+        `${criterion.process} is a deployment unit and serves no owner gRPC health service`);
+    }
+  }
+});
+
+test("every HTTP readiness check is a route the owning source registers", async () => {
+  const topology = await loadTopology();
+  for (const criterion of topology.readinessCriteria.criteria) {
+    const directory = ownerProcessDirectory(criterion.process);
+    for (const check of criterion.checks) {
+      if (check.transport !== "http") continue;
+      assert.ok(await registersRoute(directory, check.method as string, check.path as string),
+        `${criterion.process} must register ${check.method} ${check.path} for its readiness criterion`);
+    }
+  }
+});
+
+test("every gRPC readiness check is a health service the owning process actually serves", async () => {
+  const topology = await loadTopology();
+  const ownerServer = await readFile("services/internal/ownerservice/server.go", "utf8");
+  assert.ok(ownerServer.includes("healthpb.RegisterHealthServer(server, healthServer)"),
+    "the shared owner server must register the gRPC health service");
+  assert.ok(ownerServer.includes("healthpb.HealthCheckResponse_SERVING"),
+    "the shared owner server must report SERVING only once the owner is ready");
+  assert.ok(ownerServer.includes("/grpc.health.v1.Health/Check"),
+    "the shared owner server must exempt the health method from peer authentication");
+  for (const criterion of topology.readinessCriteria.criteria) {
+    if (!criterion.checks.some((check) => check.transport === "grpc")) continue;
+    const directory = ownerProcessDirectory(criterion.process);
+    assert.ok(await servesOwnerHealthService(directory),
+      `${criterion.process} declares a gRPC readiness check, but its own source starts no owner server that serves the health service`);
+  }
+});
+
+test("a readiness projection names a type the owning source really carries", async () => {
+  const topology = await loadTopology();
+  for (const criterion of topology.readinessCriteria.criteria) {
+    const directory = ownerProcessDirectory(criterion.process);
+    for (const check of criterion.checks) {
+      if (!check.projection) continue;
+      assert.equal(check.projection, "contracts.FabricReadiness",
+        `${criterion.process} may only project a readiness state this contract names`);
+      let carried = false;
+      for (const file of await goFiles(directory)) {
+        if ((await readFile(file, "utf8")).includes(check.projection)) {
+          carried = true;
+          break;
+        }
+      }
+      assert.ok(carried, `${criterion.process} must carry ${check.projection} in its own source`);
+    }
+  }
+});
+
+test("a process added to the declaration without a readiness criterion is refused", async () => {
+  const topology = await loadTopology();
+  const added: ProcessEntry = { ...topology.processes[0], service: "added-owner" };
+  const gaps = readinessGaps([...topology.processes, added], topology.readinessCriteria.criteria);
+  assert.deepEqual(gaps.missing, ["added-owner"], "a declared process without a readiness criterion must be refused");
+  assert.deepEqual(gaps.unknown, []);
+});
+
+test("a readiness criterion for a process the declaration does not declare is refused", async () => {
+  const topology = await loadTopology();
+  const orphan: ReadinessCriterion = {
+    process: "undeclared-owner",
+    kind: "ownerGrpcHealth",
+    checks: [{ transport: "grpc", role: "readiness", addressEnv: "OPL_CAPABILITY_ADDR", service: "grpc.health.v1.Health", method: "Check" }],
+    evidence: "fixture"
+  };
+  const gaps = readinessGaps(topology.processes, [...topology.readinessCriteria.criteria, orphan]);
+  assert.deepEqual(gaps.unknown, ["undeclared-owner"], "a criterion for an undeclared process must be refused");
+  assert.deepEqual(gaps.missing, []);
+});
+
+test("the readiness proofs tell a served health service apart from a route that only looks like one", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "opl-readiness-fixture-"));
+  try {
+    const file = path.join(directory, "routes.go");
+    await writeFile(file, `package fixture
+func routes(mux *http.ServeMux) {
+ mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {})
+}
+`);
+    assert.equal(await registersRoute(directory, "GET", "/healthz"), true,
+      "a registered route must be found");
+    assert.equal(await registersRoute(directory, "GET", "/readyz"), false,
+      "a route the fixture does not register must not be found");
+    assert.equal(await servesOwnerHealthService(directory), false,
+      "a process that starts no owner server serves no health service");
+    await writeFile(file, `package fixture
+func routes(mux *http.ServeMux) {
+ mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {})
+}
+func serve(ctx context.Context, config ownerservice.Config, source ownerstore.MigrationSource) {
+ ownerservice.Start(ctx, config, source, nil)
+}
+`);
+    assert.equal(await servesOwnerHealthService(directory), true,
+      "a process that starts the shared owner server serves the health service");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
