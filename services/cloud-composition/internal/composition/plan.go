@@ -1,6 +1,7 @@
 package composition
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -46,6 +47,7 @@ func NewPlan(topology Topology, getenv func(string) string) (Plan, error) {
 		order[process.Service] = index
 	}
 	for _, process := range topology.Processes {
+		process.AllowedEnv = allowedEnvironmentNames(topology, process)
 		criterion, ok := criteria[process.Service]
 		if !ok {
 			return Plan{}, fmt.Errorf("owner %s declares no readiness criterion", process.Service)
@@ -74,6 +76,48 @@ func NewPlan(topology Topology, getenv func(string) string) (Plan, error) {
 		return Plan{}, err
 	}
 	return plan, nil
+}
+
+// allowedEnvironmentNames resolves the contract's shared and per-process
+// environment declarations into one deterministic allowlist. The legacy
+// shared DATABASE_URL name is retained as a fallback, then ChildEnvironment
+// replaces it with the per-owner alias when one is supplied by the
+// installation. No name outside these declarations reaches a child process.
+func allowedEnvironmentNames(topology Topology, process Process) []string {
+	seen := map[string]bool{}
+	names := []string{}
+	add := func(name string) {
+		if strings.TrimSpace(name) == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	for key, raw := range topology.SharedEnv {
+		var list []string
+		if json.Unmarshal(raw, &list) == nil {
+			for _, name := range list {
+				add(name)
+			}
+			continue
+		}
+		var name string
+		if json.Unmarshal(raw, &name) == nil {
+			add(name)
+			continue
+		}
+		_ = key // malformed shared declarations are rejected by contract tests.
+	}
+	for _, name := range process.Env {
+		add(name)
+	}
+	for _, name := range process.OptionalEnv {
+		add(name)
+	}
+	for _, name := range process.ExternalEnv {
+		add(name)
+	}
+	return names
 }
 
 // dependenciesBefore returns the processes the given process waits for: the

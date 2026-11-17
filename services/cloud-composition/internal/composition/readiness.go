@@ -54,21 +54,99 @@ func OwnerCertificatePaths(process Process, getenv func(string) string) (string,
 	return certFile, keyFile, nil
 }
 
-// ChildEnvironment returns the environment one owner process runs with: the
-// installation's environment, plus the owner's own certificate material so a
-// shared container still carries one mTLS identity per owner.
+// ChildEnvironment returns the environment one owner process runs with. The
+// contract supplies an allowlist for each process; only those names (plus the
+// explicitly shared names) are projected from the composition environment.
+// This is required because the parent container carries every owner's Secret
+// reference while a child must retain the per-owner isolation of the former
+// one-process-per-container deployment.
 func ChildEnvironment(process Process, environ []string, getenv func(string) string) ([]string, error) {
+	values := make(map[string]string, len(environ))
+	for _, entry := range environ {
+		name, value, ok := strings.Cut(entry, "=")
+		if ok && name != "" {
+			values[name] = value
+		}
+	}
+	allowed := make(map[string]bool, len(process.AllowedEnv))
+	for _, name := range process.AllowedEnv {
+		allowed[name] = true
+	}
+	// Process literals used by callers that construct a Process directly (for
+	// example focused tests) still receive their declared fields. A production
+	// plan always sets AllowedEnv from the topology's sharedEnv declaration.
+	for _, name := range append(append(append([]string{}, process.Env...), process.OptionalEnv...), process.ExternalEnv...) {
+		allowed[name] = true
+	}
+	if len(allowed) == 0 {
+		return nil, fmt.Errorf("owner %s declares no environment allowlist", process.Service)
+	}
+	projected := make([]string, 0, len(allowed)+2)
+	seen := make(map[string]bool, len(allowed)+2)
+	for _, entry := range environ {
+		name, _, ok := strings.Cut(entry, "=")
+		if !ok || !allowed[name] || seen[name] || name == "OPL_GRPC_CERT_FILE" || name == "OPL_GRPC_KEY_FILE" {
+			continue
+		}
+		value := values[name]
+		if name == process.DatabaseEnv {
+			if alias := ownerDatabaseAlias(process); values[alias] != "" {
+				value = values[alias]
+			}
+		}
+		if name == "OPL_INTERNAL_SERVICE_TOKEN" {
+			if alias := ownerServiceTokenAlias(process); values[alias] != "" {
+				value = values[alias]
+			}
+		}
+		projected = append(projected, name+"="+value)
+		seen[name] = true
+	}
+	// Aliased values may be the only source of a required child variable when
+	// the parent intentionally omits its legacy name. Add the mapped variable
+	// once, preserving the child contract's canonical name.
+	if process.DatabaseEnv != "" && allowed[process.DatabaseEnv] && !seen[process.DatabaseEnv] {
+		if value := values[ownerDatabaseAlias(process)]; value != "" {
+			projected = append(projected, process.DatabaseEnv+"="+value)
+			seen[process.DatabaseEnv] = true
+		}
+	}
+	if allowed["OPL_INTERNAL_SERVICE_TOKEN"] && !seen["OPL_INTERNAL_SERVICE_TOKEN"] {
+		if value := values[ownerServiceTokenAlias(process)]; value != "" {
+			projected = append(projected, "OPL_INTERNAL_SERVICE_TOKEN="+value)
+			seen["OPL_INTERNAL_SERVICE_TOKEN"] = true
+		}
+	}
 	certFile, keyFile, err := OwnerCertificatePaths(process, getenv)
 	if err != nil {
 		return nil, err
 	}
 	if certFile == "" {
-		return environ, nil
+		return projected, nil
 	}
-	return append(append([]string{}, environ...),
+	return append(projected,
 		"OPL_GRPC_CERT_FILE="+certFile,
 		"OPL_GRPC_KEY_FILE="+keyFile,
 	), nil
+}
+
+func ownerDatabaseAlias(process Process) string {
+	if process.DatabaseEnv == "" {
+		return ""
+	}
+	principal := strings.ToUpper(strings.ReplaceAll(process.TransportPrincipal, "-", "_"))
+	if principal == "" {
+		return ""
+	}
+	return "OPL_" + principal + "_DATABASE_URL"
+}
+
+func ownerServiceTokenAlias(process Process) string {
+	principal := strings.ToUpper(strings.ReplaceAll(process.TransportPrincipal, "-", "_"))
+	if principal == "" {
+		return ""
+	}
+	return "OPL_" + principal + "_SERVICE_TOKEN"
 }
 
 // Checker verifies one process against the readiness criterion the contract

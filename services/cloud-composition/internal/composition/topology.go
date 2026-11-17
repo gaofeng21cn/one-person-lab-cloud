@@ -31,12 +31,17 @@ const supportedSchemaVersion = 1
 // entrypoint reads. Every field is the contract's own fact: this type carries
 // no owner list, no address and no criterion of its own.
 type Topology struct {
-	SchemaVersion int               `json:"schemaVersion"`
-	Owner         string            `json:"owner"`
-	Image         Image             `json:"image"`
-	Processes     []Process         `json:"processes"`
-	Readiness     ReadinessCriteria `json:"readinessCriteria"`
-	Communication Communication     `json:"communication"`
+	SchemaVersion int    `json:"schemaVersion"`
+	Owner         string `json:"owner"`
+	// SharedEnv contains environment names the installation deliberately
+	// exposes to every owner child. Values are lists in the contract (apart
+	// from the legacy database entry), so the composition derives names from
+	// the declaration instead of copying the parent process environment.
+	SharedEnv     map[string]json.RawMessage `json:"sharedEnv"`
+	Image         Image                      `json:"image"`
+	Processes     []Process                  `json:"processes"`
+	Readiness     ReadinessCriteria          `json:"readinessCriteria"`
+	Communication Communication              `json:"communication"`
 
 	// DistinctAddressesRequired and DistinctAddressesScope are the contract's
 	// own statement that the declared listeners must not collide inside one
@@ -61,6 +66,16 @@ type Process struct {
 	OwnerName     string `json:"ownerName"`
 	OwnerConstant string `json:"ownerConstant"`
 	Binary        string `json:"binary"`
+	// Env, OptionalEnv and ExternalEnv are the contract's per-process
+	// environment allowlist. They are deliberately carried into the executable
+	// plan so a child never inherits an unrelated owner's secrets.
+	Env         []string `json:"env"`
+	OptionalEnv []string `json:"optionalEnv"`
+	ExternalEnv []string `json:"externalEnv"`
+	DatabaseEnv string   `json:"databaseEnv"`
+	// AllowedEnv is derived from sharedEnv and the process allowlist at plan
+	// construction. It is runtime state, not a contract field.
+	AllowedEnv []string `json:"-"`
 
 	// AddressEnv is the process's own listen address. For an ownerservice
 	// process it is the gRPC address; for an http or bff process it is the

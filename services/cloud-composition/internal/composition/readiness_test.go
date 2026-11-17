@@ -121,6 +121,61 @@ func TestLedgerUnreadyFails(t *testing.T) {
 	}
 }
 
+// TestChildEnvironmentProjectsOwnerSecretsAndAliases proves that the shared
+// composition container does not recreate the former one-secret-per-owner
+// boundary by passing its complete parent environment to every child. The
+// Ledger receives its own database and service token aliases under the names
+// the existing Ledger binary reads, while an unrelated owner's secret is
+// absent.
+func TestChildEnvironmentProjectsOwnerSecretsAndAliases(t *testing.T) {
+	topology, err := Load(contractPath(t))
+	if err != nil {
+		t.Fatalf("load the owner topology contract: %v", err)
+	}
+	installation := environment{
+		"OPL_GRPC_INSECURE_LOCAL":    "1",
+		"DATABASE_URL":               "postgres://shared",
+		"OPL_LEDGER_DATABASE_URL":    "postgres://ledger",
+		"OPL_LEDGER_SERVICE_TOKEN":   "ledger-token",
+		"OPL_INTERNAL_SERVICE_TOKEN": "global-token",
+		"OPL_GATEWAY_DATABASE_URL":   "postgres://gateway",
+		"TENCENTCLOUD_SECRET_KEY":    "unrelated-secret",
+		"PATH":                       "/usr/bin",
+	}
+	plan, err := NewPlan(topology, installation.getenv)
+	if err != nil {
+		t.Fatalf("build the composition plan: %v", err)
+	}
+	ledger := stepFor(t, plan, "ledger")
+	parent := []string{}
+	for name, value := range installation {
+		parent = append(parent, name+"="+value)
+	}
+	projected, err := ChildEnvironment(ledger.Process, parent, installation.getenv)
+	if err != nil {
+		t.Fatalf("project the Ledger environment: %v", err)
+	}
+	got := environment{}
+	for _, entry := range projected {
+		name, value, ok := strings.Cut(entry, "=")
+		if ok {
+			got[name] = value
+		}
+	}
+	if got["DATABASE_URL"] != "postgres://ledger" {
+		t.Fatalf("Ledger must receive its aliased database, got %q", got["DATABASE_URL"])
+	}
+	if got["OPL_INTERNAL_SERVICE_TOKEN"] != "ledger-token" {
+		t.Fatalf("Ledger must receive its own service token alias, got %q", got["OPL_INTERNAL_SERVICE_TOKEN"])
+	}
+	if _, ok := got["TENCENTCLOUD_SECRET_KEY"]; ok {
+		t.Fatal("Ledger must not receive Fabric/provider credentials")
+	}
+	if _, ok := got["OPL_GATEWAY_DATABASE_URL"]; ok {
+		t.Fatal("Ledger must not receive Gateway database credentials")
+	}
+}
+
 // TestOwnerGRPCHealthIsVerifiedAgainstTheOwnerHealthService proves that an
 // owner with a gRPC criterion is verified against a real health service.
 func TestOwnerGRPCHealthIsVerifiedAgainstTheOwnerHealthService(t *testing.T) {
