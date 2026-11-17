@@ -71,6 +71,7 @@ jobs:
             services/build/go.sum
             services/capability/go.sum
             services/control-plane/go.sum
+            services/cloud-composition/go.sum
             services/fabric/go.sum
             services/gateway-integration/go.sum
             services/internal/ownerservice/go.sum
