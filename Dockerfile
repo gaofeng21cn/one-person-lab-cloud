@@ -114,7 +114,8 @@ LABEL opl.cloud.console-identity=$VITE_CONSOLE_IDENTITY
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl \
-  && curl -fsSL -o /usr/local/bin/kubectl "https://dl.k8s.io/release/v1.30.8/bin/linux/${TARGETARCH}/kubectl" \
+  && curl -fsSL --http1.1 --retry 5 --retry-all-errors --retry-delay 5 \
+       -o /usr/local/bin/kubectl "https://dl.k8s.io/release/v1.30.8/bin/linux/${TARGETARCH}/kubectl" \
   && case "${TARGETARCH}" in \
        amd64) KUBECTL_SHA256="7f39bdcf768ce4b8c1428894c70c49c8b4d2eee52f3606eb02f5f7d10f66d692" ;; \
        arm64) KUBECTL_SHA256="e51d6a76fade0871a9143b64dc62a5ff44f369aa6cb4b04967d93798bf39d15b" ;; \

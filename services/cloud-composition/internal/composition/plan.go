@@ -48,6 +48,11 @@ func NewPlan(topology Topology, getenv func(string) string) (Plan, error) {
 	}
 	for _, process := range topology.Processes {
 		process.AllowedEnv = allowedEnvironmentNames(topology, process)
+		peers, err := configuredPeerEnvironment(topology, process, getenv)
+		if err != nil {
+			return Plan{}, err
+		}
+		process.PeerEnvironment = peers
 		criterion, ok := criteria[process.Service]
 		if !ok {
 			return Plan{}, fmt.Errorf("owner %s declares no readiness criterion", process.Service)
@@ -145,6 +150,12 @@ func allowedEnvironmentNames(topology Topology, process Process) []string {
 		add(edge.TokenEnv)
 		for _, name := range edge.ActivationEnvs {
 			add(name)
+		}
+	}
+	for _, peer := range topology.PeerAddresses.Entries {
+		if peer.Caller == process.TransportPrincipal {
+			add(peer.AddressEnv)
+			add(peer.TokenEnv)
 		}
 	}
 	return names

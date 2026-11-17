@@ -31,8 +31,11 @@ processes and the Instance's twelve-workload installation remain implementation
 facts, not a required target topology. No Cloud consolidation is included in the
 first Link single-container change.
 
-Cloud must supply the composition entrypoint and preserve owner authorization,
-single writers, accepted-operation recovery and persistence. Instance must
+Cloud source now supplies the composition entrypoint, preserves per-owner
+environment isolation and aliases, and resolves configured HTTP peers through
+the target listener declaration. Isolated source tests establish that behavior.
+Installed acceptance must still preserve owner authorization, single writers,
+accepted-operation recovery and persistence. Instance must
 switch the real API routes and configuration, retain existing databases and
 Secrets, and prove upgrade/rollback and the customer lifecycle against the
 exact candidate. BuildKit's privileged executor and each customer's application

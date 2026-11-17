@@ -39,9 +39,14 @@ stays in [roadmap](roadmap.md#retained-code-removal-review-2026-11-03).
 The [target](architecture.md#deployment-unit-composition) now prefers one modular
 business backend deployment unit, with privileged build and customer application
 execution isolated. Current owner binaries and the Instance's multi-Deployment
-installation have not been consolidated. The [remaining work](roadmap.md#consolidated-backend-deployment)
-requires product implementation and separate Instance adoption; this scoped
-documentation update does not change production or qualify a new candidate.
+installation retain their separate deployment evidence. Cloud source now provides
+`opl-cloud-composition`, including configured HTTP peer origins resolved from the
+target listener and projected through the existing child environment boundary.
+Local Go tests run a real child that reaches an isolated HTTP peer with its
+caller credential; malformed targets are refused and unrelated secrets remain
+excluded. This is source and isolated-process evidence (2026-11-18), not an image,
+Instance installation or production qualification. The [remaining work](roadmap.md#consolidated-backend-deployment)
+is exact-Candidate installation, upgrade/rollback and customer-lifecycle acceptance.
 
 ## Customer upload completion source repair (2026-11-16)
 

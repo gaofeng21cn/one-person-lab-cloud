@@ -89,6 +89,9 @@ func ChildEnvironment(process Process, environ []string, getenv func(string) str
 			continue
 		}
 		value := values[name]
+		if peer, configured := process.PeerEnvironment[name]; configured {
+			value = peer
+		}
 		if name == process.DatabaseEnv {
 			if alias := ownerDatabaseAlias(process); values[alias] != "" {
 				value = values[alias]

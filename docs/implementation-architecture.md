@@ -76,7 +76,11 @@ repository, `one-person-lab-cloud`, with logical owner modules. The current
 implementation runs independent processes; the 2026-11-16
 [deployment decision](architecture.md#deployment-unit-composition) instead
 selects one default business backend deployment unit, with privileged build and
-customer application execution isolated. That consolidation is not implemented.
+customer application execution isolated. `services/cloud-composition` now starts the
+existing owner binaries in that shared network namespace, retaining per-owner
+environment allowlists, database/token aliases and certificate identity. Configured
+HTTP peer origins follow `peerAddresses` to the target's effective listener; wildcard
+listeners are dialed through loopback. Instance adoption remains separate.
 Its canonical directory/deployment-unit map is
 [Repository And Instance Topology](architecture.md#repository-and-instance-topology).
 Capability, Build, Runtime Control, Workspace, Resource Catalog and Serve have
