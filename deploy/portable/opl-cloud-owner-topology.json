@@ -1430,5 +1430,67 @@
    "tokenMinimumLength": 32
   }
  },
+ "peerAddresses": {
+  "schemaVersion": 1,
+  "scope": "The caller-side environments the published installation sets on an owner to reach another owner, and the target owner's own declared listener each one names. The gRPC peer graph is declared by communication.edges; this block declares the retained HTTP peer origins that graph does not carry, so every environment the installation uses to reach a peer is declared exactly once and never twice.",
+  "principals": "caller and target are transport principals, the same identities communication.edges uses: gateway resolves to tenant in the gateway-integration deployment unit, and console_bff and control_plane are transport principals rather than business owners.",
+  "binding": "targetAddressEnv names the target owner's own declared listen environment, and originScheme names the scheme the peer origin uses; it is one of the schemes this block declares in originSchemes. The port a consumer must reach is that owner's declared listener port, read from the target's own process declaration; this block restates no port and names no host. An installation that runs the owners in one network namespace resolves a peer through this declaration: it takes the target's own effective listener address, keeps the scheme, keeps the port, and replaces the host with the loopback interface, because one network namespace means the peer is local. Nothing is invented and no port is restated.",
+  "originSchemes": [
+   "http"
+  ],
+  "activation": "configured entries apply when the caller's environment carries a value, following that entry's configuredAddressSemantics. The edge graph keeps its own required and configured admission rules; this block never relaxes them.",
+  "entries": [
+   {
+    "caller": "control_plane",
+    "target": "fabric",
+    "addressEnv": "FABRIC_URL",
+    "tokenEnv": "OPL_FABRIC_SERVICE_TOKEN",
+    "targetAddressEnv": "FABRIC_ADDR",
+    "originScheme": "http",
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
+   },
+   {
+    "caller": "control_plane",
+    "target": "ledger",
+    "addressEnv": "LEDGER_URL",
+    "tokenEnv": "OPL_LEDGER_SERVICE_TOKEN",
+    "targetAddressEnv": "LEDGER_ADDR",
+    "originScheme": "http",
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
+   },
+   {
+    "caller": "serve",
+    "target": "fabric",
+    "addressEnv": "OPL_FABRIC_APPLICATION_URL",
+    "tokenEnv": "OPL_FABRIC_SERVE_SERVICE_TOKEN",
+    "targetAddressEnv": "FABRIC_ADDR",
+    "originScheme": "http",
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
+   },
+   {
+    "caller": "workspace",
+    "target": "control_plane",
+    "addressEnv": "OPL_CONTROL_PLANE_URL",
+    "tokenEnv": "OPL_CONTROL_PLANE_WORKSPACE_TOKEN",
+    "targetAddressEnv": "CONTROL_PLANE_ADDR",
+    "originScheme": "http",
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
+   },
+   {
+    "caller": "console_bff",
+    "target": "control_plane",
+    "addressEnv": "OPL_CONTROL_PLANE_URL",
+    "tokenEnv": "OPL_CONTROL_PLANE_TOKEN",
+    "targetAddressEnv": "CONTROL_PLANE_ADDR",
+    "originScheme": "http",
+    "activation": "configured",
+    "configuredAddressSemantics": "trimmed-nonempty"
+   }
+  ]
+ },
  "distinctAddressesScope": "pod_network_namespace"
 }

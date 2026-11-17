@@ -62,6 +62,16 @@ type ReadinessCriterion = {
   evidence?: string;
 };
 type SurfaceEntry = { prefix: string; processes: string[]; browserFacing: boolean; evidence: string };
+type PeerAddressEntry = {
+  caller: string;
+  target: string;
+  addressEnv: string;
+  tokenEnv: string;
+  targetAddressEnv?: string;
+  originScheme?: string;
+  activation?: string;
+  configuredAddressSemantics?: string;
+};
 type UnitBoundary = { reason: string; reachedThrough: string; boundaryEnv: string };
 type UnitEntry = {
   id: string;
@@ -110,7 +120,14 @@ type Topology = {
     requirement: string;
   };
   communication?: {
-    edges: { addressEnv: string; tokenEnv: string; activationEnvs?: string[] }[];
+    edges: { caller?: string; target?: string; addressEnv: string; tokenEnv: string; activationEnvs?: string[] }[];
+  };
+  peerAddresses?: {
+    schemaVersion?: number;
+    scope?: string;
+    binding?: string;
+    originSchemes?: string[];
+    entries: PeerAddressEntry[];
   };
 };
 
@@ -1684,4 +1701,273 @@ test("a boundary entry this contract does not support is refused", () => {
   assert.deepEqual(unitEntryGaps(topology, [entry({ outsideUnit: { reason: "notStartedInsideThisUnit", reachedThrough: "x", boundaryEnv: "OPL_CAPABILITY_STORAGE_KIND" } })],
     exclusionKinds, "notStartedInsideThisUnit"), ["fixture:unknown-kind"],
     "an exclusion must declare an exclusion kind, not a dependency kind");
+});
+
+// The peer address of an owner is the caller-side environment it uses to reach
+// another owner, and the target owner's own declared listener that environment
+// names. The contract declares what every owner listens on; until now it did
+// not declare the environments the installation uses to reach a peer, so a
+// consumer that runs the owners in one network namespace had no way to resolve
+// a peer to the address it actually listens on. The assertions below read the
+// published installation and this contract and derive every expected value
+// from them, so no address is restated here.
+
+type InstalledPeerAddress = {
+  caller: string;
+  target: string;
+  addressEnv: string;
+  value: string;
+  port: number;
+};
+
+type PeerAddressDeclaration = {
+  kind: "edge" | "peerAddress";
+  caller: string;
+  target: string;
+  addressEnv: string;
+  tokenEnv: string;
+  targetAddressEnv?: string;
+};
+
+// peerOrigin reads the peer a caller-side address value names: the host it
+// carries and the port it reaches. A value that carries no host and port names
+// no peer, so it is not a peer address.
+function peerOrigin(value: string): { host: string; port: number } | undefined {
+  const bare = /^([a-z0-9][a-z0-9-]*):([0-9]{1,5})$/.exec(value);
+  const url = /^[a-z][a-z0-9+.-]*:\/\/([a-z0-9][a-z0-9.-]*):([0-9]{1,5})$/.exec(value);
+  const match = bare ?? url;
+  if (!match) return undefined;
+  const port = Number(match[2]);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return undefined;
+  return { host: match[1], port };
+}
+
+// ownerOfComposeService maps every Compose service of the published
+// installation to the owner process that runs in it. The Compose service that
+// runs an owner's binary is that owner's own service; the Gateway Integration
+// process runs in the tenant deployment unit, so the Compose file names that
+// unit's owner name.
+function ownerOfComposeService(topology: Topology, compose: Record<string, any>): Map<string, ProcessEntry> {
+  const owners = new Map<string, ProcessEntry>();
+  for (const process of topology.processes) {
+    const name = compose[process.service] ? process.service : process.ownerName;
+    assert.ok(name && compose[name], `${process.service} must run as a Compose service of the installation`);
+    owners.set(name, process);
+  }
+  return owners;
+}
+
+// installedPeerAddresses returns every peer address the published portable
+// installation sets on an owner: an environment whose value names another
+// owner's Compose service, and the port that name carries. The value is read
+// from the owner's own Compose service, so the peer it names is the peer that
+// owner dials.
+async function installedPeerAddresses(topology: Topology): Promise<InstalledPeerAddress[]> {
+  const compose = await parseEntrypointCompose();
+  const owners = ownerOfComposeService(topology, compose);
+  const peers: InstalledPeerAddress[] = [];
+  for (const [service, owner] of owners) {
+    const environment = (compose[service]?.environment ?? {}) as Record<string, unknown>;
+    for (const [addressEnv, raw] of Object.entries(environment)) {
+      if (typeof raw !== "string") continue;
+      const origin = peerOrigin(raw.trim());
+      if (!origin) continue;
+      const target = owners.get(origin.host);
+      if (!target) continue;
+      peers.push({
+        caller: owner.transportPrincipal as string,
+        target: target.transportPrincipal as string,
+        addressEnv,
+        value: raw.trim(),
+        port: origin.port
+      });
+    }
+  }
+  return peers;
+}
+
+// declaredPeerAddresses returns every peer address this contract declares: the
+// gRPC transport edges and the retained HTTP peer origins. Both carry the same
+// caller, target, address and token facts, and each is declared exactly once.
+function declaredPeerAddresses(topology: Topology): PeerAddressDeclaration[] {
+  const declarations: PeerAddressDeclaration[] = [];
+  for (const edge of topology.communication?.edges ?? []) {
+    declarations.push({
+      kind: "edge",
+      caller: edge.caller as string,
+      target: edge.target as string,
+      addressEnv: edge.addressEnv,
+      tokenEnv: edge.tokenEnv
+    });
+  }
+  for (const entry of topology.peerAddresses?.entries ?? []) {
+    declarations.push({
+      kind: "peerAddress",
+      caller: entry.caller,
+      target: entry.target,
+      addressEnv: entry.addressEnv,
+      tokenEnv: entry.tokenEnv,
+      targetAddressEnv: entry.targetAddressEnv
+    });
+  }
+  return declarations;
+}
+
+// declaredListenerPorts returns the ports the contract declares for each listen
+// environment of one process, read from that process's own declaration.
+function declaredListenerPorts(process: ProcessEntry): Map<string, number[]> {
+  const ports = new Map<string, number[]>();
+  const add = (addressEnv: string | undefined, address: string | undefined) => {
+    if (!addressEnv || !address) return;
+    const port = Number(address.slice(address.lastIndexOf(":") + 1));
+    if (!Number.isInteger(port)) return;
+    ports.set(addressEnv, [...(ports.get(addressEnv) ?? []), port]);
+  };
+  add(process.addressEnv, process.defaultAddress);
+  add(process.rpcAddressEnv, process.defaultRPCAddress);
+  for (const listener of process.additionalListeners ?? []) add(listener.addressEnv, listener.defaultAddress);
+  return ports;
+}
+
+test("every peer address the published installation sets on an owner is declared by this contract and bound to the target's declared listener", async () => {
+  const topology = await loadTopology();
+  const peers = await installedPeerAddresses(topology);
+  assert.ok(peers.length > 0, "the published installation must set peer addresses on its owners");
+  const byPrincipal = new Map(topology.processes.map((process) => [process.transportPrincipal, process]));
+  const declarations = declaredPeerAddresses(topology);
+
+  for (const peer of peers) {
+    const matching = declarations.filter((declaration) =>
+      declaration.caller === peer.caller && declaration.addressEnv === peer.addressEnv);
+    assert.ok(matching.length > 0,
+      `${peer.caller} sets ${peer.addressEnv} to reach ${peer.target}, which this contract must declare`);
+    for (const declaration of matching) {
+      assert.equal(declaration.target, peer.target,
+        `${peer.caller} reaches ${peer.target} through ${peer.addressEnv}, so the contract must not declare it against ${declaration.target}`);
+    }
+    const declaration = matching[0];
+    const target = byPrincipal.get(peer.target);
+    assert.ok(target, `${peer.target} must be a declared owner process`);
+    const ports = declaredListenerPorts(target);
+    if (declaration.kind === "peerAddress") {
+      assert.ok(declaration.targetAddressEnv,
+        `${peer.caller} reaches ${peer.target} through ${peer.addressEnv}, so the declaration must bind it to a declared listener`);
+      const bound = ports.get(declaration.targetAddressEnv);
+      assert.ok(bound, `${peer.target} must declare the listener ${declaration.targetAddressEnv} this contract binds ${peer.addressEnv} to`);
+      assert.ok(bound.includes(peer.port),
+        `${peer.addressEnv} reaches ${peer.target} on port ${peer.port}, which ${declaration.targetAddressEnv} does not declare`);
+    } else {
+      // A transport edge reaches the target's own gRPC listener, so the port
+      // the installation dials must be a port that listener declares.
+      const declared = [...declaredListenAddresses(target).grpc]
+        .flatMap((addressEnv) => ports.get(addressEnv) ?? []);
+      assert.ok(declared.includes(peer.port),
+        `${peer.addressEnv} reaches ${peer.target} on port ${peer.port}, which no declared gRPC listener of that owner carries`);
+    }
+  }
+});
+
+test("every peer address this contract declares is one the published installation actually sets on that owner", async () => {
+  const topology = await loadTopology();
+  const compose = await parseEntrypointCompose();
+  const owners = ownerOfComposeService(topology, compose);
+  const byPrincipal = new Map(topology.processes.map((process) => [process.transportPrincipal, process]));
+  const declarations = declaredPeerAddresses(topology);
+
+  for (const declaration of declarations) {
+    const caller = byPrincipal.get(declaration.caller);
+    assert.ok(caller, `${declaration.caller} must be a declared owner process`);
+    const service = owners.has(caller.service) ? caller.service : caller.ownerName;
+    const environment = (compose[service]?.environment ?? {}) as Record<string, unknown>;
+    assert.equal(typeof environment[declaration.addressEnv], "string",
+      `the installation must set ${declaration.addressEnv} on ${declaration.caller}, which this contract declares as a peer address`);
+    assert.equal(typeof environment[declaration.tokenEnv], "string",
+      `the installation must set ${declaration.tokenEnv} on ${declaration.caller}, the token this contract declares for ${declaration.addressEnv}`);
+    const origin = peerOrigin(String(environment[declaration.addressEnv]).trim());
+    if (!origin) continue;
+    const target = owners.get(origin.host);
+    assert.ok(target, `${declaration.addressEnv} names ${origin.host}, which is not an owner of the installation`);
+    assert.equal(target.transportPrincipal, declaration.target,
+      `${declaration.caller} reaches ${origin.host} through ${declaration.addressEnv}, so the contract must not declare it against ${declaration.target}`);
+  }
+});
+
+test("every peer address this contract declares is declared exactly once", async () => {
+  const topology = await loadTopology();
+  const edges = topology.communication?.edges ?? [];
+  const entries = topology.peerAddresses?.entries ?? [];
+
+  // The transport edges and the peer-address origins are two declarations of
+  // the same fact, so an owner may not carry a peer address in both.
+  const edgeAddresses = new Set(edges.map((edge) => `${edge.caller}:${edge.addressEnv}`));
+  const restated = entries.filter((entry) => edgeAddresses.has(`${entry.caller}:${entry.addressEnv}`));
+  assert.deepEqual(restated.map((entry) => `${entry.caller}:${entry.addressEnv}`), [],
+    "the contract keeps one writer of every peer address, so the peer-address origins must not restate a transport edge");
+
+  // Within one declaration block a peer address appears once per credential
+  // spelling the installation carries, and never for two peers at once.
+  const seen = new Map<string, number>();
+  for (const entry of entries) {
+    const key = `${entry.caller}:${entry.addressEnv}`;
+    seen.set(key, (seen.get(key) ?? 0) + 1);
+  }
+  const repeated = [...seen].filter(([, count]) => count > 1).map(([key]) => key);
+  assert.deepEqual(repeated, [],
+    "an owner may declare the same peer address once per credential spelling, never twice");
+});
+
+// declaredHostsAndPorts reports every host or port the declaration carries. The
+// peer-address block names a listener environment and a scheme, never an
+// address: a consumer reads the port from the target's own declaration, so a
+// host or a port restated here would be a second writer of that fact.
+function declaredHostsAndPorts(value: unknown, path: string[] = []): string[] {
+  const found: string[] = [];
+  if (typeof value === "string") {
+    if (/:\/\//.test(value) || /:\d{1,5}(?!\d)/.test(value)) found.push(`${path.join(".")}=${value}`);
+    return found;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => found.push(...declaredHostsAndPorts(item, [...path, String(index)])));
+    return found;
+  }
+  if (value && typeof value === "object") {
+    for (const [key, item] of Object.entries(value)) {
+      if (/port/i.test(key)) found.push(`${[...path, key].join(".")} declares a port`);
+      found.push(...declaredHostsAndPorts(item, [...path, key]));
+    }
+  }
+  return found;
+}
+
+test("every peer address origin declares the scheme of the peer it binds, and the declaration names no host and no port", async () => {
+  const topology = await loadTopology();
+  const block = topology.peerAddresses;
+  assert.ok(block, `${topologyPath} must declare the peer addresses the installation sets on its owners`);
+  assert.ok(block.binding && block.binding.length > 0,
+    "the peer-address declaration must state how a consumer resolves a peer it binds");
+  const schemes = block.originSchemes ?? [];
+  assert.ok(schemes.length > 0, "the peer-address declaration must recognize the schemes its origins use");
+  for (const entry of block.entries) {
+    assert.ok(entry.originScheme,
+      `${entry.caller} reaches ${entry.target} through ${entry.addressEnv}, so the declaration must carry the scheme of that origin`);
+    assert.ok(schemes.includes(entry.originScheme),
+      `${entry.caller} reaches ${entry.target} through ${entry.addressEnv} with the scheme ${entry.originScheme}, which this contract does not recognize`);
+  }
+  assert.deepEqual(declaredHostsAndPorts(block), [],
+    "the peer-address declaration names a listener environment and a scheme, never a host and never a port");
+});
+
+test("every peer address that names another Cloud owner and that no transport edge declares is carried by the peer-address origins", async () => {
+  const topology = await loadTopology();
+  const peers = await installedPeerAddresses(topology);
+  const edges = topology.communication?.edges ?? [];
+  const entries = topology.peerAddresses?.entries ?? [];
+  const edgeDeclared = new Set(edges.map((edge) => `${edge.caller}:${edge.addressEnv}`));
+  const originDeclared = new Set(entries.map((entry) => `${entry.caller}:${entry.addressEnv}`));
+  for (const peer of peers) {
+    const key = `${peer.caller}:${peer.addressEnv}`;
+    if (edgeDeclared.has(key)) continue;
+    assert.ok(originDeclared.has(key),
+      `${peer.caller} sets ${peer.addressEnv} to reach ${peer.target}, which no transport edge declares, so the peer-address origins must carry it`);
+  }
 });
