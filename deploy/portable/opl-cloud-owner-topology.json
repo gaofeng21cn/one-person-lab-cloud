@@ -25,6 +25,14 @@
   "postgres": [
    "PGSSLMODE"
   ],
+  "httpProxy": [
+   "HTTP_PROXY",
+   "HTTPS_PROXY",
+   "NO_PROXY",
+   "http_proxy",
+   "https_proxy",
+   "no_proxy"
+  ],
   "cloudIdentity": [
    "OPL_CLOUD_IDENTITY_URL",
    "OPL_CLOUD_IDENTITY_TOKEN"

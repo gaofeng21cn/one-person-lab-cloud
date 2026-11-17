@@ -181,7 +181,7 @@ func TestChildEnvironmentKeepsEveryDeclaredListenerAndPeerInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	installation := environment{"OPL_GRPC_INSECURE_LOCAL": "1", "DATABASE_URL": "shared-owner-dsn", "PGSSLMODE": "disable", "SSL_CERT_FILE": "/installation/root-ca.pem"}
+	installation := environment{"OPL_GRPC_INSECURE_LOCAL": "1", "DATABASE_URL": "shared-owner-dsn", "PGSSLMODE": "disable", "SSL_CERT_FILE": "/installation/root-ca.pem", "HTTPS_PROXY": "http://proxy.example:8080", "no_proxy": "127.0.0.1,localhost"}
 	for _, process := range topology.Processes {
 		for _, name := range []string{process.AddressEnv, process.AddressPortEnv, process.PeerTokensEnv, process.RPCAddressEnv, process.RPCDatabaseEnv, process.RPCEnabledByEnv} {
 			if name != "" {
@@ -250,6 +250,11 @@ func TestChildEnvironmentKeepsEveryDeclaredListenerAndPeerInput(t *testing.T) {
 			}
 			if got["SSL_CERT_FILE"] != installation["SSL_CERT_FILE"] {
 				t.Fatal("owner HTTP clients must retain the installation's root CA file")
+			}
+			for _, name := range []string{"HTTPS_PROXY", "no_proxy"} {
+				if got[name] != installation[name] {
+					t.Errorf("owner HTTP clients must retain the installation's proxy input %s", name)
+				}
 			}
 		})
 	}
