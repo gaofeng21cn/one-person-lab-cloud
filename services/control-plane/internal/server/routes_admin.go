@@ -1240,12 +1240,8 @@ func validBillingReviewOpaqueID(value string) bool {
 	if len(value) < 3 || len(value) > 48 || value != compactID(value) {
 		return false
 	}
-	lower := strings.ToLower(value)
-	for _, forbidden := range []string{"api-key", "apikey", "bearer", "credential", "password", "secret", "token"} {
-		if strings.Contains(lower, forbidden) {
-			return false
-		}
-	}
+	// Opaque identifiers carry no credential semantics. Substring filtering
+	// rejects ordinary operation names without detecting actual credentials.
 	return true
 }
 

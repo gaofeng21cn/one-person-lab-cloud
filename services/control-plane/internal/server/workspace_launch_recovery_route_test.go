@@ -36,13 +36,14 @@ func TestWorkspaceLaunchRecoveryRouteChecksOriginalResultWithoutMutation(t *test
 				t.Fatalf("recovery preview status=%d body=%s reads=%d ensures=%d", preview.Code, preview.Body.String(), fabric.reads, fabric.ensures)
 			}
 			body := fmt.Sprintf(`{"action":"check_result","launchVersion":%d,"reason":"check original purchase"}`, dto.LaunchVersion)
-			response := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, base+"/recover", body, "check-original-result")
+			key := "check-token-binding-result"
+			response := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, base+"/recover", body, key)
 			if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &dto) != nil || fabric.reads != 1 || fabric.ensures != 0 {
 				t.Fatalf("check status=%d body=%s reads=%d ensures=%d", response.Code, response.Body.String(), fabric.reads, fabric.ensures)
 			}
 			persisted, _, _ := store.GetRuntimeOperation(context.Background(), original.ID)
 			result, err := decodeWorkspaceLaunchReconcileOperation(persisted)
-			check, consumed, found := result.resultCheckByID("check-original-result")
+			check, consumed, found := result.resultCheckByID(key)
 			if err != nil || result.ID != original.ID || !found || !consumed || check.MutationBudget != 0 || check.IdempotentReplayBudget != 0 {
 				t.Fatalf("check lost original read-only authorization: operation=%s err=%v", workspaceLaunchReconcileResultSummary(result), err)
 			}
@@ -53,7 +54,7 @@ func TestWorkspaceLaunchRecoveryRouteChecksOriginalResultWithoutMutation(t *test
 			} else if dto.Status != "manual_review" || dto.Stage != original.Stage || !reflect.DeepEqual(result.Attempts, original.Attempts) {
 				t.Fatalf("unconfirmed check changed business outcome: %#v", dto)
 			}
-			replayed := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, base+"/recover", body, "check-original-result")
+			replayed := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, base+"/recover", body, key)
 			after, _, _ := store.GetRuntimeOperation(context.Background(), original.ID)
 			if replayed.Code != http.StatusOK || replayed.Body.String() != response.Body.String() || fabric.reads != 1 || fabric.ensures != 0 || after["result"] != persisted["result"] {
 				t.Fatalf("exact replay performed work: status=%d body=%s reads=%d ensures=%d", replayed.Code, replayed.Body.String(), fabric.reads, fabric.ensures)
@@ -63,7 +64,7 @@ func TestWorkspaceLaunchRecoveryRouteChecksOriginalResultWithoutMutation(t *test
 				t.Fatalf("stale version escaped: status=%d reads=%d", conflict.Code, fabric.reads)
 			}
 			changedBody := fmt.Sprintf(`{"action":"check_result","launchVersion":%d,"reason":"different reason"}`, original.Version)
-			conflict = requestWithMutationKeyForTest(t, server, operator, http.MethodPost, base+"/recover", changedBody, "check-original-result")
+			conflict = requestWithMutationKeyForTest(t, server, operator, http.MethodPost, base+"/recover", changedBody, key)
 			if conflict.Code != http.StatusConflict || fabric.reads != 1 {
 				t.Fatalf("changed retry escaped: status=%d reads=%d", conflict.Code, fabric.reads)
 			}
