@@ -176,6 +176,77 @@ func TestChildEnvironmentProjectsOwnerSecretsAndAliases(t *testing.T) {
 	}
 }
 
+func TestChildEnvironmentKeepsEveryDeclaredListenerAndPeerInput(t *testing.T) {
+	topology, err := Load(contractPath(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	installation := environment{"OPL_GRPC_INSECURE_LOCAL": "1", "DATABASE_URL": "shared-owner-dsn"}
+	for _, process := range topology.Processes {
+		for _, name := range []string{process.AddressEnv, process.AddressPortEnv, process.PeerTokensEnv, process.RPCAddressEnv, process.RPCDatabaseEnv, process.RPCEnabledByEnv} {
+			if name != "" {
+				installation[name] = "declared-" + name
+			}
+		}
+		for _, listener := range process.AdditionalListeners {
+			installation[listener.AddressEnv] = "declared-" + listener.AddressEnv
+		}
+	}
+	for _, edge := range topology.Communication.Edges {
+		for _, name := range append([]string{edge.AddressEnv, edge.TokenEnv}, edge.ActivationEnvs...) {
+			if name != "" {
+				installation[name] = "declared-" + name
+			}
+		}
+	}
+	// Build the plan from the unconfigured environment so this test focuses
+	// on the child's effective environment rather than synthetically binding
+	// every source/target address above to the same test string.
+	plan, err := NewPlan(topology, environment{}.getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := []string{}
+	for name, value := range installation {
+		parent = append(parent, name+"="+value)
+	}
+	for _, step := range plan.Steps {
+		t.Run(step.Service(), func(t *testing.T) {
+			projected, err := ChildEnvironment(step.Process, parent, installation.getenv)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := environment{}
+			for _, entry := range projected {
+				name, value, ok := strings.Cut(entry, "=")
+				if ok {
+					got[name] = value
+				}
+			}
+			expected := []string{step.Process.AddressEnv, step.Process.AddressPortEnv, step.Process.PeerTokensEnv, step.Process.RPCAddressEnv, step.Process.RPCDatabaseEnv, step.Process.RPCEnabledByEnv}
+			for _, listener := range step.Process.AdditionalListeners {
+				expected = append(expected, listener.AddressEnv)
+			}
+			for _, edge := range topology.Communication.Edges {
+				if edge.Caller == step.Process.TransportPrincipal {
+					expected = append(expected, edge.AddressEnv, edge.TokenEnv)
+					expected = append(expected, edge.ActivationEnvs...)
+				}
+			}
+			for _, name := range expected {
+				if name != "" && got[name] != installation[name] {
+					t.Errorf("declared listener/peer input %s was dropped: got %q, want %q", name, got[name], installation[name])
+				}
+			}
+			if step.Process.DatabaseEnv == "" {
+				if _, present := got["DATABASE_URL"]; present {
+					t.Fatal("a process without a database consumer must not receive a database DSN")
+				}
+			}
+		})
+	}
+}
+
 // TestOwnerGRPCHealthIsVerifiedAgainstTheOwnerHealthService proves that an
 // owner with a gRPC criterion is verified against a real health service.
 func TestOwnerGRPCHealthIsVerifiedAgainstTheOwnerHealthService(t *testing.T) {

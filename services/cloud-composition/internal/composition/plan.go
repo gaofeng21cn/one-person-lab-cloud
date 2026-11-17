@@ -94,6 +94,12 @@ func allowedEnvironmentNames(topology Topology, process Process) []string {
 		names = append(names, name)
 	}
 	for key, raw := range topology.SharedEnv {
+		// DATABASE_URL is named in sharedEnv because its spelling is shared,
+		// not because every process consumes a database. A process without a
+		// databaseEnv declaration (the BFF) must not receive the parent's DSN.
+		if key == "database" {
+			continue
+		}
 		var list []string
 		if json.Unmarshal(raw, &list) == nil {
 			for _, name := range list {
@@ -106,7 +112,16 @@ func allowedEnvironmentNames(topology Topology, process Process) []string {
 			add(name)
 			continue
 		}
-		_ = key // malformed shared declarations are rejected by contract tests.
+	}
+	add(process.DatabaseEnv)
+	add(process.AddressEnv)
+	add(process.AddressPortEnv)
+	add(process.PeerTokensEnv)
+	add(process.RPCAddressEnv)
+	add(process.RPCDatabaseEnv)
+	add(process.RPCEnabledByEnv)
+	for _, listener := range process.AdditionalListeners {
+		add(listener.AddressEnv)
 	}
 	for _, name := range process.Env {
 		add(name)
@@ -116,6 +131,18 @@ func allowedEnvironmentNames(topology Topology, process Process) []string {
 	}
 	for _, name := range process.ExternalEnv {
 		add(name)
+	}
+	// Owners derive their peer address/token names from the communication
+	// edges. Those dynamic reads intentionally are not duplicated in env[].
+	for _, edge := range topology.Communication.Edges {
+		if edge.Caller != process.TransportPrincipal {
+			continue
+		}
+		add(edge.AddressEnv)
+		add(edge.TokenEnv)
+		for _, name := range edge.ActivationEnvs {
+			add(name)
+		}
 	}
 	return names
 }
