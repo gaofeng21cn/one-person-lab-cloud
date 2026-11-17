@@ -42,6 +42,7 @@ type Topology struct {
 	Processes     []Process                  `json:"processes"`
 	Readiness     ReadinessCriteria          `json:"readinessCriteria"`
 	Communication Communication              `json:"communication"`
+	PeerAddresses PeerAddresses              `json:"peerAddresses"`
 
 	// DistinctAddressesRequired and DistinctAddressesScope are the contract's
 	// own statement that the declared listeners must not collide inside one
@@ -78,6 +79,9 @@ type Process struct {
 	// AllowedEnv is derived from sharedEnv and the process allowlist at plan
 	// construction. It is runtime state, not a contract field.
 	AllowedEnv []string `json:"-"`
+	// PeerEnvironment binds configured caller origins to the target listeners
+	// in this shared network namespace. Names still pass through AllowedEnv.
+	PeerEnvironment map[string]string `json:"-"`
 
 	// AddressEnv is the process's own listen address. For an ownerservice
 	// process it is the gRPC address; for an http or bff process it is the
@@ -148,6 +152,23 @@ type Communication struct {
 	SchemaVersion int    `json:"schemaVersion"`
 	Scope         string `json:"scope"`
 	Edges         []Edge `json:"edges"`
+}
+
+type PeerAddresses struct {
+	SchemaVersion int           `json:"schemaVersion"`
+	OriginSchemes []string      `json:"originSchemes"`
+	Entries       []PeerAddress `json:"entries"`
+}
+
+type PeerAddress struct {
+	Caller                     string `json:"caller"`
+	Target                     string `json:"target"`
+	AddressEnv                 string `json:"addressEnv"`
+	TokenEnv                   string `json:"tokenEnv"`
+	TargetAddressEnv           string `json:"targetAddressEnv"`
+	OriginScheme               string `json:"originScheme"`
+	Activation                 string `json:"activation"`
+	ConfiguredAddressSemantics string `json:"configuredAddressSemantics"`
 }
 
 // Edge is one caller-to-target owner transport.
