@@ -135,6 +135,23 @@ async function envNamesRead(dir: string, declaredNames?: Set<string>): Promise<S
   for (const file of await goFiles(dir)) {
     const source = await readFile(file, "utf8");
     for (const match of source.matchAll(/(?:\w+\.)?[gG]etenv\("([A-Z0-9_]+)"\)/g)) names.add(match[1]);
+    for (const match of source.matchAll(/(?:\w+\.)?LookupEnv\("([A-Z0-9_]+)"\)/g)) names.add(match[1]);
+    for (const match of source.matchAll(/(?:durationFromEnv|envInt)\("([A-Z0-9_]+)"/g)) names.add(match[1]);
+    if (/os\.Getenv\(key\)/.test(source)) {
+      for (const list of source.matchAll(/required\s*:=\s*\[\]string\{([^}]*)\}/g)) {
+        for (const match of list[1].matchAll(/"([A-Z0-9_]+)"/g)) names.add(match[1]);
+      }
+    }
+    // Provider constructors also read environment names through constants.
+    for (const match of source.matchAll(/\b(?:const\s+)?(\w+)\s*=\s*"([A-Z0-9_]+)"/g)) {
+      if (new RegExp(`(?:Getenv|LookupEnv)\\(${match[1]}\\)`).test(source)) names.add(match[2]);
+    }
+    if (/Getenv\(contracts\.WorkspaceImageReleasesEnv\)/.test(source)) {
+      const contract = await readFile("packages/contracts/go/workspace_image_release.go", "utf8");
+      const match = contract.match(/const WorkspaceImageReleasesEnv = "([A-Z0-9_]+)"/);
+      assert.ok(match, "the Workspace image release environment must retain its contract declaration");
+      names.add(match[1]);
+    }
     // Some owner entrypoints pass an environment map to an external
     // provisioner and index it directly (`env["NAME"]`) instead of calling
     // Getenv. Add only names already declared by the topology so this probe
