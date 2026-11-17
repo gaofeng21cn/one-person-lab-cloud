@@ -69,10 +69,12 @@ type Process struct {
 	// Env, OptionalEnv and ExternalEnv are the contract's per-process
 	// environment allowlist. They are deliberately carried into the executable
 	// plan so a child never inherits an unrelated owner's secrets.
-	Env         []string `json:"env"`
-	OptionalEnv []string `json:"optionalEnv"`
-	ExternalEnv []string `json:"externalEnv"`
-	DatabaseEnv string   `json:"databaseEnv"`
+	Env            []string `json:"env"`
+	OptionalEnv    []string `json:"optionalEnv"`
+	ExternalEnv    []string `json:"externalEnv"`
+	DatabaseEnv    string   `json:"databaseEnv"`
+	PeerTokensEnv  string   `json:"peerTokensEnv"`
+	RPCDatabaseEnv string   `json:"rpcDatabaseEnv"`
 	// AllowedEnv is derived from sharedEnv and the process allowlist at plan
 	// construction. It is runtime state, not a contract field.
 	AllowedEnv []string `json:"-"`
