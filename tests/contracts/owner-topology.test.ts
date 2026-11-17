@@ -19,6 +19,7 @@ import YAML from "yaml";
 
 const topologyPath = "deploy/portable/opl-cloud-owner-topology.json";
 const envExamplePath = "deploy/portable/opl-cloud.env.example";
+const composePath = "deploy/portable/compose.cloud.yaml";
 const dockerfilePath = "Dockerfile";
 const ownerIdentityPath = "packages/contracts/go/owneridentity/owneridentity.go";
 
@@ -35,6 +36,7 @@ type ProcessEntry = {
   rpcDatabaseEnv?: string;
   defaultAddress: string;
   databaseEnv?: string | null;
+  addressPortEnv?: string;
   env: string[];
   optionalEnv?: string[];
   externalEnv?: string[];
@@ -86,6 +88,9 @@ type DeploymentUnitBlock = {
 type Topology = {
   sharedEnv: Record<string, string | string[]>;
   derivedEnv: { address: string; peerTokens: string };
+  distinctAddressesRequired?: boolean;
+  distinctAddressesScope?: string;
+  distinctAddressesEvidence?: string;
   processes: ProcessEntry[];
   deploymentUnit?: DeploymentUnitBlock;
   readinessCriteria: { rule: string; criteria: ReadinessCriterion[] };
@@ -187,9 +192,93 @@ function declaredEnvNames(processes: ProcessEntry[], shared: Topology["sharedEnv
   return names;
 }
 
+type ComposeService = { command?: string[]; environment?: Record<string, unknown> };
+
+// installedEnvironments returns the environment the published portable
+// installation gives each owner product binary. The Compose service that runs
+// the owner's binary is the owner's own service, so the values read here are
+// the ones that owner's process receives.
+async function installedEnvironments(): Promise<Map<string, Record<string, string>>> {
+  const compose = YAML.parse(await readFile(composePath, "utf8")) as { services?: Record<string, ComposeService> };
+  const environments = new Map<string, Record<string, string>>();
+  for (const service of Object.values(compose.services ?? {})) {
+    const binary = service.command?.[0];
+    if (!binary) continue;
+    const environment: Record<string, string> = {};
+    for (const [name, value] of Object.entries(service.environment ?? {})) {
+      if (typeof value === "string") environment[name] = value;
+    }
+    environments.set(binary, environment);
+  }
+  return environments;
+}
+
+// installedListenAddresses returns the listen addresses the published portable
+// installation binds for each owner product binary. A listener binds the
+// wildcard interface, so the installation writes its address without a host; an
+// address the installation dials names a host and is therefore not a listener
+// of that owner. The value is read from the owner's own Compose service, so the
+// client address another service declares for the same environment is never
+// mistaken for the address that owner binds.
+function installedListenAddresses(environments: Map<string, Record<string, string>>): Map<string, Map<string, string>> {
+  const listeners = new Map<string, Map<string, string>>();
+  for (const [binary, environment] of environments) {
+    const addresses = new Map<string, string>();
+    for (const [name, value] of Object.entries(environment)) {
+      if (/^:[0-9]{2,5}$/.test(value)) addresses.set(name, value);
+    }
+    if (addresses.size > 0) listeners.set(binary, addresses);
+  }
+  return listeners;
+}
+
+// ownerListenAddresses returns the listen addresses the contract declares for
+// one process: its own address, its typed owner address and every additional
+// listener it serves. A listener the contract declares without an address is
+// absent here, so it cannot take part in the comparison.
+function ownerListenAddresses(process: ProcessEntry): Map<string, string> {
+  const declared = new Map<string, string>();
+  if (process.defaultAddress) declared.set(process.addressEnv, process.defaultAddress);
+  if (process.rpcAddressEnv && process.defaultRPCAddress) declared.set(process.rpcAddressEnv, process.defaultRPCAddress);
+  for (const listener of process.additionalListeners ?? []) {
+    if (listener.defaultAddress) declared.set(listener.addressEnv, listener.defaultAddress);
+  }
+  return declared;
+}
+
+// ownerListenBindings returns every listen address the contract declares for one
+// process as a list, so an environment the contract declares twice appears
+// twice and collides with itself.
+function ownerListenBindings(process: ProcessEntry): { env: string; address: string }[] {
+  const bindings: { env: string; address: string }[] = [];
+  if (process.defaultAddress) bindings.push({ env: process.addressEnv, address: process.defaultAddress });
+  if (process.rpcAddressEnv && process.defaultRPCAddress) bindings.push({ env: process.rpcAddressEnv, address: process.defaultRPCAddress });
+  for (const listener of process.additionalListeners ?? []) {
+    if (listener.defaultAddress) bindings.push({ env: listener.addressEnv, address: listener.defaultAddress });
+  }
+  return bindings;
+}
+
+// sourceListenAddresses returns the listen addresses each owner's own source
+// declares, read from the owner's own source tree. They are the fallbacks the
+// owner binds when the installation declares no listen environment.
+async function sourceListenAddresses(): Promise<Map<string, Set<string>>> {
+  const addresses = new Map<string, Set<string>>();
+  for (const [service, directory] of ownerProcessDirectories) {
+    const declared = new Set<string>();
+    for (const file of await goFiles(directory)) {
+      const source = await readFile(file, "utf8");
+      for (const match of source.matchAll(/"(:[0-9]{2,5})"/g)) declared.add(match[1]);
+    }
+    addresses.set(service, declared);
+  }
+  return addresses;
+}
+
 test("every owner entrypoint is declared with the address and peer identity it reads", async () => {
   const topology = await loadTopology();
-  const [calls, names] = await Promise.all([loadConfigCalls(), ownerNameByConstant()]);
+  const [calls, names, environments] = await Promise.all([loadConfigCalls(), ownerNameByConstant(), installedEnvironments()]);
+  const listeners = installedListenAddresses(environments);
   const byService = new Map(topology.processes.map((process) => [process.service, process]));
 
   assert.ok(calls.size >= 8, `expected the ownerservice owner set, saw ${[...calls.keys()].join(",")}`);
@@ -203,7 +292,13 @@ test("every owner entrypoint is declared with the address and peer identity it r
     assert.equal(process.ownerName, ownerName);
     assert.equal(process.addressEnv, `OPL_${ownerName.toUpperCase()}_ADDR`);
     assert.equal(process.peerTokensEnv, `OPL_${ownerName.toUpperCase()}_PEER_TOKENS`);
-    assert.equal(process.defaultAddress, call.defaultAddress);
+    // The declared listen address is the address the published installation
+    // binds. The source's own fallback is the address it binds when the
+    // installation declares no listen environment, and the contract names that
+    // fallback where the installation overrides it.
+    const bound = listeners.get(process.binary)?.get(process.addressEnv);
+    assert.equal(process.defaultAddress, bound ?? call.defaultAddress,
+      `${service} must declare the listen address the published installation binds`);
     assert.equal(process.databaseEnv, "DATABASE_URL");
     assert.equal(process.binary, `/usr/local/bin/opl-${service}`);
   }
@@ -289,6 +384,15 @@ test("the declaration records that two owners share a default listen address", a
     owners.push(service);
     addressOwners.set(call.defaultAddress, owners);
   }
+  // The Fabric owner starts its typed owner listener from its coordination
+  // package rather than from its command entrypoint, so its own source
+  // fallback is read from that package.
+  const coordination = await readFile("services/fabric/coordination/process.go", "utf8");
+  const coordinationFallback = coordination.match(/ownerservice\.LoadConfig\(ownerEnv, ownerservice\.OwnerFabric, "(:[0-9]+)"\)/);
+  assert.ok(coordinationFallback, "the Fabric coordination package must declare its own listen fallback");
+  const coordinationOwners = addressOwners.get(coordinationFallback[1]) ?? [];
+  coordinationOwners.push("fabric");
+  addressOwners.set(coordinationFallback[1], coordinationOwners);
   const collisions = [...addressOwners.entries()].filter(([, services]) => services.length > 1);
   if (collisions.length === 0) {
     assert.equal((topology as unknown as { distinctAddressesRequired?: boolean }).distinctAddressesRequired, undefined,
@@ -299,6 +403,83 @@ test("the declaration records that two owners share a default listen address", a
   for (const [address, services] of collisions) {
     assert.ok((topology as unknown as { distinctAddressesEvidence: string }).distinctAddressesEvidence.includes(address),
       `the shared default address ${address} (${services.join(", ")}) must be named as evidence`);
+  }
+});
+
+test("the contract declares the listen address the published installation binds for every owner listener", async () => {
+  const topology = await loadTopology();
+  const environments = await installedEnvironments();
+  const listeners = installedListenAddresses(environments);
+  for (const process of topology.processes) {
+    const bound = listeners.get(process.binary);
+    assert.ok(bound, `the published installation must run ${process.binary}`);
+    // Every listener the contract declares carries an address, so an owner can
+    // never declare a listener the installation binds without saying where that
+    // listener listens.
+    for (const listener of process.additionalListeners ?? []) {
+      assert.ok(listener.defaultAddress,
+        `${process.service} must declare the listen address of ${listener.addressEnv}`);
+    }
+    const declared = ownerListenAddresses(process);
+    // Every listener the installation binds for this owner is declared.
+    for (const [env] of bound) {
+      assert.ok(declared.has(env),
+        `${process.service} does not declare the listen address ${env} the published installation binds`);
+    }
+    // Every declared listener is the address the installation binds for it.
+    for (const [env, address] of declared) {
+      assert.equal(address, bound.get(env),
+        `${process.service} declares ${env} as ${address}; the published installation binds ${bound.get(env)}`);
+    }
+    if (process.addressPortEnv) {
+      const port = environments.get(process.binary)?.[process.addressPortEnv];
+      assert.ok(port, `the published installation must declare ${process.addressPortEnv} for ${process.service}`);
+      assert.equal(`:${port}`, declared.get(process.addressEnv),
+        `${process.service} must declare the same port in ${process.addressPortEnv} and ${process.addressEnv}`);
+    }
+  }
+});
+
+test("no two owners declare the same listen address", async () => {
+  const topology = await loadTopology();
+  assert.equal(topology.distinctAddressesRequired, true,
+    "the contract must require the declared listen addresses to be distinct");
+  assert.equal(topology.distinctAddressesScope, "pod_network_namespace",
+    "the scope must be the one the Cloud backend deployment unit shares");
+  const owners = new Map<string, string>();
+  for (const process of topology.processes) {
+    for (const { env, address } of ownerListenBindings(process)) {
+      const other = owners.get(address);
+      assert.equal(other, undefined,
+        `${process.service} (${env}) and ${other} would both listen on ${address} in one ${topology.distinctAddressesScope}`);
+      owners.set(address, `${process.service} (${env})`);
+    }
+  }
+});
+
+test("every listen address an owner's own source declares is declared by the contract or named as the fallback the installation overrides", async () => {
+  const topology = await loadTopology();
+  const evidence = topology.distinctAddressesEvidence ?? "";
+  const sources = await sourceListenAddresses();
+  const byService = new Map(topology.processes.map((process) => [process.service, process]));
+  for (const process of topology.processes) {
+    const declared = new Set(ownerListenAddresses(process).values());
+    for (const address of sources.get(process.service) ?? []) {
+      if (declared.has(address)) continue;
+      assert.ok(evidence.includes(address),
+        `${process.service} binds ${address} when the installation declares no listen environment; the contract must name it`);
+    }
+  }
+  // The owner entrypoints' own listen fallback is the address they bind when
+  // the installation declares no listen environment. It is the declared
+  // address, or the contract names it as the fallback the installation
+  // overrides.
+  for (const [service, call] of await loadConfigCalls()) {
+    const process = byService.get(service);
+    assert.ok(process, `${service} must be declared in ${topologyPath}`);
+    if (ownerListenAddresses(process).get(process.addressEnv) === call.defaultAddress) continue;
+    assert.ok(evidence.includes(call.defaultAddress),
+      `${service} falls back to ${call.defaultAddress} when the installation declares no listen environment; the contract must name it`);
   }
 });
 
@@ -597,7 +778,12 @@ test("the Fabric HTTP process also declares its real owner RPC admission surface
   assert.equal(fabric.ownerConstant, "OwnerFabric");
   assert.equal(fabric.peerTokensEnv, "OPL_FABRIC_PEER_TOKENS");
   assert.equal(fabric.rpcAddressEnv, "OPL_FABRIC_ADDR");
-  assert.equal(fabric.defaultRPCAddress, ":8187");
+  // The coordination listener is the address the published installation binds
+  // for it. The source's own fallback is the address it binds when the
+  // installation declares no listen environment.
+  const listeners = installedListenAddresses(await installedEnvironments());
+  assert.equal(fabric.defaultRPCAddress, listeners.get(fabric.binary)?.get(fabric.rpcAddressEnv!),
+    "the contract must declare the coordination address the published installation binds");
   assert.equal(fabric.rpcDatabaseEnv, "OPL_FABRIC_DATABASE_URL");
 });
 
