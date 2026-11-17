@@ -181,7 +181,7 @@ func TestChildEnvironmentKeepsEveryDeclaredListenerAndPeerInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	installation := environment{"OPL_GRPC_INSECURE_LOCAL": "1", "DATABASE_URL": "shared-owner-dsn"}
+	installation := environment{"OPL_GRPC_INSECURE_LOCAL": "1", "DATABASE_URL": "shared-owner-dsn", "PGSSLMODE": "disable", "SSL_CERT_FILE": "/installation/root-ca.pem"}
 	for _, process := range topology.Processes {
 		for _, name := range []string{process.AddressEnv, process.AddressPortEnv, process.PeerTokensEnv, process.RPCAddressEnv, process.RPCDatabaseEnv, process.RPCEnabledByEnv} {
 			if name != "" {
@@ -242,6 +242,14 @@ func TestChildEnvironmentKeepsEveryDeclaredListenerAndPeerInput(t *testing.T) {
 				if _, present := got["DATABASE_URL"]; present {
 					t.Fatal("a process without a database consumer must not receive a database DSN")
 				}
+				if _, present := got["PGSSLMODE"]; present {
+					t.Fatal("a process without a database consumer must not receive PostgreSQL settings")
+				}
+			} else if got["PGSSLMODE"] != "disable" {
+				t.Fatal("database consumers must retain the installation's PostgreSQL TLS policy")
+			}
+			if got["SSL_CERT_FILE"] != installation["SSL_CERT_FILE"] {
+				t.Fatal("owner HTTP clients must retain the installation's root CA file")
 			}
 		})
 	}

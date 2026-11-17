@@ -100,6 +100,9 @@ func allowedEnvironmentNames(topology Topology, process Process) []string {
 		if key == "database" {
 			continue
 		}
+		if key == "postgres" && process.DatabaseEnv == "" && process.RPCDatabaseEnv == "" {
+			continue
+		}
 		var list []string
 		if json.Unmarshal(raw, &list) == nil {
 			for _, name := range list {

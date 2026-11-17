@@ -137,6 +137,7 @@ async function envNamesRead(dir: string, declaredNames?: Set<string>): Promise<S
     for (const match of source.matchAll(/(?:\w+\.)?[gG]etenv\("([A-Z0-9_]+)"\)/g)) names.add(match[1]);
     for (const match of source.matchAll(/(?:\w+\.)?LookupEnv\("([A-Z0-9_]+)"\)/g)) names.add(match[1]);
     for (const match of source.matchAll(/(?:durationFromEnv|envInt)\("([A-Z0-9_]+)"/g)) names.add(match[1]);
+    for (const match of source.matchAll(/(?:intFromEnv|nonNegativeIntFromEnv)\(env,\s*"([A-Z0-9_]+)"/g)) names.add(match[1]);
     if (/os\.Getenv\(key\)/.test(source)) {
       for (const list of source.matchAll(/required\s*:=\s*\[\]string\{([^}]*)\}/g)) {
         for (const match of list[1].matchAll(/"([A-Z0-9_]+)"/g)) names.add(match[1]);
