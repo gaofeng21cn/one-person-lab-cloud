@@ -130,11 +130,21 @@ async function goFiles(dir: string): Promise<string[]> {
 
 // envNamesRead returns every environment name the service's own non-test source
 // reads, so the declaration can be compared against the real startup contract.
-async function envNamesRead(dir: string): Promise<Set<string>> {
+async function envNamesRead(dir: string, declaredNames?: Set<string>): Promise<Set<string>> {
   const names = new Set<string>();
   for (const file of await goFiles(dir)) {
     const source = await readFile(file, "utf8");
     for (const match of source.matchAll(/(?:\w+\.)?[gG]etenv\("([A-Z0-9_]+)"\)/g)) names.add(match[1]);
+    // Some owner entrypoints pass an environment map to an external
+    // provisioner and index it directly (`env["NAME"]`) instead of calling
+    // Getenv. Add only names already declared by the topology so this probe
+    // verifies declared consumers without turning every test-only fixture key
+    // into a production contract requirement.
+    if (declaredNames) {
+      for (const match of source.matchAll(/(?:env|environment)\["([A-Z0-9_]+)"\]/g)) {
+        if (declaredNames.has(match[1])) names.add(match[1]);
+      }
+    }
   }
   return names;
 }
@@ -328,7 +338,6 @@ test("the declaration accounts for every environment name each process reads", a
   const topology = await loadTopology();
   for (const process of topology.processes) {
     const dir = process.service === "console-bff" ? "apps/console-bff" : `services/${process.service}`;
-    const read = await envNamesRead(dir);
     const declared = new Set([
       ...process.env,
       ...(process.optionalEnv ?? []),
@@ -336,11 +345,31 @@ test("the declaration accounts for every environment name each process reads", a
       ...(process.kind === "ownerservice" ? [process.addressEnv, process.peerTokensEnv as string] : []),
       ...Object.values(topology.sharedEnv).flatMap((value) => Array.isArray(value) ? value : [value])
     ]);
+    const read = await envNamesRead(dir, declared);
     const undeclared = [...read].filter((name) => !declared.has(name)).sort();
     const stale = [...declared].filter((name) => !read.has(name) && name !== process.addressEnv && name !== process.peerTokensEnv
       && !Object.values(topology.sharedEnv).flatMap((value) => Array.isArray(value) ? value : [value]).includes(name)).sort();
     assert.deepEqual(undeclared, [], `${process.service} reads undeclared environment names`);
     assert.deepEqual(stale, [], `${process.service} declares environment names no source reads`);
+  }
+});
+
+test("the Fabric process declares the Tencent credentials its provisioner consumes", async () => {
+  const topology = await loadTopology();
+  const fabric = topology.processes.find((process) => process.service === "fabric");
+  assert.ok(fabric, "the Fabric process must be declared");
+  const provisioner = await readFile("services/fabric/cmd/opl-tencent-provisioner/main.go", "utf8");
+  const required = [
+    "TENCENTCLOUD_SECRET_ID",
+    "TENCENTCLOUD_SECRET_KEY",
+    "TENCENTCLOUD_REGION",
+    "OPL_TENCENT_PREDEBIT_IAM_ATTESTATION",
+  ];
+  for (const name of required) {
+    assert.match(provisioner, new RegExp(`(?:env\\[|\\\")${name}(?:\\\"|\\])`),
+      `the Tencent provisioner must consume ${name}`);
+    assert.ok(fabric.env.includes(name),
+      `the Fabric environment allowlist must carry ${name} to the composed child`);
   }
 });
 
