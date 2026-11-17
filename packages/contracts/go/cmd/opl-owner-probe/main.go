@@ -67,7 +67,7 @@ func probeFromArgs(args []string, getenv func(string) string) (result, error) {
 	flags := flag.NewFlagSet("opl-owner-probe", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	ownerArg := flags.String("owner", "", "owner identity or deployment-unit identity")
-	addressArg := flags.String("addr", "", "owner gRPC address, or a deployment unit's HTTP address")
+	addressArg := flags.String("addr", "", "owner gRPC address, or a deployment unit's or the Ledger owner's HTTP address")
 	expectedArg := flags.String("expected-source-sha", "", "expected baked ProductSourceSHA")
 	timeoutArg := flags.Duration("timeout", 5*time.Second, "probe timeout")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
@@ -84,6 +84,9 @@ func probeFromArgs(args []string, getenv func(string) string) (result, error) {
 	if !ok {
 		return resultFor(ownerText), errors.New("owner_invalid")
 	}
+	if owner == owneridentity.Ledger {
+		return probeLedger(config{Address: *addressArg, Timeout: *timeoutArg}, getenv)
+	}
 	if *timeoutArg <= 0 {
 		return resultFor(owner.String()), errors.New("timeout_invalid")
 	}
@@ -99,6 +102,45 @@ func probeFromArgs(args []string, getenv func(string) string) (result, error) {
 		expected = strings.TrimSpace(getenv("OPL_PROBE_EXPECTED_SOURCE_SHA"))
 	}
 	return probeGRPC(config{Owner: owner, Address: address, ExpectedSourceSHA: expected, Timeout: *timeoutArg}, getenv)
+}
+
+// The Ledger owner registers no gRPC health service. Its domain listener
+// registers the Ledger product, coordination and inbox services only, so the
+// owner probe reads the Ledger's own HTTP surface instead: GET /healthz
+// answers liveness and GET /readyz answers readiness. /readyz answers 503
+// until the Ledger's own store is ready, and it needs no capability key.
+func probeLedger(cfg config, getenv func(string) string) (result, error) {
+	out := resultFor(owneridentity.Ledger.String())
+	out.TransportPrincipal = owneridentity.Ledger.String()
+	if cfg.Timeout <= 0 {
+		return out, errors.New("timeout_invalid")
+	}
+	base := strings.TrimSpace(cfg.Address)
+	if base == "" {
+		base = strings.TrimSpace(getenv("LEDGER_ADDR"))
+	}
+	if base == "" {
+		return out, errors.New("address_missing")
+	}
+	base = httpBaseURL(base)
+	client := &http.Client{Timeout: cfg.Timeout}
+	if _, err := getJSON(client, base+"/healthz"); err != nil {
+		return out, fmt.Errorf("ledger_health: %w", err)
+	}
+	readiness, err := getJSON(client, base+"/readyz")
+	if err != nil {
+		return out, fmt.Errorf("ledger_ready: %w", err)
+	}
+	status, ok := readiness["status"].(string)
+	if !ok || strings.TrimSpace(status) == "" {
+		return out, errors.New("ledger_ready_status_missing")
+	}
+	out.Health = &healthResult{Status: strings.TrimSpace(status)}
+	if strings.TrimSpace(status) != "ready" {
+		return out, errors.New("ledger_not_ready")
+	}
+	out.Status = "ok"
+	return out, nil
 }
 
 func resultFor(owner string) result {

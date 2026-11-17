@@ -52,6 +52,7 @@ export const goModules = Object.freeze([
   "services/workspace",
   "services/resource-catalog",
   "services/serve",
+  "services/cloud-composition",
   "apps/console-bff"
 ]);
 
@@ -130,6 +131,10 @@ export const databaseFreeGoTestSpecs: readonly DatabaseFreeGoTestSpec[] = Object
   { cwd: "services/fabric", packages: ["./cmd/fabric", "./cmd/opl-tencent-provisioner", "./cmd/opl-node-image-retire", "./internal/http", "./coordination"] },
   { cwd: "services/ledger", packages: ["./cmd/ledger", "./internal/http"] },
   { cwd: "services/serve", packages: ["./cmd/server"] },
+  // The composition entrypoint reads the owner topology contract and starts the
+  // declared owner processes; its order, dependency and readiness rules hold
+  // without a database.
+  { cwd: "services/cloud-composition", packages: ["./..."] },
   { cwd: "services/internal/postgresmigrate", packages: ["./..."] },
   // The owner runtime's startup and Operation readback rules hold without a
   // database; its PostgreSQL-gated isolation proof declares the capability it

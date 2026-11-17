@@ -38,7 +38,7 @@
   "peerTokensShape": "JSON object {\"<peer owner identity>\":\"<at least 32 characters>\"}"
  },
  "distinctAddressesRequired": true,
- "distinctAddressesEvidence": "services/ledger/cmd/ledger/main.go and services/resource-catalog/cmd/server/main.go both declare \":8186\". They conflict only when sharing one Pod/network namespace. Separate Deployments may use the same declared default listen port. ownerservice.LoadConfig uses defaultAddress (Fabric defaultRPCAddress) when the effective listen env is absent or whitespace-empty; an explicit nonempty listen env overrides that default and must match the Service targetPort.",
+ "distinctAddressesEvidence": "The declared listen address of an owner is the address the published portable installation binds for it, and that installation binds a distinct address for every owner, so no two owners share a port in one Pod/network namespace. The installation admission resolves an absent listen environment to the Product-declared defaultAddress (Fabric defaultRPCAddress); an explicit nonempty listen env overrides that default and must match the Service targetPort. The owners' own sources keep the fallback they bind when no listen environment is declared: the Ledger and the Resource Catalog sources both fall back to \":8186\", and the Fabric and the Gateway Integration sources both fall back to \":8187\". Those shared fallbacks conflict only when sharing one Pod/network namespace; Separate Deployments may use the same declared default listen port. The Serve access entry falls back to \":8188\".",
  "processes": [
   {
    "service": "capability",
@@ -85,6 +85,7 @@
    "additionalListeners": [
     {
      "addressEnv": "OPL_CAPABILITY_OBJECT_LISTEN_ADDR",
+     "defaultAddress": ":8191",
      "valueSemantics": "raw"
     }
    ]
@@ -245,7 +246,7 @@
    "additionalListeners": [
     {
      "addressEnv": "OPL_SERVE_ACCESS_ADDR",
-     "defaultAddress": ":8188",
+     "defaultAddress": ":8192",
      "valueSemantics": "trimmed"
     }
    ]
@@ -282,7 +283,7 @@
    "binary": "/usr/local/bin/opl-ledger",
    "addressEnv": "OPL_LEDGER_ADDR",
    "peerTokensEnv": "OPL_LEDGER_PEER_TOKENS",
-   "defaultAddress": ":8186",
+   "defaultAddress": ":8189",
    "databaseEnv": "DATABASE_URL",
    "env": [
     "LEDGER_ADDR",
@@ -364,6 +365,10 @@
     "OPL_FABRIC_DATABASE_URL",
     "FABRIC_ADDR",
     "OPL_FABRIC_PROVIDER",
+    "TENCENTCLOUD_SECRET_ID",
+    "TENCENTCLOUD_SECRET_KEY",
+    "TENCENTCLOUD_REGION",
+    "OPL_TENCENT_PREDEBIT_IAM_ATTESTATION",
     "OPL_INTERNAL_SERVICE_TOKEN",
     "OPL_FABRIC_CAPABILITY_KEY",
     "OPL_FABRIC_RUNNER_SERVICE_TOKEN",
@@ -413,7 +418,7 @@
    "ownerConstant": "OwnerFabric",
    "peerTokensEnv": "OPL_FABRIC_PEER_TOKENS",
    "rpcAddressEnv": "OPL_FABRIC_ADDR",
-   "defaultRPCAddress": ":8187",
+   "defaultRPCAddress": ":8188",
    "rpcDatabaseEnv": "OPL_FABRIC_DATABASE_URL",
    "transportPrincipal": "fabric",
    "rpcEnabledByEnv": "OPL_FABRIC_DATABASE_URL",
@@ -512,6 +517,92 @@
    "daemonArgs": []
   }
  ],
+ "deploymentUnit": {
+  "rule": "The Cloud backend is one deployment unit: one container in which the owner processes this contract already declares run together in one process space. Domain ownership does not require a separate process, container, Kubernetes Deployment or network hop, so this declaration names no member of its own: the members are exactly the processes this contract already declares and the image is the one this contract already declares. The unit reaches a small declared set of dependencies that are not processes of its own, and it deliberately leaves privileged build execution and customer Workspace application execution outside itself. An instance owner keeps installation configuration, Secrets, deployment, rollback and receipts; this declaration states only what the product's own unit contains, reaches and excludes.",
+  "unit": {
+   "name": "opl-cloud-backend",
+   "kind": "oneContainerProcessSpace",
+   "memberSource": "processes",
+   "memberRule": "Every process this contract declares is a member of this unit. This block adds no member and removes none, so the contract keeps one writer of the member list.",
+   "imageSource": "image",
+   "boundaryEffect": "A restart or an upgrade of this unit restarts every member. A workload that must not share that boundary is an exclusion, not a member."
+  },
+  "externalDependencies": [
+   {
+    "id": "postgresql",
+    "kind": "databaseService",
+    "outsideUnit": {
+     "reason": "notAProcessOfThisUnit",
+     "reachedThrough": "the owner's own PostgreSQL connection string",
+     "boundaryEnv": "DATABASE_URL"
+    },
+    "evidence": [
+     "services/internal/ownerservice/config.go:72 reads the shared DATABASE_URL and services/internal/ownerservice/database.go:41 opens that PostgreSQL connection for the owner it serves",
+     "deploy/portable/compose.cloud.yaml:44 declares postgres as its own Compose service with its own image, so the database is not one of this unit's processes"
+    ]
+   },
+   {
+    "id": "objectStorage",
+    "kind": "objectStore",
+    "outsideUnit": {
+     "reason": "notAProcessOfThisUnit",
+     "reachedThrough": "the Capability owner's selected storage provider",
+     "boundaryEnv": "OPL_CAPABILITY_STORAGE_KIND"
+    },
+    "note": "The local kind keeps the bytes on a volume mounted into the Capability container itself, which is this unit's own container. The cos kind keeps them in the instance's COS bucket and reads no local root, so an installation that selects the cos kind deploys no storage container for objects.",
+    "evidence": [
+     "services/capability/cmd/server/main.go:158 selects the store from OPL_CAPABILITY_STORAGE_KIND: the local kind builds it on a root path at services/capability/cmd/server/main.go:168 and the cos kind builds the instance bucket store at services/capability/cmd/server/main.go:170",
+     "services/capability/catalog/cos_storage.go:52 binds that store as an HTTP client of the instance's bucket URL, so the cos kind is a remote service and not a container",
+     "deploy/portable/compose.cloud.yaml:321 mounts the local object store as a volume of the Capability container, so the installation deploys no object-storage service"
+    ]
+   },
+   {
+    "id": "tencentCloudResourceApi",
+    "kind": "resourceApi",
+    "outsideUnit": {
+     "reason": "notAProcessOfThisUnit",
+     "reachedThrough": "the Fabric module's provider adapter boundary",
+     "boundaryEnv": "OPL_FABRIC_PROVIDER"
+    },
+    "evidence": [
+     "services/fabric/cmd/fabric/main.go:94 selects the provider from OPL_FABRIC_PROVIDER and services/fabric/internal/fabric/provider_port.go:174 declares the Provider port every adapter implements",
+     "services/fabric/internal/fabric/tencent_provider.go:1419 runs the installation's provisioner executable, which reaches the Tencent Cloud CVM endpoint at services/fabric/cmd/opl-tencent-provisioner/main.go:948, so the resource API is outside this unit"
+    ]
+   }
+  ],
+  "exclusions": [
+   {
+    "id": "privilegedBuildExecutor",
+    "kind": "privilegedExecutor",
+    "relatedMember": "build",
+    "outsideUnit": {
+     "reason": "notStartedInsideThisUnit",
+     "reachedThrough": "the docker client this unit runs against the installation's isolated BuildKit builder",
+     "boundaryEnv": "OPL_BUILD_BUILDER"
+    },
+    "distinction": "The build owner service is a member of this unit; the privileged BuildKit builder it invokes is not. The unit ships the build client, not the builder.",
+    "evidence": [
+     "services/build/internal/build/runner.go:640 builds the docker buildx command for the installation's builder and services/build/internal/build/runner.go:643 runs that client as an external executable",
+     "Dockerfile:136 ships the docker client and Dockerfile:141 ships its buildx plugin; neither ships a BuildKit daemon"
+    ]
+   },
+   {
+    "id": "customerWorkspaceApplication",
+    "kind": "customerWorkload",
+    "relatedMember": "serve",
+    "outsideUnit": {
+     "reason": "notStartedInsideThisUnit",
+     "reachedThrough": "the installation's own cluster, applied by the Serve owner's kubectl execution boundary",
+     "boundaryEnv": "OPL_K8S_NAMESPACE"
+    },
+    "distinction": "The serve owner service is a member of this unit; the customer's Workspace application container it applies is not. The unit applies a manifest; the cluster runs the container.",
+    "evidence": [
+     "services/serve/internal/delivery/execution.go:75 gives the Serve owner its cluster boundary through tkeapply.KubectlRunner and services/internal/tkeapply/kubectl.go:32 runs the external kubectl executable",
+     "services/internal/tkeapply/runtime.go:76 applies the customer's Deployment manifest and services/internal/tkeapply/runtime.go:542 builds it, so the container is created by the cluster and never started inside this unit's container"
+    ]
+   }
+  ]
+ },
  "readinessCriteria": {
   "rule": "Every declared process carries exactly one readiness criterion: the check an installation runs to decide whether the process is ready to serve, and the check that decides whether it is only alive. A criterion names the process it belongs to, its kind, and the concrete checks it makes. Every check names the transport it uses, whether it answers the readiness question or the liveness question, and the address environment name this contract already declares for that process, whether that is the process's own listen address or one of its additional listeners. A criterion therefore never introduces an address of its own: the effective address resolves from the same declaration the process reads. A gRPC check is the owner's own health service; an HTTP check is a route the owning source registers. A check marked as a projection reports another owner's readiness state rather than an aggregate of Cloud owners, and names the Go type its body carries. Cloud declares no aggregate readiness surface: /readyz belongs to the Ledger owner alone.",
   "criteria": [

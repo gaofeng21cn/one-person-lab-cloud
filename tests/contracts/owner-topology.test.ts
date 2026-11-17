@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import YAML from "yaml";
 
 // The installation contract for the Cloud owner topology.
 //
@@ -18,6 +19,7 @@ import test from "node:test";
 
 const topologyPath = "deploy/portable/opl-cloud-owner-topology.json";
 const envExamplePath = "deploy/portable/opl-cloud.env.example";
+const composePath = "deploy/portable/compose.cloud.yaml";
 const dockerfilePath = "Dockerfile";
 const ownerIdentityPath = "packages/contracts/go/owneridentity/owneridentity.go";
 
@@ -34,6 +36,7 @@ type ProcessEntry = {
   rpcDatabaseEnv?: string;
   defaultAddress: string;
   databaseEnv?: string | null;
+  addressPortEnv?: string;
   env: string[];
   optionalEnv?: string[];
   externalEnv?: string[];
@@ -59,10 +62,37 @@ type ReadinessCriterion = {
   evidence?: string;
 };
 type SurfaceEntry = { prefix: string; processes: string[]; browserFacing: boolean; evidence: string };
+type UnitBoundary = { reason: string; reachedThrough: string; boundaryEnv: string };
+type UnitEntry = {
+  id: string;
+  kind: string;
+  relatedMember?: string;
+  outsideUnit: UnitBoundary;
+  note?: string;
+  distinction?: string;
+  evidence: string[];
+};
+type DeploymentUnitBlock = {
+  rule: string;
+  unit: {
+    name: string;
+    kind: string;
+    memberSource: string;
+    memberRule: string;
+    imageSource: string;
+    boundaryEffect: string;
+  };
+  externalDependencies: UnitEntry[];
+  exclusions: UnitEntry[];
+};
 type Topology = {
   sharedEnv: Record<string, string | string[]>;
   derivedEnv: { address: string; peerTokens: string };
+  distinctAddressesRequired?: boolean;
+  distinctAddressesScope?: string;
+  distinctAddressesEvidence?: string;
   processes: ProcessEntry[];
+  deploymentUnit?: DeploymentUnitBlock;
   readinessCriteria: { rule: string; criteria: ReadinessCriterion[] };
   consoleBundle: {
     buildArg: string;
@@ -78,6 +108,9 @@ type Topology = {
     rule: string;
     surfaces: SurfaceEntry[];
     requirement: string;
+  };
+  communication?: {
+    edges: { addressEnv: string; tokenEnv: string; activationEnvs?: string[] }[];
   };
 };
 
@@ -97,11 +130,21 @@ async function goFiles(dir: string): Promise<string[]> {
 
 // envNamesRead returns every environment name the service's own non-test source
 // reads, so the declaration can be compared against the real startup contract.
-async function envNamesRead(dir: string): Promise<Set<string>> {
+async function envNamesRead(dir: string, declaredNames?: Set<string>): Promise<Set<string>> {
   const names = new Set<string>();
   for (const file of await goFiles(dir)) {
     const source = await readFile(file, "utf8");
     for (const match of source.matchAll(/(?:\w+\.)?[gG]etenv\("([A-Z0-9_]+)"\)/g)) names.add(match[1]);
+    // Some owner entrypoints pass an environment map to an external
+    // provisioner and index it directly (`env["NAME"]`) instead of calling
+    // Getenv. Add only names already declared by the topology so this probe
+    // verifies declared consumers without turning every test-only fixture key
+    // into a production contract requirement.
+    if (declaredNames) {
+      for (const match of source.matchAll(/(?:env|environment)\["([A-Z0-9_]+)"\]/g)) {
+        if (declaredNames.has(match[1])) names.add(match[1]);
+      }
+    }
   }
   return names;
 }
@@ -159,9 +202,93 @@ function declaredEnvNames(processes: ProcessEntry[], shared: Topology["sharedEnv
   return names;
 }
 
+type ComposeService = { command?: string[]; environment?: Record<string, unknown> };
+
+// installedEnvironments returns the environment the published portable
+// installation gives each owner product binary. The Compose service that runs
+// the owner's binary is the owner's own service, so the values read here are
+// the ones that owner's process receives.
+async function installedEnvironments(): Promise<Map<string, Record<string, string>>> {
+  const compose = YAML.parse(await readFile(composePath, "utf8")) as { services?: Record<string, ComposeService> };
+  const environments = new Map<string, Record<string, string>>();
+  for (const service of Object.values(compose.services ?? {})) {
+    const binary = service.command?.[0];
+    if (!binary) continue;
+    const environment: Record<string, string> = {};
+    for (const [name, value] of Object.entries(service.environment ?? {})) {
+      if (typeof value === "string") environment[name] = value;
+    }
+    environments.set(binary, environment);
+  }
+  return environments;
+}
+
+// installedListenAddresses returns the listen addresses the published portable
+// installation binds for each owner product binary. A listener binds the
+// wildcard interface, so the installation writes its address without a host; an
+// address the installation dials names a host and is therefore not a listener
+// of that owner. The value is read from the owner's own Compose service, so the
+// client address another service declares for the same environment is never
+// mistaken for the address that owner binds.
+function installedListenAddresses(environments: Map<string, Record<string, string>>): Map<string, Map<string, string>> {
+  const listeners = new Map<string, Map<string, string>>();
+  for (const [binary, environment] of environments) {
+    const addresses = new Map<string, string>();
+    for (const [name, value] of Object.entries(environment)) {
+      if (/^:[0-9]{2,5}$/.test(value)) addresses.set(name, value);
+    }
+    if (addresses.size > 0) listeners.set(binary, addresses);
+  }
+  return listeners;
+}
+
+// ownerListenAddresses returns the listen addresses the contract declares for
+// one process: its own address, its typed owner address and every additional
+// listener it serves. A listener the contract declares without an address is
+// absent here, so it cannot take part in the comparison.
+function ownerListenAddresses(process: ProcessEntry): Map<string, string> {
+  const declared = new Map<string, string>();
+  if (process.defaultAddress) declared.set(process.addressEnv, process.defaultAddress);
+  if (process.rpcAddressEnv && process.defaultRPCAddress) declared.set(process.rpcAddressEnv, process.defaultRPCAddress);
+  for (const listener of process.additionalListeners ?? []) {
+    if (listener.defaultAddress) declared.set(listener.addressEnv, listener.defaultAddress);
+  }
+  return declared;
+}
+
+// ownerListenBindings returns every listen address the contract declares for one
+// process as a list, so an environment the contract declares twice appears
+// twice and collides with itself.
+function ownerListenBindings(process: ProcessEntry): { env: string; address: string }[] {
+  const bindings: { env: string; address: string }[] = [];
+  if (process.defaultAddress) bindings.push({ env: process.addressEnv, address: process.defaultAddress });
+  if (process.rpcAddressEnv && process.defaultRPCAddress) bindings.push({ env: process.rpcAddressEnv, address: process.defaultRPCAddress });
+  for (const listener of process.additionalListeners ?? []) {
+    if (listener.defaultAddress) bindings.push({ env: listener.addressEnv, address: listener.defaultAddress });
+  }
+  return bindings;
+}
+
+// sourceListenAddresses returns the listen addresses each owner's own source
+// declares, read from the owner's own source tree. They are the fallbacks the
+// owner binds when the installation declares no listen environment.
+async function sourceListenAddresses(): Promise<Map<string, Set<string>>> {
+  const addresses = new Map<string, Set<string>>();
+  for (const [service, directory] of ownerProcessDirectories) {
+    const declared = new Set<string>();
+    for (const file of await goFiles(directory)) {
+      const source = await readFile(file, "utf8");
+      for (const match of source.matchAll(/"(:[0-9]{2,5})"/g)) declared.add(match[1]);
+    }
+    addresses.set(service, declared);
+  }
+  return addresses;
+}
+
 test("every owner entrypoint is declared with the address and peer identity it reads", async () => {
   const topology = await loadTopology();
-  const [calls, names] = await Promise.all([loadConfigCalls(), ownerNameByConstant()]);
+  const [calls, names, environments] = await Promise.all([loadConfigCalls(), ownerNameByConstant(), installedEnvironments()]);
+  const listeners = installedListenAddresses(environments);
   const byService = new Map(topology.processes.map((process) => [process.service, process]));
 
   assert.ok(calls.size >= 8, `expected the ownerservice owner set, saw ${[...calls.keys()].join(",")}`);
@@ -175,7 +302,13 @@ test("every owner entrypoint is declared with the address and peer identity it r
     assert.equal(process.ownerName, ownerName);
     assert.equal(process.addressEnv, `OPL_${ownerName.toUpperCase()}_ADDR`);
     assert.equal(process.peerTokensEnv, `OPL_${ownerName.toUpperCase()}_PEER_TOKENS`);
-    assert.equal(process.defaultAddress, call.defaultAddress);
+    // The declared listen address is the address the published installation
+    // binds. The source's own fallback is the address it binds when the
+    // installation declares no listen environment, and the contract names that
+    // fallback where the installation overrides it.
+    const bound = listeners.get(process.binary)?.get(process.addressEnv);
+    assert.equal(process.defaultAddress, bound ?? call.defaultAddress,
+      `${service} must declare the listen address the published installation binds`);
     assert.equal(process.databaseEnv, "DATABASE_URL");
     assert.equal(process.binary, `/usr/local/bin/opl-${service}`);
   }
@@ -205,7 +338,6 @@ test("the declaration accounts for every environment name each process reads", a
   const topology = await loadTopology();
   for (const process of topology.processes) {
     const dir = process.service === "console-bff" ? "apps/console-bff" : `services/${process.service}`;
-    const read = await envNamesRead(dir);
     const declared = new Set([
       ...process.env,
       ...(process.optionalEnv ?? []),
@@ -213,11 +345,31 @@ test("the declaration accounts for every environment name each process reads", a
       ...(process.kind === "ownerservice" ? [process.addressEnv, process.peerTokensEnv as string] : []),
       ...Object.values(topology.sharedEnv).flatMap((value) => Array.isArray(value) ? value : [value])
     ]);
+    const read = await envNamesRead(dir, declared);
     const undeclared = [...read].filter((name) => !declared.has(name)).sort();
     const stale = [...declared].filter((name) => !read.has(name) && name !== process.addressEnv && name !== process.peerTokensEnv
       && !Object.values(topology.sharedEnv).flatMap((value) => Array.isArray(value) ? value : [value]).includes(name)).sort();
     assert.deepEqual(undeclared, [], `${process.service} reads undeclared environment names`);
     assert.deepEqual(stale, [], `${process.service} declares environment names no source reads`);
+  }
+});
+
+test("the Fabric process declares the Tencent credentials its provisioner consumes", async () => {
+  const topology = await loadTopology();
+  const fabric = topology.processes.find((process) => process.service === "fabric");
+  assert.ok(fabric, "the Fabric process must be declared");
+  const provisioner = await readFile("services/fabric/cmd/opl-tencent-provisioner/main.go", "utf8");
+  const required = [
+    "TENCENTCLOUD_SECRET_ID",
+    "TENCENTCLOUD_SECRET_KEY",
+    "TENCENTCLOUD_REGION",
+    "OPL_TENCENT_PREDEBIT_IAM_ATTESTATION",
+  ];
+  for (const name of required) {
+    assert.match(provisioner, new RegExp(`(?:env\\[|\\\")${name}(?:\\\"|\\])`),
+      `the Tencent provisioner must consume ${name}`);
+    assert.ok(fabric.env.includes(name),
+      `the Fabric environment allowlist must carry ${name} to the composed child`);
   }
 });
 
@@ -261,6 +413,15 @@ test("the declaration records that two owners share a default listen address", a
     owners.push(service);
     addressOwners.set(call.defaultAddress, owners);
   }
+  // The Fabric owner starts its typed owner listener from its coordination
+  // package rather than from its command entrypoint, so its own source
+  // fallback is read from that package.
+  const coordination = await readFile("services/fabric/coordination/process.go", "utf8");
+  const coordinationFallback = coordination.match(/ownerservice\.LoadConfig\(ownerEnv, ownerservice\.OwnerFabric, "(:[0-9]+)"\)/);
+  assert.ok(coordinationFallback, "the Fabric coordination package must declare its own listen fallback");
+  const coordinationOwners = addressOwners.get(coordinationFallback[1]) ?? [];
+  coordinationOwners.push("fabric");
+  addressOwners.set(coordinationFallback[1], coordinationOwners);
   const collisions = [...addressOwners.entries()].filter(([, services]) => services.length > 1);
   if (collisions.length === 0) {
     assert.equal((topology as unknown as { distinctAddressesRequired?: boolean }).distinctAddressesRequired, undefined,
@@ -271,6 +432,83 @@ test("the declaration records that two owners share a default listen address", a
   for (const [address, services] of collisions) {
     assert.ok((topology as unknown as { distinctAddressesEvidence: string }).distinctAddressesEvidence.includes(address),
       `the shared default address ${address} (${services.join(", ")}) must be named as evidence`);
+  }
+});
+
+test("the contract declares the listen address the published installation binds for every owner listener", async () => {
+  const topology = await loadTopology();
+  const environments = await installedEnvironments();
+  const listeners = installedListenAddresses(environments);
+  for (const process of topology.processes) {
+    const bound = listeners.get(process.binary);
+    assert.ok(bound, `the published installation must run ${process.binary}`);
+    // Every listener the contract declares carries an address, so an owner can
+    // never declare a listener the installation binds without saying where that
+    // listener listens.
+    for (const listener of process.additionalListeners ?? []) {
+      assert.ok(listener.defaultAddress,
+        `${process.service} must declare the listen address of ${listener.addressEnv}`);
+    }
+    const declared = ownerListenAddresses(process);
+    // Every listener the installation binds for this owner is declared.
+    for (const [env] of bound) {
+      assert.ok(declared.has(env),
+        `${process.service} does not declare the listen address ${env} the published installation binds`);
+    }
+    // Every declared listener is the address the installation binds for it.
+    for (const [env, address] of declared) {
+      assert.equal(address, bound.get(env),
+        `${process.service} declares ${env} as ${address}; the published installation binds ${bound.get(env)}`);
+    }
+    if (process.addressPortEnv) {
+      const port = environments.get(process.binary)?.[process.addressPortEnv];
+      assert.ok(port, `the published installation must declare ${process.addressPortEnv} for ${process.service}`);
+      assert.equal(`:${port}`, declared.get(process.addressEnv),
+        `${process.service} must declare the same port in ${process.addressPortEnv} and ${process.addressEnv}`);
+    }
+  }
+});
+
+test("no two owners declare the same listen address", async () => {
+  const topology = await loadTopology();
+  assert.equal(topology.distinctAddressesRequired, true,
+    "the contract must require the declared listen addresses to be distinct");
+  assert.equal(topology.distinctAddressesScope, "pod_network_namespace",
+    "the scope must be the one the Cloud backend deployment unit shares");
+  const owners = new Map<string, string>();
+  for (const process of topology.processes) {
+    for (const { env, address } of ownerListenBindings(process)) {
+      const other = owners.get(address);
+      assert.equal(other, undefined,
+        `${process.service} (${env}) and ${other} would both listen on ${address} in one ${topology.distinctAddressesScope}`);
+      owners.set(address, `${process.service} (${env})`);
+    }
+  }
+});
+
+test("every listen address an owner's own source declares is declared by the contract or named as the fallback the installation overrides", async () => {
+  const topology = await loadTopology();
+  const evidence = topology.distinctAddressesEvidence ?? "";
+  const sources = await sourceListenAddresses();
+  const byService = new Map(topology.processes.map((process) => [process.service, process]));
+  for (const process of topology.processes) {
+    const declared = new Set(ownerListenAddresses(process).values());
+    for (const address of sources.get(process.service) ?? []) {
+      if (declared.has(address)) continue;
+      assert.ok(evidence.includes(address),
+        `${process.service} binds ${address} when the installation declares no listen environment; the contract must name it`);
+    }
+  }
+  // The owner entrypoints' own listen fallback is the address they bind when
+  // the installation declares no listen environment. It is the declared
+  // address, or the contract names it as the fallback the installation
+  // overrides.
+  for (const [service, call] of await loadConfigCalls()) {
+    const process = byService.get(service);
+    assert.ok(process, `${service} must be declared in ${topologyPath}`);
+    if (ownerListenAddresses(process).get(process.addressEnv) === call.defaultAddress) continue;
+    assert.ok(evidence.includes(call.defaultAddress),
+      `${service} falls back to ${call.defaultAddress} when the installation declares no listen environment; the contract must name it`);
   }
 });
 
@@ -569,7 +807,12 @@ test("the Fabric HTTP process also declares its real owner RPC admission surface
   assert.equal(fabric.ownerConstant, "OwnerFabric");
   assert.equal(fabric.peerTokensEnv, "OPL_FABRIC_PEER_TOKENS");
   assert.equal(fabric.rpcAddressEnv, "OPL_FABRIC_ADDR");
-  assert.equal(fabric.defaultRPCAddress, ":8187");
+  // The coordination listener is the address the published installation binds
+  // for it. The source's own fallback is the address it binds when the
+  // installation declares no listen environment.
+  const listeners = installedListenAddresses(await installedEnvironments());
+  assert.equal(fabric.defaultRPCAddress, listeners.get(fabric.binary)?.get(fabric.rpcAddressEnv!),
+    "the contract must declare the coordination address the published installation binds");
   assert.equal(fabric.rpcDatabaseEnv, "OPL_FABRIC_DATABASE_URL");
 });
 
@@ -949,4 +1192,478 @@ func serve(ctx context.Context, config ownerservice.Config, source ownerstore.Mi
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+
+// The Cloud backend deployment unit
+// ----------------------------------
+//
+// The owner processes this contract declares are not eleven microservices. They
+// are eleven processes that collaborate inside ONE Cloud backend container. The
+// contract declared the members and each member's readiness, but it never
+// declared the unit they share, what that unit reaches from outside itself, or
+// which workloads must stay outside it. A reader could not tell which container
+// the declaration described, and could not tell what a restart of that
+// container would take with it.
+//
+// The assertions below read the owning source for every claim the declaration
+// makes, so the declaration cannot drift from the repository: a member without
+// a start path the image builds, a dependency without a provider boundary this
+// contract already declares, or an exclusion that is actually inside the unit
+// fails the test.
+
+// The reason a dependency or an exclusion is outside the unit. A dependency is
+// something the unit reaches but does not contain; an exclusion is something
+// the unit deliberately leaves outside its own restart and upgrade boundary.
+const outsideUnitReasons = ["notAProcessOfThisUnit", "notStartedInsideThisUnit"];
+
+// Every kind carries its own proof obligation, so a dependency or an exclusion
+// cannot be declared without one.
+const dependencyKinds = ["databaseService", "objectStore", "resourceApi"];
+const exclusionKinds = ["privilegedExecutor", "customerWorkload"];
+
+// dockerfileBuildStage is one image build stage and the binaries it emits.
+type DockerfileBuildStage = {
+  name: string;
+  workdir: string;
+  binaries: Map<string, { moduleDir: string; package: string }>;
+};
+
+// parseDockerfileStages reads the image build: which Go package produces which
+// binary, and in which stage. The start path of a member is therefore read from
+// the image build rather than restated here.
+function parseDockerfileStages(dockerfile: string): DockerfileBuildStage[] {
+  const joined = dockerfile.replace(/\\\r?\n/g, " ");
+  const stages: DockerfileBuildStage[] = [];
+  let stage: DockerfileBuildStage | undefined;
+  for (const line of joined.split("\n")) {
+    const trimmed = line.trim();
+    const from = /^FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+(\S+))?/i.exec(trimmed);
+    if (from) {
+      stage = { name: from[2] ?? from[1], workdir: "", binaries: new Map() };
+      stages.push(stage);
+      continue;
+    }
+    if (!stage) continue;
+    const workdir = /^WORKDIR\s+(\S+)/.exec(trimmed);
+    if (workdir) {
+      stage.workdir = workdir[1];
+      continue;
+    }
+    const loop = /for service in ([^;]+); do/.exec(line);
+    const loopServices = loop ? loop[1].trim().split(/\s+/) : [];
+    for (const rule of line.matchAll(/-C (\S+) build\b.*?-o \/out\/(\S+) (\.\/cmd\/\S+)/g)) {
+      const [, moduleDir, binary, packageDir] = rule;
+      if (binary.includes("$")) {
+        for (const service of loopServices) {
+          stage.binaries.set(binary.replace("$service", service), {
+            moduleDir: moduleDir.replace("$service", service),
+            package: packageDir
+          });
+        }
+        continue;
+      }
+      stage.binaries.set(binary, { moduleDir, package: packageDir });
+    }
+    for (const rule of line.matchAll(/go build\b.*?-o \/out\/(\S+) (\.\/cmd\/\S+)/g)) {
+      const [, binary, packageDir] = rule;
+      if (stage.binaries.has(binary)) continue;
+      stage.binaries.set(binary, { moduleDir: stage.workdir.replace(/^\/src\//, ""), package: packageDir });
+    }
+  }
+  return stages;
+}
+
+// shippedBinaries reads the runtime stage of the image and returns the binaries
+// it carries, so a member the image does not ship cannot be declared.
+function shippedBinaries(dockerfile: string, stages: DockerfileBuildStage[]): Set<string> {
+  const emitted = new Map<string, Set<string>>();
+  for (const stage of stages) emitted.set(stage.name, new Set(stage.binaries.keys()));
+  const shipped = new Set<string>();
+  for (const line of dockerfile.split("\n")) {
+    const copy = /^COPY\s+--from=(\S+)\s+(\S+)\s+\S+\s*$/.exec(line.trim());
+    if (!copy) continue;
+    const stageName = copy[1];
+    const source = copy[2];
+    const binaries = emitted.get(stageName);
+    if (!binaries) continue;
+    if (source.endsWith("/")) {
+      for (const binary of binaries) shipped.add(binary);
+      continue;
+    }
+    const binary = path.posix.basename(source);
+    if (binaries.has(binary)) shipped.add(binary);
+  }
+  return shipped;
+}
+
+// composeFiles lists the installation's Compose files.
+async function composeFiles(): Promise<string[]> {
+  const names = (await readdir("deploy/portable")).filter((name) => name.endsWith(".yaml"));
+  return names.map((name) => `deploy/portable/${name}`).sort();
+}
+
+// contractEnvNames reads every environment name this contract declares, so a
+// boundary that names an environment name is checked against the contract's own
+// declarations instead of introducing a new one.
+function contractEnvNames(topology: Topology): Set<string> {
+  const names = new Set<string>();
+  for (const values of Object.values(topology.sharedEnv)) {
+    for (const name of Array.isArray(values) ? values : [values]) names.add(name);
+  }
+  for (const process of topology.processes) {
+    for (const name of [...process.env, ...(process.optionalEnv ?? []), ...(process.externalEnv ?? [])]) names.add(name);
+    if (process.addressEnv) names.add(process.addressEnv);
+    if (process.peerTokensEnv) names.add(process.peerTokensEnv);
+    if (process.rpcAddressEnv) names.add(process.rpcAddressEnv);
+    if (process.databaseEnv) names.add(process.databaseEnv);
+    for (const listener of process.additionalListeners ?? []) names.add(listener.addressEnv);
+  }
+  for (const edge of topology.communication?.edges ?? []) {
+    names.add(edge.addressEnv);
+    names.add(edge.tokenEnv);
+    for (const name of edge.activationEnvs ?? []) names.add(name);
+  }
+  return names;
+}
+
+// collectArrays walks a declaration and returns every array in it, so the test
+// can prove the unit block never carries a member list of its own.
+function collectArrays(value: unknown, found: unknown[][] = []): unknown[][] {
+  if (Array.isArray(value)) {
+    found.push(value);
+    for (const item of value) collectArrays(item, found);
+    return found;
+  }
+  if (value && typeof value === "object") {
+    for (const item of Object.values(value)) collectArrays(item, found);
+  }
+  return found;
+}
+
+// evidenceLocation reads a `path:line` reference out of an evidence string.
+const evidenceLocation = /((?:[\w.-]+\/)*[\w.-]+):(\d+)/g;
+
+// assertEvidencePointsAtRealSource proves that every cited location names a
+// file of this repository and a line that file actually has. An evidence
+// string that cites nothing is refused: a claim without a source is not a
+// proof.
+async function assertEvidencePointsAtRealSource(evidence: string[], subject: string): Promise<void> {
+  assert.ok(Array.isArray(evidence) && evidence.length > 0, `${subject} must carry evidence`);
+  let located = 0;
+  for (const entry of evidence) {
+    for (const match of entry.matchAll(evidenceLocation)) {
+      const file = match[1];
+      const line = Number(match[2]);
+      let content: string;
+      try {
+        content = await readFile(file, "utf8");
+      } catch {
+        assert.fail(`${subject} cites ${file}, which is not a file in this repository`);
+      }
+      const lines = content.split("\n");
+      assert.ok(line >= 1 && line <= lines.length, `${subject} cites ${file}:${line}, which is outside that file`);
+      assert.ok(lines[line - 1].trim().length > 0, `${subject} cites ${file}:${line}, which is an empty line`);
+      located += 1;
+    }
+  }
+  assert.ok(located > 0, `${subject} must cite at least one concrete source location`);
+}
+
+// parseCompose reads the installation's entrypoint Compose file, which is the
+// file the distribution contract names as the portable installation's
+// entrypoint.
+async function parseEntrypointCompose(): Promise<Record<string, any>> {
+  const source = await readFile("deploy/portable/compose.cloud.yaml", "utf8");
+  const document = YAML.parseDocument(source, {
+    customTags: [
+      { tag: "!override", collection: "seq" },
+      { tag: "!override", collection: "map" },
+      { tag: "!reset", resolve: () => null }
+    ],
+    logLevel: "silent"
+  });
+  return (document.toJS() as { services: Record<string, any> }).services;
+}
+
+// memberComposeServices names the Compose services that run this unit's
+// members. A member is declared by its process service name; the Gateway
+// Integration process runs in the tenant deployment unit, so the Compose file
+// names that unit's owner name.
+function memberComposeServices(topology: Topology, compose: Record<string, any>): Set<string> {
+  const names = new Set<string>();
+  for (const process of topology.processes) {
+    const name = compose[process.service] ? process.service : process.ownerName;
+    assert.ok(name && compose[name], `${process.service} must run as a Compose service of the installation`);
+    names.add(name);
+  }
+  return names;
+}
+
+// unitEntryGaps reports the boundary entries this contract does not support,
+// so a fixture is refused the same way the real declaration is.
+function unitEntryGaps(topology: Topology, entries: UnitEntry[], kinds: string[], reason: string): string[] {
+  const env = contractEnvNames(topology);
+  const declared = new Set(topology.processes.map((process) => process.service));
+  const gaps: string[] = [];
+  for (const entry of entries) {
+    if (!kinds.includes(entry.kind)) gaps.push(`${entry.id}:unknown-kind`);
+    if (declared.has(entry.id)) gaps.push(`${entry.id}:is-a-declared-process`);
+    if (entry.outsideUnit?.reason !== reason) gaps.push(`${entry.id}:wrong-reason`);
+    if (!env.has(entry.outsideUnit?.boundaryEnv)) gaps.push(`${entry.id}:undeclared-environment-name`);
+  }
+  return gaps;
+}
+
+test("the Cloud backend unit declares its membership through this contract's own process list", async () => {
+  const topology = await loadTopology();
+  const block = topology.deploymentUnit;
+  assert.ok(block, `${topologyPath} must declare the Cloud backend deployment unit`);
+  assert.ok(block.rule.length > 0, "the deployment unit declaration must state the rule it follows");
+  assert.equal(block.unit.memberSource, "processes",
+    "the unit must name this contract's own process list as its membership source");
+  assert.equal(block.unit.imageSource, "image",
+    "the unit must name this contract's own image declaration");
+  assert.ok(block.unit.memberRule.length > 0, "the unit must state how its membership is derived");
+  assert.ok(block.unit.boundaryEffect.length > 0, "the unit must state what its restart and upgrade boundary means");
+
+  // The contract keeps one writer of the member list. The unit block names the
+  // list it references and carries no member list of its own.
+  assert.equal((block.unit as unknown as { members?: unknown }).members, undefined,
+    "the unit must not declare a member list beside the process list it references");
+  const declared = new Set(topology.processes.map((process) => process.service));
+  for (const array of collectArrays(block)) {
+    if (!array.every((value) => typeof value === "string")) continue;
+    const names = array as string[];
+    assert.ok(!names.every((name) => declared.has(name)),
+      `the unit block must not restate the member list: ${names.join(",")}`);
+  }
+
+  // Every declared process is a member of the unit. The membership is the
+  // contract's process list, so there is nothing else to enumerate.
+  assert.ok(topology.processes.length > 0, "the contract must declare the processes the unit contains");
+  assert.deepEqual(block.externalDependencies.map((entry) => entry.id).filter((id) => declared.has(id)), [],
+    "no declared process may also be an external dependency of the unit");
+  assert.deepEqual(block.exclusions.map((entry) => entry.id).filter((id) => declared.has(id)), [],
+    "no declared process may also be excluded from the unit");
+});
+
+test("every member of the Cloud backend unit has a start path the product image builds", async () => {
+  const topology = await loadTopology();
+  const dockerfile = await readFile(dockerfilePath, "utf8");
+  const stages = parseDockerfileStages(dockerfile);
+  const shipped = shippedBinaries(dockerfile, stages);
+  for (const process of topology.processes) {
+    const binary = path.posix.basename(process.binary);
+    const rule = stages.flatMap((stage) => [...stage.binaries.entries()]
+      .map(([name, value]) => ({ name, value })))
+      .find((entry) => entry.name === binary);
+    assert.ok(rule, `${process.service} declares ${process.binary}, which the product image does not build`);
+    const startPath = path.posix.join(rule.value.moduleDir, rule.value.package, "main.go");
+    const directory = ownerProcessDirectory(process.service);
+    assert.ok(startPath.startsWith(`${directory}/`),
+      `${process.service} must start from its own source tree, but the image builds it from ${startPath}`);
+    let source: string;
+    try {
+      source = await readFile(startPath, "utf8");
+    } catch {
+      assert.fail(`${process.service} declares no real start path: ${startPath} does not exist`);
+    }
+    assert.match(source, /^package main\b/m, `${startPath} must be the main package of ${process.service}`);
+    assert.ok(shipped.has(binary), `the product image must ship ${binary}`);
+  }
+});
+
+test("every external dependency of the Cloud backend unit is reached across a boundary this contract declares", async () => {
+  const topology = await loadTopology();
+  const block = topology.deploymentUnit;
+  assert.ok(block, `${topologyPath} must declare the Cloud backend deployment unit`);
+  assert.ok(block.externalDependencies.length > 0,
+    "the unit must declare the dependencies it reaches from outside itself");
+  assert.deepEqual(unitEntryGaps(topology, block.externalDependencies, dependencyKinds, "notAProcessOfThisUnit"), [],
+    "every declared dependency must be reached across a boundary this contract declares");
+  for (const dependency of block.externalDependencies) {
+    assert.ok(dependency.outsideUnit.reachedThrough.length > 0,
+      `${dependency.id} must state how a consumer tells it is reached from outside the unit`);
+    await assertEvidencePointsAtRealSource(dependency.evidence, dependency.id);
+  }
+});
+
+test("every declared dependency of the Cloud backend unit is proved against the source that reaches it", async () => {
+  const topology = await loadTopology();
+  const block = topology.deploymentUnit;
+  assert.ok(block, `${topologyPath} must declare the Cloud backend deployment unit`);
+  const byService = new Map(topology.processes.map((process) => [process.service, process]));
+  const compose = await parseEntrypointCompose();
+  const members = memberComposeServices(topology, compose);
+  for (const dependency of block.externalDependencies) {
+    const boundaryEnv = dependency.outsideUnit.boundaryEnv;
+    if (dependency.kind === "databaseService") {
+      assert.equal(boundaryEnv, topology.sharedEnv.database,
+        "the database dependency must be reached through the contract's own shared database name");
+      const config = await readFile("services/internal/ownerservice/config.go", "utf8");
+      assert.ok(config.includes(`getenv("${boundaryEnv}")`),
+        "an owner must read the declared database name");
+      const database = await readFile("services/internal/ownerservice/database.go", "utf8");
+      assert.match(database, /sql\.Open\("postgres"/,
+        "an owner must open a PostgreSQL connection from that name");
+      // The database is the installation's own service. It is not a process of
+      // the unit, and the installation deploys it as its own container.
+      const databaseServices = Object.entries(compose)
+        .filter(([, service]) => String(service.image ?? "").startsWith("postgres:"))
+        .map(([name]) => name);
+      assert.equal(databaseServices.length, 1, "the installation must deploy exactly one PostgreSQL service");
+      assert.ok(!members.has(databaseServices[0]),
+        "the PostgreSQL service must not be a process of the Cloud backend unit");
+    } else if (dependency.kind === "objectStore") {
+      const capability = byService.get("capability");
+      assert.ok(capability, "the Capability owner must be a declared process");
+      assert.ok(capability.env.includes(boundaryEnv),
+        "the object store boundary must be an environment name the Capability owner declares");
+      const source = await readFile("services/capability/cmd/server/main.go", "utf8");
+      assert.ok(source.includes(`os.Getenv("${boundaryEnv}")`),
+        "the Capability owner must read the declared storage kind");
+      const cosBranch = source.slice(source.indexOf('case "cos":'), source.indexOf("default:"));
+      assert.ok(cosBranch.includes("NewCOSObjects"), "the cos kind must build the instance bucket store");
+      assert.ok(!cosBranch.includes("OPL_CAPABILITY_OBJECT_ROOT"),
+        "the cos kind must read no local object root, so it deploys no local storage");
+      const cosStorage = await readFile("services/capability/catalog/cos_storage.go", "utf8");
+      assert.match(cosStorage, /cos\.NewClient\(/,
+        "the cos store must be a client of the instance's bucket, not a container of the unit");
+      // The local kind keeps the bytes on a volume of the Capability container,
+      // which is the unit's own container.
+      const carriers = Object.entries(compose)
+        .filter(([, service]) => JSON.stringify(service.volumes ?? []).includes("/objects"))
+        .map(([name]) => name);
+      assert.deepEqual(carriers, ["capability"],
+        "only the Capability owner may carry the object store, so the installation deploys no storage container");
+      // Every service the installation deploys besides the unit's members is
+      // either its PostgreSQL service or its same-origin entry. No other
+      // container exists, so no storage container can be deployed.
+      for (const [name, service] of Object.entries(compose)) {
+        if (members.has(name)) continue;
+        const isDatabase = String(service.image ?? "").startsWith("postgres:");
+        const isSameOriginEntry = Array.isArray(service.ports) && service.ports.length > 0;
+        assert.ok(isDatabase || isSameOriginEntry,
+          `the installation deploys ${name}, which is neither a member of the Cloud backend unit, nor its PostgreSQL service, nor its same-origin entry`);
+      }
+    } else if (dependency.kind === "resourceApi") {
+      const fabric = byService.get("fabric");
+      assert.ok(fabric, "the Fabric owner must be a declared process");
+      assert.ok(fabric.env.includes(boundaryEnv),
+        "the resource API boundary must be an environment name the Fabric owner declares");
+      const main = await readFile("services/fabric/cmd/fabric/main.go", "utf8");
+      assert.ok(main.includes(`getenv("${boundaryEnv}")`),
+        "the Fabric owner must read the declared provider selection");
+      const port = await readFile("services/fabric/internal/fabric/provider_port.go", "utf8");
+      assert.match(port, /type Provider interface \{/,
+        "the Fabric module must declare the provider port its adapters implement");
+      const tencent = await readFile("services/fabric/internal/fabric/tencent_provider.go", "utf8");
+      assert.match(tencent, /exec\.CommandContext\(ctx, path\)/,
+        "the provider must reach the resource API through an external executable");
+      const provisioner = await readFile("services/fabric/cmd/opl-tencent-provisioner/main.go", "utf8");
+      assert.match(provisioner, /tencentcloudapi\.com/,
+        "the provisioner must reach the Tencent Cloud resource API");
+    }
+  }
+});
+
+test("every excluded workload of the Cloud backend unit is genuinely outside it", async () => {
+  const topology = await loadTopology();
+  const block = topology.deploymentUnit;
+  assert.ok(block, `${topologyPath} must declare the Cloud backend deployment unit`);
+  assert.ok(block.exclusions.length > 0, "the unit must declare the workloads it leaves outside itself");
+  assert.deepEqual(unitEntryGaps(topology, block.exclusions, exclusionKinds, "notStartedInsideThisUnit"), [],
+    "every declared exclusion must be proved outside the unit");
+  for (const exclusion of block.exclusions) {
+    assert.ok(exclusion.distinction && exclusion.distinction.length > 0,
+      `${exclusion.id} must state what the unit contains that is distinct from it`);
+    await assertEvidencePointsAtRealSource(exclusion.evidence, exclusion.id);
+  }
+});
+
+test("the excluded privileged build executor is an external builder, not a process of the unit", async () => {
+  const topology = await loadTopology();
+  const block = topology.deploymentUnit;
+  assert.ok(block, `${topologyPath} must declare the Cloud backend deployment unit`);
+  const byService = new Map(topology.processes.map((process) => [process.service, process]));
+  for (const exclusion of block.exclusions.filter((entry) => entry.kind === "privilegedExecutor")) {
+    // The build owner service is a member; the builder it invokes is not.
+    const member = byService.get(exclusion.relatedMember as string);
+    assert.ok(member, `${exclusion.id} must be distinguished from a declared process of the unit`);
+    assert.equal(member.service, "build", "the privileged build executor is distinguished from the Build owner service");
+    const runner = await readFile("services/build/internal/build/runner.go", "utf8");
+    assert.match(runner, /exec\.CommandContext\(bounded, "docker", args\.\.\.\)/,
+      "the Build owner must reach the builder through an external docker client");
+    assert.match(runner, /"--builder", r\.Builder/,
+      "the Build owner must name the installation's builder, not start one");
+    const dockerfile = await readFile(dockerfilePath, "utf8");
+    assert.ok(dockerfile.includes("docker-buildx"), "the product image ships the build client");
+    assert.ok(!/moby\/buildkit|buildkitd/.test(dockerfile),
+      "the product image must not ship a BuildKit daemon: the builder is outside the unit");
+    for (const file of await composeFiles()) {
+      const source = await readFile(file, "utf8");
+      assert.ok(!/moby\/buildkit|buildkitd/.test(source), `${file} must not deploy a BuildKit daemon`);
+    }
+  }
+});
+
+test("the excluded customer Workspace application is created by the cluster, not started inside the unit", async () => {
+  const topology = await loadTopology();
+  const block = topology.deploymentUnit;
+  assert.ok(block, `${topologyPath} must declare the Cloud backend deployment unit`);
+  const byService = new Map(topology.processes.map((process) => [process.service, process]));
+  for (const exclusion of block.exclusions.filter((entry) => entry.kind === "customerWorkload")) {
+    // The Serve owner service is a member; the customer's container is not.
+    const member = byService.get(exclusion.relatedMember as string);
+    assert.ok(member, `${exclusion.id} must be distinguished from a declared process of the unit`);
+    assert.equal(member.service, "serve", "the customer workload is distinguished from the Serve owner service");
+    const execution = await readFile("services/serve/internal/delivery/execution.go", "utf8");
+    assert.ok(execution.includes("tkeapply.KubectlRunner("),
+      "the Serve owner must reach the cluster through the kubectl execution boundary");
+    const kubectl = await readFile("services/internal/tkeapply/kubectl.go", "utf8");
+    assert.match(kubectl, /exec\.CommandContext\(ctx, "kubectl", base\.\.\.\)/,
+      "the cluster boundary must run an external kubectl, not start the workload in the unit");
+    const runtime = await readFile("services/internal/tkeapply/runtime.go", "utf8");
+    assert.match(runtime, /\{"apply", "-f", "-"\}/,
+      "the customer workload must be applied through kubectl");
+    assert.match(runtime, /"kind": "Deployment"/,
+      "the customer workload must be applied as a Deployment manifest the cluster creates");
+    // The customer application image is an installation fact: the product image
+    // builds no customer workload image.
+    const dockerfile = await readFile(dockerfilePath, "utf8");
+    assert.ok(!dockerfile.includes("OPL_WORKSPACE_IMAGE"),
+      "the product image must not carry a customer application image");
+    assert.ok(contractEnvNames(topology).has("OPL_WORKSPACE_IMAGE"),
+      "the customer application image must be an installation fact this contract declares");
+  }
+});
+
+test("a boundary entry this contract does not support is refused", () => {
+  const topology = {
+    sharedEnv: { database: "DATABASE_URL" },
+    processes: [{ service: "capability", kind: "ownerservice", binary: "/usr/local/bin/opl-capability", addressEnv: "OPL_CAPABILITY_ADDR", defaultAddress: ":8181", env: ["OPL_CAPABILITY_STORAGE_KIND"] }]
+  } as unknown as Topology;
+  const entry = (over: Partial<UnitEntry>): UnitEntry => ({
+    id: "fixture", kind: "objectStore",
+    outsideUnit: { reason: "notAProcessOfThisUnit", reachedThrough: "the fixture boundary", boundaryEnv: "OPL_CAPABILITY_STORAGE_KIND" },
+    evidence: ["services/capability/cmd/server/main.go:158 reads the storage kind"],
+    ...over
+  });
+  const base = entry({});
+  assert.deepEqual(unitEntryGaps(topology, [base], dependencyKinds, "notAProcessOfThisUnit"), [],
+    "a supported dependency must pass");
+  assert.deepEqual(unitEntryGaps(topology, [entry({ kind: "unknownKind" })], dependencyKinds, "notAProcessOfThisUnit"),
+    ["fixture:unknown-kind"], "a dependency kind without a proof obligation must be refused");
+  assert.deepEqual(unitEntryGaps(topology, [entry({ id: "capability" })], dependencyKinds, "notAProcessOfThisUnit"),
+    ["capability:is-a-declared-process"], "a declared process must not also be an external dependency");
+  assert.deepEqual(unitEntryGaps(topology, [entry({ outsideUnit: { reason: "notStartedInsideThisUnit", reachedThrough: "x", boundaryEnv: "OPL_CAPABILITY_STORAGE_KIND" } })],
+    dependencyKinds, "notAProcessOfThisUnit"), ["fixture:wrong-reason"],
+    "a dependency must be reached from outside the unit, not merely left outside it");
+  assert.deepEqual(unitEntryGaps(topology, [entry({ outsideUnit: { reason: "notAProcessOfThisUnit", reachedThrough: "x", boundaryEnv: "OPL_UNKNOWN_ENV" } })],
+    dependencyKinds, "notAProcessOfThisUnit"), ["fixture:undeclared-environment-name"],
+    "a boundary must name an environment name this contract already declares");
+  assert.deepEqual(unitEntryGaps(topology, [entry({ outsideUnit: { reason: "notStartedInsideThisUnit", reachedThrough: "x", boundaryEnv: "OPL_CAPABILITY_STORAGE_KIND" } })],
+    exclusionKinds, "notStartedInsideThisUnit"), ["fixture:unknown-kind"],
+    "an exclusion must declare an exclusion kind, not a dependency kind");
 });

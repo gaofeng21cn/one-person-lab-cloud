@@ -45,10 +45,11 @@ test("every product binary in the image carries the build-time product revision"
   const dockerfile = await readFile("Dockerfile", "utf8");
   const buildCommands = [...dockerfile.matchAll(/go (?:-C [^ ]+ )?build[^\n]*/g)].map((match) => match[0]);
   const productBuilds = buildCommands.filter((command) => command.includes("-o /out/opl-"));
-  // Three Fabric binaries, Control Plane, Ledger, the owner loop and the
-  // Console BFF. The owner loop emits one binary per owner, so the thirteen
-  // product binaries plus the installer probe come from eight build commands.
-  assert.equal(productBuilds.length, 8, `expected eight product build commands, saw ${productBuilds.length}`);
+  // Three Fabric binaries, Control Plane, Ledger, the owner loop, the Console
+  // BFF and the composition entrypoint. The owner loop emits one binary per
+  // owner, so the fourteen product binaries plus the installer probe come from
+  // nine build commands.
+  assert.equal(productBuilds.length, 9, `expected nine product build commands, saw ${productBuilds.length}`);
 
   for (const command of productBuilds) {
     assert.ok(
@@ -56,6 +57,15 @@ test("every product binary in the image carries the build-time product revision"
       `a product binary is built without the product revision stamp: ${command}`
     );
   }
+
+  // The composition entrypoint is a product binary: it is built with the stamp
+  // and the runtime stage ships the whole publisher output.
+  const compositionBuild = productBuilds.find((command) => command.includes("-o /out/opl-cloud-composition "));
+  assert.ok(compositionBuild, "the composition entrypoint must be built as a product binary");
+  assert.ok(
+    dockerfile.includes("COPY --from=publisher-build /out/ /usr/local/bin/"),
+    "the runtime stage must ship the composition entrypoint"
+  );
 
   // The publisher lane builds one binary per iteration, so the stamp has to be
   // on that single command rather than on a per-service list.
