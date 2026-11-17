@@ -248,6 +248,14 @@ dependency updates are verified with that contract change.
 
 ## Request Path
 
+Retained operator commands treat idempotency keys and authorization IDs as opaque
+identifiers. Their length and character checks protect storage and identity
+matching; words such as `token` or `secret` in an operation name do not make it a
+credential. Session/operator authorization, CSRF, account and original-operation
+binding, request fingerprints, replay checks, and secret-safe projections remain
+the controls for the corresponding risks. Callers supply generated operation
+identifiers rather than credentials.
+
 ```text
 Browser Console
   -> cloud authentication, Workspace, Publisher and delivery:

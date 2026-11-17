@@ -51,6 +51,8 @@ transcripts belong in Git history or `docs/history/`.
 
 ## Ownership And Implementation
 
+- Apply Framework's [engineering boundary policy](https://github.com/gaofeng21cn/one-person-lab/blob/main/docs/policies/engineering-boundary-policy.md): justify retained and new restrictions with a reachable failure and the smallest affected operation. Old code, contracts, tests, or keywords alone do not prove necessity. Keep identity, authorization, concurrency, money, and irreversible-operation controls at their actual boundary.
+
 - Trace the real input-to-owner path before fixing a bug. Repair the deepest
   failing owner with the smallest complete change and verify the real consumer.
 - Keep one writer per fact. Move a live capability and its callers together;
