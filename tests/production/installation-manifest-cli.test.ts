@@ -908,8 +908,13 @@ test("installation CLI resolves Product listener defaults only when the target e
   container(list, "build").env.find(entry => entry.name === "OPL_BUILD_ADDR").value = ":8182";
   container(list, "fabric").env = container(list, "fabric").env.filter(entry => entry.name !== "OPL_FABRIC_ADDR");
   const fabric = await invoke(list);
-  assert.equal(fabric.status, 0, fabric.stdout + fabric.stderr);
+  assert.equal(fabric.status, 0, "the Product Fabric default :8188 is the port this worked example binds");
   assert.equal(fabric.report.communication.edges.length, 47);
+  assert.ok(fabric.report.communication.edges.filter(edge => edge.target === "fabric").every(edge => edge.port === 8188));
+  container(list, "fabric").ports[0].containerPort = 8177;
+  const replaced = await invoke(list);
+  assert.equal(replaced.status, 1, "a worked example port that differs from the Product default is refused");
+  assert.ok(replaced.report.errors.some(error => error.code === "rpc_target_listener_invalid" && error.target === "fabric"));
 });
 
 test("installation CLI rejects malformed nested Kubernetes facts without uncaught errors or input disclosure", async () => {
@@ -1044,7 +1049,7 @@ test("installation CLI follows Ledger raw activation and Fabric trimmed activati
 
 test("installation CLI refuses shared Pod wildcard listener collisions for numeric and named targetPorts", async t => {
   for (const targetPort of ["numeric", "named"] as const) {
-    for (const [left, right] of [[":8189", ":8189"], ["0.0.0.0:8189", ":8189"], ["[::]:8189", "0.0.0.0:8189"]] as const) {
+    for (const [left, right] of [[":8186", ":8186"], ["0.0.0.0:8186", ":8186"], ["[::]:8186", "0.0.0.0:8186"]] as const) {
       await t.test(`${targetPort} ${JSON.stringify([left, right])}`, async () => {
         const list = workedInstallation();
         const catalog = deployment(list, "resource-catalog"), ledger = deployment(list, "ledger");
@@ -1052,14 +1057,14 @@ test("installation CLI refuses shared Pod wildcard listener collisions for numer
         catalogContainer.env.find(entry => entry.name === "OPL_RESOURCE_CATALOG_ADDR").value = left;
         ledgerContainer.env.find(entry => entry.name === "OPL_LEDGER_ADDR").value = right;
         catalogContainer.name = "catalog"; ledgerContainer.name = "ledger";
-        catalogContainer.ports[0] = { name: "catalog-rpc", containerPort: 8189 };
-        ledgerContainer.ports[0] = { name: "ledger-rpc", containerPort: 8189 };
+        catalogContainer.ports[0] = { name: "catalog-rpc", containerPort: 8186 };
+        ledgerContainer.ports[0] = { name: "ledger-rpc", containerPort: 8186 };
         catalog.spec.template.spec.containers.push(ledgerContainer);
         list.items = list.items.filter(item => item !== ledger);
         for (const service of ["resource-catalog", "ledger"]) {
           const svc = list.items.find(item => item.kind === "Service" && item.metadata.name === `${service}-rpc`);
           svc.spec.selector = structuredClone(catalog.spec.template.metadata.labels);
-          svc.spec.ports[0].targetPort = targetPort === "numeric" ? 8189 : service === "ledger" ? "ledger-rpc" : "catalog-rpc";
+          svc.spec.ports[0].targetPort = targetPort === "numeric" ? 8186 : service === "ledger" ? "ledger-rpc" : "catalog-rpc";
         }
         for (const item of list.items.filter(item => item.kind === "NetworkPolicy")) item.spec = { podSelector: {}, policyTypes: ["Ingress"], ingress: [{}] };
         const result = await invoke(list);
@@ -1069,6 +1074,28 @@ test("installation CLI refuses shared Pod wildcard listener collisions for numer
       });
     }
   }
+  await t.test("two owners with empty listener environments resolve to their own distinct declared defaults", async () => {
+    const list = workedInstallation();
+    const catalog = deployment(list, "resource-catalog"), ledger = deployment(list, "ledger");
+    const catalogContainer = container(list, "resource-catalog"), ledgerContainer = container(list, "ledger");
+    catalogContainer.env.find(entry => entry.name === "OPL_RESOURCE_CATALOG_ADDR").value = "";
+    ledgerContainer.env.find(entry => entry.name === "OPL_LEDGER_ADDR").value = " ";
+    catalogContainer.name = "catalog"; ledgerContainer.name = "ledger";
+    catalogContainer.ports[0] = { name: "catalog-rpc", containerPort: 8186 };
+    ledgerContainer.ports[0] = { name: "ledger-rpc", containerPort: 8189 };
+    catalog.spec.template.spec.containers.push(ledgerContainer);
+    list.items = list.items.filter(item => item !== ledger);
+    for (const [service, port] of [["resource-catalog", 8186], ["ledger", 8189]] as const) {
+      const svc = list.items.find(item => item.kind === "Service" && item.metadata.name === `${service}-rpc`);
+      svc.spec.selector = structuredClone(catalog.spec.template.metadata.labels);
+      svc.spec.ports[0].targetPort = port;
+    }
+    for (const item of list.items.filter(item => item.kind === "NetworkPolicy")) item.spec = { podSelector: {}, policyTypes: ["Ingress"], ingress: [{}] };
+    const result = await invoke(list);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.deepEqual(result.report.errors, []);
+    assert.equal(result.report.communication.edges.length, 47);
+  });
   await t.test("distinct listeners in a shared Pod remain admissible", async () => {
     const list = workedInstallation();
     const serve = deployment(list, "serve"), workspace = deployment(list, "workspace");
@@ -1089,13 +1116,20 @@ test("installation CLI refuses shared Pod wildcard listener collisions for numer
   });
 });
 
-test("installation CLI resolves the Capability object listener from the Product default", async () => {
+test("installation CLI resolves the Capability object listener from the topology's declared address", async () => {
   const list = workedInstallation();
   const process = container(list, "capability");
   process.env = process.env.filter(entry => entry.name !== "OPL_CAPABILITY_OBJECT_LISTEN_ADDR");
   const result = await invoke(list);
   assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.deepEqual(result.report.errors, []);
   assert.equal(result.report.communication.edges.length, 47);
+  const malformed = workedInstallation();
+  container(malformed, "capability").env.find(entry => entry.name === "OPL_CAPABILITY_OBJECT_LISTEN_ADDR").value = "garbage";
+  const refused = await invoke(malformed);
+  assert.equal(refused.status, 1, refused.stdout);
+  assert.ok(refused.report.errors.some(error => error.code === "installation_listener_unproven"));
+  assert.deepEqual(refused.report.communication.edges, []);
 });
 
 test("installation CLI refuses malformed explicit additional listeners", async t => {
@@ -1119,25 +1153,25 @@ test("installation CLI proves Serve access entry listener separately from its ow
     assert.ok(result.report.errors.some(error => error.code === "installation_listener_conflict"), result.stdout);
     assert.deepEqual(result.report.communication.edges, []);
   });
-  for (const accessAddress of [undefined, "\u0085", ":8188"]) await t.test(`Serve access with a shared Pod: ${JSON.stringify(accessAddress)}`, async () => {
+  for (const accessAddress of [undefined, "\u0085", ":8189"]) await t.test(`Serve access with a shared Pod: ${JSON.stringify(accessAddress)}`, async () => {
     const list = workedInstallation();
     const serve = deployment(list, "serve"), workspace = deployment(list, "workspace");
     const serveProcess = container(list, "serve"), workspaceProcess = container(list, "workspace");
     serveProcess.name = "serve"; workspaceProcess.name = "workspace";
     serveProcess.ports[0].name = "serve-rpc";
-    workspaceProcess.ports[0] = { name: "workspace-rpc", containerPort: 8188 };
-    workspaceProcess.env.find(entry => entry.name === "OPL_WORKSPACE_ADDR").value = ":8188";
+    workspaceProcess.ports[0] = { name: "workspace-rpc", containerPort: 8192 };
+    workspaceProcess.env.find(entry => entry.name === "OPL_WORKSPACE_ADDR").value = ":8192";
     if (accessAddress !== undefined) serveProcess.env.push({ name: "OPL_SERVE_ACCESS_ADDR", value: accessAddress });
     serve.spec.template.spec.containers.push(workspaceProcess);
     list.items = list.items.filter(item => item !== workspace);
-    for (const [owner, port] of [["serve", 8185], ["workspace", 8188]] as const) {
+    for (const [owner, port] of [["serve", 8185], ["workspace", 8192]] as const) {
       const svc = list.items.find(item => item.kind === "Service" && item.metadata.name === `${owner}-rpc`);
       svc.spec.selector = structuredClone(serve.spec.template.metadata.labels);
       svc.spec.ports[0].targetPort = port;
     }
     for (const item of list.items.filter(item => item.kind === "NetworkPolicy")) item.spec = { podSelector: {}, policyTypes: ["Ingress"], ingress: [{}] };
     const result = await invoke(list);
-    const collides = accessAddress === ":8188";
+    const collides = accessAddress !== ":8189";
     assert.equal(result.status, collides ? 1 : 0, result.stdout + result.stderr);
     if (collides) {
       assert.ok(result.report.errors.some(error => error.code === "installation_listener_conflict"), result.stdout);
