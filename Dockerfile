@@ -81,7 +81,8 @@ RUN for service in capability build runtime-control workspace resource-catalog s
       CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/$service build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-$service ./cmd/server || exit 1; \
     done \
     && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C apps/console-bff build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-console-bff ./cmd/server \
-    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C packages/contracts/go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-owner-probe ./cmd/opl-owner-probe
+    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C packages/contracts/go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-owner-probe ./cmd/opl-owner-probe \
+    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/cloud-composition build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-cloud-composition ./cmd/opl-cloud-composition
 
 FROM docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb AS docker-cli
 
@@ -143,4 +144,9 @@ RUN mkdir -p /app/.runtime && chown -R node:node /app/.runtime
 
 USER node
 EXPOSE 8787
+# The published default command stays the Control Plane process. The image also
+# carries the composition entrypoint, which starts the declared owner
+# processes inside one container, and an installation opts into it explicitly.
+# The owner topology contract the entrypoint reads is a Candidate-only asset
+# the installation carries, so the image holds no copy of it.
 CMD ["/usr/local/bin/opl-control-plane"]
