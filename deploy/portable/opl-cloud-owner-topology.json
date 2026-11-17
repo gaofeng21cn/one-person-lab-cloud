@@ -38,7 +38,7 @@
   "peerTokensShape": "JSON object {\"<peer owner identity>\":\"<at least 32 characters>\"}"
  },
  "distinctAddressesRequired": true,
- "distinctAddressesEvidence": "services/ledger/cmd/ledger/main.go and services/resource-catalog/cmd/server/main.go both declare \":8186\". They conflict only when sharing one Pod/network namespace. Separate Deployments may use the same declared default listen port. ownerservice.LoadConfig uses defaultAddress (Fabric defaultRPCAddress) when the effective listen env is absent or whitespace-empty; an explicit nonempty listen env overrides that default and must match the Service targetPort.",
+ "distinctAddressesEvidence": "The declared listen address of an owner is the address the published portable installation binds for it, and that installation binds a distinct address for every owner, so no two owners share a port in one Pod/network namespace. The installation admission resolves an absent listen environment to the Product-declared defaultAddress (Fabric defaultRPCAddress); an explicit nonempty listen env overrides that default and must match the Service targetPort. The owners' own sources keep the fallback they bind when no listen environment is declared: the Ledger and the Resource Catalog sources both fall back to \":8186\", and the Fabric and the Gateway Integration sources both fall back to \":8187\". Those shared fallbacks conflict only when sharing one Pod/network namespace; Separate Deployments may use the same declared default listen port. The Serve access entry falls back to \":8188\".",
  "processes": [
   {
    "service": "capability",
@@ -85,6 +85,7 @@
    "additionalListeners": [
     {
      "addressEnv": "OPL_CAPABILITY_OBJECT_LISTEN_ADDR",
+     "defaultAddress": ":8191",
      "valueSemantics": "raw"
     }
    ]
@@ -245,7 +246,7 @@
    "additionalListeners": [
     {
      "addressEnv": "OPL_SERVE_ACCESS_ADDR",
-     "defaultAddress": ":8188",
+     "defaultAddress": ":8192",
      "valueSemantics": "trimmed"
     }
    ]
@@ -282,7 +283,7 @@
    "binary": "/usr/local/bin/opl-ledger",
    "addressEnv": "OPL_LEDGER_ADDR",
    "peerTokensEnv": "OPL_LEDGER_PEER_TOKENS",
-   "defaultAddress": ":8186",
+   "defaultAddress": ":8189",
    "databaseEnv": "DATABASE_URL",
    "env": [
     "LEDGER_ADDR",
@@ -413,7 +414,7 @@
    "ownerConstant": "OwnerFabric",
    "peerTokensEnv": "OPL_FABRIC_PEER_TOKENS",
    "rpcAddressEnv": "OPL_FABRIC_ADDR",
-   "defaultRPCAddress": ":8187",
+   "defaultRPCAddress": ":8188",
    "rpcDatabaseEnv": "OPL_FABRIC_DATABASE_URL",
    "transportPrincipal": "fabric",
    "rpcEnabledByEnv": "OPL_FABRIC_DATABASE_URL",
