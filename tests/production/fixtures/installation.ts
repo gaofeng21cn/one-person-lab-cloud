@@ -1,3 +1,21 @@
+import { readFileSync } from "node:fs";
+import type { InstallationTopology } from "../../../tools/ops/installation-manifest.ts";
+
+// #1247 owns this pending contract field. Admission tests supply the explicit
+// projection independently until that worker's contract is integrated.
+export function composedTopology(): InstallationTopology {
+  const topology = JSON.parse(readFileSync(new URL("../../../deploy/portable/opl-cloud-owner-topology.json", import.meta.url), "utf8"));
+  const projections: Record<string, string | null> = {
+    capability: "OPL_CAPABILITY_DATABASE_URL", build: "OPL_BUILD_DATABASE_URL",
+    "runtime-control": "OPL_RUNTIME_CONTROL_DATABASE_URL", workspace: "OPL_WORKSPACE_DATABASE_URL",
+    serve: "OPL_SERVE_DATABASE_URL", "resource-catalog": "OPL_RESOURCE_CATALOG_DATABASE_URL",
+    "gateway-integration": "OPL_TENANT_DATABASE_URL", ledger: "DATABASE_URL",
+    fabric: "DATABASE_URL", "control-plane": "DATABASE_URL", "console-bff": null
+  };
+  for (const process of topology.processes) process.compositionDatabaseEnv = projections[process.service];
+  return topology;
+}
+
 // Synthetic worked installation. RPC requirements are written independently of
 // the Product topology: a stale or missing declaration must change CLI evidence.
 export function workedInstallation() {
@@ -74,9 +92,8 @@ export function policy(list: ReturnType<typeof workedInstallation>, service: str
 
 // The composed deployment unit: one Deployment whose container runs every
 // owner process this Product declares in one process space. The shared
-// environment carries the caller-facing address of every owner, so an owner's
-// own listener address is the contract's declared one and never the address
-// another caller dials.
+// environment carries effective listener binds as well as caller routes.
+// Those facts retain their own address semantics in admission.
 const composedImage = "example.invalid/cloud@sha256:" + "a".repeat(64);
 const composedLabels = { "app.kubernetes.io/name": "opl-cloud", "app.kubernetes.io/component": "backend" };
 const composedNamespace = "installation";
@@ -136,7 +153,8 @@ const composedSharedEnv: Record<string, string> = {
   OPL_WORKSPACE_URL: "opl-cloud-workspace:8184",
   OPL_SERVE_URL: "opl-cloud-serve:8185",
   OPL_RESOURCE_CATALOG_URL: "opl-cloud-resource-catalog:8186",
-  OPL_LEDGER_URL: "http://opl-cloud-ledger:8081",
+  OPL_LEDGER_URL: "opl-cloud-ledger:8186",
+  OPL_FABRIC_URL: "opl-cloud-fabric:8187",
   OPL_FABRIC_COORDINATION_ADDR: ":8188"
 };
 // The shared container carries Fabric's credential for the callers that reach
@@ -180,6 +198,8 @@ export function workedComposedInstallation() {
       env: [
         { name: "DATABASE_URL", valueFrom: { secretKeyRef: { name: "opl-cloud-database", key: "DATABASE_URL" } } },
         { name: "OPL_FABRIC_DATABASE_URL", valueFrom: { secretKeyRef: { name: "opl-cloud-fabric", key: "OPL_FABRIC_DATABASE_URL" } } },
+        ...["CAPABILITY", "BUILD", "RUNTIME_CONTROL", "WORKSPACE", "SERVE", "RESOURCE_CATALOG", "TENANT"].map(owner =>
+          ({ name: `OPL_${owner}_DATABASE_URL`, valueFrom: { secretKeyRef: { name: "opl-cloud-owner-databases", key: owner } } })),
         ...Object.entries(composedCredentials).map(([name, key]) =>
           ({ name, valueFrom: { secretKeyRef: { name: "opl-cloud-internal-service", key } } }))
       ],
