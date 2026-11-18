@@ -48,13 +48,16 @@ function network(patch:Record<string,(init:RequestInit)=>Response|Promise<Respon
   };
   return {fetch,calls,json,session};
 }
-test("customer producer executes challenge login and public reads, cleans up and binds exact artifacts",async()=>{
+test("customer producer executes challenge login and public reads, cleans up and binds exact artifacts",async(t)=>{
+  const timestamp = "2026-11-18T13:02:02.101Z";
+  t.mock.timers.enable({apis:["Date"], now:Date.parse(timestamp)});
   const input=await inputs(), n=network();const receipt=await runCloudBusinessReadback(input,{environment:input.environment,fetch:n.fetch});
   assert.equal(receipt.status,"customer_reads_verified"); assert.ok(Object.values(receipt.checks).every(v=>v===true));
   assert.equal(receipt.checks.usage,true); assert.equal(receipt.checks.feeReceipts,true);
   assert.deepEqual(n.calls.map(v=>v.path),["/api/v2/auth/context","/api/v2/auth/login","/api/v2/auth/session","/api/v2/auth/external-bindings","/api/v2/wallet","/api/v2/usage/summary?period=month","/api/v2/legacy-billing/receipts?limit=20","/api/v2/announcements?page=1&pageSize=20","/api/v2/auth/logout","/api/v2/auth/session"]);
   const receiptText=JSON.stringify(receipt)+"\n";
-  assert.doesNotMatch(receiptText,/sensitive|Sensitive|password|secret-|customer-repository|101|example\.com/);
+  assert.equal(receipt.completedAt,timestamp);
+  assert.doesNotMatch(receiptText,/sensitive|Sensitive|password|secret-|customer-repository|example\.com|sub2apiUserId|"101"/);
   assert.deepEqual(validateCloudBusinessReadbackBinding({...input,receiptText}),{receiptDigest:`sha256:${createHash("sha256").update(receiptText).digest("hex")}`,installationReceiptDigest:receipt.installation.receiptDigest,authoritySha:sha,runId:"33",runAttempt:"2",status:"customer_reads_verified"});
 });
 test("read failures and mismatched actors block, with original session cleanup",async()=>{
