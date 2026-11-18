@@ -92,6 +92,7 @@ type ContractProcess = {
   additionalListeners?: Array<{ addressEnv: string; defaultAddress?: string }>;
   transportPrincipal: string;
   databaseEnv?: string;
+  compositionDatabaseEnv?: string;
   rpcDatabaseEnv?: string;
   peerTokensEnv?: string;
   env?: string[];
@@ -149,10 +150,12 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
   const ownerAlias = (process: ContractProcess) =>
     `OPL_${process.transportPrincipal.toUpperCase().replace(/-/g, "_")}`;
 
-  // The listener the contract declares for one of an owner's own address
-  // environments.
-  const declaredListener = (process: ContractProcess, name?: string): string => {
+  // This fixture injects explicit real binds; probes use the effective input
+  // and the contract default only when the input is absent.
+  const effectiveListener = (process: ContractProcess, name?: string): string => {
     if (!name) return "";
+    if (shared[name] !== undefined && shared[name] !== "") return shared[name];
+    if (name === process.addressEnv && process.addressPortEnv && shared[process.addressPortEnv]) return `:${shared[process.addressPortEnv]}`;
     if (name === process.addressEnv) return process.defaultAddress ?? "";
     if (name === process.rpcAddressEnv) return process.defaultRPCAddress ?? "";
     for (const listener of process.additionalListeners ?? []) {
@@ -406,9 +409,8 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
     if (postgresService?.image) postgresImage = postgresService.image;
   };
 
-  // The addresses the contract declares. Every owner reaches its peers by the
-  // address the published installation gives the caller, and the shared
-  // container resolves the published service names to the loopback interface.
+  // Each shared address input is the target owner's real bind address.
+  // Multi-container caller DNS names are not valid single-container binds.
   const ownerOfAddressEnvironment = new Map<string, string>();
   for (const process of contract.processes) {
     if (process.addressEnv) ownerOfAddressEnvironment.set(process.addressEnv, process.service);
@@ -419,12 +421,9 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
   }
   const certificateEnvironments = new Set(["OPL_GRPC_CERT_FILE", "OPL_GRPC_KEY_FILE"]);
 
-  // The shared container environment. One value per name: for an address it is
-  // the address the published installation's callers use, for every other name
-  // it is the value the first declared owner carries. The per-owner databases
-  // the published installation declares separately are carried under the
-  // per-owner name the composition reads them by, because one container
-  // environment carries one value per name.
+  // Construct an explicit single-container installation: listener inputs are
+  // real owner binds, database inputs use compositionDatabaseEnv, and retained
+  // legacy consumers share the installation's one DATABASE_URL.
   let shared: Record<string, string> = {};
   const sharedEnvironment = () => {
     const names = new Set<string>();
@@ -437,12 +436,8 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
       const owner = ownerOfAddressEnvironment.get(name);
       if (owner) {
         const own = ownerEnvironment.get(owner)?.[name];
-        const peers = [...ownerEnvironment.entries()]
-          .filter(([service]) => service !== owner)
-          .map(([, values]) => values[name])
-          .filter((value): value is string => value !== undefined && value !== "");
-        const peer = peers.find((value) => value === peers[0]);
-        environment[name] = peer ?? own ?? "";
+        assert.ok(own, `the installation declares no bind address for ${name}`);
+        environment[name] = own;
         continue;
       }
       for (const process of contract.processes) {
@@ -461,15 +456,18 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
     if (environment.OPL_WORKSPACE_REGISTRY_REPOSITORIES === undefined) {
       environment.OPL_WORKSPACE_REGISTRY_REPOSITORIES = installEnvironment.OPL_WORKSPACE_REGISTRY_REPOSITORIES;
     }
-    // The published installation gives every owner its own database. One
-    // container environment carries one value per name, so each owner's
-    // database is carried under the per-owner name the composition reads it
-    // by.
+    // The retained Control Plane, Fabric HTTP and Ledger use one legacy
+    // database. Coordination keeps its separately declared RPC database.
+    const legacyDatabase = ownerEnvironment.get("control-plane")?.DATABASE_URL;
+    assert.ok(legacyDatabase, "the installation declares no legacy database");
+    environment.DATABASE_URL = legacyDatabase;
     for (const process of contract.processes) {
       if (!process.databaseEnv) continue;
+      assert.ok(process.compositionDatabaseEnv, `${process.service} declares no compositionDatabaseEnv`);
+      if (process.compositionDatabaseEnv === "DATABASE_URL") continue;
       const dsn = ownerEnvironment.get(process.service)?.[process.databaseEnv];
-      if (!dsn) continue;
-      environment[ownerAlias(process) + "_DATABASE_URL"] = dsn;
+      assert.ok(dsn, `the installation declares no database for ${process.service}`);
+      environment[process.compositionDatabaseEnv] = dsn;
     }
     environment.OPL_GRPC_CERT_DIR = "/pki";
     environment.OPL_RELEASE_SHA = revision;
@@ -541,7 +539,7 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
     const host = address.slice(0, separator);
     const port = address.slice(separator + 1);
     if (host === "" || host === "0.0.0.0") return `127.0.0.1:${port}`;
-    if (host === "::") return `[::1]:${port}`;
+    if (host === "[::]") return `[::1]:${port}`;
     return address;
   };
 
@@ -687,7 +685,7 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
     // the owner's own answer, so the wait reads the Fabric owner's readiness
     // surface while the container is still running.
     const fabricProcess = contract.processes.find((process) => process.transportPrincipal === "fabric");
-    const fabricListener = fabricProcess ? declaredListener(fabricProcess, fabricProcess.addressEnv) : "";
+    const fabricListener = fabricProcess ? effectiveListener(fabricProcess, fabricProcess.addressEnv) : "";
     let fabricAnswer = "";
     // The readiness criterion the contract declares for an owner. The
     // published owner probe reads the owner's own health surface with the
@@ -702,7 +700,7 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
       }
       const principal = process.transportPrincipal;
       const grpcCheck = criterion.checks.find((check) => check.transport === "grpc");
-      const address = declaredListener(process, (grpcCheck ?? criterion.checks[0]).addressEnv);
+      const address = effectiveListener(process, (grpcCheck ?? criterion.checks[0]).addressEnv);
       const probe = docker([
         "exec",
         "-e", `OPL_GRPC_CERT_FILE=/pki/${principal}.crt`,
@@ -736,7 +734,7 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
       }
       for (const check of criterion.checks) {
         if (check.transport !== "http") continue;
-        const url = httpURL(declaredListener(process, check.addressEnv), check.path as string);
+        const url = httpURL(effectiveListener(process, check.addressEnv), check.path as string);
         const response = docker([
           "exec", backendName, "curl", "--silent", "--show-error", "--write-out", "\n%{http_code}", url
         ], false);
@@ -840,7 +838,7 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
       const environments = [process.addressEnv, process.rpcAddressEnv, ...(process.additionalListeners ?? []).map((listener) => listener.addressEnv)]
         .filter((name): name is string => typeof name === "string");
       for (const name of environments) {
-        const address = declaredListener(process, name);
+        const address = effectiveListener(process, name);
         const port = Number(address.split(":").pop());
         assert.ok(Number.isInteger(port) && port > 0, `${process.service} declares no port for ${name}`);
         const owner = declaredPorts.get(port);
@@ -852,7 +850,7 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
       if (!started.includes(process.service)) continue;
       for (const name of [process.addressEnv, process.rpcAddressEnv, ...(process.additionalListeners ?? []).map((listener) => listener.addressEnv)]
         .filter((name): name is string => typeof name === "string")) {
-        const port = Number(declaredListener(process, name).split(":").pop());
+        const port = Number(effectiveListener(process, name).split(":").pop());
         assert.ok(listeningPorts.has(port), `${process.service} does not listen on its declared port ${port}`);
       }
     }
@@ -900,14 +898,12 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
     assert.deepEqual(running.map((process) => process.service), started,
       "the composed container does not run every owner the composition started");
 
-    // The address an owner binds and the address it reaches a peer at both
-    // come from the contract: the listener the owner declares, and the
-    // listener the target declares reached through the loopback interface of
-    // the one shared container.
+    // The owner, its peers and probes must agree on the effective bind.
+    // Only wildcard binds are reached through the corresponding loopback.
     const ownerByPrincipal = new Map(contract.processes.map((process) => [process.transportPrincipal, process]));
     const declaredPeerListener = (target: ContractProcess): string => {
       const name = target.rpcAddressEnv ?? (target.kind === "ownerservice" ? target.addressEnv : undefined);
-      return declaredListener(target, name);
+      return effectiveListener(target, name);
     };
     for (const process of running) {
       const environment = ownerEnvironments.get(process.service) as Record<string, string>;
@@ -916,26 +912,26 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
         ...(process.additionalListeners ?? []).map((listener) => listener.addressEnv)
       ]) {
         if (!name) continue;
-        const declared = declaredListener(process, name);
+        const declared = effectiveListener(process, name);
         if (!declared) continue;
         assert.equal(environment[name], declared,
-          `${process.service} does not bind the listener the contract declares for ${name}; it received ${Object.keys(environment).join(",")}`);
+          `${process.service} does not bind the configured listener for ${name}; it received ${Object.keys(environment).join(",")}`);
       }
       for (const edge of contract.communication.edges) {
         if (edge.caller !== process.transportPrincipal || !edge.addressEnv) continue;
         const target = ownerByPrincipal.get(edge.target);
         assert.ok(target, `the contract declares no owner ${edge.target}`);
         assert.equal(environment[edge.addressEnv], loopback(declaredPeerListener(target)),
-          `${process.service} does not reach ${edge.target} at the listener the contract declares`);
+          `${process.service} does not reach ${edge.target} at its effective listener`);
       }
       for (const peer of contract.peerAddresses?.entries ?? []) {
         if (peer.caller !== process.transportPrincipal || !peer.addressEnv) continue;
         const target = ownerByPrincipal.get(peer.target);
         assert.ok(target, `the contract declares no owner ${peer.target}`);
-        const listener = declaredListener(target, peer.targetAddressEnv);
+        const listener = effectiveListener(target, peer.targetAddressEnv);
         assert.ok(listener, `the contract declares no listener ${peer.targetAddressEnv} for ${peer.target}`);
         assert.equal(environment[peer.addressEnv], `http://${loopback(listener)}`,
-          `${process.service} does not reach ${peer.target} at the listener the contract declares`);
+          `${process.service} does not reach ${peer.target} at its effective listener`);
       }
     }
 
@@ -983,19 +979,20 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
           assert.equal(environment[other.peerTokensEnv], undefined,
             `${process.service} received the ${other.service} peer token allowlist`);
         }
-        const otherDatabase = `${ownerAlias(other)}_DATABASE_URL`;
+        const otherDatabase = other.compositionDatabaseEnv;
+        if (!otherDatabase || otherDatabase === process.compositionDatabaseEnv) continue;
         const otherDSN = shared[otherDatabase];
         if (otherDSN) {
           assert.notEqual(environment["DATABASE_URL"], otherDSN,
             `${process.service} received the ${other.service} database DSN`);
         }
-        if (otherDatabase !== `${ownerAlias(process)}_DATABASE_URL`) {
+        if (otherDatabase !== process.rpcDatabaseEnv && !(process.env ?? []).includes(otherDatabase)) {
           assert.equal(environment[otherDatabase], undefined,
             `${process.service} received the ${other.service} database credential`);
         }
       }
       if (process.databaseEnv) {
-        assert.equal(environment[process.databaseEnv], shared[`${ownerAlias(process)}_DATABASE_URL`],
+        assert.equal(environment[process.databaseEnv], shared[process.compositionDatabaseEnv!],
           `${process.service} did not receive its own database`);
       } else {
         assert.equal(environment["DATABASE_URL"], undefined,
@@ -1007,7 +1004,8 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
     // composition, and the composition names that owner.
     const mutated = { ...shared };
     const mutatedOwner = contract.processes[0];
-    const mutatedDatabase = `${ownerAlias(mutatedOwner)}_DATABASE_URL`;
+    const mutatedDatabase = mutatedOwner.compositionDatabaseEnv;
+    assert.ok(mutatedDatabase, "the mutated owner declares no composition database");
     mutated[mutatedDatabase] = mutated[mutatedDatabase].replace(/\/[^/?]*(\?|$)/, "/opl_absent_database$1");
     docker(containerArguments(mutated, mutatedName, "30s", topologyPath));
     waitFor(() => !containerRunning(mutatedName), "the mutated composition did not stop");
@@ -1029,18 +1027,8 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
     // the Control Plane's readiness is that projection, so an owner that
     // never becomes ready names the upstream cause.
     const ready = [...logs.matchAll(/owner (\S+) is ready/g)].map((match) => match[1]);
-    if (fabricAnswer.includes("local_docker_storage_quota_unavailable")) {
-      // The host cannot enforce the project quota the Local-Docker provider
-      // requires of its Workspace storage, so the provider refuses readiness
-      // and the Control Plane's readiness projection fails with it. The
-      // published installation requires that host; the composition must still
-      // name the owner that never became ready.
-      assert.ok(!ready.includes("control-plane"),
-        "the Control Plane owner became ready although its projection failed");
-      assert.match(logs, /composition failed: owner control-plane (did not become ready|exited)/,
-        `the composition did not name the owner that never became ready\nfabric readiness: ${fabricAnswer}`);
-      return;
-    }
+    assert.ok(!fabricAnswer.includes("local_docker_storage_quota_unavailable"),
+      `the host cannot enforce the storage quota required for full readiness: ${fabricAnswer}`);
     assert.deepEqual(ready, declaredServices,
       `the entrypoint did not bring every declared owner to ready\nfabric readiness: ${fabricAnswer}`);
     assert.ok(containerRunning(backendName),
