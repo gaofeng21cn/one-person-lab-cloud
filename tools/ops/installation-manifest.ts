@@ -17,9 +17,20 @@ export type ProcessContract = {
   rpcEnabledByEnvSemantics?: "raw-nonempty" | "trimmed-nonempty";
   addressPortEnv?: string; additionalListeners?: { addressEnv: string; defaultAddress?: string; valueSemantics: "raw" | "trimmed" }[];
   addressEnv: string; defaultAddress: string; rpcAddressEnv?: string; defaultRPCAddress?: string; peerTokensEnv?: string; rpcEnabledByEnv?: string;
+  databaseEnv?: string | null; rpcDatabaseEnv?: string;
 };
 export type EdgeContract = { caller: string; target: string; addressEnv: string; tokenEnv: string; activation: "required" | "configured"; activationEnvs?: string[]; configuredAddressSemantics?: "raw-nonempty" | "trimmed-nonempty" };
-export type InstallationTopology = { image: { defaultCommand: string[] }; processes: ProcessContract[]; communication: { schemaVersion: number; edges: EdgeContract[]; security: InstallationSecurity } };
+// The contract's deployment unit: one Deployment whose container runs every
+// declared owner process in one process space.
+export type DeploymentUnitContract = {
+  name: string; kind: string; memberSource: string; imageSource: string; entrypoint?: string;
+};
+export type InstallationTopology = {
+  image: { defaultCommand: string[]; env?: string };
+  processes: ProcessContract[];
+  communication: { schemaVersion: number; edges: EdgeContract[]; security: InstallationSecurity };
+  deploymentUnit?: { rule?: string; unit: DeploymentUnitContract };
+};
 type Resource = Record<string, any>;
 function object(value: unknown): value is Resource {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -459,6 +470,295 @@ function podListenerError(processes: InstalledProcess[], deferredLegacyListeners
   }
 }
 
+// ---------------------------------------------------------------------------
+// The composed deployment unit.
+//
+// The contract's deploymentUnit declares one Kubernetes Deployment whose
+// container runs every declared owner process in one process space. The
+// admission proves that shape against the contract itself:
+//
+//   * identity: the Deployment is the contract's declared unit, it runs the
+//     product image and it runs the contract's declared entrypoint;
+//   * membership: the unit hosts exactly the contract's declared members and
+//     exposes exactly their declared listeners;
+//   * routes: every edge the contract declares resolves, inside this unit, to
+//     the target's declared listener and to the material both ends need;
+//   * isolation: the shared container never hands one member's identity-scoped
+//     material to another member.
+//
+// A member's own listener address comes from the contract, never from the
+// installation: the shared container carries the caller-facing address of every
+// owner, and that address is not the owner's bind address.
+// ---------------------------------------------------------------------------
+
+type UnitMember = { contract: ProcessContract; principal: string; listeners: { addressEnv: string; port: number }[] };
+type UnitAddress = { kind: "service"; name: string; namespace: string; port: number } | { kind: "bind"; port: number };
+
+// The listeners one member binds inside the unit. This mirrors the composition
+// entrypoint's own rules: the typed owner listener comes from the process's
+// typed address environment, the HTTP listeners come from its own address
+// environment and its additional listeners, and the optional typed surface is
+// started only when the installation enables it.
+function unitMemberListeners(process: ProcessContract, rpcActive: boolean): { addressEnv: string; port: number }[] {
+  const listeners: { addressEnv: string; port: number }[] = [];
+  const add = (addressEnv: string | undefined, address: string | undefined) => {
+    if (!addressEnv || !address) return;
+    const binding = listenerBinding(address);
+    if (binding) listeners.push({ addressEnv, port: binding.port });
+  };
+  const typedEnv = process.rpcAddressEnv ?? (process.kind === "ownerservice" ? process.addressEnv : undefined);
+  if (typedEnv && rpcActive) add(typedEnv, process.rpcAddressEnv ? process.defaultRPCAddress : process.defaultAddress);
+  if (process.kind !== "ownerservice") add(process.addressEnv, process.defaultAddress);
+  for (const listener of process.additionalListeners ?? []) add(listener.addressEnv, listener.defaultAddress);
+  return listeners;
+}
+function unitRpcActive(process: ProcessContract, env: Map<string, Resource>): boolean {
+  if (!process.rpcEnabledByEnv) return true;
+  const entry = env.get(process.rpcEnabledByEnv);
+  if (entry?.valueFrom !== undefined) return true;
+  if (typeof entry?.value !== "string") return false;
+  return process.rpcEnabledByEnvSemantics === "raw-nonempty" ? entry.value !== "" : trimRuntimeSpace(entry.value) !== "";
+}
+// The unit's callers reach a peer either through a Kubernetes Service that
+// fronts this unit or through the peer's own bind address inside the unit's
+// shared network namespace.
+function parseUnitAddress(raw: unknown, unitNamespace: string): UnitAddress | undefined {
+  if (typeof raw !== "string") return;
+  const service = /^(?:https?:\/\/)?(?:dns:\/\/\/)?([a-z0-9](?:[-a-z0-9.]*[a-z0-9])?):([0-9]+)$/.exec(raw);
+  if (service) {
+    const parts = service[1].split(".");
+    if (parts.every(part => /^[a-z](?:[-a-z0-9]*[a-z0-9])?$/.test(part)) &&
+        [1, 2, 3, 5].includes(parts.length) && !(parts.length >= 3 && parts[2] !== "svc") &&
+        !(parts.length === 5 && (parts[3] !== "cluster" || parts[4] !== "local")) && validPort(Number(service[2])))
+      return { kind: "service", name: parts[0], namespace: parts[1] ?? unitNamespace, port: Number(service[2]) };
+  }
+  const bind = /^(\[[0-9a-fA-F:.]+\]|[0-9.]*):([0-9]+)$/.exec(raw);
+  if (bind && validPort(Number(bind[2]))) return { kind: "bind", port: Number(bind[2]) };
+}
+// The container port a Service port reaches inside this unit.
+function unitTargetPort(servicePort: Resource, unitPorts: Resource[]): number | undefined {
+  let targetPort = servicePort.targetPort ?? servicePort.port;
+  if (typeof targetPort === "string") {
+    const named = unitPorts.filter(entry => entry?.name === targetPort && (entry.protocol ?? "TCP") === "TCP");
+    if (named.length !== 1) return;
+    targetPort = named[0].containerPort;
+  }
+  return validPort(targetPort) ? targetPort : undefined;
+}
+function sameSecret(left: SecretRef, right: SecretRef): boolean {
+  return left.name === right.name && left.key === right.key;
+}
+
+function validateComposedInstallation(
+  resources: Resource[], topology: InstallationTopology, unit: DeploymentUnitContract, security: InstallationSecurity): InstallationReport {
+  const report: InstallationReport = { ok: true, errors: [], communication: { edges: [], security } };
+  const fail = (code: string, reasonCode?: string, detail?: { caller?: string; target?: string; addressEnv?: string; tokenEnv?: string }) =>
+    report.errors.push({ code, ...(reasonCode ? { reasonCode } : {}), ...(detail ?? {}) });
+  const invalid = (code: string) => installationFailure(code, security);
+
+  const imageEnv = topology.image?.env;
+  if (typeof imageEnv !== "string" || !imageEnv) return invalid("installation_topology_process_invalid");
+  if (typeof unit.name !== "string" || !unit.name || typeof unit.entrypoint !== "string" || !unit.entrypoint ||
+      unit.memberSource !== "processes" || unit.kind !== "oneContainerProcessSpace") return invalid("installation_topology_process_invalid");
+
+  const deployments = resources.filter(resource => resource.kind === "Deployment");
+  const unitDeployment = deployments.find(deployment => deployment.metadata.name === unit.name);
+  if (!unitDeployment) return invalid("installation_process_missing");
+  const podSpec = unitDeployment.spec?.template?.spec;
+  const containers: Resource[] = podSpec?.containers ?? [];
+  // The contract declares one container in one process space.
+  if (containers.length !== 1) return invalid("installation_process_unproven");
+  const unitContainer = containers[0];
+  if (podSpec.hostNetwork === true) return invalid("installation_pod_network_unsupported");
+
+  const names = new Set<string>([imageEnv]);
+  for (const process of topology.processes) {
+    for (const name of [process.addressEnv, process.rpcAddressEnv, process.peerTokensEnv, process.rpcEnabledByEnv,
+      process.addressPortEnv, process.databaseEnv, process.rpcDatabaseEnv]) if (name) names.add(name);
+    for (const listener of process.additionalListeners ?? []) if (listener.addressEnv) names.add(listener.addressEnv);
+  }
+  for (const edge of topology.communication.edges) {
+    names.add(edge.addressEnv); names.add(edge.tokenEnv);
+    for (const name of edge.activationEnvs ?? []) names.add(name);
+  }
+  const resolved = effectiveEnv(unitDeployment, unitContainer, names, resources);
+  if (resolved.error) return invalid(resolved.error);
+  const env = resolved.env;
+
+  // The installation states which image this unit runs; the contract owns the
+  // environment that carries it.
+  const imageEntry = env.get(imageEnv);
+  const productImage = typeof imageEntry?.value === "string" ? imageEntry.value : undefined;
+  if (!productImage || imageEntry!.valueFrom !== undefined) return invalid("installation_process_unproven");
+  if (unitContainer.image !== productImage) return invalid("installation_process_unproven");
+
+  // The unit's command must be exactly the contract's declared entrypoint. A
+  // command that is not a declared owner process and not the declared unit is
+  // an unproven product process.
+  const argv = [...(unitContainer.command ?? []), ...(unitContainer.args ?? [])];
+  if (argv.length !== 1 || argv[0] !== unit.entrypoint) return invalid("installation_process_unproven");
+
+  // Nothing else may run the product image, and the per-owner form and the
+  // composed form must not be mixed: the unit already hosts every member.
+  for (const deployment of deployments) {
+    for (const container of deployment.spec.template.spec.containers) {
+      if (container === unitContainer) continue;
+      const ownerArgv = productArgv(container, container.image === productImage ? topology.image.defaultCommand : undefined);
+      if (ownerArgv && topology.processes.some(process => ownerArgv[0] === process.binary)) return invalid("installation_deployment_unit_mixed");
+      if (container.image === productImage) return invalid("installation_process_unproven");
+    }
+  }
+
+  // The members this unit hosts, with the listeners each of them binds inside
+  // the unit's shared network namespace.
+  const members: UnitMember[] = [];
+  for (const process of topology.processes) {
+    const principal = process.transportPrincipal;
+    if (!principal) return invalid("installation_topology_process_invalid");
+    members.push({ contract: process, principal, listeners: unitMemberListeners(process, unitRpcActive(process, env)) });
+  }
+  const unitPorts: Resource[] = (unitContainer.ports ?? []).filter(entry => (entry.protocol ?? "TCP") === "TCP");
+  const declaredPorts = new Map<number, string>();
+  for (const entry of unitPorts) {
+    if (typeof entry.name !== "string" || !entry.name) { fail("installation_unit_membership", "port_unnamed"); continue; }
+    if (declaredPorts.has(entry.containerPort)) { fail("installation_unit_membership", "port_duplicate"); continue; }
+    declaredPorts.set(entry.containerPort, entry.name);
+  }
+  const expectedPorts = new Map<number, { principal: string; addressEnv: string }>();
+  for (const member of members) {
+    if (member.listeners.length === 0) { fail("installation_unit_membership", "member_missing", { target: member.principal }); continue; }
+    for (const listener of member.listeners) {
+      if (expectedPorts.has(listener.port)) { fail("installation_listener_conflict", undefined, { target: member.principal }); continue; }
+      expectedPorts.set(listener.port, { principal: member.principal, addressEnv: listener.addressEnv });
+    }
+  }
+  // Every declared member must be hosted, and no undeclared member may be.
+  for (const [port, owner] of expectedPorts) if (!declaredPorts.has(port)) fail("installation_unit_membership", "member_missing", { target: owner.principal });
+  for (const port of declaredPorts.keys()) if (!expectedPorts.has(port)) fail("installation_unit_membership", "member_undeclared");
+
+  // The Services that publish this unit's listeners.
+  const unitLabels = unitDeployment.spec.template.metadata?.labels ?? {};
+  const unitNamespace = namespace(unitDeployment);
+  const routes = new Map<number, { service: Resource; servicePort: Resource }[]>();
+  for (const service of resources.filter(resource => resource.kind === "Service" && namespace(resource) === unitNamespace)) {
+    const selector = service.spec?.selector;
+    if (service.apiVersion !== "v1" || !object(selector) || Object.keys(selector).length === 0 ||
+        service.spec.type === "ExternalName" || !labelsMatch(selector, unitLabels)) continue;
+    for (const servicePort of service.spec.ports ?? []) {
+      if (!object(servicePort) || (servicePort.protocol ?? "TCP") !== "TCP") continue;
+      const containerPort = unitTargetPort(servicePort, unitPorts);
+      if (containerPort === undefined) continue;
+      const published = routes.get(containerPort) ?? [];
+      published.push({ service, servicePort });
+      routes.set(containerPort, published);
+    }
+  }
+  // A member's declared listener is the one the unit's container ports and
+  // Services route to.
+  for (const [port, owner] of expectedPorts) {
+    const publishers = routes.get(port) ?? [];
+    if (publishers.length === 0) { fail("installation_unit_membership", "listener_unpublished", { target: owner.principal }); continue; }
+    if (publishers.length > 1) fail("installation_unit_membership", "listener_ambiguous", { target: owner.principal });
+  }
+  if (report.errors.length > 0) { report.ok = false; report.communication.edges = []; return report; }
+
+  for (const edge of topology.communication.edges) {
+    const caller = members.find(member => member.principal === edge.caller);
+    const target = members.find(member => member.principal === edge.target);
+    if (!caller) continue;
+    const address = env.get(edge.addressEnv);
+    const addressSemantics = edge.activation === "configured" ? edge.configuredAddressSemantics! : "trimmed-nonempty";
+    // Inside the unit the callers share one environment, so the caller's route
+    // is the address it carries; the contract's token environment names the
+    // target's credential and is shared by every caller of that target.
+    if (edge.activation === "configured" && !configured(address, addressSemantics)) continue;
+    const detail = { caller: edge.caller, target: edge.target, addressEnv: edge.addressEnv, tokenEnv: edge.tokenEnv };
+    if (!address || !configured(address, addressSemantics)) { fail("rpc_address_required", undefined, detail); continue; }
+    if (!target) { fail("rpc_target_missing", undefined, detail); continue; }
+    const addressValue = edge.activation === "configured" && addressSemantics === "trimmed-nonempty" && typeof address.value === "string"
+      ? trimRuntimeSpace(address.value) : address.value;
+    const parsed = parseUnitAddress(addressValue, unitNamespace);
+    if (!parsed) { fail("rpc_address_invalid", undefined, detail); continue; }
+    let containerPort: number | undefined;
+    let addressService: Resource | undefined;
+    if (parsed.kind === "service") {
+      addressService = resources.find(resource => resource.kind === "Service" && resource.apiVersion === "v1" &&
+        resource.metadata.name === parsed.name && namespace(resource) === parsed.namespace);
+      if (!addressService) { fail("rpc_service_missing", undefined, detail); continue; }
+      const selector = addressService.spec?.selector;
+      if (!object(selector) || Object.keys(selector).length === 0 || addressService.spec.type === "ExternalName" ||
+          !labelsMatch(selector, unitLabels)) { fail("rpc_service_target_mismatch", undefined, detail); continue; }
+      const matching = (addressService.spec.ports ?? []).filter((entry: Resource) => entry?.port === parsed.port && (entry.protocol ?? "TCP") === "TCP");
+      if (matching.length !== 1) { fail("rpc_service_port_invalid", undefined, detail); continue; }
+      containerPort = unitTargetPort(matching[0], unitPorts);
+      if (containerPort === undefined) { fail("rpc_target_port_invalid", undefined, detail); continue; }
+    } else containerPort = parsed.port;
+    // The reached port is published by exactly one Service that selects this
+    // unit, and that Service is the one the address names.
+    const publishers = routes.get(containerPort) ?? [];
+    if (publishers.length === 0) { fail("rpc_service_missing", undefined, detail); continue; }
+    if (publishers.length > 1) { fail("rpc_service_port_invalid", undefined, detail); continue; }
+    const service = publishers[0].service;
+    if (addressService && addressService !== service) { fail("rpc_service_target_mismatch", undefined, detail); continue; }
+    // The reached port is the target's own declared listener.
+    if (!target.listeners.some(listener => listener.port === containerPort)) { fail("rpc_target_listener_invalid", undefined, detail); continue; }
+    const tokenRef = secretReference(env.get(edge.tokenEnv));
+    if (!tokenRef) { fail("rpc_token_ref_invalid", undefined, detail); continue; }
+    if (!target.contract.peerTokensEnv) { fail("rpc_peer_ref_invalid", undefined, detail); continue; }
+    const peerRef = secretReference(env.get(target.contract.peerTokensEnv));
+    if (!peerRef) { fail("rpc_peer_ref_invalid", undefined, detail); continue; }
+    const endpoint = { deployment: unitDeployment, container: unitContainer };
+    const policies = communicationPolicyProof(endpoint, endpoint, containerPort, resources);
+    if (policies.error) { fail(policies.error, undefined, detail); continue; }
+    report.communication.edges.push({
+      caller: edge.caller, target: edge.target, addressEnv: edge.addressEnv, tokenEnv: edge.tokenEnv,
+      callerDeployment: unitDeployment.metadata.name, targetDeployment: unitDeployment.metadata.name, port: containerPort,
+      tokenRef, peerRef, serviceRef: { name: service.metadata.name, namespace: namespace(service) },
+      ingressPolicies: policies.ingressPolicies, egressPolicies: policies.egressPolicies
+    });
+  }
+
+  // Isolation: the shared container must not make one member's material
+  // another member's. Every member's own admission map and every boundary's
+  // own credential must be present under the name the member reads, and no two
+  // members may read the same material.
+  const peerTokens = new Map<string, SecretRef>();
+  for (const member of members) {
+    if (!member.contract.peerTokensEnv) continue;
+    const ref = secretReference(env.get(member.contract.peerTokensEnv));
+    if (!ref) { fail("installation_unit_identity_unproven", "peer_tokens_missing", { target: member.principal }); continue; }
+    for (const [principal, other] of peerTokens) {
+      if (sameSecret(other, ref)) fail("installation_unit_identity_unproven", "peer_token_shared", { target: member.principal, caller: principal });
+    }
+    peerTokens.set(member.principal, ref);
+  }
+  const boundaryTokens = new Map<string, SecretRef>();
+  for (const edge of topology.communication.edges) {
+    const ref = secretReference(env.get(edge.tokenEnv));
+    if (!ref) continue;
+    const existing = boundaryTokens.get(edge.target);
+    if (existing && !sameSecret(existing, ref)) fail("installation_unit_identity_unproven", "boundary_token_conflict", { target: edge.target, addressEnv: edge.addressEnv });
+    else boundaryTokens.set(edge.target, ref);
+    for (const [principal, peerRef] of peerTokens) {
+      if (sameSecret(peerRef, ref)) fail("installation_unit_identity_unproven", "credential_reused", { target: edge.target, caller: principal });
+    }
+  }
+  for (const member of members) {
+    const databaseEnv = member.contract.databaseEnv;
+    if (!databaseEnv) continue;
+    const ref = secretReference(env.get(databaseEnv));
+    if (!ref) { fail("installation_unit_identity_unproven", "database_missing", { target: member.principal }); continue; }
+    if (!member.contract.rpcDatabaseEnv) continue;
+    const own = secretReference(env.get(member.contract.rpcDatabaseEnv));
+    if (!own) { fail("installation_unit_identity_unproven", "database_missing", { target: member.principal }); continue; }
+    if (sameSecret(own, ref)) fail("installation_unit_identity_unproven", "database_shared", { target: member.principal });
+  }
+
+  report.ok = report.errors.length === 0;
+  if (!report.ok) report.communication.edges = [];
+  return report;
+}
+
 export function validateInstallationManifest(manifest: unknown, topology: InstallationTopology): InstallationReport {
   const security = installationSecurity(topology);
   if (!security) return installationFailure("installation_topology_security_invalid");
@@ -480,6 +780,13 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     resourceKeys.add(key);
   }
   const deployments = resources.filter(resource => resource.kind === "Deployment");
+  // The contract's deployment unit and the per-owner process form are two
+  // shapes of the same installation. The shape the installation declares is
+  // the shape the admission proves; the two are never mixed.
+  const declaredUnit = topology.deploymentUnit?.unit;
+  if (declaredUnit && typeof declaredUnit.name === "string" &&
+      deployments.some(deployment => deployment.metadata.name === declaredUnit.name))
+    return validateComposedInstallation(resources, topology, declaredUnit, security);
   const productImages = new Set<string>(deployments.flatMap(deployment =>
     deployment.spec.template.spec.containers.filter((container: Resource) =>
       topology.processes.some(process => container.command?.[0] === process.binary))
