@@ -472,6 +472,20 @@ does not establish production application or live Sub2API acceptance. Local
 source-image construction remains a separate CLI option and cannot qualify an
 existing published Candidate's bytes.
 
+The [Composed Backend Runtime Gate](.github/workflows/composed-backend-runtime-gate.yml)
+runs the composed backend's runtime suite on the pull requests and `main` pushes
+whose changes can break that claim: the product image, the published
+installation, the owner topology contract, the suite itself and the gate. The
+suite builds the product image and starts several containers, so it runs in its
+own workflow and leaves Pull Request CI at its present speed. Each run owns a
+12 GiB sparse ext4 image under the runner temporary directory, mounts it with
+project quota the way Clean Host Qualification does, and unmounts and removes it
+on completion or failure. The gate uses no secret, reaches no cluster and no
+customer resource, and its failing suite fails the build. The gate proves the
+runtime layer of the composed unit; it does not prove production-cluster
+behaviour, downstream adoption, the customer lifecycle, or any savings or
+high-availability claim.
+
 For generated-field changes, run `npm run verify:generated-contracts` to
 regenerate the covered outputs from their declared source inputs and compare
 exact bytes. For migration-plan inputs or projections, run

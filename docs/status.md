@@ -9,6 +9,7 @@ Scoped Workspace deletion update: 2026-11-12 (installed product source `8db78b34
 Scoped lifecycle ownership review: 2026-11-12 (source inspection, not a new runtime qualification)
 Scoped Workspace deletion recovery source repair: 2026-11-16 (source behavior over isolated PostgreSQL, not a new runtime qualification)
 Scoped retained image-policy reconciliation: 2026-11-16 (retired routes and preserved PostgreSQL records, not installed adoption)
+Scoped composed backend runtime gate: 2026-11-18 (automated runtime gate for the composed unit, not a production qualification)
 
 Each observation below retains its original source, run and environment; the
 reviewed source baseline does not requalify those receipts. The Workspace deletion
@@ -17,6 +18,28 @@ Instance installation and customer acceptance prove separate layers; none alone
 establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
+
+## Composed backend runtime gate (2026-11-18)
+
+The composed Cloud backend's runtime claim is now an automated gate. The
+[Composed Backend Runtime Gate](../.github/workflows/composed-backend-runtime-gate.yml)
+runs `tests/integration/composed-backend-unit.test.ts` for the pull requests and
+`main` pushes whose changes can break that claim, and a failing suite fails the
+build. The suite builds the product image, starts one container that runs the
+composition entrypoint, and observes every declared owner reach ready, stay
+mutually consistent, satisfy the readiness criterion the owner topology
+contract declares for it, and detect a deliberately broken owner.
+
+Each run provisions the same project-quota ext4 mount the
+[Clean Host Qualification](../.github/workflows/clean-host-qualification.yml)
+uses and unmounts and removes it on completion or failure. The gate needs no
+secret and reaches no cluster and no customer resource. Its own run is the
+evidence for the revision it ran; a red run is a broken runtime claim.
+
+The gate reaches the runtime layer of the composed unit only. It does not
+establish production-cluster behaviour, downstream adoption, the customer
+lifecycle, or any savings or high-availability claim. The composed unit's
+installed acceptance stays open in [roadmap](roadmap.md#consolidated-backend-deployment).
 
 ## Retained image-policy source reconciliation (2026-11-16)
 
