@@ -19,6 +19,7 @@ import {
   loadJ0ReadyReceipt,
   localBuildProxyArgs,
   qualificationComposeEnvironment,
+  parseInstallationEnvFile,
   parseLocalQualificationArgs,
   qualificationModeBinding,
   qualificationPathAllowed,
@@ -28,6 +29,7 @@ import {
   localV2ApplicationEntryBoundary,
   localV2QualificationCA,
   localV2QualificationOrigin,
+  readLocalV2InstallationDeclaration,
   LOCAL_V2_QUALIFICATION_SERVICES,
   LOCAL_V2_OWNER_STORES,
   redactedError,
@@ -36,6 +38,8 @@ import {
   validateJ0ReadyReceipt,
   validateLocalQualificationReceipt,
 } from "../../tools/local-workspace-qualification.ts";
+import { cleanHostInstallation } from "../../tools/local-v2-clean-host.ts";
+import { localV2EnvFile } from "../../tools/local-v2-installation-facts.ts";
 
 // The CloudIdentity login the browser performs. The in-memory fake answers it
 // the way the identity owner does: a login context carrying a double-submit
@@ -65,6 +69,33 @@ const sha = "a".repeat(40);
 const cloudDigest = `sha256:${"b".repeat(64)}`;
 const workspaceDigest = `sha256:${"c".repeat(64)}`;
 const workspaceReference = `ghcr.io/example/workspace@${workspaceDigest}`;
+
+test("qualification reads the case-sensitive proxy settings from its generated installation", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "opl-qualification-installation-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const templatePath = join(process.cwd(), "deploy/portable/opl-cloud.env.example");
+  const composePath = join(process.cwd(), "deploy/portable/compose.local-v2.yaml");
+  const [template, compose] = await Promise.all([readFile(templatePath, "utf8"), readFile(composePath, "utf8")]);
+  const facts = cleanHostInstallation({
+    template, compose, directory, sourceSha: sha,
+    cloudImage: `ghcr.io/example/cloud@${cloudDigest}`,
+    workspaceImage: workspaceReference,
+    storageRoot: join(directory, "storage"),
+    project: "opl-native-1-1",
+    publisherSchemaDigest: `sha256:${"d".repeat(64)}`
+  });
+  const envFile = join(directory, "installation.env");
+  const declaration = localV2EnvFile(facts).replace(/^http_proxy=$/m, "http_proxy=http://proxy.example.test:8080");
+  await writeFile(envFile, declaration);
+  const { values } = await readLocalV2InstallationDeclaration({ envFile, templatePath, composePath });
+  assert.equal(values.HTTP_PROXY, "");
+  assert.equal(values.http_proxy, "http://proxy.example.test:8080");
+  assert.equal(values.https_proxy, "");
+  assert.equal(values.no_proxy, "");
+  assert.throws(() => parseInstallationEnvFile(`${declaration}\nhttp_proxy=http://other.example.test`), {
+    code: "local_v2_installation_env_duplicate"
+  });
+});
 
 test("source image builds pass the exact qualification source revision to Docker", async () => {
   const directory = await mkdtemp(join(tmpdir(), "opl-source-image-build-test-"));
