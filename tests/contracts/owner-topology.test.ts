@@ -90,6 +90,7 @@ type DeploymentUnitBlock = {
     memberSource: string;
     memberRule: string;
     imageSource: string;
+    entrypoint?: string;
     boundaryEffect: string;
   };
   externalDependencies: UnitEntry[];
@@ -98,6 +99,7 @@ type DeploymentUnitBlock = {
 type Topology = {
   sharedEnv: Record<string, string | string[]>;
   derivedEnv: { address: string; peerTokens: string };
+  image: { env: string; binaryDirectory: string; defaultCommand: string[] };
   distinctAddressesRequired?: boolean;
   distinctAddressesScope?: string;
   distinctAddressesEvidence?: string;
@@ -1507,6 +1509,43 @@ test("every member of the Cloud backend unit has a start path the product image 
     assert.match(source, /^package main\b/m, `${startPath} must be the main package of ${process.service}`);
     assert.ok(shipped.has(binary), `the product image must ship ${binary}`);
   }
+});
+
+test("the Cloud backend unit declares the composition entrypoint the product image ships", async () => {
+  const topology = await loadTopology();
+  const block = topology.deploymentUnit;
+  assert.ok(block, `${topologyPath} must declare the Cloud backend deployment unit`);
+  const entrypoint = block.unit.entrypoint;
+  assert.equal(typeof entrypoint, "string",
+    "the unit must declare the entrypoint its container runs, so an installation can prove the unit by its command");
+  assert.ok(entrypoint.startsWith(`${topology.image.binaryDirectory}/`),
+    `the declared entrypoint must be a binary of the image's own binary directory: ${entrypoint}`);
+  const binary = path.posix.basename(entrypoint);
+  const dockerfile = await readFile(dockerfilePath, "utf8");
+  const stages = parseDockerfileStages(dockerfile);
+  const shipped = shippedBinaries(dockerfile, stages);
+  assert.ok(shipped.has(binary), `the product image must ship ${binary}`);
+  const rule = stages.flatMap((stage) => [...stage.binaries.entries()]
+    .map(([name, value]) => ({ name, value })))
+    .find((entry) => entry.name === binary);
+  assert.ok(rule, `the product image must build ${binary}`);
+  assert.equal(rule.value.moduleDir, "services/cloud-composition",
+    "the unit's entrypoint must be the composition entrypoint the product builds");
+  const startPath = path.posix.join(rule.value.moduleDir, rule.value.package, "main.go");
+  let source: string;
+  try {
+    source = await readFile(startPath, "utf8");
+  } catch {
+    assert.fail(`the unit's entrypoint has no real start path: ${startPath} does not exist`);
+  }
+  assert.match(source, /^package main\b/m, `${startPath} must be the main package of the composition entrypoint`);
+  assert.ok(source.includes("composition entrypoint"),
+    `${startPath} must declare that it is the composition entrypoint`);
+  // The published image keeps its own default command. An installation opts
+  // into the composition entrypoint explicitly, so shipping the binary must
+  // not change what the image runs on its own.
+  assert.ok(!dockerfile.includes(`CMD [${JSON.stringify(entrypoint)}]`),
+    "the product image must not change its published default command to the composition entrypoint");
 });
 
 test("every external dependency of the Cloud backend unit is reached across a boundary this contract declares", async () => {
