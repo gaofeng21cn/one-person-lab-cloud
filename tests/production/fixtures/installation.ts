@@ -80,6 +80,12 @@ export function policy(list: ReturnType<typeof workedInstallation>, service: str
 const composedImage = "example.invalid/cloud@sha256:" + "a".repeat(64);
 const composedLabels = { "app.kubernetes.io/name": "opl-cloud", "app.kubernetes.io/component": "backend" };
 const composedNamespace = "installation";
+// The live workload the cluster runs for the unit. The Instance reads these
+// objects from the cluster and hands them to the Product inside the manifest
+// it admits, so the fixture states them the way the cluster does.
+const composedUnitUid = "opl-cloud-backend-uid";
+const composedPodIP = "192.0.2.1";
+const composedPodIPs = [{ ip: composedPodIP }, { ip: "2001:db8::1" }];
 
 // Every listener the Product's owners declare inside the unit, and the
 // Services that publish them.
@@ -167,7 +173,7 @@ export function workedComposedInstallation() {
   const metadata = (name: string) => ({ name, namespace: composedNamespace });
   const items: any[] = [];
   items.push({ apiVersion: "v1", kind: "ConfigMap", metadata: metadata("opl-cloud-config"), data: { ...composedSharedEnv } });
-  items.push({ apiVersion: "apps/v1", kind: "Deployment", metadata: metadata("opl-cloud-backend"), spec: {
+  const unit = { apiVersion: "apps/v1", kind: "Deployment", metadata: { ...metadata("opl-cloud-backend"), uid: composedUnitUid }, spec: {
     selector: { matchLabels: composedLabels }, template: { metadata: { labels: composedLabels }, spec: { containers: [{
       name: "backend", image: composedImage, command: ["/usr/local/bin/opl-cloud-composition"],
       envFrom: [{ configMapRef: { name: "opl-cloud-config" } }],
@@ -179,9 +185,11 @@ export function workedComposedInstallation() {
       ],
       ports: composedListeners.map(listener => ({ name: listener.containerPort, containerPort: listener.port, protocol: "TCP" }))
     }] } }
-  } });
-  for (const service of [...new Set(composedListeners.map(listener => listener.service))]) {
-    items.push({ apiVersion: "v1", kind: "Service", metadata: metadata(service), spec: {
+  } };
+  items.push(unit);
+  const services = [...new Set(composedListeners.map(listener => listener.service))];
+  for (const service of services) {
+    items.push({ apiVersion: "v1", kind: "Service", metadata: { ...metadata(service), uid: `${service}-service-uid` }, spec: {
       selector: composedLabels,
       ports: composedListeners.filter(listener => listener.service === service)
         .map(listener => ({ name: listener.containerPort, port: listener.servicePort, targetPort: listener.containerPort, protocol: "TCP" }))
@@ -196,6 +204,30 @@ export function workedComposedInstallation() {
       }))
     } });
   }
+  // The live workload the cluster runs for the unit: the ReplicaSet and Pod
+  // the unit's Deployment owns, and the endpoint objects the cluster publishes
+  // for every Service the unit serves. The Instance's production admission
+  // reads these objects from the cluster and hands them to the Product inside
+  // the manifest it admits, so the composed fixture carries the same overlay
+  // the per-owner fixture's live backend carries.
+  const reference = (resource: any) => ({ apiVersion: resource.apiVersion, kind: resource.kind, name: resource.metadata.name, uid: resource.metadata.uid, controller: true });
+  const replicaSet = { apiVersion: "apps/v1", kind: "ReplicaSet", metadata: { name: "opl-cloud-backend-revision", namespace: composedNamespace, uid: "opl-cloud-backend-replicaset-uid", ownerReferences: [reference(unit)] }, spec: { template: structuredClone(unit.spec.template) } };
+  const pod = { apiVersion: "v1", kind: "Pod", metadata: { ...structuredClone(unit.spec.template.metadata), name: "opl-cloud-backend-pod", namespace: composedNamespace, uid: "opl-cloud-backend-pod-uid", ownerReferences: [reference(replicaSet)] }, spec: structuredClone(unit.spec.template.spec), status: { podIP: composedPodIP, podIPs: composedPodIPs.map(entry => ({ ...entry })) } };
+  items.push(replicaSet, pod);
+  const targetRef = { apiVersion: "v1", kind: "Pod", name: pod.metadata.name, namespace: composedNamespace, uid: pod.metadata.uid };
+  for (const service of services) {
+    const published = items.find(item => item.kind === "Service" && item.metadata.name === service)!;
+    items.push({ apiVersion: "discovery.k8s.io/v1", kind: "EndpointSlice", metadata: { name: `${service}-slice`, namespace: composedNamespace,
+      labels: { "kubernetes.io/service-name": service }, ownerReferences: [reference(published)] }, addressType: "IPv4",
+      ports: composedListeners.filter(listener => listener.service === service).map(listener => ({ name: listener.containerPort, port: listener.port, protocol: "TCP" })),
+      endpoints: [{ addresses: [composedPodIP], targetRef: { ...targetRef } }] });
+  }
+  // The legacy Endpoints object the cluster publishes beside the slice.
+  const legacy = services[0];
+  items.push({ apiVersion: "v1", kind: "Endpoints", metadata: metadata(legacy), subsets: [{
+    addresses: [{ ip: composedPodIP, targetRef: { ...targetRef } }],
+    ports: composedListeners.filter(listener => listener.service === legacy).map(listener => ({ name: listener.containerPort, port: listener.port }))
+  }] });
   return { apiVersion: "v1", kind: "List", items };
 }
 
@@ -213,4 +245,16 @@ export function composedPolicy(list: ReturnType<typeof workedComposedInstallatio
 }
 export function composedSharedConfigMap(list: ReturnType<typeof workedComposedInstallation>) {
   return list.items.find(item => item.kind === "ConfigMap" && item.metadata.name === "opl-cloud-config");
+}
+export function composedReplicaSet(list: ReturnType<typeof workedComposedInstallation>) {
+  return list.items.find(item => item.kind === "ReplicaSet" && item.metadata.name === "opl-cloud-backend-revision");
+}
+export function composedPod(list: ReturnType<typeof workedComposedInstallation>) {
+  return list.items.find(item => item.kind === "Pod" && item.metadata.name === "opl-cloud-backend-pod");
+}
+export function composedEndpointSlice(list: ReturnType<typeof workedComposedInstallation>, service: string) {
+  return list.items.find(item => item.kind === "EndpointSlice" && item.metadata.name === `${service}-slice`);
+}
+export function composedEndpoints(list: ReturnType<typeof workedComposedInstallation>, service: string) {
+  return list.items.find(item => item.kind === "Endpoints" && item.metadata.name === service);
 }

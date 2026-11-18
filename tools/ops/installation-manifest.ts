@@ -239,11 +239,13 @@ function endpointBackendFailure(resource: Resource, service: Resource, target: R
           (entry.containerPort === port || typeof servicePort.targetPort === "string" && entry.name === servicePort.targetPort))) return "endpoint_pod_port_conflict";
       const contract = processContract(container);
       if (!contract) continue;
-      const result = effectiveEnv(target.deployment, container,
+      // The target of this proof is the Deployment itself, so the competing
+      // container's environment is resolved against the target's own namespace.
+      const result = effectiveEnv(target, container,
         new Set([contract.addressEnv, contract.rpcAddressEnv, contract.rpcEnabledByEnv, contract.addressPortEnv,
           ...(contract.additionalListeners ?? []).map(listener => listener.addressEnv)].filter((name): name is string => Boolean(name))), resources);
       if (result.error) return "endpoint_pod_listener_unproven";
-      const process = { contract, deployment: target.deployment, container, env: result.env };
+      const process = { contract, deployment: target, container, env: result.env };
       const enabled = rpcEnabled(process);
       const competingAddresses: (string | undefined)[] = [];
       if (contract.rpcAddressEnv || enabled) competingAddresses.push(listenerAddress(process, contract.addressEnv, contract.defaultAddress, contract.kind === "ownerservice", contract.addressPortEnv));
@@ -481,6 +483,9 @@ function podListenerError(processes: InstalledProcess[], deferredLegacyListeners
 //     product image and it runs the contract's declared entrypoint;
 //   * membership: the unit hosts exactly the contract's declared members and
 //     exposes exactly their declared listeners;
+//   * live ownership: the workload behind every Service the unit publishes is
+//     the unit's own Deployment and the unit's own Pod, so a foreign workload
+//     or a replaced Pod cannot serve the unit's traffic;
 //   * routes: every edge the contract declares resolves, inside this unit, to
 //     the target's declared listener and to the material both ends need;
 //   * isolation: the shared container never hands one member's identity-scoped
@@ -552,7 +557,7 @@ function sameSecret(left: SecretRef, right: SecretRef): boolean {
 function validateComposedInstallation(
   resources: Resource[], topology: InstallationTopology, unit: DeploymentUnitContract, security: InstallationSecurity): InstallationReport {
   const report: InstallationReport = { ok: true, errors: [], communication: { edges: [], security } };
-  const fail = (code: string, reasonCode?: string, detail?: { caller?: string; target?: string; addressEnv?: string; tokenEnv?: string }) =>
+  const fail = (code: string, reasonCode?: string, detail?: { service?: string; caller?: string; target?: string; addressEnv?: string; tokenEnv?: string }) =>
     report.errors.push({ code, ...(reasonCode ? { reasonCode } : {}), ...(detail ?? {}) });
   const invalid = (code: string) => installationFailure(code, security);
 
@@ -659,6 +664,64 @@ function validateComposedInstallation(
     const publishers = routes.get(port) ?? [];
     if (publishers.length === 0) { fail("installation_unit_membership", "listener_unpublished", { target: owner.principal }); continue; }
     if (publishers.length > 1) fail("installation_unit_membership", "listener_ambiguous", { target: owner.principal });
+  }
+  if (report.errors.length > 0) { report.ok = false; report.communication.edges = []; return report; }
+
+  // The live workload behind every Service this unit publishes.
+  //
+  // The Instance's production admission reads the cluster's live Pod,
+  // ReplicaSet, Endpoint and EndpointSlice objects and hands them to this
+  // checker inside the manifest it admits. The per-owner path proves what
+  // backs each of its Services; the composed form must carry the same proof
+  // for the Services that publish the unit's listeners, or a unit whose
+  // Service is actually fronted by a foreign workload, or whose published
+  // endpoint names a replaced Pod, would be admitted.
+  //
+  // The proof reuses the per-owner helpers unchanged: the same backend
+  // ownership rule, the same endpoint rule and the same reason vocabulary.
+  // The unit is the one Deployment that owns the published workload, so the
+  // ownership chain Pod -> ReplicaSet -> Deployment must reach it.
+  const unitProcessContract = (container: Resource) => {
+    const argv = productArgv(container, container.image === productImage ? topology.image.defaultCommand : undefined);
+    return argv && topology.processes.find(process => argv[0] === process.binary &&
+      Array.isArray(process.daemonArgs) && argv.length === process.daemonArgs.length + 1 &&
+      process.daemonArgs.every((arg, index) => argv[index + 1] === arg));
+  };
+  const publishedServices = new Map<Resource, { servicePort: Resource; containerPort: number }[]>();
+  for (const [containerPort, publishers] of routes) {
+    for (const publisher of publishers) {
+      const ports = publishedServices.get(publisher.service) ?? [];
+      ports.push({ servicePort: publisher.servicePort, containerPort });
+      publishedServices.set(publisher.service, ports);
+    }
+  }
+  for (const [service, ports] of publishedServices) {
+    const detail = { service: service.metadata.name };
+    const selector = service.spec.selector;
+    // The workloads that back this Service must all be the unit's own.
+    const backends: Resource[] = [];
+    let backendUnproven = false;
+    for (const resource of resources) {
+      if (namespace(resource) !== namespace(service)) continue;
+      const labels = backendLabels(resource);
+      if (labels === undefined) backendUnproven = true;
+      else if (labels !== null && labelsMatch(selector, labels)) backends.push(resource);
+    }
+    if (backendUnproven) { fail("rpc_service_backend_unproven", undefined, detail); continue; }
+    const backendFailure = backends.map(backend => backendOwnershipFailure(backend, unitDeployment, resources)).find(reason => reason !== undefined);
+    if (backendFailure) { fail("rpc_service_backend_ambiguous", backendFailure, detail); continue; }
+    // The published endpoints must name the unit's own Pod. An EndpointSlice or
+    // Endpoints object that lists no address delivers no traffic, so it proves
+    // nothing and carries no obligation; one that lists an address must name a
+    // Pod of this unit.
+    const endpoints = resources.filter(resource => namespace(resource) === namespace(service) &&
+      (resource.kind === "Endpoints" && resource.metadata.name === service.metadata.name ||
+       resource.kind === "EndpointSlice" && resource.metadata.labels?.["kubernetes.io/service-name"] === service.metadata.name));
+    for (const { servicePort, containerPort } of ports) {
+      const endpointFailure = endpoints.map(resource => endpointBackendFailure(resource, service, unitDeployment, unitContainer, servicePort, containerPort, resources, topology.image.defaultCommand, unitProcessContract))
+        .find(reason => reason !== undefined);
+      if (endpointFailure) { fail("rpc_service_backend_ambiguous", endpointFailure, detail); break; }
+    }
   }
   if (report.errors.length > 0) { report.ok = false; report.communication.edges = []; return report; }
 

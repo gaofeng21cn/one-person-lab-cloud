@@ -8,7 +8,11 @@ import test from "node:test";
 
 import {
   composedContainer,
+  composedEndpointSlice,
+  composedEndpoints,
+  composedPod,
   composedPolicy,
+  composedReplicaSet,
   composedService,
   composedSharedConfigMap,
   composedUnit,
@@ -259,4 +263,135 @@ test("the composed unit is proved against the unit the contract declares", async
   assert.equal(composedUnit(list).metadata.name, "opl-cloud-backend");
   assert.equal(composedContainer(list).command[0], "/usr/local/bin/opl-cloud-composition");
   assert.equal(composedSharedConfigMap(list).data.OPL_CLOUD_IMAGE, composedContainer(list).image);
+});
+
+// The live workload behind the unit's Services. The Instance's production
+// admission reads the cluster's live Pod, ReplicaSet, Endpoint and
+// EndpointSlice objects and hands them to the Product inside the manifest it
+// admits, so the composed form must prove the same live ownership the
+// per-owner form proves for the per-owner Services.
+type ComposedFixture = ReturnType<typeof workedComposedInstallation>;
+
+test("the composed unit is admitted with the live workload behind every Service it publishes", async () => {
+  const list = workedComposedInstallation();
+  // The live workload the cluster runs for the unit: the ReplicaSet and Pod
+  // the unit's Deployment owns, and the endpoint objects it publishes.
+  assert.equal(composedReplicaSet(list).metadata.ownerReferences[0].uid, composedUnit(list).metadata.uid);
+  assert.equal(composedPod(list).metadata.ownerReferences[0].uid, composedReplicaSet(list).metadata.uid);
+  assert.equal(composedEndpointSlice(list, "opl-cloud-workspace").metadata.ownerReferences[0].uid,
+    composedService(list, "opl-cloud-workspace").metadata.uid);
+  const result = await invoke(list);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.report.ok, true);
+  assert.deepEqual(result.report.errors, []);
+  assert.equal(result.report.communication.edges.length, 50);
+});
+
+test("the composed unit refuses a Service whose live workload is not the unit's own", async (t) => {
+  const foreignPod = (list: ComposedFixture) => {
+    const pod = structuredClone(composedPod(list));
+    pod.metadata.name = "unmanaged-backend-pod";
+    pod.metadata.uid = "unmanaged-pod-uid";
+    delete pod.metadata.ownerReferences;
+    list.items.push(pod);
+  };
+  const foreignProducer = (kind: string, apiVersion: string) => (list: ComposedFixture) => {
+    list.items.push({ apiVersion, kind, metadata: { name: `foreign-${kind.toLowerCase()}`, namespace: "installation" },
+      spec: { template: { metadata: { labels: { "app.kubernetes.io/name": "opl-cloud", "app.kubernetes.io/component": "backend" } },
+        spec: { containers: [{ name: "foreign", image: "example.invalid/foreign:1" }] } } } });
+  };
+  const cases: [string, string, (fixture: ComposedFixture) => void][] = [
+    ["a foreign unmanaged Pod", "endpoint_pod_replicaset_unresolved", foreignPod],
+    ["a live Pod the unit no longer owns", "endpoint_pod_replicaset_unresolved", (list) => { composedPod(list).metadata.ownerReferences = []; }],
+    ["a foreign Deployment", "service_backend_owner", foreignProducer("Deployment", "apps/v1")],
+    ["a foreign StatefulSet", "service_backend_owner", foreignProducer("StatefulSet", "apps/v1")],
+    ["a foreign DaemonSet", "service_backend_owner", foreignProducer("DaemonSet", "apps/v1")],
+    ["a foreign ReplicaSet", "pod_owner_chain_unproven", foreignProducer("ReplicaSet", "apps/v1")],
+    ["a ReplicaSet whose owner was replaced", "pod_owner_chain_unproven", (list) => {
+      composedReplicaSet(list).metadata.ownerReferences[0].uid = "replaced-deployment";
+    }],
+    ["a unit Deployment that was replaced", "pod_owner_chain_unproven", (list) => {
+      composedUnit(list).metadata.uid = "replaced-deployment";
+    }],
+    ["a Pod the Service does not select", "endpoint_pod_selector_mismatch", (list) => {
+      composedPod(list).metadata.labels["app.kubernetes.io/component"] = "foreign";
+    }],
+    ["an unknown workload producer in the unit's namespace", "rpc_service_backend_unproven", (list) => {
+      list.items.push({ apiVersion: "example.invalid/v1", kind: "Widget", metadata: { name: "widget", namespace: "installation" } });
+    }]
+  ];
+  for (const [name, reasonCode, change] of cases) await t.test(name, async () => {
+    const list = workedComposedInstallation();
+    change(list);
+    const result = await invoke(list);
+    assert.equal(result.status, 1, result.stdout);
+    const codes = reasonCode === "rpc_service_backend_unproven" ? [reasonCode] : [`rpc_service_backend_ambiguous/${reasonCode}`];
+    assert.deepEqual([...new Set(result.report.errors.map((error: any) =>
+      error.reasonCode ? `${error.code}/${error.reasonCode}` : error.code))], codes, result.stdout);
+    assert.deepEqual(result.report.communication.edges, []);
+  });
+});
+
+test("the composed unit refuses a published endpoint that does not name the unit's own Pod", async (t) => {
+  const cases: [string, string, (fixture: ComposedFixture) => void][] = [
+    ["an EndpointSlice whose target Pod was replaced", "endpoint_pod_absent", (list) => {
+      composedEndpointSlice(list, "opl-cloud-workspace").endpoints[0].targetRef.uid = "replaced-pod";
+    }],
+    ["a legacy Endpoints whose target Pod was replaced", "endpoint_pod_absent", (list) => {
+      composedEndpoints(list, "opl-cloud-control-plane").subsets[0].addresses[0].targetRef.uid = "replaced-pod";
+    }],
+    ["an EndpointSlice that publishes a foreign address", "endpoint_address_mismatch", (list) => {
+      composedEndpointSlice(list, "opl-cloud-workspace").endpoints[0].addresses[0] = "192.0.2.99";
+    }],
+    ["a live Pod whose command drifted from the unit's", "endpoint_pod_command_mismatch", (list) => {
+      composedPod(list).spec.containers[0].command = ["/bin/sh", "-c", "exec sleep 3600"];
+    }],
+    ["a live sidecar that claims the published port", "endpoint_pod_port_conflict", (list) => {
+      composedPod(list).spec.containers.push({ name: "live-sidecar", image: "example.invalid/sidecar:1", ports: [{ containerPort: 8184 }] });
+    }],
+    ["an EndpointSlice that publishes a port the Service does not publish", "endpoint_port_mismatch", (list) => {
+      composedEndpointSlice(list, "opl-cloud-workspace").ports[0].port = 9999;
+    }]
+  ];
+  for (const [name, reasonCode, change] of cases) await t.test(name, async () => {
+    const list = workedComposedInstallation();
+    change(list);
+    const result = await invoke(list);
+    assert.equal(result.status, 1, result.stdout);
+    assert.deepEqual([...new Set(result.report.errors.map((error: any) => `${error.code}/${error.reasonCode ?? ""}`))],
+      [`rpc_service_backend_ambiguous/${reasonCode}`], result.stdout);
+    assert.deepEqual(result.report.communication.edges, []);
+  });
+});
+
+test("the composed unit names the Service whose live workload it could not prove", async () => {
+  const list = workedComposedInstallation();
+  composedEndpointSlice(list, "opl-cloud-workspace").endpoints[0].targetRef.uid = "replaced-pod";
+  const result = await invoke(list);
+  assert.equal(result.status, 1, result.stdout);
+  const error = result.report.errors.find((candidate: any) => candidate.code === "rpc_service_backend_ambiguous");
+  assert.equal(error.service, "opl-cloud-workspace");
+  assert.equal(error.reasonCode, "endpoint_pod_absent");
+});
+
+test("the composed unit admits an endpoint object that lists no address", async (t) => {
+  // An EndpointSlice or Endpoints object that lists no address delivers no
+  // traffic, so it cannot hand the Service to another workload and it proves
+  // nothing about the unit. The Deploy that creates the backends is the only
+  // repair for a Service that has none.
+  const cases: [string, (fixture: ComposedFixture) => void][] = [
+    ["an EndpointSlice with no endpoint", (list) => { composedEndpointSlice(list, "opl-cloud-workspace").endpoints = []; }],
+    ["an EndpointSlice with no endpoint list", (list) => { delete composedEndpointSlice(list, "opl-cloud-workspace").endpoints; }],
+    ["a legacy Endpoints with no subset", (list) => { composedEndpoints(list, "opl-cloud-control-plane").subsets = []; }],
+    ["a legacy Endpoints with no address", (list) => { composedEndpoints(list, "opl-cloud-control-plane").subsets[0].addresses = []; }]
+  ];
+  for (const [name, change] of cases) await t.test(name, async () => {
+    const list = workedComposedInstallation();
+    change(list);
+    const result = await invoke(list);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(result.report.ok, true);
+    assert.deepEqual(result.report.errors, []);
+    assert.equal(result.report.communication.edges.length, 50);
+  });
 });
