@@ -62,6 +62,7 @@
    "peerTokensEnv": "OPL_CAPABILITY_PEER_TOKENS",
    "defaultAddress": ":8181",
    "databaseEnv": "DATABASE_URL",
+   "compositionDatabaseEnv": "OPL_CAPABILITY_DATABASE_URL",
    "env": [
     "OPL_BUILD_ADDR",
     "OPL_LEDGER_ADDR",
@@ -112,6 +113,7 @@
    "peerTokensEnv": "OPL_BUILD_PEER_TOKENS",
    "defaultAddress": ":8182",
    "databaseEnv": "DATABASE_URL",
+   "compositionDatabaseEnv": "OPL_BUILD_DATABASE_URL",
    "env": [
     "OPL_BUILD_BUILDER",
     "OPL_BUILD_WORKDIR",
@@ -147,6 +149,7 @@
    "peerTokensEnv": "OPL_RUNTIME_CONTROL_PEER_TOKENS",
    "defaultAddress": ":8183",
    "databaseEnv": "DATABASE_URL",
+   "compositionDatabaseEnv": "OPL_RUNTIME_CONTROL_DATABASE_URL",
    "env": [
     "OPL_CAPABILITY_ADDR",
     "OPL_RUNTIME_PUBLISHER_SCHEMA_PATH",
@@ -173,6 +176,7 @@
    "peerTokensEnv": "OPL_WORKSPACE_PEER_TOKENS",
    "defaultAddress": ":8184",
    "databaseEnv": "DATABASE_URL",
+   "compositionDatabaseEnv": "OPL_WORKSPACE_DATABASE_URL",
    "env": [
     "OPL_CAPABILITY_ADDR",
     "OPL_CONTROL_PLANE_URL",
@@ -208,6 +212,7 @@
    "peerTokensEnv": "OPL_SERVE_PEER_TOKENS",
    "defaultAddress": ":8185",
    "databaseEnv": "DATABASE_URL",
+   "compositionDatabaseEnv": "OPL_SERVE_DATABASE_URL",
    "env": [
     "OPL_CAPABILITY_ADDR",
     "OPL_CAPABILITY_TOKEN",
@@ -273,6 +278,7 @@
    "peerTokensEnv": "OPL_RESOURCE_CATALOG_PEER_TOKENS",
    "defaultAddress": ":8186",
    "databaseEnv": "DATABASE_URL",
+   "compositionDatabaseEnv": "OPL_RESOURCE_CATALOG_DATABASE_URL",
    "env": [
     "OPL_LEDGER_ADDR",
     "OPL_RESOURCE_CATALOG_PROFILE_JSON"
@@ -297,6 +303,7 @@
    "peerTokensEnv": "OPL_LEDGER_PEER_TOKENS",
    "defaultAddress": ":8189",
    "databaseEnv": "DATABASE_URL",
+   "compositionDatabaseEnv": "DATABASE_URL",
    "env": [
     "LEDGER_ADDR",
     "OPL_INTERNAL_SERVICE_TOKEN",
@@ -337,6 +344,7 @@
    "peerTokensEnv": "OPL_TENANT_PEER_TOKENS",
    "defaultAddress": ":8187",
    "databaseEnv": "DATABASE_URL",
+   "compositionDatabaseEnv": "OPL_TENANT_DATABASE_URL",
    "env": [
     "OPL_GATEWAY_DATABASE_URL",
     "OPL_SUB2API_URL",
@@ -373,6 +381,7 @@
    "addressEnv": "FABRIC_ADDR",
    "defaultAddress": ":8082",
    "databaseEnv": "DATABASE_URL",
+   "compositionDatabaseEnv": "DATABASE_URL",
    "env": [
     "OPL_FABRIC_DATABASE_URL",
     "FABRIC_ADDR",
@@ -455,6 +464,7 @@
    "addressEnv": "CONTROL_PLANE_ADDR",
    "defaultAddress": ":8787",
    "databaseEnv": "DATABASE_URL",
+   "compositionDatabaseEnv": "DATABASE_URL",
    "env": [
     "CONTROL_PLANE_ADDR",
     "PORT",

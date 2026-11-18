@@ -125,6 +125,7 @@ func TestPlanRefusesTwoOwnersThatWouldShareOneAddress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load the owner topology contract: %v", err)
 	}
+	// An installation override collides even though the defaults are distinct.
 	_, err = NewPlan(topology, environment{"OPL_LEDGER_ADDR": ":8186"}.getenv)
 	if err == nil {
 		t.Fatal("the Ledger owner and the Resource Catalog owner would share :8186 in one network namespace")
@@ -134,7 +135,11 @@ func TestPlanRefusesTwoOwnersThatWouldShareOneAddress(t *testing.T) {
 			t.Fatalf("the refusal must name %q, got %q", fragment, err.Error())
 		}
 	}
-	if _, err := NewPlan(topology, environment{"OPL_LEDGER_ADDR": ":8189"}.getenv); err != nil {
+	distinct, err := Load(contractPath(t))
+	if err != nil {
+		t.Fatalf("load the owner topology contract: %v", err)
+	}
+	if _, err := NewPlan(distinct, environment{"OPL_LEDGER_ADDR": ":8189", "OPL_FABRIC_DATABASE_URL": "postgres://fabric"}.getenv); err != nil {
 		t.Fatalf("a composition with distinct listen addresses must be accepted: %v", err)
 	}
 }

@@ -48,9 +48,21 @@ func NewPlan(topology Topology, getenv func(string) string) (Plan, error) {
 	}
 	for _, process := range topology.Processes {
 		process.AllowedEnv = allowedEnvironmentNames(topology, process)
+		listeners, err := ownerListenerEnvironment(process, getenv)
+		if err != nil {
+			return Plan{}, err
+		}
+		process.ListenerEnvironment = listeners
 		peers, err := configuredPeerEnvironment(topology, process, getenv)
 		if err != nil {
 			return Plan{}, err
+		}
+		ownerPeers, err := configuredOwnerPeerEnvironment(topology, process, getenv)
+		if err != nil {
+			return Plan{}, err
+		}
+		for name, value := range ownerPeers {
+			peers[name] = value
 		}
 		process.PeerEnvironment = peers
 		criterion, ok := criteria[process.Service]
@@ -84,10 +96,9 @@ func NewPlan(topology Topology, getenv func(string) string) (Plan, error) {
 }
 
 // allowedEnvironmentNames resolves the contract's shared and per-process
-// environment declarations into one deterministic allowlist. The legacy
-// shared DATABASE_URL name is retained as a fallback, then ChildEnvironment
-// replaces it with the per-owner alias when one is supplied by the
-// installation. No name outside these declarations reaches a child process.
+// environment declarations into one allowlist. ChildEnvironment projects the
+// explicitly declared composition database input to the child's database name.
+// No name outside these declarations reaches a child process.
 func allowedEnvironmentNames(topology Topology, process Process) []string {
 	seen := map[string]bool{}
 	names := []string{}
@@ -299,13 +310,27 @@ func ResolveAddress(process Process, addressEnv string, getenv func(string) stri
 	if !ok {
 		return "", fmt.Errorf("owner %s declares no default address for %s", process.Service, addressEnv)
 	}
+	semantics := "raw"
+	if process.Kind == "ownerservice" || addressEnv == process.RPCAddressEnv {
+		semantics = "trimmed"
+	}
+	for _, listener := range process.AdditionalListeners {
+		if listener.AddressEnv == addressEnv {
+			semantics = listener.ValueSemantics
+			break
+		}
+	}
 	value := getenv(addressEnv)
-	if process.Kind == "ownerservice" {
+	switch semantics {
+	case "trimmed":
 		value = strings.TrimSpace(value)
+	case "raw":
+	default:
+		return "", fmt.Errorf("owner %s listener %s declares unsupported valueSemantics %q", process.Service, addressEnv, semantics)
 	}
 	if value == "" {
 		if port := process.AddressPortEnv; port != "" && addressEnv == process.AddressEnv {
-			if portValue := getenv(port); strings.TrimSpace(portValue) != "" {
+			if portValue := getenv(port); portValue != "" {
 				return ":" + portValue, nil
 			}
 		}
@@ -314,34 +339,14 @@ func ResolveAddress(process Process, addressEnv string, getenv func(string) stri
 	return value, nil
 }
 
-// listenerAddress returns the address one of the process's listeners binds in
-// this installation. A listener the contract declares without a default
-// address and the installation does not set binds nothing here.
-func listenerAddress(process Process, addressEnv string, getenv func(string) string) (string, error) {
-	value := getenv(addressEnv)
-	if process.Kind == "ownerservice" {
-		value = strings.TrimSpace(value)
-	}
-	if value != "" {
-		return value, nil
-	}
-	declared, ok := process.defaultAddressFor(addressEnv)
-	if !ok {
-		return "", nil
-	}
-	if port := process.AddressPortEnv; port != "" && addressEnv == process.AddressEnv {
-		if portValue := getenv(port); strings.TrimSpace(portValue) != "" {
-			return ":" + portValue, nil
-		}
-	}
-	return declared, nil
-}
-
 // checkDistinctAddresses refuses a composition in which two owners would bind
 // the same address inside one network namespace. The contract requires the
 // declared listeners to be distinct in that scope, and a shared port is a
 // reachable bind failure that would otherwise surface as an owner that never
 // becomes ready.
+//
+// The owners bind their effective installation listeners, so collisions are
+// checked after applying the same overrides as the child environment.
 func (p *Plan) checkDistinctAddresses(getenv func(string) string) error {
 	if !p.Topology.DistinctAddressesRequired {
 		return nil
@@ -365,10 +370,7 @@ func (p *Plan) checkDistinctAddresses(getenv func(string) string) error {
 		}
 		envs = append(envs, process.httpAddressEnvs()...)
 		for _, env := range envs {
-			address, err := listenerAddress(process, env, getenv)
-			if err != nil {
-				return err
-			}
+			address := process.ListenerEnvironment[env]
 			if address == "" {
 				continue
 			}

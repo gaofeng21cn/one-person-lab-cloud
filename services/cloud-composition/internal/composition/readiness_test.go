@@ -2,6 +2,7 @@ package composition
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -124,7 +125,7 @@ func TestLedgerUnreadyFails(t *testing.T) {
 // TestChildEnvironmentProjectsOwnerSecretsAndAliases proves that the shared
 // composition container does not recreate the former one-secret-per-owner
 // boundary by passing its complete parent environment to every child. The
-// Ledger receives its own database and service token aliases under the names
+// Ledger retains its legacy database and receives its service token under the names
 // the existing Ledger binary reads, while an unrelated owner's secret is
 // absent.
 func TestChildEnvironmentProjectsOwnerSecretsAndAliases(t *testing.T) {
@@ -162,8 +163,8 @@ func TestChildEnvironmentProjectsOwnerSecretsAndAliases(t *testing.T) {
 			got[name] = value
 		}
 	}
-	if got["DATABASE_URL"] != "postgres://ledger" {
-		t.Fatalf("Ledger must receive its aliased database, got %q", got["DATABASE_URL"])
+	if got["DATABASE_URL"] != "postgres://shared" {
+		t.Fatalf("Ledger must retain the declared legacy database, got %q", got["DATABASE_URL"])
 	}
 	if got["OPL_INTERNAL_SERVICE_TOKEN"] != "ledger-token" {
 		t.Fatalf("Ledger must receive its own service token alias, got %q", got["OPL_INTERNAL_SERVICE_TOKEN"])
@@ -199,10 +200,17 @@ func TestChildEnvironmentKeepsEveryDeclaredListenerAndPeerInput(t *testing.T) {
 			}
 		}
 	}
-	// Build the plan from the unconfigured environment so this test focuses
-	// on the child's effective environment rather than synthetically binding
-	// every source/target address above to the same test string.
-	plan, err := NewPlan(topology, environment{}.getenv)
+	// Listener fixtures carry real bind addresses; token and database fixtures
+	// remain distinct values so projection can be checked independently.
+	for index, process := range topology.Processes {
+		for offset, name := range process.listenerAddressEnvs() {
+			installation[name] = fmt.Sprintf("127.0.0.2:%d", 20000+index*10+offset)
+		}
+	}
+	// The plan reads the installation the owner processes actually run in, so
+	// the resolved listeners and the active edges are the ones this test
+	// inspects.
+	plan, err := NewPlan(topology, installation.getenv)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,6 +231,22 @@ func TestChildEnvironmentKeepsEveryDeclaredListenerAndPeerInput(t *testing.T) {
 					got[name] = value
 				}
 			}
+			// Expect installation binds and independently convert only wildcard
+			// target addresses for the caller's peer inputs.
+			resolved := map[string]string{}
+			for _, name := range step.Process.listenerAddressEnvs() {
+				resolved[name] = installation[name]
+			}
+			for _, edge := range topology.Communication.Edges {
+				if edge.Caller != step.Process.TransportPrincipal {
+					continue
+				}
+				target, ok := processByPrincipal(topology, edge.Target)
+				if !ok {
+					t.Fatalf("the contract declares no owner %q", edge.Target)
+				}
+				resolved[edge.AddressEnv] = loopbackAddress(installation[target.peerListenerEnv(edge.AddressEnv)])
+			}
 			expected := []string{step.Process.AddressEnv, step.Process.AddressPortEnv, step.Process.PeerTokensEnv, step.Process.RPCAddressEnv, step.Process.RPCDatabaseEnv, step.Process.RPCEnabledByEnv}
 			for _, listener := range step.Process.AdditionalListeners {
 				expected = append(expected, listener.AddressEnv)
@@ -234,8 +258,19 @@ func TestChildEnvironmentKeepsEveryDeclaredListenerAndPeerInput(t *testing.T) {
 				}
 			}
 			for _, name := range expected {
-				if name != "" && got[name] != installation[name] {
-					t.Errorf("declared listener/peer input %s was dropped: got %q, want %q", name, got[name], installation[name])
+				if name == "" {
+					continue
+				}
+				if _, present := got[name]; !present {
+					t.Errorf("declared listener/peer input %s was dropped", name)
+					continue
+				}
+				want, resolvedHere := resolved[name]
+				if !resolvedHere {
+					want = installation[name]
+				}
+				if got[name] != want {
+					t.Errorf("declared listener/peer input %s carries %q, want %q", name, got[name], want)
 				}
 			}
 			if step.Process.DatabaseEnv == "" {
@@ -258,6 +293,22 @@ func TestChildEnvironmentKeepsEveryDeclaredListenerAndPeerInput(t *testing.T) {
 			}
 		})
 	}
+}
+
+// loopbackAddress is the address a listener that binds every interface of the
+// shared container is reached at.
+func loopbackAddress(address string) string {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return address
+	}
+	switch host {
+	case "", "0.0.0.0":
+		host = "127.0.0.1"
+	case "::":
+		host = "::1"
+	}
+	return net.JoinHostPort(host, port)
 }
 
 // TestOwnerGRPCHealthIsVerifiedAgainstTheOwnerHealthService proves that an
@@ -306,13 +357,13 @@ func TestOwnerGRPCHealthIsVerifiedAgainstTheOwnerHealthService(t *testing.T) {
 func ledgerChecker(t *testing.T, url string) *Checker {
 	t.Helper()
 	environment := environment{
-		"LEDGER_ADDR":             url,
+		"LEDGER_ADDR":             strings.TrimPrefix(url, "http://"),
 		"OPL_GRPC_INSECURE_LOCAL": "1",
 	}
 	return NewChecker(environment.getenv)
 }
 
-// ledgerStep returns the Ledger step of the composition plan.
+// ledgerStep returns the real plan using the test server's bind environment.
 func ledgerStep(t *testing.T, checker *Checker) Step {
 	t.Helper()
 	topology, err := Load(contractPath(t))

@@ -33,7 +33,10 @@ first Link single-container change.
 
 Cloud source now supplies the composition entrypoint, preserves per-owner
 environment isolation and aliases, and resolves configured HTTP peers through
-the target listener declaration. Isolated source tests establish that behavior.
+the target effective listener, retaining installation bind and port overrides.
+The contract explicitly maps composition database inputs to each child; the
+legacy Fabric database remains separate from its coordination database.
+Isolated source tests establish that behavior.
 Installed acceptance must still preserve owner authorization, single writers,
 accepted-operation recovery and persistence. Instance must
 switch the real API routes and configuration, retain existing databases and

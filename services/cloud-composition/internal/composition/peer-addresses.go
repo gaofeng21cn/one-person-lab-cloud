@@ -2,10 +2,7 @@ package composition
 
 import (
 	"fmt"
-	"net"
 	"net/url"
-	"strconv"
-	"strings"
 )
 
 // configuredPeerEnvironment resolves the retained HTTP peers through the same
@@ -46,22 +43,15 @@ func configuredPeerEnvironment(topology Topology, caller Process, getenv func(st
 		if err != nil {
 			return nil, err
 		}
-		host, port, err := net.SplitHostPort(address)
-		portNumber, portErr := strconv.Atoi(port)
-		if err != nil || portErr != nil || portNumber < 1 || portNumber > 65535 {
-			return nil, fmt.Errorf("owner %s: peer %s target listener is invalid", caller.Service, peer.AddressEnv)
-		}
-		switch host {
-		case "", "0.0.0.0":
-			host = "127.0.0.1"
-		case "::":
-			host = "::1"
+		peerAddress, err := loopbackPeerAddress(address)
+		if err != nil {
+			return nil, fmt.Errorf("owner %s: peer %s target listener is invalid: %w", caller.Service, peer.AddressEnv, err)
 		}
 		if _, duplicate := resolved[peer.AddressEnv]; duplicate {
 			return nil, fmt.Errorf("owner %s: peer address %s is declared twice", caller.Service, peer.AddressEnv)
 		}
 		resolved[peer.AddressEnv] = (&url.URL{Scheme: peer.OriginScheme,
-			Host: net.JoinHostPort(strings.TrimSpace(host), port)}).String()
+			Host: peerAddress}).String()
 	}
 	return resolved, nil
 }

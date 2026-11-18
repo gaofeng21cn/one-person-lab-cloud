@@ -70,18 +70,23 @@ type Process struct {
 	// Env, OptionalEnv and ExternalEnv are the contract's per-process
 	// environment allowlist. They are deliberately carried into the executable
 	// plan so a child never inherits an unrelated owner's secrets.
-	Env            []string `json:"env"`
-	OptionalEnv    []string `json:"optionalEnv"`
-	ExternalEnv    []string `json:"externalEnv"`
-	DatabaseEnv    string   `json:"databaseEnv"`
-	PeerTokensEnv  string   `json:"peerTokensEnv"`
-	RPCDatabaseEnv string   `json:"rpcDatabaseEnv"`
+	Env         []string `json:"env"`
+	OptionalEnv []string `json:"optionalEnv"`
+	ExternalEnv []string `json:"externalEnv"`
+	DatabaseEnv string   `json:"databaseEnv"`
+	// CompositionDatabaseEnv is the installation input projected to DatabaseEnv.
+	CompositionDatabaseEnv string `json:"compositionDatabaseEnv"`
+	PeerTokensEnv          string `json:"peerTokensEnv"`
+	RPCDatabaseEnv         string `json:"rpcDatabaseEnv"`
 	// AllowedEnv is derived from sharedEnv and the process allowlist at plan
 	// construction. It is runtime state, not a contract field.
 	AllowedEnv []string `json:"-"`
 	// PeerEnvironment binds configured caller origins to the target listeners
 	// in this shared network namespace. Names still pass through AllowedEnv.
 	PeerEnvironment map[string]string `json:"-"`
+	// ListenerEnvironment contains the effective bind addresses resolved from
+	// installation inputs and the contract's defaults.
+	ListenerEnvironment map[string]string `json:"-"`
 
 	// AddressEnv is the process's own listen address. For an ownerservice
 	// process it is the gRPC address; for an http or bff process it is the
@@ -222,6 +227,9 @@ func (t *Topology) validate() error {
 			return fmt.Errorf("owner topology contract declares %q twice", process.Service)
 		}
 		seen[process.Service] = true
+		if err := process.validateCompositionDatabase(); err != nil {
+			return err
+		}
 		if strings.TrimSpace(process.Binary) == "" {
 			return fmt.Errorf("owner %s declares no binary", process.Service)
 		}
@@ -302,6 +310,34 @@ func (p Process) defaultAddressFor(name string) (string, bool) {
 	return "", false
 }
 
+// listenerAddressEnvs names the environments that carry the process's own
+// listeners: its listen address, its typed owner address and every additional
+// listener it serves.
+func (p Process) listenerAddressEnvs() []string {
+	names := []string{}
+	for _, name := range []string{p.AddressEnv, p.RPCAddressEnv} {
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	for _, listener := range p.AdditionalListeners {
+		if listener.AddressEnv != "" {
+			names = append(names, listener.AddressEnv)
+		}
+	}
+	return names
+}
+
+// peerListenerEnv names the listener the process serves a peer address
+// environment on. A contract names the target's listener either by the same
+// environment name or by the name the caller's own surface uses for it.
+func (p Process) peerListenerEnv(addressEnv string) string {
+	if p.declaresAddressEnv(addressEnv) {
+		return addressEnv
+	}
+	return p.grpcAddressEnv()
+}
+
 // grpcAddressEnv names the environment that carries the process's typed owner
 // address. An ownerservice process carries it in its own address environment;
 // a process that serves a separate typed owner listener declares it.
@@ -328,4 +364,16 @@ func (p Process) httpAddressEnvs() []string {
 		}
 	}
 	return names
+}
+
+// validateCompositionDatabase requires an explicit source for each database
+// consumer; transport identity does not define database ownership.
+func (p Process) validateCompositionDatabase() error {
+	if p.DatabaseEnv != "" && strings.TrimSpace(p.CompositionDatabaseEnv) == "" {
+		return fmt.Errorf("owner %s declares databaseEnv %s without compositionDatabaseEnv", p.Service, p.DatabaseEnv)
+	}
+	if p.DatabaseEnv == "" && p.CompositionDatabaseEnv != "" {
+		return fmt.Errorf("owner %s declares compositionDatabaseEnv without databaseEnv", p.Service)
+	}
+	return nil
 }

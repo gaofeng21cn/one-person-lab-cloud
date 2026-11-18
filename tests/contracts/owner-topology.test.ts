@@ -36,6 +36,7 @@ type ProcessEntry = {
   rpcDatabaseEnv?: string;
   defaultAddress: string;
   databaseEnv?: string | null;
+  compositionDatabaseEnv?: string;
   addressPortEnv?: string;
   env: string[];
   optionalEnv?: string[];
@@ -851,6 +852,7 @@ test("the Fabric HTTP process also declares its real owner RPC admission surface
   assert.equal(fabric.defaultRPCAddress, listeners.get(fabric.binary)?.get(fabric.rpcAddressEnv!),
     "the contract must declare the coordination address the published installation binds");
   assert.equal(fabric.rpcDatabaseEnv, "OPL_FABRIC_DATABASE_URL");
+  assert.equal(fabric.compositionDatabaseEnv, "DATABASE_URL");
 });
 
 // peerCallers derives the callers every owner must admit from the source that
