@@ -89,6 +89,9 @@ func ChildEnvironment(process Process, environ []string, getenv func(string) str
 			continue
 		}
 		value := values[name]
+		if listener, declared := process.ListenerEnvironment[name]; declared {
+			value = listener
+		}
 		if peer, configured := process.PeerEnvironment[name]; configured {
 			value = peer
 		}
@@ -177,7 +180,7 @@ func NewChecker(getenv func(string) string) *Checker {
 // never became ready instead of a generic timeout.
 func (c *Checker) Check(ctx context.Context, step Step) error {
 	for _, check := range step.Criterion.Checks {
-		address, err := ResolveAddress(step.Process, check.AddressEnv, c.getenv)
+		address, err := checkAddress(step.Process, check.AddressEnv, c.getenv)
 		if err != nil {
 			return err
 		}
@@ -195,6 +198,16 @@ func (c *Checker) Check(ctx context.Context, step Step) error {
 		}
 	}
 	return nil
+}
+
+// checkAddress resolves the address one owner's declared listener is reached at
+// in the shared container. The composition resolves the owner's own listener
+// from the contract, so the probe reads the address the owner actually bound.
+func checkAddress(process Process, addressEnv string, getenv func(string) string) (string, error) {
+	if address, declared := process.ListenerEnvironment[addressEnv]; declared {
+		return address, nil
+	}
+	return ResolveAddress(process, addressEnv, getenv)
 }
 
 // describeCheck names one check the way the contract declares it.

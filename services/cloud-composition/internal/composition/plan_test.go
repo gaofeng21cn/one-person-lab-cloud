@@ -125,7 +125,15 @@ func TestPlanRefusesTwoOwnersThatWouldShareOneAddress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load the owner topology contract: %v", err)
 	}
-	_, err = NewPlan(topology, environment{"OPL_LEDGER_ADDR": ":8186"}.getenv)
+	// The owners bind the listeners the contract declares, so a shared
+	// listener is a shared declaration.
+	for index := range topology.Processes {
+		if topology.Processes[index].Service == "ledger" {
+			topology.Processes[index].DefaultAddress = ":8186"
+		}
+	}
+	// The installation enables the Ledger owner's typed owner listener.
+	_, err = NewPlan(topology, environment{"OPL_LEDGER_ADDR": ":8189"}.getenv)
 	if err == nil {
 		t.Fatal("the Ledger owner and the Resource Catalog owner would share :8186 in one network namespace")
 	}
@@ -134,7 +142,11 @@ func TestPlanRefusesTwoOwnersThatWouldShareOneAddress(t *testing.T) {
 			t.Fatalf("the refusal must name %q, got %q", fragment, err.Error())
 		}
 	}
-	if _, err := NewPlan(topology, environment{"OPL_LEDGER_ADDR": ":8189"}.getenv); err != nil {
+	distinct, err := Load(contractPath(t))
+	if err != nil {
+		t.Fatalf("load the owner topology contract: %v", err)
+	}
+	if _, err := NewPlan(distinct, environment{"OPL_LEDGER_ADDR": ":8189", "OPL_FABRIC_DATABASE_URL": "postgres://fabric"}.getenv); err != nil {
 		t.Fatalf("a composition with distinct listen addresses must be accepted: %v", err)
 	}
 }

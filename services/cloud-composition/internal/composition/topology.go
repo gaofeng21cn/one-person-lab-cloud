@@ -82,6 +82,12 @@ type Process struct {
 	// PeerEnvironment binds configured caller origins to the target listeners
 	// in this shared network namespace. Names still pass through AllowedEnv.
 	PeerEnvironment map[string]string `json:"-"`
+	// ListenerEnvironment binds the owner's own listen environments to the
+	// listener the contract declares for them. The shared environment names
+	// those variables with the published per-container address of another
+	// owner's service, which does not resolve inside one container, so the
+	// owner binds the declared listener instead.
+	ListenerEnvironment map[string]string `json:"-"`
 
 	// AddressEnv is the process's own listen address. For an ownerservice
 	// process it is the gRPC address; for an http or bff process it is the
@@ -300,6 +306,34 @@ func (p Process) defaultAddressFor(name string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// listenerAddressEnvs names the environments that carry the process's own
+// listeners: its listen address, its typed owner address and every additional
+// listener it serves.
+func (p Process) listenerAddressEnvs() []string {
+	names := []string{}
+	for _, name := range []string{p.AddressEnv, p.RPCAddressEnv} {
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	for _, listener := range p.AdditionalListeners {
+		if listener.AddressEnv != "" {
+			names = append(names, listener.AddressEnv)
+		}
+	}
+	return names
+}
+
+// peerListenerEnv names the listener the process serves a peer address
+// environment on. A contract names the target's listener either by the same
+// environment name or by the name the caller's own surface uses for it.
+func (p Process) peerListenerEnv(addressEnv string) string {
+	if p.declaresAddressEnv(addressEnv) {
+		return addressEnv
+	}
+	return p.grpcAddressEnv()
 }
 
 // grpcAddressEnv names the environment that carries the process's typed owner

@@ -48,9 +48,21 @@ func NewPlan(topology Topology, getenv func(string) string) (Plan, error) {
 	}
 	for _, process := range topology.Processes {
 		process.AllowedEnv = allowedEnvironmentNames(topology, process)
+		listeners, err := ownerListenerEnvironment(process, getenv)
+		if err != nil {
+			return Plan{}, err
+		}
+		process.ListenerEnvironment = listeners
 		peers, err := configuredPeerEnvironment(topology, process, getenv)
 		if err != nil {
 			return Plan{}, err
+		}
+		ownerPeers, err := configuredOwnerPeerEnvironment(topology, process, getenv)
+		if err != nil {
+			return Plan{}, err
+		}
+		for name, value := range ownerPeers {
+			peers[name] = value
 		}
 		process.PeerEnvironment = peers
 		criterion, ok := criteria[process.Service]
@@ -314,34 +326,14 @@ func ResolveAddress(process Process, addressEnv string, getenv func(string) stri
 	return value, nil
 }
 
-// listenerAddress returns the address one of the process's listeners binds in
-// this installation. A listener the contract declares without a default
-// address and the installation does not set binds nothing here.
-func listenerAddress(process Process, addressEnv string, getenv func(string) string) (string, error) {
-	value := getenv(addressEnv)
-	if process.Kind == "ownerservice" {
-		value = strings.TrimSpace(value)
-	}
-	if value != "" {
-		return value, nil
-	}
-	declared, ok := process.defaultAddressFor(addressEnv)
-	if !ok {
-		return "", nil
-	}
-	if port := process.AddressPortEnv; port != "" && addressEnv == process.AddressEnv {
-		if portValue := getenv(port); strings.TrimSpace(portValue) != "" {
-			return ":" + portValue, nil
-		}
-	}
-	return declared, nil
-}
-
 // checkDistinctAddresses refuses a composition in which two owners would bind
 // the same address inside one network namespace. The contract requires the
 // declared listeners to be distinct in that scope, and a shared port is a
 // reachable bind failure that would otherwise surface as an owner that never
 // becomes ready.
+//
+// The owners bind the listeners the contract declares, so the declared
+// listeners are what this refuses.
 func (p *Plan) checkDistinctAddresses(getenv func(string) string) error {
 	if !p.Topology.DistinctAddressesRequired {
 		return nil
@@ -365,10 +357,7 @@ func (p *Plan) checkDistinctAddresses(getenv func(string) string) error {
 		}
 		envs = append(envs, process.httpAddressEnvs()...)
 		for _, env := range envs {
-			address, err := listenerAddress(process, env, getenv)
-			if err != nil {
-				return err
-			}
+			address := process.ListenerEnvironment[env]
 			if address == "" {
 				continue
 			}

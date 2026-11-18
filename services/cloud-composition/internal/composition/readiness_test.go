@@ -84,7 +84,7 @@ func TestLedgerReadyPasses(t *testing.T) {
 	defer server.Close()
 
 	checker := ledgerChecker(t, server.URL)
-	if err := checker.Check(context.Background(), ledgerStep(t, checker)); err != nil {
+	if err := checker.Check(context.Background(), ledgerStep(t, checker, server.URL)); err != nil {
 		t.Fatalf("a ready Ledger must satisfy its criterion: %v", err)
 	}
 }
@@ -109,7 +109,7 @@ func TestLedgerUnreadyFails(t *testing.T) {
 	defer server.Close()
 
 	checker := ledgerChecker(t, server.URL)
-	err := checker.Check(context.Background(), ledgerStep(t, checker))
+	err := checker.Check(context.Background(), ledgerStep(t, checker, server.URL))
 	if err == nil {
 		t.Fatal("an unready Ledger must not satisfy its criterion")
 	}
@@ -199,10 +199,10 @@ func TestChildEnvironmentKeepsEveryDeclaredListenerAndPeerInput(t *testing.T) {
 			}
 		}
 	}
-	// Build the plan from the unconfigured environment so this test focuses
-	// on the child's effective environment rather than synthetically binding
-	// every source/target address above to the same test string.
-	plan, err := NewPlan(topology, environment{}.getenv)
+	// The plan reads the installation the owner processes actually run in, so
+	// the resolved listeners and the active edges are the ones this test
+	// inspects.
+	plan, err := NewPlan(topology, installation.getenv)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,6 +223,38 @@ func TestChildEnvironmentKeepsEveryDeclaredListenerAndPeerInput(t *testing.T) {
 					got[name] = value
 				}
 			}
+			// The listener environments carry the listener the contract
+			// declares, and a peer address environment carries the target's
+			// declared listener reached through the shared container's
+			// loopback interface. Every other declared input keeps the
+			// installation's own value.
+			resolved := map[string]string{}
+			for _, name := range step.Process.listenerAddressEnvs() {
+				declared, ok := step.Process.defaultAddressFor(name)
+				if !ok {
+					t.Fatalf("owner %s declares no default address for %s", step.Process.Service, name)
+				}
+				resolved[name] = declared
+			}
+			if port := step.Process.AddressPortEnv; port != "" {
+				if _, number, err := net.SplitHostPort(resolved[step.Process.AddressEnv]); err == nil {
+					resolved[port] = number
+				}
+			}
+			for _, edge := range topology.Communication.Edges {
+				if edge.Caller != step.Process.TransportPrincipal {
+					continue
+				}
+				target, ok := processByPrincipal(topology, edge.Target)
+				if !ok {
+					t.Fatalf("the contract declares no owner %q", edge.Target)
+				}
+				declared, ok := target.defaultAddressFor(target.grpcAddressEnv())
+				if !ok {
+					t.Fatalf("owner %s declares no default address for its owner transport", target.Service)
+				}
+				resolved[edge.AddressEnv] = loopbackAddress(declared)
+			}
 			expected := []string{step.Process.AddressEnv, step.Process.AddressPortEnv, step.Process.PeerTokensEnv, step.Process.RPCAddressEnv, step.Process.RPCDatabaseEnv, step.Process.RPCEnabledByEnv}
 			for _, listener := range step.Process.AdditionalListeners {
 				expected = append(expected, listener.AddressEnv)
@@ -234,8 +266,19 @@ func TestChildEnvironmentKeepsEveryDeclaredListenerAndPeerInput(t *testing.T) {
 				}
 			}
 			for _, name := range expected {
-				if name != "" && got[name] != installation[name] {
-					t.Errorf("declared listener/peer input %s was dropped: got %q, want %q", name, got[name], installation[name])
+				if name == "" {
+					continue
+				}
+				if _, present := got[name]; !present {
+					t.Errorf("declared listener/peer input %s was dropped", name)
+					continue
+				}
+				want, resolvedHere := resolved[name]
+				if !resolvedHere {
+					want = installation[name]
+				}
+				if got[name] != want {
+					t.Errorf("declared listener/peer input %s carries %q, want %q", name, got[name], want)
 				}
 			}
 			if step.Process.DatabaseEnv == "" {
@@ -260,6 +303,22 @@ func TestChildEnvironmentKeepsEveryDeclaredListenerAndPeerInput(t *testing.T) {
 	}
 }
 
+// loopbackAddress is the address a listener that binds every interface of the
+// shared container is reached at.
+func loopbackAddress(address string) string {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return address
+	}
+	switch host {
+	case "", "0.0.0.0":
+		host = "127.0.0.1"
+	case "::":
+		host = "::1"
+	}
+	return net.JoinHostPort(host, port)
+}
+
 // TestOwnerGRPCHealthIsVerifiedAgainstTheOwnerHealthService proves that an
 // owner with a gRPC criterion is verified against a real health service.
 func TestOwnerGRPCHealthIsVerifiedAgainstTheOwnerHealthService(t *testing.T) {
@@ -276,6 +335,13 @@ func TestOwnerGRPCHealthIsVerifiedAgainstTheOwnerHealthService(t *testing.T) {
 	topology, err := Load(contractPath(t))
 	if err != nil {
 		t.Fatalf("load the owner topology contract: %v", err)
+	}
+	// The owner binds the listener the contract declares, so the contract
+	// declares the address this test serves on.
+	for index := range topology.Processes {
+		if topology.Processes[index].Service == "capability" {
+			topology.Processes[index].DefaultAddress = listener.Addr().String()
+		}
 	}
 	environment := environment{
 		"OPL_CAPABILITY_ADDR":     listener.Addr().String(),
@@ -312,12 +378,24 @@ func ledgerChecker(t *testing.T, url string) *Checker {
 	return NewChecker(environment.getenv)
 }
 
-// ledgerStep returns the Ledger step of the composition plan.
-func ledgerStep(t *testing.T, checker *Checker) Step {
+// ledgerStep returns the Ledger step of the composition plan. The Ledger
+// binds the listener the contract declares, so the contract declares the
+// address this test serves on.
+func ledgerStep(t *testing.T, checker *Checker, url string) Step {
 	t.Helper()
 	topology, err := Load(contractPath(t))
 	if err != nil {
 		t.Fatalf("load the owner topology contract: %v", err)
+	}
+	for index := range topology.Processes {
+		if topology.Processes[index].Service != "ledger" {
+			continue
+		}
+		for listener := range topology.Processes[index].AdditionalListeners {
+			if topology.Processes[index].AdditionalListeners[listener].AddressEnv == "LEDGER_ADDR" {
+				topology.Processes[index].AdditionalListeners[listener].DefaultAddress = url
+			}
+		}
 	}
 	plan, err := NewPlan(topology, checker.getenv)
 	if err != nil {
