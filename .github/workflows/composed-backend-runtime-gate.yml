@@ -1,0 +1,135 @@
+name: Composed Backend Runtime Gate
+
+run-name: Composed backend runtime gate ${{ github.event.pull_request.number || github.ref_name }}
+
+# The composed Cloud backend is one container, and the runtime claim about it
+# is the strongest one this repository makes: one container brings every
+# declared owner to ready, keeps the owners mutually consistent, leaves each
+# owner satisfying the readiness criterion the owner topology contract declares
+# for it, and detects a deliberately broken owner.
+#
+# The suite that proves this builds the product image and starts several
+# containers, so it runs in its own workflow and only for the changes that can
+# break the claim. Ordinary pull request CI keeps its present speed, and the
+# gate never reaches a secret, a cluster or a customer resource.
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      # The product image the composed unit runs.
+      - "Dockerfile"
+      - "package.json"
+      - "package-lock.json"
+      - "apps/**"
+      - "packages/**"
+      - "services/**"
+      # The published installation the composed unit reads, and the owner
+      # topology contract it declares.
+      - "deploy/portable/**"
+      - "docs/spec/target/contracts/**"
+      # The suite, the contract test that owns this gate, and this gate.
+      - "tests/integration/**"
+      - "tests/contracts/composed-backend-runtime-gate.test.ts"
+      - ".github/workflows/composed-backend-runtime-gate.yml"
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: composed-backend-runtime-gate-${{ github.event.pull_request.number || github.ref }}
+  # A superseded pull request run is replaced; a main run keeps its result.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  composed_backend_runtime:
+    name: composed-backend-runtime
+    runs-on: ubuntu-latest
+    # The suite builds the product image and starts several containers, and its
+    # own allowance is one hour. The job keeps room for the mount and for the
+    # cleanup that follows the run.
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact product source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+
+      # The suite reads project quota from a dedicated ext4 or XFS mount, the
+      # way Clean Host Qualification does. The recipe is the one that workflow
+      # uses, derived here from it: the two workflows have no shared place for
+      # it, and tests/contracts/composed-backend-runtime-gate.test.ts keeps the
+      # two copies from drifting apart.
+      - name: Prepare the project-quota storage root
+        id: storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          kernel_release="$(uname -r)"
+          if ! sudo modprobe -v quota_v2; then
+            if modinfo -k "$kernel_release" quota_v2; then
+              exit 1
+            fi
+            sudo apt-get update
+            sudo apt-get install --no-install-recommends -y "linux-modules-extra-$kernel_release"
+            sudo depmod -a "$kernel_release"
+            modinfo -k "$kernel_release" quota_v2
+            sudo modprobe -v quota_v2
+          fi
+          qualification_root="/tmp/opl-composed-runtime-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test ! -e "$qualification_root"
+          available_bytes="$(df -B1 --output=avail /tmp | tail -n 1 | tr -d ' ')"
+          [[ "$available_bytes" =~ ^[0-9]+$ ]]
+          # Fail explicitly instead of relying on `set -e` to abort on a bare (( )).
+          if (( available_bytes < 14 * 1024 * 1024 * 1024 )); then
+            echo "insufficient free space for the project-quota storage root: ${available_bytes} bytes" >&2
+            exit 1
+          fi
+          mkdir -p "$qualification_root/storage"
+          printf 'OPL_RUNTIME_GATE_ROOT=%s\n' "$qualification_root" >> "$GITHUB_ENV"
+          quota_image="$qualification_root/quota.img"
+          truncate -s 12G "$quota_image"
+          mkfs.ext4 -F -q -O project,quota -E quotatype=prjquota "$quota_image"
+          sudo mount -o loop,prjquota "$quota_image" "$qualification_root/storage"
+          sudo chown "$(id -u):$(id -g)" "$qualification_root/storage"
+          printf 'storage_root=%s\n' "$qualification_root/storage" >> "$GITHUB_OUTPUT"
+
+      # The suite reads the mount at the same path inside the container and
+      # hands it to the Fabric owner. A failure here fails the job: the claim
+      # this gate exists for is exactly the claim the suite makes.
+      - name: Run the composed backend runtime suite
+        env:
+          OPL_PORTABLE_RUNTIME_READBACK: "1"
+          OPL_TEST_QUOTA_ROOT: ${{ steps.storage.outputs.storage_root }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/integration/composed-backend-unit.test.ts
+
+      # The runner must not leak a 12 GiB image or a stale loop mount.
+      - name: Remove the project-quota storage root
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          qualification_root="${OPL_RUNTIME_GATE_ROOT:-}"
+          # An earlier step may have failed before the root was created; cleanup
+          # succeeds without work in that case.
+          [ -n "$qualification_root" ] || exit 0
+          test "$qualification_root" = "/tmp/opl-composed-runtime-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test ! -L "$qualification_root"
+          if mountpoint -q "$qualification_root/storage"; then
+            sudo umount "$qualification_root/storage"
+          fi
+          if test -d "$qualification_root"; then
+            sudo rm -rf --one-file-system -- "$qualification_root"
+          fi
