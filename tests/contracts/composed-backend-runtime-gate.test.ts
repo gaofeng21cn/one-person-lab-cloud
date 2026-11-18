@@ -56,7 +56,8 @@ test("the gate runs for the changes that can break the runtime claim", async () 
   const paths: string[] = trigger.pull_request?.paths ?? [];
   for (const required of [
     // The product image the composed unit runs.
-    "Dockerfile", "package.json", "package-lock.json", "apps/**", "packages/**", "services/**",
+    "Dockerfile", ".dockerignore", "package.json", "package-lock.json",
+    "index.html", "vite.config.ts", "public/**", "apps/**", "packages/**", "services/**",
     // The published installation and the owner topology contract.
     "deploy/portable/**", "docs/spec/target/contracts/**",
     // The suite and the gate itself.

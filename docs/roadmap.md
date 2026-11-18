@@ -39,9 +39,10 @@ legacy Fabric database remains separate from its coordination database.
 Isolated source tests establish that behavior. Product admission now consumes
 the composed topology, effective listener inputs and live workload ownership;
 Instance still owns material content and deployment evidence. Full container
-readiness is now executed on every pull request and every `main` push by the
-[Composed Backend Runtime Gate](../.github/workflows/composed-backend-runtime-gate.yml),
-which builds the product image, starts one container and observes every
+readiness is checked by the
+[Composed Backend Runtime Gate](../.github/workflows/composed-backend-runtime-gate.yml)
+on pull requests that change its inputs and on every `main` push. The gate
+builds the product image, starts one container and observes every
 declared owner reach ready, stay mutually consistent, satisfy the readiness
 criterion the owner topology contract declares for it, and detect a deliberately
 broken owner. That gate reaches the runtime layer of the composed unit only.

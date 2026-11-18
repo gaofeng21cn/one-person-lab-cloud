@@ -19,8 +19,12 @@ on:
     paths:
       # The product image the composed unit runs.
       - "Dockerfile"
+      - ".dockerignore"
       - "package.json"
       - "package-lock.json"
+      - "index.html"
+      - "vite.config.ts"
+      - "public/**"
       - "apps/**"
       - "packages/**"
       - "services/**"
