@@ -292,16 +292,16 @@ test("the composed unit refuses a Service whose live workload is not the unit's 
         spec: { containers: [{ name: "foreign", image: "example.invalid/foreign:1" }] } } } });
   };
   const cases: [string, string, (fixture: ComposedFixture) => void][] = [
-    ["a foreign unmanaged Pod", "endpoint_pod_replicaset_unresolved", foreignPod],
-    ["a live Pod the unit no longer owns", "endpoint_pod_replicaset_unresolved", (list) => { composedPod(list).metadata.ownerReferences = []; }],
+    ["a foreign unmanaged Pod", "installation_process_unproven", foreignPod],
+    ["a live Pod the unit no longer owns", "installation_process_unproven", (list) => { composedPod(list).metadata.ownerReferences = []; }],
     ["a foreign Deployment", "service_backend_owner", foreignProducer("Deployment", "apps/v1")],
     ["a foreign StatefulSet", "service_backend_owner", foreignProducer("StatefulSet", "apps/v1")],
     ["a foreign DaemonSet", "service_backend_owner", foreignProducer("DaemonSet", "apps/v1")],
     ["a foreign ReplicaSet", "pod_owner_chain_unproven", foreignProducer("ReplicaSet", "apps/v1")],
-    ["a ReplicaSet whose owner was replaced", "pod_owner_chain_unproven", (list) => {
+    ["a ReplicaSet whose owner was replaced", "installation_process_unproven", (list) => {
       composedReplicaSet(list).metadata.ownerReferences[0].uid = "replaced-deployment";
     }],
-    ["a unit Deployment that was replaced", "pod_owner_chain_unproven", (list) => {
+    ["a unit Deployment that was replaced", "installation_process_unproven", (list) => {
       composedUnit(list).metadata.uid = "replaced-deployment";
     }],
     ["a Pod the Service does not select", "endpoint_pod_selector_mismatch", (list) => {
@@ -316,7 +316,7 @@ test("the composed unit refuses a Service whose live workload is not the unit's 
     change(list);
     const result = await invoke(list);
     assert.equal(result.status, 1, result.stdout);
-    const codes = reasonCode === "rpc_service_backend_unproven" ? [reasonCode] : [`rpc_service_backend_ambiguous/${reasonCode}`];
+    const codes = ["rpc_service_backend_unproven", "installation_process_unproven"].includes(reasonCode) ? [reasonCode] : [`rpc_service_backend_ambiguous/${reasonCode}`];
     assert.deepEqual([...new Set(result.report.errors.map((error: any) =>
       error.reasonCode ? `${error.code}/${error.reasonCode}` : error.code))], codes, result.stdout);
     assert.deepEqual(result.report.communication.edges, []);
@@ -334,7 +334,7 @@ test("the composed unit refuses a published endpoint that does not name the unit
     ["an EndpointSlice that publishes a foreign address", "endpoint_address_mismatch", (list) => {
       composedEndpointSlice(list, "opl-cloud-workspace").endpoints[0].addresses[0] = "192.0.2.99";
     }],
-    ["a live Pod whose command drifted from the unit's", "endpoint_pod_command_mismatch", (list) => {
+    ["a live Pod whose command drifted from the unit's", "installation_process_unproven", (list) => {
       composedPod(list).spec.containers[0].command = ["/bin/sh", "-c", "exec sleep 3600"];
     }],
     ["a live sidecar that claims the published port", "endpoint_pod_port_conflict", (list) => {
@@ -349,8 +349,9 @@ test("the composed unit refuses a published endpoint that does not name the unit
     change(list);
     const result = await invoke(list);
     assert.equal(result.status, 1, result.stdout);
+    const expected = reasonCode === "installation_process_unproven" ? `${reasonCode}/` : `rpc_service_backend_ambiguous/${reasonCode}`;
     assert.deepEqual([...new Set(result.report.errors.map((error: any) => `${error.code}/${error.reasonCode ?? ""}`))],
-      [`rpc_service_backend_ambiguous/${reasonCode}`], result.stdout);
+      [expected], result.stdout);
     assert.deepEqual(result.report.communication.edges, []);
   });
 });
@@ -533,7 +534,7 @@ test("bind addresses retain and prove their host in the unit network namespace",
     composedSharedConfigMap(list).data.OPL_RUNTIME_CONTROL_ADDR = "192.0.2.1:8183";
     assert.equal((await invoke(list)).status, 0);
     composedPod(list).metadata.ownerReferences[0].uid = "foreign-rs";
-    assertRejected(await invoke(list), "installation_listener_unproven");
+    assertRejected(await invoke(list), "installation_process_unproven");
   });
 });
 
@@ -713,10 +714,133 @@ test("PodIP reachability requires the current ReplicaSet template and actual Pod
     const list = workedComposedInstallation();
     composedSharedConfigMap(list).data.OPL_RUNTIME_CONTROL_ADDR = "192.0.2.1:8183";
     assert.equal((await invoke(list)).status, 0);
-    if (form === "stale-revision") composedReplicaSet(list).spec.template.spec.containers[0].image = "example.invalid/old:1";
+    if (form === "stale-revision") {
+      composedReplicaSet(list).spec.template.spec.containers[0].image = "example.invalid/old:1";
+      composedPod(list).spec.containers[0].image = "example.invalid/old:1";
+    }
     if (form === "drifted-live-listener") composedPod(list).spec.containers[0].env.push({ name: "OPL_RUNTIME_CONTROL_ADDR", value: "127.0.0.1:9999" });
     if (form === "drifted-live-image") composedPod(list).spec.containers[0].image = "example.invalid/old:1";
     if (form === "host-network") composedPod(list).spec.hostNetwork = true;
-    assertRejected(await invoke(list), "installation_listener_unproven");
+    assertRejected(await invoke(list), form === "drifted-live-image" ? "installation_process_unproven" : "installation_listener_unproven");
+  });
+});
+
+function unselectedProducer(list: ComposedFixture, kind: string, main = structuredClone(composedContainer(list))) {
+  const template = { metadata: { labels: { workload: "unselected" } }, spec: { containers: [main] } };
+  const apiVersion = kind === "Pod" || kind === "ReplicationController" ? "v1" :
+    kind === "Job" || kind === "CronJob" ? "batch/v1" : "apps/v1";
+  const resource: any = { apiVersion, kind, metadata: { name: `unselected-${kind.toLowerCase()}`, namespace: "installation", uid: `unselected-${kind}-uid` },
+    ...(kind === "Pod" ? { spec: template.spec } : kind === "CronJob" ? { spec: { jobTemplate: { spec: { template } } } } : { spec: { template } }) };
+  list.items.push(resource);
+  return resource;
+}
+
+test("an unselected Job cannot hide a second composition under the unit container name", async () => {
+  const list = workedComposedInstallation();
+  const job = unselectedProducer(list, "Job");
+  assert.equal(job.spec.template.spec.containers[0].name, composedContainer(list).name);
+  assertRejected(await invoke(list), "installation_process_unproven");
+});
+
+test("all independent producers check ordinary and init product containers regardless of names or selectors", async t => {
+  for (const kind of ["Job", "CronJob", "StatefulSet", "DaemonSet", "ReplicationController", "ReplicaSet", "Pod"]) {
+    for (const location of ["containers", "initContainers", "restartable-init"]) await t.test(`${kind} ${location}`, async () => {
+      const list = workedComposedInstallation();
+      const extra = structuredClone(composedContainer(list));
+      if (location === "restartable-init") extra.restartPolicy = "Always";
+      const resource = unselectedProducer(list, kind, location === "containers" ? extra :
+        { name: "ordinary", image: "example.invalid/preparation:1", command: ["/bin/prepare"] } as any);
+      const spec = kind === "Pod" ? resource.spec : kind === "CronJob" ? resource.spec.jobTemplate.spec.template.spec : resource.spec.template.spec;
+      if (location !== "containers") spec.initContainers = [extra];
+      assertRejected(await invoke(list), "installation_process_unproven");
+    });
+  }
+  for (const form of ["owner", "other-image-composition", "other-image-owner"]) await t.test(form, async () => {
+    const list = workedComposedInstallation();
+    const extra = structuredClone(composedContainer(list));
+    if (form.includes("owner")) extra.command = ["/usr/local/bin/opl-capability"];
+    if (form.startsWith("other-image")) extra.image = "example.invalid/other:1";
+    unselectedProducer(list, "Job", extra);
+    assertRejected(await invoke(list), form.includes("owner") ? "installation_deployment_unit_mixed" : "installation_process_unproven");
+  });
+});
+
+test("replica exemptions require exact controller ownership and one composition primary", async t => {
+  for (const form of ["orphan-pod", "orphan-replica", "wrong-deployment-uid", "wrong-replica-uid", "foreign-namespace", "two-primaries", "owner-instead-of-composition"]) {
+    await t.test(form, async () => {
+      const list = workedComposedInstallation();
+      const replica = structuredClone(composedReplicaSet(list));
+      replica.metadata.name = "another-revision";
+      replica.metadata.uid = "another-revision-uid";
+      replica.spec.template.metadata.labels = { workload: "unselected" };
+      const pod = structuredClone(composedPod(list));
+      pod.metadata.name = "another-revision-pod";
+      pod.metadata.uid = "another-revision-pod-uid";
+      pod.metadata.labels = { workload: "unselected" };
+      pod.metadata.ownerReferences[0].name = replica.metadata.name;
+      pod.metadata.ownerReferences[0].uid = replica.metadata.uid;
+      if (form === "orphan-pod") delete pod.metadata.ownerReferences;
+      if (form === "orphan-replica") delete replica.metadata.ownerReferences;
+      if (form === "wrong-deployment-uid") replica.metadata.ownerReferences[0].uid = "replaced-deployment";
+      if (form === "wrong-replica-uid") pod.metadata.ownerReferences[0].uid = "replaced-replica";
+      if (form === "foreign-namespace") { replica.metadata.namespace = "other"; pod.metadata.namespace = "other"; }
+      if (form === "two-primaries") replica.spec.template.spec.containers.push({ ...structuredClone(composedContainer(list)), name: "another-primary" });
+      if (form === "owner-instead-of-composition") replica.spec.template.spec.containers[0].command = ["/usr/local/bin/opl-capability"];
+      list.items.push(replica, pod);
+      assertRejected(await invoke(list), form === "owner-instead-of-composition" ? "installation_deployment_unit_mixed" : "installation_process_unproven");
+    });
+  }
+});
+
+function historicalReplica(list: ComposedFixture) {
+  const replica = structuredClone(composedReplicaSet(list));
+  replica.metadata.name = "historical-revision";
+  replica.metadata.uid = "historical-revision-uid";
+  replica.metadata.generation = 3;
+  replica.spec.replicas = 0;
+  replica.status = { replicas: 0, observedGeneration: 3 };
+  replica.spec.template.spec.containers[0].image = "example.invalid/previous-product:1";
+  list.items.push(replica);
+  return replica;
+}
+
+test("owned historical revisions respect whether their templates can still execute", async t => {
+  await t.test("an observed stopped revision may retain retired ordinary and init processes", async () => {
+    const list = workedComposedInstallation();
+    const replica = historicalReplica(list);
+    replica.spec.template.spec.containers[0].command = ["/usr/local/bin/opl-capability"];
+    replica.spec.template.spec.initContainers = [{ ...structuredClone(composedContainer(list)), name: "retired-init", restartPolicy: "Always" }];
+    assert.equal((await invoke(list)).status, 0);
+  });
+  for (const form of ["scaled-up", "readback-still-running", "stale-generation", "unknown-readback", "live-pod"]) await t.test(form, async () => {
+    const list = workedComposedInstallation();
+    const replica = historicalReplica(list);
+    replica.spec.template.spec.initContainers = [{ ...structuredClone(composedContainer(list)), name: "retired-init", restartPolicy: "Always" }];
+    if (form === "scaled-up") replica.spec.replicas = 1;
+    if (form === "readback-still-running") replica.status.replicas = 1;
+    if (form === "stale-generation") replica.status.observedGeneration = 2;
+    if (form === "unknown-readback") delete replica.status;
+    if (form === "live-pod") {
+      const pod = unselectedProducer(list, "Pod");
+      pod.metadata.ownerReferences = [{ apiVersion: "apps/v1", kind: "ReplicaSet", name: replica.metadata.name, uid: replica.metadata.uid, controller: true }];
+    }
+    assertRejected(await invoke(list), "installation_process_unproven");
+  });
+  await t.test("a previous composition revision can run while the same Deployment rolls forward", async () => {
+    const list = workedComposedInstallation();
+    const replica = historicalReplica(list);
+    replica.spec.replicas = 1;
+    replica.status.replicas = 1;
+    // Container names and images may change between revisions. The exact
+    // controller chain, rather than the current desired name/image, owns it.
+    replica.spec.template.spec.containers[0].name = "previous-backend-name";
+    const pod = structuredClone(composedPod(list));
+    pod.metadata.name = "previous-revision-pod";
+    pod.metadata.uid = "previous-revision-pod-uid";
+    pod.metadata.ownerReferences[0].name = replica.metadata.name;
+    pod.metadata.ownerReferences[0].uid = replica.metadata.uid;
+    pod.spec = structuredClone(replica.spec.template.spec);
+    list.items.push(pod);
+    assert.equal((await invoke(list)).status, 0);
   });
 });

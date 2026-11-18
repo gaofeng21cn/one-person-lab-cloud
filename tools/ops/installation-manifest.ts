@@ -634,19 +634,44 @@ function validateComposedInstallation(
   const argv = [...(unitContainer.command ?? []), ...(unitContainer.args ?? [])];
   if (argv.length !== 1 || argv[0] !== unit.entrypoint) return invalid("installation_process_unproven");
 
-  // Init containers also execute product code, including restartable sidecars.
-  // Live Pod/ReplicaSet main containers are checked against their controller
-  // revision below; their extra containers carry the same exclusion obligation.
+  // A controller-owned replica is the same Deployment unit, including an old
+  // revision during rollout. Container names alone establish no such identity.
+  const isUnitComposition = (container: Resource) => {
+    const command = productArgv(container, container.image === productImage ? topology.image.defaultCommand : undefined);
+    return command?.length === 1 && command[0] === unit.entrypoint;
+  };
   for (const resource of resources) {
     const spec = resource.kind === "Pod" ? resource.spec : resource.kind === "CronJob"
       ? resource.spec?.jobTemplate?.spec?.template?.spec : resource.spec?.template?.spec;
     if (!spec) continue;
     if (spec.containers !== undefined && !validContainerList(spec.containers, true)) return invalid("installation_manifest_shape_invalid");
     if (spec.initContainers !== undefined && !validContainerList(spec.initContainers)) return invalid("installation_manifest_shape_invalid");
-    const extra = [...(spec.initContainers ?? []), ...(resource.kind === "Deployment" ? spec.containers ?? [] :
-      (spec.containers ?? []).filter((container: Resource) => container.name !== unitContainer.name))];
+    const ownReplica = resource.apiVersion === "apps/v1" && resource.kind === "ReplicaSet" &&
+      controller(resource, "Deployment", resources) === unitDeployment;
+    // A stopped historical template cannot execute its containers. Desired
+    // zero alone is insufficient: require the controller's current-generation
+    // zero readback and no still-live Pod belonging to that exact ReplicaSet.
+    if (ownReplica && resource.spec.replicas === 0 && resource.status?.replicas === 0 &&
+        Number.isSafeInteger(resource.metadata.generation) && resource.metadata.generation > 0 &&
+        resource.status.observedGeneration === resource.metadata.generation &&
+        !resources.some(pod => pod.apiVersion === "v1" && pod.kind === "Pod" && controller(pod, "ReplicaSet", resources) === resource &&
+          !["Succeeded", "Failed"].includes(pod.status?.phase))) continue;
+    let primary: Resource | undefined = resource === unitDeployment ? unitContainer : undefined;
+    const replica = ownReplica ? resource : resource.apiVersion === "v1" && resource.kind === "Pod"
+      ? controller(resource, "ReplicaSet", resources) : undefined;
+    if (replica && controller(replica, "Deployment", resources) === unitDeployment &&
+        validContainerList(replica.spec?.template?.spec?.containers, true)) {
+      const declared = replica.spec.template.spec.containers.filter(isUnitComposition);
+      if (declared.length === 1) {
+        const matching = (spec.containers ?? []).filter((container: Resource) => container.name === declared[0].name &&
+          container.image === declared[0].image && isUnitComposition(container));
+        if (matching.length === 1) primary = matching[0];
+      }
+    }
+    // Init containers never represent the unit's primary, even with the same
+    // image, executable or name; restartPolicy=Always is no exception.
+    const extra = [...(spec.initContainers ?? []), ...(spec.containers ?? []).filter((container: Resource) => container !== primary)];
     for (const container of extra) {
-      if (container === unitContainer) continue;
       const ownerArgv = productArgv(container, container.image === productImage ? topology.image.defaultCommand : undefined);
       if (ownerArgv && topology.processes.some(process => ownerArgv[0] === process.binary)) return invalid("installation_deployment_unit_mixed");
       if (container.image === productImage || ownerArgv?.[0] === unit.entrypoint) return invalid("installation_process_unproven");
