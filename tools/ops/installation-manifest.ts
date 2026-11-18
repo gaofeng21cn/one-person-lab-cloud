@@ -640,24 +640,49 @@ function validateComposedInstallation(
     const command = productArgv(container, container.image === productImage ? topology.image.defaultCommand : undefined);
     return command?.length === 1 && command[0] === unit.entrypoint;
   };
+  // The Instance can retain the drained split Deployment templates for recovery.
+  // Omitted replica counters in a current Kubernetes status represent zero.
+  const observedStopped = (resource: Resource) => resource.spec?.replicas === 0 &&
+    typeof resource.metadata?.uid === "string" && resource.metadata.uid.length > 0 &&
+    Number.isSafeInteger(resource.metadata.generation) && resource.metadata.generation > 0 &&
+    resource.status?.observedGeneration === resource.metadata.generation &&
+    ["replicas", "updatedReplicas", "readyReplicas", "availableReplicas", "terminatingReplicas"].every(field =>
+      resource.status[field] === undefined || resource.status[field] === 0);
+  const replicasByDeployment = new Map<Resource, Resource[]>();
+  const podsByController = new Map<Resource, Resource[]>();
+  for (const resource of resources) {
+    if (resource.apiVersion === "apps/v1" && resource.kind === "ReplicaSet") {
+      const parent = controller(resource, "Deployment", resources);
+      if (parent) replicasByDeployment.set(parent, [...(replicasByDeployment.get(parent) ?? []), resource]);
+    } else if (resource.apiVersion === "v1" && resource.kind === "Pod") {
+      const parent = controller(resource, "ReplicaSet", resources) ?? controller(resource, "Deployment", resources);
+      if (parent) podsByController.set(parent, [...(podsByController.get(parent) ?? []), resource]);
+    }
+  }
+  const stoppedTemplates = new Set<Resource>();
+  const drained = (resource: Resource) => observedStopped(resource) &&
+    (podsByController.get(resource) ?? []).every(pod => ["Succeeded", "Failed"].includes(pod.status?.phase));
+  for (const deployment of deployments) {
+    const replicas = replicasByDeployment.get(deployment) ?? [];
+    if (deployment !== unitDeployment && deployment.apiVersion === "apps/v1" && namespace(deployment) === namespace(unitDeployment) &&
+        drained(deployment) && replicas.every(drained)) {
+      stoppedTemplates.add(deployment);
+      for (const replica of replicas) stoppedTemplates.add(replica);
+    }
+  }
+  for (const replica of replicasByDeployment.get(unitDeployment) ?? []) {
+    if (drained(replica)) stoppedTemplates.add(replica);
+  }
   for (const resource of resources) {
     const spec = resource.kind === "Pod" ? resource.spec : resource.kind === "CronJob"
       ? resource.spec?.jobTemplate?.spec?.template?.spec : resource.spec?.template?.spec;
     if (!spec) continue;
     if (spec.containers !== undefined && !validContainerList(spec.containers, true)) return invalid("installation_manifest_shape_invalid");
     if (spec.initContainers !== undefined && !validContainerList(spec.initContainers)) return invalid("installation_manifest_shape_invalid");
-    const ownReplica = resource.apiVersion === "apps/v1" && resource.kind === "ReplicaSet" &&
-      controller(resource, "Deployment", resources) === unitDeployment;
-    // A stopped historical template cannot execute its containers. Desired
-    // zero alone is insufficient: require the controller's current-generation
-    // zero readback and no still-live Pod belonging to that exact ReplicaSet.
-    if (ownReplica && resource.spec.replicas === 0 && resource.status?.replicas === 0 &&
-        Number.isSafeInteger(resource.metadata.generation) && resource.metadata.generation > 0 &&
-        resource.status.observedGeneration === resource.metadata.generation &&
-        !resources.some(pod => pod.apiVersion === "v1" && pod.kind === "Pod" && controller(pod, "ReplicaSet", resources) === resource &&
-          !["Succeeded", "Failed"].includes(pod.status?.phase))) continue;
+    if (stoppedTemplates.has(resource)) continue;
     let primary: Resource | undefined = resource === unitDeployment ? unitContainer : undefined;
-    const replica = ownReplica ? resource : resource.apiVersion === "v1" && resource.kind === "Pod"
+    const replica = resource.apiVersion === "apps/v1" && resource.kind === "ReplicaSet" ? resource :
+      resource.apiVersion === "v1" && resource.kind === "Pod"
       ? controller(resource, "ReplicaSet", resources) : undefined;
     if (replica && controller(replica, "Deployment", resources) === unitDeployment &&
         validContainerList(replica.spec?.template?.spec?.containers, true)) {
@@ -767,7 +792,7 @@ function validateComposedInstallation(
     const backends: Resource[] = [];
     let backendUnproven = false;
     for (const resource of resources) {
-      if (namespace(resource) !== namespace(service)) continue;
+      if (namespace(resource) !== namespace(service) || stoppedTemplates.has(resource)) continue;
       const labels = backendLabels(resource);
       if (labels === undefined) backendUnproven = true;
       else if (labels !== null && labelsMatch(selector, labels)) backends.push(resource);

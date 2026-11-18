@@ -1165,14 +1165,14 @@ function receiptCommand(options) {
 // variable or accepts a second spelling of a name: the file the operator
 // declares is the file Compose reads.
 export function parseInstallationEnvFile(text) {
-  const values = {};
-  for (const line of String(text ?? "").split(/\r?\n/)) {
+  const values = Object.create(null);
+  for (const [lineNumber, line] of String(text ?? "").split(/\r?\n/).entries()) {
     const entry = line.trim();
     if (!entry || entry.startsWith("#")) continue;
     const index = entry.indexOf("=");
     const name = index > 0 ? entry.slice(0, index).trim() : "";
-    if (!/^[A-Z][A-Z0-9_]*$/.test(name)) {
-      throw namedQualificationError("local_v2_installation_env_invalid", `installation declaration entry is not a NAME=value line: ${entry.slice(0, 80)}`);
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      throw namedQualificationError("local_v2_installation_env_invalid", `installation declaration line ${lineNumber + 1} is not a NAME=value entry`);
     }
     if (Object.prototype.hasOwnProperty.call(values, name)) {
       throw namedQualificationError("local_v2_installation_env_duplicate", `installation declaration names ${name} twice`);
