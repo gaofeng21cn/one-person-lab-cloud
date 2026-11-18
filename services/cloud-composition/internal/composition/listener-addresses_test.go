@@ -5,112 +5,57 @@ import (
 	"testing"
 )
 
-// TestOwnerListenerEnvironmentCarriesTheDeclaredListener proves that an owner
-// binds the listener the contract declares, even when the shared environment
-// names the same variable with the published per-container address of another
-// owner's service. That service name does not exist inside one container, so
-// an owner that inherited it would bind an address nothing reaches.
-func TestOwnerListenerEnvironmentCarriesTheDeclaredListener(t *testing.T) {
-	topology, err := Load(contractPath(t))
-	if err != nil {
-		t.Fatalf("load the owner topology contract: %v", err)
-	}
-	// The published installation reaches the Ledger owner at its service name.
-	installation := environment{
-		"OPL_LEDGER_ADDR":           "ledger:8189",
-		"LEDGER_ADDR":               ":8081",
-		"OPL_FABRIC_ADDR":           "fabric:8188",
-		"FABRIC_ADDR":               ":8082",
-		"OPL_FABRIC_DATABASE_URL":   "postgres://fabric",
-		"OPL_CLOUD_IDENTITY_URL":    "tenant:8187",
-		"OPL_CAPABILITY_ADDR":       "capability:8181",
-		"OPL_RESOURCE_CATALOG_ADDR": "resource-catalog:8186",
-		"OPL_WORKSPACE_ADDR":        "workspace:8184",
-		"OPL_SERVE_ADDR":            "serve:8185",
-		"OPL_RUNTIME_CONTROL_ADDR":  "runtime-control:8183",
-		"OPL_BUILD_ADDR":            "build:8182",
-		"OPL_TENANT_ADDR":           ":8187",
-	}
-	ledger, ok := processByPrincipal(topology, "ledger")
-	if !ok {
-		t.Fatal("the contract declares no Ledger owner")
-	}
-	resolved, err := ownerListenerEnvironment(ledger, installation.getenv)
-	if err != nil {
-		t.Fatalf("resolve the Ledger listeners: %v", err)
-	}
-	if resolved["OPL_LEDGER_ADDR"] != ":8189" {
-		t.Fatalf("the Ledger owner must bind the declared listener, got %q", resolved["OPL_LEDGER_ADDR"])
-	}
-	if resolved["LEDGER_ADDR"] != ":8081" {
-		t.Fatalf("the Ledger owner must bind its declared HTTP listener, got %q", resolved["LEDGER_ADDR"])
-	}
-	fabric, ok := processByPrincipal(topology, "fabric")
-	if !ok {
-		t.Fatal("the contract declares no Fabric owner")
-	}
-	resolved, err = ownerListenerEnvironment(fabric, installation.getenv)
-	if err != nil {
-		t.Fatalf("resolve the Fabric listeners: %v", err)
-	}
-	if resolved["OPL_FABRIC_ADDR"] != ":8188" {
-		t.Fatalf("the Fabric owner must bind its declared owner transport listener, got %q", resolved["OPL_FABRIC_ADDR"])
-	}
-	if resolved["FABRIC_ADDR"] != ":8082" {
-		t.Fatalf("the Fabric owner must bind its declared HTTP listener, got %q", resolved["FABRIC_ADDR"])
+func TestOwnerAndGRPCPeerUseTheEffectiveListener(t *testing.T) {
+	for _, tc := range []struct{ bind, peer string }{
+		{":19189", "127.0.0.1:19189"},
+		{"0.0.0.0:19189", "127.0.0.1:19189"},
+		{"[::]:19189", "[::1]:19189"},
+		{"[::1]:19189", "[::1]:19189"},
+		{"127.0.0.2:19189", "127.0.0.2:19189"},
+		{"ledger.example:19189", "ledger.example:19189"},
+	} {
+		t.Run(tc.bind, func(t *testing.T) {
+			topology, err := Load(contractPath(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			installation := environment{"OPL_LEDGER_ADDR": tc.bind, "LEDGER_ADDR": "127.0.0.2:19081"}
+			plan, err := NewPlan(topology, installation.getenv)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ledger := stepFor(t, plan, "ledger").Process
+			if got := ledger.ListenerEnvironment["OPL_LEDGER_ADDR"]; got != tc.bind {
+				t.Fatalf("owner bind = %q, want %q", got, tc.bind)
+			}
+			if got := ledger.ListenerEnvironment["LEDGER_ADDR"]; got != installation["LEDGER_ADDR"] {
+				t.Fatalf("HTTP bind = %q", got)
+			}
+			if got := stepFor(t, plan, "capability").Process.PeerEnvironment["OPL_LEDGER_ADDR"]; got != tc.peer {
+				t.Fatalf("gRPC peer = %q, want %q", got, tc.peer)
+			}
+			got, err := checkAddress(ledger, "OPL_LEDGER_ADDR", installation.getenv)
+			if err != nil || got != tc.peer {
+				t.Fatalf("readiness address = %q, %v; want %q", got, err, tc.peer)
+			}
+		})
 	}
 }
 
-// TestOwnerListenerEnvironmentCarriesTheDeclaredPort proves that the owner's
-// own port environment names the port of the listener the contract declares,
-// so the two agree.
-func TestOwnerListenerEnvironmentCarriesTheDeclaredPort(t *testing.T) {
-	topology, err := Load(contractPath(t))
-	if err != nil {
-		t.Fatalf("load the owner topology contract: %v", err)
-	}
-	controlPlane, ok := processByPrincipal(topology, "control_plane")
-	if !ok {
-		t.Fatal("the contract declares no Control Plane owner")
-	}
-	resolved, err := ownerListenerEnvironment(controlPlane, environment{"PORT": "9000"}.getenv)
-	if err != nil {
-		t.Fatalf("resolve the Control Plane listeners: %v", err)
-	}
-	if resolved["CONTROL_PLANE_ADDR"] != ":8787" {
-		t.Fatalf("the Control Plane owner must bind the declared listener, got %q", resolved["CONTROL_PLANE_ADDR"])
-	}
-	if resolved["PORT"] != "8787" {
-		t.Fatalf("the Control Plane port environment must name the declared port, got %q", resolved["PORT"])
-	}
-}
-
-// TestConfiguredOwnerPeerEnvironmentCarriesTheTargetListener proves that a
-// caller reaches its target at the listener the target declares, reached
-// through the loopback interface of the one shared container. The published
-// per-container service name does not resolve there.
-func TestConfiguredOwnerPeerEnvironmentCarriesTheTargetListener(t *testing.T) {
-	topology, err := Load(contractPath(t))
-	if err != nil {
-		t.Fatalf("load the owner topology contract: %v", err)
-	}
-	installation := environment{
-		"OPL_LEDGER_ADDR":        "ledger:8189",
-		"OPL_CLOUD_IDENTITY_URL": "tenant:8187",
-	}
-	capability, ok := processByPrincipal(topology, "capability")
-	if !ok {
-		t.Fatal("the contract declares no Capability owner")
-	}
-	resolved, err := configuredOwnerPeerEnvironment(topology, capability, installation.getenv)
-	if err != nil {
-		t.Fatalf("resolve the Capability peers: %v", err)
-	}
-	if resolved["OPL_LEDGER_ADDR"] != "127.0.0.1:8189" {
-		t.Fatalf("the Capability owner must reach the Ledger owner at its declared listener, got %q", resolved["OPL_LEDGER_ADDR"])
-	}
-	if resolved["OPL_CLOUD_IDENTITY_URL"] != "127.0.0.1:8187" {
-		t.Fatalf("the Capability owner must reach the Tenant owner at its declared listener, got %q", resolved["OPL_CLOUD_IDENTITY_URL"])
+func TestOwnerListenerEnvironmentUsesTheEffectivePort(t *testing.T) {
+	for _, tc := range []struct {
+		input         environment
+		address, port string
+	}{
+		{environment{}, ":8787", ""},
+		{environment{"PORT": "9000"}, ":9000", "9000"},
+		{environment{"PORT": "9000", "CONTROL_PLANE_ADDR": "localhost:19000"}, "localhost:19000", "9000"},
+	} {
+		tc.input["OPL_GRPC_INSECURE_LOCAL"] = "1"
+		child := projectedInstallation(t, tc.input, "control-plane")
+		if child["CONTROL_PLANE_ADDR"] != tc.address || child["PORT"] != tc.port {
+			t.Fatalf("child address and raw PORT = %q / %q, want %q / %q", child["CONTROL_PLANE_ADDR"], child["PORT"], tc.address, tc.port)
+		}
 	}
 }
 
@@ -141,5 +86,45 @@ func TestConfiguredOwnerPeerEnvironmentRefusesATargetWithoutAListener(t *testing
 		if !strings.Contains(err.Error(), fragment) {
 			t.Fatalf("the refusal must name %q, got %q", fragment, err.Error())
 		}
+	}
+}
+
+func TestResolveAddressHonorsListenerValueSemantics(t *testing.T) {
+	topology, err := Load(contractPath(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ service, name, input, want string }{
+		{"capability", "OPL_CAPABILITY_ADDR", " 127.0.0.1:19181 \t", "127.0.0.1:19181"},
+		{"capability", "OPL_CAPABILITY_OBJECT_LISTEN_ADDR", " 127.0.0.1:19191 \t", " 127.0.0.1:19191 \t"},
+		{"capability", "OPL_CAPABILITY_OBJECT_LISTEN_ADDR", " \t", " \t"},
+		{"serve", "OPL_SERVE_ACCESS_ADDR", " 127.0.0.1:19192 \t", "127.0.0.1:19192"},
+		{"serve", "OPL_SERVE_ACCESS_ADDR", " \t", ":8192"},
+		{"ledger", "LEDGER_ADDR", " 127.0.0.1:19081 \t", " 127.0.0.1:19081 \t"},
+		{"fabric", "FABRIC_ADDR", " 127.0.0.1:19082 \t", " 127.0.0.1:19082 \t"},
+		{"fabric", "OPL_FABRIC_ADDR", " 127.0.0.1:19188 \t", "127.0.0.1:19188"},
+		{"control_plane", "CONTROL_PLANE_ADDR", " \t", " \t"},
+		{"console_bff", "OPL_BFF_ADDR", " \t", " \t"},
+	} {
+		t.Run(tc.name+"="+tc.input, func(t *testing.T) {
+			process, ok := processByPrincipal(topology, tc.service)
+			if !ok {
+				t.Fatalf("missing process %s", tc.service)
+			}
+			got, err := ResolveAddress(process, tc.name, environment{tc.name: tc.input}.getenv)
+			if err != nil || got != tc.want {
+				t.Fatalf("ResolveAddress = %q, %v; want %q", got, err, tc.want)
+			}
+		})
+	}
+	controlPlane, _ := processByPrincipal(topology, "control_plane")
+	got, err := ResolveAddress(controlPlane, "CONTROL_PLANE_ADDR", environment{"PORT": " \t"}.getenv)
+	if err != nil || got != ": \t" {
+		t.Fatalf("HTTP PORT must retain raw semantics: %q, %v", got, err)
+	}
+	capability, _ := processByPrincipal(topology, "capability")
+	capability.AdditionalListeners[0].ValueSemantics = "unknown"
+	if _, err := ResolveAddress(capability, "OPL_CAPABILITY_OBJECT_LISTEN_ADDR", environment{}.getenv); err == nil {
+		t.Fatal("unknown listener semantics must be refused")
 	}
 }

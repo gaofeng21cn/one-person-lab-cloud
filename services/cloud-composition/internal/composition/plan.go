@@ -96,10 +96,9 @@ func NewPlan(topology Topology, getenv func(string) string) (Plan, error) {
 }
 
 // allowedEnvironmentNames resolves the contract's shared and per-process
-// environment declarations into one deterministic allowlist. The legacy
-// shared DATABASE_URL name is retained as a fallback, then ChildEnvironment
-// replaces it with the per-owner alias when one is supplied by the
-// installation. No name outside these declarations reaches a child process.
+// environment declarations into one allowlist. ChildEnvironment projects the
+// explicitly declared composition database input to the child's database name.
+// No name outside these declarations reaches a child process.
 func allowedEnvironmentNames(topology Topology, process Process) []string {
 	seen := map[string]bool{}
 	names := []string{}
@@ -311,13 +310,27 @@ func ResolveAddress(process Process, addressEnv string, getenv func(string) stri
 	if !ok {
 		return "", fmt.Errorf("owner %s declares no default address for %s", process.Service, addressEnv)
 	}
+	semantics := "raw"
+	if process.Kind == "ownerservice" || addressEnv == process.RPCAddressEnv {
+		semantics = "trimmed"
+	}
+	for _, listener := range process.AdditionalListeners {
+		if listener.AddressEnv == addressEnv {
+			semantics = listener.ValueSemantics
+			break
+		}
+	}
 	value := getenv(addressEnv)
-	if process.Kind == "ownerservice" {
+	switch semantics {
+	case "trimmed":
 		value = strings.TrimSpace(value)
+	case "raw":
+	default:
+		return "", fmt.Errorf("owner %s listener %s declares unsupported valueSemantics %q", process.Service, addressEnv, semantics)
 	}
 	if value == "" {
 		if port := process.AddressPortEnv; port != "" && addressEnv == process.AddressEnv {
-			if portValue := getenv(port); strings.TrimSpace(portValue) != "" {
+			if portValue := getenv(port); portValue != "" {
 				return ":" + portValue, nil
 			}
 		}
@@ -332,8 +345,8 @@ func ResolveAddress(process Process, addressEnv string, getenv func(string) stri
 // reachable bind failure that would otherwise surface as an owner that never
 // becomes ready.
 //
-// The owners bind the listeners the contract declares, so the declared
-// listeners are what this refuses.
+// The owners bind their effective installation listeners, so collisions are
+// checked after applying the same overrides as the child environment.
 func (p *Plan) checkDistinctAddresses(getenv func(string) string) error {
 	if !p.Topology.DistinctAddressesRequired {
 		return nil

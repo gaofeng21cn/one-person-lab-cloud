@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -61,6 +62,9 @@ func OwnerCertificatePaths(process Process, getenv func(string) string) (string,
 // reference while a child must retain the per-owner isolation of the former
 // one-process-per-container deployment.
 func ChildEnvironment(process Process, environ []string, getenv func(string) string) ([]string, error) {
+	if err := process.validateCompositionDatabase(); err != nil {
+		return nil, err
+	}
 	values := make(map[string]string, len(environ))
 	for _, entry := range environ {
 		name, value, ok := strings.Cut(entry, "=")
@@ -81,6 +85,13 @@ func ChildEnvironment(process Process, environ []string, getenv func(string) str
 	if len(allowed) == 0 {
 		return nil, fmt.Errorf("owner %s declares no environment allowlist", process.Service)
 	}
+	resolved := make(map[string]string)
+	for name, value := range process.ListenerEnvironment {
+		resolved[name] = value
+	}
+	for name, value := range process.PeerEnvironment {
+		resolved[name] = value
+	}
 	projected := make([]string, 0, len(allowed)+2)
 	seen := make(map[string]bool, len(allowed)+2)
 	for _, entry := range environ {
@@ -89,16 +100,11 @@ func ChildEnvironment(process Process, environ []string, getenv func(string) str
 			continue
 		}
 		value := values[name]
-		if listener, declared := process.ListenerEnvironment[name]; declared {
-			value = listener
-		}
-		if peer, configured := process.PeerEnvironment[name]; configured {
-			value = peer
+		if effective, configured := resolved[name]; configured {
+			value = effective
 		}
 		if name == process.DatabaseEnv {
-			if alias := ownerDatabaseAlias(process); values[alias] != "" {
-				value = values[alias]
-			}
+			continue // Only the declared composition source supplies this value.
 		}
 		if name == "OPL_INTERNAL_SERVICE_TOKEN" {
 			if alias := ownerServiceTokenAlias(process); values[alias] != "" {
@@ -108,11 +114,23 @@ func ChildEnvironment(process Process, environ []string, getenv func(string) str
 		projected = append(projected, name+"="+value)
 		seen[name] = true
 	}
-	// Aliased values may be the only source of a required child variable when
-	// the parent intentionally omits its legacy name. Add the mapped variable
-	// once, preserving the child contract's canonical name.
+	// Materialize the effective defaults and required peers as well as explicit
+	// inputs, so owner source defaults cannot diverge from peers and probes.
+	names := make([]string, 0, len(resolved))
+	for name := range resolved {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if allowed[name] && !seen[name] {
+			projected = append(projected, name+"="+resolved[name])
+			seen[name] = true
+		}
+	}
+	// Only the contract's explicit installation input supplies the canonical
+	// child database name; no transport-derived alias or shared fallback does.
 	if process.DatabaseEnv != "" && allowed[process.DatabaseEnv] && !seen[process.DatabaseEnv] {
-		if value := values[ownerDatabaseAlias(process)]; value != "" {
+		if value := values[process.CompositionDatabaseEnv]; value != "" {
 			projected = append(projected, process.DatabaseEnv+"="+value)
 			seen[process.DatabaseEnv] = true
 		}
@@ -134,17 +152,6 @@ func ChildEnvironment(process Process, environ []string, getenv func(string) str
 		"OPL_GRPC_CERT_FILE="+certFile,
 		"OPL_GRPC_KEY_FILE="+keyFile,
 	), nil
-}
-
-func ownerDatabaseAlias(process Process) string {
-	if process.DatabaseEnv == "" {
-		return ""
-	}
-	principal := strings.ToUpper(strings.ReplaceAll(process.TransportPrincipal, "-", "_"))
-	if principal == "" {
-		return ""
-	}
-	return "OPL_" + principal + "_DATABASE_URL"
 }
 
 func ownerServiceTokenAlias(process Process) string {
@@ -200,14 +207,21 @@ func (c *Checker) Check(ctx context.Context, step Step) error {
 	return nil
 }
 
-// checkAddress resolves the address one owner's declared listener is reached at
-// in the shared container. The composition resolves the owner's own listener
-// from the contract, so the probe reads the address the owner actually bound.
+// checkAddress reaches the same effective bind used by owners and their peers.
 func checkAddress(process Process, addressEnv string, getenv func(string) string) (string, error) {
-	if address, declared := process.ListenerEnvironment[addressEnv]; declared {
-		return address, nil
+	address, declared := process.ListenerEnvironment[addressEnv]
+	if !declared {
+		var err error
+		address, err = ResolveAddress(process, addressEnv, getenv)
+		if err != nil {
+			return "", err
+		}
 	}
-	return ResolveAddress(process, addressEnv, getenv)
+	peer, err := loopbackPeerAddress(address)
+	if err != nil {
+		return "", fmt.Errorf("owner %s: readiness listener %s is invalid: %w", process.Service, addressEnv, err)
+	}
+	return peer, nil
 }
 
 // describeCheck names one check the way the contract declares it.
@@ -239,7 +253,7 @@ func (c *Checker) checkGRPC(ctx context.Context, process Process, address string
 	}
 	callCtx, cancel := context.WithTimeout(ctx, c.checkTimeout)
 	defer cancel()
-	connection, err := grpc.NewClient(grpcTarget(address), options...)
+	connection, err := grpc.NewClient(address, options...)
 	if err != nil {
 		return err
 	}
@@ -258,7 +272,7 @@ func (c *Checker) checkGRPC(ctx context.Context, process Process, address string
 // check that carries a projection also has to report that the projected owner
 // is ready.
 func (c *Checker) checkHTTP(ctx context.Context, process Process, check Check, address string) error {
-	target := httpBaseURL(address) + check.Path
+	target := "http://" + address + check.Path
 	request, err := http.NewRequestWithContext(ctx, check.Method, target, nil)
 	if err != nil {
 		return err
@@ -289,30 +303,4 @@ func (c *Checker) checkHTTP(ctx context.Context, process Process, check Check, a
 		return fmt.Errorf("the projection does not report a ready service")
 	}
 	return nil
-}
-
-// grpcTarget turns a listen address into a gRPC dial target. A bare port
-// listens on every interface of the shared container, so it is reached
-// through the loopback address.
-func grpcTarget(address string) string {
-	address = strings.TrimSpace(address)
-	if index := strings.Index(address, "://"); index >= 0 {
-		return strings.TrimSuffix(address[index+3:], "/")
-	}
-	if strings.HasPrefix(address, ":") {
-		return "127.0.0.1" + address
-	}
-	return address
-}
-
-// httpBaseURL turns a listen address into the base URL of its HTTP surface.
-func httpBaseURL(address string) string {
-	address = strings.TrimSpace(address)
-	if strings.Contains(address, "://") {
-		return strings.TrimSuffix(address, "/")
-	}
-	if strings.HasPrefix(address, ":") {
-		return "http://127.0.0.1" + address
-	}
-	return "http://" + address
 }

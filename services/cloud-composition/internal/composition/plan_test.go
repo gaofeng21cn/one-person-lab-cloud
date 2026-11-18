@@ -125,15 +125,8 @@ func TestPlanRefusesTwoOwnersThatWouldShareOneAddress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load the owner topology contract: %v", err)
 	}
-	// The owners bind the listeners the contract declares, so a shared
-	// listener is a shared declaration.
-	for index := range topology.Processes {
-		if topology.Processes[index].Service == "ledger" {
-			topology.Processes[index].DefaultAddress = ":8186"
-		}
-	}
-	// The installation enables the Ledger owner's typed owner listener.
-	_, err = NewPlan(topology, environment{"OPL_LEDGER_ADDR": ":8189"}.getenv)
+	// An installation override collides even though the defaults are distinct.
+	_, err = NewPlan(topology, environment{"OPL_LEDGER_ADDR": ":8186"}.getenv)
 	if err == nil {
 		t.Fatal("the Ledger owner and the Resource Catalog owner would share :8186 in one network namespace")
 	}

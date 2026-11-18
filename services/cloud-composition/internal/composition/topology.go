@@ -70,23 +70,22 @@ type Process struct {
 	// Env, OptionalEnv and ExternalEnv are the contract's per-process
 	// environment allowlist. They are deliberately carried into the executable
 	// plan so a child never inherits an unrelated owner's secrets.
-	Env            []string `json:"env"`
-	OptionalEnv    []string `json:"optionalEnv"`
-	ExternalEnv    []string `json:"externalEnv"`
-	DatabaseEnv    string   `json:"databaseEnv"`
-	PeerTokensEnv  string   `json:"peerTokensEnv"`
-	RPCDatabaseEnv string   `json:"rpcDatabaseEnv"`
+	Env         []string `json:"env"`
+	OptionalEnv []string `json:"optionalEnv"`
+	ExternalEnv []string `json:"externalEnv"`
+	DatabaseEnv string   `json:"databaseEnv"`
+	// CompositionDatabaseEnv is the installation input projected to DatabaseEnv.
+	CompositionDatabaseEnv string `json:"compositionDatabaseEnv"`
+	PeerTokensEnv          string `json:"peerTokensEnv"`
+	RPCDatabaseEnv         string `json:"rpcDatabaseEnv"`
 	// AllowedEnv is derived from sharedEnv and the process allowlist at plan
 	// construction. It is runtime state, not a contract field.
 	AllowedEnv []string `json:"-"`
 	// PeerEnvironment binds configured caller origins to the target listeners
 	// in this shared network namespace. Names still pass through AllowedEnv.
 	PeerEnvironment map[string]string `json:"-"`
-	// ListenerEnvironment binds the owner's own listen environments to the
-	// listener the contract declares for them. The shared environment names
-	// those variables with the published per-container address of another
-	// owner's service, which does not resolve inside one container, so the
-	// owner binds the declared listener instead.
+	// ListenerEnvironment contains the effective bind addresses resolved from
+	// installation inputs and the contract's defaults.
 	ListenerEnvironment map[string]string `json:"-"`
 
 	// AddressEnv is the process's own listen address. For an ownerservice
@@ -228,6 +227,9 @@ func (t *Topology) validate() error {
 			return fmt.Errorf("owner topology contract declares %q twice", process.Service)
 		}
 		seen[process.Service] = true
+		if err := process.validateCompositionDatabase(); err != nil {
+			return err
+		}
 		if strings.TrimSpace(process.Binary) == "" {
 			return fmt.Errorf("owner %s declares no binary", process.Service)
 		}
@@ -362,4 +364,16 @@ func (p Process) httpAddressEnvs() []string {
 		}
 	}
 	return names
+}
+
+// validateCompositionDatabase requires an explicit source for each database
+// consumer; transport identity does not define database ownership.
+func (p Process) validateCompositionDatabase() error {
+	if p.DatabaseEnv != "" && strings.TrimSpace(p.CompositionDatabaseEnv) == "" {
+		return fmt.Errorf("owner %s declares databaseEnv %s without compositionDatabaseEnv", p.Service, p.DatabaseEnv)
+	}
+	if p.DatabaseEnv == "" && p.CompositionDatabaseEnv != "" {
+		return fmt.Errorf("owner %s declares compositionDatabaseEnv without databaseEnv", p.Service)
+	}
+	return nil
 }
