@@ -64,6 +64,9 @@ content. Synthetic admission and consumer tests exercise the Product checker.
 The 2026-11-18 LinuxKit run started the unit through Fabric. Control Plane
 readiness requires the Fabric storage project's quota readback. The Docker
 Desktop kernel could not mount the required ext4 project-quota filesystem.
+Process startup uses the Control Plane health route. Installation readiness
+is read after the workloads start, and Tencent Fabric checks the running
+composed Backend's image through its Deployment and ReplicaSet.
 
 ## Customer upload completion source repair (2026-11-16)
 

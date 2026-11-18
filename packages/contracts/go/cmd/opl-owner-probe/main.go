@@ -47,6 +47,7 @@ type config struct {
 	Address           string
 	ExpectedSourceSHA string
 	Timeout           time.Duration
+	HealthOnly        bool
 }
 
 func main() {
@@ -70,12 +71,16 @@ func probeFromArgs(args []string, getenv func(string) string) (result, error) {
 	addressArg := flags.String("addr", "", "owner gRPC address, or a deployment unit's or the Ledger owner's HTTP address")
 	expectedArg := flags.String("expected-source-sha", "", "expected baked ProductSourceSHA")
 	timeoutArg := flags.Duration("timeout", 5*time.Second, "probe timeout")
+	healthOnly := flags.Bool("health-only", false, "check Control Plane health and source identity")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
 		return resultFor(*ownerArg), errors.New("usage_invalid")
 	}
 	ownerText := strings.TrimSpace(*ownerArg)
 	if strings.EqualFold(ownerText, controlPlaneOwner) {
-		return probeControlPlane(config{Address: *addressArg, ExpectedSourceSHA: *expectedArg, Timeout: *timeoutArg}, getenv)
+		return probeControlPlane(config{Address: *addressArg, ExpectedSourceSHA: *expectedArg, Timeout: *timeoutArg, HealthOnly: *healthOnly}, getenv)
+	}
+	if *healthOnly {
+		return resultFor(ownerText), errors.New("usage_invalid")
 	}
 	if strings.EqualFold(ownerText, consoleBFFDeploymentUnit) {
 		return probeConsoleBFF(config{Address: *addressArg, Timeout: *timeoutArg}, getenv)
@@ -204,6 +209,10 @@ func probeControlPlane(cfg config, getenv func(string) string) (result, error) {
 	}
 	if expected != "" && out.ProductSourceSHA != expected {
 		return out, errors.New("product_source_sha_mismatch")
+	}
+	if cfg.HealthOnly {
+		out.Status = "ok"
+		return out, nil
 	}
 	readinessBody, err := getJSON(client, base+"/api/runtime/readiness")
 	if err != nil {
