@@ -1,4 +1,5 @@
 import { isIP } from "node:net";
+import { isDeepStrictEqual } from "node:util";
 import { communicationPolicyProof } from "./installation-network-policy.ts";
 
 // Product installation admission. Business communication requirements are read
@@ -7,7 +8,7 @@ export type SecretRef = { name: string; key: string };
 export type CommunicationEdge = {
   caller: string; target: string; addressEnv: string; tokenEnv: string;
   callerDeployment: string; targetDeployment: string; port: number;
-  tokenRef: SecretRef; peerRef: SecretRef; serviceRef: { name: string; namespace: string }; ingressPolicies: string[]; egressPolicies: string[];
+  tokenRef: SecretRef; peerRef: SecretRef; serviceRef?: { name: string; namespace: string }; bindAddress?: { host: string; port: number }; ingressPolicies: string[]; egressPolicies: string[];
 };
 export type InstallationError = { code: string; reasonCode?: string; service?: string; caller?: string; target?: string; addressEnv?: string; tokenEnv?: string };
 export type InstallationSecurity = { tokenMinimumLength: number };
@@ -17,9 +18,20 @@ export type ProcessContract = {
   rpcEnabledByEnvSemantics?: "raw-nonempty" | "trimmed-nonempty";
   addressPortEnv?: string; additionalListeners?: { addressEnv: string; defaultAddress?: string; valueSemantics: "raw" | "trimmed" }[];
   addressEnv: string; defaultAddress: string; rpcAddressEnv?: string; defaultRPCAddress?: string; peerTokensEnv?: string; rpcEnabledByEnv?: string;
+  databaseEnv?: string | null; compositionDatabaseEnv?: string | null; rpcDatabaseEnv?: string;
 };
 export type EdgeContract = { caller: string; target: string; addressEnv: string; tokenEnv: string; activation: "required" | "configured"; activationEnvs?: string[]; configuredAddressSemantics?: "raw-nonempty" | "trimmed-nonempty" };
-export type InstallationTopology = { image: { defaultCommand: string[] }; processes: ProcessContract[]; communication: { schemaVersion: number; edges: EdgeContract[]; security: InstallationSecurity } };
+// The contract's deployment unit: one Deployment whose container runs every
+// declared owner process in one process space.
+export type DeploymentUnitContract = {
+  name: string; kind: string; memberSource: string; imageSource: string; entrypoint?: string;
+};
+export type InstallationTopology = {
+  image: { defaultCommand: string[]; env?: string };
+  processes: ProcessContract[];
+  communication: { schemaVersion: number; edges: EdgeContract[]; security: InstallationSecurity };
+  deploymentUnit?: { rule?: string; unit: DeploymentUnitContract };
+};
 type Resource = Record<string, any>;
 function object(value: unknown): value is Resource {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -228,11 +240,13 @@ function endpointBackendFailure(resource: Resource, service: Resource, target: R
           (entry.containerPort === port || typeof servicePort.targetPort === "string" && entry.name === servicePort.targetPort))) return "endpoint_pod_port_conflict";
       const contract = processContract(container);
       if (!contract) continue;
-      const result = effectiveEnv(target.deployment, container,
+      // The target of this proof is the Deployment itself, so the competing
+      // container's environment is resolved against the target's own namespace.
+      const result = effectiveEnv(target, container,
         new Set([contract.addressEnv, contract.rpcAddressEnv, contract.rpcEnabledByEnv, contract.addressPortEnv,
           ...(contract.additionalListeners ?? []).map(listener => listener.addressEnv)].filter((name): name is string => Boolean(name))), resources);
       if (result.error) return "endpoint_pod_listener_unproven";
-      const process = { contract, deployment: target.deployment, container, env: result.env };
+      const process = { contract, deployment: target, container, env: result.env };
       const enabled = rpcEnabled(process);
       const competingAddresses: (string | undefined)[] = [];
       if (contract.rpcAddressEnv || enabled) competingAddresses.push(listenerAddress(process, contract.addressEnv, contract.defaultAddress, contract.kind === "ownerservice", contract.addressPortEnv));
@@ -459,6 +473,421 @@ function podListenerError(processes: InstalledProcess[], deferredLegacyListeners
   }
 }
 
+// ---------------------------------------------------------------------------
+// The composed deployment unit.
+//
+// The contract's deploymentUnit declares one Kubernetes Deployment whose
+// container runs every declared owner process in one process space. The
+// admission proves that shape against the contract itself:
+//
+//   * identity: the Deployment is the contract's declared unit, it runs the
+//     product image and it runs the contract's declared entrypoint;
+//   * membership: the unit hosts exactly the contract's declared members and
+//     exposes exactly their declared listeners;
+//   * live ownership: the workload behind every Service the unit publishes is
+//     the unit's own Deployment and the unit's own Pod, so a foreign workload
+//     or a replaced Pod cannot serve the unit's traffic;
+//   * routes: every edge the contract declares resolves, inside this unit, to
+//     the target's declared listener and to the material both ends need;
+//   * isolation: the shared container never hands one member's identity-scoped
+//     material to another member.
+//
+// Effective listener values follow the process fields and their value semantics;
+// defaults describe only an unset installation environment.
+// ---------------------------------------------------------------------------
+
+type UnitListener = ListenerBinding & { addressEnv: string; transport: "grpc" | "http" };
+type UnitMember = { contract: ProcessContract; principal: string; listeners: UnitListener[]; rpcActive: boolean };
+type UnitAddress = { kind: "service"; name: string; namespace: string; port: number } | ({ kind: "bind" } & ListenerBinding);
+
+function unitMemberListeners(process: InstalledProcess): UnitListener[] | undefined {
+  const { contract } = process;
+  const listeners: UnitListener[] = [];
+  const add = (addressEnv: string, address: string | undefined, transport: "grpc" | "http") => {
+    const binding = listenerBinding(address);
+    if (!binding) return false;
+    listeners.push({ addressEnv, transport, ...binding });
+    return true;
+  };
+  if (contract.kind !== "ownerservice" && !add(contract.addressEnv,
+      listenerAddress(process, contract.addressEnv, contract.defaultAddress, false, contract.addressPortEnv), "http")) return;
+  if (rpcEnabled(process) && (contract.rpcAddressEnv || contract.kind === "ownerservice") &&
+      !add(contract.rpcAddressEnv ?? contract.addressEnv, rpcListenerAddress(process), "grpc")) return;
+  for (const listener of contract.additionalListeners ?? []) {
+    const address = listenerAddress(process, listener.addressEnv, listener.defaultAddress, listener.valueSemantics === "trimmed");
+    if (address === undefined && !envEntry(process, listener.addressEnv) && listener.defaultAddress === undefined) continue;
+    if (!add(listener.addressEnv, address, "http")) return;
+  }
+  return listeners;
+}
+
+// IPs retain their host identity. A matching port cannot prove that a remote
+// address belongs to this Pod's network namespace.
+function parseUnitAddress(raw: unknown, unitNamespace: string): UnitAddress | undefined {
+  if (typeof raw !== "string") return;
+  const binding = listenerBinding(raw);
+  if (binding) return { kind: "bind", ...binding };
+  const service = parseServiceAddress(raw, unitNamespace);
+  return service ? { kind: "service", ...service } : undefined;
+}
+function loopbackHost(host: string): boolean {
+  return host === "[::1]" || isIP(host) === 4 && host.startsWith("127.");
+}
+function unitLocalHost(binding: ListenerBinding, deployment: Resource, resources: Resource[]): boolean {
+  if (binding.wildcard || loopbackHost(binding.host)) return true;
+  // A specific non-loopback bind needs readback from every current Pod of the
+  // unit; an arbitrary remote IP is never inferred from its port.
+  const pods = resources.filter(resource => resource.kind === "Pod" && namespace(resource) === namespace(deployment) &&
+    backendOwnershipFailure(resource, deployment, resources) === undefined);
+  return pods.length > 0 && pods.every(pod => {
+    const replica = controller(pod, "ReplicaSet", resources);
+    const currentSpec = deployment.spec.template.spec;
+    if (!isDeepStrictEqual(replica?.spec?.template?.spec, currentSpec) || pod.spec?.hostNetwork === true) return false;
+    const current = currentSpec.containers[0];
+    const live = Array.isArray(pod.spec?.containers) ? pod.spec.containers.filter((container: Resource) => container?.name === current.name) : [];
+    if (live.length !== 1 || ["image", "command", "args", "env", "envFrom", "ports"].some(field =>
+      !isDeepStrictEqual(live[0][field], current[field]))) return false;
+    const ips = [pod.status?.podIP, ...(Array.isArray(pod.status?.podIPs) ? pod.status.podIPs.map((entry: Resource) => entry?.ip) : [])];
+    return ips.some(ip => typeof ip === "string" && isIP(ip) !== 0 &&
+      (isIP(ip) === 6 ? new URL(`http://[${ip}]`).hostname : ip) === binding.host);
+  });
+}
+function unitListenerReachable(listener: UnitListener, address: UnitAddress, service?: Resource): boolean {
+  const family = (host: string) => isIP(host.startsWith("[") ? host.slice(1, -1) : host);
+  if (address.kind === "service") {
+    if (loopbackHost(listener.host)) return false;
+    const families = service?.spec?.ipFamilies;
+    if (Array.isArray(families) && families.length > 0 && family(listener.host) !== 0)
+      return families.every(value => value === (family(listener.host) === 6 ? "IPv6" : "IPv4"));
+    // No dual-stack socket or Service-family evidence is supplied. In
+    // particular [::] must not silently prove an IPv4 Service route.
+    return family(listener.host) !== 6;
+  }
+  const destination = address.host === "" ? "127.0.0.1" : address.host;
+  if (listener.wildcard) return listener.host === "" || family(listener.host) === family(destination);
+  if (address.wildcard) return loopbackHost(listener.host) && family(listener.host) === family(destination);
+  return listener.host === address.host;
+}
+// The container port a Service port reaches inside this unit.
+function unitTargetPort(servicePort: Resource, unitPorts: Resource[]): number | undefined {
+  let targetPort = servicePort.targetPort ?? servicePort.port;
+  if (typeof targetPort === "string") {
+    const named = unitPorts.filter(entry => entry?.name === targetPort && (entry.protocol ?? "TCP") === "TCP");
+    if (named.length !== 1) return;
+    targetPort = named[0].containerPort;
+  }
+  return validPort(targetPort) ? targetPort : undefined;
+}
+function sameSecret(left: SecretRef, right: SecretRef): boolean {
+  return left.name === right.name && left.key === right.key;
+}
+
+function validateComposedInstallation(
+  resources: Resource[], topology: InstallationTopology, unit: DeploymentUnitContract, security: InstallationSecurity): InstallationReport {
+  const report: InstallationReport = { ok: true, errors: [], communication: { edges: [], security } };
+  const fail = (code: string, reasonCode?: string, detail?: { service?: string; caller?: string; target?: string; addressEnv?: string; tokenEnv?: string }) =>
+    report.errors.push({ code, ...(reasonCode ? { reasonCode } : {}), ...(detail ?? {}) });
+  const invalid = (code: string) => installationFailure(code, security);
+
+  const imageEnv = topology.image?.env;
+  if (typeof imageEnv !== "string" || !imageEnv) return invalid("installation_topology_process_invalid");
+  if (typeof unit.name !== "string" || !unit.name || typeof unit.entrypoint !== "string" || !unit.entrypoint ||
+      unit.memberSource !== "processes" || unit.kind !== "oneContainerProcessSpace") return invalid("installation_topology_process_invalid");
+
+  const deployments = resources.filter(resource => resource.kind === "Deployment");
+  const unitDeployment = deployments.find(deployment => deployment.metadata.name === unit.name);
+  if (!unitDeployment) return invalid("installation_process_missing");
+  const podSpec = unitDeployment.spec?.template?.spec;
+  const containers: Resource[] = podSpec?.containers ?? [];
+  // The contract declares one container in one process space.
+  if (containers.length !== 1) return invalid("installation_process_unproven");
+  const unitContainer = containers[0];
+  if (podSpec.hostNetwork === true) return invalid("installation_pod_network_unsupported");
+
+  const names = new Set<string>([imageEnv]);
+  for (const process of topology.processes) {
+    if ((process.databaseEnv && (typeof process.compositionDatabaseEnv !== "string" ||
+        !/^[A-Za-z_][A-Za-z0-9_]*$/.test(process.compositionDatabaseEnv))) ||
+        (!process.databaseEnv && process.compositionDatabaseEnv != null)) return invalid("installation_topology_process_invalid");
+    for (const name of [process.addressEnv, process.rpcAddressEnv, process.peerTokensEnv, process.rpcEnabledByEnv,
+      process.addressPortEnv, process.compositionDatabaseEnv, process.rpcDatabaseEnv]) if (name) names.add(name);
+    for (const listener of process.additionalListeners ?? []) if (listener.addressEnv) names.add(listener.addressEnv);
+  }
+  for (const edge of topology.communication.edges) {
+    names.add(edge.addressEnv); names.add(edge.tokenEnv);
+    for (const name of edge.activationEnvs ?? []) names.add(name);
+  }
+  const resolved = effectiveEnv(unitDeployment, unitContainer, names, resources);
+  if (resolved.error) return invalid(resolved.error);
+  const env = resolved.env;
+
+  // The installation states which image this unit runs; the contract owns the
+  // environment that carries it.
+  const imageEntry = env.get(imageEnv);
+  const productImage = typeof imageEntry?.value === "string" ? imageEntry.value : undefined;
+  if (!productImage || imageEntry!.valueFrom !== undefined) return invalid("installation_process_unproven");
+  if (unitContainer.image !== productImage) return invalid("installation_process_unproven");
+
+  // The unit's command must be exactly the contract's declared entrypoint. A
+  // command that is not a declared owner process and not the declared unit is
+  // an unproven product process.
+  const argv = [...(unitContainer.command ?? []), ...(unitContainer.args ?? [])];
+  if (argv.length !== 1 || argv[0] !== unit.entrypoint) return invalid("installation_process_unproven");
+
+  // A controller-owned replica is the same Deployment unit, including an old
+  // revision during rollout. Container names alone establish no such identity.
+  const isUnitComposition = (container: Resource) => {
+    const command = productArgv(container, container.image === productImage ? topology.image.defaultCommand : undefined);
+    return command?.length === 1 && command[0] === unit.entrypoint;
+  };
+  for (const resource of resources) {
+    const spec = resource.kind === "Pod" ? resource.spec : resource.kind === "CronJob"
+      ? resource.spec?.jobTemplate?.spec?.template?.spec : resource.spec?.template?.spec;
+    if (!spec) continue;
+    if (spec.containers !== undefined && !validContainerList(spec.containers, true)) return invalid("installation_manifest_shape_invalid");
+    if (spec.initContainers !== undefined && !validContainerList(spec.initContainers)) return invalid("installation_manifest_shape_invalid");
+    const ownReplica = resource.apiVersion === "apps/v1" && resource.kind === "ReplicaSet" &&
+      controller(resource, "Deployment", resources) === unitDeployment;
+    // A stopped historical template cannot execute its containers. Desired
+    // zero alone is insufficient: require the controller's current-generation
+    // zero readback and no still-live Pod belonging to that exact ReplicaSet.
+    if (ownReplica && resource.spec.replicas === 0 && resource.status?.replicas === 0 &&
+        Number.isSafeInteger(resource.metadata.generation) && resource.metadata.generation > 0 &&
+        resource.status.observedGeneration === resource.metadata.generation &&
+        !resources.some(pod => pod.apiVersion === "v1" && pod.kind === "Pod" && controller(pod, "ReplicaSet", resources) === resource &&
+          !["Succeeded", "Failed"].includes(pod.status?.phase))) continue;
+    let primary: Resource | undefined = resource === unitDeployment ? unitContainer : undefined;
+    const replica = ownReplica ? resource : resource.apiVersion === "v1" && resource.kind === "Pod"
+      ? controller(resource, "ReplicaSet", resources) : undefined;
+    if (replica && controller(replica, "Deployment", resources) === unitDeployment &&
+        validContainerList(replica.spec?.template?.spec?.containers, true)) {
+      const declared = replica.spec.template.spec.containers.filter(isUnitComposition);
+      if (declared.length === 1) {
+        const matching = (spec.containers ?? []).filter((container: Resource) => container.name === declared[0].name &&
+          container.image === declared[0].image && isUnitComposition(container));
+        if (matching.length === 1) primary = matching[0];
+      }
+    }
+    // Init containers never represent the unit's primary, even with the same
+    // image, executable or name; restartPolicy=Always is no exception.
+    const extra = [...(spec.initContainers ?? []), ...(spec.containers ?? []).filter((container: Resource) => container !== primary)];
+    for (const container of extra) {
+      const ownerArgv = productArgv(container, container.image === productImage ? topology.image.defaultCommand : undefined);
+      if (ownerArgv && topology.processes.some(process => ownerArgv[0] === process.binary)) return invalid("installation_deployment_unit_mixed");
+      if (container.image === productImage || ownerArgv?.[0] === unit.entrypoint) return invalid("installation_process_unproven");
+    }
+  }
+
+  const members: UnitMember[] = [];
+  for (const contract of topology.processes) {
+    const principal = contract.transportPrincipal;
+    if (!principal) return invalid("installation_topology_process_invalid");
+    const process = { contract, deployment: unitDeployment, container: unitContainer, env };
+    const listeners = unitMemberListeners(process);
+    if (!listeners || listeners.some(listener => !unitLocalHost(listener, unitDeployment, resources)))
+      return invalid("installation_listener_unproven");
+    members.push({ contract, principal, listeners, rpcActive: rpcEnabled(process) });
+  }
+  const unitPorts: Resource[] = (unitContainer.ports ?? []).filter((entry: Resource) => (entry.protocol ?? "TCP") === "TCP");
+  const declaredPorts = new Map<number, string>();
+  for (const entry of unitPorts) {
+    if (typeof entry.name !== "string" || !entry.name) { fail("installation_unit_membership", "port_unnamed"); continue; }
+    if (declaredPorts.has(entry.containerPort)) { fail("installation_unit_membership", "port_duplicate"); continue; }
+    declaredPorts.set(entry.containerPort, entry.name);
+  }
+  const expectedPorts = new Map<number, { principal: string; addressEnv: string }>();
+  for (const member of members) {
+    if (member.listeners.length === 0 && member.rpcActive) { fail("installation_unit_membership", "member_missing", { target: member.principal }); continue; }
+    for (const listener of member.listeners) {
+      if (expectedPorts.has(listener.port)) { fail("installation_listener_conflict", undefined, { target: member.principal }); continue; }
+      expectedPorts.set(listener.port, { principal: member.principal, addressEnv: listener.addressEnv });
+    }
+  }
+  // Every declared member must be hosted, and no undeclared member may be.
+  for (const [port, owner] of expectedPorts) if (!declaredPorts.has(port)) fail("installation_unit_membership", "member_missing", { target: owner.principal });
+  for (const port of declaredPorts.keys()) if (!expectedPorts.has(port)) fail("installation_unit_membership", "member_undeclared");
+
+  // The Services that publish this unit's listeners.
+  const unitLabels = unitDeployment.spec.template.metadata?.labels ?? {};
+  const unitNamespace = namespace(unitDeployment);
+  const routes = new Map<number, { service: Resource; servicePort: Resource }[]>();
+  for (const service of resources.filter(resource => resource.kind === "Service" && namespace(resource) === unitNamespace)) {
+    const selector = service.spec?.selector;
+    if (service.apiVersion !== "v1" || !object(selector) || Object.keys(selector).length === 0 ||
+        service.spec.type === "ExternalName" || !labelsMatch(selector, unitLabels)) continue;
+    for (const servicePort of service.spec.ports ?? []) {
+      if (!object(servicePort) || (servicePort.protocol ?? "TCP") !== "TCP") continue;
+      const containerPort = unitTargetPort(servicePort, unitPorts);
+      if (containerPort === undefined) continue;
+      const published = routes.get(containerPort) ?? [];
+      published.push({ service, servicePort });
+      routes.set(containerPort, published);
+    }
+  }
+  // A member's declared listener is the one the unit's container ports and
+  // Services route to.
+  for (const [port, owner] of expectedPorts) {
+    const publishers = routes.get(port) ?? [];
+    if (publishers.length === 0) { fail("installation_unit_membership", "listener_unpublished", { target: owner.principal }); continue; }
+  }
+  if (report.errors.length > 0) { report.ok = false; report.communication.edges = []; return report; }
+
+  // The live workload behind every Service this unit publishes.
+  //
+  // The Instance's production admission reads the cluster's live Pod,
+  // ReplicaSet, Endpoint and EndpointSlice objects and hands them to this
+  // checker inside the manifest it admits. The per-owner path proves what
+  // backs each of its Services; the composed form must carry the same proof
+  // for the Services that publish the unit's listeners, or a unit whose
+  // Service is actually fronted by a foreign workload, or whose published
+  // endpoint names a replaced Pod, would be admitted.
+  //
+  // The proof reuses the per-owner helpers unchanged: the same backend
+  // ownership rule, the same endpoint rule and the same reason vocabulary.
+  // The unit is the one Deployment that owns the published workload, so the
+  // ownership chain Pod -> ReplicaSet -> Deployment must reach it.
+  const unitProcessContract = (container: Resource) => {
+    const argv = productArgv(container, container.image === productImage ? topology.image.defaultCommand : undefined);
+    return argv && topology.processes.find(process => argv[0] === process.binary &&
+      Array.isArray(process.daemonArgs) && argv.length === process.daemonArgs.length + 1 &&
+      process.daemonArgs.every((arg, index) => argv[index + 1] === arg));
+  };
+  const publishedServices = new Map<Resource, { servicePort: Resource; containerPort: number }[]>();
+  for (const [containerPort, publishers] of routes) {
+    for (const publisher of publishers) {
+      const ports = publishedServices.get(publisher.service) ?? [];
+      ports.push({ servicePort: publisher.servicePort, containerPort });
+      publishedServices.set(publisher.service, ports);
+    }
+  }
+  for (const [service, ports] of publishedServices) {
+    const detail = { service: service.metadata.name };
+    const selector = service.spec.selector;
+    // The workloads that back this Service must all be the unit's own.
+    const backends: Resource[] = [];
+    let backendUnproven = false;
+    for (const resource of resources) {
+      if (namespace(resource) !== namespace(service)) continue;
+      const labels = backendLabels(resource);
+      if (labels === undefined) backendUnproven = true;
+      else if (labels !== null && labelsMatch(selector, labels)) backends.push(resource);
+    }
+    if (backendUnproven) { fail("rpc_service_backend_unproven", undefined, detail); continue; }
+    const backendFailure = backends.map(backend => backendOwnershipFailure(backend, unitDeployment, resources)).find(reason => reason !== undefined);
+    if (backendFailure) { fail("rpc_service_backend_ambiguous", backendFailure, detail); continue; }
+    // The published endpoints must name the unit's own Pod. An EndpointSlice or
+    // Endpoints object that lists no address delivers no traffic, so it proves
+    // nothing and carries no obligation; one that lists an address must name a
+    // Pod of this unit.
+    const endpoints = resources.filter(resource => namespace(resource) === namespace(service) &&
+      (resource.kind === "Endpoints" && resource.metadata.name === service.metadata.name ||
+       resource.kind === "EndpointSlice" && resource.metadata.labels?.["kubernetes.io/service-name"] === service.metadata.name));
+    for (const { servicePort, containerPort } of ports) {
+      const endpointFailure = endpoints.map(resource => endpointBackendFailure(resource, service, unitDeployment, unitContainer, servicePort, containerPort, resources, topology.image.defaultCommand, unitProcessContract))
+        .find(reason => reason !== undefined);
+      if (endpointFailure) { fail("rpc_service_backend_ambiguous", endpointFailure, detail); break; }
+    }
+  }
+  if (report.errors.length > 0) { report.ok = false; report.communication.edges = []; return report; }
+
+  for (const edge of topology.communication.edges) {
+    const caller = members.find(member => member.principal === edge.caller);
+    const target = members.find(member => member.principal === edge.target);
+    if (!caller || !caller.rpcActive) continue;
+    const address = env.get(edge.addressEnv);
+    const addressSemantics = edge.activation === "configured" ? edge.configuredAddressSemantics! : "trimmed-nonempty";
+    if (edge.activation === "configured" && !configured(address, addressSemantics) &&
+        !configured(env.get(edge.tokenEnv), "trimmed-nonempty") &&
+        !edge.activationEnvs?.some(name => configured(env.get(name), "trimmed-nonempty"))) continue;
+    const detail = { caller: edge.caller, target: edge.target, addressEnv: edge.addressEnv, tokenEnv: edge.tokenEnv };
+    if (!address || !configured(address, addressSemantics)) { fail("rpc_address_required", undefined, detail); continue; }
+    if (!target || !target.rpcActive) { fail("rpc_target_missing", undefined, detail); continue; }
+    const addressValue = edge.activation === "configured" && addressSemantics === "trimmed-nonempty" && typeof address.value === "string"
+      ? trimRuntimeSpace(address.value) : address.value;
+    const parsed = parseUnitAddress(addressValue, unitNamespace);
+    if (!parsed) { fail("rpc_address_invalid", undefined, detail); continue; }
+    let containerPort: number | undefined;
+    let addressService: Resource | undefined;
+    if (parsed.kind === "service") {
+      addressService = resources.find(resource => resource.kind === "Service" && resource.apiVersion === "v1" &&
+        resource.metadata.name === parsed.name && namespace(resource) === parsed.namespace);
+      if (!addressService) { fail("rpc_service_missing", undefined, detail); continue; }
+      const selector = addressService.spec?.selector;
+      if (!object(selector) || Object.keys(selector).length === 0 || addressService.spec.type === "ExternalName" ||
+          !labelsMatch(selector, unitLabels)) { fail("rpc_service_target_mismatch", undefined, detail); continue; }
+      const matching = (addressService.spec.ports ?? []).filter((entry: Resource) => entry?.port === parsed.port && (entry.protocol ?? "TCP") === "TCP");
+      if (matching.length !== 1) { fail("rpc_service_port_invalid", undefined, detail); continue; }
+      containerPort = unitTargetPort(matching[0], unitPorts);
+      if (containerPort === undefined) { fail("rpc_target_port_invalid", undefined, detail); continue; }
+    } else {
+      if (!unitLocalHost(parsed, unitDeployment, resources)) { fail("rpc_address_invalid", undefined, detail); continue; }
+      containerPort = parsed.port;
+    }
+    const listener = target.listeners.find(listener => listener.transport === "grpc" && listener.port === containerPort);
+    if (!listener || !unitListenerReachable(listener, parsed, addressService)) { fail("rpc_target_listener_invalid", undefined, detail); continue; }
+    // A named edge selects its own unique Service port. Aliases that publish
+    // the same listener do not make that edge ambiguous. A direct local dial
+    // proves its bind address rather than inventing a selected Service.
+    const publishers = (routes.get(containerPort) ?? []).filter(publisher => !addressService || publisher.service === addressService);
+    if (publishers.length === 0) { fail("rpc_service_missing", undefined, detail); continue; }
+    const tokenRef = secretReference(env.get(edge.tokenEnv));
+    if (!tokenRef) { fail("rpc_token_ref_invalid", undefined, detail); continue; }
+    if (!target.contract.peerTokensEnv) { fail("rpc_peer_ref_invalid", undefined, detail); continue; }
+    const peerRef = secretReference(env.get(target.contract.peerTokensEnv));
+    if (!peerRef) { fail("rpc_peer_ref_invalid", undefined, detail); continue; }
+    const endpoint = { deployment: unitDeployment, container: unitContainer };
+    const policies = communicationPolicyProof(endpoint, endpoint, containerPort, resources);
+    if (policies.error) { fail(policies.error, undefined, detail); continue; }
+    report.communication.edges.push({
+      caller: edge.caller, target: edge.target, addressEnv: edge.addressEnv, tokenEnv: edge.tokenEnv,
+      callerDeployment: unitDeployment.metadata.name, targetDeployment: unitDeployment.metadata.name, port: containerPort,
+      tokenRef, peerRef, ...(addressService ? { serviceRef: { name: addressService.metadata.name, namespace: namespace(addressService) } } :
+        parsed.kind === "bind" ? { bindAddress: { host: parsed.host, port: parsed.port } } : {}),
+      ingressPolicies: policies.ingressPolicies, egressPolicies: policies.egressPolicies
+    });
+  }
+
+  // Admission proves the required references and detectable reference reuse.
+  // Distinct references say nothing about token values; Instance material
+  // validation owns caller/token conflicts after resolving Secret contents.
+  const peerTokens = new Map<string, SecretRef>();
+  for (const member of members) {
+    if (!member.contract.peerTokensEnv) continue;
+    const ref = secretReference(env.get(member.contract.peerTokensEnv));
+    if (!ref) { fail("installation_unit_identity_unproven", "peer_tokens_missing", { target: member.principal }); continue; }
+    for (const [principal, other] of peerTokens) {
+      if (sameSecret(other, ref)) fail("installation_unit_identity_unproven", "peer_token_shared", { target: member.principal, caller: principal });
+    }
+    peerTokens.set(member.principal, ref);
+  }
+  for (const edge of topology.communication.edges) {
+    const ref = secretReference(env.get(edge.tokenEnv));
+    if (!ref) continue;
+    for (const [principal, peerRef] of peerTokens) {
+      if (sameSecret(peerRef, ref)) fail("installation_unit_identity_unproven", "credential_reused", { target: edge.target, caller: principal });
+    }
+  }
+  // The topology owns the parent -> child database mapping. Only declared
+  // projections are checked; the shared parent's legacy DATABASE_URL cannot
+  // stand in for an owner's actual alias. References prove reuse, not values
+  // or database roles; Instance material/readback owns those facts.
+  const databases = new Map<string, { ref: SecretRef; principal: string }>();
+  for (const member of members) {
+    for (const name of [member.contract.compositionDatabaseEnv, member.rpcActive ? member.contract.rpcDatabaseEnv : undefined]) {
+      if (!name || databases.has(name)) continue;
+      const ref = secretReference(env.get(name));
+      if (!ref) { fail("installation_unit_identity_unproven", "database_missing", { target: member.principal }); continue; }
+      for (const other of databases.values()) if (sameSecret(ref, other.ref))
+        fail("installation_unit_identity_unproven", "database_shared", { target: member.principal, caller: other.principal });
+      databases.set(name, { ref, principal: member.principal });
+    }
+  }
+
+  report.ok = report.errors.length === 0;
+  if (!report.ok) report.communication.edges = [];
+  return report;
+}
+
 export function validateInstallationManifest(manifest: unknown, topology: InstallationTopology): InstallationReport {
   const security = installationSecurity(topology);
   if (!security) return installationFailure("installation_topology_security_invalid");
@@ -480,6 +909,13 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
     resourceKeys.add(key);
   }
   const deployments = resources.filter(resource => resource.kind === "Deployment");
+  // The contract's deployment unit and the per-owner process form are two
+  // shapes of the same installation. The shape the installation declares is
+  // the shape the admission proves; the two are never mixed.
+  const declaredUnit = topology.deploymentUnit?.unit;
+  if (declaredUnit && typeof declaredUnit.name === "string" &&
+      deployments.some(deployment => deployment.metadata.name === declaredUnit.name))
+    return validateComposedInstallation(resources, topology, declaredUnit, security);
   const productImages = new Set<string>(deployments.flatMap(deployment =>
     deployment.spec.template.spec.containers.filter((container: Resource) =>
       topology.processes.some(process => container.command?.[0] === process.binary))
@@ -629,7 +1065,7 @@ export function validateInstallationManifest(manifest: unknown, topology: Instal
       if (bindings.some(binding => binding === undefined)) {
         listenerUnproven = true; break;
       }
-      if (bindings.some(binding => binding.port === targetPort)) {
+      if (bindings.some(binding => binding!.port === targetPort)) {
         conflict = true; break;
       }
     }

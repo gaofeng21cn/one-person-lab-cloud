@@ -572,6 +572,7 @@
    "memberSource": "processes",
    "memberRule": "Every process this contract declares is a member of this unit. This block adds no member and removes none, so the contract keeps one writer of the member list.",
    "imageSource": "image",
+   "entrypoint": "/usr/local/bin/opl-cloud-composition",
    "boundaryEffect": "A restart or an upgrade of this unit restarts every member. A workload that must not share that boundary is an exclusion, not a member."
   },
   "externalDependencies": [

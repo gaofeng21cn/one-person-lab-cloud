@@ -46,11 +46,20 @@ Listener overrides, including explicit hosts and HTTP port inputs, are retained;
 gRPC peers and readiness resolve the same effective bind, mapping wildcard
 binds to their matching loopback family. Each database consumer declares its
 `compositionDatabaseEnv` input; Fabric keeps its legacy and coordination
-databases separate. Local Go tests run a real child that reaches an isolated HTTP peer with its
-caller credential; malformed targets are refused and unrelated secrets remain
+databases separate. Local Go tests run a real child that reaches an isolated
+HTTP peer with its caller credential; malformed targets are refused and unrelated secrets remain
 excluded. This is source and isolated-process evidence (2026-11-18), not an image,
 Instance installation or production qualification. The [remaining work](roadmap.md#consolidated-backend-deployment)
 is exact-Candidate installation, upgrade/rollback and customer-lifecycle acceptance.
+
+The Product installation checker admits the composed deployment unit using the
+same effective listener and database declarations. It distinguishes local binds
+from selected Services, checks typed gRPC listeners and live workload/endpoint
+ownership, and rejects a second product process in ordinary or init containers.
+Secret references establish wiring; Instance material readback establishes token
+content. Synthetic admission and consumer tests are source evidence only. Full
+container verification remains open: the 2026-11-18 local attempt could not resolve
+the registry for the digest-pinned base images and never reached backend startup.
 
 ## Customer upload completion source repair (2026-11-16)
 
