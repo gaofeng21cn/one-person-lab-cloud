@@ -804,6 +804,43 @@ function historicalReplica(list: ComposedFixture) {
   return replica;
 }
 
+test("a migrated installation admits only observed zero-replica split templates", async t => {
+  for (const scenario of ["drained", "stale-deployment", "stale-replicaset", "orphan-replicaset",
+    "terminating-pod", "scaled-up", "stale-endpoint"]) await t.test(scenario, async () => {
+    const list = workedComposedInstallation();
+    const deployment = structuredClone(composedUnit(list));
+    deployment.metadata.name = "opl-cloud-old-capability";
+    deployment.metadata.uid = "old-capability-uid";
+    deployment.metadata.generation = 5;
+    deployment.spec.replicas = 0;
+    deployment.status = { observedGeneration: 5 };
+    deployment.spec.template.spec.containers[0].command = ["/usr/local/bin/opl-capability"];
+    list.items.push(deployment);
+
+    const replica = historicalReplica(list);
+    replica.metadata.ownerReferences[0].name = deployment.metadata.name;
+    replica.metadata.ownerReferences[0].uid = deployment.metadata.uid;
+    replica.spec.template = structuredClone(deployment.spec.template);
+    replica.status = { observedGeneration: 3 };
+    if (scenario === "scaled-up") deployment.spec.replicas = 1;
+    if (scenario === "stale-deployment") deployment.status.observedGeneration = 4;
+    if (scenario === "stale-replicaset") replica.status.observedGeneration = 2;
+    if (scenario === "orphan-replicaset") replica.metadata.ownerReferences[0].uid = "replaced-deployment";
+    if (scenario === "terminating-pod") {
+      const pod = unselectedProducer(list, "Pod", structuredClone(replica.spec.template.spec.containers[0]));
+      pod.metadata.ownerReferences = [{ apiVersion: "apps/v1", kind: "ReplicaSet", name: replica.metadata.name, uid: replica.metadata.uid, controller: true }];
+      pod.metadata.deletionTimestamp = "2026-11-18T01:00:00Z";
+      pod.status = { phase: "Running" };
+    }
+    if (scenario === "stale-endpoint") {
+      composedEndpointSlice(list, "opl-cloud-capability").endpoints[0].targetRef.uid = "removed-old-pod";
+    }
+    const result = await invoke(list);
+    if (scenario === "drained") assert.equal(result.status, 0, result.stdout);
+    else assertRejected(result, scenario === "stale-endpoint" ? "rpc_service_backend_ambiguous" : "installation_deployment_unit_mixed");
+  });
+});
+
 test("owned historical revisions respect whether their templates can still execute", async t => {
   await t.test("an observed stopped revision may retain retired ordinary and init processes", async () => {
     const list = workedComposedInstallation();

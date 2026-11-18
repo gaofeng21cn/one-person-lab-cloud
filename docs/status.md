@@ -56,10 +56,14 @@ The Product installation checker admits the composed deployment unit using the
 same effective listener and database declarations. It distinguishes local binds
 from selected Services, checks typed gRPC listeners and live workload/endpoint
 ownership, and rejects a second product process in ordinary or init containers.
+An observed zero-replica Deployment and its drained ReplicaSets may retain
+historical split-process templates for migration recovery. Endpoints still have
+to resolve to the current deployment unit.
 Secret references establish wiring; Instance material readback establishes token
-content. Synthetic admission and consumer tests are source evidence only. Full
-container verification remains open: the 2026-11-18 local attempt could not resolve
-the registry for the digest-pinned base images and never reached backend startup.
+content. Synthetic admission and consumer tests exercise the Product checker.
+The 2026-11-18 LinuxKit run started the unit through Fabric. Control Plane
+readiness requires the Fabric storage project's quota readback. The Docker
+Desktop kernel could not mount the required ext4 project-quota filesystem.
 
 ## Customer upload completion source repair (2026-11-16)
 

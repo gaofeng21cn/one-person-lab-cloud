@@ -13,6 +13,21 @@ const sourceSha = "a".repeat(40);
 const cloudImage = `ghcr.io/example/cloud@sha256:${"b".repeat(64)}`;
 const workspaceImage = `127.0.0.1:5000/qualification@sha256:${"c".repeat(64)}`;
 
+test("an installation preflight failure has no Workspace to clean up", async (t) => {
+  const directory = await mkdtemp(resolve(tmpdir(), "opl-native-clean-host-preflight-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const receiptFile = resolve(directory, "preflight.json");
+  const receipt = { schemaVersion: 1, mode: "local-v2", status: "NOT_READY", stage: "installation_preflight",
+    source: { sha: sourceSha }, evidence: { readbacks: {} } };
+  const args = [resolve(root, "tools/local-v2-clean-host.ts"), "--product-root", root,
+    "--directory", directory, "--source-sha", sourceSha, "--cloud-image", cloudImage,
+    "--project", "opl-native-1-1", "--cleanup-from", receiptFile];
+  await writeFile(receiptFile, JSON.stringify(receipt));
+  await execute(process.execPath, args);
+  await writeFile(receiptFile, JSON.stringify({ ...receipt, stage: "workspace_operation" }));
+  await assert.rejects(execute(process.execPath, args), /clean_host_cleanup_receipt_invalid/);
+});
+
 test("an anonymous application entry binds the real Docker image, owner and published port", () => {
   const labels = { "opl.fabric.kind": "application_runtime", "opl.component.role": "main",
     "opl.fabric.provider": "local-docker", "opl.workspace.id": "workspace_test", "opl.account.id": "local-host",

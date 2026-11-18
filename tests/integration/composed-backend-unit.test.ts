@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { createServer } from "node:net";
 import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import test from "node:test";
 
@@ -17,7 +17,10 @@ import test from "node:test";
 //
 // The suite is opt-in, so ordinary CI stays fast. Run it with:
 //
-//   OPL_PORTABLE_RUNTIME_READBACK=1 node --test tests/integration/composed-backend-unit.test.ts
+//   OPL_TEST_QUOTA_ROOT=/path/to/disposable/project-quota-mount \
+//     OPL_PORTABLE_RUNTIME_READBACK=1 node --test tests/integration/composed-backend-unit.test.ts
+// Fabric reads project quota from a dedicated ext4 or XFS mount, as in
+// Clean Host Qualification.
 //
 // The build needs a reachable registry. When the default Go module proxy is
 // unreachable, point the build at one that is:
@@ -122,6 +125,8 @@ type Contract = {
 if (enabled) test("the Cloud backend container is one deployable business unit", {
   timeout: 60 * 60_000
 }, async () => {
+  const workspaceRoot = process.env.OPL_TEST_QUOTA_ROOT;
+  assert.ok(workspaceRoot && isAbsolute(workspaceRoot), "OPL_TEST_QUOTA_ROOT must name a dedicated project-quota mount");
   const suffix = `${process.pid}-${randomBytes(4).toString("hex")}`;
   const project = `opl-cloud-composed-${suffix}`;
   const image = `${project}:source`;
@@ -139,7 +144,6 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
   const objectRoot = join(tempRoot, "objects");
   const buildRoot = join(tempRoot, "build");
   const fabricRoot = join(tempRoot, "fabric");
-  const workspaceRoot = join(tempRoot, "workspaces");
   const secretRoot = join(tempRoot, "secrets");
 
   const topologyPath = join(repoRoot, "deploy/portable/opl-cloud-owner-topology.json");
@@ -485,7 +489,7 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
     topologyPath: string
   ) => {
     const argumentsList = [
-      "run", "-d", "--name", name, "--network", network, "--user", "root"
+      "run", "-d", "--name", name, "--network", network, "--user", "root", "--cap-add", "SYS_ADMIN"
     ];
     argumentsList.push(
       "-v", `${pkiDir}:/pki:ro`,
@@ -543,6 +547,7 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
     return address;
   };
 
+  let fabricDiagnostic = "not observed";
   try {
     await writeInstallEnvironment();
     docker(["version"]);
@@ -625,7 +630,7 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
     // The owner binaries the contract declares run from the product image. The
     // composition entrypoint starts them, so the container runs the owner
     // binary itself and the entrypoint decides the environment it sees.
-    for (const directory of [objectRoot, buildRoot, fabricRoot, workspaceRoot]) {
+    for (const directory of [objectRoot, buildRoot, fabricRoot]) {
       await mkdir(directory, { recursive: true });
     }
     // The Local-Docker provider keeps its Gateway secrets in a private root
@@ -686,7 +691,6 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
     // surface while the container is still running.
     const fabricProcess = contract.processes.find((process) => process.transportPrincipal === "fabric");
     const fabricListener = fabricProcess ? effectiveListener(fabricProcess, fabricProcess.addressEnv) : "";
-    let fabricAnswer = "";
     // The readiness criterion the contract declares for an owner. The
     // published owner probe reads the owner's own health surface with the
     // owner's own identity, which is the readback the installer uses, and the
@@ -779,18 +783,24 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
           criterionResults.set(process.service, criterionFailures(process));
         }
         if (attempts % 10 === 0 && fabricListener) {
-          fabricAnswer = docker([
+          const probe = docker([
             "exec", backendName, "curl", "--silent", "--show-error", "--max-time", "5",
+            "--write-out", "\n%{http_code}",
             "-H", `Authorization: Bearer ${installEnvironment.OPL_FABRIC_SERVICE_TOKEN}`,
             `http://${loopback(fabricListener)}/fabric/readiness`
-          ], false).stdout.trim();
+          ], false);
+          if (probe.status === 0) {
+            const [body, status] = probe.stdout.trim().split(/\n+/);
+            const errorCode = /^\{"error":"([a-z][a-z0-9_]+)(?=[:"])/.exec(body)?.[1];
+            fabricDiagnostic = [`HTTP ${status}`, errorCode].filter(Boolean).join(" ");
+          }
         }
       }
       if (declaredServices.every((service) => logs.includes(`owner ${service} is ready`))) return true;
       // A composition that stops reports the owner that failed, so the wait
       // ends with the report instead of with a timeout.
       return !containerRunning(backendName);
-    }, `the composition did not bring every declared owner up:\n${containerLogs(backendName)}\nfabric readiness: ${fabricAnswer}`);
+    }, "the composition did not bring every declared owner up");
 
     const logs = containerLogs(backendName);
     const { processList, sockets, socketOwners, ownerEnvironments } = evidence;
@@ -983,19 +993,19 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
         if (!otherDatabase || otherDatabase === process.compositionDatabaseEnv) continue;
         const otherDSN = shared[otherDatabase];
         if (otherDSN) {
-          assert.notEqual(environment["DATABASE_URL"], otherDSN,
+          assert.ok(!Object.values(environment).includes(otherDSN),
             `${process.service} received the ${other.service} database DSN`);
         }
-        if (otherDatabase !== process.rpcDatabaseEnv && !(process.env ?? []).includes(otherDatabase)) {
-          assert.equal(environment[otherDatabase], undefined,
+        if (otherDatabase !== process.databaseEnv && otherDatabase !== process.rpcDatabaseEnv && !(process.env ?? []).includes(otherDatabase)) {
+          assert.ok(environment[otherDatabase] === undefined,
             `${process.service} received the ${other.service} database credential`);
         }
       }
       if (process.databaseEnv) {
-        assert.equal(environment[process.databaseEnv], shared[process.compositionDatabaseEnv!],
+        assert.ok(environment[process.databaseEnv] === shared[process.compositionDatabaseEnv!],
           `${process.service} did not receive its own database`);
       } else {
-        assert.equal(environment["DATABASE_URL"], undefined,
+        assert.ok(environment["DATABASE_URL"] === undefined,
           `${process.service} received a database DSN it does not consume`);
       }
     }
@@ -1027,12 +1037,8 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
     // the Control Plane's readiness is that projection, so an owner that
     // never becomes ready names the upstream cause.
     const ready = [...logs.matchAll(/owner (\S+) is ready/g)].map((match) => match[1]);
-    assert.ok(!fabricAnswer.includes("local_docker_storage_quota_unavailable"),
-      `the host cannot enforce the storage quota required for full readiness: ${fabricAnswer}`);
-    assert.deepEqual(ready, declaredServices,
-      `the entrypoint did not bring every declared owner to ready\nfabric readiness: ${fabricAnswer}`);
-    assert.ok(containerRunning(backendName),
-      `the composed container is not running\nfabric readiness: ${fabricAnswer}`);
+    assert.deepEqual(ready, declaredServices, "the entrypoint did not bring every declared owner to ready");
+    assert.ok(containerRunning(backendName), "the composed container is not running");
 
     // Every owner satisfies the readiness criterion the contract declares for
     // it.
@@ -1045,7 +1051,7 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
     const logs = docker(["logs", "--tail", "200", backendName], false);
     throw new Error([
       error instanceof Error ? error.stack ?? error.message : String(error),
-      inspection.stdout, inspection.stderr, logs.stdout, logs.stderr
+      `Fabric readiness: ${fabricDiagnostic}`, inspection.stdout, inspection.stderr, logs.stdout, logs.stderr
     ].filter(Boolean).join("\n"));
   } finally {
     docker(["rm", "-f", backendName], false);

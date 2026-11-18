@@ -285,11 +285,12 @@ jobs:
           [ -n "$qualification_root" ] || exit 0
           test "$qualification_root" = "/tmp/opl-clean-host-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           test ! -L "$qualification_root"
+          cleanup_failed=0
           if [ -n "${OPL_NATIVE_PROJECT:-}" ]; then
             test "$OPL_NATIVE_PROJECT" = "opl-native-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
             docker compose --project-name "$OPL_NATIVE_PROJECT" \
               --env-file "$qualification_root/native/installation.env" \
-              -f deploy/portable/compose.local-v2.yaml down --volumes --remove-orphans
+              -f deploy/portable/compose.local-v2.yaml down --volumes --remove-orphans || cleanup_failed=1
             if [ -f "$RUNNER_TEMP/local-workspace-qualification.json" ]; then
               cleanup_receipt="$RUNNER_TEMP/local-workspace-qualification.json"
               if [ -f "$cleanup_receipt.diagnostic.json" ]; then
@@ -298,7 +299,7 @@ jobs:
               node "$RUNNER_TEMP/native-qualification-installer/tools/local-v2-clean-host.ts" \
                 --product-root "$PWD" --directory "$qualification_root/native" --project "$OPL_NATIVE_PROJECT" \
                 --source-sha "$PRODUCT_SHA" --cloud-image "$CLOUD_IMAGE_REF" \
-                --cleanup-from "$cleanup_receipt"
+                --cleanup-from "$cleanup_receipt" || cleanup_failed=1
             fi
           fi
           if mountpoint -q "$qualification_root/storage"; then
@@ -307,6 +308,7 @@ jobs:
           if test -d "$qualification_root"; then
             sudo rm -rf --one-file-system -- "$qualification_root"
           fi
+          exit "$cleanup_failed"
 
       - name: Remove run-owned Workspace fixture registry
         if: ${{ always() && steps.workspace.outputs.registry != '' }}

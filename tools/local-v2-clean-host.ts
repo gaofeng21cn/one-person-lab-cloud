@@ -111,9 +111,13 @@ async function main() {
     const receipt = JSON.parse(await readFile(resolve(options["cleanup-from"]), "utf8"));
     const readbacks = receipt?.evidence?.readbacks;
     if (receipt?.mode !== "local-v2" || receipt?.source?.sha !== options["source-sha"] ||
-        readbacks?.installation?.cloudImage !== options["cloud-image"] ||
-        readbacks?.installation?.qualificationEmail !== "local-qualification@example.test" ||
         !/^opl-native-[1-9][0-9]*-[1-9][0-9]*$/.test(String(options.project || ""))) {
+      throw new Error("clean_host_cleanup_receipt_invalid");
+    }
+    if (receipt.status === "NOT_READY" && receipt.stage === "installation_preflight" && !readbacks?.installation &&
+        !readbacks?.order) return;
+    if (readbacks?.installation?.cloudImage !== options["cloud-image"] ||
+        readbacks?.installation?.qualificationEmail !== "local-qualification@example.test") {
       throw new Error("clean_host_cleanup_receipt_invalid");
     }
     const workspaceId = String(readbacks?.order?.workspaceId || "");
