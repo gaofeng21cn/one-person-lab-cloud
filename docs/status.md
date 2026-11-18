@@ -42,7 +42,11 @@ execution isolated. Current owner binaries and the Instance's multi-Deployment
 installation retain their separate deployment evidence. Cloud source now provides
 `opl-cloud-composition`, including configured HTTP peer origins resolved from the
 target listener and projected through the existing child environment boundary.
-Local Go tests run a real child that reaches an isolated HTTP peer with its
+Listener overrides, including explicit hosts and HTTP port inputs, are retained;
+gRPC peers and readiness resolve the same effective bind, mapping wildcard
+binds to their matching loopback family. Each database consumer declares its
+`compositionDatabaseEnv` input; Fabric keeps its legacy and coordination
+databases separate. Local Go tests run a real child that reaches an isolated HTTP peer with its
 caller credential; malformed targets are refused and unrelated secrets remain
 excluded. This is source and isolated-process evidence (2026-11-18), not an image,
 Instance installation or production qualification. The [remaining work](roadmap.md#consolidated-backend-deployment)

@@ -19,6 +19,8 @@ func TestConfiguredPeerUsesTheTargetEffectiveListener(t *testing.T) {
 		{"0.0.0.0:19112", "http://127.0.0.1:19112"},
 		{"[::]:19113", "http://[::1]:19113"},
 		{"127.0.0.2:19114", "http://127.0.0.2:19114"},
+		{"fabric.example:19115", "http://fabric.example:19115"},
+		{"[::1]:19116", "http://[::1]:19116"},
 	} {
 		t.Run(address.listener, func(t *testing.T) {
 			topology, err := Load(contractPath(t))
