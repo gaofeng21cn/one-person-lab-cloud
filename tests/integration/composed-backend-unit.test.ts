@@ -353,7 +353,6 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
   const issueSub2apiCertificate = async () => {
     await mkdir(sub2apiTLSRoot, { recursive: true });
     await copyFile(join(pkiDir, "ca.crt"), join(sub2apiTLSRoot, "ca.crt"));
-    await copyFile(join(pkiDir, "ca.key"), join(sub2apiTLSRoot, "ca.key"));
     await writeFile(join(sub2apiTLSRoot, "sub2api.ext.cnf"), [
       "[v3_req]",
       `subjectAltName = DNS:${sub2apiName}, IP:127.0.0.1`,
@@ -367,7 +366,7 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
       "-out", join(sub2apiTLSRoot, "sub2api.csr"),
       "-subj", "/CN=sub2api/O=opl-cloud local v2"]);
     await command(["openssl", "x509", "-req", "-in", join(sub2apiTLSRoot, "sub2api.csr"),
-      "-CA", join(sub2apiTLSRoot, "ca.crt"), "-CAkey", join(sub2apiTLSRoot, "ca.key"),
+      "-CA", join(sub2apiTLSRoot, "ca.crt"), "-CAkey", join(pkiDir, "ca.key"),
       "-CAcreateserial", "-out", join(sub2apiTLSRoot, "sub2api.crt"),
       "-days", "825", "-sha256",
       "-extfile", join(sub2apiTLSRoot, "sub2api.ext.cnf"), "-extensions", "v3_req"]);
@@ -594,11 +593,11 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
     docker(["network", "create", "--subnet", subnet, network]);
     docker([
       "run", "-d", "--name", sub2apiName, "--network", network, "--ip", sub2apiHost,
+      "--user", `${process.getuid?.() ?? 0}:${process.getgid?.() ?? 0}`,
       "-e", `PORT=${sub2apiPort}`,
-      "-e", "NODE_EXTRA_CA_CERTS=/pki/ca.crt",
+      "-e", "NODE_EXTRA_CA_CERTS=/tls/ca.crt",
       "-e", "TLS_KEY_FILE=/tls/sub2api.key",
       "-e", "TLS_CERT_FILE=/tls/sub2api.crt",
-      "-v", `${pkiDir}:/pki:ro`,
       "-v", `${sub2apiTLSRoot}:/tls:ro`,
       "-v", `${sub2apiScript}:/sub2api.mjs:ro`,
       image, "node", "/sub2api.mjs"
@@ -610,6 +609,7 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
         '.then((response) => response.status).then((status) => { process.exit(status === 200 ? 0 : 1); })' +
         '.catch(() => process.exit(1));'
       ], false);
+      if (!containerRunning(sub2apiName)) throw new Error(`Sub2API fixture stopped:\n${containerLogs(sub2apiName)}`);
       return answer.status === 0;
     }, "the Sub2API fixture did not answer the administrator login");
     docker([
