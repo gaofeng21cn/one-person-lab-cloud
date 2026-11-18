@@ -639,6 +639,21 @@ func TestTencentProviderReadinessRequiresExpectedImagesOnEveryReadyPod(t *testin
 			readyPod("workspace", "workspace", "docker-pullable://"+workspaceImage),
 		}
 	}
+	composedPods := func(resolvedDigest, controller string) []any {
+		template := map[string]any{"spec": map[string]any{"containers": []any{map[string]any{"name": "cloud-backend", "image": cloudImage}}}}
+		backend := map[string]any{"kind": "Deployment", "metadata": map[string]any{"name": "opl-cloud-backend", "uid": "backend-uid"},
+			"spec": map[string]any{"template": template}}
+		owner := func(kind, uid string) []any {
+			return []any{map[string]any{"controller": true, "kind": kind, "uid": uid}}
+		}
+		rs := map[string]any{"kind": "ReplicaSet", "metadata": map[string]any{"uid": "rs-uid", "ownerReferences": owner("Deployment", "backend-uid")},
+			"spec": map[string]any{"template": template}}
+		pod := readyPod("backend", "cloud-backend", "containerd://"+resolvedDigest).(map[string]any)
+		pod["kind"] = "Pod"
+		pod["metadata"].(map[string]any)["ownerReferences"] = owner("ReplicaSet", controller)
+		return []any{backend, rs, pod, readyPod("workspace", "workspace", "docker-pullable://"+workspaceImage)}
+	}
+	platformDigest := "sha256:" + strings.Repeat("c", 64)
 	digestPods := func(prefix string) []any {
 		pods := matchingPods()
 		for index, item := range pods {
@@ -655,11 +670,18 @@ func TestTencentProviderReadinessRequiresExpectedImagesOnEveryReadyPod(t *testin
 		name           string
 		cloudImage     string
 		workspaceImage string
+		platformDigest string
 		pods           func() []any
 		wantReady      bool
 		wantCloud      bool
 		wantWorkspace  bool
 	}{
+		{name: "composed backend uses the selected platform image", cloudImage: cloudImage, platformDigest: platformDigest, workspaceImage: workspaceImage,
+			pods: func() []any { return composedPods(platformDigest, "rs-uid") }, wantReady: true, wantCloud: true, wantWorkspace: true},
+		{name: "composed backend rejects another platform image", cloudImage: cloudImage, platformDigest: platformDigest, workspaceImage: workspaceImage,
+			pods: func() []any { return composedPods("sha256:"+strings.Repeat("d", 64), "rs-uid") }, wantWorkspace: true},
+		{name: "composed backend rejects a Pod with a foreign controller", cloudImage: cloudImage, platformDigest: platformDigest, workspaceImage: workspaceImage,
+			pods: func() []any { return composedPods(platformDigest, "foreign-rs") }, wantWorkspace: true},
 		{name: "matching immutable image ids", cloudImage: cloudImage, workspaceImage: workspaceImage, pods: matchingPods, wantReady: true, wantCloud: true, wantWorkspace: true},
 		{name: "containerd digest image ids", cloudImage: cloudImage, workspaceImage: workspaceImage, pods: func() []any { return digestPods("containerd://") }, wantReady: true, wantCloud: true, wantWorkspace: true},
 		{name: "bare digest image ids", cloudImage: cloudImage, workspaceImage: workspaceImage, pods: func() []any { return digestPods("") }, wantReady: true, wantCloud: true, wantWorkspace: true},
@@ -690,6 +712,7 @@ func TestTencentProviderReadinessRequiresExpectedImagesOnEveryReadyPod(t *testin
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("OPL_CLOUD_IMAGE", tc.cloudImage)
+			t.Setenv("OPL_CLOUD_IMAGE_AMD64_DIGEST", tc.platformDigest)
 			t.Setenv("OPL_WORKSPACE_IMAGE", tc.workspaceImage)
 			for key, value := range map[string]string{
 				"OPL_WORKSPACE_DOMAIN": "workspace.medopl.cn", "OPL_K8S_NAMESPACE": "opl-cloud", "OPL_IMAGE_PULL_SECRET_NAME": "pull-secret",

@@ -10,6 +10,27 @@ import (
 
 const testProbeTimeout = 5 * time.Second
 
+func TestControlPlaneHealthOnlyDoesNotDependOnProviderReadiness(t *testing.T) {
+	const source = "fixture-source"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/healthz" {
+			_, _ = w.Write([]byte(`{"productSourceSha":"fixture-source"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"serviceReady":false}`))
+	}))
+	defer server.Close()
+	args := []string{"--owner", controlPlaneOwner, "--addr", server.URL, "--expected-source-sha", source}
+	getenv := func(string) string { return "" }
+	probe, err := probeFromArgs(append(args, "--health-only"), getenv)
+	if err != nil || probe.Status != "ok" || probe.ProductSourceSHA != source || probe.FabricReadiness != nil {
+		t.Fatalf("health-only probe = %+v, %v", probe, err)
+	}
+	if _, err := probeFromArgs(args, getenv); err == nil || err.Error() != "fabric_not_service_ready" {
+		t.Fatalf("installation readiness probe returned %v", err)
+	}
+}
+
 // The Console BFF is a deployment unit rather than a data owner, so the probe
 // answers for it over the HTTP surface it serves. These cases keep that
 // criterion its own and keep the owner criterion closed to identities the

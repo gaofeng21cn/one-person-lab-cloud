@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -766,29 +767,31 @@ func (p *TencentProvider) Readiness(ctx context.Context) (FabricReadiness, error
 	if items, decodeErr := strictKubectlItems(podRaw); podErr == nil && decodeErr == nil {
 		workspaceImageStatus, workspaceImageUnverifiedIDs = workspaceImageReadiness(items, p.workspaceImage)
 	}
-	imageChecks := map[string]bool{
-		"control_plane_image_id": podImageIDsMatch(pods, "app.kubernetes.io/component", "control-plane", "control-plane", os.Getenv("OPL_CLOUD_IMAGE")),
-		"ledger_image_id":        podImageIDsMatch(pods, "app.kubernetes.io/component", "ledger", "ledger", os.Getenv("OPL_CLOUD_IMAGE")),
-		"fabric_image_id":        podImageIDsMatch(pods, "app.kubernetes.io/component", "fabric", "fabric", os.Getenv("OPL_CLOUD_IMAGE")),
-		"workspace_image_id": podImageIDsMatch(pods, "oplcloud.cn/workspace-id", "", "workspace", func() string {
-			if p == nil {
-				return ""
-			}
-			return p.workspaceImage
-		}()),
-	}
+	workspaceImagesReady := podErr == nil && podImageIDsMatch(pods, "oplcloud.cn/workspace-id", "", "workspace", p.workspaceImage)
 	failedChecks := []string{}
+	cloudImagesReady := false
 	if podErr != nil {
 		failedChecks = append(failedChecks, "ready_pod_image_ids")
 	} else {
-		for _, name := range []string{"control_plane_image_id", "ledger_image_id", "fabric_image_id", "workspace_image_id"} {
-			if !imageChecks[name] {
-				failedChecks = append(failedChecks, name)
+		cloudImage := os.Getenv("OPL_CLOUD_IMAGE")
+		if composed, ready := composedCloudImageReadiness(pods, cloudImage, os.Getenv("OPL_CLOUD_IMAGE_AMD64_DIGEST")); composed {
+			if !ready {
+				failedChecks = append(failedChecks, "cloud_backend_image_id")
+			}
+		} else {
+			for _, owner := range []struct{ name, component string }{
+				{"control_plane_image_id", "control-plane"}, {"ledger_image_id", "ledger"}, {"fabric_image_id", "fabric"},
+			} {
+				if !podImageIDsMatch(pods, "app.kubernetes.io/component", owner.component, owner.component, cloudImage) {
+					failedChecks = append(failedChecks, owner.name)
+				}
 			}
 		}
+		cloudImagesReady = len(failedChecks) == 0
+		if !workspaceImagesReady {
+			failedChecks = append(failedChecks, "workspace_image_id")
+		}
 	}
-	cloudImagesReady := podErr == nil && imageChecks["control_plane_image_id"] && imageChecks["ledger_image_id"] && imageChecks["fabric_image_id"]
-	workspaceImagesReady := podErr == nil && imageChecks["workspace_image_id"]
 	immutableImagesReady := cloudImagesReady && workspaceImagesReady
 	uniqueMissing := uniqueStrings(missing)
 	return FabricReadiness{
@@ -923,7 +926,55 @@ func workspaceImageReadiness(items []any, installedImage string) (contracts.Work
 	return result(contracts.WorkspaceImageTargetsVerified)
 }
 
-func podImageIDsMatch(pods []any, labelKey, labelValue, containerName, expected string) bool {
+// The composed installation reports one Cloud workload. Read its controller
+// chain and current template before trusting the image IDs of its ready Pods.
+func composedCloudImageReadiness(items []any, image, amd64Digest string) (present, ready bool) {
+	const component = "app.kubernetes.io/component"
+	var backend map[string]any
+	replicaSets := map[string]map[string]any{}
+	for _, item := range items {
+		resource, _ := item.(map[string]any)
+		switch stringValue(resource["kind"]) {
+		case "Deployment":
+			if stringValue(nested(resource, "metadata", "name")) == "opl-cloud-backend" {
+				if backend != nil {
+					return true, false
+				}
+				backend = resource
+			}
+		case "ReplicaSet":
+			if uid := stringValue(nested(resource, "metadata", "uid")); uid != "" {
+				replicaSets[uid] = resource
+			}
+		}
+	}
+	if backend == nil {
+		return false, false
+	}
+	backendUID := stringValue(nested(backend, "metadata", "uid"))
+	if backendUID == "" || nested(backend, "metadata", "deletionTimestamp") != nil ||
+		stringValue(firstContainerField(backend, "name")) != "cloud-backend" ||
+		stringValue(firstContainerField(backend, "image")) != image {
+		return true, false
+	}
+	current := []any{}
+	for _, item := range items {
+		pod, _ := item.(map[string]any)
+		if pod["kind"] != "Pod" || nested(pod, "metadata", "labels", component) != "backend" ||
+			nested(pod, "metadata", "deletionTimestamp") != nil ||
+			nested(pod, "status", "phase") != "Running" || conditionStatuses(nested(pod, "status", "conditions"))["Ready"] != "True" {
+			continue
+		}
+		rs := replicaSets[controllerUID(pod, "ReplicaSet")]
+		if controllerUID(rs, "Deployment") != backendUID || !runtimeTemplateMatches(backend, rs) {
+			return true, false
+		}
+		current = append(current, pod)
+	}
+	return true, podImageIDsMatch(current, component, "backend", "cloud-backend", image, amd64Digest)
+}
+
+func podImageIDsMatch(pods []any, labelKey, labelValue, containerName, expected string, platformDigests ...string) bool {
 	expectedDigest, ok := immutableImageDigest(expected)
 	if !ok {
 		return false
@@ -946,7 +997,7 @@ func podImageIDsMatch(pods []any, labelKey, labelValue, containerName, expected 
 			containerFound = true
 			found = true
 			actualDigest, ok := runtimeImageDigest(stringValue(status["imageID"]))
-			if status["ready"] != true || !ok || actualDigest != expectedDigest {
+			if status["ready"] != true || !ok || (actualDigest != expectedDigest && !slices.Contains(platformDigests, actualDigest)) {
 				return false
 			}
 		}

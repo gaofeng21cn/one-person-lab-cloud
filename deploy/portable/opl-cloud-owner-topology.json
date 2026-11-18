@@ -396,6 +396,7 @@
     "OPL_FABRIC_RUNNER_SERVICE_TOKEN",
     "OPL_AIONUI_ADMIN_PASSWORD_SEED",
     "OPL_CLOUD_IMAGE",
+    "OPL_CLOUD_IMAGE_AMD64_DIGEST",
     "OPL_WORKSPACE_IMAGE",
     "OPL_WORKSPACE_DOMAIN",
     "OPL_K8S_NAMESPACE",
@@ -796,33 +797,17 @@
    },
    {
     "process": "control-plane",
-    "kind": "deploymentUnitHttpHealthAndFabricReadiness",
+    "kind": "deploymentUnitHttpHealth",
     "checks": [
      {
       "transport": "http",
-      "role": "liveness",
+      "role": "readiness",
       "addressEnv": "CONTROL_PLANE_ADDR",
       "method": "GET",
       "path": "/api/healthz"
-     },
-     {
-      "transport": "http",
-      "role": "readiness",
-      "addressEnv": "CONTROL_PLANE_ADDR",
-      "method": "GET",
-      "path": "/api/runtime/readiness",
-      "projection": "contracts.FabricReadiness"
-     },
-     {
-      "transport": "http",
-      "role": "readiness",
-      "addressEnv": "CONTROL_PLANE_ADDR",
-      "method": "GET",
-      "path": "/api/production/readiness",
-      "projection": "contracts.FabricReadiness"
      }
     ],
-    "evidence": "services/control-plane/internal/server/routes_core.go registers GET /api/healthz, GET /api/runtime/readiness and GET /api/production/readiness. The two readiness routes carry the Fabric provider's readiness state (contracts.FabricReadiness), not an aggregate of the Cloud owners, so they are declared as projections."
+    "evidence": "services/control-plane/internal/server/routes_core.go serves GET /api/healthz after the Control Plane starts. Installation probes read runtime and production readiness after startup because Tencent provider readiness depends on observing ready Pods."
    },
    {
     "process": "console-bff",

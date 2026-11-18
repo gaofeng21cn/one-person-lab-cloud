@@ -1040,6 +1040,18 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
     assert.deepEqual(ready, declaredServices, "the entrypoint did not bring every declared owner to ready");
     assert.ok(containerRunning(backendName), "the composed container is not running");
 
+    const controlPlane = contract.processes.find(process => process.service === "control-plane");
+    assert.ok(controlPlane);
+    const controlPlaneAddress = effectiveListener(controlPlane, controlPlane.addressEnv);
+    const projectedReadiness = (path: string) => JSON.parse(docker([
+      "exec", backendName, "curl", "--fail", "--silent", "--show-error", "--max-time", "10",
+      httpURL(controlPlaneAddress, path)
+    ]).stdout);
+    const runtimeReadiness = projectedReadiness("/api/runtime/readiness");
+    assert.equal(runtimeReadiness.provider, "local-docker");
+    assert.equal(runtimeReadiness.serviceReady, true, "Fabric must report service readiness through Control Plane");
+    assert.equal(projectedReadiness("/api/production/readiness").ready, false);
+
     // Every owner satisfies the readiness criterion the contract declares for
     // it.
     for (const process of contract.processes) {
