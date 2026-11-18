@@ -36,7 +36,10 @@ environment isolation and aliases, and resolves configured HTTP peers through
 the target effective listener, retaining installation bind and port overrides.
 The contract explicitly maps composition database inputs to each child; the
 legacy Fabric database remains separate from its coordination database.
-Isolated source tests establish that behavior.
+Isolated source tests establish that behavior. Product admission now consumes
+the composed topology, effective listener inputs and live workload ownership;
+Instance still owns material content and deployment evidence. Full container
+readiness remains open after a registry-resolution failure in local verification.
 Installed acceptance must still preserve owner authorization, single writers,
 accepted-operation recovery and persistence. Instance must
 switch the real API routes and configuration, retain existing databases and
