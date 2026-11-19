@@ -2638,7 +2638,12 @@ export async function runCustomerPackageEvidenceChain({
   // The effective Runtime and the independent WebUI the installation approves
   // for new builds. The Build below is explicit: the run asks for these three
   // inputs and follows the job it gets.
-  const policy = (await http.json("/api/v2/catalog/build-policy", {}, auth)).payload;
+  let policy;
+  try {
+    ({ payload: policy } = await http.json("/api/v2/catalog/build-policy", {}, auth));
+  } catch (error) {
+    if (error?.status !== 404) throw error;
+  }
   const runtimeVersionId = String(policy?.runtimeVersionId || "");
   const webuiVersionId = String(policy?.defaultWebuiVersionId || "");
   if (!runtimeVersionId || !webuiVersionId) {
