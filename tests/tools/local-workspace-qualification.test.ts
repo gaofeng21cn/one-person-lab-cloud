@@ -97,6 +97,48 @@ test("qualification reads the case-sensitive proxy settings from its generated i
   });
 });
 
+test("qualification compose environment carries every name the shipped installation declares", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "opl-qualification-compose-environment-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const templatePath = join(process.cwd(), "deploy/portable/opl-cloud.env.example");
+  const composePath = join(process.cwd(), "deploy/portable/compose.local-v2.yaml");
+  const [template, compose] = await Promise.all([readFile(templatePath, "utf8"), readFile(composePath, "utf8")]);
+  const facts = cleanHostInstallation({
+    template, compose, directory, sourceSha: sha,
+    cloudImage: `ghcr.io/example/cloud@${cloudDigest}`,
+    workspaceImage: workspaceReference,
+    storageRoot: join(directory, "storage"),
+    project: "opl-native-1-1",
+    publisherSchemaDigest: `sha256:${"d".repeat(64)}`
+  });
+  const envFile = join(directory, "installation.env");
+  await writeFile(envFile, localV2EnvFile(facts));
+  // The installation exactly as the qualification reads it.
+  const { values } = await readLocalV2InstallationDeclaration({ envFile, templatePath, composePath });
+  // The owner topology declares the lowercase proxy settings among the
+  // installation's shared facts, so the template declares them too.
+  for (const name of ["http_proxy", "https_proxy", "no_proxy"]) {
+    assert.equal(Object.prototype.hasOwnProperty.call(values, name), true, `${name} must be a declared installation fact`);
+  }
+  // The Compose environment the qualification starts the topology with carries
+  // every declared name, in the spelling the declaration reader accepted.
+  const environment = qualificationComposeEnvironment({ PATH: "/usr/bin" }, Object.entries(values));
+  assert.equal(environment.http_proxy, "");
+  assert.equal(environment.https_proxy, "");
+  assert.equal(environment.no_proxy, "");
+  assert.equal(environment.OPL_CLOUD_IMAGE, `ghcr.io/example/cloud@${cloudDigest}`);
+  assert.equal(environment.PATH, "/usr/bin");
+});
+
+test("qualification compose environment refuses an unusable name and a broken value", () => {
+  assert.throws(() => qualificationComposeEnvironment({}, [["OPL CLOUD IMAGE", "declared"]]), {
+    message: /qualification compose environment entry is invalid/
+  });
+  assert.throws(() => qualificationComposeEnvironment({}, [["OPL_CLOUD_IMAGE", "first\nsecond"]]), {
+    message: /qualification compose environment entry is invalid/
+  });
+});
+
 test("source image builds pass the exact qualification source revision to Docker", async () => {
   const directory = await mkdtemp(join(tmpdir(), "opl-source-image-build-test-"));
   const binDirectory = join(directory, "bin");

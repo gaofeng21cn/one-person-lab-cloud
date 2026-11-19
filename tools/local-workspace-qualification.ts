@@ -603,11 +603,19 @@ export function localBuildProxyArgs() {
     : ["--build-arg", `HTTP_PROXY=${proxy}`, "--build-arg", `HTTPS_PROXY=${proxy}`];
 }
 
+// The Compose environment the qualification starts the topology with.
+//
+// The names it accepts are the names the declaration reader accepts and the
+// names the shipped template declares, because the owner topology declares
+// lowercase installation facts among them (sharedEnv.httpProxy names the
+// lowercase proxy settings the Go HTTP clients read). A name outside that
+// spelling, and a value that would break the one-entry-per-line reading of the
+// environment, are still refused.
 export function qualificationComposeEnvironment(baseEnvironment, exactEntries) {
   const environment = { ...baseEnvironment };
   for (const [key, value] of exactEntries) {
-    if (!/^[A-Z][A-Z0-9_]*$/.test(String(key)) || /[\r\n]/.test(String(value))) {
-      throw new Error("qualification compose environment entry is invalid");
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(String(key)) || /[\r\n]/.test(String(value))) {
+      throw new Error(`qualification compose environment entry is invalid: ${String(key)}`);
     }
     environment[key] = String(value);
   }
