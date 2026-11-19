@@ -340,16 +340,15 @@ test("every size the chain sends to an owner is a decimal string", async () => {
   }
 });
 
-test("the uploaded bytes are written through the requester the run supplies", async () => {
-  // The object origin is served by the installation's own CA. A request that
-  // trusted the host store would fail there, so the run's own requester writes
-  // the part and the host-trusting default is never used.
+test("a missing Build policy preserves the approved upload readback and stops before requesting a Build", async () => {
+  // The upload still uses the installation's own object requester. The policy
+  // gap is reported only after the owner confirms those bytes.
   const packageDir = fileURLToPath(new URL("./fixtures/customer-agent-package", import.meta.url));
   const archive = await buildCustomerPackageArchive({
     packageDir, probePath: "agent/provenance/probe.txt", probeContent: "nonce",
   });
   const written = [];
-  const stop = new Error("stop_after_the_upload_completion");
+  const readback = {};
   let uploaded = null;
   const http = {
     json: async (path, init = {}) => {
@@ -362,7 +361,10 @@ test("the uploaded bytes are written through the requester the run supplies", as
       if (path === "/api/v2/uploads/upload_1/parts") return { payload: { url: "https://objects.test/part-1", method: "PUT", contentType: "application/octet-stream" } };
       if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", stage: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
       if (path === "/api/v2/package-versions/pv_1") return { payload: { id: "pv_1", packageId: "pkg_1", versionLabel: "1.0.0", sha256: uploaded?.sha256, sizeBytes: uploaded?.sizeBytes, status: "uploaded" } };
-      throw stop;
+      if (path === "/api/v2/catalog/build-policy") {
+        throw Object.assign(new Error("HTTP GET /api/v2/catalog/build-policy returned 404"), { status: 404 });
+      }
+      assert.fail(`unexpected request ${init.method || "GET"} ${path}`);
     },
   };
   const originalFetch = globalThis.fetch;
@@ -386,11 +388,12 @@ test("the uploaded bytes are written through the requester the run supplies", as
       computePlanId: "compute_1",
       storagePlanId: "storage_1",
       sourceSha: "a".repeat(40),
+      readback,
       putPart: async (url, init) => {
         written.push({ url, method: init.method, digest: `sha256:${createHash("sha256").update(init.body).digest("hex")}` });
         return { status: 200, headers: { get: () => "" } };
       },
-    }), (error) => error === stop || error?.message === "the read back package version does not match the uploaded bytes");
+    }), { code: "local_v2_customer_build_policy_unavailable" });
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -399,6 +402,10 @@ test("the uploaded bytes are written through the requester the run supplies", as
   assert.equal(written[0].method, "PUT");
   // The bytes the owner was promised are the bytes that were written.
   assert.equal(written[0].digest, uploaded.sha256);
+  assert.equal(readback.upload.operationId, "op_upload");
+  assert.equal(readback.packageVersion.id, "pv_1");
+  assert.equal(readback.packageVersion.status, "uploaded");
+  assert.equal(readback.build, undefined);
 });
 
 test("the approved Runtime Release is read out of the catalog page", async () => {
