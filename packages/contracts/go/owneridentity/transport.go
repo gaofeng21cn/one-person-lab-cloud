@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -53,6 +54,42 @@ type TLSConfig struct {
 func TLSFromEnv(getenv func(string) string) TLSConfig {
 	return TLSConfig{CAFile: strings.TrimSpace(getenv("OPL_GRPC_CA_FILE")), CertFile: strings.TrimSpace(getenv("OPL_GRPC_CERT_FILE")), KeyFile: strings.TrimSpace(getenv("OPL_GRPC_KEY_FILE")), AllowInsecureLocal: getenv("NODE_ENV") != "production" && getenv("OPL_GRPC_INSECURE_LOCAL") == "1"}
 }
+
+// CertDirEnv names the directory that holds one certificate and key per owner.
+// An installation that runs every owner inside one container cannot give each
+// owner its own file variables, because one container carries one environment.
+// Such an installation declares this directory instead, and every owner
+// resolves its own pair from it.
+const CertDirEnv = "OPL_GRPC_CERT_DIR"
+
+// OwnerMaterialPaths names the certificate and the key of one owner inside a
+// directory that holds one pair per owner. This is the one spelling of that
+// layout: the composition that starts the owners and every owner-scoped
+// command inside the shared container resolve their material the same way.
+func OwnerMaterialPaths(directory string, principal Service) (string, string) {
+	return filepath.Join(directory, principal.String()+".crt"), filepath.Join(directory, principal.String()+".key")
+}
+
+// OwnerTLSFromEnv resolves the transport material of one owner.
+//
+// An owner that runs in its own container is told its three files directly. An
+// owner-scoped command that runs inside the shared container is told the
+// directory that holds one pair per owner, and resolves its own pair from it.
+// The declared files win when both are present, so an installation that
+// declares them keeps the form it always had.
+func OwnerTLSFromEnv(getenv func(string) string, principal Service) TLSConfig {
+	config := TLSFromEnv(getenv)
+	if config.CertFile != "" && config.KeyFile != "" {
+		return config
+	}
+	directory := strings.TrimSpace(getenv(CertDirEnv))
+	if directory == "" || !principal.Valid() {
+		return config
+	}
+	certFile, keyFile := OwnerMaterialPaths(directory, principal)
+	return TLSConfig{CAFile: config.CAFile, CertFile: certFile, KeyFile: keyFile, AllowInsecureLocal: config.AllowInsecureLocal}
+}
+
 func CertificateService(cert *x509.Certificate) (Service, error) {
 	if cert == nil {
 		return "", fmt.Errorf("service certificate required")
