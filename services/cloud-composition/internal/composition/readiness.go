@@ -43,13 +43,13 @@ func OwnerCertificatePaths(process Process, getenv func(string) string) (string,
 	}
 	directory := strings.TrimSpace(getenv(CertDirEnv))
 	if directory == "" {
-		return "", "", fmt.Errorf("owner %s: set %s to the directory that holds one certificate and key per owner", process.Service, CertDirEnv)
+		return "", "", &MaterialError{Owner: process.Service, Err: fmt.Errorf("owner %s: set %s to the directory that holds one certificate and key per owner", process.Service, CertDirEnv)}
 	}
 	certFile := filepath.Join(directory, process.TransportPrincipal+".crt")
 	keyFile := filepath.Join(directory, process.TransportPrincipal+".key")
 	for _, path := range []string{certFile, keyFile} {
 		if _, err := os.Stat(path); err != nil {
-			return "", "", fmt.Errorf("owner %s: certificate material %s is not readable: %w", process.Service, path, err)
+			return "", "", &MaterialError{Owner: process.Service, Err: fmt.Errorf("owner %s: certificate material %s is not readable: %w", process.Service, path, err)}
 		}
 	}
 	return certFile, keyFile, nil
