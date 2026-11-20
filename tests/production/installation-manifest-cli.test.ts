@@ -435,6 +435,13 @@ test("installation CLI admits a Service that publishes no address", async t => {
     }],
     ["empty EndpointSlice endpoints", live => { live.slice.endpoints = []; }],
     ["absent EndpointSlice endpoints", live => { delete live.slice.endpoints; }],
+    // The API server writes an EndpointSlice that publishes no address with a
+    // null endpoints list, because that field carries no omitempty. A Service
+    // whose Pods are scaled to zero, or whose selector was just repointed at a
+    // backend that does not exist yet, is published that way.
+    ["null EndpointSlice endpoints", live => { live.slice.endpoints = null; }],
+    ["null Endpoints subsets", live => { live.endpoints.subsets = null; }],
+    ["subset with null addresses", live => { live.endpoints.subsets[0].addresses = null; }],
     ["EndpointSlice with no serviceable endpoint", live => { live.slice.endpoints[0].conditions = { ready: false }; }],
     ["unserviceable EndpointSlice conditions", live => {
       live.list.items = live.list.items.filter(item => item !== live.endpoints);

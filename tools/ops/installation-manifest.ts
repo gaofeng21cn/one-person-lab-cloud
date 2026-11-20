@@ -283,10 +283,15 @@ function endpointBackendFailure(resource: Resource, service: Resource, target: R
     // An EndpointSlice that lists no address delivers no traffic, so it cannot
     // hand this Service to another workload and it proves nothing about the
     // target Deployment. Only a listed address carries a proof obligation. An
-    // absent or empty list is admitted because the Deploy that creates the
+    // absent, null or empty list is admitted because the Deploy that creates the
     // backends is the only repair for a Service that has none, and refusing it
-    // until those backends exist would make the fault permanent.
-    if (resource.endpoints === undefined) return;
+    // until those backends exist would make the fault permanent. A null list is
+    // the API server's encoding of an empty list: the EndpointSlice endpoints
+    // field carries no omitempty, so a slice that publishes no address is
+    // written with a null list. A Service whose Pods are scaled to zero, or a
+    // Service whose selector was just repointed at a backend that does not exist
+    // yet, publishes its address that way.
+    if (resource.endpoints === undefined || resource.endpoints === null) return;
     if (!Array.isArray(resource.endpoints)) return "endpoint_slice_shape_invalid";
     if (resource.endpoints.length === 0) return;
     const states = resource.endpoints.map((endpoint: unknown) => endpointServiceability(endpoint, service));
@@ -306,11 +311,13 @@ function endpointBackendFailure(resource: Resource, service: Resource, target: R
   // The legacy Endpoints controller does not attach a Service ownerReference.
   // Its exact Service name plus every Pod UID and address must still agree.
   if (resource.apiVersion !== "v1") return "endpoint_shape_invalid";
-  if (resource.subsets === undefined) return;
+  // A null list is the API server's encoding of an empty list, so it lists
+  // nothing exactly like an absent or empty one.
+  if (resource.subsets === undefined || resource.subsets === null) return;
   if (!Array.isArray(resource.subsets)) return "endpoint_shape_invalid";
   for (const subset of resource.subsets) {
-    if (!object(subset) || subset.addresses !== undefined && !Array.isArray(subset.addresses) ||
-        subset.notReadyAddresses !== undefined && !Array.isArray(subset.notReadyAddresses)) return "endpoint_shape_invalid";
+    if (!object(subset) || subset.addresses !== undefined && subset.addresses !== null && !Array.isArray(subset.addresses) ||
+        subset.notReadyAddresses !== undefined && subset.notReadyAddresses !== null && !Array.isArray(subset.notReadyAddresses)) return "endpoint_shape_invalid";
   }
   // An Endpoints object that lists no entry at all — absent or empty subsets,
   // or every subset carrying empty address arrays — routes nothing and is

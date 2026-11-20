@@ -278,6 +278,32 @@ test("the composed unit is admitted with the live workload behind every Service 
   assert.equal(result.report.communication.edges.length, 51);
 });
 
+// The API server writes an EndpointSlice that publishes no address with a null
+// endpoints list, because that field carries no omitempty. A Service whose Pods
+// are scaled to zero, or whose selector was just repointed at a backend that
+// does not exist yet, is published that way. The Product admits an endpoint
+// object that publishes no address, so that shape must not be refused.
+test("the composed unit admits an EndpointSlice that publishes no address", async () => {
+  const list = workedComposedInstallation();
+  composedEndpointSlice(list, "opl-cloud-workspace").endpoints = null;
+  const result = await invoke(list);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.report.ok, true);
+  assert.deepEqual(result.report.errors, []);
+});
+
+// A list that is neither null nor a list is malformed, and a malformed shape
+// stays refused: admitting an endpoint-less slice must not trade the proof for
+// a tolerance.
+test("the composed unit still refuses a malformed EndpointSlice list", async () => {
+  const list = workedComposedInstallation();
+  composedEndpointSlice(list, "opl-cloud-workspace").endpoints = "invalid";
+  const result = await invoke(list);
+  assert.equal(result.status, 1);
+  assert.ok(result.report.errors.some(error => error.code === "rpc_service_backend_ambiguous" &&
+    error.reasonCode === "endpoint_slice_shape_invalid"), JSON.stringify(result.report.errors));
+});
+
 test("the composed unit refuses a Service whose live workload is not the unit's own", async (t) => {
   const foreignPod = (list: ComposedFixture) => {
     const pod = structuredClone(composedPod(list));
