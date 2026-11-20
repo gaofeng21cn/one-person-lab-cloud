@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -27,7 +26,7 @@ import (
 // its own mTLS identity, and the entrypoint has to reach an owner with that
 // owner's own identity, the way the installer reaches an owner today by
 // running the owner probe inside the owner's own container.
-const CertDirEnv = "OPL_GRPC_CERT_DIR"
+const CertDirEnv = owneridentity.CertDirEnv
 
 // OwnerCertificatePaths returns the certificate and key one owner process uses
 // inside the shared container. It returns empty paths when the installation
@@ -45,8 +44,9 @@ func OwnerCertificatePaths(process Process, getenv func(string) string) (string,
 	if directory == "" {
 		return "", "", fmt.Errorf("owner %s: set %s to the directory that holds one certificate and key per owner", process.Service, CertDirEnv)
 	}
-	certFile := filepath.Join(directory, process.TransportPrincipal+".crt")
-	keyFile := filepath.Join(directory, process.TransportPrincipal+".key")
+	// The shared container declares one directory, not one file per owner, so
+	// the owner resolves its own pair from that directory.
+	certFile, keyFile := owneridentity.OwnerMaterialPaths(directory, owneridentity.Service(process.TransportPrincipal))
 	for _, path := range []string{certFile, keyFile} {
 		if _, err := os.Stat(path); err != nil {
 			return "", "", fmt.Errorf("owner %s: certificate material %s is not readable: %w", process.Service, path, err)

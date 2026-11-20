@@ -61,7 +61,11 @@ func probeWorkspaceAccess(args []string) workspaceProbeResult {
 	}
 	// Read only the existing transport configuration. Loading ownerservice.Config
 	// would also load database/startup requirements unrelated to this read-only call.
-	transport := owneridentity.TLSFromEnv(os.Getenv)
+	// The probe runs inside the owner's own container. In the composed
+	// installation that container holds every owner and therefore declares the
+	// directory with one certificate and key per owner, not one file per owner,
+	// so the owner resolves its own pair from that directory.
+	transport := owneridentity.OwnerTLSFromEnv(os.Getenv, owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Serve))
 	result.ErrorCode = "TLS_CONFIG_INVALID"
 	if transport.AllowInsecureLocal {
 		return result
