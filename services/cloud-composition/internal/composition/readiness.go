@@ -42,14 +42,14 @@ func OwnerCertificatePaths(process Process, getenv func(string) string) (string,
 	}
 	directory := strings.TrimSpace(getenv(CertDirEnv))
 	if directory == "" {
-		return "", "", fmt.Errorf("owner %s: set %s to the directory that holds one certificate and key per owner", process.Service, CertDirEnv)
+		return "", "", &MaterialError{Owner: process.Service, Err: fmt.Errorf("owner %s: set %s to the directory that holds one certificate and key per owner", process.Service, CertDirEnv)}
 	}
 	// The shared container declares one directory, not one file per owner, so
 	// the owner resolves its own pair from that directory.
 	certFile, keyFile := owneridentity.OwnerMaterialPaths(directory, owneridentity.Service(process.TransportPrincipal))
 	for _, path := range []string{certFile, keyFile} {
 		if _, err := os.Stat(path); err != nil {
-			return "", "", fmt.Errorf("owner %s: certificate material %s is not readable: %w", process.Service, path, err)
+			return "", "", &MaterialError{Owner: process.Service, Err: fmt.Errorf("owner %s: certificate material %s is not readable: %w", process.Service, path, err)}
 		}
 	}
 	return certFile, keyFile, nil

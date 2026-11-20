@@ -15,6 +15,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -24,6 +25,7 @@ import (
 	"syscall"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/cloud-composition/internal/composition"
 )
 
@@ -42,6 +44,13 @@ func main() {
 
 	if err := run(*topologyPath, *readinessTimeout, *readinessInterval, *shutdownTimeout, logger); err != nil {
 		logger.Printf("composition failed: %v", err)
+		// The canonical line is printed on its own, without the logger's
+		// timestamp, so an installation can read the code and the owner
+		// without reading a free-text message.
+		var failure *composition.Failure
+		if errors.As(err, &failure) {
+			fmt.Fprintln(os.Stderr, contracts.FormatCompositionFailure(failure.Code, failure.Owner))
+		}
 		os.Exit(1)
 	}
 }
@@ -49,15 +58,15 @@ func main() {
 // run composes the declared owners and returns when the composition stops.
 func run(topologyPath string, readinessTimeout, readinessInterval, shutdownTimeout time.Duration, logger *log.Logger) error {
 	if strings.TrimSpace(topologyPath) == "" {
-		return fmt.Errorf("the owner topology contract is required: pass --topology or set %s", topologyEnv)
+		return composition.NewFailure(contracts.CompositionFailureOwnerTopologyRequired, composition.CompositionSubject, fmt.Errorf("the owner topology contract is required: pass --topology or set %s", topologyEnv))
 	}
 	topology, err := composition.Load(topologyPath)
 	if err != nil {
-		return err
+		return composition.NewFailure(contracts.CompositionFailureOwnerTopologyInvalid, composition.CompositionSubject, err)
 	}
 	plan, err := composition.NewPlan(topology, os.Getenv)
 	if err != nil {
-		return err
+		return composition.NewFailure(contracts.CompositionFailureOwnerPlanInvalid, composition.CompositionSubject, err)
 	}
 	logger.Printf("composing %d owner processes from %s", len(plan.Steps), topologyPath)
 

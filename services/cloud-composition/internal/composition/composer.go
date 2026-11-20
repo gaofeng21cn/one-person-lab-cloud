@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"syscall"
 	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 // Starter starts one owner process.
@@ -69,7 +71,7 @@ func (c *Composer) Run(ctx context.Context) error {
 		c.logf("starting owner %s", step.Process.Service)
 		child, err := c.Starter.Start(ctx, step.Process)
 		if err != nil {
-			return err
+			return classifyStartFailure(step.Process, err)
 		}
 		started = append(started, running{step: step, child: child})
 		if err := c.awaitReady(ctx, step, child); err != nil {
@@ -85,7 +87,7 @@ func (c *Composer) Run(ctx context.Context) error {
 // unready after its own gate must not be silently used.
 func (c *Composer) awaitDependency(ctx context.Context, step Step, dependency Step) error {
 	if err := c.Checker.Check(ctx, dependency); err != nil {
-		return fmt.Errorf("owner %s cannot start: its dependency %s is not ready: %w", step.Process.Service, dependency.Process.Service, err)
+		return fail(contracts.CompositionFailureOwnerDependencyNotReady, step.Process.Service, fmt.Errorf("owner %s cannot start: its dependency %s is not ready: %w", step.Process.Service, dependency.Process.Service, err))
 	}
 	return nil
 }
@@ -103,13 +105,13 @@ func (c *Composer) awaitReady(ctx context.Context, step Step, child Child) error
 		last = err
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("owner %s did not become ready before the composition stopped: %w", step.Process.Service, ctx.Err())
+			return fail(contracts.CompositionFailureOwnerReadinessAborted, step.Process.Service, fmt.Errorf("owner %s did not become ready before the composition stopped: %w", step.Process.Service, ctx.Err()))
 		case <-child.Exited():
-			return fmt.Errorf("owner %s exited before it became ready: %w", step.Process.Service, child.Err())
+			return fail(contracts.CompositionFailureOwnerStartRefused, step.Process.Service, fmt.Errorf("owner %s exited before it became ready: %w", step.Process.Service, child.Err()))
 		case <-time.After(c.interval()):
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("owner %s did not become ready within %s: %w", step.Process.Service, c.timeout(), last)
+			return fail(contracts.CompositionFailureOwnerReadinessTimeout, step.Process.Service, fmt.Errorf("owner %s did not become ready within %s: %w", step.Process.Service, c.timeout(), last))
 		}
 	}
 }
@@ -127,7 +129,7 @@ func (c *Composer) supervise(ctx context.Context, started []running) error {
 	case <-ctx.Done():
 		return nil
 	case entry := <-exits:
-		return fmt.Errorf("owner %s exited while the composition was running: %w", entry.step.Process.Service, entry.child.Err())
+		return fail(contracts.CompositionFailureOwnerExited, entry.step.Process.Service, fmt.Errorf("owner %s exited while the composition was running: %w", entry.step.Process.Service, entry.child.Err()))
 	}
 }
 
