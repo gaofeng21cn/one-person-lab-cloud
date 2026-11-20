@@ -1,6 +1,6 @@
 {
   "name": "opl-cloud",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "private": true,
   "description": "Reusable OPL Cloud implementation for Console, Control Plane, Fabric, and Ledger.",
   "type": "module",
