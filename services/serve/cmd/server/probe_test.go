@@ -362,3 +362,52 @@ func TestWorkspaceProbeKeepsGRPCDiagnosticsPrivate(t *testing.T) {
 		t.Fatalf("verbose gRPC configuration changed restricted output: exit=%d result=%#v", exit, result)
 	}
 }
+
+// The composed installation runs every owner inside one container. That
+// container carries one environment, so it declares the directory that holds
+// one certificate and key per owner instead of one file per owner. The probe
+// runs inside the owner's own container, so it has to resolve its own pair
+// from that directory, the way the composition resolves the material of the
+// owners it starts.
+func TestWorkspaceProbeResolvesItsMaterialFromTheSharedDirectory(t *testing.T) {
+	certificates := probeCertificates(t)
+	handler := &probeWireHandler{seen: make(chan string, 1)}
+	address := startProbeWorkspace(t, certificates(owneridentity.Workspace.Service()), handler)
+	client := certificates(owneridentity.Serve.Service())
+	directory := t.TempDir()
+	for source, name := range map[string]string{
+		client.CAFile:   "ca.crt",
+		client.CertFile: owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Serve).String() + ".crt",
+		client.KeyFile:  owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Serve).String() + ".key",
+	} {
+		material, err := os.ReadFile(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, name), material, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result, _, exit := runProbeCommand(t, address, client, map[string]string{
+		"OPL_GRPC_CERT_FILE": "",
+		"OPL_GRPC_KEY_FILE":  "",
+		"OPL_GRPC_CERT_DIR":  directory,
+	})
+	if exit != 0 || result["status"] != "observed" || result["errorCode"] != "none" {
+		t.Fatalf("directory material: exit=%d result=%#v", exit, result)
+	}
+	select {
+	case <-handler.seen:
+	default:
+		t.Fatal("Workspace did not receive authenticated Serve RPC")
+	}
+	// A directory without the owner's own pair must not authenticate.
+	result, _, exit = runProbeCommand(t, address, client, map[string]string{
+		"OPL_GRPC_CERT_FILE": "",
+		"OPL_GRPC_KEY_FILE":  "",
+		"OPL_GRPC_CERT_DIR":  t.TempDir(),
+	})
+	if exit != 1 || result["errorCode"] != "TLS_CONFIG_INVALID" {
+		t.Fatalf("missing material: exit=%d result=%#v", exit, result)
+	}
+}
