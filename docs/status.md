@@ -10,6 +10,7 @@ Scoped lifecycle ownership review: 2026-11-12 (source inspection, not a new runt
 Scoped Workspace deletion recovery source repair: 2026-11-16 (source behavior over isolated PostgreSQL, not a new runtime qualification)
 Scoped retained image-policy reconciliation: 2026-11-16 (retired routes and preserved PostgreSQL records, not installed adoption)
 Scoped composed backend runtime gate: 2026-11-18 (automated runtime gate for the composed unit, not a production qualification)
+Scoped composed backend production switch: 2026-11-21 (Instance-owned deployment evidence for the composed unit, not a Product Release)
 
 Each observation below retains its original source, run and environment; the
 reviewed source baseline does not requalify those receipts. The Workspace deletion
@@ -18,6 +19,50 @@ Instance installation and customer acceptance prove separate layers; none alone
 establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
+
+## Composed backend production switch (2026-11-21)
+
+The customer installation now runs one Cloud container. Instance completed the
+topology transition and then verified that installation twice, without a new
+install or upgrade, against the exact Candidate this Product had built
+earlier: product `30ac77e376da0f4cd2819602edb74c532ca74a14`, image index
+`sha256:88db973715729bd86b055aad901f6de8d4993360b86fb8c295a1d7a8bcdd0bc6`,
+Candidate receipt
+`sha256:6af66bebfb1f120d0b21dec903549353c269c822998d4fca1c8a7596b3f19b0d`,
+Instance authority `gaofeng21cn/opl-instance-medopl` at `c66ee89` on
+`refs/heads/main` in the `production` environment.
+
+Instance owns that evidence and keeps it in its own repository, where
+production receipts belong:
+`gaofeng21cn/opl-instance-medopl` `receipts/2026-11-21-composed-backend-deployment-verification-44898672175.json`
+and `receipts/2026-11-21-composed-backend-installation-verification-44898672175.json`,
+with the same pair for the repeat dispatch `44898882585`. The deployment
+verification is `deployment_verified` with all twelve checks true — candidate
+and registry identity, runtime configuration, rollout, owner chains, Pod image
+identities, the public route, and the Control Plane, public, Ledger, Fabric and
+Console BFF health readbacks — and the installation verification is `succeeded`
+with the Serve → Workspace access probe observed, authenticated and closed.
+Both dispatches recorded zero Kubernetes, provider and business mutations, and
+the composed unit's readiness is the owner-topology aggregate its own readiness
+probe publishes.
+
+Two Instance changes belong to the same switch and are part of that acceptance:
+the verification lane binds the Serve owner's own certificate and key to the
+probe it starts inside the composed container, and the public-route acceptance
+judges a route by the container port its named target port resolves to, which
+is what Kubernetes writes into the EndpointSlice.
+
+The accepted Candidate does not contain Cloud #1261 (`3c225d02`), which merged
+after the Candidate was built. That product change is therefore not a dependency
+of this switch, and this switch requires no revert and no rebuild.
+
+What stays open: the formal Product Release, the customer lifecycle, the Cloud
+business qualification items `customer_package` and `restart_continuity`, and
+the disposition of the eleven retired per-owner Deployments, which remain in
+the cluster at zero replicas as recovery material. Their removal is a separate
+owner decision and is not claimed here. The receipts describe what was
+observed on 2026-11-21; they are not a statement of current production state
+and they authorize no later action.
 
 ## Composed backend runtime gate (2026-11-18)
 
