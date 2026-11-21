@@ -25,72 +25,15 @@ own layer. It does not close an Instance or production outcome.
 
 ## Consolidated backend deployment
 
-The [2026-11-16 architecture decision](architecture.md#deployment-unit-composition)
-selects one default Cloud business deployment unit. Current independent owner
-processes and the Instance's twelve-workload installation remain implementation
-facts, not a required target topology. No Cloud consolidation is included in the
-first Link single-container change.
+The medopl TKE cutover and deployment verification are complete for the
+installed Candidate. [Production evidence](status.md#composed-backend-production-switch-2026-11-21)
 
-Cloud source now supplies the composition entrypoint, preserves per-owner
-environment isolation and aliases, and resolves configured HTTP peers through
-the target effective listener, retaining installation bind and port overrides.
-The contract explicitly maps composition database inputs to each child; the
-legacy Fabric database remains separate from its coordination database.
-Isolated source tests establish that behavior. Product admission now consumes
-the composed topology, effective listener inputs and live workload ownership;
-Instance still owns material content and deployment evidence. Full container
-readiness is checked by the
-[Composed Backend Runtime Gate](../.github/workflows/composed-backend-runtime-gate.yml)
-on pull requests that change its inputs and on every `main` push. The gate
-builds the product image, starts one container and observes every
-declared owner reach ready, stay mutually consistent, satisfy the readiness
-criterion the owner topology contract declares for it, and detect a deliberately
-broken owner. That gate reaches the runtime layer of the composed unit only.
-
-The installed switch is now proven on the customer's cluster. Instance completed
-the topology transition and verified the deployed installation three times against the
-exact Candidate, without a new install or upgrade: the Serve → Workspace access
-probe observed, authenticated and closed, every owner health readback true, the
-public route serving the composed backend, the owner chains and Pod image
-identities bound to the admitted Candidate, and zero Kubernetes, provider and
-business mutations. The evidence lives in Instance's own receipts —
-`gaofeng21cn/opl-instance-medopl`
-`receipts/2026-11-21-composed-backend-deployment-verification-44898672175.json`
-and `receipts/2026-11-21-composed-backend-installation-verification-44898672175.json`,
-with the same pair for each of the repeat dispatches `44898882585` and
-`44905614945`, byte-identical to the first — and the observation
-is recorded in
-[status](status.md#composed-backend-production-switch-2026-11-21).
-
-Installed acceptance must still preserve owner authorization, single writers,
-accepted-operation recovery and persistence. Instance has switched the real API
-routes and configuration and retained the existing databases and Secrets — the
-deployment that performed the switch recorded creates and patches only, with no
-deletion — and that switch is proven on the deployed installation: the Serve →
-Workspace access probe observed, authenticated and closed, every owner health
-readback true, the public route serving the composed backend, the owner chains
-and Pod image identities bound to the admitted Candidate, and zero Kubernetes,
-provider and business mutations. The evidence lives in Instance's own receipts
-— `gaofeng21cn/opl-instance-medopl`
-`receipts/2026-11-21-composed-backend-deployment-verification-44898672175.json`
-and
-`receipts/2026-11-21-composed-backend-installation-verification-44898672175.json`,
-with the same pair for each of the repeat dispatches `44898882585` and
-`44905614945`, byte-identical to the first — and the observation
-is recorded in
-[status](status.md#composed-backend-production-switch-2026-11-21). The
-deployment that performed the switch is recorded by Instance's own deployment
-receipt, which is not tracked in this repository. The eleven retired per-owner
-Deployments remain in the cluster at zero replicas as recovery material; their
-removal is a separate owner decision, and the accepted-operation recovery that
-depends on those definitions is not exercised by this switch. The customer
-lifecycle against the exact candidate, the formal Product Release and the Cloud
-business qualification items `customer_package` and `restart_continuity` remain
-open. BuildKit's privileged executor and each customer's
-application execution remain isolated. Combining existing processes first can
-simplify installation; reducing their process and connection-pool overhead is a
-separate implementation step. No savings or high availability is claimed
-without runtime and billing evidence.
+- Instance retains the 11 zero-replica Deployments. Decide separately whether
+  the split topology needs to remain recoverable before permanent retirement.
+  Retirement requires fresh readback of the stopped writers and must preserve
+  the live shared resources.
+- The customer lifecycle, `customer_package`, `restart_continuity`, rollback
+  qualification and formal Product Release still require their own evidence.
 
 ## Agent read carrier adoption
 

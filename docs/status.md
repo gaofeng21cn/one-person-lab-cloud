@@ -22,49 +22,19 @@ and remaining work in [roadmap.md](roadmap.md).
 
 ## Composed backend production switch (2026-11-21)
 
-The customer installation now runs one Cloud container. Instance completed the
-topology transition and then verified that installation three times, without a
-new install or upgrade, against the exact Candidate this Product had built
-earlier: product `30ac77e376da0f4cd2819602edb74c532ca74a14`, image index
-`sha256:88db973715729bd86b055aad901f6de8d4993360b86fb8c295a1d7a8bcdd0bc6`,
-Candidate receipt
-`sha256:6af66bebfb1f120d0b21dec903549353c269c822998d4fca1c8a7596b3f19b0d`,
-Instance authority `gaofeng21cn/opl-instance-medopl` at `c66ee89` on
-`refs/heads/main` in the `production` environment.
+On November 21, 2026, medopl TKE ran 11 Cloud owners in one
+`opl-cloud-backend` container. The migration reached `verified`, retained the
+existing PostgreSQL and file PVC, and left all 11 retired writer Deployments
+at zero replicas with no writer Pods. BuildKit and customer workloads remain
+independent. [Topology migration run `44792408892`](https://github.com/gaofeng21cn/opl-instance-medopl/actions/runs/44792408892)
 
-Instance owns that evidence and keeps it in its own repository, where
-production receipts belong:
-`gaofeng21cn/opl-instance-medopl` `receipts/2026-11-21-composed-backend-deployment-verification-44898672175.json`
-and `receipts/2026-11-21-composed-backend-installation-verification-44898672175.json`,
-with the same pair for each of the repeat dispatches `44898882585` and
-`44905614945`. All three pairs are byte-identical, so the observation is stable
-across dispatches. The deployment
-verification is `deployment_verified` with all twelve checks true — candidate
-and registry identity, runtime configuration, rollout, owner chains, Pod image
-identities, the public route, and the Control Plane, public, Ledger, Fabric and
-Console BFF health readbacks — and the installation verification is `succeeded`
-with the Serve → Workspace access probe observed, authenticated and closed.
-Every dispatch recorded zero Kubernetes, provider and business mutations, and
-the composed unit's readiness is the owner-topology aggregate its own readiness
-probe publishes.
-
-Two Instance changes belong to the same switch and are part of that acceptance:
-the verification lane binds the Serve owner's own certificate and key to the
-probe it starts inside the composed container, and the public-route acceptance
-judges a route by the container port its named target port resolves to, which
-is what Kubernetes writes into the EndpointSlice.
-
-The accepted Candidate does not contain Cloud #1261 (`3c225d02`), which merged
-after the Candidate was built. That product change is therefore not a dependency
-of this switch, and this switch requires no revert and no rebuild.
-
-What stays open: the formal Product Release, the customer lifecycle, the Cloud
-business qualification items `customer_package` and `restart_continuity`, and
-the disposition of the eleven retired per-owner Deployments, which remain in
-the cluster at zero replicas as recovery material. Their removal is a separate
-owner decision and is not claimed here. The receipts describe what was
-observed on 2026-11-21; they are not a statement of current production state
-and they authorize no later action.
+Instance `c66ee89` verified Cloud Candidate `30ac77e376da0f4cd2819602edb74c532ca74a14`
+on three standalone runs (`44898672175`, `44898882585`, `44905614945`). The
+receipts bind the image digest and report `deployment_verified`, all 12 checks
+passed, and authenticated Serve → Workspace readback. Instance retains the
+original receipts at `381d93b65f790f3181bac4225ee35c586286f1bc`.
+[Deployment receipt](https://github.com/gaofeng21cn/opl-instance-medopl/blob/381d93b65f790f3181bac4225ee35c586286f1bc/receipts/2026-11-21-composed-backend-deployment-verification-44898672175.json) ·
+[Installation receipt](https://github.com/gaofeng21cn/opl-instance-medopl/blob/381d93b65f790f3181bac4225ee35c586286f1bc/receipts/2026-11-21-composed-backend-installation-verification-44898672175.json)
 
 ## Composed backend runtime gate (2026-11-18)
 
@@ -85,8 +55,8 @@ evidence for the revision it ran; a red run is a broken runtime claim.
 
 The gate reaches the runtime layer of the composed unit only. It does not
 establish production-cluster behaviour, downstream adoption, the customer
-lifecycle, or any savings or high-availability claim. The composed unit's
-installed acceptance stays open in [roadmap](roadmap.md#consolidated-backend-deployment).
+lifecycle, or any savings or high-availability claim. See the separate
+[medopl production evidence](#composed-backend-production-switch-2026-11-21).
 
 ## Retained image-policy source reconciliation (2026-11-16)
 
@@ -108,8 +78,7 @@ stays in [roadmap](roadmap.md#retained-code-removal-review-2026-11-03).
 
 The [target](architecture.md#deployment-unit-composition) now prefers one modular
 business backend deployment unit, with privileged build and customer application
-execution isolated. Current owner binaries and the Instance's multi-Deployment
-installation retain their separate deployment evidence. Cloud source now provides
+execution isolated. The Cloud source provides
 `opl-cloud-composition`, including configured HTTP peer origins resolved from the
 target listener and projected through the existing child environment boundary.
 Listener overrides, including explicit hosts and HTTP port inputs, are retained;
@@ -118,9 +87,9 @@ binds to their matching loopback family. Each database consumer declares its
 `compositionDatabaseEnv` input; Fabric keeps its legacy and coordination
 databases separate. Local Go tests run a real child that reaches an isolated
 HTTP peer with its caller credential; malformed targets are refused and unrelated secrets remain
-excluded. This is source and isolated-process evidence (2026-11-18), not an image,
-Instance installation or production qualification. The [remaining work](roadmap.md#consolidated-backend-deployment)
-is exact-Candidate installation, upgrade/rollback and customer-lifecycle acceptance.
+excluded. This source and isolated-process evidence was observed on November 18,
+2026. See the [roadmap](roadmap.md#consolidated-backend-deployment) for remaining
+operational and qualification work.
 
 The Product installation checker admits the composed deployment unit using the
 same effective listener and database declarations. It distinguishes local binds
