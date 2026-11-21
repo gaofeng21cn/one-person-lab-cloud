@@ -23,8 +23,8 @@ and remaining work in [roadmap.md](roadmap.md).
 ## Composed backend production switch (2026-11-21)
 
 The customer installation now runs one Cloud container. Instance completed the
-topology transition and then verified that installation twice, without a new
-install or upgrade, against the exact Candidate this Product had built
+topology transition and then verified that installation three times, without a
+new install or upgrade, against the exact Candidate this Product had built
 earlier: product `30ac77e376da0f4cd2819602edb74c532ca74a14`, image index
 `sha256:88db973715729bd86b055aad901f6de8d4993360b86fb8c295a1d7a8bcdd0bc6`,
 Candidate receipt
@@ -36,13 +36,15 @@ Instance owns that evidence and keeps it in its own repository, where
 production receipts belong:
 `gaofeng21cn/opl-instance-medopl` `receipts/2026-11-21-composed-backend-deployment-verification-44898672175.json`
 and `receipts/2026-11-21-composed-backend-installation-verification-44898672175.json`,
-with the same pair for the repeat dispatch `44898882585`. The deployment
+with the same pair for each of the repeat dispatches `44898882585` and
+`44905614945`. All three pairs are byte-identical, so the observation is stable
+across dispatches. The deployment
 verification is `deployment_verified` with all twelve checks true — candidate
 and registry identity, runtime configuration, rollout, owner chains, Pod image
 identities, the public route, and the Control Plane, public, Ledger, Fabric and
 Console BFF health readbacks — and the installation verification is `succeeded`
 with the Serve → Workspace access probe observed, authenticated and closed.
-Both dispatches recorded zero Kubernetes, provider and business mutations, and
+Every dispatch recorded zero Kubernetes, provider and business mutations, and
 the composed unit's readiness is the owner-topology aggregate its own readiness
 probe publishes.
 

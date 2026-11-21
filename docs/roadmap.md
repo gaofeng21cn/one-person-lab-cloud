@@ -48,7 +48,7 @@ criterion the owner topology contract declares for it, and detect a deliberately
 broken owner. That gate reaches the runtime layer of the composed unit only.
 
 The installed switch is now proven on the customer's cluster. Instance completed
-the topology transition and verified the deployed installation twice against the
+the topology transition and verified the deployed installation three times against the
 exact Candidate, without a new install or upgrade: the Serve → Workspace access
 probe observed, authenticated and closed, every owner health readback true, the
 public route serving the composed backend, the owner chains and Pod image
@@ -57,7 +57,8 @@ business mutations. The evidence lives in Instance's own receipts —
 `gaofeng21cn/opl-instance-medopl`
 `receipts/2026-11-21-composed-backend-deployment-verification-44898672175.json`
 and `receipts/2026-11-21-composed-backend-installation-verification-44898672175.json`,
-with the same pair for the repeat dispatch `44898882585` — and the observation
+with the same pair for each of the repeat dispatches `44898882585` and
+`44905614945`, byte-identical to the first — and the observation
 is recorded in
 [status](status.md#composed-backend-production-switch-2026-11-21).
 
@@ -74,7 +75,8 @@ provider and business mutations. The evidence lives in Instance's own receipts
 `receipts/2026-11-21-composed-backend-deployment-verification-44898672175.json`
 and
 `receipts/2026-11-21-composed-backend-installation-verification-44898672175.json`,
-with the same pair for the repeat dispatch `44898882585` — and the observation
+with the same pair for each of the repeat dispatches `44898882585` and
+`44905614945`, byte-identical to the first — and the observation
 is recorded in
 [status](status.md#composed-backend-production-switch-2026-11-21). The
 deployment that performed the switch is recorded by Instance's own deployment
