@@ -46,15 +46,49 @@ builds the product image, starts one container and observes every
 declared owner reach ready, stay mutually consistent, satisfy the readiness
 criterion the owner topology contract declares for it, and detect a deliberately
 broken owner. That gate reaches the runtime layer of the composed unit only.
+
+The installed switch is now proven on the customer's cluster. Instance completed
+the topology transition and verified the deployed installation twice against the
+exact Candidate, without a new install or upgrade: the Serve → Workspace access
+probe observed, authenticated and closed, every owner health readback true, the
+public route serving the composed backend, the owner chains and Pod image
+identities bound to the admitted Candidate, and zero Kubernetes, provider and
+business mutations. The evidence lives in Instance's own receipts —
+`gaofeng21cn/opl-instance-medopl`
+`receipts/2026-11-21-composed-backend-deployment-verification-44898672175.json`
+and `receipts/2026-11-21-composed-backend-installation-verification-44898672175.json`,
+with the same pair for the repeat dispatch `44898882585` — and the observation
+is recorded in
+[status](status.md#composed-backend-production-switch-2026-11-21).
+
 Installed acceptance must still preserve owner authorization, single writers,
-accepted-operation recovery and persistence. Instance must
-switch the real API routes and configuration, retain existing databases and
-Secrets, and prove upgrade/rollback and the customer lifecycle against the
-exact candidate. BuildKit's privileged executor and each customer's application
-execution remain isolated. Combining existing processes first can simplify
-installation; reducing their process and connection-pool overhead is a separate
-implementation step. No savings or high availability is claimed without runtime
-and billing evidence.
+accepted-operation recovery and persistence. Instance has switched the real API
+routes and configuration and retained the existing databases and Secrets — the
+deployment that performed the switch recorded creates and patches only, with no
+deletion — and that switch is proven on the deployed installation: the Serve →
+Workspace access probe observed, authenticated and closed, every owner health
+readback true, the public route serving the composed backend, the owner chains
+and Pod image identities bound to the admitted Candidate, and zero Kubernetes,
+provider and business mutations. The evidence lives in Instance's own receipts
+— `gaofeng21cn/opl-instance-medopl`
+`receipts/2026-11-21-composed-backend-deployment-verification-44898672175.json`
+and
+`receipts/2026-11-21-composed-backend-installation-verification-44898672175.json`,
+with the same pair for the repeat dispatch `44898882585` — and the observation
+is recorded in
+[status](status.md#composed-backend-production-switch-2026-11-21). The
+deployment that performed the switch is recorded by Instance's own deployment
+receipt, which is not tracked in this repository. The eleven retired per-owner
+Deployments remain in the cluster at zero replicas as recovery material; their
+removal is a separate owner decision, and the accepted-operation recovery that
+depends on those definitions is not exercised by this switch. The customer
+lifecycle against the exact candidate, the formal Product Release and the Cloud
+business qualification items `customer_package` and `restart_continuity` remain
+open. BuildKit's privileged executor and each customer's
+application execution remain isolated. Combining existing processes first can
+simplify installation; reducing their process and connection-pool overhead is a
+separate implementation step. No savings or high availability is claimed
+without runtime and billing evidence.
 
 ## Agent read carrier adoption
 
