@@ -25,36 +25,15 @@ own layer. It does not close an Instance or production outcome.
 
 ## Consolidated backend deployment
 
-The [2026-11-16 architecture decision](architecture.md#deployment-unit-composition)
-selects one default Cloud business deployment unit. Current independent owner
-processes and the Instance's twelve-workload installation remain implementation
-facts, not a required target topology. No Cloud consolidation is included in the
-first Link single-container change.
+The medopl TKE cutover and deployment verification are complete for the
+installed Candidate. [Production evidence](status.md#composed-backend-production-switch-2026-11-21)
 
-Cloud source now supplies the composition entrypoint, preserves per-owner
-environment isolation and aliases, and resolves configured HTTP peers through
-the target effective listener, retaining installation bind and port overrides.
-The contract explicitly maps composition database inputs to each child; the
-legacy Fabric database remains separate from its coordination database.
-Isolated source tests establish that behavior. Product admission now consumes
-the composed topology, effective listener inputs and live workload ownership;
-Instance still owns material content and deployment evidence. Full container
-readiness is checked by the
-[Composed Backend Runtime Gate](../.github/workflows/composed-backend-runtime-gate.yml)
-on pull requests that change its inputs and on every `main` push. The gate
-builds the product image, starts one container and observes every
-declared owner reach ready, stay mutually consistent, satisfy the readiness
-criterion the owner topology contract declares for it, and detect a deliberately
-broken owner. That gate reaches the runtime layer of the composed unit only.
-Installed acceptance must still preserve owner authorization, single writers,
-accepted-operation recovery and persistence. Instance must
-switch the real API routes and configuration, retain existing databases and
-Secrets, and prove upgrade/rollback and the customer lifecycle against the
-exact candidate. BuildKit's privileged executor and each customer's application
-execution remain isolated. Combining existing processes first can simplify
-installation; reducing their process and connection-pool overhead is a separate
-implementation step. No savings or high availability is claimed without runtime
-and billing evidence.
+- Instance retains the 11 zero-replica Deployments. Decide separately whether
+  the split topology needs to remain recoverable before permanent retirement.
+  Retirement requires fresh readback of the stopped writers and must preserve
+  the live shared resources.
+- The customer lifecycle, `customer_package`, `restart_continuity`, rollback
+  qualification and formal Product Release still require their own evidence.
 
 ## Agent read carrier adoption
 
