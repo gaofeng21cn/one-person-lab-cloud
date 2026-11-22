@@ -12,6 +12,7 @@ Scoped retained image-policy reconciliation: 2026-11-16 (retired routes and pres
 Scoped composed backend runtime gate: 2026-11-18 (automated runtime gate for the composed unit, not a production qualification)
 Scoped composed backend production switch: 2026-11-21 (Instance-owned deployment evidence for the composed unit, not a Product Release)
 Scoped customer-package delivery round: 2026-11-22 (Linux rehearsal, artifact identity and local no-charge deletion)
+Scoped customer purchase acceptance: 2026-11-22 (installation and qualification prerequisites)
 
 Each observation below retains its original source, run and environment; the
 reviewed source baseline does not requalify those receipts. The Workspace deletion
@@ -20,6 +21,23 @@ Instance installation and customer acceptance prove separate layers; none alone
 establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
+
+## Customer purchase acceptance (2026-11-22)
+
+The latest verified installation uses Cloud `30ac77e3`, before the Gateway
+managed-Key repair and the Console Tenant payer balance repair. The recorded
+Workspace state found no reusable paid Workspace for the per-version dialogue
+check. The customer purchase workflow had no execution receipt. An earlier
+application acceptance exercised login and the first reply on its own revision.
+The current deployment still needs application preflight and independently
+verified customer purchase evidence.
+
+The protected purchase workflow requires Deployment Verification and a J0 READY
+receipt for the same Candidate, plus the Instance owner's typed authorization.
+An Instance workflow still needs to invoke the existing J0 producer with an
+approved sandbox bound to that Candidate. The exact evidence and authorization
+remain with the Instance owner. The remaining work is tracked in [customer
+lifecycle convergence](roadmap.md#customer-lifecycle-owner-convergence).
 
 ## Customer package delivery round on the Linux lane (2026-11-22)
 
