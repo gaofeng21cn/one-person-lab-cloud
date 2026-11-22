@@ -65,14 +65,75 @@ export function customerUploadRequest(url, init = {}, caFile = "") {
   return caRequest(url, init, new Headers(init.headers || {}), init.body, ca);
 }
 
+// The published entry may answer with a redirect before the application
+// answers. An application whose runtime declares its own password gate sends
+// an unauthenticated request to its login page, so the first answer the entry
+// gives is that redirect and not the application. The probe follows the
+// redirect and reads the answer it reaches, so the receipt states the answer
+// the user would actually get.
+//
+// A redirect never leaves the entry's own origin. The session this run
+// carries belongs to that origin only, and an application that named another
+// host would otherwise receive it.
+const CUSTOMER_ENTRY_MAX_REDIRECTS = 5;
+const CUSTOMER_ENTRY_REDIRECT_STATUSES = Object.freeze([301, 302, 303, 307, 308]);
+
+// The absolute target of a same-origin redirect, or an empty string when the
+// redirect leaves the origin or names no target at all.
+export function customerEntryRedirectTarget(location, base) {
+  const raw = String(location || "").trim();
+  if (!raw) return "";
+  let origin;
+  let target;
+  try {
+    origin = new URL(String(base || ""));
+    target = new URL(raw, origin);
+  } catch {
+    return "";
+  }
+  if (target.protocol !== origin.protocol || target.host !== origin.host) return "";
+  return target.toString();
+}
+
+// Evidence records the route. The request alone needs URL parameters.
+function customerEntryReceiptUrl(url) {
+  const target = new URL(url);
+  return `${target.origin}${target.pathname}`;
+}
+
+// The entry's answer, read through the redirects the entry itself declares.
+// The first answer and the final answer are both reported, so a receipt says
+// which of them the run accepted.
+export async function customerEntryProbe(url, headers, request) {
+  const redirects = [];
+  let current = String(url || "");
+  let firstStatus = 0;
+  for (let hop = 0; hop <= CUSTOMER_ENTRY_MAX_REDIRECTS; hop += 1) {
+    const response = await request(current, headers);
+    const status = Number(response?.status || 0);
+    if (!firstStatus) firstStatus = status;
+    if (!CUSTOMER_ENTRY_REDIRECT_STATUSES.includes(status)) {
+      return { status, finalStatus: status, firstStatus, text: String(response?.text || ""), redirects };
+    }
+    const target = customerEntryRedirectTarget(response?.location, current);
+    if (!target) {
+      // The entry pointed somewhere this run may not follow.
+      return { status, finalStatus: status, firstStatus, text: String(response?.text || ""), redirects, leftOrigin: true };
+    }
+    redirects.push({ from: current, to: target, status });
+    current = target;
+  }
+  return { status: 0, finalStatus: 0, firstStatus, text: "", redirects, limitExceeded: true };
+}
+
 async function customerEntryRequest(url, headers, caFile) {
   const target = new URL(url);
   if (target.protocol === "https:") {
     const response = await caRequest(url, { method: "GET" }, new Headers(headers || {}), undefined, caFile ? readFileSync(caFile) : undefined);
-    return { status: response.status, text: await response.text() };
+    return { status: response.status, location: String(response?.headers?.location || ""), text: await response.text() };
   }
   const response = await fetch(url, { method: "GET", headers: headers || {}, redirect: "manual" });
-  return { status: response.status, text: await response.text() };
+  return { status: response.status, location: String(response.headers.get("location") || ""), text: await response.text() };
 }
 
 // The declaration template the installation is validated against: the file that
@@ -2767,13 +2828,25 @@ export async function runCustomerPackageEvidenceChain({
     capabilityVersion, workspace,
   });
 
-  // The entry, and the content it answers with.
+  // The entry, and the content it answers with. The answer the entry gives is
+  // the one its redirects reach, and the receipt keeps the first answer too,
+  // so a reader sees which redirect the entry declared and which answer the
+  // run accepted.
   const entryUrl = String(workspace?.accessUrl || "");
   if (!entryUrl) throw namedQualificationError("local_v2_customer_entry_unavailable", "the bought Workspace publishes no entry");
   const opened = await fetchCustomerEntry(entryUrl, auth, fetchEntry);
-  readback.customerEntry = { url: entryUrl, status: opened.status };
-  if (opened.status !== 200) {
-    throw namedQualificationError("local_v2_customer_entry_unreachable", `the published entry returned HTTP ${opened.status}`);
+  readback.customerEntry = {
+    url: customerEntryReceiptUrl(entryUrl),
+    status: opened.finalStatus,
+    firstStatus: opened.firstStatus,
+    redirects: opened.redirects.map(({ from, to, status }) => ({
+      from: customerEntryReceiptUrl(from),
+      to: customerEntryReceiptUrl(to),
+      status,
+    })),
+  };
+  if (opened.finalStatus !== 200) {
+    throw namedQualificationError("local_v2_customer_entry_unreachable", `the published entry returned HTTP ${opened.finalStatus}`);
   }
   try {
     readback.customerEntry = { ...readback.customerEntry, ...assertCustomerEntryContentProvenance(opened.text, nonce) };
@@ -2803,7 +2876,8 @@ export async function runCustomerPackageEvidenceChain({
 
 // The entry of a bought Workspace. The session is offered first because the
 // entry may be private, and the entry is asked for again without it because
-// the entry may be published.
+// the entry may be published. Both answers are read through the redirects
+// the entry declares.
 async function fetchCustomerEntry(url, auth, fetchEntry) {
   const attempts = [
     { headers: { cookie: String(auth?.cookie || "") } },
@@ -2812,14 +2886,21 @@ async function fetchCustomerEntry(url, auth, fetchEntry) {
   let last = null;
   for (const attempt of attempts) {
     if (typeof fetchEntry === "function") {
-      last = await fetchEntry(url, attempt.headers);
+      last = await customerEntryProbe(url, attempt.headers, fetchEntry);
     } else {
       const response = await fetch(url, { method: "GET", headers: attempt.headers, redirect: "manual" });
-      last = { status: response.status, text: await response.text() };
+      last = {
+        status: response.status,
+        finalStatus: response.status,
+        firstStatus: response.status,
+        location: String(response.headers.get("location") || ""),
+        text: await response.text(),
+        redirects: [],
+      };
     }
-    if (last?.status !== 401 && last?.status !== 403) return last;
+    if (last?.finalStatus !== 401 && last?.finalStatus !== 403) return last;
   }
-  return last || { status: 0, text: "" };
+  return last || { status: 0, finalStatus: 0, text: "", redirects: [] };
 }
 
 async function main() {
