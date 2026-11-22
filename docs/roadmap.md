@@ -292,40 +292,23 @@ evidence and its source/fixture boundaries are owned by
 records the scoped source closure and its historical review/CI. Generic WebUI
 chat changes, browser-driven sending and a new provider are outside this scope.
 
-The [customer test and admitted WebUI input](status.md#custom-agent-publication-inputs-2026-11-05)
-leave customer upload pending a compatible Runtime and effective Build defaults.
-The WebUI artifact is published and its approved version was read back through
-the protected Instance workflow; do not rebuild or register a duplicate merely
-to retry delivery, or add a registry bridge without an observed retrieval need.
-The Capability fix for the first admission's create/list timestamp discrepancy
-has local persistence evidence; installed adoption remains unverified. Exact
-read-only replay confirms the stored version but does not qualify the first
-response. Obtain the Runtime publisher's real fixed recipe and a Package delivery whose
-carrier references agree with its declared installation working directory. The
-successful offline relative-source control does not qualify the original
-transport, require a new Runtime installer, or make Framework's official Package
-publication channel mandatory for generic Cloud uploads. The IBD Package's
-container-local evidence service also needs an executable binding and actual
-retrieval verification. Admit the compatible inputs and set the effective Build
-policy, then retry upload/build and customer delivery with a real Agent request.
+The November 5 Publisher test stopped before upload with its own ZIP. A retry
+of that Publisher path needs a compatible Runtime recipe, portable carrier
+references and an effective Build policy. Reuse the admitted WebUI input. The
+Capability timestamp repair still needs installed readback, and the Package's
+evidence service needs an executable binding and retrieval verification.
+[November 5 Publisher and WebUI evidence](status.md#custom-agent-publication-inputs-2026-11-05)
 
-The [Linux lane delivery round](status.md#customer-package-delivery-round-on-the-linux-lane-2026-11-22)
-runs the same export on one lane installation: a compatible Runtime recipe, an effective
-Build policy, the upload, the Build, the OCI digest, the purchase, Serve running that
-exact digest, the entry answer and the deletion are all executed, and the
-customer-evidence chain reaches the `artifact-identity` level because of the package's
-own shape. It changes no earlier statement: the WebUI publication, the admitted
-Publisher input and the installed adoption are unchanged, and the round adds no
-provider and no bypass. A real Agent request still needs the authorized selected
-provider and model, and the installed Tencent/TKE acceptance of the same bytes remains
-open.
+The November 22 Foundry/OMA rehearsal established artifact identity, entry
+reachability and local no-charge Workspace deletion. Complete an authenticated
+Agent turn with the authorized selected provider and model. Same-Candidate and
+installed Tencent/TKE acceptance remain open.
+[November 22 Linux lane evidence](status.md#customer-package-delivery-round-on-the-linux-lane-2026-11-22)
 
-Same-Candidate and installed Tencent/TKE acceptance remain open. The local
-`LOCAL_NO_CHARGE` order did not activate a paid subscription: after positive
-checks, customer deletion was refused with 422. Real resource absence, Ledger
-deletion receipt and original-charge refund still require their original paid
-Workspace and separately authorized owner execution. The test's cleanup closes
-only its disposable fixtures. This outcome adds no provider or deletion bypass.
+The HTTP 422 deletion refusal belongs to the October 21 qualification. Paid
+resource absence, Ledger deletion receipts and original-charge refunds still
+require separately authorized owner execution and readback.
+[October 21 qualification](status.md#linux-custom-agent-owner-qualification-2026-10-21)
 
 ## Team Financial Read Delivery (2026-10-16)
 

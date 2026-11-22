@@ -11,7 +11,7 @@ Scoped Workspace deletion recovery source repair: 2026-11-16 (source behavior ov
 Scoped retained image-policy reconciliation: 2026-11-16 (retired routes and preserved PostgreSQL records, not installed adoption)
 Scoped composed backend runtime gate: 2026-11-18 (automated runtime gate for the composed unit, not a production qualification)
 Scoped composed backend production switch: 2026-11-21 (Instance-owned deployment evidence for the composed unit, not a Product Release)
-Scoped customer-package delivery round: 2026-11-22 (one Linux lane installation, source-to-OCI-to-Serve execution, not an installed or TKE acceptance)
+Scoped customer-package delivery round: 2026-11-22 (Linux rehearsal, artifact identity and local no-charge deletion)
 
 Each observation below retains its original source, run and environment; the
 reviewed source baseline does not requalify those receipts. The Workspace deletion
@@ -23,52 +23,43 @@ and remaining work in [roadmap.md](roadmap.md).
 
 ## Customer package delivery round on the Linux lane (2026-11-22)
 
-The Foundry/OMA export `ibd-evidence-assistant-v2-0.2.0-upload-package.zip`, SHA-256
-`1befa906cdfb4f343beb0f615df36588a03bda53abefdfd3a90f7a171bba2b19` (219963 bytes, 90
-entries, package source root `carrier/`), ran on the `opl-native-stage3-1-1` Linux lane
-against a locally built rehearsal image whose `org.opencontainers.image.revision` is the
-lane source `74195984d9e51a706c0855aaf0c519c89f6342ae` (tree
-`e951614ee155dad390310e23b3b553c32b043f5a`). That source is the branch head of
-[PR #1264](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1264), not
-canonical `main`; the image is a rehearsal build, not an official Candidate.
+The November 22 rehearsal used the Foundry/OMA export
+`ibd-evidence-assistant-v2-0.2.0-upload-package.zip` (SHA-256
+`1befa906cdfb4f343beb0f615df36588a03bda53abefdfd3a90f7a171bba2b19`). The November 5
+Publisher test used a separate ZIP.
+[November 5 Publisher evidence](#custom-agent-publication-inputs-2026-11-05)
 
-The archive round `customer-foundry-2026-11-22-r13.json` uploaded the caller's bytes
-unchanged, built them into OCI `sha256:fdaaf352…` (Build `build_340a35c1…`,
-CapabilityVersion `capv_e729f9e2…`), quoted them `LOCAL_NO_CHARGE`, bought a Workspace,
-ran that exact digest in the Serve application container, answered the published entry
-with HTTP 200 through the entry's own redirect (302 to `/login`), and deleted the
-Workspace again (`workspaceAbsent: true`). The round ends `NOT_READY` with
-`local_v2_customer_evidence_degraded`: the bytes the caller handed over are immutable,
-so they cannot carry the run's nonce, and the entry content therefore cannot be tied
-to this upload.
+Both rounds ran a locally built image from the recorded rehearsal source snapshot
+`74195984d9e51a706c0855aaf0c519c89f6342ae` (tree
+`e951614ee155dad390310e23b3b553c32b043f5a`).
 
-The directory round `customer-foundry-2026-11-22-r14.json` put the same 90 files plus
-the run-minted probe into `carrier/provenance/probe.txt` and reached the package layout
-check before any Build. The tool refuses with `local_v2_customer_runtime_outside_source_root`:
-the approved Runtime Release starts `/usr/local/bin/opl-webui-entrypoint`, which is
-outside the package source root `carrier/`. The deployed entry is the platform's static
-generic Agent WebUI document — `/web/index.html` is read verbatim and returned, and no
-route serves package files — so a file inside the package can never appear in the entry
-body. `artifact-identity` is therefore the ceiling the customer-evidence chain can reach
-for an `agent-plugins/1.0.0` package delivered by that runtime. Content provenance
-needs a Runtime Release whose entrypoint lives inside the package, or a provenance
-channel other than the entry body; the tool refuses instead of claiming a level it did
-not earn.
+- **r13, archive.** The caller's bytes were uploaded unchanged. Build, Workspace
+  and Serve deployment readbacks correlate to CapabilityVersion
+  `capv_e729f9e26df091416c6a11902868bde7`. The lane archive independently confirms
+  that the running Serve image matches the Build artifact digest
+  `sha256:fdaaf352391073035b49d59c07eb1e5a94df90e5d3ebb6177340eb78536474e4`.
+  The `LOCAL_NO_CHARGE` quote and order produced a Workspace whose published
+  entry returned HTTP 302 then 200, confirming entry reachability. Customer
+  deletion succeeded with `workspaceAbsent: true`. The round recorded
+  `artifact-identity` and ended `NOT_READY` (`local_v2_customer_evidence_degraded`)
+  because the entry did not return this run's probe.
+- **r14, directory.** The directory upload included a run-minted probe under
+  `carrier/`. The tested Runtime uses a platform entrypoint outside that package
+  source root, so the layout check returned `NOT_READY`
+  (`local_v2_customer_runtime_outside_source_root`) before Build. Content
+  provenance remains unproven for this Runtime and entry probe.
 
-The user interaction is proven up to the executor. The application login answers 200,
-`/api/opl/state?profile=fast` reports the customer agent `ibd-evidence-assistant-v2` as
-`operational_ready` and `launch_allowed`, and the authenticated turn reaches the real
-`codex_app_server` executor. The turn then fails inside that executor with
-`401 Unauthorized` against `wss://api.openai.com/v1/responses`, because the lane has no
-customer-selected model: `workspace.model_configurations` and `gateway.key_bindings` are
-empty, and the lane Sub2API fixture serves no chat/completions/models route.
-[package-buildkit-local.md](runtime/package-buildkit-local.md) requires the authorized
-selected provider and model, so no authorized provider is invented here.
+The lane archive also records a separate authenticated interaction probe that
+reached `codex_app_server`. The executor returned `401 Unauthorized` without an
+authorized selected provider and model configured on the lane. No Agent turn
+completed. Same-Candidate qualification, installed Tencent/TKE customer
+acceptance and paid lifecycle evidence remain open.
 
-This round proves the source-to-OCI-to-Serve delivery chain on one Linux lane
-installation. It does not prove an installed or TKE acceptance, a formal Product
-Release, a customer lifecycle, a customer-selected model, or content provenance for this
-package shape.
+The `opl-native-stage3-1-1` Linux lane retains these receipts and archive.
+
+- `native/customer-foundry-2026-11-22-r13.json` (SHA-256 `673dd2381ef77df206a2f6676c3817f4b89d3cb54294bb2c1faa460ba9595ffb`)
+- `native/customer-foundry-2026-11-22-r14.json` (SHA-256 `0c5c43b719766126523c48600069db1eaba4c2162b2d5a0d1c0376cc90441249`)
+- `evidence/foundry-customer-delivery-2026-11-22.json`
 
 ## Composed backend production switch (2026-11-21)
 
@@ -728,7 +719,7 @@ Instance observations below retain their original revisions and limits.
 | Default App customer acceptance | [#1042](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/1042) closed on 2026-11-02 after official App login, Gateway-backed model response, restart/response-loss recovery, one `$52.58` charge and no duplicate purchase or Key; the [November 5 readback](#existing-default-app-provisioning-closure-readback-2026-11-05) separately confirms current model use and page-reload persistence | This accepted Workspace does not prove every future customer is unattended, the Cloud model-configuration API is qualified or every writer has migrated |
 | Original-order closeout | [#1018's three original orders](#original-order-closeout-scope-2026-10-23) have protected resource absence, deletion-receipt and original-charge settlement evidence | Preserve their original records; completed closeout does not retire every retained CP caller or worker |
 | Serve current application and upgraded deletion | [Current selection](#serve-owned-current-application-readback-2026-11-04) comes from Serve, and [deletion follows the original reservation's successor lineage](#workspace-deletion-after-application-replacement-2026-11-04); both have source regression evidence | Installed adoption and live owner readback for these later repairs remain unverified |
-| Package, Build and Runtime catalog | Approved Default App inputs were used by #1042; the [Agent publication input check](#custom-agent-publication-inputs-2026-11-05) identifies the current Publisher blocker and Package portability issue; the [Linux Custom Agent profile](#linux-custom-agent-owner-qualification-2026-10-21) retains its distinct historical inputs | The Cloud WebUI is published and admitted; a compatible Runtime recipe, portable Package input and effective Build policy remain prerequisites for the current customer test; hosted OCI and Custom Agent TKE acceptance remain separate |
+| Package, Build and Runtime catalog | Approved Default App inputs were used by #1042. The [November 22 Linux rehearsal](#customer-package-delivery-round-on-the-linux-lane-2026-11-22) reached artifact identity and local no-charge deletion for the Foundry/OMA export. The [November 5 Publisher check](#custom-agent-publication-inputs-2026-11-05) records a separate ZIP and input blockers | A completed Agent turn, hosted OCI and installed Custom Agent Tencent/TKE acceptance remain open |
 | Retained writer migration | [Capability withdrawals](#retained-writer-inventory-and-split-withdrawal-proposals-2026-11-03) and [implementation inventory](implementation-architecture.md#retained-writer-and-caller-inventory-2026-11-03) identify source removals, surviving callers and bounded observations | Account eligibility is consumed at source; its installed adoption and owner migration, Tenant payer-balance consumption, selected-model admission, shared CP recovery and historical duties remain separate. Source removal is not installed adoption or zero traffic |
 | Protected engineering qualification | Native consumer migration and source repairs are recorded separately from the accepted customer path | Protected payer declaration, same-Candidate J0 READY, W01 ordering and a complete protected receipt remain unproven; existing release admission is unchanged |
 
@@ -743,7 +734,7 @@ separate release lane, not a blanket prerequisite for source retirement.
 ## Custom Agent Publication Inputs (2026-11-05)
 
 The authenticated customer Publisher remained disabled after selecting the full
-IBD v0.2.0 Cloud Package, SHA-256
+IBD v0.2.0 Publisher ZIP, SHA-256
 `4a7cc80f37aa6172ce5f1de4ae21003db28c142428f2a9c74d7500137d618a01`.
 Public owner-facing reads returned `NOT_FOUND` for the effective Build policy,
 an empty WebUI catalog and three approved App Runtime records with no declared
@@ -810,10 +801,10 @@ receipt hashes. Those artifacts bind Runtime image build inputs and image
 identity, but contain no Cloud `buildRecipe`, Package-format declaration or
 recipe archive. This finding is limited to that publication's artifacts, not
 an assertion about every image file or unpublished Runtime input.
-A real compatible Runtime recipe, portable Package delivery, effective Build
-policy and customer upload/build/deployment remain open. These admission runs
-changed neither existing Runtime records nor Workspace, provider or financial
-state; the original Package bytes remain unchanged.
+For this Publisher ZIP, a compatible Runtime recipe, portable Package delivery
+and effective Build policy remain prerequisites for retrying customer
+upload/build/deployment. These admission runs preserved the original ZIP and
+existing Runtime, Workspace, provider and financial state.
 
 ## Native Local-Docker Release Qualification (2026-11-05)
 
