@@ -95,6 +95,12 @@ export function customerEntryRedirectTarget(location, base) {
   return target.toString();
 }
 
+// Evidence records the route. The request alone needs URL parameters.
+function customerEntryReceiptUrl(url) {
+  const target = new URL(url);
+  return `${target.origin}${target.pathname}`;
+}
+
 // The entry's answer, read through the redirects the entry itself declares.
 // The first answer and the final answer are both reported, so a receipt says
 // which of them the run accepted.
@@ -2830,10 +2836,14 @@ export async function runCustomerPackageEvidenceChain({
   if (!entryUrl) throw namedQualificationError("local_v2_customer_entry_unavailable", "the bought Workspace publishes no entry");
   const opened = await fetchCustomerEntry(entryUrl, auth, fetchEntry);
   readback.customerEntry = {
-    url: entryUrl,
+    url: customerEntryReceiptUrl(entryUrl),
     status: opened.finalStatus,
     firstStatus: opened.firstStatus,
-    redirects: opened.redirects || [],
+    redirects: opened.redirects.map(({ from, to, status }) => ({
+      from: customerEntryReceiptUrl(from),
+      to: customerEntryReceiptUrl(to),
+      status,
+    })),
   };
   if (opened.finalStatus !== 200) {
     throw namedQualificationError("local_v2_customer_entry_unreachable", `the published entry returned HTTP ${opened.finalStatus}`);

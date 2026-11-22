@@ -651,7 +651,7 @@ async function refusesAsync(action, code) {
 // unauthenticated request to its entry with a redirect to its login page. The
 // chain reads the answer the redirect reaches, and it never follows a
 // redirect that leaves the entry's own origin.
-function customerChainOwner() {
+function customerChainOwner(entryUrl = "http://127.0.0.1:32774/") {
   const asked = [];
   let uploaded = null;
   const http = {
@@ -691,7 +691,7 @@ function customerChainOwner() {
         return { payload: { operationId: "op_del_1", owner: "workspace", kind: "delete_workspace", resourceId: "ws_1", status: "accepted" } };
       }
       if (path === "/api/v2/workspaces/ws_1") {
-        return { payload: { id: "ws_1", status: "provisioning", capabilityVersionId: "cv_1", accessUrl: "http://127.0.0.1:32774/" } };
+        return { payload: { id: "ws_1", status: "provisioning", capabilityVersionId: "cv_1", accessUrl: entryUrl } };
       }
       throw new Error(`unexpected request ${path}`);
     },
@@ -741,22 +741,23 @@ async function runChainWithEntry(http, entryResponse) {
 }
 
 test("the customer chain follows the entry's own redirect and accepts the answer it reaches", async () => {
-  const { http } = customerChainOwner();
+  const entry = "http://127.0.0.1:32774/?view=workspace";
+  const login = "http://127.0.0.1:32774/login?next=workspace#form";
+  const { http } = customerChainOwner(entry);
   const visited = [];
   const readback = await runChainWithEntry(http, async (url, nonce) => {
     visited.push(url);
-    if (url.endsWith("/login")) return { status: 200, text: nonce() };
-    return { status: 302, location: "/login", text: "" };
+    if (url === login) return { status: 200, text: nonce() };
+    return { status: 302, location: "/login?next=workspace#form", text: "" };
   });
-  // The entry answered with a redirect and the application answered at the
-  // target. The receipt keeps the first answer, the redirect it declared and
-  // the answer the run accepted.
+  // Requests use the declared targets. Receipts keep the routes and statuses.
   assert.equal(readback.customerEntry.status, 200);
   assert.equal(readback.customerEntry.firstStatus, 302);
-  assert.equal(readback.customerEntry.redirects.length, 1);
-  assert.equal(readback.customerEntry.redirects[0].to, "http://127.0.0.1:32774/login");
-  assert.equal(visited[0], "http://127.0.0.1:32774/");
-  assert.equal(visited[1], "http://127.0.0.1:32774/login");
+  assert.equal(readback.customerEntry.url, "http://127.0.0.1:32774/");
+  assert.deepEqual(readback.customerEntry.redirects, [{
+    from: "http://127.0.0.1:32774/", to: "http://127.0.0.1:32774/login", status: 302,
+  }]);
+  assert.deepEqual(visited, [entry, login]);
 });
 
 test("the customer chain refuses a redirect that leaves the entry's own origin", async () => {
