@@ -616,7 +616,10 @@ and runtime-suspended, so the planned reuse of a paid Workspace for the
 per-version dialogue check has nothing to reuse: the first paid order has to
 be bought before that lane can start. The application's entry and first reply
 path is proven by `Workspace Special Chain Acceptance`; the application
-preflight has no successful run. See
+preflight has no successful run. The lane's external J0 READY receipt has no
+dispatchable producer either: the Cloud producer is a CLI that needs a
+declared sandbox and the protected boundary module, and no Instance workflow
+invokes it. See
 [status](status.md#customer-purchase-acceptance-where-it-stops-2026-11-22).
 
 #### Workspace purchase eligibility adoption

@@ -60,6 +60,14 @@ declarations are not readable with the current token, so their presence needs
 the Instance owner's confirmation. The dedicated customer credentials do exist
 as protected secrets.
 
+**The J0 READY receipt has no dispatchable producer.** The purchase lane
+consumes that receipt as an external input, and the Cloud producer is a CLI
+(`tools/workspace-qualification-j0-ready.ts`) that needs the exact Candidate,
+a declared sandbox and the protected boundary module. No Instance workflow
+invokes it: the whole repository contains the consumer and no caller. The
+receipt therefore cannot be produced by dispatching an existing lane, and
+claiming a purchase without it is refused by the lane itself.
+
 **What the later lanes already prove.** `Workspace Special Chain Acceptance`
 has produced successful receipts, so the application entry and first reply
 path exists. `Workspace Application Preflight` has no successful run, which is
