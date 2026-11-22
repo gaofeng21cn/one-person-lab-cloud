@@ -14,6 +14,7 @@ import {
   assertCustomerPackageLayout,
   assertCustomerPackageVersionReadback,
   buildCustomerPackageArchive,
+  customerEntryRedirectTarget,
   customerEvidencePlan,
   customerPackageName,
   customerPackageProbePath,
@@ -637,4 +638,162 @@ test("the customer chain reads the launch boundary the owner declares", async ()
   assert.equal(readback.customerEntry.status, 200);
   assert.equal(readback.customerEntry.matched, true);
   assert.equal(asked.includes("/api/v2/workspaces/ws_1"), true);
+});
+
+async function refusesAsync(action, code) {
+  await assert.rejects(action, (error) => {
+    assert.equal(error?.code, code, `expected ${code}, got ${error?.code}: ${error?.message}`);
+    return true;
+  });
+}
+
+// An application whose runtime declares its own password gate answers an
+// unauthenticated request to its entry with a redirect to its login page. The
+// chain reads the answer the redirect reaches, and it never follows a
+// redirect that leaves the entry's own origin.
+function customerChainOwner(entryUrl = "http://127.0.0.1:32774/") {
+  const asked = [];
+  let uploaded = null;
+  const http = {
+    json: async (path, init = {}) => {
+      asked.push(path);
+      if (path === "/api/v2/namespaces") return { payload: { items: [{ id: "ns_1", isDefault: true }] } };
+      if (path === "/api/v2/packages") return { payload: { id: "pkg_1" } };
+      if (path === "/api/v2/packages/pkg_1/uploads") {
+        uploaded = init.body;
+        return { payload: { id: "upload_1", packageVersionId: "pv_1", partSizeBytes: "16777216" } };
+      }
+      if (path === "/api/v2/uploads/upload_1/parts") return { payload: { url: "https://objects.test/part-1", method: "PUT", contentType: "application/octet-stream" } };
+      if (path === "/api/v2/uploads/upload_1/complete") return { payload: { owner: "capability", kind: "complete_upload", resourceId: "pv_1", status: "succeeded", stage: "succeeded", observationResult: "confirmed", operationId: "op_upload" } };
+      if (path === "/api/v2/package-versions/pv_1") return { payload: { id: "pv_1", packageId: "pkg_1", versionLabel: "1.0.0", sha256: uploaded?.sha256, sizeBytes: uploaded?.sizeBytes, status: "uploaded" } };
+      if (path === "/api/v2/catalog/build-policy") return { payload: { runtimeVersionId: "rt_1", defaultWebuiVersionId: "wu_1" } };
+      if (path === "/api/v2/catalog/runtime-versions?cursor=") {
+        return { payload: { items: [{ id: "rt_1", publisherContract: { buildRecipe: { packageInput: { sourceRoot: "agent", targetPath: "/opt/opl" }, outputImageCommand: { entrypoint: ["/opt/opl/bin/runtime"] } } } }] } };
+      }
+      if (path === "/api/v2/builds") return { payload: { id: "build_1", status: "queued", packageVersionId: "pv_1", runtimeVersionId: "rt_1", webuiVersionId: "wu_1" } };
+      if (path === "/api/v2/builds/build_1") {
+        return { payload: { id: "build_1", status: "succeeded", stage: "delivered", packageVersionId: "pv_1", runtimeVersionId: "rt_1", webuiVersionId: "wu_1", resultCapabilityVersionId: "cv_1" } };
+      }
+      if (path === "/api/v2/capability-versions/cv_1") {
+        return { payload: { id: "cv_1", status: "ready", buildJobId: "build_1", packageVersionId: "pv_1", artifactDigest: `sha256:${"a".repeat(64)}` } };
+      }
+      if (path === "/api/v2/quotes") {
+        return { payload: { id: "quote_1", capabilityVersionId: "cv_1", provider: "local-docker", billingMode: "LOCAL_NO_CHARGE", totalUSDMicros: "0", status: "offered", purpose: "deploy" } };
+      }
+      if (path === "/api/v2/workspaces") return { payload: { operationId: "op_ws_1", resourceId: "ws_1", status: "accepted" } };
+      if (path === "/api/v2/operations/workspace/op_ws_1") {
+        return { payload: { operationId: "op_ws_1", resourceId: "ws_1", status: "awaiting_confirmation", stage: "activation", observationResult: "confirmed", errorCode: "DEPENDENCY_UNAVAILABLE" } };
+      }
+      if (path === "/api/v2/operations/workspace/op_del_1") {
+        return { payload: { operationId: "op_del_1", owner: "workspace", kind: "delete_workspace", resourceId: "ws_1", status: "succeeded", stage: "succeeded" } };
+      }
+      if (path === "/api/v2/workspaces/ws_1" && init.method === "DELETE") {
+        return { payload: { operationId: "op_del_1", owner: "workspace", kind: "delete_workspace", resourceId: "ws_1", status: "accepted" } };
+      }
+      if (path === "/api/v2/workspaces/ws_1") {
+        return { payload: { id: "ws_1", status: "provisioning", capabilityVersionId: "cv_1", accessUrl: entryUrl } };
+      }
+      throw new Error(`unexpected request ${path}`);
+    },
+    request: async (path) => {
+      asked.push(path);
+      if (path === "/api/v2/workspaces/ws_1") return { payload: { id: "ws_1", status: "deleted", accessUrl: "" } };
+      throw new Error(`unexpected request ${path}`);
+    },
+  };
+  return { http, asked };
+}
+
+// The chain writes its probe into the package and uploads it, so the nonce
+// the entry has to answer with is only known after the upload.
+async function runChainWithEntry(http, entryResponse) {
+  const packageDir = fileURLToPath(new URL("./fixtures/customer-agent-package", import.meta.url));
+  const readback = {};
+  let nonce = "";
+  await runCustomerPackageEvidenceChain({
+    http,
+    auth: {},
+    wait: async () => {},
+    readback,
+    plan: {
+      mode: "directory", packageDir, probePath: "agent/provenance/probe.txt",
+      achievableEvidenceLevel: CUSTOMER_EVIDENCE_LEVEL_CONTENT,
+      requestedEvidenceLevel: CUSTOMER_EVIDENCE_LEVEL_CONTENT,
+      degradationReason: "",
+    },
+    packageName: "local-qualification-agent",
+    versionLabel: "1.0.0",
+    workspaceName: "local qualification",
+    provider: "local-docker",
+    billingMode: "LOCAL_NO_CHARGE",
+    computePlanId: "compute_1",
+    storagePlanId: "storage_1",
+    sourceSha: "a".repeat(40),
+    putPart: async (_url, init) => {
+      const found = Buffer.from(init.body).toString("latin1")
+        .match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/);
+      if (found) nonce = found[0];
+      return { status: 200, headers: { get: () => "" } };
+    },
+    fetchEntry: async (url) => entryResponse(url, () => nonce),
+  });
+  return readback;
+}
+
+test("the customer chain follows the entry's own redirect and accepts the answer it reaches", async () => {
+  const entry = "http://127.0.0.1:32774/?view=workspace";
+  const login = "http://127.0.0.1:32774/login?next=workspace#form";
+  const { http } = customerChainOwner(entry);
+  const visited = [];
+  const readback = await runChainWithEntry(http, async (url, nonce) => {
+    visited.push(url);
+    if (url === login) return { status: 200, text: nonce() };
+    return { status: 302, location: "/login?next=workspace#form", text: "" };
+  });
+  // Requests use the declared targets. Receipts keep the routes and statuses.
+  assert.equal(readback.customerEntry.status, 200);
+  assert.equal(readback.customerEntry.firstStatus, 302);
+  assert.equal(readback.customerEntry.url, "http://127.0.0.1:32774/");
+  assert.deepEqual(readback.customerEntry.redirects, [{
+    from: "http://127.0.0.1:32774/", to: "http://127.0.0.1:32774/login", status: 302,
+  }]);
+  assert.deepEqual(visited, [entry, login]);
+});
+
+test("the customer chain refuses a redirect that leaves the entry's own origin", async () => {
+  const { http } = customerChainOwner();
+  const visited = [];
+  await refusesAsync(() => runChainWithEntry(http, async (url) => {
+    visited.push(url);
+    return { status: 302, location: "https://elsewhere.test/login", text: "" };
+  }), "local_v2_customer_entry_unreachable");
+  // The run asked the entry and stopped: it never carried the session to
+  // another host.
+  assert.deepEqual(visited, ["http://127.0.0.1:32774/"]);
+});
+
+test("the customer chain refuses an entry whose final answer is not 200", async () => {
+  const { http } = customerChainOwner();
+  await refusesAsync(() => runChainWithEntry(http, async (url) => {
+    if (url.endsWith("/login")) return { status: 404, text: "not found" };
+    return { status: 302, location: "/login", text: "" };
+  }), "local_v2_customer_entry_unreachable");
+});
+
+test("the customer chain stops at a redirect that never answers", async () => {
+  const { http } = customerChainOwner();
+  const visited = [];
+  await refusesAsync(() => runChainWithEntry(http, async (url) => {
+    visited.push(url);
+    return { status: 302, location: "/login", text: "" };
+  }), "local_v2_customer_entry_unreachable");
+  // The redirect chain is bounded, so a loop cannot keep the run going.
+  assert.equal(visited.length <= 7, true);
+});
+
+test("a redirect target is only followed inside the entry's own origin", () => {
+  assert.equal(customerEntryRedirectTarget("/login", "http://127.0.0.1:32774/"), "http://127.0.0.1:32774/login");
+  assert.equal(customerEntryRedirectTarget("", "http://127.0.0.1:32774/"), "");
+  assert.equal(customerEntryRedirectTarget("https://elsewhere.test/login", "http://127.0.0.1:32774/"), "");
+  assert.equal(customerEntryRedirectTarget("http://127.0.0.1:9999/login", "http://127.0.0.1:32774/"), "");
 });
