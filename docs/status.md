@@ -61,6 +61,44 @@ The `opl-native-stage3-1-1` Linux lane retains these receipts and archive.
 - `native/customer-foundry-2026-11-22-r14.json` (SHA-256 `0c5c43b719766126523c48600069db1eaba4c2162b2d5a0d1c0376cc90441249`)
 - `evidence/foundry-customer-delivery-2026-11-22.json`
 
+## Managed-Key model scope source repair (2026-11-22)
+
+[PR #1266](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1266) closes the
+second of the two bounded source gaps in
+[customer lifecycle convergence](roadmap.md#customer-lifecycle-owner-convergence).
+The Gateway Workspace key issuer now confirms a declared model selection against
+the model catalog the issued Key reads for itself, so the confirmed scope is the
+Key's observed permission instead of an unobserved copy of the request. A model
+the Key may not use is refused with that model named; an unreadable catalog is
+not an answer and leaves the original command unresolved for its own identity.
+The empty declaration still names no model: the external Group remains
+authoritative and the default App's issuance path is unchanged.
+
+The owner-level reproduction through the real issuer confirms the previous gap
+closed: a non-empty Agent selection reaches Secret and binding delivery and
+replays as the one original command, while a model the Key cannot use is
+recorded as a refusal with no delivery and no second issuance. This is source
+behavior over isolated PostgreSQL. It does not establish installed adoption, a
+live paid Agent order, or that the Console's model list and the Workspace
+Group's permitted scope agree for every customer; that last agreement stays a
+product question for the Installed layer.
+
+
+
+Cloud #1177 retired the policy-activation POST and replacement-history GET;
+#1179 removed the orphaned activation store and original Launch resume admission.
+The operator policy GET remains for Instance retention/cache readers. Historical
+policy, replacement and audit records, their decoders and safety barriers remain;
+an existing Launch authorization continues with its frozen image digest.
+
+Isolated PostgreSQL tests verify that valid old activation requests, replay,
+changed intent and a new key all return 404 without changing policy or audit
+rows. Rebuilding the server preserves policy GET revision/image readback while
+the historical replacement GET stays 404. The route/client ownership check also
+passes. These source checks do not establish a Candidate, Instance adoption,
+zero traffic or clearance of historical obligations; the remaining acceptance
+stays in [roadmap](roadmap.md#retained-code-removal-review-2026-11-03).
+
 ## Composed backend production switch (2026-11-21)
 
 On November 21, 2026, medopl TKE ran 11 Cloud owners in one
@@ -100,21 +138,6 @@ lifecycle, or any savings or high-availability claim. See the separate
 [medopl production evidence](#composed-backend-production-switch-2026-11-21).
 
 ## Retained image-policy source reconciliation (2026-11-16)
-
-Cloud #1177 retired the policy-activation POST and replacement-history GET;
-#1179 removed the orphaned activation store and original Launch resume admission.
-The operator policy GET remains for Instance retention/cache readers. Historical
-policy, replacement and audit records, their decoders and safety barriers remain;
-an existing Launch authorization continues with its frozen image digest.
-
-Isolated PostgreSQL tests verify that valid old activation requests, replay,
-changed intent and a new key all return 404 without changing policy or audit
-rows. Rebuilding the server preserves policy GET revision/image readback while
-the historical replacement GET stays 404. The route/client ownership check also
-passes. These source checks do not establish a Candidate, Instance adoption,
-zero traffic or clearance of historical obligations; the remaining acceptance
-stays in [roadmap](roadmap.md#retained-code-removal-review-2026-11-03).
-
 ## Backend deployment decision (2026-11-16)
 
 The [target](architecture.md#deployment-unit-composition) now prefers one modular
