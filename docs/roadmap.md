@@ -617,9 +617,9 @@ per-version dialogue check has nothing to reuse: the first paid order has to
 be bought before that lane can start. The application's entry and first reply
 path is proven by `Workspace Special Chain Acceptance`; the application
 preflight has no successful run. The lane's external J0 READY receipt has no
-dispatchable producer either: the Cloud producer is a CLI that needs a
-declared sandbox and the protected boundary module, and no Instance workflow
-invokes it. See
+dispatchable producer either: the producer and the provider boundary module
+both exist, but no Instance workflow invokes them and the producer needs a
+declared dedicated sandbox bound to the exact Candidate. See
 [status](status.md#customer-purchase-acceptance-where-it-stops-2026-11-22).
 
 #### Workspace purchase eligibility adoption
