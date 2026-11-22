@@ -309,6 +309,17 @@ container-local evidence service also needs an executable binding and actual
 retrieval verification. Admit the compatible inputs and set the effective Build
 policy, then retry upload/build and customer delivery with a real Agent request.
 
+The [Linux lane delivery round](status.md#customer-package-delivery-round-on-the-linux-lane-2026-11-22)
+runs the same export on one lane installation: a compatible Runtime recipe, an effective
+Build policy, the upload, the Build, the OCI digest, the purchase, Serve running that
+exact digest, the entry answer and the deletion are all executed, and the
+customer-evidence chain reaches the `artifact-identity` level because of the package's
+own shape. It changes no earlier statement: the WebUI publication, the admitted
+Publisher input and the installed adoption are unchanged, and the round adds no
+provider and no bypass. A real Agent request still needs the authorized selected
+provider and model, and the installed Tencent/TKE acceptance of the same bytes remains
+open.
+
 Same-Candidate and installed Tencent/TKE acceptance remain open. The local
 `LOCAL_NO_CHARGE` order did not activate a paid subscription: after positive
 checks, customer deletion was refused with 422. Real resource absence, Ledger

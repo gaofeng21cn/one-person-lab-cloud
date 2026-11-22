@@ -11,6 +11,7 @@ Scoped Workspace deletion recovery source repair: 2026-11-16 (source behavior ov
 Scoped retained image-policy reconciliation: 2026-11-16 (retired routes and preserved PostgreSQL records, not installed adoption)
 Scoped composed backend runtime gate: 2026-11-18 (automated runtime gate for the composed unit, not a production qualification)
 Scoped composed backend production switch: 2026-11-21 (Instance-owned deployment evidence for the composed unit, not a Product Release)
+Scoped customer-package delivery round: 2026-11-22 (one Linux lane installation, source-to-OCI-to-Serve execution, not an installed or TKE acceptance)
 
 Each observation below retains its original source, run and environment; the
 reviewed source baseline does not requalify those receipts. The Workspace deletion
@@ -19,6 +20,55 @@ Instance installation and customer acceptance prove separate layers; none alone
 establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
+
+## Customer package delivery round on the Linux lane (2026-11-22)
+
+The Foundry/OMA export `ibd-evidence-assistant-v2-0.2.0-upload-package.zip`, SHA-256
+`1befa906cdfb4f343beb0f615df36588a03bda53abefdfd3a90f7a171bba2b19` (219963 bytes, 90
+entries, package source root `carrier/`), ran on the `opl-native-stage3-1-1` Linux lane
+against a locally built rehearsal image whose `org.opencontainers.image.revision` is the
+lane source `74195984d9e51a706c0855aaf0c519c89f6342ae` (tree
+`e951614ee155dad390310e23b3b553c32b043f5a`). That source is the branch head of
+[PR #1264](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1264), not
+canonical `main`; the image is a rehearsal build, not an official Candidate.
+
+The archive round `customer-foundry-2026-11-22-r13.json` uploaded the caller's bytes
+unchanged, built them into OCI `sha256:fdaaf352…` (Build `build_340a35c1…`,
+CapabilityVersion `capv_e729f9e2…`), quoted them `LOCAL_NO_CHARGE`, bought a Workspace,
+ran that exact digest in the Serve application container, answered the published entry
+with HTTP 200 through the entry's own redirect (302 to `/login`), and deleted the
+Workspace again (`workspaceAbsent: true`). The round ends `NOT_READY` with
+`local_v2_customer_evidence_degraded`: the bytes the caller handed over are immutable,
+so they cannot carry the run's nonce, and the entry content therefore cannot be tied
+to this upload.
+
+The directory round `customer-foundry-2026-11-22-r14.json` put the same 90 files plus
+the run-minted probe into `carrier/provenance/probe.txt` and reached the package layout
+check before any Build. The tool refuses with `local_v2_customer_runtime_outside_source_root`:
+the approved Runtime Release starts `/usr/local/bin/opl-webui-entrypoint`, which is
+outside the package source root `carrier/`. The deployed entry is the platform's static
+generic Agent WebUI document — `/web/index.html` is read verbatim and returned, and no
+route serves package files — so a file inside the package can never appear in the entry
+body. `artifact-identity` is therefore the ceiling the customer-evidence chain can reach
+for an `agent-plugins/1.0.0` package delivered by that runtime. Content provenance
+needs a Runtime Release whose entrypoint lives inside the package, or a provenance
+channel other than the entry body; the tool refuses instead of claiming a level it did
+not earn.
+
+The user interaction is proven up to the executor. The application login answers 200,
+`/api/opl/state?profile=fast` reports the customer agent `ibd-evidence-assistant-v2` as
+`operational_ready` and `launch_allowed`, and the authenticated turn reaches the real
+`codex_app_server` executor. The turn then fails inside that executor with
+`401 Unauthorized` against `wss://api.openai.com/v1/responses`, because the lane has no
+customer-selected model: `workspace.model_configurations` and `gateway.key_bindings` are
+empty, and the lane Sub2API fixture serves no chat/completions/models route.
+[package-buildkit-local.md](runtime/package-buildkit-local.md) requires the authorized
+selected provider and model, so no authorized provider is invented here.
+
+This round proves the source-to-OCI-to-Serve delivery chain on one Linux lane
+installation. It does not prove an installed or TKE acceptance, a formal Product
+Release, a customer lifecycle, a customer-selected model, or content provenance for this
+package shape.
 
 ## Composed backend production switch (2026-11-21)
 
