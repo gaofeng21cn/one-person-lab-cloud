@@ -117,10 +117,12 @@ func TestManagedKeyCommandRefusesADeclaredModelTheKeyCannotUse(t *testing.T) {
 		t.Fatal(err)
 	}
 	var recorded struct {
-		Outcome   string `json:"outcome"`
-		ErrorCode string `json:"errorCode"`
+		Outcome       string `json:"outcome"`
+		ErrorCode     string `json:"errorCode"`
+		ExternalKeyID string `json:"externalKeyId"`
 	}
-	if json.Unmarshal([]byte(body), &recorded) != nil || recorded.Outcome != "rejected" || !strings.Contains(recorded.ErrorCode, "PermissionDenied") {
+	if json.Unmarshal([]byte(body), &recorded) != nil || recorded.Outcome != "rejected" ||
+		!strings.Contains(recorded.ErrorCode, "PermissionDenied") || recorded.ExternalKeyID != "4242" {
 		t.Fatalf("recorded answer=%s", body)
 	}
 	// The recorded refusal answers the original command; it is never re-issued.

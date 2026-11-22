@@ -466,8 +466,8 @@ func (g *Gateway) keyModelScope(ctx context.Context, raw string) ([]string, erro
 			Hidden bool   `json:"hidden"`
 		} `json:"data"`
 	}
-	if err := g.modelRequest(ctx, "/v1/models", key, &catalog); err != nil {
-		return nil, err
+	if err := g.modelRequest(ctx, "/v1/models", key, &catalog); err != nil || catalog.Data == nil {
+		return nil, status.Error(codes.Unavailable, "issued Gateway key model scope could not be read")
 	}
 	out := make([]string, 0, len(catalog.Data))
 	seen := map[string]bool{}

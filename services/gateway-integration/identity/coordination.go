@@ -515,7 +515,9 @@ func (s *Service) CreateManagedKey(ctx context.Context, r *api.ManagedKeyCommand
 			// key; no new effect is dispatched without an approved lookup.
 			return nil, status.Error(codes.Unavailable, "managed key issuance outcome unknown")
 		}
-		body, marshalErr := json.Marshal(managedKeyCommandState{Outcome: "rejected", ErrorCode: status.Code(err).String()})
+		body, marshalErr := json.Marshal(managedKeyCommandState{
+			Outcome: "rejected", ErrorCode: status.Code(err).String(), ExternalKeyID: issued.ExternalKeyID,
+		})
 		if marshalErr != nil {
 			return nil, status.Error(codes.Unavailable, "Gateway key settlement unavailable")
 		}

@@ -83,22 +83,6 @@ live paid Agent order, or that the Console's model list and the Workspace
 Group's permitted scope agree for every customer; that last agreement stays a
 product question for the Installed layer.
 
-
-
-Cloud #1177 retired the policy-activation POST and replacement-history GET;
-#1179 removed the orphaned activation store and original Launch resume admission.
-The operator policy GET remains for Instance retention/cache readers. Historical
-policy, replacement and audit records, their decoders and safety barriers remain;
-an existing Launch authorization continues with its frozen image digest.
-
-Isolated PostgreSQL tests verify that valid old activation requests, replay,
-changed intent and a new key all return 404 without changing policy or audit
-rows. Rebuilding the server preserves policy GET revision/image readback while
-the historical replacement GET stays 404. The route/client ownership check also
-passes. These source checks do not establish a Candidate, Instance adoption,
-zero traffic or clearance of historical obligations; the remaining acceptance
-stays in [roadmap](roadmap.md#retained-code-removal-review-2026-11-03).
-
 ## Composed backend production switch (2026-11-21)
 
 On November 21, 2026, medopl TKE ran 11 Cloud owners in one
@@ -138,6 +122,21 @@ lifecycle, or any savings or high-availability claim. See the separate
 [medopl production evidence](#composed-backend-production-switch-2026-11-21).
 
 ## Retained image-policy source reconciliation (2026-11-16)
+
+Cloud #1177 retired the policy-activation POST and replacement-history GET;
+#1179 removed the orphaned activation store and original Launch resume admission.
+The operator policy GET remains for Instance retention/cache readers. Historical
+policy, replacement and audit records, their decoders and safety barriers remain;
+an existing Launch authorization continues with its frozen image digest.
+
+Isolated PostgreSQL tests verify that valid old activation requests, replay,
+changed intent and a new key all return 404 without changing policy or audit
+rows. Rebuilding the server preserves policy GET revision/image readback while
+the historical replacement GET stays 404. The route/client ownership check also
+passes. These source checks do not establish a Candidate, Instance adoption,
+zero traffic or clearance of historical obligations; the remaining acceptance
+stays in [roadmap](roadmap.md#retained-code-removal-review-2026-11-03).
+
 ## Backend deployment decision (2026-11-16)
 
 The [target](architecture.md#deployment-unit-composition) now prefers one modular

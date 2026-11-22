@@ -102,6 +102,11 @@ func (i *GatewayWorkspaceKeyIssuer) IssueWorkspaceKey(ctx context.Context, reque
 		return ManagedKeyIssueResult{}, status.Error(codes.Unavailable, "Gateway returned an invalid created key identity")
 	}
 	resolved, err := i.resolveIssuedModelScope(ctx, key.Raw, request.ModelIDs)
+	if status.Code(err) == codes.PermissionDenied {
+		// The external creation already succeeded. Keep its opaque identity in
+		// the refusal receipt for reconciliation without releasing the raw key.
+		return ManagedKeyIssueResult{ExternalKeyID: strconv.FormatInt(key.ID, 10)}, err
+	}
 	if err != nil {
 		return ManagedKeyIssueResult{}, err
 	}

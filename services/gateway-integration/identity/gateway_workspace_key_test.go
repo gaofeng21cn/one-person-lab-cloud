@@ -175,8 +175,8 @@ func TestGatewayWorkspaceKeyIssuerRefusesAModelTheIssuedKeyCannotUse(t *testing.
 	if status.Code(err) != codes.PermissionDenied || !strings.Contains(status.Convert(err).Message(), "gpt-5.6-sol") {
 		t.Fatalf("err=%v", err)
 	}
-	if result.Raw != "" || result.ExternalKeyID != "" {
-		t.Fatalf("a refused issuance returned a key: %+v", result)
+	if result.Raw != "" || result.ExternalKeyID != "4242" {
+		t.Fatalf("a refused issuance must retain only its external key identity: %+v", result)
 	}
 }
 
@@ -201,16 +201,27 @@ func TestGatewayWorkspaceKeyIssuerLeavesAnEmptyDeclarationToTheExternalGroup(t *
 }
 
 func TestGatewayWorkspaceKeyIssuerLeavesAnUnreadableScopeUnresolved(t *testing.T) {
-	gateway := newIssuedKeyGateway(t)
-	gateway.catalogStatus = http.StatusInternalServerError
-	_, err := gateway.issuer(t).IssueWorkspaceKey(t.Context(), identity.ManagedKeyIssueRequest{
-		Subject: "77", WorkspaceID: "workspace-key", ExactName: "opl-workspace-abcdef123456",
-		GroupName: "Codex", ModelIDs: []string{"gpt-5.6-sol"}, IdempotencyKey: "launch-1:create_managed_key",
-		Delegation: &identity.ManagedKeyDelegation{Subject: "77", Bearer: "gateway-user-bearer", ExpiresAt: time.Now().Add(time.Hour)},
-	})
-	// An unreadable scope is not an answer: it must not read as a refusal, so
-	// the original command stays unresolved instead of being settled as denied.
-	if status.Code(err) != codes.Unavailable {
-		t.Fatalf("err=%v", err)
+	for _, test := range []struct {
+		name       string
+		statusCode int
+		body       any
+	}{
+		{"upstream failure", http.StatusInternalServerError, nil},
+		{"issued key could not read catalog", http.StatusUnauthorized, nil},
+		{"catalog data missing", http.StatusOK, map[string]any{"object": "list"}},
+		{"catalog data null", http.StatusOK, map[string]any{"data": nil}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			gateway := newIssuedKeyGateway(t)
+			gateway.catalogStatus, gateway.catalogBody = test.statusCode, test.body
+			result, err := gateway.issuer(t).IssueWorkspaceKey(t.Context(), identity.ManagedKeyIssueRequest{
+				Subject: "77", WorkspaceID: "workspace-key", ExactName: "opl-workspace-abcdef123456",
+				GroupName: "Codex", ModelIDs: []string{"gpt-5.6-sol"}, IdempotencyKey: "launch-1:create_managed_key",
+				Delegation: &identity.ManagedKeyDelegation{Subject: "77", Bearer: "gateway-user-bearer", ExpiresAt: time.Now().Add(time.Hour)},
+			})
+			if status.Code(err) != codes.Unavailable || result.Raw != "" {
+				t.Fatalf("err=%v, returnedKey=%t", err, result.Raw != "")
+			}
+		})
 	}
 }
