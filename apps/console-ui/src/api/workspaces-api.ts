@@ -113,8 +113,12 @@ export async function listAvailableLaunchModels(): Promise<LaunchModelPageDTO["i
   return listAllOwnerPages<LaunchModelPageDTO["items"][number]>("/api/v2/catalog/models", "model");
 }
 
-export async function getLaunchWallet(): Promise<GatewayWalletReadbackDTO> {
-  const wallet = await getJson<unknown>("/api/v2/wallet");
+// getLaunchPayerWallet reads the Tenant's own paying balance: the account an
+// accepted Workspace order is actually charged to. The launch page compares the
+// price against this balance, never against the caller's personal wallet,
+// because the order is funded by the Tenant.
+export async function getLaunchPayerWallet(): Promise<GatewayWalletReadbackDTO> {
+  const wallet = await getJson<unknown>("/api/v2/tenant/wallet");
   if (!wallet || typeof wallet !== "object") throw new Error("invalid_gateway_wallet_readback");
   const value = wallet as Record<string, unknown>;
   if (value.source !== "gateway" || value.status !== "available" || value.currency !== "USD"

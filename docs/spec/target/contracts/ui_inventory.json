@@ -8952,7 +8952,7 @@
         "listComputePlans",
         "listStoragePlans",
         "listModels",
-        "getWallet",
+        "getTenantWallet",
         "createQuote",
         "getQuote",
         "listRuntimeVersions",
@@ -10711,19 +10711,19 @@
           "getQuote"
         ],
         "Wallet.balanceUSDMicros": [
-          "getWallet"
+          "getTenantWallet"
         ],
         "Wallet.currency": [
-          "getWallet"
+          "getTenantWallet"
         ],
         "Wallet.fetchedAt": [
-          "getWallet"
+          "getTenantWallet"
         ],
         "Wallet.source": [
-          "getWallet"
+          "getTenantWallet"
         ],
         "Wallet.status": [
-          "getWallet"
+          "getTenantWallet"
         ],
         "WebuiBuildInput.contextName": [
           "listCapabilityVersions",
@@ -11302,8 +11302,8 @@
           "owner": "gateway"
         },
         {
-          "operationId": "getWallet",
-          "path": "/api/v2/wallet",
+          "operationId": "getTenantWallet",
+          "path": "/api/v2/tenant/wallet",
           "method": "GET",
           "request": null,
           "response": "Wallet",

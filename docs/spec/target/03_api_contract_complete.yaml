@@ -2990,6 +2990,51 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
         '503':
           $ref: '#/components/responses/ErrorResponse'
+  /api/v2/tenant/wallet:
+    get:
+      operationId: getTenantWallet
+      summary: getTenantWallet
+      tags:
+      - gateway
+      x-feature-id:
+      - F14
+      x-owner: gateway
+      x-permission:
+      - admin
+      - owner
+      x-tables: []
+      responses:
+        '200':
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wallet'
+          headers:
+            Cache-Control:
+              description: 禁止缓存
+              schema:
+                type: string
+                enum:
+                - no-store
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
   /api/v2/usage:
     get:
       operationId: listUsage
@@ -11777,6 +11822,7 @@ components:
       - getTenant
       - getTenantAssetCustody
       - getTenantLifecycleOperation
+      - getTenantWallet
       - getUpload
       - getWallet
       - getWorkspace
@@ -14082,6 +14128,7 @@ x-service-action-allowlist:
   - getTenant
   - getTenantAssetCustody
   - getTenantLifecycleOperation
+  - getTenantWallet
   - getUpload
   - getWallet
   - getWorkspace

@@ -581,18 +581,22 @@ installed adoption; validate upgrade → delete through the existing Instance
 process after adoption. Retained history/recovery is not a fallback for a native
 Workspace, and its obligations remain separate.
 
-The remaining bounded source gaps are the launch page's use of a personal wallet
-balance to gate a Tenant-funded order, and managed-Key issuance with non-empty
-model selections when the user API supplies no model-scope projection. The
-[November 5 check](status.md#existing-default-app-provisioning-closure-readback-2026-11-05)
-reproduces the latter through the actual Gateway user-API issuer and managed-Key
-owner: issuance succeeds externally, then the scope comparison leaves the order
-pending before Secret/binding delivery. Resolve each at its existing owner with
-its actual consumer; do not copy requested models into an unobserved effective
-scope, bypass authorization or add another wallet/Gateway allowlist. Verify
-non-empty selection and original-command recovery through the real issuer.
-The new-purchase source now consumes the Account policy; its installed adoption
-and eventual policy-owner migration remain below.
+The Console purchase gate compares the quote with the Tenant payer's spendable
+balance through the same active Gateway binding used by the debit. The personal
+wallet and token usage remain scoped to the signed-in User. The Gateway issuer
+confirms an Agent's declared models against the issued Key's catalog before
+Secret delivery. The [November 5 readback](status.md#existing-default-app-provisioning-closure-readback-2026-11-05)
+reproduced the original model-scope gap. The new-purchase source also consumes
+the Account eligibility policy.
+
+The [purchase acceptance readback](status.md#customer-purchase-acceptance-2026-11-22)
+identifies the remaining installation and protected qualification work. Install
+and verify a Candidate containing both repairs. Use the Instance's existing
+purchase lane once the exact-Candidate J0 READY receipt and owner authorization
+are available, then confirm the first reply and per-version dialogue on the paid
+Workspace. See [Gateway Key confirmation](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1266)
+and [Tenant payer balance](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1267).
+
 
 The existing Default App still answers actual model turns and preserves its
 session/reply after page reload. This does not qualify a fresh unattended order

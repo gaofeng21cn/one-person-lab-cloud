@@ -3655,6 +3655,7 @@
         "getPersonalGatewayKey",
         "getPersonalGatewayKeyUsageSummary",
         "getSelfUserExternalBinding",
+        "getTenantWallet",
         "getUsageSummary",
         "getWallet",
         "listGatewayKeys",

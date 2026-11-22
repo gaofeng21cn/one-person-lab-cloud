@@ -515,7 +515,9 @@ func (s *Service) CreateManagedKey(ctx context.Context, r *api.ManagedKeyCommand
 			// key; no new effect is dispatched without an approved lookup.
 			return nil, status.Error(codes.Unavailable, "managed key issuance outcome unknown")
 		}
-		body, marshalErr := json.Marshal(managedKeyCommandState{Outcome: "rejected", ErrorCode: status.Code(err).String()})
+		body, marshalErr := json.Marshal(managedKeyCommandState{
+			Outcome: "rejected", ErrorCode: status.Code(err).String(), ExternalKeyID: issued.ExternalKeyID,
+		})
 		if marshalErr != nil {
 			return nil, status.Error(codes.Unavailable, "Gateway key settlement unavailable")
 		}
@@ -540,8 +542,10 @@ func (s *Service) CreateManagedKey(ctx context.Context, r *api.ManagedKeyCommand
 		return nil, status.Error(codes.Unavailable, "managed key issuance returned an invalid resolved model scope")
 	}
 	// If an issuer supplies a concrete scope projection, a declared non-empty
-	// selection must still match it. The Gateway user API supplies no such
-	// projection, so its empty result leaves the external Group authoritative.
+	// selection must still match it. The Gateway issuer confirms a declared
+	// selection against the issued Key's own catalog, so its projection is the
+	// Key's observed permission; an issuer that resolves nothing leaves the
+	// external Group authoritative and declares no scope of its own.
 	if len(modelIDs) > 0 && !equalDeclaredModelScope(modelIDs, resolvedModelIDs) {
 		return nil, status.Error(codes.Unavailable, "managed key issuance returned a model scope that differs from the declared selection")
 	}

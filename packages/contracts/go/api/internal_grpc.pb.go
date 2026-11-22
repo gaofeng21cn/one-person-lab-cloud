@@ -4432,6 +4432,7 @@ const (
 	GatewayProductService_ListWorkspaceTransactions_FullMethodName         = "/opl.cloud.api.GatewayProductService/ListWorkspaceTransactions"
 	GatewayProductService_GetWorkspaceTransactionTrend_FullMethodName      = "/opl.cloud.api.GatewayProductService/GetWorkspaceTransactionTrend"
 	GatewayProductService_GetWallet_FullMethodName                         = "/opl.cloud.api.GatewayProductService/GetWallet"
+	GatewayProductService_GetTenantWallet_FullMethodName                   = "/opl.cloud.api.GatewayProductService/GetTenantWallet"
 	GatewayProductService_ListUsage_FullMethodName                         = "/opl.cloud.api.GatewayProductService/ListUsage"
 	GatewayProductService_GetUsageSummary_FullMethodName                   = "/opl.cloud.api.GatewayProductService/GetUsageSummary"
 	GatewayProductService_ListGatewayKeys_FullMethodName                   = "/opl.cloud.api.GatewayProductService/ListGatewayKeys"
@@ -4454,6 +4455,7 @@ type GatewayProductServiceClient interface {
 	ListWorkspaceTransactions(ctx context.Context, in *ListWorkspaceTransactionsRpcRequest, opts ...grpc.CallOption) (*WalletOperationPage, error)
 	GetWorkspaceTransactionTrend(ctx context.Context, in *GetWorkspaceTransactionTrendRpcRequest, opts ...grpc.CallOption) (*WorkspaceTransactionTrend, error)
 	GetWallet(ctx context.Context, in *GetWalletRpcRequest, opts ...grpc.CallOption) (*Wallet, error)
+	GetTenantWallet(ctx context.Context, in *GetTenantWalletRpcRequest, opts ...grpc.CallOption) (*Wallet, error)
 	ListUsage(ctx context.Context, in *ListUsageRpcRequest, opts ...grpc.CallOption) (*UsagePage, error)
 	GetUsageSummary(ctx context.Context, in *GetUsageSummaryRpcRequest, opts ...grpc.CallOption) (*UsageSummary, error)
 	ListGatewayKeys(ctx context.Context, in *ListGatewayKeysRpcRequest, opts ...grpc.CallOption) (*GatewayKeyPage, error)
@@ -4552,6 +4554,16 @@ func (c *gatewayProductServiceClient) GetWallet(ctx context.Context, in *GetWall
 	return out, nil
 }
 
+func (c *gatewayProductServiceClient) GetTenantWallet(ctx context.Context, in *GetTenantWalletRpcRequest, opts ...grpc.CallOption) (*Wallet, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Wallet)
+	err := c.cc.Invoke(ctx, GatewayProductService_GetTenantWallet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *gatewayProductServiceClient) ListUsage(ctx context.Context, in *ListUsageRpcRequest, opts ...grpc.CallOption) (*UsagePage, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(UsagePage)
@@ -4644,6 +4656,7 @@ type GatewayProductServiceServer interface {
 	ListWorkspaceTransactions(context.Context, *ListWorkspaceTransactionsRpcRequest) (*WalletOperationPage, error)
 	GetWorkspaceTransactionTrend(context.Context, *GetWorkspaceTransactionTrendRpcRequest) (*WorkspaceTransactionTrend, error)
 	GetWallet(context.Context, *GetWalletRpcRequest) (*Wallet, error)
+	GetTenantWallet(context.Context, *GetTenantWalletRpcRequest) (*Wallet, error)
 	ListUsage(context.Context, *ListUsageRpcRequest) (*UsagePage, error)
 	GetUsageSummary(context.Context, *GetUsageSummaryRpcRequest) (*UsageSummary, error)
 	ListGatewayKeys(context.Context, *ListGatewayKeysRpcRequest) (*GatewayKeyPage, error)
@@ -4685,6 +4698,9 @@ func (UnimplementedGatewayProductServiceServer) GetWorkspaceTransactionTrend(con
 }
 func (UnimplementedGatewayProductServiceServer) GetWallet(context.Context, *GetWalletRpcRequest) (*Wallet, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetWallet not implemented")
+}
+func (UnimplementedGatewayProductServiceServer) GetTenantWallet(context.Context, *GetTenantWalletRpcRequest) (*Wallet, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetTenantWallet not implemented")
 }
 func (UnimplementedGatewayProductServiceServer) ListUsage(context.Context, *ListUsageRpcRequest) (*UsagePage, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListUsage not implemented")
@@ -4875,6 +4891,24 @@ func _GatewayProductService_GetWallet_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GatewayProductService_GetTenantWallet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetTenantWalletRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayProductServiceServer).GetTenantWallet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayProductService_GetTenantWallet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayProductServiceServer).GetTenantWallet(ctx, req.(*GetTenantWalletRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _GatewayProductService_ListUsage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListUsageRpcRequest)
 	if err := dec(in); err != nil {
@@ -5057,6 +5091,10 @@ var GatewayProductService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetWallet",
 			Handler:    _GatewayProductService_GetWallet_Handler,
+		},
+		{
+			MethodName: "GetTenantWallet",
+			Handler:    _GatewayProductService_GetTenantWallet_Handler,
 		},
 		{
 			MethodName: "ListUsage",

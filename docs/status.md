@@ -12,6 +12,7 @@ Scoped retained image-policy reconciliation: 2026-11-16 (retired routes and pres
 Scoped composed backend runtime gate: 2026-11-18 (automated runtime gate for the composed unit, not a production qualification)
 Scoped composed backend production switch: 2026-11-21 (Instance-owned deployment evidence for the composed unit, not a Product Release)
 Scoped customer-package delivery round: 2026-11-22 (Linux rehearsal, artifact identity and local no-charge deletion)
+Scoped customer purchase acceptance: 2026-11-22 (installation and qualification prerequisites)
 
 Each observation below retains its original source, run and environment; the
 reviewed source baseline does not requalify those receipts. The Workspace deletion
@@ -20,6 +21,23 @@ Instance installation and customer acceptance prove separate layers; none alone
 establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
+
+## Customer purchase acceptance (2026-11-22)
+
+The latest verified installation uses Cloud `30ac77e3`, before the Gateway
+managed-Key repair and the Console Tenant payer balance repair. The recorded
+Workspace state found no reusable paid Workspace for the per-version dialogue
+check. The customer purchase workflow had no execution receipt. An earlier
+application acceptance exercised login and the first reply on its own revision.
+The current deployment still needs application preflight and independently
+verified customer purchase evidence.
+
+The protected purchase workflow requires Deployment Verification and a J0 READY
+receipt for the same Candidate, plus the Instance owner's typed authorization.
+An Instance workflow still needs to invoke the existing J0 producer with an
+approved sandbox bound to that Candidate. The exact evidence and authorization
+remain with the Instance owner. The remaining work is tracked in [customer
+lifecycle convergence](roadmap.md#customer-lifecycle-owner-convergence).
 
 ## Customer package delivery round on the Linux lane (2026-11-22)
 
@@ -60,6 +78,44 @@ The `opl-native-stage3-1-1` Linux lane retains these receipts and archive.
 - `native/customer-foundry-2026-11-22-r13.json` (SHA-256 `673dd2381ef77df206a2f6676c3817f4b89d3cb54294bb2c1faa460ba9595ffb`)
 - `native/customer-foundry-2026-11-22-r14.json` (SHA-256 `0c5c43b719766126523c48600069db1eaba4c2162b2d5a0d1c0376cc90441249`)
 - `evidence/foundry-customer-delivery-2026-11-22.json`
+
+## Managed-Key model scope source repair (2026-11-22)
+
+[PR #1266](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1266) closes the
+second of the two bounded source gaps in
+[customer lifecycle convergence](roadmap.md#customer-lifecycle-owner-convergence).
+The Gateway Workspace key issuer now confirms a declared model selection against
+the model catalog the issued Key reads for itself, so the confirmed scope is the
+Key's observed permission instead of an unobserved copy of the request. A model
+the Key may not use is refused with that model named; an unreadable catalog is
+not an answer and leaves the original command unresolved for its own identity.
+The empty declaration still names no model: the external Group remains
+authoritative and the default App's issuance path is unchanged.
+
+The owner-level reproduction through the real issuer confirms the previous gap
+closed: a non-empty Agent selection reaches Secret and binding delivery and
+replays as the one original command, while a model the Key cannot use is
+recorded as a refusal with no delivery and no second issuance. This is source
+behavior over isolated PostgreSQL. It does not establish installed adoption, a
+live paid Agent order, or that the Console's model list and the Workspace
+Group's permitted scope agree for every customer; that last agreement stays a
+product question for the Installed layer.
+
+## Tenant payer balance for the purchase gate (2026-11-22)
+
+The Console purchase gate previously compared the quote against the caller's
+Sub2API balance, while Workspace orders debit the Tenant's paying account. The
+launch page now reads the Tenant payer through `GET /api/v2/tenant/wallet`.
+Tenant owners and admins can read it under the existing financial permission.
+The service resolves the payer through the same active binding used by debit,
+and the signed-in User's wallet and usage keep their own account binding.
+
+Isolated PostgreSQL tests exercise the payer binding and authorization. The BFF
+route uses the typed Gateway RPC, and the browser launch flow reads the Tenant
+wallet. Installed and paid-order evidence remains in [customer purchase
+acceptance](#customer-purchase-acceptance-2026-11-22). See the [original Tenant
+payer change](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1267).
+
 
 ## Composed backend production switch (2026-11-21)
 

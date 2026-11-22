@@ -50,8 +50,14 @@ func (*GatewayWorkspaceKeyIssuer) supportsIdempotentRetry() bool     { return tr
 // IssueWorkspaceKey creates one external Key under the existing Codex Group.
 // The Gateway's user idempotency store receives the Cloud operation identity, so
 // a lost response is replayed by Gateway rather than creating another Key.
-// ModelIDs intentionally remain empty: effective routing and model permission
-// belong to the external Group, not to a second Cloud allowlist.
+//
+// A declared model selection is confirmed against the Key that was just
+// issued: the Key reads its own model catalog, and the Gateway answers it with
+// the scope that Key's Group actually permits. A model the Key may not use is
+// refused here, so the order stops with a cause instead of delivering a Key
+// that cannot serve what the customer chose. An empty declaration names no
+// model: the external Group stays authoritative and the issuer resolves
+// nothing, exactly as before.
 func (i *GatewayWorkspaceKeyIssuer) IssueWorkspaceKey(ctx context.Context, request ManagedKeyIssueRequest) (ManagedKeyIssueResult, error) {
 	if i == nil || i.gateway == nil {
 		return ManagedKeyIssueResult{}, status.Error(codes.FailedPrecondition, "no Gateway user key issuer is configured")
@@ -95,7 +101,60 @@ func (i *GatewayWorkspaceKeyIssuer) IssueWorkspaceKey(ctx context.Context, reque
 	if json.Unmarshal(envelope.Data, &key) != nil || key.ID <= 0 || key.UserID != subjectID || strings.TrimSpace(key.Raw) == "" || key.Name != request.ExactName || key.Group == nil || *key.Group != groupID || key.Status != "active" {
 		return ManagedKeyIssueResult{}, status.Error(codes.Unavailable, "Gateway returned an invalid created key identity")
 	}
-	return ManagedKeyIssueResult{Raw: key.Raw, ExternalKeyID: strconv.FormatInt(key.ID, 10), GroupID: groupID}, nil
+	resolved, err := i.resolveIssuedModelScope(ctx, key.Raw, request.ModelIDs)
+	if status.Code(err) == codes.PermissionDenied {
+		// The external creation already succeeded. Keep its opaque identity in
+		// the refusal receipt for reconciliation without releasing the raw key.
+		return ManagedKeyIssueResult{ExternalKeyID: strconv.FormatInt(key.ID, 10)}, err
+	}
+	if err != nil {
+		return ManagedKeyIssueResult{}, err
+	}
+	return ManagedKeyIssueResult{Raw: key.Raw, ExternalKeyID: strconv.FormatInt(key.ID, 10), GroupID: groupID, ModelIDs: resolved}, nil
+}
+
+// resolveIssuedModelScope confirms a declared model selection against the scope
+// the issued Key actually has. The Key's own catalog is the only observation of
+// that scope, so the confirmation uses the Key that was just created.
+//
+// Every returned id is one the Key may use, so the owner records a scope it
+// observed rather than the models the customer asked for. A declared model the
+// Key may not use is a definite refusal: the order stops with that cause
+// instead of receiving a Key that cannot serve it. A failed catalog read is not
+// an answer at all - it leaves the original command unresolved, and the
+// Gateway replays the same Key for the same idempotency key.
+func (i *GatewayWorkspaceKeyIssuer) resolveIssuedModelScope(ctx context.Context, raw string, declared []string) ([]string, error) {
+	selected := normalizeManagedKeyModelIDs(declared)
+	if len(selected) == 0 {
+		return nil, nil
+	}
+	observed, err := i.gateway.keyModelScope(ctx, raw)
+	if err != nil {
+		return nil, err
+	}
+	permitted := make(map[string]bool, len(observed))
+	for _, id := range observed {
+		if !managedKeyModelIDUsable(id) {
+			// An id the owner would refuse to record cannot be a permitted scope.
+			continue
+		}
+		permitted[id] = true
+	}
+	resolved := make([]string, 0, len(selected))
+	seen := map[string]bool{}
+	for _, id := range selected {
+		if !permitted[id] {
+			return nil, status.Errorf(codes.PermissionDenied, "the issued Gateway Key is not permitted to use model %s", id)
+		}
+		if seen[id] {
+			// A repeated selection names the same model as its first occurrence,
+			// and a resolved scope records each model once.
+			continue
+		}
+		seen[id] = true
+		resolved = append(resolved, id)
+	}
+	return resolved, nil
 }
 
 func (i *GatewayWorkspaceKeyIssuer) resolveGroup(ctx context.Context, delegation *ManagedKeyDelegation, requested string) (int64, error) {

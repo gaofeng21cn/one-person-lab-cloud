@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	api "opl-cloud/packages/contracts/go/api"
@@ -342,6 +343,69 @@ func (s *Service) GetWallet(ctx context.Context, r *api.GetWalletRpcRequest) (*a
 		return nil, err
 	}
 	balance, err := s.Gateway.Balance(ctx, binding.Sub2APIUserID)
+	if err != nil {
+		return nil, err
+	}
+	return &api.Wallet{
+		Source:           api.WalletSourceEnum_WALLET_SOURCE_ENUM_GATEWAY,
+		Status:           api.WalletStatusEnum_WALLET_STATUS_ENUM_AVAILABLE,
+		BalanceUsdMicros: balance.USDMicros,
+		Currency:         api.WalletCurrencyEnum_WALLET_CURRENCY_ENUM_USD,
+		FetchedAt:        timestamppb.Now(),
+	}, nil
+}
+
+// GetTenantWallet returns the balance of the Tenant's own paying account: the
+// external account an accepted Workspace order is actually charged to.
+//
+// It is a different fact from GetWallet, which answers the caller's personal
+// account. A purchase gate must compare the price against the balance that
+// will be debited, so the Tenant's active wallet binding resolves the payer
+// and Sub2API answers that account's balance. No balance is copied into
+// CloudIdentity, and an unavailable directory credential fails closed.
+func (s *Service) GetTenantWallet(ctx context.Context, r *api.GetTenantWalletRpcRequest) (*api.Wallet, error) {
+	if err := peer(ctx, owneridentity.ConsoleBFF); err != nil {
+		return nil, err
+	}
+	call := r.GetContext()
+	if call == nil || call.GetSessionId() == "" || call.GetAcceptedOperationGrantId() != "" {
+		return nil, denied()
+	}
+	session, _, _, err := s.session(ctx, call.GetSessionId())
+	if err != nil {
+		return nil, err
+	}
+	tenantID := session.GetTenantId()
+	if tenantID == "" || session.GetActorId() != call.GetActorId() || !scopeMatchesSession(session, call.GetScope()) {
+		return nil, denied()
+	}
+	request := &api.AuthorizationRequest{
+		Scope: call.GetScope(), ActorId: call.GetActorId(), SessionId: call.SessionId,
+		AudienceOwner: api.OwnerEnum_OWNER_ENUM_GATEWAY,
+		Action:        api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANTWALLET,
+		Resource:      &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: proto.String(tenantID)},
+		RequestId:     call.GetRequestId(),
+	}
+	if call.GetAuthorizationContextId() != "" {
+		request.AuthorizationContextId = proto.String(call.GetAuthorizationContextId())
+	}
+	if err = s.authorizeInternal(ctx, owneridentity.Gateway.Service(), request); err != nil {
+		return nil, err
+	}
+	if s.GatewayStore == nil {
+		return nil, status.Error(codes.Unavailable, "Gateway wallet persistence is not configured")
+	}
+	binding, err := s.GatewayStore.ReadActiveWalletBinding(ctx, tenantID)
+	if err == ErrWalletBindingAbsent {
+		return nil, status.Error(codes.FailedPrecondition, "the tenant has no active wallet binding")
+	}
+	if err != nil {
+		return nil, status.Error(codes.Unavailable, "Gateway wallet binding unavailable")
+	}
+	if strings.TrimSpace(binding.BillingSub2APIUserID) == "" {
+		return nil, status.Error(codes.FailedPrecondition, "the tenant wallet binding names no payer")
+	}
+	balance, err := s.Gateway.Balance(ctx, binding.BillingSub2APIUserID)
 	if err != nil {
 		return nil, err
 	}
