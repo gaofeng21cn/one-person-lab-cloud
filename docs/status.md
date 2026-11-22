@@ -101,6 +101,22 @@ live paid Agent order, or that the Console's model list and the Workspace
 Group's permitted scope agree for every customer; that last agreement stays a
 product question for the Installed layer.
 
+## Tenant payer balance for the purchase gate (2026-11-22)
+
+The Console purchase gate previously compared the quote against the caller's
+Sub2API balance, while Workspace orders debit the Tenant's paying account. The
+launch page now reads the Tenant payer through `GET /api/v2/tenant/wallet`.
+Tenant owners and admins can read it under the existing financial permission.
+The service resolves the payer through the same active binding used by debit,
+and the signed-in User's wallet and usage keep their own account binding.
+
+Isolated PostgreSQL tests exercise the payer binding and authorization. The BFF
+route uses the typed Gateway RPC, and the browser launch flow reads the Tenant
+wallet. Installed and paid-order evidence remains in [customer purchase
+acceptance](#customer-purchase-acceptance-2026-11-22). See the [original Tenant
+payer change](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1267).
+
+
 ## Composed backend production switch (2026-11-21)
 
 On November 21, 2026, medopl TKE ran 11 Cloud owners in one

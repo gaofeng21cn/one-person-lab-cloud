@@ -362,6 +362,7 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
       if (path === "/api/v2/catalog/compute-plans") return route.fulfill({ json: { items: [{ id: "compute-1", name: "Compute Standard", vcpus: 2, memoryMiB: 4096, availability: "available", billingMode: "prepaid_monthly", workspaceOffers: [{ storagePlanId: "storage-1", storageName: "Storage Standard", storageCapacityGiB: 50, pricePolicyVersionId: "price-1", monthlyUSDMicros: "52580000" }] } satisfies ComputePlanDTO] } });
       if (path === "/api/v2/catalog/models") return route.fulfill({ json: { items: [{ id: "model-1", name: "IBD Model", capabilities: ["chat"], available: true, inputPricePerMillionTokensUSDMicros: "1", outputPricePerMillionTokensUSDMicros: "2", priceSource: "gateway", fetchedAt: "2026-09-27T00:00:00Z" }] } });
       if (path === "/api/v2/wallet") return route.fulfill({ json: { source: "gateway", status: "available", balanceUSDMicros: "100000000", currency: "USD", fetchedAt: "2026-09-27T00:00:00Z" } });
+      if (path === "/api/v2/tenant/wallet") return route.fulfill({ json: { source: "gateway", status: "available", balanceUSDMicros: "100000000", currency: "USD", fetchedAt: "2026-09-27T00:00:00Z" } });
       if (path === "/api/v2/quotes" && request.method() === "POST") {
         assert.deepEqual(request.postDataJSON(), { purpose: "deploy", applicationSelection: { kind: "agent", capabilityVersionId: "cap-ready-1" }, computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [{ slot: "default", modelId: "model-1" }], periodMonths: 1 });
         return route.fulfill({ status: 201, json: { id: "quote-1", purpose: "deploy", capabilityVersionId: "cap-ready-1", computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [{ slot: "default", modelId: "model-1" }], periodMonths: 1, periodStart: "2026-09-27T00:00:00Z", periodEnd: "2026-10-27T00:00:00Z", pricePolicyVersionId: "price-1", refundPolicyVersionId: "refund-1", retentionPolicyVersionId: "retention-1", refundTerms: "按报价政策处理退款。", retentionTerms: "数据保留按报价政策执行。", expectedInterruption: "部署期间可能短暂不可用。", lineItems: [{ kind: "compute", description: "计算套餐", quantity: 1, amountUSDMicros: "52580000" }], totalUSDMicros: "52580000", status: "offered", expiresAt: "2099-01-01T00:00:00Z", createdAt: "2026-09-27T00:00:00Z", runtimeReadbackRequirement: "required" } });
@@ -450,6 +451,7 @@ test("lost create response reloads into the original idempotent Workspace reques
       if (path === "/api/v2/catalog/compute-plans") return route.fulfill({ json: { items: [{ id: "compute-1", name: "Compute", vcpus: 2, memoryMiB: 1024, availability: "available", billingMode: "prepaid_monthly", workspaceOffers: [{ storagePlanId: "storage-1", storageName: "Storage", storageCapacityGiB: 10, pricePolicyVersionId: "p", monthlyUSDMicros: "1" }] } satisfies ComputePlanDTO] } });
       if (path === "/api/v2/catalog/models") return route.fulfill({ json: { items: [{ id: "model-1", name: "Model", capabilities: [], available: true }] } });
       if (path === "/api/v2/wallet") return route.fulfill({ json: { source: "gateway", status: "available", balanceUSDMicros: "100000000", currency: "USD", fetchedAt: "2026-09-27T00:00:00Z" } });
+      if (path === "/api/v2/tenant/wallet") return route.fulfill({ json: { source: "gateway", status: "available", balanceUSDMicros: "100000000", currency: "USD", fetchedAt: "2026-09-27T00:00:00Z" } });
       if (path === "/api/v2/quotes" && request.method() === "POST") return route.fulfill({ status: 201, json: { id: "quote-lost", purpose: "deploy", capabilityVersionId: "cap-1", computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [], periodMonths: 1, periodStart: "2026-09-27T00:00:00Z", periodEnd: "2026-10-27T00:00:00Z", pricePolicyVersionId: "p", refundPolicyVersionId: "r", retentionPolicyVersionId: "t", refundTerms: "refund", retentionTerms: "retention", lineItems: [], totalUSDMicros: "1", status: "offered", expiresAt: "2099-01-01T00:00:00Z" } });
       if (path === "/api/v2/quotes/quote-lost") return route.fulfill({ json: { id: "quote-lost", purpose: "deploy", status: "offered", totalUSDMicros: "1", expiresAt: "2099-01-01T00:00:00Z", modelSelections: [], lineItems: [] } });
       if (path === "/api/v2/workspaces" && request.method() === "POST") {
@@ -736,8 +738,12 @@ const fixedLaunchQuote: WorkspaceQuoteDTO = {
 };
 const launchSourcePaths = {
   agent: "/api/v2/capability-versions", app: "/api/v2/catalog/runtime-versions",
-  plans: "/api/v2/catalog/compute-plans", models: "/api/v2/catalog/models", wallet: "/api/v2/wallet"
+  plans: "/api/v2/catalog/compute-plans", models: "/api/v2/catalog/models", wallet: "/api/v2/tenant/wallet"
 } as const;
+// The caller's own wallet is a different fact from the Tenant's paying balance:
+// the launch gate reads the payer, while the layout's account read keeps the
+// caller's personal balance.
+const personalWalletPath = "/api/v2/wallet";
 type LaunchSource = keyof typeof launchSourcePaths;
 interface NativeLaunchFixtureOptions {
   failures?: LaunchSource[];
@@ -774,6 +780,9 @@ async function openNativeLaunchFixture(t: TestContext, options: NativeLaunchFixt
     models: { items: [{ id: "model-1", name: "Research Model", capabilities: ["chat"], available: true, fetchedAt: "2026-11-12T00:00:00Z" }] },
     wallet: { source: "gateway", status: "available", balanceUSDMicros: "200000000", currency: "USD", fetchedAt: "2026-11-12T00:00:00Z" }
   };
+  // The launch gate reads the Tenant's paying balance. The caller's personal
+  // balance stays a separate read owned by the account panel.
+  const personalWalletReadback = { source: "gateway", status: "available", balanceUSDMicros: "100000000", currency: "USD", fetchedAt: "2026-11-12T00:00:00Z" };
   await page.route("**/api/v2/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -785,6 +794,10 @@ async function openNativeLaunchFixture(t: TestContext, options: NativeLaunchFixt
       await options.held?.[source]?.promise;
       if (options.failures?.includes(source)) return route.fulfill({ status: 503, json: { code: "DEPENDENCY_UNAVAILABLE", message: `${source} fixture unavailable` } });
       return route.fulfill({ json: sources[source] });
+    }
+    if (path === personalWalletPath) {
+      reads.push(`${request.method()} ${path}${url.search}`);
+      return route.fulfill({ json: personalWalletReadback });
     }
     if (path === "/api/v2/quotes" && request.method() === "POST") {
       quoteRequests.push(request.postDataJSON() as WorkspaceQuoteRequestDTO);
@@ -823,8 +836,8 @@ function assertNativeLaunchFixtureClean(fixture: Awaited<ReturnType<typeof openN
     `GET ${launchSourcePaths.plans}?limit=100`,
     `GET ${launchSourcePaths.models}?limit=100`,
     `GET ${launchSourcePaths.wallet}`,
-    `GET ${launchSourcePaths.wallet}`
-  ].toSorted(), "catalogs are read once with only owner pagination/status parameters; Gateway account and launch each read their wallet");
+    `GET ${personalWalletPath}`
+  ].toSorted(), "catalogs are read once with only owner pagination/status parameters; the account panel reads the personal wallet and the launch gate reads the Tenant's paying balance");
   assert.equal(fixture.audit.consoleErrors.length, expected503s);
   assert.ok(fixture.audit.consoleErrors.every((message) => message.includes("503 (Service Unavailable)")));
   assertBrowserAuditClean({ ...fixture.audit, consoleErrors: [] });
@@ -923,7 +936,7 @@ test("default App quotes while Agent and model owners return 503; failed Agent s
   await page.getByLabel("工作空间名称").fill("Independent App");
   await waitForLaunchQuoteButton(page, true);
   assert.equal(await launchSummaryFact(page, "每月合计").innerText(), "$52.58");
-  assert.equal(await launchSummaryFact(page, "钱包余额").innerText(), "$200.00");
+  assert.equal(await launchSummaryFact(page, "租户余额").innerText(), "$200.00");
   assert.equal(await page.getByText("开通入口暂不可用", { exact: true }).count(), 0);
   await page.getByText("已构建智能体", { exact: true }).click();
   await page.getByText("智能体目录暂不可用", { exact: true }).waitFor();
@@ -949,7 +962,7 @@ test("pending Agent and model reads cannot hold App, offers or wallet behind all
   await page.getByLabel("工作空间名称").fill("App without optional owners");
   await waitForLaunchQuoteButton(page, true);
   assert.equal(await page.getByText("正在加载应用与套餐", { exact: true }).count(), 0, "compute readiness clears its own loading indicator");
-  assert.equal(await launchSummaryFact(page, "钱包余额").innerText(), "$200.00");
+  assert.equal(await launchSummaryFact(page, "租户余额").innerText(), "$200.00");
   await page.getByRole("button", { name: "查看报价", exact: true }).click();
   await page.getByRole("heading", { name: "确认订单", exact: true }).waitFor();
   assert.deepEqual(settled, [], "App must have a real Catalog Quote before either optional read completes");
@@ -973,7 +986,7 @@ for (const requirements of [[], [{ slot: "optional-chat", required: false, capab
     await page.getByLabel("工作空间名称").fill("Independent Agent");
     await page.getByRole("radiogroup", { name: "工作空间套餐", exact: true }).getByRole("radio", { name: /Basic.*37 GiB/ }).waitFor();
     assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true, "failed selected App must not borrow the Agent's readiness");
-    assert.equal(await launchSummaryFact(page, "钱包余额").innerText(), "$200.00");
+    assert.equal(await launchSummaryFact(page, "租户余额").innerText(), "$200.00");
     assert.equal(fixture.quoteRequests.length, 0);
     await page.getByText("已构建智能体", { exact: true }).click();
     await page.getByLabel("智能体版本", { exact: true }).selectOption("cap-ready-1");
@@ -997,7 +1010,7 @@ test("required-model Agent cannot quote after model 503 while App, offer and wal
   assert.equal(await page.getByLabel("required-chat", { exact: true }).getByRole("option").count(), 1);
   assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
   assert.equal(await launchSummaryFact(page, "每月合计").innerText(), "$52.58");
-  assert.equal(await launchSummaryFact(page, "钱包余额").innerText(), "$200.00");
+  assert.equal(await launchSummaryFact(page, "租户余额").innerText(), "$200.00");
   assert.equal(fixture.quoteRequests.length, 0);
   await page.getByText("OPL App", { exact: true }).click();
   await page.getByRole("button", { name: "查看报价", exact: true }).click();
@@ -1009,17 +1022,17 @@ test("required-model Agent cannot quote after model 503 while App, offer and wal
 test("wallet 503 blocks App and ready Agent quotes while their catalogs and offers remain visible", { timeout: 45_000 }, async (t) => {
   const fixture = await openNativeLaunchFixture(t, { failures: ["wallet"] });
   const { page } = fixture;
-  await page.getByText("钱包暂不可用，请刷新后重试。", { exact: true }).waitFor();
+  await page.getByText("租户余额暂不可用，请刷新后重试。", { exact: true }).waitFor();
   await page.getByLabel("工作空间名称").fill("No wallet authority");
   assert.equal(await launchSummaryFact(page, "每月合计").innerText(), "$52.58");
-  assert.equal(await launchSummaryFact(page, "钱包余额").innerText(), "暂不可用");
+  assert.equal(await launchSummaryFact(page, "租户余额").innerText(), "暂不可用");
   assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
   await page.getByText("已构建智能体", { exact: true }).click();
   await page.getByLabel("智能体版本", { exact: true }).selectOption("cap-ready-1");
   assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
   assert.equal(fixture.quoteRequests.length, 0);
   assert.equal(fixture.createRequests.length, 0);
-  assertNativeLaunchFixtureClean(fixture, 2);
+  assertNativeLaunchFixtureClean(fixture, 1);
 });
 
 for (const workspaceOffers of [undefined, []] satisfies Array<ComputePlanDTO["workspaceOffers"]>) {
@@ -1049,7 +1062,7 @@ test("compute catalog 503 preserves App and ready Agent data but cannot invent a
   await page.getByText("开通入口暂不可用", { exact: true }).waitFor();
   await page.getByLabel("工作空间名称").fill("No Catalog authority");
   await page.locator(".workspace-order-summary header").getByText("版本 App 1.0", { exact: true }).waitFor();
-  assert.equal(await launchSummaryFact(page, "钱包余额").innerText(), "$200.00");
+  assert.equal(await launchSummaryFact(page, "租户余额").innerText(), "$200.00");
   assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
   await page.getByText("已构建智能体", { exact: true }).click();
   await page.getByLabel("智能体版本", { exact: true }).selectOption("cap-ready-1");
@@ -1232,6 +1245,7 @@ test("v2 operation refresh keeps the original order and never opens before Serve
       if (url.pathname === "/api/v2/catalog/compute-plans") return route.fulfill({ json: { items: [{ id: "compute-1", name: "Compute", vcpus: 2, memoryMiB: 1024, availability: "available", billingMode: "prepaid_monthly", workspaceOffers: [{ storagePlanId: "storage-1", storageName: "Storage", storageCapacityGiB: 10, pricePolicyVersionId: "p", monthlyUSDMicros: "1" }] } satisfies ComputePlanDTO] } });
       if (url.pathname === "/api/v2/catalog/models") return route.fulfill({ json: { items: [{ id: "model-1", name: "Model", capabilities: [], available: true, inputPricePerMillionTokensUSDMicros: "1", outputPricePerMillionTokensUSDMicros: "1", priceSource: "gateway", fetchedAt: "2026-09-27T00:00:00Z" }] } });
       if (url.pathname === "/api/v2/wallet") return route.fulfill({ json: { source: "gateway", status: "available", balanceUSDMicros: "100000000", currency: "USD", fetchedAt: "2026-09-27T00:00:00Z" } });
+      if (url.pathname === "/api/v2/tenant/wallet") return route.fulfill({ json: { source: "gateway", status: "available", balanceUSDMicros: "100000000", currency: "USD", fetchedAt: "2026-09-27T00:00:00Z" } });
       if (url.pathname === "/api/v2/quotes" && request.method() === "POST") return route.fulfill({ status: 201, json: { id: "quote-refresh", purpose: "deploy", capabilityVersionId: "cap-1", computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [], periodMonths: 1, periodStart: "2026-09-27T00:00:00Z", periodEnd: "2026-10-27T00:00:00Z", pricePolicyVersionId: "p", refundPolicyVersionId: "r", retentionPolicyVersionId: "t", refundTerms: "refund", retentionTerms: "retention", expectedInterruption: "none", lineItems: [], totalUSDMicros: "1", status: "offered", expiresAt: "2099-01-01T00:00:00Z", createdAt: "2026-09-27T00:00:00Z", runtimeReadbackRequirement: "required" } });
       if (url.pathname === "/api/v2/quotes/quote-refresh") return route.fulfill({ json: { id: "quote-refresh", purpose: "deploy", capabilityVersionId: "cap-1", computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [], periodMonths: 1, periodStart: "2026-09-27T00:00:00Z", periodEnd: "2026-10-27T00:00:00Z", pricePolicyVersionId: "p", refundPolicyVersionId: "r", retentionPolicyVersionId: "t", refundTerms: "refund", retentionTerms: "retention", expectedInterruption: "none", lineItems: [], totalUSDMicros: "1", status: "offered", expiresAt: "2099-01-01T00:00:00Z", createdAt: "2026-09-27T00:00:00Z", runtimeReadbackRequirement: "required" } });
       if (url.pathname === "/api/v2/workspaces" && request.method() === "POST") { createWrites += 1; return route.fulfill({ status: 202, json: { operationId: "op-refresh", owner: "workspace", kind: "create_workspace", resourceId: "ws-refresh", status: "accepted", stage: "admission", requestId: "req", createdAt: "2026-09-27T00:00:00Z", updatedAt: "2026-09-27T00:00:00Z", pollAfterSeconds: 1 } }); }

@@ -71,6 +71,15 @@ func (s *Server) registerGatewayRoutes(mux *http.ServeMux, gateway api.GatewayPr
 		}
 		return gateway.GetWallet(r.Context(), &api.GetWalletRpcRequest{Context: c})
 	})
+	s.publisherRoute(mux, "GET /api/v2/tenant/wallet", owneridentity.Gateway, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANTWALLET, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", nil, func(r *http.Request, c *api.CallContext, _ proto.Message) (proto.Message, error) {
+		// The Tenant's paying account is a different fact from the caller's
+		// personal wallet: a purchase gate must compare the price against the
+		// balance that will actually be debited.
+		if gateway == nil {
+			return nil, status.Error(codes.Unavailable, "gateway owner is not configured")
+		}
+		return gateway.GetTenantWallet(r.Context(), &api.GetTenantWalletRpcRequest{Context: c})
+	})
 	s.publisherRoute(mux, "GET /api/v2/usage/summary", owneridentity.Gateway, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", nil, func(r *http.Request, c *api.CallContext, _ proto.Message) (proto.Message, error) {
 		if gateway == nil {
 			return nil, status.Error(codes.Unavailable, "gateway owner is not configured")

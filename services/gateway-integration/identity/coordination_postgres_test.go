@@ -64,8 +64,11 @@ func (s *gatewayWalletStub) handler() http.Handler {
 	mux.HandleFunc("/api/v1/admin/settings", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"affiliate_enabled": false, "affiliate_admin_recharge_enabled": false}})
 	})
+	// The payer's own account: the balance a Tenant's accepted order is
+	// charged to. It differs from the caller's personal account below, so a
+	// read of one can never be mistaken for the other.
 	mux.HandleFunc("/api/v1/admin/users/77", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"id": 77, "email": "billing@example.test", "status": "active"}})
+		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"id": 77, "email": "billing@example.test", "status": "active", "balance": "12.500000"}})
 	})
 	// The authoritative active-subject check reads the actor behind the session
 	// through this service's own directory identity on every session
@@ -74,7 +77,7 @@ func (s *gatewayWalletStub) handler() http.Handler {
 	// logs in as, is still active. A subject that is not 101 is refused by the
 	// adapter itself, so no other subject can be invented through this route.
 	mux.HandleFunc("/api/v1/admin/users/101", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"id": 101, "email": "admin@example.test", "status": "active"}})
+		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"id": 101, "email": "admin@example.test", "status": "active", "balance": "1.000000"}})
 	})
 	mux.HandleFunc("/api/v1/admin/users/77/balance", func(w http.ResponseWriter, r *http.Request) {
 		if s.balanceEntered != nil {

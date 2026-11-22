@@ -354,6 +354,55 @@ func (s *Service) GetWallet(ctx context.Context, r *api.GetWalletRpcRequest) (*a
 	}, nil
 }
 
+// GetTenantWallet returns the balance of the Tenant's own paying account: the
+// external account an accepted Workspace order is actually charged to.
+//
+// It is a different fact from GetWallet, which answers the caller's personal
+// account. A purchase gate must compare the price against the balance that
+// will be debited, so the Tenant's active wallet binding resolves the payer
+// and Sub2API answers that account's balance. No balance is copied into
+// CloudIdentity, and an unavailable directory credential fails closed.
+func (s *Service) GetTenantWallet(ctx context.Context, r *api.GetTenantWalletRpcRequest) (*api.Wallet, error) {
+	if err := peer(ctx, owneridentity.ConsoleBFF); err != nil {
+		return nil, err
+	}
+	if r == nil || r.GetContext() == nil || r.GetContext().GetSessionId() == "" {
+		return nil, status.Error(codes.Unauthenticated, "active Cloud session required")
+	}
+	out, _, _, err := s.session(ctx, r.GetContext().GetSessionId())
+	if err != nil {
+		return nil, err
+	}
+	tenantID := strings.TrimSpace(out.GetTenantId())
+	if tenantID == "" {
+		return nil, status.Error(codes.FailedPrecondition, "the session carries no tenant")
+	}
+	if s.GatewayStore == nil {
+		return nil, status.Error(codes.Unavailable, "Gateway wallet persistence is not configured")
+	}
+	binding, err := s.GatewayStore.ReadActiveWalletBinding(ctx, tenantID)
+	if err == ErrWalletBindingAbsent {
+		return nil, status.Error(codes.FailedPrecondition, "the tenant has no active wallet binding")
+	}
+	if err != nil {
+		return nil, status.Error(codes.Unavailable, "Gateway wallet binding unavailable")
+	}
+	if strings.TrimSpace(binding.BillingSub2APIUserID) == "" {
+		return nil, status.Error(codes.FailedPrecondition, "the tenant wallet binding names no payer")
+	}
+	balance, err := s.Gateway.Balance(ctx, binding.BillingSub2APIUserID)
+	if err != nil {
+		return nil, err
+	}
+	return &api.Wallet{
+		Source:           api.WalletSourceEnum_WALLET_SOURCE_ENUM_GATEWAY,
+		Status:           api.WalletStatusEnum_WALLET_STATUS_ENUM_AVAILABLE,
+		BalanceUsdMicros: balance.USDMicros,
+		Currency:         api.WalletCurrencyEnum_WALLET_CURRENCY_ENUM_USD,
+		FetchedAt:        timestamppb.Now(),
+	}, nil
+}
+
 // GetUsageSummary reads the caller's usage totals from Sub2API through the Gateway owner.
 // The BFF never aggregates or fabricates usage facts.
 func (s *Service) GetUsageSummary(ctx context.Context, r *api.GetUsageSummaryRpcRequest) (*api.UsageSummary, error) {
