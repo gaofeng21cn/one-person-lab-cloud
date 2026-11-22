@@ -402,6 +402,14 @@ const managedKeyResolvedModelLimit = 256
 
 var managedKeyModelIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$`)
 
+// managedKeyModelIDUsable reports whether one model id may be recorded in a
+// resolved scope. It applies the same shape the scope validation applies, so an
+// issuer never returns an id the owner would refuse to record.
+func managedKeyModelIDUsable(modelID string) bool {
+	trimmed := strings.TrimSpace(modelID)
+	return managedKeyModelIDPattern.MatchString(trimmed) && !strings.Contains(trimmed, "*")
+}
+
 // validateResolvedWorkspaceKeyModels validates a Cloud scope projection when an
 // issuer supplies one. The existing Gateway user Key API does not return model
 // ids, so an empty projection is valid and leaves routing to the external Group.

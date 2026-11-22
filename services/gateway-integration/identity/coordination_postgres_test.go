@@ -46,12 +46,17 @@ type gatewayWalletStub struct {
 	entries        map[string]json.Number
 	balanceEntered chan struct{}
 	balanceRelease <-chan struct{}
+	// extra adds routes this one fixture needs beyond the shared wallet reads.
+	// The other fixtures observe exactly the routes they already observed.
+	extra map[string]http.HandlerFunc
 }
 
 func (s *gatewayWalletStub) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/auth/login", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"access_token": "admin-token", "user": map[string]any{"id": 101, "email": "admin@example.test", "status": "active"}}})
+		// The expiry is what makes the login's delegated credential usable for
+		// the owner's own internal continuations.
+		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"access_token": "admin-token", "expires_in": 3600, "user": map[string]any{"id": 101, "email": "admin@example.test", "status": "active"}}})
 	})
 	mux.HandleFunc("/api/v1/auth/me", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"id": 101, "email": "admin@example.test", "status": "active"}})
@@ -132,6 +137,9 @@ func (s *gatewayWalletStub) handler() http.Handler {
 		s.mu.Unlock()
 		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"items": items, "total": len(items), "page": 1, "page_size": 100, "pages": 1}})
 	})
+	for pattern, handler := range s.extra {
+		mux.HandleFunc(pattern, handler)
+	}
 	return mux
 }
 

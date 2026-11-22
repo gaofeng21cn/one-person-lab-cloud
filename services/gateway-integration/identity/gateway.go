@@ -446,6 +446,45 @@ func (g *Gateway) Models(ctx context.Context, subject string) ([]ModelEntry, err
 	return out, nil
 }
 
+// keyModelScope reads the model scope one issued Key actually has, by reading
+// the catalog with that Key. The Gateway answers the catalog with the scope the
+// Key's Group permits, so the result is the Key's own permission rather than a
+// declared intention. A hidden model is not usable by the Key and is therefore
+// not part of the scope.
+//
+// This is the only read that can confirm a Key's permission: the key creation
+// response carries no model ids, and the user-facing Group route does not carry
+// the Group's allowlist either.
+func (g *Gateway) keyModelScope(ctx context.Context, raw string) ([]string, error) {
+	key := strings.TrimSpace(raw)
+	if key == "" {
+		return nil, status.Error(codes.InvalidArgument, "an issued Gateway key is required")
+	}
+	var catalog struct {
+		Data []struct {
+			ID     string `json:"id"`
+			Hidden bool   `json:"hidden"`
+		} `json:"data"`
+	}
+	if err := g.modelRequest(ctx, "/v1/models", key, &catalog); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(catalog.Data))
+	seen := map[string]bool{}
+	for _, item := range catalog.Data {
+		modelID := strings.TrimSpace(item.ID)
+		if modelID == "" {
+			return nil, status.Error(codes.Unavailable, "Gateway model catalog entry has no id")
+		}
+		if item.Hidden || seen[modelID] {
+			continue
+		}
+		seen[modelID] = true
+		out = append(out, modelID)
+	}
+	return out, nil
+}
+
 // modelRequest performs the OpenAI-compatible model catalog read, which is not
 // wrapped in the administrator {code,data} envelope the other Gateway endpoints
 // use.
