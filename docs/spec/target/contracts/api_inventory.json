@@ -1174,6 +1174,23 @@
       "operationKind": null
     },
     {
+      "path": "/api/v2/tenant/wallet",
+      "method": "GET",
+      "operationId": "getTenantWallet",
+      "features": [
+        "F14"
+      ],
+      "owner": "gateway",
+      "request": null,
+      "response": "Wallet",
+      "status": 200,
+      "permissions": [
+        "authenticated"
+      ],
+      "tables": [],
+      "operationKind": null
+    },
+    {
       "path": "/api/v2/usage",
       "method": "GET",
       "operationId": "listUsage",

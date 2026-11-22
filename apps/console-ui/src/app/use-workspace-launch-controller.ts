@@ -21,7 +21,7 @@ import { cloudIdentity } from "./console-identity.ts";
 import {
   createAgentWorkspace,
   createWorkspaceQuote,
-  getLaunchWallet,
+  getLaunchPayerWallet,
   getWorkspaceQuote,
   getWorkspaceOwnerAccess,
   getWorkspaceOwnerOperation,
@@ -67,7 +67,7 @@ export interface AgentWorkspaceLaunchController extends WorkspaceLaunchControlle
   agentComputePlans: ComputePlanDTO[];
   agentStoragePlans: StoragePlanDTO[];
   agentModels: LaunchModelDTO[];
-  agentWallet: GatewayWalletReadbackDTO | null;
+  agentPayerWallet: GatewayWalletReadbackDTO | null;
   agentSourceError: string;
   agentSourceLoading: boolean;
   agentReadErrors: Partial<Record<ApplicationReadSource, string>>;
@@ -153,7 +153,7 @@ export function useWorkspaceLaunchController({
   const [agentRuntimeVersionId, setAgentRuntimeVersionIdState] = useState("");
   const [agentComputePlans, setAgentComputePlans] = useState<ComputePlanDTO[]>([]);
   const [agentModels, setAgentModels] = useState<LaunchModelDTO[]>([]);
-  const [agentWallet, setAgentWallet] = useState<GatewayWalletReadbackDTO | null>(null);
+  const [agentPayerWallet, setAgentPayerWallet] = useState<GatewayWalletReadbackDTO | null>(null);
   const [agentSourceError, setAgentSourceError] = useState("");
   const [agentReadErrors, setAgentReadErrors] = useState<Partial<Record<ApplicationReadSource, string>>>({});
   const [agentReadLoading, setAgentReadLoading] = useState<Record<ApplicationReadSource, boolean>>({ app: false, agent: false, models: false, wallet: false });
@@ -196,7 +196,7 @@ export function useWorkspaceLaunchController({
     setAgentRuntimeVersionIdState("");
     setAgentComputePlans([]);
     setAgentModels([]);
-    setAgentWallet(null);
+    setAgentPayerWallet(null);
     setAgentSourceError("");
     setAgentReadErrors({});
     setAgentReadLoading({ app: false, agent: false, models: false, wallet: false });
@@ -225,7 +225,7 @@ export function useWorkspaceLaunchController({
     setAgentReadLoading({ app: true, agent: true, models: true, wallet: true });
     // These are independent authorities. An unavailable Agent/model directory
     // cannot remove a valid default App, resource offer or wallet readback.
-    setAgentCapabilityVersions([]); setAgentRuntimeVersions([]); setAgentModels([]); setAgentWallet(null);
+    setAgentCapabilityVersions([]); setAgentRuntimeVersions([]); setAgentModels([]); setAgentPayerWallet(null);
     const current = () => isRequestCurrent(generation, activeSession.user.id);
     const failed = (source: keyof typeof agentReadErrors, error: unknown) => {
       if (current()) setAgentReadErrors((old) => ({ ...old, [source]: friendlyError(error) }));
@@ -259,7 +259,7 @@ export function useWorkspaceLaunchController({
         if (current()) { setAgentComputePlans([]); setAgentSourceError(friendlyError(error)); }
       }).finally(() => { if (current()) setAgentSourceLoading(false); }),
       listAvailableLaunchModels().then((models) => { if (current()) setAgentModels(models.filter((m) => m.available)); }).catch((error) => failed("models", error)).finally(() => finished("models")),
-      getLaunchWallet().then((wallet) => { if (current()) setAgentWallet(wallet); }).catch((error) => failed("wallet", error)).finally(() => finished("wallet"))
+      getLaunchPayerWallet().then((wallet) => { if (current()) setAgentPayerWallet(wallet); }).catch((error) => failed("wallet", error)).finally(() => finished("wallet"))
     ]);
   };
 
@@ -386,8 +386,8 @@ export function useWorkspaceLaunchController({
     hasComputePlan: Boolean(selectedOffer),
     hasStoragePlan: Boolean(selectedOffer),
     modelSelectionsReady,
-    walletReadbackReady: Boolean(agentWallet),
-    walletSufficient: Boolean(agentWallet && agentQuote && BigInt(agentWallet.balanceUSDMicros) >= BigInt(agentQuote.totalUSDMicros)),
+    walletReadbackReady: Boolean(agentPayerWallet),
+    walletSufficient: Boolean(agentPayerWallet && agentQuote && BigInt(agentPayerWallet.balanceUSDMicros) >= BigInt(agentQuote.totalUSDMicros)),
     quoteReady: Boolean(agentQuote),
     quoteCurrent: Boolean(agentQuote && agentQuote.status === "offered" && new Date(agentQuote.expiresAt).getTime() > Date.now())
   };
@@ -587,7 +587,7 @@ export function useWorkspaceLaunchController({
     agentComputePlans,
     agentStoragePlans,
     agentModels,
-    agentWallet,
+    agentPayerWallet,
     agentSourceError,
     agentSourceLoading,
     agentReadErrors,

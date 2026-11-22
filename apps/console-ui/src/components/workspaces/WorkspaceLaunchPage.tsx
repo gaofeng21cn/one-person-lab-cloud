@@ -134,14 +134,14 @@ function AgentLaunchPage({
               <div><dt>报价有效至</dt><dd>{formatDate(quote.expiresAt, true)}</dd></div>
             </dl>
             <div className="workspace-launch-terms"><p>{quote.refundTerms}</p><p>{quote.retentionTerms}</p>{quote.expectedInterruption ? <p>{quote.expectedInterruption}</p> : null}</div>
-            {controller.agentWallet && BigInt(controller.agentWallet.balanceUSDMicros) < BigInt(quote.totalUSDMicros) ? <Alert color="warning" title="余额不足" description="钱包余额不足，请充值后重新报价。" /> : null}
+            {controller.agentPayerWallet && BigInt(controller.agentPayerWallet.balanceUSDMicros) < BigInt(quote.totalUSDMicros) ? <Alert color="warning" title="余额不足" description="租户余额不足，请联系管理员为租户充值后重新报价。" /> : null}
             <div className="launch-confirm-check"><Checkbox checked={controller.agentConfirmed} label="我确认以上配置、费用与数据政策，同意开通工作空间。" onChange={controller.setAgentConfirmed} /></div>
             <footer><Button onClick={() => { controller.setLaunchStep("configure"); controller.setAgentConfirmed(false); }} variant="outline">返回修改</Button></footer>
           </section>
           <aside className="workspace-order-summary">
             <header><span>本次应付</span><strong>{formatUsdMicros(quote.totalUSDMicros)}</strong></header>
             <dl className="workspace-order-summary__facts">{quote.lineItems.map((item) => <div key={`${item.kind}:${item.description}`}><dt>{item.description}</dt><dd>{formatUsdMicros(item.amountUSDMicros)}</dd></div>)}</dl>
-            <div className="workspace-order-summary__action"><Button busy={controller.agentBusy} color="primary" disabled={!controller.agentConfirmed || !controller.agentWallet || BigInt(controller.agentWallet.balanceUSDMicros) < BigInt(quote.totalUSDMicros)} onClick={() => void controller.submitAgentLaunch()}>确认并开通工作空间</Button></div>
+            <div className="workspace-order-summary__action"><Button busy={controller.agentBusy} color="primary" disabled={!controller.agentConfirmed || !controller.agentPayerWallet || BigInt(controller.agentPayerWallet.balanceUSDMicros) < BigInt(quote.totalUSDMicros)} onClick={() => void controller.submitAgentLaunch()}>确认并开通工作空间</Button></div>
           </aside>
         </div>
       ) : (
@@ -185,7 +185,7 @@ function AgentLaunchPage({
           </section>
           <aside className="workspace-order-summary">
             <header><strong>{isDefaultApp ? (release?.name || "OPL App") : (version?.versionLabel || "未选择智能体")}</strong>{isDefaultApp && release?.versionLabel ? <span>版本 {release.versionLabel}</span> : null}</header>
-            <dl className="workspace-order-summary__facts"><div><dt>套餐</dt><dd>{compute?.name || "未选择"}</dd></div><div><dt>包含存储</dt><dd>{offer ? `${offer.storageCapacityGiB} GiB` : "未选择"}</dd></div><div><dt>每月合计</dt><dd>{offer ? formatUsdMicros(offer.monthlyUSDMicros) : "未选择"}</dd></div><div><dt>钱包余额</dt><dd>{controller.agentWallet ? formatUsdMicros(controller.agentWallet.balanceUSDMicros) : controller.agentReadLoading.wallet ? "读取中" : "暂不可用"}</dd></div></dl>{controller.agentReadErrors.wallet ? <p className="workspace-launch-note" role="status">钱包暂不可用，请刷新后重试。</p> : null}
+            <dl className="workspace-order-summary__facts"><div><dt>套餐</dt><dd>{compute?.name || "未选择"}</dd></div><div><dt>包含存储</dt><dd>{offer ? `${offer.storageCapacityGiB} GiB` : "未选择"}</dd></div><div><dt>每月合计</dt><dd>{offer ? formatUsdMicros(offer.monthlyUSDMicros) : "未选择"}</dd></div><div><dt>租户余额</dt><dd>{controller.agentPayerWallet ? formatUsdMicros(controller.agentPayerWallet.balanceUSDMicros) : controller.agentReadLoading.wallet ? "读取中" : "暂不可用"}</dd></div></dl>{controller.agentReadErrors.wallet ? <p className="workspace-launch-note" role="status">租户余额暂不可用，请刷新后重试。</p> : null}
             <div className="workspace-order-summary__action"><Button busy={controller.agentBusy} color="primary" disabled={!controller.agentCanQuote} onClick={controller.reviewAgentLaunch}>查看报价</Button></div>
           </aside>
         </div>

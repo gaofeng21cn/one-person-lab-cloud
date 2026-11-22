@@ -581,18 +581,32 @@ installed adoption; validate upgrade → delete through the existing Instance
 process after adoption. Retained history/recovery is not a fallback for a native
 Workspace, and its obligations remain separate.
 
-The remaining bounded source gaps are the launch page's use of a personal wallet
-balance to gate a Tenant-funded order, and managed-Key issuance with non-empty
-model selections when the user API supplies no model-scope projection. The
+Both bounded source gaps are now closed at the source layer, and each repair
+stays at its existing owner with its actual consumer.
+
+The launch page's use of a personal wallet balance to gate a Tenant-funded
+order is closed by this change: the purchase gate now reads the Tenant's own
+paying account - the balance an accepted Workspace order is actually charged
+to - through a separate owner read, while the caller's personal wallet keeps
+its own meaning for the default balance and token usage the frozen interaction
+spec requires. No second wallet and no second allowlist are introduced: the
+paying balance resolves from the same Tenant wallet binding the debit already
+uses, and a Tenant without a payer is refused instead of being answered zero.
+The managed-Key issuance gap - non-empty model selections when the user API
+supplies no model-scope projection - was reproduced by the
 [November 5 check](status.md#existing-default-app-provisioning-closure-readback-2026-11-05)
-reproduces the latter through the actual Gateway user-API issuer and managed-Key
-owner: issuance succeeds externally, then the scope comparison leaves the order
-pending before Secret/binding delivery. Resolve each at its existing owner with
-its actual consumer; do not copy requested models into an unobserved effective
-scope, bypass authorization or add another wallet/Gateway allowlist. Verify
-non-empty selection and original-command recovery through the real issuer.
-The new-purchase source now consumes the Account policy; its installed adoption
-and eventual policy-owner migration remain below.
+through the actual Gateway user-API issuer and managed-Key owner: issuance
+succeeded externally, then the scope comparison left the order pending before
+Secret/binding delivery. That gap is closed at the source layer by
+[PR #1266](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1266):
+the Gateway issuer confirms a declared selection against the model catalog the
+issued Key reads for itself, refuses a model that Key may not use, and leaves an
+unreadable scope unresolved for the original command instead of settling it. No
+requested model is copied into an unobserved scope and no authorization is
+bypassed. Neither repair is installed adoption yet, and a live paid order with
+both repairs deployed remains unverified. The new-purchase source now consumes
+the Account policy; its installed adoption and eventual policy-owner migration
+remain below.
 
 The existing Default App still answers actual model turns and preserves its
 session/reply after page reload. This does not qualify a fresh unattended order

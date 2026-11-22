@@ -61,6 +61,38 @@ The `opl-native-stage3-1-1` Linux lane retains these receipts and archive.
 - `native/customer-foundry-2026-11-22-r14.json` (SHA-256 `0c5c43b719766126523c48600069db1eaba4c2162b2d5a0d1c0376cc90441249`)
 - `evidence/foundry-customer-delivery-2026-11-22.json`
 
+## Tenant payer balance for the purchase gate (2026-11-22)
+
+This change closes the first of the two bounded source gaps in
+[customer lifecycle convergence](roadmap.md#customer-lifecycle-owner-convergence).
+The Console purchase gate compared the quoted price against the caller's own
+Sub2API balance, while the accepted Workspace order is charged to the Tenant's
+paying account. A dedicated test account with no personal balance but a funded
+Tenant was therefore refused as "insufficient balance" for an order the Tenant
+could pay for.
+
+The gate now reads the Tenant's paying balance through a separate owner read
+(`GetTenantWallet` / `GET /api/v2/tenant/wallet`), bound to the same session and
+Tenant as the personal wallet read and authorized by the same `subject_bound`
+policy. The paying account resolves from the Tenant wallet binding the debit
+already uses, so no second wallet, no balance mirror and no second allowlist
+exist. A Tenant without a payer is refused with a precondition failure instead
+of being answered a zero balance, and a read that cannot resolve the payer is
+not an answer. The caller's personal wallet is untouched: the default balance
+and token usage the frozen interaction spec places on the logged-in user keep
+reading the logged-in user's own account.
+
+The owner-level reproduction over isolated PostgreSQL confirms the two wallet
+reads are different facts: the payer read returns the bound Tenant account and
+the personal read returns the caller's own, an unbound Tenant is refused, and
+an in-process call without the Console BFF peer never reaches the payer. The
+BFF route is proven over the real gRPC wire, including a fail-closed owner
+error. The browser lane proves the launch page reads the Tenant wallet and the
+account panel still reads the personal wallet. This is source behavior. It does
+not establish installed adoption, a live paid order, or that a funded Tenant
+balance survives the real Gateway's own balance rules; those stay open in the
+[roadmap](roadmap.md#customer-lifecycle-owner-convergence).
+
 ## Composed backend production switch (2026-11-21)
 
 On November 21, 2026, medopl TKE ran 11 Cloud owners in one

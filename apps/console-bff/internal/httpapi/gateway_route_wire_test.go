@@ -35,6 +35,7 @@ type gatewayOwnerServer struct {
 	bindingResponse        *api.UserExternalBindingReadback
 	bindingErr             error
 	walletRequest          *api.GetWalletRpcRequest
+	tenantWalletRequest    *api.GetTenantWalletRpcRequest
 	usageRequest           *api.GetUsageSummaryRpcRequest
 	modelRequest           *api.ListModelsRpcRequest
 	transactionsRequest    *api.ListWorkspaceTransactionsRpcRequest
@@ -67,6 +68,11 @@ func (s *gatewayOwnerServer) GetSelfUserExternalBinding(_ context.Context, r *ap
 func (s *gatewayOwnerServer) GetWallet(_ context.Context, r *api.GetWalletRpcRequest) (*api.Wallet, error) {
 	s.walletRequest = r
 	return &api.Wallet{Source: api.WalletSourceEnum_WALLET_SOURCE_ENUM_GATEWAY, Status: api.WalletStatusEnum_WALLET_STATUS_ENUM_AVAILABLE, BalanceUsdMicros: 12_500_000, Currency: api.WalletCurrencyEnum_WALLET_CURRENCY_ENUM_USD, FetchedAt: timestamppb.Now()}, nil
+}
+
+func (s *gatewayOwnerServer) GetTenantWallet(_ context.Context, r *api.GetTenantWalletRpcRequest) (*api.Wallet, error) {
+	s.tenantWalletRequest = r
+	return &api.Wallet{Source: api.WalletSourceEnum_WALLET_SOURCE_ENUM_GATEWAY, Status: api.WalletStatusEnum_WALLET_STATUS_ENUM_AVAILABLE, BalanceUsdMicros: 42_000_000, Currency: api.WalletCurrencyEnum_WALLET_CURRENCY_ENUM_USD, FetchedAt: timestamppb.Now()}, nil
 }
 
 func (s *gatewayOwnerServer) GetUsageSummary(_ context.Context, r *api.GetUsageSummaryRpcRequest) (*api.UsageSummary, error) {
@@ -169,6 +175,55 @@ func TestWalletAndModelRoutesTravelThroughTheBFFClientWire(t *testing.T) {
 		}
 	}
 	_ = identity
+}
+
+// TestTenantWalletRouteTravelsThroughTheBFFClientWire proves the Tenant's
+// paying balance reaches the Console over the real typed client wire, and that
+// it is a different read from the caller's personal wallet: the owner answers
+// it with its own method and its own balance.
+func TestTenantWalletRouteTravelsThroughTheBFFClientWire(t *testing.T) {
+	owner := &gatewayOwnerServer{}
+	client := dialGatewayOwner(t, owner)
+	tenantWalletIdentity := allowedIdentity()
+	tenantWalletIdentity.decision.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANTWALLET
+	tenantWalletIdentity.decision.AudienceOwner = api.OwnerEnum_OWNER_ENUM_GATEWAY
+	tenantWalletIdentity.decision.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: ptr("tenant-1")}
+
+	response := httptest.NewRecorder()
+	NewServer(client, tenantWalletIdentity).Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/tenant/wallet"))
+	if response.Code != http.StatusOK || owner.tenantWalletRequest == nil {
+		t.Fatalf("tenant wallet status=%d reachedOwner=%v body=%s", response.Code, owner.tenantWalletRequest != nil, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"balanceUSDMicros":"42000000"`) {
+		t.Fatalf("tenant wallet wire=%s", response.Body.String())
+	}
+	if owner.tenantWalletRequest.GetContext().GetSessionId() != owneridentity.SessionReference("session-1") {
+		t.Fatalf("owner tenant wallet context=%v", owner.tenantWalletRequest.GetContext())
+	}
+	// The personal wallet is a different read: it must not answer this route.
+	if owner.walletRequest != nil {
+		t.Fatal("the tenant wallet route reached the personal wallet read")
+	}
+}
+
+// TestTenantWalletRouteFailsClosedWhenTheGatewayOwnerIsAbsent proves an
+// unconfigured gateway owner is refused rather than answered with a fabricated
+// Tenant balance.
+func TestTenantWalletRouteFailsClosedWhenTheGatewayOwnerIsAbsent(t *testing.T) {
+	identity := allowedIdentity()
+	identity.decision.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANTWALLET
+	identity.decision.AudienceOwner = api.OwnerEnum_OWNER_ENUM_GATEWAY
+	identity.decision.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: ptr("tenant-1")}
+	client, err := clients.Dial(clients.Config{TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(client.Close)
+	response := httptest.NewRecorder()
+	NewServer(client, identity).Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/tenant/wallet"))
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
 }
 
 // TestWalletRouteFailsClosedWhenTheGatewayOwnerIsAbsent proves an unconfigured

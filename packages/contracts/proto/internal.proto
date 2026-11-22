@@ -2355,6 +2355,7 @@ service GatewayProductService {
  rpc ListWorkspaceTransactions(ListWorkspaceTransactionsRpcRequest) returns (WalletOperationPage);
  rpc GetWorkspaceTransactionTrend(GetWorkspaceTransactionTrendRpcRequest) returns (WorkspaceTransactionTrend);
  rpc GetWallet(GetWalletRpcRequest) returns (Wallet);
+ rpc GetTenantWallet(GetTenantWalletRpcRequest) returns (Wallet);
  rpc ListUsage(ListUsageRpcRequest) returns (UsagePage);
  rpc GetUsageSummary(GetUsageSummaryRpcRequest) returns (UsageSummary);
  rpc ListGatewayKeys(ListGatewayKeysRpcRequest) returns (GatewayKeyPage);
@@ -3463,6 +3464,7 @@ AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES = 153;
  AUTHORIZATION_ACTION_ENUM_READOPERATORRESOURCES = 165;
  AUTHORIZATION_ACTION_ENUM_LISTOPERATORDEPLOYMENTS = 166;
  AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACEACCESS = 167;
+ AUTHORIZATION_ACTION_ENUM_GETTENANTWALLET = 168;
 }
 
 enum ServiceIdentityEnum {
@@ -4699,3 +4701,9 @@ message ResolvedAgentCredential { string session_reference = 1; Session session 
 message ListAgentCredentialsRpcRequest { CallContext context = 1; }
 message AgentCredentialPage { repeated AgentCredential items = 1; }
 message RevokeAgentCredentialRpcRequest { CallContext context = 1; string credential_id = 2; }
+
+// GetTenantWalletRpcRequest reads the Tenant's own paying balance: the account
+// an accepted Workspace order is charged to. It is a different fact from the
+// caller's personal wallet, so it is a separate read rather than another
+// parameter on the personal one.
+message GetTenantWalletRpcRequest { CallContext context = 1; }
