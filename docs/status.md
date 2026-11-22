@@ -12,6 +12,7 @@ Scoped retained image-policy reconciliation: 2026-11-16 (retired routes and pres
 Scoped composed backend runtime gate: 2026-11-18 (automated runtime gate for the composed unit, not a production qualification)
 Scoped composed backend production switch: 2026-11-21 (Instance-owned deployment evidence for the composed unit, not a Product Release)
 Scoped customer-package delivery round: 2026-11-22 (Linux rehearsal, artifact identity and local no-charge deletion)
+Scoped customer purchase acceptance: 2026-11-22 (where the first paid order stops; protected readback and purchase-lane inventory, not a purchase)
 
 Each observation below retains its original source, run and environment; the
 reviewed source baseline does not requalify those receipts. The Workspace deletion
@@ -20,6 +21,56 @@ Instance installation and customer acceptance prove separate layers; none alone
 establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
+
+## Customer purchase acceptance: where it stops (2026-11-22)
+
+The owner's customer-lifecycle program has four stages. The two bounded Cloud
+source gaps are closed at the source layer
+([PR #1266](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1266),
+[PR #1267](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/1267)),
+and the Instance side was read through the protected channel. The purchase
+cannot start yet. This is where it stops.
+
+**What the protected readback shows.** The installed product is still Cloud
+`30ac77e376da0f4cd2819602edb74c532ca74a14`, so neither repair is in it. Two
+packages are sellable (`basic`, `pro`), each bound to a NativeCVM prepaid
+NodePool with 0 current replicas and a 50-replica ceiling. Fabric readiness is
+`serviceReady` and `cloudImagesReady` true but `workspaceImagesReady` false
+with `workspaceImageStatus=no_running_sample`. The configuration reconcile
+answers `fabric_identity_mismatch` at the `control_plane_identity` stage and
+the compute provider status answers `compute_probe_read_failed`. The effective
+model configuration is not observable from any install, deployment or state
+receipt, and no application runs.
+
+**No reusable paid Workspace exists.** Both existing Workspaces are
+`state=data_deleted`, expired with `renewalStatus=expired_unpaid`, their
+runtime suspended and their compute and storage absent (paid through
+2026-09-22 and 2026-09-29). The planned "reuse a paid Workspace for the
+per-version dialogue check" therefore has nothing to reuse: the first paid
+order has to be bought before that lane can start.
+
+**The purchase lane has no successful receipt.** The Instance protected
+`Cloud Business Qualification` workflow is the lane that performs one real
+Workspace purchase, and it has never produced a run. It requires the
+Candidate receipt, a successful Deployment Verification run for that exact
+Candidate, the external J0 READY receipt and the owner's typed confirmation.
+Its customer, plan, tenant and payer declarations are absent from the
+repository variables and from the `production` environment; organization-level
+declarations are not readable with the current token, so their presence needs
+the Instance owner's confirmation. The dedicated customer credentials do exist
+as protected secrets.
+
+**What the later lanes already prove.** `Workspace Special Chain Acceptance`
+has produced successful receipts, so the application entry and first reply
+path exists. `Workspace Application Preflight` has no successful run, which is
+consistent with the missing workspace image sample above.
+
+The order therefore stops at the stage that cannot be skipped: a purchase
+cannot be made against a product that does not contain the two repairs. The
+next step is the owner's merge of both pull requests, a Candidate from that
+exact head, the Instance install and verification, and then the protected
+purchase dispatch. Nothing here is a production mutation, and no real money
+has moved.
 
 ## Customer package delivery round on the Linux lane (2026-11-22)
 

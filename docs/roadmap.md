@@ -608,6 +608,17 @@ a declared model-configuration interface is refused before Secret handover,
 preserving its active binding and applied version. Source owner tests establish
 this ordering; they do not establish installed adoption.
 
+The protected purchase lane records where the customer order stops: the
+Instance `Cloud Business Qualification` workflow, which performs the one real
+Workspace purchase, has never produced a run, and the installed product is
+still Cloud `30ac77e3`. Both existing Workspaces are `data_deleted`, expired
+and runtime-suspended, so the planned reuse of a paid Workspace for the
+per-version dialogue check has nothing to reuse: the first paid order has to
+be bought before that lane can start. The application's entry and first reply
+path is proven by `Workspace Special Chain Acceptance`; the application
+preflight has no successful run. See
+[status](status.md#customer-purchase-acceptance-where-it-stops-2026-11-22).
+
 #### Workspace purchase eligibility adoption
 
 New-purchase source admission consumes the existing Account eligibility owner;
