@@ -299,7 +299,7 @@
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`createGatewayKey`, `getPersonalGatewayKey`, `getPersonalGatewayKeyUsageSummary`, `getSelfUserExternalBinding`, `getTenantWallet`, `getUsageSummary`, `getWallet`, `getWorkspaceTransactionTrend`, `listGatewayKeys`, `listModels`, `listPersonalGatewayGroups`, `listPersonalGatewayKeyUsage`, `listPersonalGatewayKeys`, `listRechargeRecords`, `listUsage`, `listWorkspaceTransactions`, `revealGatewayKey`, `revokeGatewayKey`
 
-**Session-only API（live session，不生成Tenant role规则）**：`getPersonalGatewayKey`, `getPersonalGatewayKeyUsageSummary`, `getSelfUserExternalBinding`, `getTenantWallet`, `getUsageSummary`, `getWallet`, `listPersonalGatewayGroups`, `listPersonalGatewayKeyUsage`, `listPersonalGatewayKeys`
+**Session-only API（live session，不生成Tenant role规则）**：`getPersonalGatewayKey`, `getPersonalGatewayKeyUsageSummary`, `getSelfUserExternalBinding`, `getUsageSummary`, `getWallet`, `listPersonalGatewayGroups`, `listPersonalGatewayKeyUsage`, `listPersonalGatewayKeys`
 
 **主实现表（字段唯一来源02，不在此复制字段定义）**：`gateway.identity_mappings`, `gateway.tenant_wallet_bindings`, `gateway.key_bindings`, `gateway.wallet_operations`
 
@@ -613,7 +613,7 @@
 
 **内部协议实现/协作端口**：`WorkspaceProductService.GetOperation`
 
-**前端消费API**：`acceptInvitation`, `bindTenantWallet`, `createTenant`, `getAdminTenant`, `getLoginContext`, `getOperation`, `getOperatorWorkspace`, `getPersonalGatewayKey`, `getPersonalGatewayKeyUsageSummary`, `getReceipt`, `getSelfUserExternalBinding`, `getSession`, `getTenant`, `getTenantWallet`, `getUsageSummary`, `getWallet`, `getWorkspaceFinancialReceipt`, `inviteMember`, `listAdminOperations`, `listAuditEvents`, `listInvitations`, `listMembers`, `listOperatorWorkspaces`, `listPersonalGatewayGroups`, `listPersonalGatewayKeyUsage`, `listPersonalGatewayKeys`, `listQualifications`, `listReceipts`, `login`, `logout`, `reconcileOperation`, `removeMember`, `revokeInvitation`, `updateMemberRole`
+**前端消费API**：`acceptInvitation`, `bindTenantWallet`, `createTenant`, `getAdminTenant`, `getLoginContext`, `getOperation`, `getOperatorWorkspace`, `getPersonalGatewayKey`, `getPersonalGatewayKeyUsageSummary`, `getReceipt`, `getSelfUserExternalBinding`, `getSession`, `getTenant`, `getUsageSummary`, `getWallet`, `getWorkspaceFinancialReceipt`, `inviteMember`, `listAdminOperations`, `listAuditEvents`, `listInvitations`, `listMembers`, `listOperatorWorkspaces`, `listPersonalGatewayGroups`, `listPersonalGatewayKeyUsage`, `listPersonalGatewayKeys`, `listQualifications`, `listReceipts`, `login`, `logout`, `reconcileOperation`, `removeMember`, `revokeInvitation`, `updateMemberRole`
 
 **验证**：
 - go -C apps/console-bff test ./...
@@ -716,7 +716,7 @@
 - 详情并列权益/资源/应用/资金结果，owner凭据一次性查看
 - 原资源adopt和已部署legacy应用有独立入口，不重购
 
-**前端消费API**：`adoptWorkspace`, `createQuote`, `createWorkspace`, `getCapabilityVersion`, `getDeployment`, `getOperation`, `getQuote`, `getSubscription`, `getWallet`, `getWorkspace`, `getWorkspaceAccess`, `getWorkspaceModels`, `listCapabilityVersions`, `listComputePlans`, `listDeployments`, `listModels`, `listRuntimeVersions`, `listStoragePlans`, `listWebuiVersions`, `listWorkspaceTransactions`, `listWorkspaces`, `revealWorkspaceApplicationCredentials`, `rollbackWorkspace`, `updateWorkspaceModels`, `updateWorkspaceVersion`
+**前端消费API**：`adoptWorkspace`, `createQuote`, `createWorkspace`, `getCapabilityVersion`, `getDeployment`, `getOperation`, `getQuote`, `getSubscription`, `getTenantWallet`, `getWorkspace`, `getWorkspaceAccess`, `getWorkspaceModels`, `listCapabilityVersions`, `listComputePlans`, `listDeployments`, `listModels`, `listRuntimeVersions`, `listStoragePlans`, `listWebuiVersions`, `listWorkspaceTransactions`, `listWorkspaces`, `revealWorkspaceApplicationCredentials`, `rollbackWorkspace`, `updateWorkspaceModels`, `updateWorkspaceVersion`
 
 **验证**：
 - npm run test:browser:workspace-lifecycle

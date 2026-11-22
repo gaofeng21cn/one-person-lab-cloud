@@ -19,12 +19,12 @@ import (
 // price against the personal balance decides on the wrong number, so the Tenant
 // read must resolve the tenant's own wallet binding.
 func TestTenantWalletReadsThePayingAccountInsteadOfThePersonalOne(t *testing.T) {
-	service, _, cookie, console, _ := coordinationSystem(t, &gatewayWalletStub{})
+	service, db, cookie, console, _ := coordinationSystem(t, &gatewayWalletStub{})
 	if _, err := console.BindWallet(t.Context(), &api.WalletBindingCommand{Context: platformCaller("bind", cookie), TargetTenantId: "tenant-coord", BillingSub2ApiUserId: "77", AuthorizationReceiptId: "auth-receipt-1"}); err != nil {
 		t.Fatalf("bind wallet: %v", err)
 	}
 	peerCtx := ownerservice.WithPeerOwner(t.Context(), owneridentity.ConsoleBFF)
-	call := &api.CallContext{SessionId: proto.String(owneridentity.SessionReference(cookie))}
+	call := tenantWalletCaller(cookie)
 
 	tenantWallet, err := service.GetTenantWallet(peerCtx, &api.GetTenantWalletRpcRequest{Context: call})
 	if err != nil {
@@ -44,6 +44,27 @@ func TestTenantWalletReadsThePayingAccountInsteadOfThePersonalOne(t *testing.T) 
 	if personal.GetBalanceUsdMicros() == tenantWallet.GetBalanceUsdMicros() {
 		t.Fatalf("the tenant read answered the personal account: %v", personal)
 	}
+
+	call.Scope.GetTenant().TenantId = "different-tenant"
+	if _, err := service.GetTenantWallet(peerCtx, &api.GetTenantWalletRpcRequest{Context: call}); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("cross-tenant wallet err=%v want permission denied", err)
+	}
+	call.Scope.GetTenant().TenantId = "tenant-coord"
+	for _, role := range []string{"owner", "member"} {
+		if _, err := db.ExecContext(t.Context(), `UPDATE tenant.tenant_members SET role=$1 WHERE actor_id='101'`, role); err != nil {
+			t.Fatal(err)
+		}
+		wallet, err := service.GetTenantWallet(peerCtx, &api.GetTenantWalletRpcRequest{Context: call})
+		if role == "owner" && (err != nil || wallet.GetBalanceUsdMicros() != tenantWallet.GetBalanceUsdMicros()) {
+			t.Fatalf("owner wallet=%v err=%v", wallet, err)
+		}
+		if role == "member" && status.Code(err) != codes.PermissionDenied {
+			t.Fatalf("member wallet=%v err=%v want permission denied", wallet, err)
+		}
+	}
+	if wallet, err := service.GetWallet(peerCtx, &api.GetWalletRpcRequest{Context: call}); err != nil || wallet.GetBalanceUsdMicros() != personal.GetBalanceUsdMicros() {
+		t.Fatalf("member personal wallet=%v err=%v", wallet, err)
+	}
 }
 
 // TestTenantWalletRefusesATenantWithoutAPayer proves the read never invents a
@@ -52,7 +73,7 @@ func TestTenantWalletReadsThePayingAccountInsteadOfThePersonalOne(t *testing.T) 
 func TestTenantWalletRefusesATenantWithoutAPayer(t *testing.T) {
 	service, _, cookie, _, _ := coordinationSystem(t, &gatewayWalletStub{})
 	peerCtx := ownerservice.WithPeerOwner(t.Context(), owneridentity.ConsoleBFF)
-	call := &api.CallContext{SessionId: proto.String(owneridentity.SessionReference(cookie))}
+	call := tenantWalletCaller(cookie)
 	if _, err := service.GetTenantWallet(peerCtx, &api.GetTenantWalletRpcRequest{Context: call}); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("err=%v want the unbound tenant refused", err)
 	}
@@ -66,8 +87,15 @@ func TestTenantWalletNeedsTheConsoleBFFPeer(t *testing.T) {
 	if _, err := console.BindWallet(t.Context(), &api.WalletBindingCommand{Context: platformCaller("bind", cookie), TargetTenantId: "tenant-coord", BillingSub2ApiUserId: "77", AuthorizationReceiptId: "auth-receipt-1"}); err != nil {
 		t.Fatalf("bind wallet: %v", err)
 	}
-	call := &api.CallContext{SessionId: proto.String(owneridentity.SessionReference(cookie))}
+	call := tenantWalletCaller(cookie)
 	if _, err := service.GetTenantWallet(t.Context(), &api.GetTenantWalletRpcRequest{Context: call}); err == nil {
 		t.Fatal("an unauthenticated in-process call reached the tenant payer")
+	}
+}
+
+func tenantWalletCaller(cookie string) *api.CallContext {
+	return &api.CallContext{
+		RequestId: "tenant-wallet-read", ActorId: "101", SessionId: proto.String(owneridentity.SessionReference(cookie)),
+		Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-coord"}}},
 	}
 }

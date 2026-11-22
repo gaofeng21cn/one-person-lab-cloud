@@ -53,7 +53,6 @@ func operationOwnerAudience(owner api.OwnerEnum) bool {
 func personalGatewayAction(action api.AuthorizationActionEnum) bool {
 	switch action {
 	case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET,
-		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANTWALLET,
 		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETUSAGESUMMARY,
 		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYKEYS,
 		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPERSONALGATEWAYKEY,

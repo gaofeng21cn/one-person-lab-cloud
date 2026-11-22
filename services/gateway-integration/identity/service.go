@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	api "opl-cloud/packages/contracts/go/api"
@@ -366,16 +367,30 @@ func (s *Service) GetTenantWallet(ctx context.Context, r *api.GetTenantWalletRpc
 	if err := peer(ctx, owneridentity.ConsoleBFF); err != nil {
 		return nil, err
 	}
-	if r == nil || r.GetContext() == nil || r.GetContext().GetSessionId() == "" {
-		return nil, status.Error(codes.Unauthenticated, "active Cloud session required")
+	call := r.GetContext()
+	if call == nil || call.GetSessionId() == "" || call.GetAcceptedOperationGrantId() != "" {
+		return nil, denied()
 	}
-	out, _, _, err := s.session(ctx, r.GetContext().GetSessionId())
+	session, _, _, err := s.session(ctx, call.GetSessionId())
 	if err != nil {
 		return nil, err
 	}
-	tenantID := strings.TrimSpace(out.GetTenantId())
-	if tenantID == "" {
-		return nil, status.Error(codes.FailedPrecondition, "the session carries no tenant")
+	tenantID := session.GetTenantId()
+	if tenantID == "" || session.GetActorId() != call.GetActorId() || !scopeMatchesSession(session, call.GetScope()) {
+		return nil, denied()
+	}
+	request := &api.AuthorizationRequest{
+		Scope: call.GetScope(), ActorId: call.GetActorId(), SessionId: call.SessionId,
+		AudienceOwner: api.OwnerEnum_OWNER_ENUM_GATEWAY,
+		Action:        api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANTWALLET,
+		Resource:      &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: proto.String(tenantID)},
+		RequestId:     call.GetRequestId(),
+	}
+	if call.GetAuthorizationContextId() != "" {
+		request.AuthorizationContextId = proto.String(call.GetAuthorizationContextId())
+	}
+	if err = s.authorizeInternal(ctx, owneridentity.Gateway.Service(), request); err != nil {
+		return nil, err
 	}
 	if s.GatewayStore == nil {
 		return nil, status.Error(codes.Unavailable, "Gateway wallet persistence is not configured")

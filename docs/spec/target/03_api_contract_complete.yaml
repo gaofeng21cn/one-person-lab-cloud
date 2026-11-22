@@ -3000,7 +3000,8 @@ paths:
       - F14
       x-owner: gateway
       x-permission:
-      - authenticated
+      - admin
+      - owner
       x-tables: []
       responses:
         '200':
@@ -3031,6 +3032,8 @@ paths:
         '429':
           $ref: '#/components/responses/ErrorResponse'
         '500':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
           $ref: '#/components/responses/ErrorResponse'
   /api/v2/usage:
     get:
