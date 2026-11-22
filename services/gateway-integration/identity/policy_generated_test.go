@@ -64,7 +64,7 @@ func TestGeneratedPolicyCoversAssignedOwners(t *testing.T) {
 		api.OwnerEnum_OWNER_ENUM_SERVE:            7,
 		api.OwnerEnum_OWNER_ENUM_WORKSPACE:        20,
 		api.OwnerEnum_OWNER_ENUM_FABRIC:           1,
-		api.OwnerEnum_OWNER_ENUM_GATEWAY:          9,
+		api.OwnerEnum_OWNER_ENUM_GATEWAY:          10,
 		api.OwnerEnum_OWNER_ENUM_LEDGER:           4,
 	} {
 		if counts[owner] != want {
@@ -110,6 +110,11 @@ func TestGeneratedPolicyAudienceAndRoles(t *testing.T) {
 	access := policyFor(t, "GETWORKSPACEACCESS")
 	if access.owner != api.OwnerEnum_OWNER_ENUM_SERVE || len(access.roles) != 1 || access.roles[0] != "member" {
 		t.Fatalf("GETWORKSPACEACCESS is %v/%v, expected the serve access owner", access.owner, access.roles)
+	}
+	wallet := policyFor(t, "GETTENANTWALLET")
+	if wallet.owner != api.OwnerEnum_OWNER_ENUM_GATEWAY || permitted(wallet, "member", false) ||
+		!permitted(wallet, "admin", false) || !permitted(wallet, "owner", false) {
+		t.Fatalf("GETTENANTWALLET is %v/%v, expected the Gateway owner and admin read", wallet.owner, wallet.roles)
 	}
 	// The invitee-bound operation is deliberately not a grantable role row.
 	if _, ok := actions[api.AuthorizationActionEnum(api.AuthorizationActionEnum_value["AUTHORIZATION_ACTION_ENUM_ACCEPTINVITATION"])]; ok {
