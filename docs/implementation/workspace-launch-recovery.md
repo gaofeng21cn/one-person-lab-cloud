@@ -346,24 +346,6 @@ and status must agree; ownership-pending is Compute-only and image-revision
 pending is Runtime-only. Non-ready observations carry no canonical facts.
 Named string types do not validate untrusted serialized bytes by themselves.
 
-The operator canonical-fact repair is paid by a specific persisted-row defect:
-schema 3, `debit/manual_review`, no forbidden legacy field, and exactly one
-missing canonical fact, `specDigest`. Fabric reads the persisted preflight
-binding rather than resolving the current plan or invoking a provider. Control
-Plane matches Launch/account/Workspace/package/size/image/request/provider
-identities, adds only `specDigest` and the next version, and requires strict
-decode plus an exact two-field semantic diff.
-
-The preview digest binds prior bytes, version, Fabric evidence and proposed
-change. Apply regenerates the preview, requires the exact version/digest,
-reason and idempotency key, then commits row CAS and deterministic operator
-audit atomically. Drift, identity mismatch or audit conflict has no partial
-write; exact replay returns the same repaired result and audit. This operation
-does not clear manual review, resume Launch, change billing, create resources or
-relax the decoder. The current route and implementation are in
-[`workspace_launch_canonical_fact_repair.go`](../../services/control-plane/internal/server/workspace_launch_canonical_fact_repair.go)
-and [`routes_admin.go`](../../services/control-plane/internal/server/routes_admin.go).
-
 ## Redacted Diagnostics
 
 Operator health publishes `workspaceLaunchOperationDiagnostics` separately from
