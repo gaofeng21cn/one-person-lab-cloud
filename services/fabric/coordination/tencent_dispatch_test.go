@@ -123,10 +123,6 @@ func (p *fakeTencentProvider) SyncStorageVolume(_ context.Context, volume fabric
 	return volume, nil
 }
 
-func (p *fakeTencentProvider) ReadStorageVolume(_ context.Context, volume fabric.StorageVolume) (fabric.StorageVolume, error) {
-	return volume, nil
-}
-
 func (p *fakeTencentProvider) CreateStorageAttachment(_ context.Context, input fabric.StorageAttachmentInput, compute fabric.ComputeAllocation, volume fabric.StorageVolume) (fabric.StorageAttachment, error) {
 	p.mu.Lock()
 	p.attachCalls++
@@ -149,6 +145,31 @@ func (p *fakeTencentProvider) CreateWorkspaceRuntime(context.Context, fabric.Wor
 	p.deployCalls++
 	p.mu.Unlock()
 	return fabric.WorkspaceRuntime{}, fmt.Errorf("dispatcher_deployed_application")
+}
+
+type pendingStorageReadbackProvider struct {
+	*fakeTencentProvider
+	bound bool
+}
+
+func (p *pendingStorageReadbackProvider) CreateStorageVolume(ctx context.Context, input fabric.StorageVolumeInput) (fabric.StorageVolume, error) {
+	volume, err := p.fakeTencentProvider.CreateStorageVolume(ctx, input)
+	volume.Status = "pending"
+	return volume, err
+}
+
+func (p *pendingStorageReadbackProvider) SyncStorageVolume(_ context.Context, volume fabric.StorageVolume) (fabric.StorageVolume, error) {
+	if p.bound {
+		volume.Status = "ready"
+	}
+	return volume, nil
+}
+
+func (p *pendingStorageReadbackProvider) CreateStorageAttachment(ctx context.Context, input fabric.StorageAttachmentInput, compute fabric.ComputeAllocation, volume fabric.StorageVolume) (fabric.StorageAttachment, error) {
+	if volume.Status != "ready" {
+		return fabric.StorageAttachment{}, fmt.Errorf("storage_readback_not_applied")
+	}
+	return p.fakeTencentProvider.CreateStorageAttachment(ctx, input, compute, volume)
 }
 
 func (p *fakeTencentProvider) DestroyWorkspaceRuntime(context.Context, string) (fabric.WorkspaceRuntime, error) {
@@ -228,6 +249,50 @@ func TestTencentDispatcherConfirmsPrepaidMonthlyResourcesAndNetworkPlacement(t *
 		if key != intent.OperationID+":storage" {
 			t.Fatalf("storage key changed across attempts: %v", provider.storageKeys)
 		}
+	}
+}
+
+func TestTencentDispatcherPersistsBoundStorageBeforeAttachment(t *testing.T) {
+	ctx := context.Background()
+	provider := &pendingStorageReadbackProvider{fakeTencentProvider: newFakeTencentProvider()}
+	store := fabric.NewMemoryOperationStore()
+	service := fabric.NewServiceWithOperationStore(provider, store)
+	dispatcher := NewTencentDispatcher(service, provider)
+	intent := tencentIntent("op-storage-readback")
+	for attempt := 0; ; attempt++ {
+		result, err := dispatcher.EnsureResources(ctx, intent)
+		if result != nil || !errors.Is(err, errResourceDispatchPending) {
+			t.Fatalf("dispatch before the PVC binds = %v, %v", result, err)
+		}
+		if _, found := service.GetStorageVolume(ctx, intent.StorageID); found {
+			break
+		}
+		if attempt == 99 {
+			t.Fatal("dispatch never created the pending volume")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if provider.attachCalls != 0 {
+		t.Fatalf("attachment attempted before the PVC bound: %d calls", provider.attachCalls)
+	}
+
+	provider.bound = true
+	result := dispatchUntilConfirmed(t, dispatcher, intent)
+	if result.Storage.Status != "ready" {
+		t.Fatalf("storage status=%q, want ready", result.Storage.Status)
+	}
+	if result.Attachment.Status != "attached" {
+		t.Fatalf("attachment status=%q, want attached", result.Attachment.Status)
+	}
+	// A completed coordination operation is not dispatched again after restart.
+	// The runtime's volume lookup must recover the ready state from the journal.
+	restarted := fabric.NewServiceWithOperationStore(provider, store)
+	stored, ok := restarted.GetStorageVolume(ctx, result.Storage.ID)
+	if !ok || stored.Status != "ready" || stored.ProviderResourceID != result.Storage.ProviderResourceID {
+		t.Fatalf("replayed storage=%+v, found=%v, want the same ready volume", stored, ok)
+	}
+	if provider.storageCalls != 1 || provider.attachCalls != 1 {
+		t.Fatalf("provider calls = %d storage, %d attachment, want one each", provider.storageCalls, provider.attachCalls)
 	}
 }
 
