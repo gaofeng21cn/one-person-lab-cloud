@@ -5,11 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
+	"opl-cloud/services/control-plane/internal/controlplane"
 	"opl-cloud/services/control-plane/internal/domain/application"
 )
 
@@ -210,4 +212,93 @@ func seedWorkspaceApplicationDeploymentIntentForTest(t *testing.T, store control
 	if err := store.SaveWorkspace(ctx, workspace); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// seedResourceOnlyActivatedWorkspace stores a Workspace whose Launch reached a
+// succeeded, resource-bound state. It seeds the accepted Launch history, not an
+// application deployment: the deployment execution engine is retired, so the
+// retained readers project this Workspace from its Launch operation alone.
+func seedResourceOnlyActivatedWorkspace(t *testing.T, store controlPlaneTableStore, operationID, workspaceID string) {
+	t.Helper()
+	command := workspaceLaunchResourceOnlyUnitCommand()
+	command.OperationID, command.AccountID, command.WorkspaceID = operationID, "acct-alpha", workspaceID
+	operation, err := newWorkspaceLaunchFixtureOperation(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := operation.stagePlan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stage := range plan[:len(plan)-1] {
+		operation.Stage = stage
+		facts := workspaceLaunchReadyFacts(stage)
+		for key, value := range map[string]any{"computeAllocationId": "compute-alpha", "storageId": "storage-alpha", "attachmentId": "attachment-alpha", "attachmentBindingRef": operation.ID + ":attachment", "receiptOperationId": operation.ID + ":purchase-receipt"} {
+			if _, ok := facts[key]; ok {
+				facts[key] = value
+			}
+		}
+		observation, err := reduceWorkspaceLaunchStageObservation(&operation, workspaceLaunchStageObservation{State: workspaceLaunchStageReady, Facts: facts})
+		if err != nil {
+			t.Fatalf("seed stage %s: %v", stage, err)
+		}
+		attempt := operation.Attempts[stage]
+		attempt.Attempted, attempt.Confirmed, attempt.Status = 1, 1, "confirmed"
+		attempt.IdempotencyKey = workspaceLaunchStageIdempotencyKey(operation, 1)
+		operation.Attempts[stage], operation.Observations[stage] = attempt, observation
+	}
+	operation.Stage, operation.Status = contracts.StageSucceeded, contracts.StatusSucceeded
+	periodStart, paidThrough := workspaceFixtureCurrentBillingPeriod(time.Now(), 12)
+	for key, value := range map[string]any{
+		"paidThrough": paidThrough.Format(time.RFC3339Nano), "periodStart": periodStart.Format(time.RFC3339Nano), "billingAnchorDay": 12,
+	} {
+		operation.raw[key], _ = json.Marshal(value)
+	}
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustStore(t, store.SaveRuntimeOperation(context.Background(), row))
+	workspace, err := workspaceLaunchActivationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustStore(t, store.SaveWorkspace(context.Background(), workspace))
+}
+
+// knowledgeApplicationRevisionForTest is the admitted revision the retained
+// history readers project.
+func knowledgeApplicationRevisionForTest() contracts.WorkspaceApplicationRevision {
+	return contracts.WorkspaceApplicationRevision{
+		SchemaVersion: 1, ApplicationID: "knowledge-app", Version: "1.0.0", Platform: "linux/amd64",
+		Image:     "repo.example/apps/knowledge@sha256:" + strings.Repeat("a", 64),
+		Ports:     []contracts.WorkspaceApplicationPort{{Name: "http", Port: 8080, Protocol: "TCP"}},
+		EntryPort: "http", ExposurePolicy: "application",
+	}
+}
+
+// createKnowledgeDeploymentForTest stores one accepted knowledge-application
+// deployment intent. The deployment execution engine is retired, so the intent
+// is seeded directly and only the retained readers project it.
+func createKnowledgeDeploymentForTest(t *testing.T, app *controlPlaneServer, mutationKey string) workspaceApplicationDeploymentIntent {
+	t.Helper()
+	revision := knowledgeApplicationRevisionForTest()
+	intent := applicationDeploymentFixtureForTest(t, app, "ws-alpha", mutationKey, revision)
+	intent.Configuration = contracts.WorkspaceApplicationRuntimeConfiguration{Environment: map[string]string{"CONFIG": strings.Repeat("c", 64)}}
+	intent = seedAcceptedApplicationDeploymentForTest(t, app, intent)
+	return intent
+}
+
+// applicationDeploymentWorkerFixture builds the retained server and one accepted
+// deployment intent whose history the operator route projects.
+func applicationDeploymentWorkerFixture(t *testing.T, store controlPlaneTableStore, service *controlplane.Service) (*controlPlaneHTTPHandler, string) {
+	t.Helper()
+	server, err := NewPersistentServer(service, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedResourceOnlyActivatedWorkspace(t, store, "workspace-launch-alpha", "ws-alpha")
+	handler := server.(*controlPlaneHTTPHandler)
+	intent := createKnowledgeDeploymentForTest(t, handler.app, "deploy-worker")
+	return handler, intent.OperationID
 }

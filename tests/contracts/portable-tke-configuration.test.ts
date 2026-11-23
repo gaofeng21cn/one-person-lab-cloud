@@ -152,7 +152,6 @@ test("managed-TKE deployment explicitly enables the Workspace progression worker
   };
   for (const name of [
     "OPL_WORKSPACE_LAUNCH_WORKER_ENABLED",
-    "OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED",
     "OPL_MONTHLY_BILLING_WORKER_ENABLED"
   ]) {
     assert.equal(overlayEnvironment[name], "1", `${name} must be declared by the managed-TKE deployment overlay`);
@@ -199,7 +198,6 @@ test("managed-TKE portable bundle resolves the runtime inputs and fails closed w
       assert.ok(!("TENCENTCLOUD_SECRET_KEY" in service.environment), `${serviceName} must not receive provider credentials`);
     }
     assert.equal(controlPlaneEnvironment.OPL_WORKSPACE_LAUNCH_WORKER_ENABLED, "1");
-    assert.equal(controlPlaneEnvironment.OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED, "1");
     assert.equal(controlPlaneEnvironment.OPL_MONTHLY_BILLING_WORKER_ENABLED, "1");
     for (const [name, value] of Object.entries(releaseIdentity)) {
       assert.equal(controlPlaneEnvironment[name], value, `${name} must reach the managed workers unchanged`);

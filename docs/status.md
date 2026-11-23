@@ -1217,11 +1217,13 @@ chain and exclusion of a newer, unselected candidate.
 Accepted rotation recovery no longer uses the selected deployment's frozen
 configuration and the separate replacement-Secret path; both leave with the
 rotation command. Original Launch Key
-creation and renewal convergence retain their actual service callers. Shared
-deployment worker, activation/current-selection writers, historical decoders and
-persisted records remain. Source caller absence for
-this removed bootstrap does not establish a production zero-traffic interval,
-archive clearance or retirement of the shared engine. Local verification and
+creation and renewal convergence retain their actual service callers. The shared
+deployment engine is retired with R1e: its write driver, worker registration,
+activation mutation and exclusive configuration are removed, and no production
+creator remained. Its historical decoders and persisted records stay. Source
+caller absence for
+this removed bootstrap does not establish a production zero-traffic interval or
+archive clearance. Local verification and
 current-revision CI results belong to the source PR; no Candidate publication,
 Instance deployment or production mutation is included.
 
@@ -1238,9 +1240,7 @@ The R1b source withdrawal based on `b758b8f1ab1b634e27989d8a9ace78224230baaa`
 removes the default installer, customer installation-resume route/controller,
 Launch-replay installation side effects, worker scan and final revision-admission
 store mutation. Original request/revision records remain readable for history,
-original-order matching, credential lineage and Secret cleanup. This does not
-retire the shared deployment engine: accepted credential deployments still need
-its worker, configuration and activation writers. The operator retry that
+original-order matching, credential lineage and Secret cleanup. The operator retry that
 continued an existing frozen operation under reservation, selection/version,
 entitlement and rotation-parent checks has left with the rotation command.
 Native Runtime Release, Workspace and
@@ -1262,6 +1262,36 @@ absent. The overall readback remains `partial` because two legacy runtime-health
 summary reads returned HTTP 503; CP provenance itself was available. All three
 mutation counters are zero. This is a scoped historical disposition basis,
 not deployment evidence for the source withdrawals or a global zero-traffic claim.
+
+## Shared deployment engine retirement, R1e (2026-11-24)
+
+The R1e source change based on `c3088116991a896066ee34c35867b56008df6c8d`
+removes the shared deployment engine's write driver, its worker registration in
+`server.go`, its activation mutation, its operation-progress CAS store and its
+exclusive configuration `OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED`,
+together with the Compose, portable and owner-topology declarations and the
+worker-exclusive tests.
+
+The engine had no production creator. Operator revision/data admission (R1a),
+default-install execution and the customer installation command (R1b), the
+generic deployment builder (R1d) and the Workspace-Key rotation path that could
+have produced a `workspace.application.deploy` operation are all gone, so the
+engine could only advance an already accepted historical intent. No accepted
+customer operation, financial obligation or provider resource is left without
+an owner by this removal.
+
+The persisted intent, the version/binding/lineage decoders, the historical read
+routes and the persisted `application_binding`,
+`application_binding_version`, `current_application_deployment_id`,
+`workspace_api_key_id` and `reserved_application_deployment_id` columns remain.
+Those four written columns keep their values and now have no production writer;
+their readers still project an accepted deployment.
+
+This is a source-layer retirement. It does not establish an installed
+observation, a Candidate publication, an Instance deployment or a production
+mutation. The next protected observation must confirm that no accepted
+`workspace.application.deploy` operation remains in a non-terminal phase that
+the retired engine was advancing.
 
 The current protected observation's old deployment `manual_review` and two refund
 `blocked` records do not belong to #1018's three closed original orders. They are

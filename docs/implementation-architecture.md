@@ -671,25 +671,26 @@ order reads its accepted identity without preparing another Key or starting an
 installation. Retained full Launch commands keep their own original stages and
 immutable receipts; native purchases use Workspace and Serve.
 
-The retained application worker consumes frozen accepted commands and existing
-Workspace resources. CP keeps selected and reserved deployment IDs only on its
-retained Workspace row; native selection belongs to Serve. It validates real
-configuration and Secret bindings, then asks Fabric to preflight the frozen target before suspending its predecessor. The
-worker creates the new runtime generation, waits for current component and
-entry readback, atomically switches the selection and operation phase, retires
-the exact predecessor, and writes the deployment receipt. There is one selected
-application per Workspace, including all of that application's dependency
-components. Replacement preserves compute, storage, attachment, entitlement and
-original purchase facts. Workspace/operation transactions and result CAS prevent
-a competing command or a delayed worker response from overwriting selection or
-completed progress. A successor does not create resources or charge the wallet.
+The shared deployment engine is retired. It had no production creator: the
+operator admission, the customer installation command, the generic deployment
+builder and the Workspace-Key rotation path that could have produced a
+`workspace.application.deploy` operation are all gone, so the engine could only
+ever advance an already accepted historical intent. Its write driver, its worker
+registration, its activation mutation and its exclusive configuration are
+removed. CP keeps selected and reserved deployment IDs only on its retained
+Workspace row; native selection belongs to Serve. The persisted intent, its
+version and binding decoders and the historical read routes remain: they
+describe an accepted deployment's state, they do not advance one.
 
-`OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED=1` enables deployment
-recovery for already accepted credential deployments. It no longer recovers a
-Workspace-Key rotation: no rotation can be started, and an accepted rotation is
-no longer turned into a deployment operation. It no longer scans or advances
-default-install requests. The base Compose forwards this
-setting; the local Workspace overlay enables it. Operator revision/data admission,
+The persisted `application_binding`, `application_binding_version`,
+`current_application_deployment_id` and `workspace_api_key_id` columns keep
+their values and now have no production writer. Their readers — the retained
+selection, access, secret-cleanup and deletion fences — still project an
+accepted deployment, so the columns and the historical rows stay.
+
+`OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED` is retired with the
+engine; no source reads it and no deployment declares it. Operator revision/data
+admission,
 new deployment commands and customer `application-installation/resume` have been
 removed with their Console mutation controls. Revision admission storage has no
 remaining production writer. Of the historical reads in
@@ -1612,7 +1613,7 @@ operations, data or financial evidence.
 | Fact/capability | Current owner and new caller | Retained writer/caller and object boundary | Review disposition |
 | --- | --- | --- | --- |
 | Fresh purchase | Resource Catalog creates the quote; Workspace accepts the order through BFF `/api/v2/quotes` and `/api/v2/workspaces`; UI `createWorkspaceQuote` and Instance `cloud-workspace-launch-readback.mjs` use those routes | CP `POST /api/workspace-launches` only replays an existing account/key-bound operation, otherwise refuses before pricing/payment/provider/persistence. PR #1061 already removed `createWorkspaceLaunch` and fresh-create claim machinery | Already removed; do not implement another fence or preserve a creator for tests |
-| Application revision, deployment and current selection | Runtime Control supplies approved default-App releases; Capability/Build supplies Agent descriptors; Workspace calls Serve Reserve/Deploy. BFF `serve_update.go` delegates version updates to Serve | R1a/R1b remove CP operator admission/new deployments, default installer and Console commands; R1d removes the generic deployment builder. No Key rotation can create a same-selection child; accepted deployments retain the shared worker and activation. Claim/activation requires a retained CP Workspace row and binding/predecessor checks. Instance #674 removes the installer caller at source | R1: retire the legacy deployment capability after caller/accepted-operation disposition; no proof of a duplicate native writer follows from old columns |
+| Application revision, deployment and current selection | Runtime Control supplies approved default-App releases; Capability/Build supplies Agent descriptors; Workspace calls Serve Reserve/Deploy. BFF `serve_update.go` delegates version updates to Serve | R1a/R1b remove CP operator admission/new deployments, default installer and Console commands; R1d removes the generic deployment builder. No Key rotation can create a same-selection child; R1e retires the shared worker, its activation mutation and its exclusive configuration; no production creator remained. The persisted intent, its decoders and the historical read routes stay. The retained columns keep their values and have no production writer. Instance #674 removes the installer caller at source | R1: retire the legacy deployment capability after caller/accepted-operation disposition; no proof of a duplicate native writer follows from old columns |
 | Application credentials, runtime maintenance and image policy | Workspace/Serve reveal the exact current ready runtime's credentials; Serve owns approved version replacement/readiness/access | CP credential reveal and original Launch repair remain; R2a removes password-rotation creation. R2c removes CP image replacement creation/preview/dispatch/retry worker with Console/BFF callers; the direct persisted-policy read, operation decoders and safety barriers remain. Merged #1177/#1179 withdrew the policy activation command and its orphan store; original Launch replay keeps its frozen image authorization | R2: Instance #675 caller withdrawal is MERGED, CI 2/2 SUCCESS; Cloud entrypoint-removal adoption remains unproven; check in-flight legacy executions before that adoption. Accepted credential deployments retain recovery; native reveal/update does not establish legacy command parity |
 | Workspace managed Key | Workspace coordinates intent through Gateway Integration; external Gateway owns effective Key/Group state | R3a removes CP fresh rotation acceptance and its store claim. The original POST resumed only an existing account/Workspace/request-bound rotation and is no longer registered; retained Launch Key stages remain, and accepted rotations stay readable as history. This is distinct from personal user Key CRUD | R3: finish original-operation disposition before removing recovery, deployment binding and lineage consumers; native disable/reveal is not replacement-Key rotation |
 | Personal Gateway Keys, account activation and wallet administration | Gateway Integration owns Cloud mappings; Sub2API remains Key/wallet truth. Cloud activation still has an original-owner BFF bridge | CP user-Key routes, delegated user identity, activation/admin commands and recovery remain separate capabilities; Cloud browser guards do not remove backend entrypoints | R4: identify which public/admin capabilities are still required before choosing withdrawal or migration; no blanket Gateway or Account file deletion |
@@ -1673,18 +1674,21 @@ parent's Gateway Secret and credential version. It leaves with the rotation
 command, so no child constructor remains. Historical fixtures seed
 accepted commands rather than retaining a production creator for tests.
 
-The shared deployment engine still resumes accepted password-change deployments.
-The Workspace-Key rotation service in `workspace_application_access.go` leaves
-with the rotation command.
+The shared deployment engine is retired with the **R1e** slice. It had no
+production creator: the operator admission, the customer installation command,
+the generic deployment builder and the Workspace-Key rotation path that could
+have produced a `workspace.application.deploy` operation are all gone. The
+removal takes the writer/driver parts of
+`workspace_application_deployment_driver.go`, deployment-worker startup in
+`server.go`, `OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED` and its
+portable/local declarations, with the exclusive worker tests. The binding and
+generation decoders, the persisted columns and the historical read routes stay:
+they describe an accepted deployment's state rather than advancing one. The
+Workspace-Key rotation service in `workspace_application_access.go` left with
+the rotation command.
 R2a removes the password successor creator, its customer route and direct old-Runtime
 Fabric/receipt orchestration, with the Console mutation action and exclusive types.
-Its worker, activation store, configuration and current/reserved writers remain until R2/R3
-withdrawal or caller migration. Their future removal includes the writer/driver
-parts of `workspace_application_deployment_driver.go`, deployment-worker startup
-in `server.go`, `OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED` and its
-portable/local declarations. Preserve binding/generation and revision decoders
-while historical reads or cleanup consume them; do not drop persisted columns
-or rewrite schema history merely to remove writers.
+Its activation store and current/reserved writers leave with the retired engine.
 
 **R2 — retained runtime/image/credential maintenance.**
 The first slice, **R2a**, withdraws password-rotation creation. It removes

@@ -190,7 +190,6 @@ func TestWorkspaceOriginConfinesApplicationResponseCookies(t *testing.T) {
 func TestWorkspaceApplicationOriginOwnsItsHost(t *testing.T) {
 	t.Setenv("OPL_WORKSPACE_DOMAIN", "workspace.example")
 	t.Setenv("OPL_WORKSPACE_APPLICATION_DOMAIN", "application.example")
-	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
 	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
 	app := fixture.server.(*controlPlaneHTTPHandler).app
 	seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "knowledge-app", true)
@@ -214,7 +213,6 @@ func TestWorkspaceApplicationOriginOwnsItsHost(t *testing.T) {
 func TestWorkspaceApplicationOriginRetiresASupersededApplication(t *testing.T) {
 	t.Setenv("OPL_WORKSPACE_DOMAIN", "workspace.example")
 	t.Setenv("OPL_WORKSPACE_APPLICATION_DOMAIN", "application.example")
-	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
 	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
 	app := fixture.server.(*controlPlaneHTTPHandler).app
 	seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "knowledge-app", true)
@@ -299,7 +297,6 @@ func TestWorkspaceExternalOriginIsOneInstallationFact(t *testing.T) {
 func TestWorkspaceApplicationOriginServesItsReadyApplication(t *testing.T) {
 	t.Setenv("OPL_WORKSPACE_DOMAIN", "workspace.example")
 	t.Setenv("OPL_WORKSPACE_APPLICATION_DOMAIN", "application.example")
-	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
 	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
 	app := fixture.server.(*controlPlaneHTTPHandler).app
 	intent := seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "knowledge-app", true)
@@ -397,7 +394,6 @@ func TestWorkspaceApplicationOriginServesItsReadyApplication(t *testing.T) {
 func TestWorkspaceApplicationOriginRefusesAnUnreadyApplication(t *testing.T) {
 	t.Setenv("OPL_WORKSPACE_DOMAIN", "workspace.example")
 	t.Setenv("OPL_WORKSPACE_APPLICATION_DOMAIN", "application.example")
-	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
 	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
 	app := fixture.server.(*controlPlaneHTTPHandler).app
 	intent := seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "knowledge-app", true)
@@ -431,7 +427,6 @@ func TestWorkspaceApplicationOriginRefusesAnUnreadyApplication(t *testing.T) {
 func TestWorkspaceApplicationOriginRefusesWhenItsReadbackFails(t *testing.T) {
 	t.Setenv("OPL_WORKSPACE_DOMAIN", "workspace.example")
 	t.Setenv("OPL_WORKSPACE_APPLICATION_DOMAIN", "application.example")
-	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
 	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
 	app := fixture.server.(*controlPlaneHTTPHandler).app
 	seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "knowledge-app", true)
@@ -456,7 +451,6 @@ func TestWorkspaceApplicationOriginRefusesWhenItsReadbackFails(t *testing.T) {
 func TestWorkspaceApplicationOriginKeepsTheSuspendedRefusal(t *testing.T) {
 	t.Setenv("OPL_WORKSPACE_DOMAIN", "workspace.example")
 	t.Setenv("OPL_WORKSPACE_APPLICATION_DOMAIN", "application.example")
-	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
 	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
 	app := fixture.server.(*controlPlaneHTTPHandler).app
 	seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "knowledge-app", true)
@@ -495,7 +489,6 @@ func TestWorkspaceApplicationOriginKeepsTheSuspendedRefusal(t *testing.T) {
 func TestWorkspaceApplicationOriginServesAfterTheApplicationBindsItsOwnKey(t *testing.T) {
 	t.Setenv("OPL_WORKSPACE_DOMAIN", "workspace.example")
 	t.Setenv("OPL_WORKSPACE_APPLICATION_DOMAIN", "application.example")
-	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
 	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
 	app := fixture.server.(*controlPlaneHTTPHandler).app
 	intent := seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "knowledge-app", true)

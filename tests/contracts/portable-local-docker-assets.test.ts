@@ -70,7 +70,6 @@ test("portable Local-Docker assets configure from a standalone download director
       resolvedFabric.environment.OPL_AIONUI_ADMIN_PASSWORD_SEED,
       environmentSource.match(/^OPL_AIONUI_ADMIN_PASSWORD_SEED=(.*)$/m)?.[1]
     );
-    assert.equal(resolvedServices["control-plane"].environment.OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED, "1");
     assert.equal(
       resolvedServices["control-plane"].environment.OPL_WORKSPACE_DOMAIN,
       environmentSource.match(/^OPL_WORKSPACE_DOMAIN=(.*)$/m)?.[1]
