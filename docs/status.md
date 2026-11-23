@@ -52,10 +52,20 @@ chronological snapshots.
     operations can be enumerated. Its coverage was partial, and operation
     identities and terminal phases still need a complete readback for the
     deletion, refund, and renewal retirement evidence tracked in the roadmap.
-- **Retained Application Deployment**: The shared Control Plane worker advances
-  accepted `workspace.application.deploy` children through predecessor
-  suspension, activation and receipt. The source qualification covers retained
-  v0.1.8 fixtures, response loss and restart against the same database.
+- **Retired Application Deployment Worker**: The shared Control Plane application
+  deployment Worker (write driver, operation-progress CAS store, worker
+  registration, portable/local `OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED`)
+  is retired at the source layer: it had no production creator, so it could only
+  ever advance an already accepted historical intent. Its persisted intent, its
+  version and binding decoders, the historical read routes
+  (`GET /api/operator/application-deployments/{operationId}`), the Workspace
+  columns and the historical rows stay. The source-layer upgrade qualification
+  (`services/control-plane/internal/server/workspace_application_upgrade_qualification_test.go`)
+  covers retained v0.1.8 fixtures, response loss and restart against the same
+  database, and is a source result, not installed adoption; the retirement is
+  merged only after the installed qualification receipt proves the
+  carried-forward operation can finish under its original operation, resource
+  and digest identities.
 - **What Remains Unproven Here**: Same-Candidate paid customer purchase
   execution on Tencent/TKE, J0 READY qualification bound to the latest
   Candidate, end-to-end custom Agent Package build-to-serve production delivery,

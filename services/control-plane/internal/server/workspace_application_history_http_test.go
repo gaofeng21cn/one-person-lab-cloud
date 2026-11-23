@@ -30,7 +30,15 @@ func TestRetiredOperatorApplicationWritesPreserveHistoryAndHaveNoSideEffects(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	mustStore(t, handler.app.markWorkspaceApplicationManualReview(ctx, row, intent, "historical_preflight_failed"))
+	// The deployment execution engine is retired, so the accepted intent is
+	// recorded in the historical state the retained route reads back.
+	intent.FailurePhase, intent.Phase, intent.LastError = intent.Phase, workspaceApplicationDeploymentManualReviewPhase, "historical_preflight_failed"
+	payload, err := json.Marshal(intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row["result"], row["status"] = string(payload), "manual_review"
+	mustStore(t, store.SaveRuntimeOperation(ctx, row))
 	failed, _, err := store.GetRuntimeOperation(ctx, operationID)
 	if err != nil {
 		t.Fatal(err)

@@ -95,10 +95,16 @@ reads are forbidden.
 ## Owner Transition
 
 - **Retired Paths**: Control Plane package pricing catalog/preview, image-replacement
+- **Retired Paths**: Control Plane package pricing catalog/preview, image-replacement
   creation/preview/worker/activation routes, and automated `workspace.gateway_key.rotate`
   creation/child deployments are retired. The legacy Launch descriptor,
   request-hash constructor and preflight confirmation are test fixtures for
-  historical operations.
+  historical operations. The shared application deployment engine is retired
+  too: its write driver, its operation-progress CAS store, its worker
+  registration and its exclusive
+  `OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED` configuration are
+  removed, while its persisted intent, its decoders, the historical read routes
+  and the Workspace columns stay.
 - **Retained Launch Executor**: The Control Plane worker continues accepted
   `workspace.launch.v2` operations using their persisted identities. See
   [Launch recovery](implementation/workspace-launch-recovery.md).

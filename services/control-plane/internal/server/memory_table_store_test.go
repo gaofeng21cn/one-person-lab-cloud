@@ -953,18 +953,6 @@ func (s *memoryTableStore) SaveRuntimeOperation(_ context.Context, row map[strin
 	return nil
 }
 
-func (s *memoryTableStore) PersistWorkspaceApplicationOperation(_ context.Context, expectedResult string, desiredRow map[string]any) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	current := findRecord(s.runtimeOps, stringValue(desiredRow["id"]))
-	if err := validateWorkspaceApplicationOperationPersistence(current, expectedResult, desiredRow); err != nil {
-		return err
-	}
-	next := cloneMap(current)
-	next["result"], next["status"] = desiredRow["result"], desiredRow["status"]
-	s.runtimeOps = upsertProjectionByID(s.runtimeOps, next)
-	return nil
-}
 
 func (s *memoryTableStore) SaveWalletAdjustment(_ context.Context, operationID string, operation walletAdjustmentOperation) (walletAdjustmentOperation, error) {
 	s.mu.Lock()
@@ -1145,37 +1133,3 @@ func (s *memoryTableStore) ApplyWorkspaceResourceReconcile(_ context.Context, mu
 	return nil
 }
 
-func (s *memoryTableStore) ApplyWorkspaceApplicationActivation(_ context.Context, mutation workspaceApplicationActivationMutation) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	row := s.workspaces[mutation.WorkspaceID]
-	if row == nil {
-		return errWorkspaceApplicationWorkspaceGone
-	}
-	operation := findRecord(s.runtimeOps, mutation.Intent.OperationID)
-	current, err := decodeWorkspaceApplicationDeploymentIntent(operation)
-	if err != nil || current.RequestHash != mutation.Intent.RequestHash {
-		return errWorkspaceApplicationActivationConflict
-	}
-	if current.Phase == workspaceApplicationDeploymentReceiptPhase || current.Phase == workspaceApplicationDeploymentRetiringPhase || current.Phase == workspaceApplicationDeploymentActivePhase {
-		return nil
-	}
-	if current.Phase != workspaceApplicationDeploymentActivatingPhase || !workspaceApplicationResourcesMatch(row, mutation.Intent) {
-		return errWorkspaceApplicationActivationConflict
-	}
-	if stringValue(row["applicationBinding"]) != mutation.ExpectedBinding || int64(numberField(row, "applicationBindingVersion", 0)) != mutation.ExpectedVersion || !workspaceApplicationEntitlementOpen(row, time.Now()) || mutation.Intent.Version == 2 && stringValue(row["reservedApplicationDeploymentId"]) != mutation.Intent.OperationID {
-		return errWorkspaceApplicationActivationConflict
-	}
-	encoded, err := json.Marshal(mutation.Intent)
-	if err != nil {
-		return err
-	}
-	row["applicationBinding"] = mutation.NextBinding
-	row["applicationBindingVersion"] = mutation.NextVersion
-	row["currentApplicationDeploymentId"] = mutation.Intent.OperationID
-	if mutation.Intent.WorkspaceAPIKeyID > 0 {
-		row["workspaceApiKeyId"] = mutation.Intent.WorkspaceAPIKeyID
-	}
-	operation["result"], operation["status"] = string(encoded), "running"
-	return nil
-}

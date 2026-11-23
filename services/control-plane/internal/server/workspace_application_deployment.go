@@ -13,12 +13,22 @@ const (
 	workspaceApplicationDeploymentAction        = "workspace.application.deploy"
 	workspaceApplicationDeploymentSchemaVersion = 1
 	workspaceApplicationDeploymentIntentPhase   = "intent"
+
+	// The deployment phases below are the durable vocabulary of an accepted
+	// deployment intent. The execution engine that used to advance them is
+	// retired, so these names now only describe history: they are read back by
+	// the selection, access and lifecycle readers that still project an
+	// accepted deployment's state.
+	workspaceApplicationDeploymentRuntimePhase      = "runtime"
+	workspaceApplicationDeploymentActivatingPhase   = "activating"
+	workspaceApplicationDeploymentActivePhase       = "active"
+	workspaceApplicationDeploymentManualReviewPhase = "manual_review"
 )
 
 var (
 	errWorkspaceApplicationResourcesUnready = errors.New("workspace_application_resources_unready")
 	errWorkspaceApplicationBindingUnknown   = errors.New("workspace_application_binding_unknown")
-	errWorkspaceApplicationWorkspaceGone    = errors.New("workspace_application_workspace_not_found")
+	errWorkspaceApplicationRevisionGone    = errors.New("workspace_application_revision_not_admitted")
 )
 
 // workspaceApplicationDeploymentIntent is the durable, immutable intent that

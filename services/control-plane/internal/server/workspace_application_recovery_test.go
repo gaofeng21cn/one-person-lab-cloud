@@ -15,7 +15,6 @@ import (
 )
 
 func TestRetiredWorkspaceApplicationCommandsHTTPPreserveHistory(t *testing.T) {
-	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
 	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
 	ctx := context.Background()
 	request := workspaceDefaultApplicationRequest{SchemaVersion: 1, OperationID: workspaceDefaultApplicationOperationID("workspace-launch-alpha"), LaunchOperationID: "workspace-launch-alpha", AccountID: "acct-alpha", WorkspaceID: "ws-alpha", OwnerUserID: stringValue(fixture.workspace["ownerUserId"]), Sub2APIUserID: 41, WorkspaceKeyGroupID: 5, Revision: defaultOPLApplicationRevision("repo.example/opl-app@sha256:" + strings.Repeat("e", 64)), Phase: "failed", LastError: "test_installation_failed", WorkspaceAPIKeyID: 19, GatewaySecret: &clients.GatewaySecretWriteResult{SecretRef: "secret-ws-alpha", Version: "v1"}}

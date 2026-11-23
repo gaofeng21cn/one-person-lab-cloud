@@ -46,6 +46,8 @@ original operation, resource and digest identities, with activation and receipt
 recovered. An unresolved rotation parent still fences Workspace deletion.
 Cross-installation transfer requires separate evidence if used.
 
+The source retirement of that Worker is prepared and is merged only after this installed qualification. The readback has to run against an installation that still carries the Worker, so the qualification observes the carried-forward operation finishing under its original identities before the engine is removed from the source.
+
 ## Workspace Key And Customer Read Boundaries
 
 Complete migration of remaining transitional customer reads off legacy Control

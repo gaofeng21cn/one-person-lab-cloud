@@ -107,10 +107,24 @@ Git log.
   cutover. Keep that execution path until those obligations complete or migrate.
   New purchases enter through the Workspace owner. A retained customer Key
   continuation uses the operation owner's Gateway credential.
-- **Retained Application Deployment Executor**: Keep the shared Control Plane
-  deployment worker, activation store and deployment wiring until a supported
-  upgrade completes or transfers accepted pending and running deployment
-  operations under their original operation and resource identities.
+- **Retained Deployment Worker Until Upgrade Completion**: The shared application
+  deployment Worker, its driver, the deployment activation store and the
+  portable/local `OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED`
+  declarations stay until a supported upgrade completes or transfers a retained
+  installation's accepted pending or running deployment operations with their
+  original operation and resource identities.
+- **Shared Application Deployment Worker Source Retirement**: The shared
+  application deployment Worker is retired at the source layer, which satisfies
+  the source half of the condition recorded above. Its write driver, its
+  operation-progress CAS store, its worker registration, its exclusive
+  configuration and its worker-exclusive tests are removed; its persisted intent,
+  its version and binding decoders, the historical read routes, the Workspace
+  columns and the historical rows stay, because they describe an accepted
+  deployment's state and do not advance one. The retirement is merged only
+  after the installed qualification receipt proves the retained installation's
+  accepted pending or running deployment operation finishes under its original
+  operation, resource and digest identities, and a source removal is never
+  installed adoption.
 
 ## Ordinary Source Development And CI
 

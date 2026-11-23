@@ -175,7 +175,6 @@ func (s *retiredDefaultApplicationScanStore) PageRuntimeOperations(ctx context.C
 
 func TestWorkspaceApplicationWorkerDoesNotScanHistoricalDefaultInstallations(t *testing.T) {
 	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
-	handler := fixture.server.(*controlPlaneHTTPHandler)
 	ctx := context.Background()
 	request := workspaceDefaultApplicationRequest{SchemaVersion: 1, OperationID: workspaceDefaultApplicationOperationID("workspace-launch-alpha"), LaunchOperationID: "workspace-launch-alpha", AccountID: "acct-alpha", WorkspaceID: "ws-alpha", OwnerUserID: stringValue(fixture.workspace["ownerUserId"]), Sub2APIUserID: 41, WorkspaceKeyGroupID: 7, Revision: defaultOPLApplicationRevision("registry.example/opl-app@sha256:" + strings.Repeat("a", 64)), Phase: "waiting_resources", WorkspaceAPIKeyID: 19, GatewaySecret: &clients.GatewaySecretWriteResult{SecretRef: "historical-gateway", Version: "v1"}}
 	row, err := workspaceDefaultApplicationRow(request)
@@ -188,11 +187,12 @@ func TestWorkspaceApplicationWorkerDoesNotScanHistoricalDefaultInstallations(t *
 		t.Fatal(err)
 	}
 	workspace, _, _ := fixture.store.GetWorkspace(ctx, request.WorkspaceID)
+
+	// The deployment execution engine is retired: no worker scans the runtime
+	// operations, so an accepted historical installation is never advanced.
 	scan := &retiredDefaultApplicationScanStore{controlPlaneTableStore: fixture.store}
-	handler.app.tables = scan
-	mustStore(t, handler.app.runWorkspaceApplicationDeploymentsOnce(ctx, handler.service))
-	if !reflect.DeepEqual(scan.actions, []string{workspaceApplicationDeploymentAction}) {
-		t.Fatalf("deployment worker scanned retired actions: %v", scan.actions)
+	if len(scan.actions) != 0 {
+		t.Fatalf("a retired worker scanned runtime operations: %v", scan.actions)
 	}
 	retained, err := fixture.store.ListRuntimeOperations(ctx)
 	if err != nil || !reflect.DeepEqual(retained, operations) {
