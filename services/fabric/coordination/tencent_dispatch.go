@@ -16,7 +16,6 @@ import (
 type TencentResourceProvider interface {
 	ResolveAcceptedResourcePlan(tenant string, plan *api.ResourcePlanSnapshot) (fabric.AcceptedTencentResourcePlan, error)
 	ReadComputeAllocation(context.Context, fabric.ComputeAllocation) (fabric.ComputeAllocation, error)
-	ReadStorageVolume(context.Context, fabric.StorageVolume) (fabric.StorageVolume, error)
 	ReadStorageAttachment(context.Context, fabric.StorageAttachment, fabric.ComputeAllocation, fabric.StorageVolume) (fabric.StorageAttachment, error)
 	BindWorkspaceApplicationSecret(context.Context, fabric.SecretBindInput) (fabric.SecretBindResult, error)
 }
@@ -119,7 +118,9 @@ func (d *tencentDispatcher) EnsureResources(ctx context.Context, in ResourceInte
 	if err != nil {
 		return nil, err
 	}
-	storage, err = d.provider.ReadStorageVolume(ctx, storage)
+	// A PVC can bind after creation. Journal the provider readback through
+	// Fabric so attachment and a restarted runtime see the same ready volume.
+	storage, err = d.service.SyncStorageVolume(ctx, storage.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -129,10 +130,6 @@ func (d *tencentDispatcher) EnsureResources(ctx context.Context, in ResourceInte
 	if err = validateTencentStorageReadback(bound, in, compute, storage); err != nil {
 		return nil, err
 	}
-	if err = d.service.ApplyStorageVolumeReadback(storage); err != nil {
-		return nil, err
-	}
-
 	attachment, err := d.service.CreateStorageAttachment(ctx, fabric.StorageAttachmentInput{WorkspaceID: in.WorkspaceID, ComputeID: compute.ID, VolumeID: storage.ID, IdempotencyKey: in.OperationID + ":attachment"})
 	if err != nil {
 		return nil, err
