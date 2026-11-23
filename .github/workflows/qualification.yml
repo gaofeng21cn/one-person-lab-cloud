@@ -51,7 +51,7 @@ jobs:
         uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.26.x"
-          cache-dependency-path: services/fabric/go.sum
+          cache-dependency-path: go.sum
 
       - name: Load runner project quota support
         run: |

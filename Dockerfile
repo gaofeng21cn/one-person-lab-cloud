@@ -23,7 +23,7 @@ COPY services/internal/postgresmigrate /src/services/internal/postgresmigrate
 COPY services/internal/protectedresource /src/services/internal/protectedresource
 COPY services/internal/tkeapply /src/services/internal/tkeapply
 COPY packages/contracts/go /src/packages/contracts/go
-COPY services/fabric/go.mod services/fabric/go.sum ./
+COPY go.mod go.sum /src/
 RUN GOPROXY="$GOPROXY" go mod download
 COPY services/fabric ./
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-tencent-provisioner ./cmd/opl-tencent-provisioner \
@@ -41,7 +41,7 @@ RUN printf '%s' "$OPL_SOURCE_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "opl_sou
 WORKDIR /src/services/control-plane
 COPY services/internal/postgresmigrate /src/services/internal/postgresmigrate
 COPY packages/contracts/go /src/packages/contracts/go
-COPY services/control-plane/go.mod services/control-plane/go.sum ./
+COPY go.mod go.sum /src/
 RUN GOPROXY="$GOPROXY" go mod download
 COPY services/control-plane ./
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-control-plane ./cmd/control-plane
@@ -59,7 +59,7 @@ COPY services/internal/ownerservice /src/services/internal/ownerservice
 COPY services/internal/ownerstore /src/services/internal/ownerstore
 COPY services/internal/postgresmigrate /src/services/internal/postgresmigrate
 COPY packages/contracts/go /src/packages/contracts/go
-COPY services/ledger/go.mod services/ledger/go.sum ./
+COPY go.mod go.sum /src/
 RUN GOPROXY="$GOPROXY" go mod download
 COPY services/ledger ./
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-ledger ./cmd/ledger
@@ -73,6 +73,8 @@ ARG GOPROXY=https://proxy.golang.org,direct
 ARG OPL_SOURCE_SHA
 RUN printf '%s' "$OPL_SOURCE_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "opl_source_sha_invalid" >&2; exit 1; }
 WORKDIR /src
+COPY go.mod go.sum /src/
+RUN GOPROXY="$GOPROXY" go mod download
 COPY packages/contracts/go /src/packages/contracts/go
 COPY services /src/services
 COPY apps/console-bff /src/apps/console-bff

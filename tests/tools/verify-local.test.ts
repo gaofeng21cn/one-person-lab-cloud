@@ -92,9 +92,7 @@ test("PR validate caches the Go toolchain, Python requirements and pinned contra
   assert.equal(goSetup.with?.["go-version"], "1.26.x");
   const dependencyPaths = String(goSetup.with?.["cache-dependency-path"] ?? "")
     .split("\n").map((path) => path.trim()).filter(Boolean);
-  for (const module of goModules) {
-    assert.ok(dependencyPaths.includes(`${module}/go.sum`), `${module}/go.sum is missing from the Go cache key`);
-  }
+  assert.deepEqual(dependencyPaths, ["go.sum"], "Go cache must key off the single root go.sum");
 
   const pythonSetup = step("Set up Python");
   assert.equal(pythonSetup.with?.cache, "pip");

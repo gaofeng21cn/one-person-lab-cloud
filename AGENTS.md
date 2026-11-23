@@ -60,10 +60,10 @@ transcripts belong in Git history.
 - Keep DTOs, state machines and retry policy with their owner; consumers use thin
   typed clients. Provider behavior stays behind Fabric adapters. Cross-owner
   changes update the owning contract, affected consumers and boundary tests.
-- Keep the single shared Go module at `packages/contracts/go/go.mod`, proto in
-  `packages/contracts/proto/` and generated Go under that module. Consumers use
-  the same Cloud commit, schema hashes and locked tools; update required
-  consumer `go.mod`/`go.sum` with the contract.
+- Keep the single root Go module at `go.mod` (`module opl-cloud`), proto in
+  `packages/contracts/proto/` and generated Go under `packages/contracts/go/`. Consumers use
+  the same Cloud commit, schema hashes and locked tools; keep `go.mod`/`go.sum`
+  in sync with the contract.
 - Shared infrastructure needs two current callers and stays policy-free. New
   abstractions, dependencies, services or gates need a demonstrated capability
   gap or reachable failure, a caller and a bounded owner. Follow adopted typed

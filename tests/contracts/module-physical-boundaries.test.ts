@@ -35,21 +35,20 @@ function goModulePath(source) {
 }
 
 test("Go services remain physically isolated behind typed owner contracts", async () => {
+  const rootModulePath = goModulePath(await text("go.mod"));
+  assert.equal(rootModulePath, "opl-cloud", "root Go module owner");
   const sharedModules = ["postgresmigrate", "ownerservice", "ownerstore", "protectedresource", "tkeapply"];
-  const sharedModulePaths = await Promise.all(sharedModules.map(async (name) =>
-    goModulePath(await text(`services/internal/${name}/go.mod`))));
+  const sharedModulePaths = sharedModules.map((name) => `${rootModulePath}/services/internal/${name}`);
   const cloudSDKImportPrefixes = ["github.com/tencentcloud/", "k8s.io/"];
   for (const service of ["control-plane", "fabric", "ledger"]) {
     const directory = `services/${service}`;
-    const moduleFile = await text(`${directory}/go.mod`);
-    const modulePath = goModulePath(moduleFile);
-    assert.equal(modulePath, `opl-cloud/services/${service}`, `${directory} module owner`);
+    const modulePath = `${rootModulePath}/services/${service}`;
 
     const files = await filesUnder(directory, (path) => path.endsWith(".go"));
     for (const file of files) {
       const source = await text(file);
       for (const imported of goImports(source)) {
-        if (imported.startsWith("opl-cloud/services/")) {
+        if (imported.startsWith(`${rootModulePath}/services/`)) {
           const owned = imported === modulePath || imported.startsWith(`${modulePath}/`);
           const shared = sharedModulePaths.some((path) => imported === path || imported.startsWith(`${path}/`));
           assert.equal(owned || shared, true, `${file} crosses into ${imported}`);
@@ -62,7 +61,7 @@ test("Go services remain physically isolated behind typed owner contracts", asyn
   }
 
   for (const module of sharedModules) {
-    for (const file of await filesUnder(`services/internal/${module}`, (path) => path.endsWith(".go") || path.endsWith("go.mod"))) {
+    for (const file of await filesUnder(`services/internal/${module}`, (path) => path.endsWith(".go"))) {
       assert.doesNotMatch(await text(file), /opl-cloud\/services\/(?:control-plane|fabric|ledger)/, `${file} must remain domain-neutral`);
     }
   }

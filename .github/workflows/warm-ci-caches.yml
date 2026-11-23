@@ -42,24 +42,7 @@ jobs:
         with:
           go-version: 1.26.x
           cache: true
-          cache-dependency-path: |
-            apps/console-bff/go.sum
-            packages/contracts/go/go.sum
-            services/build/go.sum
-            services/capability/go.sum
-            services/control-plane/go.sum
-            services/cloud-composition/go.sum
-            services/fabric/go.sum
-            services/gateway-integration/go.sum
-            services/internal/ownerservice/go.sum
-            services/internal/ownerstore/go.sum
-            services/internal/postgresmigrate/go.sum
-            services/internal/tkeapply/go.sum
-            services/ledger/go.sum
-            services/resource-catalog/go.sum
-            services/runtime-control/go.sum
-            services/serve/go.sum
-            services/workspace/go.sum
+          cache-dependency-path: go.sum
       - name: Restore contract generator binaries
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
