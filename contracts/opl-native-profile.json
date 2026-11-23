@@ -44,8 +44,7 @@
   "repo_profile": "generic_repo",
   "schema": "opl_native_profile.v1",
   "taxonomy_dirs": [
-    "docs/delivery",
-    "docs/history"
+    "docs/delivery"
   ],
   "verification_commands": [
     "node --experimental-strip-types scripts/build-opl-cloud-whitepaper.ts",

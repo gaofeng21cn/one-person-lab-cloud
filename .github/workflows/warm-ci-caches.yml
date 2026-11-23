@@ -33,9 +33,9 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: docs/spec/target/checks/requirements.txt
+          cache-dependency-path: packages/contracts/proto/requirements.txt
       - name: Install spec generator toolchain
-        run: python3 -m pip install -r docs/spec/target/checks/requirements.txt
+        run: python3 -m pip install -r packages/contracts/proto/requirements.txt
       - name: Set up Go
         id: go
         uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5

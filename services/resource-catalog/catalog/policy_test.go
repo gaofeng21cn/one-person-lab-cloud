@@ -13,7 +13,7 @@ import (
 // calculator cannot satisfy is a real product-policy defect, not a fixture detail,
 // so the test fails instead of skipping.
 func TestUpgradeChargeMatchesD17Vectors(t *testing.T) {
-	raw, err := os.ReadFile("../../../docs/spec/target/checks/d17_acceptance_vectors.json")
+	raw, err := os.ReadFile("testdata/d17_acceptance_vectors.json")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,10 +9,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"google.golang.org/grpc"
 
+	contracts "opl-cloud/packages/contracts/go"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 )
@@ -371,3 +375,48 @@ func (c *Clients) LedgerClient() api.LedgerProductServiceClient { return c.ledge
 // FabricClient exposes only the generated coordination client; the Fabric owner
 // admits the BFF peer for platform resource reads and refuses its mutations.
 func (c *Clients) FabricClient() api.FabricCoordinationClient { return c.fabric }
+
+// WorkspaceClient reuses the owner's existing authenticated connection.
+func (c *Clients) WorkspaceClient() api.WorkspaceProductServiceClient {
+	return c.workspace
+}
+
+// CatalogClient exposes the Cloud Resource Catalog surface the BFF reaches. The
+// BFF owns none of these facts; the Resource Catalog owner reads and writes them.
+func (c *Clients) CatalogClient() api.ResourceCatalogProductServiceClient {
+	return c.catalog
+}
+
+// UpdateWorkspaceVersion forwards the caller's authorized, idempotent command
+// unchanged to Serve, the only owner of the current application.
+func (c *Clients) UpdateWorkspaceVersion(ctx context.Context, workspaceID string, body *api.UpdateWorkspaceVersionRequest) (*api.Operation, error) {
+	if c.serve == nil {
+		return nil, fmt.Errorf("serve: %w", ErrUpstreamUnconfigured)
+	}
+	return c.serve.UpdateWorkspaceVersion(ctx, &api.UpdateWorkspaceVersionRpcRequest{Context: CallContext(ctx), WorkspaceId: workspaceID, Body: body})
+}
+
+// Deployment reads one Serve-owned deployment attempt for one Workspace.
+func (c *Clients) Deployment(ctx context.Context, workspaceID, deploymentID string) (*api.Deployment, error) {
+	if c.serve == nil {
+		return nil, fmt.Errorf("serve: %w", ErrUpstreamUnconfigured)
+	}
+	return c.serve.GetDeployment(ctx, &api.GetDeploymentRpcRequest{Context: CallContext(ctx), WorkspaceId: workspaceID, DeploymentId: deploymentID})
+}
+
+func (c *Clients) GetPersonalGatewayHistory(ctx context.Context, session string, page, size int) (*contracts.LegacyBillingSource[contracts.PersonalGatewayHistoryPage], error) {
+	out := &contracts.LegacyBillingSource[contracts.PersonalGatewayHistoryPage]{}
+	path := "/internal/cloud/gateway/balance-history?" + url.Values{"page": {strconv.Itoa(page)}, "pageSize": {strconv.Itoa(size)}}.Encode()
+	if err := c.controlPlane.request(ctx, session, http.MethodGet, path, "", out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *Clients) GetPersonalGatewayEndpoint(ctx context.Context, session string) (*contracts.LegacyBillingSource[contracts.PersonalGatewayEndpoint], error) {
+	out := &contracts.LegacyBillingSource[contracts.PersonalGatewayEndpoint]{}
+	if err := c.controlPlane.request(ctx, session, http.MethodGet, "/internal/cloud/gateway/endpoint", "", out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}

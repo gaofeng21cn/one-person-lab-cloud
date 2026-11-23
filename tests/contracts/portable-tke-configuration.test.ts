@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -29,7 +29,9 @@ async function protectedResourceFacts() {
 // The provisioner owns startup and NodePool bootstrap requirements separately
 // from the provider constructor and readiness requirements below.
 async function tencentProvisionerBootstrapFacts() {
-  const source = await readFile("services/fabric/cmd/opl-tencent-provisioner/main.go", "utf8");
+  const files = (await readdir("services/fabric/cmd/opl-tencent-provisioner"))
+    .filter((name) => name.endsWith(".go") && !name.endsWith("_test.go"));
+  const source = (await Promise.all(files.map((name) => readFile(`services/fabric/cmd/opl-tencent-provisioner/${name}`, "utf8")))).join("\n");
   const names = (body) => [...body.matchAll(/"([A-Z][A-Z0-9_]*)"/g)].map((match) => match[1]);
   const requiredTencentEnv = source.match(/var requiredTencentEnv = \[\]string\{([\s\S]*?)\n\}/);
   const nodePoolInputs = source.match(/func buildCreateNativeNodePoolRequest[\s\S]*?missingSpecificEnv\(env, \[\]string\{([\s\S]*?)\n\s*\}\)/);

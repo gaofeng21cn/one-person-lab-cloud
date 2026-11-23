@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -116,7 +116,9 @@ test("the Candidate workflow builds the image from the revision it names in the 
 });
 
 test("the running binary states its own revision at the attestation boundary", async () => {
-  const provisioner = await readFile("services/fabric/cmd/opl-tencent-provisioner/main.go", "utf8");
+  const files = (await readdir("services/fabric/cmd/opl-tencent-provisioner"))
+    .filter((name) => name.endsWith(".go") && !name.endsWith("_test.go"));
+  const provisioner = (await Promise.all(files.map((name) => readFile(`services/fabric/cmd/opl-tencent-provisioner/${name}`, "utf8")))).join("\n");
   assert.ok(
     provisioner.includes("contracts.ProductSourceSHAIsCurrent(env[\"OPL_RELEASE_SHA\"])"),
     "the pre-debit IAM gate must compare the claimed release with the running binary's own revision"

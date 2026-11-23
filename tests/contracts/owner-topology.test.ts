@@ -396,7 +396,7 @@ test("the Fabric process declares the Tencent credentials its provisioner consum
   const topology = await loadTopology();
   const fabric = topology.processes.find((process) => process.service === "fabric");
   assert.ok(fabric, "the Fabric process must be declared");
-  const provisioner = await readFile("services/fabric/cmd/opl-tencent-provisioner/main.go", "utf8");
+  const provisioner = (await Promise.all((await goFiles("services/fabric/cmd/opl-tencent-provisioner")).map((file) => readFile(file, "utf8")))).join("\n");
   const required = [
     "TENCENTCLOUD_SECRET_ID",
     "TENCENTCLOUD_SECRET_KEY",
@@ -1637,7 +1637,7 @@ test("every declared dependency of the Cloud backend unit is proved against the 
       const tencent = await readFile("services/fabric/internal/fabric/tencent_provider.go", "utf8");
       assert.match(tencent, /exec\.CommandContext\(ctx, path\)/,
         "the provider must reach the resource API through an external executable");
-      const provisioner = await readFile("services/fabric/cmd/opl-tencent-provisioner/main.go", "utf8");
+      const provisioner = (await Promise.all((await goFiles("services/fabric/cmd/opl-tencent-provisioner")).map((file) => readFile(file, "utf8")))).join("\n");
       assert.match(provisioner, /tencentcloudapi\.com/,
         "the provisioner must reach the Tencent Cloud resource API");
     }

@@ -615,7 +615,7 @@
     },
     "evidence": [
      "services/fabric/cmd/fabric/main.go:94 selects the provider from OPL_FABRIC_PROVIDER and services/fabric/internal/fabric/provider_port.go:174 declares the Provider port every adapter implements",
-     "services/fabric/internal/fabric/tencent_provider.go:1419 runs the installation's provisioner executable, which reaches the Tencent Cloud CVM endpoint at services/fabric/cmd/opl-tencent-provisioner/main.go:948, so the resource API is outside this unit"
+     "services/fabric/internal/fabric/tencent_provider.go:1419 runs the installation's provisioner executable, which reaches the Tencent Cloud CVM endpoint at services/fabric/cmd/opl-tencent-provisioner/tencent_client.go:567, so the resource API is outside this unit"
     ]
    }
   ],

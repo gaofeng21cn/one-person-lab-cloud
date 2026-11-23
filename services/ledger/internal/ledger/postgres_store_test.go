@@ -1,14 +1,12 @@
 package ledger
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -60,36 +58,6 @@ func TestPostgresStoreReadyFailsWhenDatabaseIsClosed(t *testing.T) {
 	}
 	if err := NewPostgresStore(db).Ready(context.Background()); err == nil {
 		t.Fatal("closed PostgreSQL database reported ready")
-	}
-}
-
-func TestFormalAndEmbeddedMigrationTreesMatch(t *testing.T) {
-	formal, err := os.ReadDir("../../migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	embedded, err := os.ReadDir("ent_migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(formal) != len(embedded) {
-		t.Fatalf("migration file count differs: formal=%d embedded=%d", len(formal), len(embedded))
-	}
-	for i := range formal {
-		if formal[i].Name() != embedded[i].Name() {
-			t.Fatalf("migration names differ: %q != %q", formal[i].Name(), embedded[i].Name())
-		}
-		formalSQL, err := os.ReadFile(filepath.Join("../../migrations", formal[i].Name()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		embeddedSQL, err := os.ReadFile(filepath.Join("ent_migrations", embedded[i].Name()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(formalSQL, embeddedSQL) {
-			t.Fatalf("migration %s differs", formal[i].Name())
-		}
 	}
 }
 

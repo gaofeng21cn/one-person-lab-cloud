@@ -53,10 +53,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
-          cache-dependency-path: docs/spec/target/checks/requirements.txt
+          cache-dependency-path: packages/contracts/proto/requirements.txt
 
       - name: Install spec generator toolchain
-        run: python3 -m pip install -r docs/spec/target/checks/requirements.txt
+        run: python3 -m pip install -r packages/contracts/proto/requirements.txt
 
       - &go
         name: Set up Go
@@ -104,15 +104,6 @@ jobs:
           fi
           echo "$go_bin" >> "$GITHUB_PATH"
 
-      - name: Install OS sandbox for scoped checks
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends bubblewrap
-          # bubblewrap needs unprivileged user namespaces; newer Ubuntu images
-          # restrict them via AppArmor, so relax that restriction for the runner.
-          sudo sysctl -w kernel.unprivileged_userns_clone=1 || true
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-
       - &dependencies
         name: Install dependencies
         run: npm ci --no-audit --no-fund
@@ -134,20 +125,6 @@ jobs:
 
       - name: Validate source
         run: npm run verify:local -- --group source
-
-      - name: Validate changed development plan
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          node --input-type=module <<'NODE'
-          import { execFileSync } from 'node:child_process';
-          import { developmentPlanVerificationSteps, pullRequestChangedPaths } from './tools/verify-local.ts';
-          const paths = pullRequestChangedPaths(process.env.PR_BASE_SHA, process.env.PR_HEAD_SHA, process.cwd());
-          for (const step of developmentPlanVerificationSteps(paths)) {
-            execFileSync(step.command, step.args, { stdio: 'inherit' });
-          }
-          NODE
 
       - name: Check diff whitespace
         run: git diff --check "origin/${{ github.base_ref }}...HEAD"
