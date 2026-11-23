@@ -213,7 +213,7 @@ func TestD5PostgresImageReplacementResumesPersistedClaimAcrossRestart(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = firstStore.client.Close() })
+	t.Cleanup(func() { _ = firstStore.Close() })
 	input := runtimeImageReplacementTestInput("d5-persisted-read-failure")
 	provider := d5ReplacementFixture(input)
 	provider.readFailures = 1
@@ -224,7 +224,7 @@ func TestD5PostgresImageReplacementResumesPersistedClaimAcrossRestart(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = secondStore.client.Close() })
+	t.Cleanup(func() { _ = secondStore.Close() })
 	result, err := runtimeTestService(provider, secondStore).ReplaceWorkspaceRuntimeImage(context.Background(), input)
 	if err != nil || result.Status != "succeeded" || provider.patches != 1 {
 		t.Fatalf("restart result=%#v err=%v patches=%d", result, err, provider.patches)

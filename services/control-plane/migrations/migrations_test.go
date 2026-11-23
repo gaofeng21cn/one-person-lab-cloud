@@ -10,13 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
 	_ "github.com/lib/pq"
 )
 
 type recordingDriver struct {
-	dialect.Driver
 	query string
 }
 
@@ -299,14 +296,25 @@ func TestControlPlaneCapacityIndexesMigrationIsAdditiveAndIdempotent(t *testing.
 	}
 }
 
-func (d *recordingDriver) Tx(context.Context) (dialect.Tx, error) {
-	return dialect.NopTx(d), nil
+func (d *recordingDriver) BeginTx(context.Context, *sql.TxOptions) (Tx, error) {
+	return recordingTx{driver: d}, nil
 }
 
-func (d *recordingDriver) Exec(_ context.Context, query string, _ any, _ any) error {
+func (d *recordingDriver) ExecContext(_ context.Context, query string, _ ...any) (sql.Result, error) {
 	d.query = query
-	return nil
+	return nil, nil
 }
+
+type recordingTx struct {
+	driver *recordingDriver
+}
+
+func (t recordingTx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return t.driver.ExecContext(ctx, query, args...)
+}
+
+func (t recordingTx) Commit() error   { return nil }
+func (t recordingTx) Rollback() error { return nil }
 
 func TestApplyExecutesEmbeddedMonthlyHardCut(t *testing.T) {
 	driver := &recordingDriver{}
@@ -387,7 +395,7 @@ func TestAutoRenewAuditMigrationUpgradesExistingTablesIdempotently(t *testing.T)
 	`); err != nil {
 		t.Fatal(err)
 	}
-	driver := entsql.OpenDB(dialect.Postgres, db)
+	driver := OpenDriver(db)
 	for range 2 {
 		if err := ApplyAutoRenewAudit(context.Background(), driver); err != nil {
 			t.Fatal(err)
@@ -481,7 +489,7 @@ func TestWorkspaceRenewalMigrationPostgres(t *testing.T) {
 	`); err != nil {
 		t.Fatal(err)
 	}
-	if err := ApplyWorkspaceRenewal(context.Background(), entsql.OpenDB(dialect.Postgres, db)); err != nil {
+	if err := ApplyWorkspaceRenewal(context.Background(), OpenDriver(db)); err != nil {
 		t.Fatal(err)
 	}
 	var raw string
@@ -594,7 +602,7 @@ func TestWorkspaceRenewalMigrationPostgres(t *testing.T) {
 		VALUES ('ws-existing', 'acct-existing', 'acct-existing', 'usr-existing', 'compute-missing', 'storage-missing', $1)`, basicRaw); err != nil {
 		t.Fatal(err)
 	}
-	if err := ApplyWorkspaceRenewal(context.Background(), entsql.OpenDB(dialect.Postgres, db)); err != nil {
+	if err := ApplyWorkspaceRenewal(context.Background(), OpenDriver(db)); err != nil {
 		t.Fatal(err)
 	}
 	for id, want := range map[string]string{"ws-basic": basicRaw, "ws-true": trueRaw, "ws-corrupt": " {not-json} ", "ws-existing": basicRaw} {

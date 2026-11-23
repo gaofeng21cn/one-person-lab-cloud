@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,47 +12,39 @@ import (
 	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
-	controlplaneent "opl-cloud/services/control-plane/ent"
-	"opl-cloud/services/control-plane/ent/adminauditevent"
-	"opl-cloud/services/control-plane/ent/computeallocation"
-	"opl-cloud/services/control-plane/ent/runtimeoperation"
-	"opl-cloud/services/control-plane/ent/storageattachment"
-	"opl-cloud/services/control-plane/ent/storagevolume"
-	"opl-cloud/services/control-plane/ent/user"
-	"opl-cloud/services/control-plane/ent/workspace"
 )
 
 var (
-	workspaceEntFields = []entRecordField{
-		textField("AccountID", "SetAccountID", "accountId"),
-		textField("OwnerAccountID", "SetOwnerAccountID", "ownerAccountId"),
-		textField("OwnerUserID", "SetOwnerUserID", "ownerUserId"),
-		textField("UserID", "SetUserID", "userId"),
-		textField("Name", "SetName", "name"),
-		textField("URL", "SetURL", "url"),
-		textField("State", "SetState", "state"),
-		textField("Status", "SetStatus", "status"),
-		textField("PurchaseReceiptID", "SetPurchaseReceiptID", "purchaseReceiptId"),
-		textField("StorageID", "SetStorageID", "storageId"),
-		textField("CurrentComputeAllocationID", "SetCurrentComputeAllocationID", "currentComputeAllocationId"),
-		textField("CurrentAttachmentID", "SetCurrentAttachmentID", "currentAttachmentId"),
-		textField("RuntimeID", "SetRuntimeID", "runtimeId"),
-		textField("RuntimeServiceName", "SetRuntimeServiceName", "runtime", "serviceName"),
-		textField("RuntimeServiceNameRoot", "SetRuntimeServiceNameRoot", "runtimeServiceName"),
-		textField("ServiceName", "SetServiceName", "serviceName"),
-		intField("WorkspaceAPIKeyID", "SetWorkspaceAPIKeyID", "workspaceApiKeyId"),
-		textField("AccessAccount", "SetAccessAccount", "access", "account"),
-		textField("AccessUsername", "SetAccessUsername", "access", "username"),
-		textField("CredentialStatus", "SetCredentialStatus", "access", "credentialStatus"),
-		textField("CredentialVersion", "SetCredentialVersion", "access", "credentialVersion"),
-		textField("CredentialSecretRef", "SetCredentialSecretRef", "access", "secretRef"),
-		textField("VerificationSlotID", "SetVerificationSlotID", "verificationSlotId"),
-		textField("ApplicationBinding", "SetApplicationBinding", "applicationBinding"),
-		intField("ApplicationBindingVersion", "SetApplicationBindingVersion", "applicationBindingVersion"),
-		textField("CurrentApplicationDeploymentID", "SetCurrentApplicationDeploymentID", "currentApplicationDeploymentId"),
-		textField("ReservedApplicationDeploymentID", "SetReservedApplicationDeploymentID", "reservedApplicationDeploymentId"),
-		boolField("CustomerProduct", "SetCustomerProduct", "customerProduct"),
-		entRecordField{EntityField: "BillingStateJSON", Setter: "SetBillingStateJSON", Kind: "workspace_billing_json"},
+	workspaceEntFields = []sqlRecordField{
+		sqlTextField("account_id", "accountId"),
+		sqlTextField("owner_account_id", "ownerAccountId"),
+		sqlTextField("owner_user_id", "ownerUserId"),
+		sqlTextField("user_id", "userId"),
+		sqlTextField("name", "name"),
+		sqlTextField("url", "url"),
+		sqlTextField("state", "state"),
+		sqlTextField("status", "status"),
+		sqlTextField("purchase_receipt_id", "purchaseReceiptId"),
+		sqlTextField("storage_id", "storageId"),
+		sqlTextField("current_compute_allocation_id", "currentComputeAllocationId"),
+		sqlTextField("current_attachment_id", "currentAttachmentId"),
+		sqlTextField("runtime_id", "runtimeId"),
+		sqlTextField("runtime_service_name", "runtime", "serviceName"),
+		sqlTextField("runtime_service_name_root", "runtimeServiceName"),
+		sqlTextField("service_name", "serviceName"),
+		sqlNullableIntField("workspace_api_key_id", "workspaceApiKeyId"),
+		sqlTextField("access_account", "access", "account"),
+		sqlTextField("access_username", "access", "username"),
+		sqlTextField("credential_status", "access", "credentialStatus"),
+		sqlTextField("credential_version", "access", "credentialVersion"),
+		sqlTextField("credential_secret_ref", "access", "secretRef"),
+		sqlTextField("verification_slot_id", "verificationSlotId"),
+		sqlTextField("application_binding", "applicationBinding"),
+		sqlIntField("application_binding_version", "applicationBindingVersion"),
+		sqlTextField("current_application_deployment_id", "currentApplicationDeploymentId"),
+		sqlTextField("reserved_application_deployment_id", "reservedApplicationDeploymentId"),
+		sqlBoolField("customer_product", "customerProduct"),
+		{Column: "billing_state_json", Kind: "workspace_billing_json"},
 	}
 )
 
@@ -440,11 +433,13 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 }
 
 func (s *postgresEntStateStore) ListWorkspaces(ctx context.Context, accountID string) ([]map[string]any, error) {
-	query := s.client.Workspace.Query()
+	suffix := ""
+	var args []any
 	if accountID != "" {
-		query.Where(workspace.Or(workspace.AccountID(accountID), workspace.And(workspace.AccountID(""), workspace.OwnerAccountID(accountID))))
+		suffix = "WHERE (account_id = ? OR (account_id = '' AND owner_account_id = ?))"
+		args = []any{accountID, accountID}
 	}
-	rows, err := loadRecordSet(ctx, query.All, workspaceEntFields)
+	rows, err := s.loadSQLRecordSet(ctx, s.db, "control_plane_workspaces", workspaceEntFields, suffix, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -452,26 +447,22 @@ func (s *postgresEntStateStore) ListWorkspaces(ctx context.Context, accountID st
 }
 
 func (s *postgresEntStateStore) GetWorkspace(ctx context.Context, id string) (map[string]any, bool, error) {
-	entity, err := s.client.Workspace.Get(ctx, id)
-	if controlplaneent.IsNotFound(err) {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, err
-	}
-	return recordFromEnt(entity, workspaceEntFields), true, nil
+	return s.getSQLRecord(ctx, s.db, "control_plane_workspaces", id, workspaceEntFields, false)
 }
 
 func (s *postgresEntStateStore) PageWorkspaces(ctx context.Context, accountID string, page tablePageQuery) (tablePage, error) {
-	query := s.client.Workspace.Query()
+	whereSQL := ""
+	var args []any
 	if accountID != "" {
-		query.Where(workspace.Or(workspace.AccountID(accountID), workspace.And(workspace.AccountID(""), workspace.OwnerAccountID(accountID))))
+		whereSQL = " WHERE (account_id = ? OR (account_id = '' AND owner_account_id = ?))"
+		args = []any{accountID, accountID}
 	}
-	total, err := query.Clone().Count(ctx)
-	if err != nil {
+	var total int
+	if err := s.queryRow(ctx, s.db, "SELECT count(*) FROM control_plane_workspaces"+whereSQL, args...).Scan(&total); err != nil {
 		return tablePage{}, err
 	}
-	rows, err := loadRecordSet(ctx, query.Order(workspace.ByID()).Offset(page.Offset).Limit(page.Limit).All, workspaceEntFields)
+	pageArgs := append(append([]any(nil), args...), page.Limit, page.Offset)
+	rows, err := s.loadSQLRecordSet(ctx, s.db, "control_plane_workspaces", workspaceEntFields, strings.TrimPrefix(whereSQL+" ORDER BY id ASC LIMIT ? OFFSET ?", " "), pageArgs...)
 	if err != nil {
 		return tablePage{}, err
 	}
@@ -481,7 +472,9 @@ func (s *postgresEntStateStore) PageWorkspaces(ctx context.Context, accountID st
 }
 
 func (s *postgresEntStateStore) CountWorkspaces(ctx context.Context) (int, error) {
-	return s.client.Workspace.Query().Count(ctx)
+	var total int
+	err := s.queryRow(ctx, s.db, "SELECT count(*) FROM control_plane_workspaces").Scan(&total)
+	return total, err
 }
 
 func (s *postgresEntStateStore) CountWorkspacesByAccount(ctx context.Context, accountIDs []string) (map[string]int, error) {
@@ -496,24 +489,34 @@ func (s *postgresEntStateStore) CountWorkspacesByAccount(ctx context.Context, ac
 	for accountID := range counts {
 		ids = append(ids, accountID)
 	}
-	var groups []struct {
-		AccountID      string `json:"account_id"`
-		OwnerAccountID string `json:"owner_account_id"`
-		Count          int    `json:"count"`
+	sort.Strings(ids)
+	marks := make([]string, len(ids))
+	args := make([]any, 0, len(ids)*2)
+	for i, id := range ids {
+		marks[i] = "?"
+		args = append(args, id)
 	}
-	err := s.client.Workspace.Query().
-		Where(workspace.Or(workspace.AccountIDIn(ids...), workspace.And(workspace.AccountID(""), workspace.OwnerAccountIDIn(ids...)))).
-		GroupBy(workspace.FieldAccountID, workspace.FieldOwnerAccountID).
-		Aggregate(controlplaneent.As(controlplaneent.Count(), "count")).
-		Scan(ctx, &groups)
+	args = append(args, args...)
+	inList := strings.Join(marks, ", ")
+	query := fmt.Sprintf("SELECT account_id, owner_account_id, count(*) FROM control_plane_workspaces WHERE (account_id IN (%s) OR (account_id = '' AND owner_account_id IN (%s))) GROUP BY account_id, owner_account_id", inList, inList)
+	rows, err := s.queryRows(ctx, s.db, query, args...)
 	if err != nil {
 		return nil, err
 	}
-	for _, group := range groups {
-		accountID := firstNonEmpty(group.AccountID, group.OwnerAccountID)
-		if _, ok := counts[accountID]; ok {
-			counts[accountID] += group.Count
+	defer rows.Close()
+	for rows.Next() {
+		var accountID, ownerAccountID string
+		var count int
+		if err := rows.Scan(&accountID, &ownerAccountID, &count); err != nil {
+			return nil, err
 		}
+		resolved := firstNonEmpty(accountID, ownerAccountID)
+		if _, ok := counts[resolved]; ok {
+			counts[resolved] += count
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return counts, nil
 }
@@ -526,48 +529,43 @@ func (s *postgresEntStateStore) SaveWorkspace(ctx context.Context, row map[strin
 	if _, ok := row["customerProduct"]; !ok {
 		row["customerProduct"] = true
 	}
-	tx, err := s.client.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := saveWorkspaceRecord(ctx, tx.Client(), row); err != nil {
+	if err := s.saveWorkspaceRecord(ctx, tx, row); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
 func (s *postgresEntStateStore) ApplyWorkspaceRenewalIntent(ctx context.Context, update workspaceRenewalIntentCAS) error {
-	tx, err := s.client.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	client := tx.Client()
-	entity, err := client.Workspace.Query().Where(workspace.IDEQ(update.WorkspaceID), lockRowForUpdate).Only(ctx)
+	current, wsFound, err := s.getSQLRecord(ctx, tx, "control_plane_workspaces", update.WorkspaceID, workspaceEntFields, true)
 	if err != nil {
-		if controlplaneent.IsNotFound(err) {
-			return errWorkspaceRenewalCASConflict
-		}
 		return err
 	}
-	current := recordFromEnt(entity, workspaceEntFields)
+	if !wsFound {
+		return errWorkspaceRenewalCASConflict
+	}
 	currentAutoRenew, validAutoRenew := current["autoRenew"].(bool)
 	if stringValue(current["accountId"]) != update.AccountID || stringValue(current["ownerUserId"]) != update.OwnerUserID ||
 		stringValue(current["paidThrough"]) != update.ExpectedPaidThrough || !validAutoRenew || currentAutoRenew != update.ExpectedAutoRenew {
 		return errWorkspaceRenewalCASConflict
 	}
-	operationEntities, err := client.RuntimeOperation.Query().Where(runtimeoperation.WorkspaceIDEQ(update.WorkspaceID), lockRowForUpdate).All(ctx)
+	operations, err := s.listSQLRecords(ctx, tx, "control_plane_runtime_operations", runtimeOpEntFields, "WHERE workspace_id = ?"+s.forUpdateClause(), update.WorkspaceID)
 	if err != nil {
 		return err
 	}
-	operations := make([]map[string]any, 0, len(operationEntities))
-	for _, operation := range operationEntities {
-		row := recordFromEnt(operation, runtimeOpEntFields)
+	for _, row := range operations {
 		if stringValue(row["id"]) == stringValue(update.CommandOperation["id"]) {
 			return errWorkspaceRenewalCASConflict
 		}
-		operations = append(operations, row)
 	}
 	if runtimeOperationsVersion(operations, update.WorkspaceID) != update.ExpectedOperationsVersion {
 		return errWorkspaceRenewalCASConflict
@@ -581,32 +579,27 @@ func (s *postgresEntStateStore) ApplyWorkspaceRenewalIntent(ctx context.Context,
 		return err
 	}
 	auditID := stringValue(update.AuditEvent["id"])
-	auditExists := false
-	auditEntity, err := client.AdminAuditEvent.Query().Where(adminauditevent.IDEQ(auditID), lockRowForUpdate).Only(ctx)
-	if err == nil {
-		auditExists = true
-		if !workspaceRenewalIntentAuditIdentityMatches(recordFromEnt(auditEntity, auditEntFields), update.AuditEvent) {
-			return errIdempotencyConflict
-		}
-	} else if !controlplaneent.IsNotFound(err) {
+	auditEntity, auditExists, err := s.getSQLRecord(ctx, tx, "control_plane_admin_audit_events", auditID, auditEntFields, true)
+	if err != nil {
 		return err
 	}
-	builder := client.Workspace.UpdateOneID(update.WorkspaceID)
-	setRecordFieldsWithEmptyText(builder, desired, workspaceEntFields, true)
-	if err := execCreate(ctx, builder); err != nil {
+	if auditExists && !workspaceRenewalIntentAuditIdentityMatches(auditEntity, update.AuditEvent) {
+		return errIdempotencyConflict
+	}
+	if err := s.updateSQLRecord(ctx, tx, "control_plane_workspaces", update.WorkspaceID, desired, workspaceEntFields, true); err != nil {
 		return err
 	}
 	command := controlPlaneRecord(update.CommandOperation)
-	if err := saveRecord(ctx, stringValue(command["id"]), command, client.RuntimeOperation.Create(), runtimeOpEntFields); err != nil {
-		if controlplaneent.IsConstraintError(err) {
+	if err := s.insertSQLRecord(ctx, tx, "control_plane_runtime_operations", stringValue(command["id"]), command, runtimeOpEntFields); err != nil {
+		if isSQLConstraintError(err) {
 			return errWorkspaceRenewalCASConflict
 		}
 		return err
 	}
 	if !auditExists {
 		audit := controlPlaneRecord(update.AuditEvent)
-		if err := saveRecord(ctx, auditID, audit, client.AdminAuditEvent.Create(), auditEntFields); err != nil {
-			if controlplaneent.IsConstraintError(err) {
+		if err := s.insertSQLRecord(ctx, tx, "control_plane_admin_audit_events", auditID, audit, auditEntFields); err != nil {
+			if isSQLConstraintError(err) {
 				return errIdempotencyConflict
 			}
 			return err
@@ -620,12 +613,11 @@ func (s *postgresEntStateStore) PersistWorkspaceLaunchReconcile(ctx context.Cont
 	if err != nil {
 		return errWorkspaceLaunchCASConflict
 	}
-	tx, err := s.client.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	client := tx.Client()
 	var projectedWorkspaceRow map[string]any
 	if update.WorkspaceReceiptProjection != nil {
 		projection := update.WorkspaceReceiptProjection
@@ -634,27 +626,26 @@ func (s *postgresEntStateStore) PersistWorkspaceLaunchReconcile(ctx context.Cont
 			desired.Stage != contracts.StageSucceeded || desired.Status != contracts.StatusSucceeded {
 			return errWorkspaceLaunchCASConflict
 		}
-		workspaceEntity, workspaceErr := client.Workspace.Query().Where(workspace.IDEQ(projection.WorkspaceID), lockRowForUpdate).Only(ctx)
-		if controlplaneent.IsNotFound(workspaceErr) {
+		var wsFound bool
+		projectedWorkspaceRow, wsFound, err = s.getSQLRecord(ctx, tx, "control_plane_workspaces", projection.WorkspaceID, workspaceEntFields, true)
+		if err != nil {
+			return err
+		}
+		if !wsFound {
 			return errWorkspaceLaunchCASConflict
 		}
-		if workspaceErr != nil {
-			return workspaceErr
-		}
-		projectedWorkspaceRow = recordFromEnt(workspaceEntity, workspaceEntFields)
 		if firstNonEmpty(stringValue(projectedWorkspaceRow["accountId"]), stringValue(projectedWorkspaceRow["ownerAccountId"])) != projection.AccountID ||
 			stringValue(projectedWorkspaceRow["ownerUserId"]) != projection.OwnerUserID || stringValue(projectedWorkspaceRow["id"]) != projection.WorkspaceID {
 			return errWorkspaceLaunchCASConflict
 		}
 	}
-	entity, err := client.RuntimeOperation.Query().Where(runtimeoperation.IDEQ(update.OperationID), lockRowForUpdate).Only(ctx)
+	current, opFound, err := s.getSQLRecord(ctx, tx, "control_plane_runtime_operations", update.OperationID, runtimeOpEntFields, true)
 	if err != nil {
-		if controlplaneent.IsNotFound(err) {
-			return errWorkspaceLaunchCASConflict
-		}
 		return err
 	}
-	current := recordFromEnt(entity, runtimeOpEntFields)
+	if !opFound {
+		return errWorkspaceLaunchCASConflict
+	}
 	if stringValue(current["result"]) != update.ExpectedOperationResult || !workspaceLaunchReconcileIdentityMatches(current, update.DesiredOperation) {
 		return errWorkspaceLaunchCASConflict
 	}
@@ -665,49 +656,41 @@ func (s *postgresEntStateStore) PersistWorkspaceLaunchReconcile(ctx context.Cont
 			return errIdempotencyConflict
 		}
 		if existingReceiptID == "" {
-			workspaceUpdate := client.Workspace.UpdateOneID(projection.WorkspaceID).SetPurchaseReceiptID(projection.ReceiptID).SetUpdatedAt(time.Now().UTC())
-			if err := execCreate(ctx, workspaceUpdate); err != nil {
+			if _, err := s.execSQL(ctx, tx, "UPDATE control_plane_workspaces SET purchase_receipt_id = ?, updated_at = ? WHERE id = ?", projection.ReceiptID, time.Now().UTC(), projection.WorkspaceID); err != nil {
 				return err
 			}
 		}
 	}
-	builder := client.RuntimeOperation.UpdateOneID(update.OperationID)
-	setRecordFieldsWithEmptyText(builder, update.DesiredOperation, runtimeOpEntFields, true)
-	if err := execCreate(ctx, builder); err != nil {
+	if err := s.updateSQLRecord(ctx, tx, "control_plane_runtime_operations", update.OperationID, update.DesiredOperation, runtimeOpEntFields, true); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
 func (s *postgresEntStateStore) ClaimWorkspaceRenewal(ctx context.Context, claim workspaceRenewalClaimCAS) error {
-	tx, err := s.client.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	client := tx.Client()
-	entity, err := client.Workspace.Query().Where(workspace.IDEQ(claim.WorkspaceID), lockRowForUpdate).Only(ctx)
+	current, wsFound, err := s.getSQLRecord(ctx, tx, "control_plane_workspaces", claim.WorkspaceID, workspaceEntFields, true)
 	if err != nil {
-		if controlplaneent.IsNotFound(err) {
-			return errWorkspaceRenewalCASConflict
-		}
 		return err
 	}
-	current := recordFromEnt(entity, workspaceEntFields)
+	if !wsFound {
+		return errWorkspaceRenewalCASConflict
+	}
 	autoRenew, validAutoRenew := current["autoRenew"].(bool)
 	if stringValue(current["accountId"]) != claim.AccountID || stringValue(current["paidThrough"]) != claim.ExpectedPaidThrough || !validAutoRenew || autoRenew != claim.ExpectedAutoRenew {
 		return errWorkspaceRenewalCASConflict
 	}
-	operationEntities, err := client.RuntimeOperation.Query().Where(runtimeoperation.WorkspaceIDEQ(claim.WorkspaceID), lockRowForUpdate).All(ctx)
+	operations, err := s.listSQLRecords(ctx, tx, "control_plane_runtime_operations", runtimeOpEntFields, "WHERE workspace_id = ?"+s.forUpdateClause(), claim.WorkspaceID)
 	if err != nil {
 		return err
 	}
-	operations := make([]map[string]any, 0, len(operationEntities))
 	desiredID := stringValue(claim.DesiredOperation["id"])
 	var existing map[string]any
-	for _, operation := range operationEntities {
-		row := recordFromEnt(operation, runtimeOpEntFields)
-		operations = append(operations, row)
+	for _, row := range operations {
 		if workspaceDeleteBlocksRenewal(row) {
 			return errWorkspaceRenewalCASConflict
 		}
@@ -722,8 +705,8 @@ func (s *postgresEntStateStore) ClaimWorkspaceRenewal(ctx context.Context, claim
 		if existing != nil {
 			return errWorkspaceRenewalCASConflict
 		}
-		if err := saveRecord(ctx, desiredID, controlPlaneRecord(claim.DesiredOperation), client.RuntimeOperation.Create(), runtimeOpEntFields); err != nil {
-			if controlplaneent.IsConstraintError(err) {
+		if err := s.insertSQLRecord(ctx, tx, "control_plane_runtime_operations", desiredID, controlPlaneRecord(claim.DesiredOperation), runtimeOpEntFields); err != nil {
+			if isSQLConstraintError(err) {
 				return errWorkspaceRenewalCASConflict
 			}
 			return err
@@ -735,9 +718,7 @@ func (s *postgresEntStateStore) ClaimWorkspaceRenewal(ctx context.Context, claim
 		if !workspaceRenewalClaimIdentityMatches(existing, claim.DesiredOperation) {
 			return errIdempotencyConflict
 		}
-		builder := client.RuntimeOperation.UpdateOneID(desiredID)
-		setRecordFieldsWithEmptyText(builder, claim.DesiredOperation, runtimeOpEntFields, true)
-		if err := execCreate(ctx, builder); err != nil {
+		if err := s.updateSQLRecord(ctx, tx, "control_plane_runtime_operations", desiredID, claim.DesiredOperation, runtimeOpEntFields, true); err != nil {
 			return err
 		}
 	}
@@ -745,22 +726,23 @@ func (s *postgresEntStateStore) ClaimWorkspaceRenewal(ctx context.Context, claim
 }
 
 func (s *postgresEntStateStore) PersistWorkspaceRenewal(ctx context.Context, update workspaceRenewalPersistCAS) error {
-	tx, err := s.client.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	client := tx.Client()
 	var mergedWorkspace map[string]any
 	if update.WorkspacePatch != nil {
 		if update.WorkspaceID == "" || update.ExpectedWorkspacePaidThrough == "" || update.WorkspaceID != stringValue(update.DesiredOperation["workspaceId"]) {
 			return errWorkspaceRenewalCASConflict
 		}
-		entity, err := client.Workspace.Query().Where(workspace.IDEQ(update.WorkspaceID), lockRowForUpdate).Only(ctx)
+		currentWorkspace, wsFound, err := s.getSQLRecord(ctx, tx, "control_plane_workspaces", update.WorkspaceID, workspaceEntFields, true)
 		if err != nil {
 			return err
 		}
-		currentWorkspace := recordFromEnt(entity, workspaceEntFields)
+		if !wsFound {
+			return sql.ErrNoRows
+		}
 		if stringValue(currentWorkspace["paidThrough"]) != update.ExpectedWorkspacePaidThrough ||
 			!workspaceRenewalExpectedFieldsMatch(currentWorkspace, update.ExpectedWorkspaceFields) {
 			return errWorkspaceRenewalCASConflict
@@ -772,14 +754,13 @@ func (s *postgresEntStateStore) PersistWorkspaceRenewal(ctx context.Context, upd
 	} else if update.WorkspaceID != "" || update.ExpectedWorkspacePaidThrough != "" || len(update.ExpectedWorkspaceFields) != 0 {
 		return errInvalidWorkspaceRenewalPatch
 	}
-	entity, err := client.RuntimeOperation.Query().Where(runtimeoperation.IDEQ(update.OperationID), lockRowForUpdate).Only(ctx)
+	current, opFound, err := s.getSQLRecord(ctx, tx, "control_plane_runtime_operations", update.OperationID, runtimeOpEntFields, true)
 	if err != nil {
-		if controlplaneent.IsNotFound(err) {
-			return errWorkspaceRenewalCASConflict
-		}
 		return err
 	}
-	current := recordFromEnt(entity, runtimeOpEntFields)
+	if !opFound {
+		return errWorkspaceRenewalCASConflict
+	}
 	if stringValue(current["result"]) != update.ExpectedOperationResult || stringValue(current["workspaceId"]) != stringValue(update.DesiredOperation["workspaceId"]) ||
 		stringValue(current["action"]) != stringValue(update.DesiredOperation["action"]) {
 		return errWorkspaceRenewalCASConflict
@@ -788,15 +769,11 @@ func (s *postgresEntStateStore) PersistWorkspaceRenewal(ctx context.Context, upd
 		if update.WorkspaceID != stringValue(current["workspaceId"]) {
 			return errWorkspaceRenewalCASConflict
 		}
-		builder := client.Workspace.UpdateOneID(update.WorkspaceID)
-		setRecordFieldsWithEmptyText(builder, mergedWorkspace, workspaceEntFields, true)
-		if err := execCreate(ctx, builder); err != nil {
+		if err := s.updateSQLRecord(ctx, tx, "control_plane_workspaces", update.WorkspaceID, mergedWorkspace, workspaceEntFields, true); err != nil {
 			return err
 		}
 	}
-	builder := client.RuntimeOperation.UpdateOneID(update.OperationID)
-	setRecordFieldsWithEmptyText(builder, update.DesiredOperation, runtimeOpEntFields, true)
-	if err := execCreate(ctx, builder); err != nil {
+	if err := s.updateSQLRecord(ctx, tx, "control_plane_runtime_operations", update.OperationID, update.DesiredOperation, runtimeOpEntFields, true); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -806,40 +783,35 @@ func (s *postgresEntStateStore) ActivateWorkspaceLaunchProjection(ctx context.Co
 	if err := validateWorkspaceBillingState(row); err != nil {
 		return nil, err
 	}
-	tx, err := s.client.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	client := tx.Client()
-	ownerEntity, ownerErr := client.User.Query().Where(user.IDEQ(stringValue(row["ownerUserId"])), lockRowForUpdate).Only(ctx)
-	if ownerErr != nil && !controlplaneent.IsNotFound(ownerErr) {
-		return nil, ownerErr
+	owner, ownerFound, err := s.getSQLRecord(ctx, tx, "control_plane_users", stringValue(row["ownerUserId"]), userEntFields, true)
+	if err != nil {
+		return nil, err
 	}
-	var owner map[string]any
-	if ownerErr == nil {
-		owner = recordFromEnt(ownerEntity, userEntFields)
+	if !ownerFound {
+		owner = nil
 	}
-	existingEntity, existingErr := client.Workspace.Query().Where(workspace.IDEQ(stringValue(row["id"])), lockRowForUpdate).Only(ctx)
-	if existingErr != nil && !controlplaneent.IsNotFound(existingErr) {
-		return nil, existingErr
+	existing, existingFound, err := s.getSQLRecord(ctx, tx, "control_plane_workspaces", stringValue(row["id"]), workspaceEntFields, true)
+	if err != nil {
+		return nil, err
 	}
-	var existing map[string]any
-	if existingErr == nil {
-		existing = recordFromEnt(existingEntity, workspaceEntFields)
+	if !existingFound {
+		existing = nil
 	}
 	prepared, err := prepareWorkspaceLaunchProjection(row, owner, existing)
 	if err != nil {
 		return nil, err
 	}
 	if existing != nil {
-		builder := client.Workspace.UpdateOneID(stringValue(prepared["id"]))
-		setRecordFieldsWithEmptyText(builder, prepared, workspaceEntFields, true)
-		if err := execCreate(ctx, builder); err != nil {
+		if err := s.updateSQLRecord(ctx, tx, "control_plane_workspaces", stringValue(prepared["id"]), prepared, workspaceEntFields, true); err != nil {
 			return nil, err
 		}
-	} else if err := saveRecord(ctx, stringValue(prepared["id"]), prepared, client.Workspace.Create(), workspaceEntFields); err != nil {
-		if controlplaneent.IsConstraintError(err) {
+	} else if err := s.insertSQLRecord(ctx, tx, "control_plane_workspaces", stringValue(prepared["id"]), prepared, workspaceEntFields); err != nil {
+		if isSQLConstraintError(err) {
 			return nil, errIdempotencyConflict
 		}
 		return nil, err
@@ -850,28 +822,26 @@ func (s *postgresEntStateStore) ActivateWorkspaceLaunchProjection(ctx context.Co
 	return prepared, nil
 }
 
-func saveWorkspaceRecord(ctx context.Context, client *controlplaneent.Client, row map[string]any) error {
+func (s *postgresEntStateStore) saveWorkspaceRecord(ctx context.Context, tx *sql.Tx, row map[string]any) error {
 	id := stringValue(row["id"])
 	if id == "" {
 		return errors.New("missing_record_id")
 	}
-	entity, err := client.Workspace.Query().Where(workspace.IDEQ(id), lockRowForUpdate).Only(ctx)
-	if err == nil {
-		row, err = mergeWorkspaceForSave(recordFromEnt(entity, workspaceEntFields), row)
+	existing, found, err := s.getSQLRecord(ctx, tx, "control_plane_workspaces", id, workspaceEntFields, true)
+	if err != nil {
+		return err
+	}
+	if found {
+		row, err = mergeWorkspaceForSave(existing, row)
 		if err != nil {
 			return err
 		}
 		if err := validateWorkspaceBillingState(row); err != nil {
 			return err
 		}
-		builder := client.Workspace.UpdateOneID(id)
-		setRecordFieldsWithEmptyText(builder, row, workspaceEntFields, true)
-		return execCreate(ctx, builder)
+		return s.updateSQLRecord(ctx, tx, "control_plane_workspaces", id, row, workspaceEntFields, true)
 	}
-	if !controlplaneent.IsNotFound(err) {
-		return err
-	}
-	if err := saveRecord(ctx, id, row, client.Workspace.Create(), workspaceEntFields); controlplaneent.IsConstraintError(err) {
+	if err := s.insertSQLRecord(ctx, tx, "control_plane_workspaces", id, row, workspaceEntFields); isSQLConstraintError(err) {
 		return errIdempotencyConflict
 	} else {
 		return err
@@ -879,11 +849,7 @@ func saveWorkspaceRecord(ctx context.Context, client *controlplaneent.Client, ro
 }
 
 func (s *postgresEntStateStore) DeleteWorkspace(ctx context.Context, id string) error {
-	err := s.client.Workspace.DeleteOneID(id).Exec(ctx)
-	if controlplaneent.IsNotFound(err) {
-		return nil
-	}
-	return err
+	return s.deleteSQLByID(ctx, s.db, "control_plane_workspaces", id)
 }
 
 func (s *postgresEntStateStore) ApplyWorkspaceDelete(ctx context.Context, mutation workspaceDeleteStoreMutation) error {
@@ -891,125 +857,111 @@ func (s *postgresEntStateStore) ApplyWorkspaceDelete(ctx context.Context, mutati
 	if !ok {
 		return errWorkspaceDeleteCASConflict
 	}
-	tx, err := s.client.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	client := tx.Client()
 
-	workspaceEntity, workspaceErr := client.Workspace.Query().Where(workspace.IDEQ(desired.WorkspaceID), lockRowForUpdate).Only(ctx)
+	workspaceRow, workspaceFound, err := s.getSQLRecord(ctx, tx, "control_plane_workspaces", desired.WorkspaceID, workspaceEntFields, true)
+	if err != nil {
+		return err
+	}
 	if mutation.RequireWorkspaceAbsent {
-		if workspaceErr == nil || !controlplaneent.IsNotFound(workspaceErr) {
+		if workspaceFound {
 			return errWorkspaceDeleteCASConflict
 		}
 	} else {
-		if workspaceErr != nil {
-			if controlplaneent.IsNotFound(workspaceErr) {
-				return errWorkspaceDeleteCASConflict
-			}
-			return workspaceErr
+		if !workspaceFound {
+			return errWorkspaceDeleteCASConflict
 		}
-		workspaceRow := recordFromEnt(workspaceEntity, workspaceEntFields)
 		if !workspaceDeleteWorkspaceProjectionMatches(desired, workspaceRow, mutation.DeleteWorkspace) {
 			return errWorkspaceDeleteCASConflict
 		}
 	}
 	if mutation.DeleteWorkspace {
-		if err := validateWorkspaceDeleteResourceProjections(ctx, client, desired); err != nil {
+		if err := s.validateWorkspaceDeleteResourceProjections(ctx, tx, desired); err != nil {
 			return err
 		}
 	}
 	if mutation.Create {
-		operationEntities, err := client.RuntimeOperation.Query().Where(runtimeoperation.WorkspaceIDEQ(desired.WorkspaceID), lockRowForUpdate).All(ctx)
+		operations, err := s.listSQLRecords(ctx, tx, "control_plane_runtime_operations", runtimeOpEntFields, "WHERE workspace_id = ?"+s.forUpdateClause(), desired.WorkspaceID)
 		if err != nil {
 			return err
 		}
-		for _, entity := range operationEntities {
-			row := recordFromEnt(entity, runtimeOpEntFields)
+		for _, row := range operations {
 			if workspaceRenewalBlocksDelete(row) || workspaceKeyRotationBlocksDelete(row) || workspaceDefaultApplicationPreparationBlocks(row) {
 				return errWorkspaceDeleteCASConflict
 			}
 		}
 	}
 
-	operationEntity, operationErr := client.RuntimeOperation.Query().Where(runtimeoperation.IDEQ(desired.OperationID), lockRowForUpdate).Only(ctx)
+	current, opFound, err := s.getSQLRecord(ctx, tx, "control_plane_runtime_operations", desired.OperationID, runtimeOpEntFields, true)
+	if err != nil {
+		return err
+	}
 	if mutation.Create {
-		if operationErr == nil {
+		if opFound {
 			return errWorkspaceDeleteCASConflict
 		}
-		if !controlplaneent.IsNotFound(operationErr) {
-			return operationErr
-		}
-		if err := saveRecord(ctx, desired.OperationID, mutation.DesiredOperation, client.RuntimeOperation.Create(), runtimeOpEntFields); err != nil {
-			if controlplaneent.IsConstraintError(err) {
+		if err := s.insertSQLRecord(ctx, tx, "control_plane_runtime_operations", desired.OperationID, mutation.DesiredOperation, runtimeOpEntFields); err != nil {
+			if isSQLConstraintError(err) {
 				return errWorkspaceDeleteCASConflict
 			}
 			return err
 		}
-		if err := client.Workspace.UpdateOneID(desired.WorkspaceID).SetState("deleting").SetStatus("deleting").Exec(ctx); err != nil {
+		if _, err := s.execSQL(ctx, tx, "UPDATE control_plane_workspaces SET state = 'deleting', status = 'deleting', updated_at = ? WHERE id = ?", time.Now().UTC(), desired.WorkspaceID); err != nil {
 			return err
 		}
 	} else {
-		if operationErr != nil {
-			if controlplaneent.IsNotFound(operationErr) {
-				return errWorkspaceDeleteCASConflict
-			}
-			return operationErr
+		if !opFound {
+			return errWorkspaceDeleteCASConflict
 		}
-		current := recordFromEnt(operationEntity, runtimeOpEntFields)
 		currentOperation, decodeErr := decodeWorkspaceDeleteOperation(current)
 		if decodeErr != nil || stringValue(current["result"]) != mutation.ExpectedResult || !workspaceDeleteOperationIdentityMatches(current, desired) ||
 			!validWorkspaceDeleteTransition(currentOperation, desired, mutation) {
 			return errWorkspaceDeleteCASConflict
 		}
-		builder := client.RuntimeOperation.UpdateOneID(desired.OperationID)
-		setRecordFieldsWithEmptyText(builder, mutation.DesiredOperation, runtimeOpEntFields, true)
-		if err := execCreate(ctx, builder); err != nil {
+		if err := s.updateSQLRecord(ctx, tx, "control_plane_runtime_operations", desired.OperationID, mutation.DesiredOperation, runtimeOpEntFields, true); err != nil {
 			return err
 		}
 	}
 	if mutation.DeleteWorkspace {
-		if _, err := client.StorageAttachment.Delete().Where(storageattachment.IDEQ(desired.AttachmentID)).Exec(ctx); err != nil {
-			return err
-		}
-		if _, err := client.StorageVolume.Delete().Where(storagevolume.IDEQ(desired.StorageID)).Exec(ctx); err != nil {
-			return err
-		}
-		if _, err := client.ComputeAllocation.Delete().Where(computeallocation.IDEQ(desired.ComputeID)).Exec(ctx); err != nil {
-			return err
-		}
-		if err := client.Workspace.DeleteOneID(desired.WorkspaceID).Exec(ctx); err != nil {
-			return err
+		for _, target := range []struct {
+			table string
+			id    string
+		}{
+			{table: "control_plane_storage_attachments", id: desired.AttachmentID},
+			{table: "control_plane_storage_volumes", id: desired.StorageID},
+			{table: "control_plane_compute_allocations", id: desired.ComputeID},
+			{table: "control_plane_workspaces", id: desired.WorkspaceID},
+		} {
+			if err := s.deleteSQLByID(ctx, tx, target.table, target.id); err != nil {
+				return err
+			}
 		}
 	}
 	return tx.Commit()
 }
 
-func validateWorkspaceDeleteResourceProjections(ctx context.Context, client *controlplaneent.Client, operation workspaceDeleteOperation) error {
-	computeEntity, err := client.ComputeAllocation.Query().Where(computeallocation.IDEQ(operation.ComputeID), lockRowForUpdate).Only(ctx)
-	if err == nil {
-		if !workspaceDeleteResourceProjectionMatches(operation, "compute", recordFromEnt(computeEntity, computeEntFields)) {
+func (s *postgresEntStateStore) validateWorkspaceDeleteResourceProjections(ctx context.Context, tx *sql.Tx, operation workspaceDeleteOperation) error {
+	for _, resource := range []struct {
+		kind   string
+		table  string
+		id     string
+		fields []sqlRecordField
+	}{
+		{kind: "compute", table: "control_plane_compute_allocations", id: operation.ComputeID, fields: computeEntFields},
+		{kind: "storage", table: "control_plane_storage_volumes", id: operation.StorageID, fields: storageEntFields},
+		{kind: "attachment", table: "control_plane_storage_attachments", id: operation.AttachmentID, fields: attachmentEntFields},
+	} {
+		row, found, err := s.getSQLRecord(ctx, tx, resource.table, resource.id, resource.fields, true)
+		if err != nil {
+			return err
+		}
+		if found && !workspaceDeleteResourceProjectionMatches(operation, resource.kind, row) {
 			return errWorkspaceDeleteCASConflict
 		}
-	} else if !controlplaneent.IsNotFound(err) {
-		return err
-	}
-	storageEntity, err := client.StorageVolume.Query().Where(storagevolume.IDEQ(operation.StorageID), lockRowForUpdate).Only(ctx)
-	if err == nil {
-		if !workspaceDeleteResourceProjectionMatches(operation, "storage", recordFromEnt(storageEntity, storageEntFields)) {
-			return errWorkspaceDeleteCASConflict
-		}
-	} else if !controlplaneent.IsNotFound(err) {
-		return err
-	}
-	attachmentEntity, err := client.StorageAttachment.Query().Where(storageattachment.IDEQ(operation.AttachmentID), lockRowForUpdate).Only(ctx)
-	if err == nil {
-		if !workspaceDeleteResourceProjectionMatches(operation, "attachment", recordFromEnt(attachmentEntity, attachmentEntFields)) {
-			return errWorkspaceDeleteCASConflict
-		}
-	} else if !controlplaneent.IsNotFound(err) {
-		return err
 	}
 	return nil
 }
@@ -1017,38 +969,31 @@ func validateWorkspaceDeleteResourceProjections(ctx context.Context, client *con
 // ApplyWorkspaceResourceReconcile commits provider absence and its business
 // consequence together, without touching retained financial operations.
 func (s *postgresEntStateStore) ApplyWorkspaceResourceReconcile(ctx context.Context, mutation workspaceResourceReconcileMutation) error {
-	tx, err := s.client.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	client := tx.Client()
-	entity, err := client.Workspace.Query().Where(workspace.IDEQ(mutation.WorkspaceID), lockRowForUpdate).Only(ctx)
-	if err != nil {
-		if controlplaneent.IsNotFound(err) {
-			return errWorkspaceResourceReconcileConflict
-		}
-		return err
-	}
-	entities, err := client.RuntimeOperation.Query().Where(runtimeoperation.WorkspaceIDEQ(mutation.WorkspaceID), lockRowForUpdate).All(ctx)
+	wsRow, found, err := s.getSQLRecord(ctx, tx, "control_plane_workspaces", mutation.WorkspaceID, workspaceEntFields, true)
 	if err != nil {
 		return err
 	}
-	operations := make([]map[string]any, 0, len(entities))
-	for _, operation := range entities {
-		operations = append(operations, recordFromEnt(operation, runtimeOpEntFields))
+	if !found {
+		return errWorkspaceResourceReconcileConflict
 	}
-	desired, audit, err := prepareWorkspaceResourceReconcile(recordFromEnt(entity, workspaceEntFields), operations, mutation)
+	operations, err := s.listSQLRecords(ctx, tx, "control_plane_runtime_operations", runtimeOpEntFields, "WHERE workspace_id = ?"+s.forUpdateClause(), mutation.WorkspaceID)
+	if err != nil {
+		return err
+	}
+	desired, audit, err := prepareWorkspaceResourceReconcile(wsRow, operations, mutation)
 	if err != nil {
 		return err
 	}
 	if desired != nil {
-		builder := client.Workspace.UpdateOneID(mutation.WorkspaceID)
-		setRecordFieldsWithEmptyText(builder, desired, workspaceEntFields, true)
-		if err := execCreate(ctx, builder); err != nil {
+		if err := s.updateSQLRecord(ctx, tx, "control_plane_workspaces", mutation.WorkspaceID, desired, workspaceEntFields, true); err != nil {
 			return err
 		}
-		if err := saveRecord(ctx, stringValue(audit["id"]), controlPlaneRecord(audit), client.AdminAuditEvent.Create(), auditEntFields); err != nil {
+		if err := s.insertSQLRecord(ctx, tx, "control_plane_admin_audit_events", stringValue(audit["id"]), controlPlaneRecord(audit), auditEntFields); err != nil {
 			return err
 		}
 	}

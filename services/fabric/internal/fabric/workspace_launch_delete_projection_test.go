@@ -717,14 +717,14 @@ func TestPostgresRetainedLaunchComputeTagsRecoverAfterStoreReopen(t *testing.T) 
 			t.Fatal(err)
 		}
 	}
-	if err := first.client.Close(); err != nil {
+	if err := first.Close(); err != nil {
 		t.Fatal(err)
 	}
 	store, err := newTestPostgresOperationStore(databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.client.Close()
+	defer store.Close()
 	provider.provision = func(_ context.Context, request provisionerRequest) (provisionerResponse, error) {
 		if request.Action != "read_compute_destroy_status" {
 			return provisionerResponse{}, errors.New("test forbids cloud mutations")

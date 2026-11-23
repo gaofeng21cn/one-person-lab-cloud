@@ -13,8 +13,6 @@ import (
 	"time"
 
 	"github.com/lib/pq"
-
-	ledgerent "opl-cloud/services/ledger/ent"
 )
 
 func TestPostgresSchemaKeepsEvidenceAndDropsRetiredCommercialTables(t *testing.T) {
@@ -139,7 +137,7 @@ func TestWalletAdjustmentReceiptPostgres(t *testing.T) {
 }
 
 func TestPostgresReceiptRowPreservesLargeInteger(t *testing.T) {
-	receipt, err := receiptFromEnt(&ledgerent.EvidenceReceipt{
+	receipt, err := receiptFromRow(evidenceReceiptRow{
 		ID: "receipt-large", ReceiptType: "billing.resource_purchased.v1", Status: "completed",
 		PayloadJSON: `{"cost":{"monthlyPriceCnyCents":9007199254740993}}`,
 	})
@@ -152,13 +150,13 @@ func TestPostgresReceiptRowPreservesLargeInteger(t *testing.T) {
 }
 
 func TestPostgresReceiptRowRejectsTrailingJSON(t *testing.T) {
-	if _, err := receiptFromEnt(&ledgerent.EvidenceReceipt{PayloadJSON: `{"cost":{}} {}`}); err == nil {
+	if _, err := receiptFromRow(evidenceReceiptRow{PayloadJSON: `{"cost":{}} {}`}); err == nil {
 		t.Fatal("persisted receipt payload with trailing JSON must fail closed")
 	}
 }
 
 func TestPostgresReconciliationRowPreservesMaxInt64(t *testing.T) {
-	result, err := reconciliationFromEnt(&ledgerent.ReconciliationReport{
+	result, err := reconciliationFromRow(reconciliationReportRow{
 		ID: "recon-max-int64", Status: "ok", BlockNewWorkspaces: false, Reason: "operator_reconciliation",
 		ReportJSON: `{"id":"recon-max-int64","status":"ok","counts":{"billingOperations":9223372036854775807,"matched":9223372036854775807,"exceptions":0},"exceptions":[]}`,
 	})
@@ -171,7 +169,7 @@ func TestPostgresReconciliationRowPreservesMaxInt64(t *testing.T) {
 }
 
 func TestPostgresReconciliationRowRejectsTrailingJSON(t *testing.T) {
-	_, err := reconciliationFromEnt(&ledgerent.ReconciliationReport{
+	_, err := reconciliationFromRow(reconciliationReportRow{
 		ID: "recon-trailing", Status: "ok", BlockNewWorkspaces: false, Reason: "operator_reconciliation",
 		ReportJSON: `{"id":"recon-trailing","status":"ok","counts":{"billingOperations":0,"matched":0,"exceptions":0},"exceptions":[]} {}`,
 	})

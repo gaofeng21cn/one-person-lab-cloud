@@ -566,7 +566,7 @@ func closeTestOperationStore(t *testing.T, store *PostgresOperationStore) {
 	if store == nil {
 		return
 	}
-	if err := store.client.Close(); err != nil {
+	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.db.Close(); err != nil {

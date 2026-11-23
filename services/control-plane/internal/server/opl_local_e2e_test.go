@@ -266,7 +266,7 @@ func startLocalE2EProcess(t *testing.T, databaseURL string, service *controlplan
 	gateway := newLocalE2EActivationGateway(t)
 	handler, err := NewPersistentServer(service, store)
 	if err != nil {
-		_ = store.(*postgresEntStateStore).client.Close()
+		_ = store.(*postgresEntStateStore).Close()
 		t.Fatalf("start local E2E Control Plane: %v", err)
 	}
 	typed, ok := handler.(*controlPlaneHTTPHandler)
@@ -282,7 +282,7 @@ func (p *localE2EProcess) Close() {
 	p.close.Do(func() {
 		p.server.Close()
 		_ = p.handler.Close()
-		_ = p.store.(*postgresEntStateStore).client.Close()
+		_ = p.store.(*postgresEntStateStore).Close()
 	})
 }
 

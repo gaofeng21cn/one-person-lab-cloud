@@ -2,38 +2,32 @@ package server
 
 import (
 	"context"
-
-	"entgo.io/ent/dialect"
-	"entgo.io/ent/dialect/sql"
-
-	controlplaneent "opl-cloud/services/control-plane/ent"
-	"opl-cloud/services/control-plane/ent/account"
-	"opl-cloud/services/control-plane/ent/runtimeoperation"
 )
 
 // SaveWalletAdjustment reserves refund capacity in the same transaction as the
 // first operation write. Subsequent writes compare the exact persisted snapshot
 // so that two processes cannot dispatch from the same unclaimed state.
 func (s *postgresEntStateStore) SaveWalletAdjustment(ctx context.Context, operationID string, operation walletAdjustmentOperation) (walletAdjustmentOperation, error) {
-	tx, err := s.client.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return operation, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	client := tx.Client()
 	if operation.PersistedResult == "" {
-		if _, err := client.Account.Query().Where(account.IDEQ(operation.AccountID), lockRowForUpdate).Only(ctx); err != nil {
+		if _, found, err := s.getSQLRecord(ctx, tx, "control_plane_accounts", operation.AccountID, accountEntFields, true); err != nil {
 			return operation, err
+		} else if !found {
+			return operation, errIdempotencyConflict
 		}
 	}
-	existing, err := client.RuntimeOperation.Query().Where(runtimeoperation.IDEQ(operationID), lockRowForUpdate).Only(ctx)
-	if err != nil && !controlplaneent.IsNotFound(err) {
+	existing, existingFound, err := s.getSQLRecord(ctx, tx, "control_plane_runtime_operations", operationID, runtimeOpEntFields, true)
+	if err != nil {
 		return operation, err
 	}
 	row := walletAdjustmentRow(operationID, operation)
-	reserve := existing == nil
-	if existing != nil {
-		current, decodeErr := decodeWalletAdjustment(recordFromEnt(existing, runtimeOpEntFields))
+	reserve := !existingFound
+	if existingFound {
+		current, decodeErr := decodeWalletAdjustment(existing)
 		if decodeErr != nil || !runtimeOperationIdentityMatches(existing, row) || current.RequestHash != operation.RequestHash {
 			return operation, errIdempotencyConflict
 		}
@@ -47,32 +41,28 @@ func (s *postgresEntStateStore) SaveWalletAdjustment(ctx context.Context, operat
 	} else if operation.PersistedResult != "" {
 		return operation, errWalletAdjustmentConflict
 	}
-	if reserve {
-		if operation.Kind == "business_refund" {
-			original, err := client.RuntimeOperation.Query().Where(runtimeoperation.IDEQ(operation.RelatedOperationID), lockRowForUpdate).Only(ctx)
-			if controlplaneent.IsNotFound(err) {
-				return operation, errWalletAdjustmentConflict
-			}
-			if err != nil {
-				return operation, err
-			}
-			rows, err := walletRefundRows(ctx, client, operation.RelatedOperationID, operationID)
-			if err != nil {
-				return operation, err
-			}
-			if err := validateWalletRefundReservation(recordFromEnt(original, runtimeOpEntFields), rows, operation); err != nil {
-				return operation, err
-			}
+	if reserve && operation.Kind == "business_refund" {
+		original, originalFound, err := s.getSQLRecord(ctx, tx, "control_plane_runtime_operations", operation.RelatedOperationID, runtimeOpEntFields, true)
+		if err != nil {
+			return operation, err
+		}
+		if !originalFound {
+			return operation, errWalletAdjustmentConflict
+		}
+		rows, err := s.walletRefundRows(ctx, tx, operation.RelatedOperationID, operationID)
+		if err != nil {
+			return operation, err
+		}
+		if err := validateWalletRefundReservation(original, rows, operation); err != nil {
+			return operation, err
 		}
 	}
-	if existing != nil {
-		builder := client.RuntimeOperation.UpdateOneID(operationID)
-		setRecordFieldsWithEmptyText(builder, row, runtimeOpEntFields, true)
-		if err := execCreate(ctx, builder); err != nil {
+	if existingFound {
+		if err := s.updateSQLRecord(ctx, tx, "control_plane_runtime_operations", operationID, row, runtimeOpEntFields, true); err != nil {
 			return operation, err
 		}
 	} else {
-		if err := saveRecord(ctx, operationID, row, client.RuntimeOperation.Create(), runtimeOpEntFields); err != nil {
+		if err := s.insertSQLRecord(ctx, tx, "control_plane_runtime_operations", operationID, row, runtimeOpEntFields); err != nil {
 			return operation, err
 		}
 	}
@@ -82,60 +72,53 @@ func (s *postgresEntStateStore) SaveWalletAdjustment(ctx context.Context, operat
 	return decodeWalletAdjustment(row)
 }
 
-func walletRefundRows(ctx context.Context, client *controlplaneent.Client, originalID, excludedID string) ([]map[string]any, error) {
-	query := client.RuntimeOperation.Query().Where(runtimeoperation.ActionEQ("gateway.wallet_adjustment.v1"), func(selector *sql.Selector) {
-		selector.Where(sql.P(func(b *sql.Builder) {
-			if selector.Dialect() == dialect.Postgres {
-				b.WriteString("(").Ident(selector.C(runtimeoperation.FieldResult)).WriteString("::jsonb ->> 'relatedOperationId')")
-			} else {
-				b.WriteString("json_extract(").Ident(selector.C(runtimeoperation.FieldResult)).WriteString(", '$.relatedOperationId')")
-			}
-			b.WriteString(" = ").Arg(originalID)
-		}))
-	})
+func (s *postgresEntStateStore) walletRefundRows(ctx context.Context, runner sqlQueryRunner, originalID, excludedID string) ([]map[string]any, error) {
+	relatedExpr := "json_extract(result, '$.relatedOperationId')"
+	if s.dialect == "postgres" {
+		relatedExpr = "(result::jsonb ->> 'relatedOperationId')"
+	}
+	suffix := "WHERE action = 'gateway.wallet_adjustment.v1' AND " + relatedExpr + " = ?"
+	args := []any{originalID}
 	if excludedID != "" {
-		query.Where(runtimeoperation.IDNEQ(excludedID))
+		suffix += " AND id <> ?"
+		args = append(args, excludedID)
 	}
-	refunds, err := query.All(ctx)
-	if err != nil {
-		return nil, err
-	}
-	rows := make([]map[string]any, 0, len(refunds))
-	for _, refund := range refunds {
-		rows = append(rows, recordFromEnt(refund, runtimeOpEntFields))
-	}
-	return rows, nil
+	return s.listSQLRecords(ctx, runner, "control_plane_runtime_operations", runtimeOpEntFields, suffix, args...)
 }
 
 func (s *postgresEntStateStore) ReserveWorkspaceLaunchCloseoutRefund(ctx context.Context, operation workspaceLaunchReconcileOperation) ([]walletRefundOperation, error) {
-	tx, err := s.client.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	client := tx.Client()
-	if _, err := client.Account.Query().Where(account.IDEQ(operation.stringFact("accountId")), lockRowForUpdate).Only(ctx); err != nil {
+	if _, found, err := s.getSQLRecord(ctx, tx, "control_plane_accounts", operation.stringFact("accountId"), accountEntFields, true); err != nil {
 		return nil, err
+	} else if !found {
+		return nil, errIdempotencyConflict
 	}
 	// Match the normal wallet writer's wallet-row -> original-row lock order.
-	if _, err := client.RuntimeOperation.Query().Where(runtimeoperation.IDEQ(workspaceLaunchRefundOperationID(operation.ID)), lockRowForUpdate).Only(ctx); err != nil && !controlplaneent.IsNotFound(err) {
+	if _, _, err := s.getSQLRecord(ctx, tx, "control_plane_runtime_operations", workspaceLaunchRefundOperationID(operation.ID), runtimeOpEntFields, true); err != nil {
 		return nil, err
 	}
-	original, err := client.RuntimeOperation.Query().Where(runtimeoperation.IDEQ(operation.ID), lockRowForUpdate).Only(ctx)
+	original, originalFound, err := s.getSQLRecord(ctx, tx, "control_plane_runtime_operations", operation.ID, runtimeOpEntFields, true)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := walletRefundRows(ctx, client, operation.ID, "")
+	if !originalFound {
+		return nil, errWalletAdjustmentConflict
+	}
+	rows, err := s.walletRefundRows(ctx, tx, operation.ID, "")
 	if err != nil {
 		return nil, err
 	}
-	refunds, created, err := prepareWorkspaceLaunchCloseoutRefund(recordFromEnt(original, runtimeOpEntFields), rows, operation)
+	refunds, created, err := prepareWorkspaceLaunchCloseoutRefund(original, rows, operation)
 	if err != nil {
 		return nil, err
 	}
 	if created != nil {
 		row := walletAdjustmentRow(created.ID, created.Operation)
-		if err := saveRecord(ctx, created.ID, row, client.RuntimeOperation.Create(), runtimeOpEntFields); err != nil {
+		if err := s.insertSQLRecord(ctx, tx, "control_plane_runtime_operations", created.ID, row, runtimeOpEntFields); err != nil {
 			return nil, err
 		}
 		created.Operation, err = decodeWalletAdjustment(row)

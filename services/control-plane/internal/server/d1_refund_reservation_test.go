@@ -22,7 +22,7 @@ func TestD1RefundReservationPostgres(t *testing.T) {
 			t.Fatal(err)
 		}
 		stores[i] = state.(*postgresEntStateStore)
-		t.Cleanup(func() { _ = state.(*postgresEntStateStore).client.Close() })
+		t.Cleanup(func() { _ = state.(*postgresEntStateStore).Close() })
 	}
 
 	var nextRemoteUserID int64 = 100
@@ -190,7 +190,7 @@ func TestD1RefundReservationPostgres(t *testing.T) {
 		stale := fixture.read(t, 0, id)
 		// Simulate a retained writer that updates only the separately stored
 		// status column. Identical JSON must not authorize a stale payment.
-		if err := fixture.stores[1].client.RuntimeOperation.UpdateOneID(id).SetStatus("manual_review").Exec(context.Background()); err != nil {
+		if _, err := fixture.stores[1].execSQL(context.Background(), fixture.stores[1].db, `UPDATE control_plane_runtime_operations SET status = ? WHERE id = ?`, "manual_review", id); err != nil {
 			t.Fatal(err)
 		}
 		stale.AdjustmentAttempted, stale.Phase = true, "authoritative_readback"
@@ -229,7 +229,7 @@ func TestD1RefundReservationPostgres(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := fixture.stores[1].client.RuntimeOperation.UpdateOneID(fixture.originalID).SetStatus("refunded").Exec(context.Background()); err != nil {
+		if _, err := fixture.stores[1].execSQL(context.Background(), fixture.stores[1].db, `UPDATE control_plane_runtime_operations SET status = ? WHERE id = ?`, "refunded", fixture.originalID); err != nil {
 			t.Fatal(err)
 		}
 		operation.AdjustmentAttempted, operation.Phase = true, "authoritative_readback"
@@ -282,10 +282,12 @@ func newD1RefundReservationFixture(t *testing.T, stores [2]*postgresEntStateStor
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := fixture.stores[0].client.RuntimeOperation.Create().
-		SetID(fixture.originalID).SetOperationID(fixture.originalID).SetAccountID(fixture.accountID).
-		SetWorkspaceID("ws-d1-" + suffix).SetResourceID("ws-d1-" + suffix).SetResourceKind(resourceKind).
-		SetAction(action).SetStatus(status).SetResult(string(encoded)).SetCreatedAt(time.Now().UTC()).Exec(context.Background()); err != nil {
+	now := time.Now().UTC()
+	if _, err := fixture.stores[0].execSQL(context.Background(), fixture.stores[0].db, `
+		INSERT INTO control_plane_runtime_operations (id, created_at, updated_at, operation_id, account_id, workspace_id, resource_id, resource_kind, action, status, result)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		fixture.originalID, now, now, fixture.originalID, fixture.accountID, "ws-d1-"+suffix, "ws-d1-"+suffix, resourceKind, action, status, string(encoded),
+	); err != nil {
 		t.Fatal(err)
 	}
 	return fixture

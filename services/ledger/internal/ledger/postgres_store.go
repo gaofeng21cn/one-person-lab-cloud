@@ -11,14 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
+	"github.com/lib/pq"
 
 	"opl-cloud/services/internal/postgresmigrate"
-	ledgerent "opl-cloud/services/ledger/ent"
-	"opl-cloud/services/ledger/ent/evidencereceipt"
-	"opl-cloud/services/ledger/ent/predicate"
-	"opl-cloud/services/ledger/ent/reconciliationreport"
 )
 
 //go:embed ent_migrations/*.sql
@@ -30,9 +25,8 @@ type embeddedMigration struct {
 }
 
 type PostgresStore struct {
-	client *ledgerent.Client
-	db     *sql.DB
-	now    func() time.Time
+	db  *sql.DB
+	now func() time.Time
 }
 
 func ledgerEmbeddedMigrations() ([]embeddedMigration, error) {
@@ -72,9 +66,8 @@ func PostgresSchemaSQL() string {
 
 func NewPostgresStore(db *sql.DB) *PostgresStore {
 	return &PostgresStore{
-		client: ledgerent.NewClient(ledgerent.Driver(entsql.OpenDB(dialect.Postgres, db))),
-		db:     db,
-		now:    func() time.Time { return time.Now().UTC() },
+		db:  db,
+		now: func() time.Time { return time.Now().UTC() },
 	}
 }
 
@@ -121,7 +114,7 @@ func (s *PostgresStore) recordReceipt(ctx context.Context, input ReceiptInput) (
 		}
 		existing.Replayed = true
 		return existing, nil
-	} else if !ledgerent.IsNotFound(err) {
+	} else if !errors.Is(err, sql.ErrNoRows) {
 		return Receipt{}, err
 	}
 	now := s.now()
@@ -130,25 +123,14 @@ func (s *PostgresStore) recordReceipt(ctx context.Context, input ReceiptInput) (
 	if err != nil {
 		return Receipt{}, err
 	}
-	if err := s.client.EvidenceReceipt.Create().
-		SetID(receipt.ReceiptID).
-		SetReceiptType(receipt.Type).
-		SetStatus(receipt.Status).
-		SetAccountID(receipt.AccountID).
-		SetOrganizationID(receipt.OrganizationID).
-		SetWorkspaceID(receipt.WorkspaceID).
-		SetProjectID(receipt.ProjectID).
-		SetTaskID(receipt.TaskID).
-		SetJobID(receipt.JobID).
-		SetArtifactID(receipt.ArtifactID).
-		SetReviewID(receipt.ReviewID).
-		SetPayloadJSON(string(payload)).
-		SetSupersedesReceiptID(receipt.SupersedesReceiptID).
-		SetIdempotencyKey(input.IdempotencyKey).
-		SetRequestHash(requestHash).
-		SetCreatedAt(receipt.CreatedAt).
-		Exec(ctx); err != nil {
-		if ledgerent.IsConstraintError(err) {
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO evidence_receipts
+		(id, receipt_type, status, account_id, organization_id, workspace_id, project_id, task_id, job_id, artifact_id, review_id, payload_json, supersedes_receipt_id, idempotency_key, request_hash, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+		receipt.ReceiptID, receipt.Type, receipt.Status, receipt.AccountID, receipt.OrganizationID,
+		receipt.WorkspaceID, receipt.ProjectID, receipt.TaskID, receipt.JobID, receipt.ArtifactID,
+		receipt.ReviewID, string(payload), receipt.SupersedesReceiptID, input.IdempotencyKey,
+		requestHash, receipt.CreatedAt); err != nil {
+		if isConstraintViolation(err) {
 			if existing, existingHash, replayErr := s.receiptByIdempotencyKey(ctx, input.IdempotencyKey); replayErr == nil {
 				if existingHash != requestHash {
 					return Receipt{}, ErrIdempotencyConflict
@@ -201,7 +183,7 @@ func (s *PostgresStore) RecordEvidenceIndex(ctx context.Context, input EvidenceI
 		entry.ReceiptID, entry.ReceiptType, entry.Status, entry.Actor, entry.ObservedAt, entry.IdentityDigest,
 		entry.RedactedLink, input.IdempotencyKey, requestHash, entry.CreatedAt)
 	if err != nil {
-		if ledgerent.IsConstraintError(err) {
+		if isConstraintViolation(err) {
 			if existing, existingHash, replayErr := evidenceIndexByIdempotencyKeyTx(ctx, tx, input.IdempotencyKey); replayErr == nil {
 				if existingHash != requestHash {
 					return EvidenceIndexEntry{}, ErrIdempotencyConflict
@@ -307,63 +289,72 @@ func (s *PostgresStore) ListReceipts(ctx context.Context, query ReceiptQuery) (R
 	// binds the read to that immutable commit. These kinds have no generic account
 	// projection to compare a requested account against, so none is admitted
 	// here.
-	q := s.client.EvidenceReceipt.Query().Where(evidencereceipt.ReceiptTypeNotIn(LocalNoChargeReceiptType, WalletActionReceiptType, ProviderActionReceiptType))
-	if query.AccountID != "" {
-		q = q.Where(evidencereceipt.AccountID(query.AccountID))
+	args := make([]any, 0, 16)
+	args = append(args, LocalNoChargeReceiptType, WalletActionReceiptType, ProviderActionReceiptType)
+	conditions := []string{"receipt_type NOT IN ($1, $2, $3)"}
+	addEq := func(column, value string) {
+		if value == "" {
+			return
+		}
+		args = append(args, value)
+		conditions = append(conditions, fmt.Sprintf("%s = $%d", column, len(args)))
 	}
-	if query.OrganizationID != "" {
-		q = q.Where(evidencereceipt.OrganizationID(query.OrganizationID))
-	}
-	if query.WorkspaceID != "" {
-		q = q.Where(evidencereceipt.WorkspaceID(query.WorkspaceID))
-	}
+	addEq("account_id", query.AccountID)
+	addEq("organization_id", query.OrganizationID)
+	addEq("workspace_id", query.WorkspaceID)
 	if query.RequestID != "" {
-		q = q.Where(func(selector *entsql.Selector) {
-			selector.Where(entsql.P(func(b *entsql.Builder) {
-				b.WriteString("(").Ident(selector.C(evidencereceipt.FieldPayloadJSON)).WriteString("::jsonb ->> 'requestId') = ").Arg(query.RequestID)
-			}))
-		})
+		args = append(args, query.RequestID)
+		conditions = append(conditions, fmt.Sprintf("(payload_json::jsonb ->> 'requestId') = $%d", len(args)))
 	}
-	if query.ProjectID != "" {
-		q = q.Where(evidencereceipt.ProjectID(query.ProjectID))
-	}
-	if query.TaskID != "" {
-		q = q.Where(evidencereceipt.TaskID(query.TaskID))
-	}
-	if query.JobID != "" {
-		q = q.Where(evidencereceipt.JobID(query.JobID))
-	}
-	var receiptType predicate.EvidenceReceipt
+	addEq("project_id", query.ProjectID)
+	addEq("task_id", query.TaskID)
+	addEq("job_id", query.JobID)
+	var typeClause string
 	if query.Type != "" {
-		receiptType = evidencereceipt.ReceiptType(query.Type)
+		args = append(args, query.Type)
+		typeClause = fmt.Sprintf("receipt_type = $%d", len(args))
 	} else if query.TypePrefix != "" {
-		receiptType = evidencereceipt.ReceiptTypeHasPrefix(query.TypePrefix)
+		args = append(args, query.TypePrefix)
+		typeClause = fmt.Sprintf("starts_with(receipt_type, $%d)", len(args))
 	}
 	if query.IncludeType != "" {
-		included := evidencereceipt.ReceiptType(query.IncludeType)
+		args = append(args, query.IncludeType)
+		included := fmt.Sprintf("receipt_type = $%d", len(args))
 		if query.IncludeExecutionKind != "" {
-			included = evidencereceipt.And(included, func(selector *entsql.Selector) {
-				selector.Where(entsql.P(func(b *entsql.Builder) {
-					b.WriteString("(").Ident(selector.C(evidencereceipt.FieldPayloadJSON)).WriteString("::jsonb -> 'execution' ->> 'kind') = ").Arg(query.IncludeExecutionKind)
-				}))
-			})
+			args = append(args, query.IncludeExecutionKind)
+			included = fmt.Sprintf("(%s AND (payload_json::jsonb -> 'execution' ->> 'kind') = $%d)", included, len(args))
 		}
-		receiptType = evidencereceipt.Or(receiptType, included)
+		if typeClause != "" {
+			typeClause = fmt.Sprintf("(%s OR %s)", typeClause, included)
+		} else {
+			typeClause = included
+		}
 	}
-	if receiptType != nil {
-		q = q.Where(receiptType)
+	if typeClause != "" {
+		conditions = append(conditions, typeClause)
 	}
-	if query.Status != "" {
-		q = q.Where(evidencereceipt.Status(query.Status))
-	}
+	addEq("status", query.Status)
 	if !cursor.CreatedAt.IsZero() {
-		q = q.Where(evidencereceipt.Or(
-			evidencereceipt.CreatedAtLT(cursor.CreatedAt),
-			evidencereceipt.And(evidencereceipt.CreatedAtEQ(cursor.CreatedAt), evidencereceipt.IDLT(cursor.ReceiptID)),
-		))
+		args = append(args, cursor.CreatedAt, cursor.ReceiptID)
+		conditions = append(conditions, fmt.Sprintf("(created_at < $%d OR (created_at = $%d AND id < $%d))", len(args)-1, len(args)-1, len(args)))
 	}
-	rows, err := q.Order(ledgerent.Desc(evidencereceipt.FieldCreatedAt, evidencereceipt.FieldID)).Limit(query.Limit + 1).All(ctx)
+	args = append(args, query.Limit+1)
+	queryText := fmt.Sprintf(`SELECT id, receipt_type, status, account_id, organization_id, workspace_id, project_id, task_id, job_id, artifact_id, review_id, payload_json, supersedes_receipt_id, created_at
+		FROM evidence_receipts WHERE %s ORDER BY created_at DESC, id DESC LIMIT $%d`, strings.Join(conditions, " AND "), len(args))
+	sqlRows, err := s.db.QueryContext(ctx, queryText, args...)
 	if err != nil {
+		return ReceiptPage{}, err
+	}
+	defer sqlRows.Close()
+	rows := make([]evidenceReceiptRow, 0, query.Limit+1)
+	for sqlRows.Next() {
+		var row evidenceReceiptRow
+		if err := sqlRows.Scan(&row.ID, &row.ReceiptType, &row.Status, &row.AccountID, &row.OrganizationID, &row.WorkspaceID, &row.ProjectID, &row.TaskID, &row.JobID, &row.ArtifactID, &row.ReviewID, &row.PayloadJSON, &row.SupersedesReceiptID, &row.CreatedAt); err != nil {
+			return ReceiptPage{}, err
+		}
+		rows = append(rows, row)
+	}
+	if err := sqlRows.Err(); err != nil {
 		return ReceiptPage{}, err
 	}
 	hasMore := len(rows) > query.Limit
@@ -372,7 +363,7 @@ func (s *PostgresStore) ListReceipts(ctx context.Context, query ReceiptQuery) (R
 	}
 	receipts := make([]Receipt, 0, len(rows))
 	for _, row := range rows {
-		receipt, err := receiptFromEnt(row)
+		receipt, err := receiptFromRow(row)
 		if err != nil {
 			return ReceiptPage{}, err
 		}
@@ -506,8 +497,13 @@ func (s *PostgresStore) mutateReceipt(ctx context.Context, service, idempotencyK
 }
 
 func (s *PostgresStore) receipt(ctx context.Context, receiptID string) (Receipt, error) {
-	row, err := s.client.EvidenceReceipt.Get(ctx, receiptID)
-	if ledgerent.IsNotFound(err) {
+	var row evidenceReceiptRow
+	err := s.db.QueryRowContext(ctx, `SELECT id, receipt_type, status, account_id, organization_id, workspace_id, project_id, task_id, job_id, artifact_id, review_id, payload_json, supersedes_receipt_id, created_at
+		FROM evidence_receipts WHERE id = $1`, receiptID).Scan(
+		&row.ID, &row.ReceiptType, &row.Status, &row.AccountID, &row.OrganizationID, &row.WorkspaceID,
+		&row.ProjectID, &row.TaskID, &row.JobID, &row.ArtifactID, &row.ReviewID,
+		&row.PayloadJSON, &row.SupersedesReceiptID, &row.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
 		return Receipt{}, ErrReceiptNotFound
 	}
 	if err != nil {
@@ -523,7 +519,7 @@ func (s *PostgresStore) receipt(ctx context.Context, receiptID string) (Receipt,
 	if row.ReceiptType == LocalNoChargeReceiptType || row.ReceiptType == WalletActionReceiptType || row.ReceiptType == ProviderActionReceiptType {
 		return Receipt{}, ErrReceiptNotFound
 	}
-	return receiptFromEnt(row)
+	return receiptFromRow(row)
 }
 
 func (s *PostgresStore) RecordReconciliation(ctx context.Context, input ReconciliationInput) (ReconciliationResult, error) {
@@ -540,7 +536,7 @@ func (s *PostgresStore) RecordReconciliation(ctx context.Context, input Reconcil
 		}
 		existing.Replayed = true
 		return existing, nil
-	} else if !ledgerent.IsNotFound(err) {
+	} else if !errors.Is(err, sql.ErrNoRows) {
 		return ReconciliationResult{}, err
 	}
 	id := stringFromAny(input.Report["id"])
@@ -551,17 +547,12 @@ func (s *PostgresStore) RecordReconciliation(ctx context.Context, input Reconcil
 	}
 	now := s.now()
 	result := ReconciliationResult{ID: id, Status: status, Report: input.Report, BlockNewWorkspaces: status == "mismatch", Reason: "operator_reconciliation", CreatedAt: now}
-	if err := s.client.ReconciliationReport.Create().
-		SetID(result.ID).
-		SetStatus(result.Status).
-		SetReportJSON(string(reportJSON)).
-		SetBlockNewWorkspaces(result.BlockNewWorkspaces).
-		SetReason(result.Reason).
-		SetIdempotencyKey(input.IdempotencyKey).
-		SetRequestHash(requestHash).
-		SetCreatedAt(result.CreatedAt).
-		Exec(ctx); err != nil {
-		if ledgerent.IsConstraintError(err) {
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO reconciliation_reports
+		(id, status, report_json, block_new_workspaces, reason, idempotency_key, request_hash, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		result.ID, result.Status, string(reportJSON), result.BlockNewWorkspaces, result.Reason,
+		input.IdempotencyKey, requestHash, result.CreatedAt); err != nil {
+		if isConstraintViolation(err) {
 			if existing, existingHash, replayErr := s.reconciliationByIdempotencyKey(ctx, input.IdempotencyKey); replayErr == nil {
 				if existingHash != requestHash {
 					return ReconciliationResult{}, ErrIdempotencyConflict
@@ -575,12 +566,45 @@ func (s *PostgresStore) RecordReconciliation(ctx context.Context, input Reconcil
 	return result, nil
 }
 
+type evidenceReceiptRow struct {
+	ID                  string
+	ReceiptType         string
+	Status              string
+	AccountID           string
+	OrganizationID      string
+	WorkspaceID         string
+	ProjectID           string
+	TaskID              string
+	JobID               string
+	ArtifactID          string
+	ReviewID            string
+	PayloadJSON         string
+	SupersedesReceiptID string
+	RequestHash         string
+	CreatedAt           time.Time
+}
+
+type reconciliationReportRow struct {
+	ID                 string
+	Status             string
+	ReportJSON         string
+	BlockNewWorkspaces bool
+	Reason             string
+	RequestHash        string
+	CreatedAt          time.Time
+}
+
 func (s *PostgresStore) receiptByIdempotencyKey(ctx context.Context, key string) (Receipt, string, error) {
-	row, err := s.client.EvidenceReceipt.Query().Where(evidencereceipt.IdempotencyKey(key)).Only(ctx)
+	var row evidenceReceiptRow
+	err := s.db.QueryRowContext(ctx, `SELECT id, receipt_type, status, account_id, organization_id, workspace_id, project_id, task_id, job_id, artifact_id, review_id, payload_json, supersedes_receipt_id, request_hash, created_at
+		FROM evidence_receipts WHERE idempotency_key = $1`, key).Scan(
+		&row.ID, &row.ReceiptType, &row.Status, &row.AccountID, &row.OrganizationID, &row.WorkspaceID,
+		&row.ProjectID, &row.TaskID, &row.JobID, &row.ArtifactID, &row.ReviewID,
+		&row.PayloadJSON, &row.SupersedesReceiptID, &row.RequestHash, &row.CreatedAt)
 	if err != nil {
 		return Receipt{}, "", err
 	}
-	receipt, err := receiptFromEnt(row)
+	receipt, err := receiptFromRow(row)
 	return receipt, row.RequestHash, err
 }
 
@@ -595,7 +619,7 @@ func evidenceIndexByIdempotencyKeyTx(ctx context.Context, tx *sql.Tx, key string
 	return entry, requestHash, err
 }
 
-func receiptFromEnt(row *ledgerent.EvidenceReceipt) (Receipt, error) {
+func receiptFromRow(row evidenceReceiptRow) (Receipt, error) {
 	// The payload remains canonical for flexible evidence; indexed identity columns override its projections.
 	var stored receiptPayload
 	if err := decodeStoredJSON(row.PayloadJSON, &stored); err != nil {
@@ -622,20 +646,28 @@ type receiptPayload struct {
 }
 
 func (s *PostgresStore) reconciliationByIdempotencyKey(ctx context.Context, key string) (ReconciliationResult, string, error) {
-	row, err := s.client.ReconciliationReport.Query().Where(reconciliationreport.IdempotencyKey(key)).Only(ctx)
+	var row reconciliationReportRow
+	err := s.db.QueryRowContext(ctx, `SELECT id, status, report_json, block_new_workspaces, reason, request_hash, created_at
+		FROM reconciliation_reports WHERE idempotency_key = $1`, key).Scan(
+		&row.ID, &row.Status, &row.ReportJSON, &row.BlockNewWorkspaces, &row.Reason, &row.RequestHash, &row.CreatedAt)
 	if err != nil {
 		return ReconciliationResult{}, "", err
 	}
-	result, err := reconciliationFromEnt(row)
+	result, err := reconciliationFromRow(row)
 	return result, row.RequestHash, err
 }
 
-func reconciliationFromEnt(row *ledgerent.ReconciliationReport) (ReconciliationResult, error) {
+func reconciliationFromRow(row reconciliationReportRow) (ReconciliationResult, error) {
 	result := ReconciliationResult{ID: row.ID, Status: row.Status, BlockNewWorkspaces: row.BlockNewWorkspaces, Reason: row.Reason, CreatedAt: row.CreatedAt}
 	if err := decodeStoredJSON(row.ReportJSON, &result.Report); err != nil || validateReconciliationResult(result) != nil {
 		return ReconciliationResult{}, ErrInvalidReconciliationInput
 	}
 	return result, nil
+}
+
+func isConstraintViolation(err error) bool {
+	var pqErr *pq.Error
+	return errors.As(err, &pqErr) && pqErr.Code.Class() == "23"
 }
 
 func decodeStoredJSON(payload string, target any) error {

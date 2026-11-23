@@ -18,12 +18,12 @@ func TestD3PostgresTencentLaunchPoolResumesAcrossServiceInstances(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.client.Close()
+	defer store.Close()
 	reopened, err := newTestPostgresOperationStore(databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reopened.client.Close()
+	defer reopened.Close()
 	testD3TencentLaunchPool(t, store, reopened)
 }
 
@@ -266,7 +266,7 @@ func TestD3FailedLaunchRecoveryDoesNotDisplaceAnActivePoolHead(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer postgresStore.client.Close()
+				defer postgresStore.Close()
 				store = postgresStore
 			}
 			ctx := context.Background()

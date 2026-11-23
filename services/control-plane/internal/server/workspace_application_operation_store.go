@@ -3,9 +3,7 @@ package server
 import (
 	"context"
 	"errors"
-
-	controlplaneent "opl-cloud/services/control-plane/ent"
-	"opl-cloud/services/control-plane/ent/runtimeoperation"
+	"time"
 )
 
 var errWorkspaceApplicationOperationCASConflict = errors.New("workspace_application_operation_cas_conflict")
@@ -49,22 +47,22 @@ func validateWorkspaceApplicationOperationPersistence(current map[string]any, ex
 }
 
 func (s *postgresEntStateStore) PersistWorkspaceApplicationOperation(ctx context.Context, expectedResult string, desiredRow map[string]any) error {
-	tx, err := s.client.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	entity, err := tx.RuntimeOperation.Query().Where(runtimeoperation.IDEQ(stringValue(desiredRow["id"])), lockRowForUpdate).Only(ctx)
-	if controlplaneent.IsNotFound(err) {
-		return errWorkspaceApplicationOperationCASConflict
-	}
+	current, found, err := s.getSQLRecord(ctx, tx, "control_plane_runtime_operations", stringValue(desiredRow["id"]), runtimeOpEntFields, true)
 	if err != nil {
 		return err
 	}
-	if err := validateWorkspaceApplicationOperationPersistence(recordFromEnt(entity, runtimeOpEntFields), expectedResult, desiredRow); err != nil {
+	if !found {
+		return errWorkspaceApplicationOperationCASConflict
+	}
+	if err := validateWorkspaceApplicationOperationPersistence(current, expectedResult, desiredRow); err != nil {
 		return err
 	}
-	if err := tx.RuntimeOperation.UpdateOneID(entity.ID).SetResult(stringValue(desiredRow["result"])).SetStatus(stringValue(desiredRow["status"])).Exec(ctx); err != nil {
+	if _, err := s.execSQL(ctx, tx, "UPDATE control_plane_runtime_operations SET result = ?, status = ?, updated_at = ? WHERE id = ?", stringValue(desiredRow["result"]), stringValue(desiredRow["status"]), time.Now().UTC(), stringValue(current["id"])); err != nil {
 		return err
 	}
 	return tx.Commit()

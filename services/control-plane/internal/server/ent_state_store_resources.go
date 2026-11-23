@@ -3,99 +3,93 @@ package server
 import (
 	"context"
 	"errors"
-
-	controlplaneent "opl-cloud/services/control-plane/ent"
-	"opl-cloud/services/control-plane/ent/computeallocation"
-	"opl-cloud/services/control-plane/ent/storageattachment"
-	"opl-cloud/services/control-plane/ent/storagevolume"
 )
 
 var (
-	computeEntFields = []entRecordField{
-		textField("AccountID", "SetAccountID", "accountId"),
-		textField("OwnerUserID", "SetOwnerUserID", "ownerUserId"),
-		textField("WorkspaceID", "SetWorkspaceID", "workspaceId"),
-		textField("Name", "SetName", "name"),
-		textField("PackageID", "SetPackageID", "packageId"),
-		textField("Provider", "SetProvider", "provider"),
-		textField("ProviderResourceID", "SetProviderResourceID", "providerResourceId"),
-		textField("ProviderRequestID", "SetProviderRequestID", "providerRequestId"),
-		textField("OperationID", "SetOperationID", "operationId"),
-		textField("Status", "SetStatus", "status"),
-		textField("DesiredStatus", "SetDesiredStatus", "desiredStatus"),
-		textField("ProviderStatus", "SetProviderStatus", "providerStatus"),
-		textField("LastProviderSyncAt", "SetLastProviderSyncAt", "lastProviderSyncAt"),
-		textField("LastProviderSyncError", "SetLastProviderSyncError", "lastProviderSyncError"),
-		textField("ExternalDeletedAt", "SetExternalDeletedAt", "externalDeletedAt"),
-		textField("BillingStatus", "SetBillingStatus", "billingStatus"),
-		textField("BillingOperationID", "SetBillingOperationID", "billingOperationId"),
-		billingJSONField("BillingStateJSON", "SetBillingStateJSON"),
-		textField("PricingVersion", "SetPricingVersion", "pricingVersion"),
-		textField("EvidenceID", "SetEvidenceID", "evidenceId"),
-		textField("CvmInstanceID", "SetCvmInstanceID", "cvmInstanceId"),
-		textField("InstanceID", "SetInstanceID", "instanceId"),
-		floatField("CPU", "SetCPU", "cpu"),
-		floatField("MemoryGB", "SetMemoryGB", "memoryGb"),
-		floatField("DiskGB", "SetDiskGB", "diskGb"),
+	computeEntFields = []sqlRecordField{
+		sqlTextField("account_id", "accountId"),
+		sqlTextField("owner_user_id", "ownerUserId"),
+		sqlTextField("workspace_id", "workspaceId"),
+		sqlTextField("name", "name"),
+		sqlTextField("package_id", "packageId"),
+		sqlTextField("provider", "provider"),
+		sqlTextField("provider_resource_id", "providerResourceId"),
+		sqlTextField("provider_request_id", "providerRequestId"),
+		sqlTextField("operation_id", "operationId"),
+		sqlTextField("status", "status"),
+		sqlTextField("desired_status", "desiredStatus"),
+		sqlTextField("provider_status", "providerStatus"),
+		sqlTextField("last_provider_sync_at", "lastProviderSyncAt"),
+		sqlTextField("last_provider_sync_error", "lastProviderSyncError"),
+		sqlTextField("external_deleted_at", "externalDeletedAt"),
+		sqlTextField("billing_status", "billingStatus"),
+		sqlTextField("billing_operation_id", "billingOperationId"),
+		sqlBillingJSONField("billing_state_json"),
+		sqlTextField("pricing_version", "pricingVersion"),
+		sqlTextField("evidence_id", "evidenceId"),
+		sqlTextField("cvm_instance_id", "cvmInstanceId"),
+		sqlTextField("instance_id", "instanceId"),
+		sqlFloatField("cpu", "cpu"),
+		sqlFloatField("memory_gb", "memoryGb"),
+		sqlFloatField("disk_gb", "diskGb"),
 	}
-	storageEntFields = []entRecordField{
-		textField("AccountID", "SetAccountID", "accountId"),
-		textField("OwnerUserID", "SetOwnerUserID", "ownerUserId"),
-		textField("WorkspaceID", "SetWorkspaceID", "workspaceId"),
-		textField("Name", "SetName", "name"),
-		textField("PackageID", "SetPackageID", "packageId"),
-		textField("Provider", "SetProvider", "provider"),
-		textField("ProviderResourceID", "SetProviderResourceID", "providerResourceId"),
-		textField("ProviderRequestID", "SetProviderRequestID", "providerRequestId"),
-		textField("OperationID", "SetOperationID", "operationId"),
-		textField("Status", "SetStatus", "status"),
-		textField("DesiredStatus", "SetDesiredStatus", "desiredStatus"),
-		textField("ProviderStatus", "SetProviderStatus", "providerStatus"),
-		textField("LastProviderSyncAt", "SetLastProviderSyncAt", "lastProviderSyncAt"),
-		textField("LastProviderSyncError", "SetLastProviderSyncError", "lastProviderSyncError"),
-		textField("ExternalDeletedAt", "SetExternalDeletedAt", "externalDeletedAt"),
-		textField("BillingStatus", "SetBillingStatus", "billingStatus"),
-		textField("BillingOperationID", "SetBillingOperationID", "billingOperationId"),
-		billingJSONField("BillingStateJSON", "SetBillingStateJSON"),
-		textField("PricingVersion", "SetPricingVersion", "pricingVersion"),
-		textField("MountPath", "SetMountPath", "mountPath"),
-		floatField("SizeGB", "SetSizeGB", "sizeGb"),
+	storageEntFields = []sqlRecordField{
+		sqlTextField("account_id", "accountId"),
+		sqlTextField("owner_user_id", "ownerUserId"),
+		sqlTextField("workspace_id", "workspaceId"),
+		sqlTextField("name", "name"),
+		sqlTextField("package_id", "packageId"),
+		sqlTextField("provider", "provider"),
+		sqlTextField("provider_resource_id", "providerResourceId"),
+		sqlTextField("provider_request_id", "providerRequestId"),
+		sqlTextField("operation_id", "operationId"),
+		sqlTextField("status", "status"),
+		sqlTextField("desired_status", "desiredStatus"),
+		sqlTextField("provider_status", "providerStatus"),
+		sqlTextField("last_provider_sync_at", "lastProviderSyncAt"),
+		sqlTextField("last_provider_sync_error", "lastProviderSyncError"),
+		sqlTextField("external_deleted_at", "externalDeletedAt"),
+		sqlTextField("billing_status", "billingStatus"),
+		sqlTextField("billing_operation_id", "billingOperationId"),
+		sqlBillingJSONField("billing_state_json"),
+		sqlTextField("pricing_version", "pricingVersion"),
+		sqlTextField("mount_path", "mountPath"),
+		sqlFloatField("size_gb", "sizeGb"),
 	}
-	attachmentEntFields = []entRecordField{
-		textField("AccountID", "SetAccountID", "accountId"),
-		textField("WorkspaceID", "SetWorkspaceID", "workspaceId"),
-		textField("ComputeAllocationID", "SetComputeAllocationID", "computeAllocationId"),
-		textField("StorageID", "SetStorageID", "storageId"),
-		textField("VolumeID", "SetVolumeID", "volumeId"),
-		textField("OperationID", "SetOperationID", "operationId"),
-		textField("Provider", "SetProvider", "provider"),
-		textField("ProviderRequestID", "SetProviderRequestID", "providerRequestId"),
-		textField("Status", "SetStatus", "status"),
-		textField("MountPath", "SetMountPath", "mountPath"),
+	attachmentEntFields = []sqlRecordField{
+		sqlTextField("account_id", "accountId"),
+		sqlTextField("workspace_id", "workspaceId"),
+		sqlTextField("compute_allocation_id", "computeAllocationId"),
+		sqlTextField("storage_id", "storageId"),
+		sqlTextField("volume_id", "volumeId"),
+		sqlTextField("operation_id", "operationId"),
+		sqlTextField("provider", "provider"),
+		sqlTextField("provider_request_id", "providerRequestId"),
+		sqlTextField("status", "status"),
+		sqlTextField("mount_path", "mountPath"),
 	}
 )
 
-func (s *postgresEntStateStore) ListComputes(ctx context.Context, accountID string) ([]map[string]any, error) {
-	query := s.client.ComputeAllocation.Query()
+func (s *postgresEntStateStore) listScopedSQLRecords(ctx context.Context, table string, fields []sqlRecordField, accountID string) ([]map[string]any, error) {
+	suffix := ""
+	var args []any
 	if accountID != "" {
-		query.Where(computeallocation.AccountID(accountID))
+		suffix = "WHERE account_id = ?"
+		args = []any{accountID}
 	}
-	rows, err := loadRecordSet(ctx, query.All, computeEntFields)
+	rows, err := s.loadSQLRecordSet(ctx, s.db, table, fields, suffix, args...)
 	if err != nil {
 		return nil, err
 	}
 	return filteredRecords(rows, accountID)
 }
 
+func (s *postgresEntStateStore) ListComputes(ctx context.Context, accountID string) ([]map[string]any, error) {
+	return s.listScopedSQLRecords(ctx, "control_plane_compute_allocations", computeEntFields, accountID)
+}
+
 func (s *postgresEntStateStore) GetCompute(ctx context.Context, id string) (map[string]any, bool, error) {
-	entity, err := s.client.ComputeAllocation.Get(ctx, id)
-	if controlplaneent.IsNotFound(err) {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, err
-	}
-	return recordFromEnt(entity, computeEntFields), true, nil
+	return s.getSQLRecord(ctx, s.db, "control_plane_compute_allocations", id, computeEntFields, false)
 }
 
 func (s *postgresEntStateStore) SaveCompute(ctx context.Context, row map[string]any) error {
@@ -103,34 +97,15 @@ func (s *postgresEntStateStore) SaveCompute(ctx context.Context, row map[string]
 }
 
 func (s *postgresEntStateStore) DeleteCompute(ctx context.Context, id string) error {
-	err := s.client.ComputeAllocation.DeleteOneID(id).Exec(ctx)
-	if controlplaneent.IsNotFound(err) {
-		return nil
-	}
-	return err
+	return s.deleteSQLByID(ctx, s.db, "control_plane_compute_allocations", id)
 }
 
 func (s *postgresEntStateStore) ListStorages(ctx context.Context, accountID string) ([]map[string]any, error) {
-	query := s.client.StorageVolume.Query()
-	if accountID != "" {
-		query.Where(storagevolume.AccountID(accountID))
-	}
-	rows, err := loadRecordSet(ctx, query.All, storageEntFields)
-	if err != nil {
-		return nil, err
-	}
-	return filteredRecords(rows, accountID)
+	return s.listScopedSQLRecords(ctx, "control_plane_storage_volumes", storageEntFields, accountID)
 }
 
 func (s *postgresEntStateStore) GetStorage(ctx context.Context, id string) (map[string]any, bool, error) {
-	entity, err := s.client.StorageVolume.Get(ctx, id)
-	if controlplaneent.IsNotFound(err) {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, err
-	}
-	return recordFromEnt(entity, storageEntFields), true, nil
+	return s.getSQLRecord(ctx, s.db, "control_plane_storage_volumes", id, storageEntFields, false)
 }
 
 func (s *postgresEntStateStore) SaveStorage(ctx context.Context, row map[string]any) error {
@@ -142,11 +117,18 @@ func (s *postgresEntStateStore) saveResourcePreservingAutoRenew(ctx context.Cont
 	if id == "" {
 		return errors.New("missing_record_id")
 	}
-	if resourceType != "compute" && resourceType != "storage" {
+	var table string
+	var fields []sqlRecordField
+	switch resourceType {
+	case "compute":
+		table, fields = "control_plane_compute_allocations", computeEntFields
+	case "storage":
+		table, fields = "control_plane_storage_volumes", storageEntFields
+	default:
 		return errors.New("invalid_billing_resource_type")
 	}
 	for range 4 {
-		tx, err := s.client.Tx(ctx)
+		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
 			return err
 		}
@@ -154,32 +136,13 @@ func (s *postgresEntStateStore) saveResourcePreservingAutoRenew(ctx context.Cont
 			_ = tx.Rollback()
 			return err
 		}
-		client := tx.Client()
-		var current map[string]any
-		switch resourceType {
-		case "compute":
-			entity, lockErr := client.ComputeAllocation.UpdateOneID(id).Save(ctx)
-			if lockErr == nil {
-				current = recordFromEnt(entity, computeEntFields)
-			} else if !controlplaneent.IsNotFound(lockErr) {
-				return rollback(lockErr)
-			}
-		case "storage":
-			entity, lockErr := client.StorageVolume.UpdateOneID(id).Save(ctx)
-			if lockErr == nil {
-				current = recordFromEnt(entity, storageEntFields)
-			} else if !controlplaneent.IsNotFound(lockErr) {
-				return rollback(lockErr)
-			}
+		current, found, err := s.getSQLRecord(ctx, tx, table, id, fields, true)
+		if err != nil {
+			return rollback(err)
 		}
-		if current == nil {
-			var createErr error
-			if resourceType == "compute" {
-				createErr = saveRecord(ctx, id, row, client.ComputeAllocation.Create(), computeEntFields)
-			} else {
-				createErr = saveRecord(ctx, id, row, client.StorageVolume.Create(), storageEntFields)
-			}
-			if controlplaneent.IsConstraintError(createErr) {
+		if !found {
+			createErr := s.insertSQLRecord(ctx, tx, table, id, row, fields)
+			if isSQLConstraintError(createErr) {
 				_ = tx.Rollback()
 				continue
 			}
@@ -192,16 +155,7 @@ func (s *postgresEntStateStore) saveResourcePreservingAutoRenew(ctx context.Cont
 			return rollback(errIdempotencyConflict)
 		}
 		saved := preserveResourceAutoRenew(current, row)
-		if resourceType == "compute" {
-			builder := client.ComputeAllocation.UpdateOneID(id)
-			setRecordFieldsWithEmptyText(builder, saved, computeEntFields, true)
-			err = execCreate(ctx, builder)
-		} else {
-			builder := client.StorageVolume.UpdateOneID(id)
-			setRecordFieldsWithEmptyText(builder, saved, storageEntFields, true)
-			err = execCreate(ctx, builder)
-		}
-		if err != nil {
+		if err := s.updateSQLRecord(ctx, tx, table, id, saved, fields, true); err != nil {
 			return rollback(err)
 		}
 		return tx.Commit()
@@ -210,44 +164,21 @@ func (s *postgresEntStateStore) saveResourcePreservingAutoRenew(ctx context.Cont
 }
 
 func (s *postgresEntStateStore) DeleteStorage(ctx context.Context, id string) error {
-	err := s.client.StorageVolume.DeleteOneID(id).Exec(ctx)
-	if controlplaneent.IsNotFound(err) {
-		return nil
-	}
-	return err
+	return s.deleteSQLByID(ctx, s.db, "control_plane_storage_volumes", id)
 }
 
 func (s *postgresEntStateStore) ListAttachments(ctx context.Context, accountID string) ([]map[string]any, error) {
-	query := s.client.StorageAttachment.Query()
-	if accountID != "" {
-		query.Where(storageattachment.AccountID(accountID))
-	}
-	rows, err := loadRecordSet(ctx, query.All, attachmentEntFields)
-	if err != nil {
-		return nil, err
-	}
-	return filteredRecords(rows, accountID)
+	return s.listScopedSQLRecords(ctx, "control_plane_storage_attachments", attachmentEntFields, accountID)
 }
 
 func (s *postgresEntStateStore) GetAttachment(ctx context.Context, id string) (map[string]any, bool, error) {
-	entity, err := s.client.StorageAttachment.Get(ctx, id)
-	if controlplaneent.IsNotFound(err) {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, err
-	}
-	return recordFromEnt(entity, attachmentEntFields), true, nil
+	return s.getSQLRecord(ctx, s.db, "control_plane_storage_attachments", id, attachmentEntFields, false)
 }
 
 func (s *postgresEntStateStore) SaveAttachment(ctx context.Context, row map[string]any) error {
-	return s.replaceRecord(ctx, row, func(id string) error { return s.client.StorageAttachment.DeleteOneID(id).Exec(ctx) }, func() any { return s.client.StorageAttachment.Create() }, attachmentEntFields)
+	return s.replaceRecord(ctx, "control_plane_storage_attachments", row, attachmentEntFields)
 }
 
 func (s *postgresEntStateStore) DeleteAttachment(ctx context.Context, id string) error {
-	err := s.client.StorageAttachment.DeleteOneID(id).Exec(ctx)
-	if controlplaneent.IsNotFound(err) {
-		return nil
-	}
-	return err
+	return s.deleteSQLByID(ctx, s.db, "control_plane_storage_attachments", id)
 }

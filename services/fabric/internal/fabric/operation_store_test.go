@@ -884,7 +884,7 @@ func TestPostgresOperationStoreMapsHistoricalCorrelationIDToOperationID(t *testi
 			if err != nil {
 				t.Fatalf("install historical Fabric schema: %v", err)
 			}
-			defer store.client.Close()
+			defer store.Close()
 
 			var operationID, callerService, status string
 			var startedAt time.Time

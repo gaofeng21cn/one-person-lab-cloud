@@ -5,8 +5,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-
-	controlplaneent "opl-cloud/services/control-plane/ent"
 )
 
 func strictProvisionedAccountRows() (map[string]any, map[string]any) {
@@ -276,28 +274,28 @@ func TestIdentityStoresProvideEquivalentPointLookups(t *testing.T) {
 func TestEntIdentitySchemaEnforcesOneToOneFields(t *testing.T) {
 	tests := []struct {
 		name string
-		run  func(context.Context, *controlplaneent.Client) error
+		run  func(context.Context, *postgresEntStateStore) error
 	}{
-		{name: "account owner", run: func(ctx context.Context, client *controlplaneent.Client) error {
-			_, _ = client.Account.Create().SetID("acct-one").SetOwnerUserID("usr-one").SetSub2apiUserID(71).Save(ctx)
-			_, err := client.Account.Create().SetID("acct-two").SetOwnerUserID("usr-one").SetSub2apiUserID(72).Save(ctx)
+		{name: "account owner", run: func(ctx context.Context, store *postgresEntStateStore) error {
+			_, _ = store.execSQL(ctx, store.db, `INSERT INTO control_plane_accounts (id, created_at, updated_at, owner_user_id, sub2api_user_id) VALUES ('acct-one', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'usr-one', 71)`)
+			_, err := store.execSQL(ctx, store.db, `INSERT INTO control_plane_accounts (id, created_at, updated_at, owner_user_id, sub2api_user_id) VALUES ('acct-two', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'usr-one', 72)`)
 			return err
 		}},
-		{name: "account remote identity", run: func(ctx context.Context, client *controlplaneent.Client) error {
-			_, _ = client.Account.Create().SetID("acct-one").SetOwnerUserID("usr-one").SetSub2apiUserID(71).Save(ctx)
-			_, err := client.Account.Create().SetID("acct-two").SetOwnerUserID("usr-two").SetSub2apiUserID(71).Save(ctx)
+		{name: "account remote identity", run: func(ctx context.Context, store *postgresEntStateStore) error {
+			_, _ = store.execSQL(ctx, store.db, `INSERT INTO control_plane_accounts (id, created_at, updated_at, owner_user_id, sub2api_user_id) VALUES ('acct-one', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'usr-one', 71)`)
+			_, err := store.execSQL(ctx, store.db, `INSERT INTO control_plane_accounts (id, created_at, updated_at, owner_user_id, sub2api_user_id) VALUES ('acct-two', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'usr-two', 71)`)
 			return err
 		}},
-		{name: "user account", run: func(ctx context.Context, client *controlplaneent.Client) error {
-			_, _ = client.User.Create().SetID("usr-one").SetAccountID("acct-one").SetEmail("one@example.com").Save(ctx)
-			_, err := client.User.Create().SetID("usr-two").SetAccountID("acct-one").SetEmail("two@example.com").Save(ctx)
+		{name: "user account", run: func(ctx context.Context, store *postgresEntStateStore) error {
+			_, _ = store.execSQL(ctx, store.db, `INSERT INTO control_plane_users (id, created_at, updated_at, account_id, email) VALUES ('usr-one', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'acct-one', 'one@example.com')`)
+			_, err := store.execSQL(ctx, store.db, `INSERT INTO control_plane_users (id, created_at, updated_at, account_id, email) VALUES ('usr-two', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'acct-one', 'two@example.com')`)
 			return err
 		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			store := NewTestEntStateStore(t, t.TempDir()+"/identity-schema.sqlite").(*postgresEntStateStore)
-			if err := test.run(context.Background(), store.client); err == nil {
+			if err := test.run(context.Background(), store); err == nil {
 				t.Fatal("duplicate one-to-one identity field succeeded")
 			}
 		})

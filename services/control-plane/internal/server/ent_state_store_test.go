@@ -14,20 +14,25 @@ import (
 	"testing"
 	"time"
 
-	"entgo.io/ent/dialect"
 	_ "github.com/mattn/go-sqlite3"
 
-	controlplaneent "opl-cloud/services/control-plane/ent"
-	controlplaneenttest "opl-cloud/services/control-plane/ent/enttest"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
+	controlplanemigrations "opl-cloud/services/control-plane/migrations"
 )
 
 func NewTestEntStateStore(t *testing.T, path string) StateStore {
 	t.Helper()
-	client := controlplaneenttest.Open(t, dialect.SQLite, path+"?_fk=1")
-	t.Cleanup(func() { _ = client.Close() })
-	return &postgresEntStateStore{client: client}
+	db, err := sql.Open("sqlite3", path+"?_fk=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := controlplanemigrations.ApplyCoreSchema(context.Background(), controlplanemigrations.OpenDriver(db)); err != nil {
+		_ = db.Close()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return &postgresEntStateStore{db: db, dialect: "sqlite3"}
 }
 
 // seedBillingReconciliationForTest stores one reconciliation row directly.
@@ -39,7 +44,7 @@ func (s *postgresEntStateStore) seedBillingReconciliationForTest(ctx context.Con
 	if stringValue(saved["createdAt"]) == "" {
 		saved["createdAt"] = time.Now().UTC().Format(time.RFC3339Nano)
 	}
-	return saveRecord(ctx, stringValue(saved["id"]), saved, s.client.BillingReconciliation.Create(), reconcileEntFields)
+	return s.insertSQLRecord(ctx, s.db, "control_plane_billing_reconciliation", stringValue(saved["id"]), saved, reconcileEntFields)
 }
 
 // seedWorkspaceApplicationDeploymentIntentForTest stores one application
@@ -47,10 +52,11 @@ func (s *postgresEntStateStore) seedBillingReconciliationForTest(ctx context.Con
 // the Workspace Gateway key rotation, so a test that still exercises the
 // surviving read path seeds the row here.
 func (s *postgresEntStateStore) seedWorkspaceApplicationDeploymentIntentForTest(ctx context.Context, row map[string]any) error {
-	if err := saveRecord(ctx, stringValue(row["id"]), row, s.client.RuntimeOperation.Create(), runtimeOpEntFields); err != nil {
+	if err := s.insertSQLRecord(ctx, s.db, "control_plane_runtime_operations", stringValue(row["id"]), row, runtimeOpEntFields); err != nil {
 		return err
 	}
-	return s.client.Workspace.UpdateOneID(stringValue(row["workspaceId"])).SetReservedApplicationDeploymentID(stringValue(row["id"])).Exec(ctx)
+	_, err := s.execSQL(ctx, s.db, "UPDATE control_plane_workspaces SET reserved_application_deployment_id = ?, updated_at = ? WHERE id = ?", stringValue(row["id"]), time.Now().UTC(), stringValue(row["workspaceId"]))
+	return err
 }
 
 func TestEntStateStoreSchemaRetiresWorkspaceBackupWithoutDroppingLegacyTable(t *testing.T) {
@@ -251,18 +257,13 @@ func TestWorkspaceAccessReadsPointResourcesWithRequestContext(t *testing.T) {
 }
 
 func TestEntIdentitySchemaEnforcesHardCut(t *testing.T) {
-	client := NewTestEntStateStore(t, t.TempDir()+"/identity-schema.sqlite").(*postgresEntStateStore).client
+	store := NewTestEntStateStore(t, t.TempDir()+"/identity-schema.sqlite").(*postgresEntStateStore)
 	ctx := context.Background()
 
 	t.Run("non-empty password hash", func(t *testing.T) {
-		_, err := client.User.Create().
-			SetID("usr-direct").
-			SetAccountID("acct-direct").
-			SetEmail("direct@example.com").
-			SetRole("owner").
-			SetStatus("active").
-			SetPasswordHash("local-secret").
-			Save(ctx)
+		_, err := store.execSQL(ctx, store.db, `
+			INSERT INTO control_plane_users (id, created_at, updated_at, account_id, email, role, status, password_hash)
+			VALUES ('usr-direct', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'acct-direct', 'direct@example.com', 'owner', 'active', 'local-secret')`)
 		if err == nil {
 			t.Fatal("direct Ent user write accepted non-empty password hash")
 		}
@@ -362,13 +363,10 @@ func TestRuntimeOperationPointLookupAndFilteredPagesMatchAcrossStores(t *testing
 
 func TestEntWorkspaceCountsUseOneGroupedQuery(t *testing.T) {
 	var queries []string
-	client := controlplaneenttest.Open(t, dialect.SQLite, t.TempDir()+"/workspace-counts.sqlite?_fk=1",
-		controlplaneenttest.WithOptions(controlplaneent.Debug(), controlplaneent.Log(func(values ...any) {
-			queries = append(queries, fmt.Sprint(values...))
-		})),
-	)
-	t.Cleanup(func() { _ = client.Close() })
-	store := &postgresEntStateStore{client: client}
+	store := NewTestEntStateStore(t, t.TempDir()+"/workspace-counts.sqlite").(*postgresEntStateStore)
+	store.onQuery = func(query string) {
+		queries = append(queries, query)
+	}
 	ctx := context.Background()
 	for _, row := range []map[string]any{
 		{"id": "ws-a", "accountId": "acct-a", "ownerAccountId": "acct-a"},
@@ -933,16 +931,16 @@ func TestWorkspaceRenewalOwnerLifecycleLeavesCorruptStateFailClosed(t *testing.T
 			t.Fatal(err)
 		}
 		const corrupt = `{"autoRenew":true`
-		if _, err := store.client.Workspace.UpdateOneID("ws-renewal").SetBillingStateJSON(corrupt).Save(ctx); err != nil {
+		if _, err := store.execSQL(ctx, store.db, `UPDATE control_plane_workspaces SET billing_state_json = ? WHERE id = ?`, corrupt, "ws-renewal"); err != nil {
 			t.Fatal(err)
 		}
 		owner["status"] = "disabled"
 		if err := store.ApplyUserLifecycle(ctx, owner); err != nil {
 			t.Fatal(err)
 		}
-		entity, err := store.client.Workspace.Get(ctx, "ws-renewal")
-		if err != nil || entity.BillingStateJSON != corrupt {
-			t.Fatalf("corrupt PostgreSQL state changed: state=%q err=%v", entity.BillingStateJSON, err)
+		var rawBilling string
+		if err := store.queryRow(ctx, store.db, `SELECT billing_state_json FROM control_plane_workspaces WHERE id = ?`, "ws-renewal").Scan(&rawBilling); err != nil || rawBilling != corrupt {
+			t.Fatalf("corrupt PostgreSQL state changed: state=%q err=%v", rawBilling, err)
 		}
 		rows, err := store.ListWorkspaces(ctx, "acct-renewal")
 		if err != nil || len(rows) != 1 || rows[0]["autoRenew"] != nil || rows[0]["renewalStatus"] != nil {
@@ -1718,7 +1716,7 @@ func TestPostgresWorkspaceRenewalPersistAndOwnerDisableUseSameLockOrder(t *testi
 			t.Fatal(err)
 		}
 		result := stateStore.(*postgresEntStateStore)
-		t.Cleanup(func() { _ = result.client.Close() })
+		t.Cleanup(func() { _ = result.Close() })
 		return result
 	}
 	ownerStore := newStore("task7_owner_disable")
@@ -1911,7 +1909,7 @@ func newPostgresWorkspaceRenewalStoreWithDB(t *testing.T) (*postgresEntStateStor
 		t.Fatal(err)
 	}
 	store := stateStore.(*postgresEntStateStore)
-	t.Cleanup(func() { _ = store.client.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 	db, err := sql.Open("postgres", controlPlaneTestPostgresURL(t, "postgres", schema))
 	if err != nil {
 		t.Fatal(err)
@@ -2143,12 +2141,14 @@ func TestEntStateStoreUpdatesResourcesWithoutRecreatingThem(t *testing.T) {
 	if err := store.SaveCompute(ctx, compute); err != nil {
 		t.Fatal(err)
 	}
-	storedCompute, err := store.client.ComputeAllocation.Get(ctx, "compute-alpha")
-	if err != nil {
+	var computeCreatedAtRaw any
+	var computeStatus, computeSyncErr string
+	if err := store.queryRow(ctx, store.db, `SELECT created_at, status, last_provider_sync_error FROM control_plane_compute_allocations WHERE id = ?`, "compute-alpha").Scan(&computeCreatedAtRaw, &computeStatus, &computeSyncErr); err != nil {
 		t.Fatal(err)
 	}
-	if storedCompute.CreatedAt.Format(time.RFC3339) != createdAt || storedCompute.Status != "running" || storedCompute.LastProviderSyncError != "" {
-		t.Fatalf("compute was recreated or not updated: %#v", storedCompute)
+	computeCreatedAt := scanTimestampValue(computeCreatedAtRaw)
+	if computeCreatedAt.Format(time.RFC3339) != createdAt || computeStatus != "running" || computeSyncErr != "" {
+		t.Fatalf("compute was recreated or not updated: created=%s status=%q syncErr=%q", computeCreatedAt.Format(time.RFC3339), computeStatus, computeSyncErr)
 	}
 
 	storage := map[string]any{
@@ -2163,12 +2163,14 @@ func TestEntStateStoreUpdatesResourcesWithoutRecreatingThem(t *testing.T) {
 	if err := store.SaveStorage(ctx, storage); err != nil {
 		t.Fatal(err)
 	}
-	storedStorage, err := store.client.StorageVolume.Get(ctx, "storage-alpha")
-	if err != nil {
+	var storageCreatedAtRaw any
+	var storageStatus, storageSyncErr string
+	if err := store.queryRow(ctx, store.db, `SELECT created_at, status, last_provider_sync_error FROM control_plane_storage_volumes WHERE id = ?`, "storage-alpha").Scan(&storageCreatedAtRaw, &storageStatus, &storageSyncErr); err != nil {
 		t.Fatal(err)
 	}
-	if storedStorage.CreatedAt.Format(time.RFC3339) != createdAt || storedStorage.Status != "available" || storedStorage.LastProviderSyncError != "" {
-		t.Fatalf("storage was recreated or not updated: %#v", storedStorage)
+	storageCreatedAt := scanTimestampValue(storageCreatedAtRaw)
+	if storageCreatedAt.Format(time.RFC3339) != createdAt || storageStatus != "available" || storageSyncErr != "" {
+		t.Fatalf("storage was recreated or not updated: created=%s status=%q syncErr=%q", storageCreatedAt.Format(time.RFC3339), storageStatus, storageSyncErr)
 	}
 }
 

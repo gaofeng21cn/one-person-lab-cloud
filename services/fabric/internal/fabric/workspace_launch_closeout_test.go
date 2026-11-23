@@ -260,7 +260,7 @@ func TestWorkspaceLaunchCloseoutPostgresFreezeSurvivesServiceRestart(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.client.Close()
+	defer store.Close()
 	ops, _ := memory.List(context.Background())
 	for _, op := range ops {
 		if err := store.Append(context.Background(), op); err != nil {
@@ -275,7 +275,7 @@ func TestWorkspaceLaunchCloseoutPostgresFreezeSurvivesServiceRestart(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reopened.client.Close()
+	defer reopened.Close()
 	closeoutUntilAbsent(t, NewServiceWithOperationStore(provider, reopened), input)
 }
 
@@ -672,7 +672,7 @@ func TestWorkspaceLaunchCloseoutQueuedOrderCancelsWithoutDisplacingUnknownHead(t
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer pg.client.Close()
+				defer pg.Close()
 				ops, _ := memory.List(ctx)
 				for _, op := range ops {
 					if err := pg.Append(ctx, op); err != nil {
@@ -683,7 +683,7 @@ func TestWorkspaceLaunchCloseoutQueuedOrderCancelsWithoutDisplacingUnknownHead(t
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer secondStore.client.Close()
+				defer secondStore.Close()
 				store, reopened = pg, secondStore
 				service = NewServiceWithOperationStore(provider, store)
 			}

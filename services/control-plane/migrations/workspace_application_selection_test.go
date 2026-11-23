@@ -6,9 +6,6 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
 )
 
 func newWorkspaceApplicationSelectionMigrationDatabase(t *testing.T) *sql.DB {
@@ -60,7 +57,7 @@ func TestWorkspaceApplicationSelectionMigrationPostgresPreservesReservations(t *
 			insertRetainedApplicationOperation(t, db, "stale-version", "stale-app", "runtime", "old-app@1", 0)
 			insertRetainedApplicationOperation(t, db, "stale-binding", "stale-app", "manual_review", "different-app@1", 1)
 			for range 2 {
-				if err := ApplyWorkspaceApplicationSelection(context.Background(), entsql.OpenDB(dialect.Postgres, db)); err != nil {
+				if err := ApplyWorkspaceApplicationSelection(context.Background(), OpenDriver(db)); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -90,7 +87,7 @@ func TestWorkspaceApplicationSelectionMigrationPostgresReservesEmptyWorkspace(t 
 		t.Fatal(err)
 	}
 	insertRetainedApplicationOperation(t, db, "pending", "new-app", "runtime", "empty", 0)
-	if err := ApplyWorkspaceApplicationSelection(context.Background(), entsql.OpenDB(dialect.Postgres, db)); err != nil {
+	if err := ApplyWorkspaceApplicationSelection(context.Background(), OpenDriver(db)); err != nil {
 		t.Fatal(err)
 	}
 	var current, reserved string
@@ -107,7 +104,7 @@ func TestWorkspaceApplicationSelectionMigrationPostgresRejectsAmbiguousReservati
 	insertRetainedApplicationOperation(t, db, "selected", "old-app", "active", "empty", 0)
 	insertRetainedApplicationOperation(t, db, "pending-a", "next-app", "runtime", "old-app@1", 1)
 	insertRetainedApplicationOperation(t, db, "pending-b", "other-app", "manual_review", "old-app@1", 1)
-	err := ApplyWorkspaceApplicationSelection(context.Background(), entsql.OpenDB(dialect.Postgres, db))
+	err := ApplyWorkspaceApplicationSelection(context.Background(), OpenDriver(db))
 	if err == nil || !strings.Contains(err.Error(), "workspace_application_reservation_unresolvable") {
 		t.Fatalf("ambiguous reservation migration err=%v", err)
 	}
@@ -120,14 +117,14 @@ func TestWorkspaceApplicationSelectionMigrationPostgresRejectsAmbiguousReservati
 func TestWorkspaceApplicationSelectionMigrationPostgresKeepsNewOwnerReservationOnReplay(t *testing.T) {
 	db := newWorkspaceApplicationSelectionMigrationDatabase(t)
 	insertRetainedApplicationOperation(t, db, "selected", "old-app", "active", "empty", 0)
-	if err := ApplyWorkspaceApplicationSelection(context.Background(), entsql.OpenDB(dialect.Postgres, db)); err != nil {
+	if err := ApplyWorkspaceApplicationSelection(context.Background(), OpenDriver(db)); err != nil {
 		t.Fatal(err)
 	}
 	insertRetainedApplicationOperation(t, db, "new-v2-owner", "new-app", "intent", "old-app@1", 1)
 	if _, err := db.Exec(`UPDATE control_plane_runtime_operations SET result=jsonb_set(result::jsonb, '{version}', '2')::text WHERE id='new-v2-owner'; UPDATE control_plane_workspaces SET reserved_application_deployment_id='new-v2-owner'`); err != nil {
 		t.Fatal(err)
 	}
-	if err := ApplyWorkspaceApplicationSelection(context.Background(), entsql.OpenDB(dialect.Postgres, db)); err != nil {
+	if err := ApplyWorkspaceApplicationSelection(context.Background(), OpenDriver(db)); err != nil {
 		t.Fatal(err)
 	}
 	var reserved string

@@ -6,39 +6,30 @@ import (
 	"errors"
 
 	contracts "opl-cloud/packages/contracts/go"
-	controlplaneent "opl-cloud/services/control-plane/ent"
-	"opl-cloud/services/control-plane/ent/applicationrevision"
 )
 
 var errApplicationRevisionPayloadInvalid = errors.New("workspace_application_revision_payload_invalid")
 
-var applicationRevisionEntFields = []entRecordField{
-	textField("ApplicationID", "SetApplicationID", "applicationId"),
-	textField("Version", "SetVersion", "version"),
-	textField("Digest", "SetDigest", "digest"),
-	textField("Payload", "SetPayload", "payload"),
-	textField("AdmittedByUserID", "SetAdmittedByUserID", "admittedByUserId"),
-}
-
-func applicationRevisionRecordFromEnt(entity *controlplaneent.ApplicationRevision) map[string]any {
-	if entity == nil {
-		return nil
-	}
-	return recordFromEnt(entity, applicationRevisionEntFields)
+var applicationRevisionEntFields = []sqlRecordField{
+	sqlTextField("application_id", "applicationId"),
+	sqlTextField("version", "version"),
+	sqlTextField("digest", "digest"),
+	sqlTextField("payload", "payload"),
+	sqlTextField("admitted_by_user_id", "admittedByUserId"),
 }
 
 func (s *postgresEntStateStore) AdmittedApplicationRevision(ctx context.Context, applicationID, version string) (map[string]any, bool, error) {
-	entity, err := s.client.ApplicationRevision.Query().Where(
-		applicationrevision.ApplicationIDEQ(applicationID),
-		applicationrevision.VersionEQ(version),
-	).Only(ctx)
-	if controlplaneent.IsNotFound(err) {
-		return nil, false, nil
-	}
+	rows, err := s.listSQLRecords(ctx, s.db, "control_plane_application_revisions", applicationRevisionEntFields, "WHERE application_id = ? AND version = ?", applicationID, version)
 	if err != nil {
 		return nil, false, err
 	}
-	return applicationRevisionRecordFromEnt(entity), true, nil
+	if len(rows) == 0 {
+		return nil, false, nil
+	}
+	if len(rows) > 1 {
+		return nil, false, errIdempotencyConflict
+	}
+	return rows[0], true, nil
 }
 
 func decodeApplicationRevisionPayload(payload string) (contracts.WorkspaceApplicationRevision, bool) {

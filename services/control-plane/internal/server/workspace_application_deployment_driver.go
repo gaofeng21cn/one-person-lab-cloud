@@ -11,9 +11,6 @@ import (
 	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
-	controlplaneent "opl-cloud/services/control-plane/ent"
-	"opl-cloud/services/control-plane/ent/runtimeoperation"
-	"opl-cloud/services/control-plane/ent/workspace"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -300,44 +297,58 @@ func applicationRuntimeIDFromObservation(intent *workspaceApplicationDeploymentI
 // operation together. A lost commit response resumes evidence recording, while
 // a failed phase write rolls the binding back in the same transaction.
 func (s *postgresEntStateStore) ApplyWorkspaceApplicationActivation(ctx context.Context, mutation workspaceApplicationActivationMutation) error {
-	tx, err := s.client.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	entity, err := tx.Workspace.Query().Where(workspace.IDEQ(mutation.WorkspaceID), lockRowForUpdate).Only(ctx)
-	if controlplaneent.IsNotFound(err) {
+	wsRow, wsFound, err := s.getSQLRecord(ctx, tx, "control_plane_workspaces", mutation.WorkspaceID, workspaceEntFields, true)
+	if err != nil {
+		return err
+	}
+	if !wsFound {
 		return errWorkspaceApplicationWorkspaceGone
 	}
+	opRow, opFound, err := s.getSQLRecord(ctx, tx, "control_plane_runtime_operations", mutation.Intent.OperationID, runtimeOpEntFields, true)
 	if err != nil {
 		return err
 	}
-	operation, err := tx.RuntimeOperation.Query().Where(runtimeoperation.IDEQ(mutation.Intent.OperationID), lockRowForUpdate).Only(ctx)
-	if err != nil {
-		return err
+	if !opFound {
+		return errWorkspaceApplicationActivationConflict
 	}
-	current, err := decodeWorkspaceApplicationDeploymentIntent(recordFromEnt(operation, runtimeOpEntFields))
+	current, err := decodeWorkspaceApplicationDeploymentIntent(opRow)
 	if err != nil || current.RequestHash != mutation.Intent.RequestHash {
 		return errWorkspaceApplicationActivationConflict
 	}
 	if current.Phase == workspaceApplicationDeploymentReceiptPhase || current.Phase == workspaceApplicationDeploymentRetiringPhase || current.Phase == workspaceApplicationDeploymentActivePhase {
 		return nil
 	}
-	if current.Phase != workspaceApplicationDeploymentActivatingPhase || !workspaceApplicationResourcesMatch(recordFromEnt(entity, workspaceEntFields), mutation.Intent) {
+	if current.Phase != workspaceApplicationDeploymentActivatingPhase || !workspaceApplicationResourcesMatch(wsRow, mutation.Intent) {
 		return errWorkspaceApplicationActivationConflict
 	}
-	if entity.ApplicationBinding != mutation.ExpectedBinding || entity.ApplicationBindingVersion != mutation.ExpectedVersion || !workspaceApplicationEntitlementOpen(recordFromEnt(entity, workspaceEntFields), time.Now()) || mutation.Intent.Version == 2 && entity.ReservedApplicationDeploymentID != mutation.Intent.OperationID {
+	if stringValue(wsRow["applicationBinding"]) != mutation.ExpectedBinding ||
+		int64(numberField(wsRow, "applicationBindingVersion", 0)) != mutation.ExpectedVersion ||
+		!workspaceApplicationEntitlementOpen(wsRow, time.Now()) ||
+		(mutation.Intent.Version == 2 && stringValue(wsRow["reservedApplicationDeploymentId"]) != mutation.Intent.OperationID) {
 		return errWorkspaceApplicationActivationConflict
 	}
-	if err := tx.Workspace.UpdateOneID(mutation.WorkspaceID).
-		SetApplicationBinding(mutation.NextBinding).
-		SetApplicationBindingVersion(mutation.NextVersion).
-		SetCurrentApplicationDeploymentID(mutation.Intent.OperationID).
-		Exec(ctx); err != nil {
-		return err
-	}
+	now := time.Now().UTC()
 	if mutation.Intent.WorkspaceAPIKeyID > 0 {
-		if err := tx.Workspace.UpdateOneID(mutation.WorkspaceID).SetWorkspaceAPIKeyID(mutation.Intent.WorkspaceAPIKeyID).Exec(ctx); err != nil {
+		if _, err := s.execSQL(ctx, tx, `
+			UPDATE control_plane_workspaces
+			SET application_binding = ?, application_binding_version = ?, current_application_deployment_id = ?, workspace_api_key_id = ?, updated_at = ?
+			WHERE id = ?`,
+			mutation.NextBinding, mutation.NextVersion, mutation.Intent.OperationID, mutation.Intent.WorkspaceAPIKeyID, now, mutation.WorkspaceID,
+		); err != nil {
+			return err
+		}
+	} else {
+		if _, err := s.execSQL(ctx, tx, `
+			UPDATE control_plane_workspaces
+			SET application_binding = ?, application_binding_version = ?, current_application_deployment_id = ?, updated_at = ?
+			WHERE id = ?`,
+			mutation.NextBinding, mutation.NextVersion, mutation.Intent.OperationID, now, mutation.WorkspaceID,
+		); err != nil {
 			return err
 		}
 	}
@@ -345,7 +356,12 @@ func (s *postgresEntStateStore) ApplyWorkspaceApplicationActivation(ctx context.
 	if err != nil {
 		return err
 	}
-	if err := tx.RuntimeOperation.UpdateOneID(operation.ID).SetResult(string(encoded)).SetStatus("running").Exec(ctx); err != nil {
+	if s.beforeUpdateRuntimeOp != nil {
+		if err := s.beforeUpdateRuntimeOp(ctx, stringValue(opRow["id"]), string(encoded), "running"); err != nil {
+			return err
+		}
+	}
+	if _, err := s.execSQL(ctx, tx, "UPDATE control_plane_runtime_operations SET result = ?, status = 'running', updated_at = ? WHERE id = ?", string(encoded), now, stringValue(opRow["id"])); err != nil {
 		return err
 	}
 	return tx.Commit()

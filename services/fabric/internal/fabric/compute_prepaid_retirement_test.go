@@ -305,12 +305,12 @@ func TestPostgresPrepaidRetirementAtomicFencesSurviveLostLockExclusion(t *testin
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer first.client.Close()
+			defer first.Close()
 			second, err := newTestPostgresOperationStore(u)
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer second.client.Close()
+			defer second.Close()
 			testPrepaidRetirementAtomicFences(t, first, second, state)
 		})
 	}

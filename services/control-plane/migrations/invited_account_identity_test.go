@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
 	"github.com/lib/pq"
 )
 
@@ -61,7 +59,7 @@ func TestInvitedAccountIdentityMigrationPostgres(t *testing.T) {
 	`); err != nil {
 		t.Fatal(err)
 	}
-	driver := entsql.OpenDB(dialect.Postgres, db)
+	driver := OpenDriver(db)
 	if err := ApplyInvitedAccountIdentity(context.Background(), driver); err == nil {
 		t.Fatal("identity migration accepted normalized collision")
 	}

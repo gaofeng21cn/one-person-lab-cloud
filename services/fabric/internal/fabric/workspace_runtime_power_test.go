@@ -169,7 +169,7 @@ func TestRuntimePowerMissingResourceAuthoritySurvivesRestart(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer pg.client.Close()
+				defer pg.Close()
 				store = pg
 			}
 			service, provider, fixture, input := missingResourcePowerFixture(t, "storage", store)
@@ -266,7 +266,7 @@ func TestD4RuntimePowerTencentExpiryRenewalAndStaleRequestAcrossRestart(t *testi
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer pg.client.Close()
+				defer pg.Close()
 				store = pg
 			}
 			now := time.Now().UTC()
@@ -285,7 +285,7 @@ func TestD4RuntimePowerTencentExpiryRenewalAndStaleRequestAcrossRestart(t *testi
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer pg.client.Close()
+				defer pg.Close()
 				store = pg
 			}
 			service = NewServiceWithOperationStore(provider, store)
