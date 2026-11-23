@@ -22,6 +22,33 @@ establishes a formal Product Release. Target ownership is in
 [architecture.md](architecture.md), durable decisions in [decisions.md](decisions.md),
 and remaining work in [roadmap.md](roadmap.md).
 
+## Workspace-Key rotation retirement closeout, R3 (2026-11-24)
+
+R3 is closed at the source layer. Rotation creation, rotation recovery and the
+rotation's child deployment constructor are already retired: the creation
+command left in `880f9939c`, the route registration in `2555840ac`, and the
+child deployment constructor in `2b56ab847`. No production code creates or
+advances a `workspace.gateway_key.rotate` operation.
+
+What remains under that name is history, and it is retained because it is a
+deletion precondition rather than a capability. The rotation decoder and its
+evidence validator are consumed by the deletion identity read
+(`workspace_delete.go:472-518`, which walks the `NewKeyID → OldKeyID` chain to
+resolve a rotated Workspace's current Gateway Key, Secret reference and
+fingerprint), by the delete fence (`workspace_delete.go:832`), by the
+provider-reconcile suspend guard (`workspace_resource_reconcile.go:56`), by the
+delete CAS guard (`ent_state_store_workspace.go:930`) and by the
+budget-mutation guard (`workspace_gateway_budget.go:326-332`). Removing them
+would make a rotated Workspace's deletion refuse with
+`workspace_delete_unconfirmed` and would drop the in-flight rotation fence.
+Ledger validates the historical `workspace.gateway_key_rotated.v1` receipt
+independently of this decoder.
+
+This records the disposition of the remaining R3 surfaces in the owning SSOT.
+It changes no runtime behavior, adds no capability and removes no code. It
+does not establish an installed observation, a Candidate build, an Instance
+deployment or a production mutation.
+
 ## Customer purchase acceptance (2026-11-22)
 
 The latest verified installation uses Cloud `30ac77e3`, before the Gateway
