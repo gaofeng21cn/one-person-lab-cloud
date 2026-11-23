@@ -180,6 +180,35 @@ func (s *Service) GetStorageVolume(_ context.Context, volumeID string) (StorageV
 	return volume, ok
 }
 
+// ApplyStorageVolumeReadback stores a provider-authoritative observation in the
+// service's resource cache so the next owner operation sees the same fact. The
+// provider remains responsible for producing and validating the observation.
+func (s *Service) ApplyStorageVolumeReadback(readback StorageVolume) error {
+	if strings.TrimSpace(readback.ID) == "" {
+		return fmt.Errorf("storage_volume_readback_identity_required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing := s.volumes[readback.ID]
+	if existing.ID == "" {
+		return fmt.Errorf("storage_volume_not_found")
+	}
+	if readback.OperationID == "" {
+		readback.OperationID = existing.OperationID
+	}
+	if readback.AccountID == "" {
+		readback.AccountID = existing.AccountID
+	}
+	if readback.WorkspaceID == "" {
+		readback.WorkspaceID = existing.WorkspaceID
+	}
+	if readback.OperationID != existing.OperationID || readback.AccountID != existing.AccountID || readback.WorkspaceID != existing.WorkspaceID {
+		return fmt.Errorf("storage_volume_readback_identity_mismatch")
+	}
+	s.volumes[readback.ID] = cloneStorageVolume(readback)
+	return nil
+}
+
 func (s *Service) ReadStorageVolume(ctx context.Context, volumeID string) (StorageVolume, error) {
 	s.mu.Lock()
 	existing := cloneStorageVolume(s.volumes[volumeID])

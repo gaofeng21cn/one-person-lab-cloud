@@ -129,6 +129,9 @@ func (d *tencentDispatcher) EnsureResources(ctx context.Context, in ResourceInte
 	if err = validateTencentStorageReadback(bound, in, compute, storage); err != nil {
 		return nil, err
 	}
+	if err = d.service.ApplyStorageVolumeReadback(storage); err != nil {
+		return nil, err
+	}
 
 	attachment, err := d.service.CreateStorageAttachment(ctx, fabric.StorageAttachmentInput{WorkspaceID: in.WorkspaceID, ComputeID: compute.ID, VolumeID: storage.ID, IdempotencyKey: in.OperationID + ":attachment"})
 	if err != nil {

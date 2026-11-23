@@ -151,6 +151,29 @@ func (p *fakeTencentProvider) CreateWorkspaceRuntime(context.Context, fabric.Wor
 	return fabric.WorkspaceRuntime{}, fmt.Errorf("dispatcher_deployed_application")
 }
 
+type pendingStorageReadbackProvider struct {
+	*fakeTencentProvider
+}
+
+func (p *pendingStorageReadbackProvider) CreateStorageVolume(ctx context.Context, input fabric.StorageVolumeInput) (fabric.StorageVolume, error) {
+	volume, err := p.fakeTencentProvider.CreateStorageVolume(ctx, input)
+	volume.Status = "pending"
+	return volume, err
+}
+
+func (p *pendingStorageReadbackProvider) ReadStorageVolume(ctx context.Context, volume fabric.StorageVolume) (fabric.StorageVolume, error) {
+	volume, err := p.fakeTencentProvider.ReadStorageVolume(ctx, volume)
+	volume.Status = "ready"
+	return volume, err
+}
+
+func (p *pendingStorageReadbackProvider) CreateStorageAttachment(ctx context.Context, input fabric.StorageAttachmentInput, compute fabric.ComputeAllocation, volume fabric.StorageVolume) (fabric.StorageAttachment, error) {
+	if volume.Status != "ready" {
+		return fabric.StorageAttachment{}, fmt.Errorf("storage_readback_not_applied")
+	}
+	return p.fakeTencentProvider.CreateStorageAttachment(ctx, input, compute, volume)
+}
+
 func (p *fakeTencentProvider) DestroyWorkspaceRuntime(context.Context, string) (fabric.WorkspaceRuntime, error) {
 	p.mu.Lock()
 	p.deployCalls++
@@ -228,6 +251,24 @@ func TestTencentDispatcherConfirmsPrepaidMonthlyResourcesAndNetworkPlacement(t *
 		if key != intent.OperationID+":storage" {
 			t.Fatalf("storage key changed across attempts: %v", provider.storageKeys)
 		}
+	}
+}
+
+func TestTencentDispatcherAppliesStorageReadbackBeforeAttachmentValidation(t *testing.T) {
+	provider := &pendingStorageReadbackProvider{fakeTencentProvider: newFakeTencentProvider()}
+	service := fabric.NewService(provider)
+	dispatcher := NewTencentDispatcher(service, provider)
+
+	result := dispatchUntilConfirmed(t, dispatcher, tencentIntent("op-storage-readback"))
+	if result.Storage.Status != "ready" {
+		t.Fatalf("storage status=%q, want ready", result.Storage.Status)
+	}
+	if result.Attachment.Status != "attached" {
+		t.Fatalf("attachment status=%q, want attached", result.Attachment.Status)
+	}
+	stored, ok := service.GetStorageVolume(context.Background(), result.Storage.ID)
+	if !ok || stored.Status != "ready" {
+		t.Fatalf("cached storage=%+v, found=%v, want ready readback", stored, ok)
 	}
 }
 
