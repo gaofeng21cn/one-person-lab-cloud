@@ -1678,11 +1678,17 @@ The Workspace-Key rotation service in `workspace_application_access.go` leaves
 with the rotation command.
 R2a removes the password successor creator, its customer route and direct old-Runtime
 Fabric/receipt orchestration, with the Console mutation action and exclusive types.
-Its worker, activation store, configuration and current/reserved writers remain until R2/R3
-withdrawal or caller migration. Their future removal includes the writer/driver
-parts of `workspace_application_deployment_driver.go`, deployment-worker startup
-in `server.go`, `OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED` and its
-portable/local declarations. Preserve binding/generation and revision decoders
+The existing worker, activation store, and writers also recover deployments
+already accepted by an older release. In public v0.1.8, replaying an accepted
+Workspace Key rotation can still write a pending child deployment. Managed
+TKE and Local Workspace overlays enable the worker, and an in-place update
+keeps the installation's database. Retain that recovery until the supported
+upgrade can finish or transfer accepted pending/running operations with the
+original operation and resource identities. New empty installations do not
+need the legacy worker. Removing it after that transition includes the
+driver in `workspace_application_deployment_driver.go`, startup in `server.go`,
+the activation store, and the portable/local declarations of
+`OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED`. Preserve binding/generation and revision decoders
 while historical reads or cleanup consume them; do not drop persisted columns
 or rewrite schema history merely to remove writers.
 
