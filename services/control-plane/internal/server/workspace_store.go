@@ -22,7 +22,6 @@ import "context"
 // - services/control-plane/internal/server/workspace_gateway.go
 // - services/control-plane/internal/server/workspace_gateway_budget.go
 // - services/control-plane/internal/server/workspace_launch_activation.go
-// - services/control-plane/internal/server/workspace_launch_canonical_fact_repair.go
 // - services/control-plane/internal/server/workspace_launch_disposable_reset.go
 // - services/control-plane/internal/server/workspace_launch_repair.go
 // - services/control-plane/internal/server/workspace_launch_service.go

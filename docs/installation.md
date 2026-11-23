@@ -156,7 +156,7 @@ The complete owner-backed installation additionally supplies the processes,
 stores, peer identities and routes declared by the topology contract. The exact
 source includes the [published installation surface](../deploy/portable/compose.cloud.yaml),
 which the clean-host qualification starts, together with the repository-only
-[qualification overlay](../deploy/portable/compose.qualification.yaml) that
+[qualification overlay](../deploy/portable/compose.local-qualification.yaml) that
 supplies the Sub2API authority fixture. That overlay stays in the repository
 and is not part of the release bundle. The native Local-v2 topology is no
 longer started by any run path; Instance supplies its own concrete manifests,
