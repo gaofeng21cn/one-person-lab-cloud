@@ -320,14 +320,14 @@ func TestD1RenewalHTTPTransactionRecoversAcrossPostgresReopen(t *testing.T) {
 	if err := database.QueryRowContext(ctx, "SELECT current_schema()").Scan(&schema); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.client.Close(); err != nil {
+	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := newTestPostgresEntStateStore(controlPlaneTestPostgresURL(t, "postgres", schema))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = reopened.(*postgresEntStateStore).client.Close() })
+	t.Cleanup(func() { _ = reopened.(*postgresEntStateStore).Close() })
 	restarted, err := newControlPlaneAppWithStore(reopened)
 	if err != nil {
 		t.Fatal(err)

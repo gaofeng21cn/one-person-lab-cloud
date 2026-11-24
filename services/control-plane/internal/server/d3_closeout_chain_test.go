@@ -185,13 +185,13 @@ func (c *d3CloseoutChain) restart(t *testing.T) {
 	t.Helper()
 	if c.finance.process != nil {
 		c.finance.process.server.Close()
-		_ = c.finance.process.store.(*postgresEntStateStore).client.Close()
+		_ = c.finance.process.store.(*postgresEntStateStore).Close()
 	}
 	store, err := newTestPostgresEntStateStore(c.finance.databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = store.(*postgresEntStateStore).client.Close() })
+	t.Cleanup(func() { _ = store.(*postgresEntStateStore).Close() })
 	service := controlplane.NewService(c.ledger, c.fabric, c.keys)
 	handler, err := NewPersistentServer(service, store)
 	if err != nil {

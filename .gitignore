@@ -18,3 +18,6 @@ docs/site/latest/
 # binary at this exact path is never a build input. Anchored to the repository
 # root so it cannot match services/gateway-integration/cmd/server/.
 /services/gateway-integration/server
+
+__pycache__/
+*.py[cod]

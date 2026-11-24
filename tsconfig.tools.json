@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
+    "types": ["node"],
+    "lib": ["ES2023", "DOM"]
+  },
+  "files": [
+    "tools/verify-local.ts",
+    "tools/run-browser-suite.ts",
+    "tools/verify-generated-contracts.ts",
+    "tools/workspace-model-scope.ts",
+    "tests/tools/verify-local.test.ts",
+    "tests/tools/verify-generated-contracts.test.ts",
+    "tests/tools/workspace-model-scope.test.ts"
+  ]
+}

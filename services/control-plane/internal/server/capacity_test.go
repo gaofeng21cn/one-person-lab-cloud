@@ -13,9 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
-	controlplaneent "opl-cloud/services/control-plane/ent"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -187,7 +184,7 @@ func TestSinglePodCapacity(t *testing.T) {
 				t.Fatal(err)
 			}
 			seedStore := stateStore.(*postgresEntStateStore)
-			t.Cleanup(func() { _ = seedStore.client.Close() })
+			t.Cleanup(func() { _ = seedStore.Close() })
 
 			now := time.Now().UTC().Truncate(time.Second)
 			seedStarted := time.Now()
@@ -222,9 +219,8 @@ func TestSinglePodCapacity(t *testing.T) {
 				t.Fatal(err)
 			}
 			db.SetMaxOpenConns(controlPlaneMaxOpenDBConnections)
-			driver := dialect.Debug(entsql.OpenDB(dialect.Postgres, db), counter.log)
-			measuredStore := &postgresEntStateStore{client: controlplaneent.NewClient(controlplaneent.Driver(driver))}
-			t.Cleanup(func() { _ = measuredStore.client.Close() })
+			measuredStore := &postgresEntStateStore{db: db, dialect: "postgres", onQuery: func(q string) { counter.log(q) }}
+			t.Cleanup(func() { _ = measuredStore.Close() })
 			app, err := newControlPlaneAppWithStore(measuredStore)
 			if err != nil {
 				t.Fatal(err)

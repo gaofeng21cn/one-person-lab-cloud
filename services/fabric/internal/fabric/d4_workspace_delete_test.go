@@ -180,7 +180,7 @@ func TestD4PostgresRuntimeDeleteReopensOldSuccessOnlyForActualResidue(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.client.Close()
+	defer store.Close()
 	provider := NewTencentProvider()
 	fixture := newD4KubernetesFixture(d4GatewaySecret("acct-alpha", "ws-alpha"))
 	provider.kubectl = fixture.run
@@ -206,7 +206,7 @@ func TestD4PostgresRuntimeDeleteReopensOldSuccessOnlyForActualResidue(t *testing
 				failures <- err
 				return
 			}
-			defer reopened.client.Close()
+			defer reopened.Close()
 			_, err = NewServiceWithOperationStore(provider, reopened).DestroyWorkspaceRuntime(ctx, "ws-alpha", key)
 			failures <- err
 		}()
@@ -236,7 +236,7 @@ func TestD4TencentStorageDeleteResumesPartialBindingBeforeFirstCBSMutation(t *te
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer pg.client.Close()
+				defer pg.Close()
 				store = pg
 			}
 			volume := storageDestroyTestVolume("d4-original-storage")
@@ -284,7 +284,7 @@ func TestD4TencentStorageDeleteResumesPartialBindingBeforeFirstCBSMutation(t *te
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer reopened.client.Close()
+				defer reopened.Close()
 				store = reopened
 			}
 			service = NewServiceWithOperationStore(provider, store)
@@ -309,7 +309,7 @@ func TestD4TencentStorageDeleteOriginalOwnerAndOldSuccessRepairPartialBindings(t
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer store.client.Close()
+				defer store.Close()
 				volume := canonicalTencentStorageDestroyFixture()
 				appendSucceededStorageCreate(t, store, volume)
 				if priorSuccess {
@@ -366,7 +366,7 @@ func TestD4TencentStorageDeleteOriginalOwnerAndOldSuccessRepairPartialBindings(t
 					}
 					service := NewServiceWithOperationStore(provider, reopened)
 					result, err := service.DestroyStorageVolume(ctx, volume.ID)
-					_ = reopened.client.Close()
+					_ = reopened.Close()
 					if err != nil || !storageDestroyReadbackConfirmsAbsence(result) || len(fixture.items) != 0 {
 						t.Fatalf("result=%#v err=%v residual=%d", result, err, len(fixture.items))
 					}

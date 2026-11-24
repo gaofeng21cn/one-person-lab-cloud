@@ -42,7 +42,7 @@ package, expected = sys.argv[1:]
 try:
     actual = version(package)
 except PackageNotFoundError:
-    raise SystemExit(f"missing {package}=={expected}; install docs/spec/target/checks/requirements.txt")
+    raise SystemExit(f"missing {package}=={expected}; install packages/contracts/proto/requirements.txt")
 if actual != expected:
     raise SystemExit(f"{package} version mismatch: expected {expected}, got {actual}")
 PY

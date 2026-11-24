@@ -95,7 +95,7 @@ func TestPostgresFinalReleaseFenceSurvivesReopen(t *testing.T) {
 	u := fabricTestDatabaseURL(t)
 	reopen := func(s OperationStore) OperationStore {
 		if s != nil {
-			if err := s.(*PostgresOperationStore).client.Close(); err != nil {
+			if err := s.(*PostgresOperationStore).Close(); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -103,7 +103,7 @@ func TestPostgresFinalReleaseFenceSurvivesReopen(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { _ = next.client.Close() })
+		t.Cleanup(func() { _ = next.Close() })
 		return next
 	}
 	testFinalReleaseRestart(t, reopen(nil), reopen)

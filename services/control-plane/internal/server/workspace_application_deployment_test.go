@@ -11,7 +11,6 @@ import (
 	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
-	controlplaneent "opl-cloud/services/control-plane/ent"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 	"opl-cloud/services/control-plane/internal/domain/provisioning"
@@ -447,26 +446,22 @@ func TestWorkspaceApplicationDeploymentActivationPostgresAtomicRecovery(t *testi
 	}
 	injected := errors.New("deployment phase write failed")
 	failPhaseWrite := true
-	store.(*postgresEntStateStore).client.RuntimeOperation.Use(func(next controlplaneent.Mutator) controlplaneent.Mutator {
-		return controlplaneent.MutateFunc(func(ctx context.Context, mutation controlplaneent.Mutation) (controlplaneent.Value, error) {
-			if operation, ok := mutation.(*controlplaneent.RuntimeOperationMutation); ok && failPhaseWrite {
-				if result, present := operation.Result(); present && strings.Contains(result, `"phase":"receipt"`) {
-					failPhaseWrite = false
-					return nil, injected
-				}
-			}
-			return next.Mutate(ctx, mutation)
-		})
-	})
+	store.(*postgresEntStateStore).beforeUpdateRuntimeOp = func(_ context.Context, _ string, result, _ string) error {
+		if failPhaseWrite && strings.Contains(result, `"phase":"receipt"`) {
+			failPhaseWrite = false
+			return injected
+		}
+		return nil
+	}
 	if err := handler.app.runWorkspaceApplicationDeploymentsOnce(context.Background(), service); !errors.Is(err, injected) {
 		t.Fatalf("activation write error=%v", err)
 	}
-	_ = store.(*postgresEntStateStore).client.Close()
+	_ = store.(*postgresEntStateStore).Close()
 	store, err = newTestPostgresEntStateStore(databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = store.(*postgresEntStateStore).client.Close() })
+	t.Cleanup(func() { _ = store.(*postgresEntStateStore).Close() })
 	workspace, _, _ := store.GetWorkspace(context.Background(), "ws-alpha")
 	row, _, _ := store.GetRuntimeOperation(context.Background(), operationID)
 	intent, decodeErr := decodeWorkspaceApplicationDeploymentIntent(row)

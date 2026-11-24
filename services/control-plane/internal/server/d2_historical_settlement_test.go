@@ -45,7 +45,7 @@ func TestD2HistoricalWorkspaceSettlementsThroughLedgerHTTP(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { _ = store.(*postgresEntStateStore).client.Close() })
+			t.Cleanup(func() { _ = store.(*postgresEntStateStore).Close() })
 			account, user := provisionedAccountRowsFor("acct-d2-history", "usr-d2-history", "history@example.test", 41)
 			mustStore(t, store.CreateProvisionedAccount(ctx, account, user))
 			operationID := "launch-history-" + stableID(t.Name())[:12]

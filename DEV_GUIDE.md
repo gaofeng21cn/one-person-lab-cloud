@@ -122,8 +122,7 @@ the ungrouped local command still executes every step. Browser shards partition
 the existing package-script file inventory through Node's test runner; they keep
 at most three concurrent files per runner and preserve each test's isolated
 fixtures.
-`source` also checks the changed development plan from the explicit PR base/head
-SHAs and checks committed whitespace. The existing `validate` check always
+`source` also checks committed whitespace. The existing `validate` check always
 aggregates every required job and fails on failure, cancellation or skipping.
 `dependency-review` retains its name and severity threshold. Remote branch
 protection must still be read back independently; preserving check names does
@@ -147,226 +146,6 @@ and review cannot replace current-revision CI or authorize a merge, publication
 or Instance operation. Candidate, Instance, money and resource evidence retains
 its existing owners and requirements.
 
-## Scoped Host And Worker Entry
-
-Use this entry only for tasks that explicitly select controlled delegation, or
-when changing its host entry/runner. The following admission, worker, runner and
-receipt requirements govern admitted runs, not ordinary source changes or PRs.
-This section owns the Cloud host contract and its commands; `AGENTS.md` supplies
-the conditional reading entrypoint.
-
-### Admission And Worker Operations
-
-The existing phase plan, including work packages in
-`docs/spec/target/checks/development_plan.json`, supplies task inputs. Stable
-source ownership remains in the canonical documents mapped by
-[docs/README.md](docs/README.md); a plan or execution record cannot redefine an
-owner or create a permanent business-owner registry, task schema or global state.
-
-A trusted host admits each run with an authorization record outside the repository
-or in ignored runtime storage protected from worker writes. Admission references
-an existing plan record and canonical owner, narrows the read/write scope and
-declares exact stage inputs and a host-controlled runner with no arbitrary shell
-interface. Scope expansion requires new host admission, not a worker edit to the
-plan or authorization. Read permission and acceptance targets are not write grants.
-
-The worker interface is limited to `dev_context`, `dev_read`, `dev_search`,
-`dev_write`, `dev_status` and `dev_verify`. The worker must receive admitted
-context before file operations; reads, searches and writes stay inside that scope.
-The host refreshes context before every model turn. Every operation rechecks the
-baseline and workspace change scope. A failed refresh or admission check revokes
-the old admission; work cannot resume from stale context and requires a successful
-`dev_context`. Workers cannot alter approval, runner policy, run state or receipts.
-`dev_status` is readback, and `dev_verify` requests execution by the trusted runner;
-there is no worker `complete`, `publish` or arbitrary-command operation. Run state
-advances only from actual execution results; failed or blocked results stay so.
-
-Every admission reads `AGENTS.md`, this guide, `docs/status.md` and
-`docs/roadmap.md`, verifies that the approved base SHA exists and remains an
-ancestor of the checkout, checks Git changes against the host-admitted write
-scopes, and returns all ready gates. Git metadata establishes the change set;
-source and receipts are read only through admitted paths and declared dependencies.
-This is a baseline readback, not a repository-wide source scan.
-
-Concurrent changes in one checkout require explicitly named, host-admitted runs
-on the same base SHA and plan with current phase scopes. `coauthorRuns` names exact
-independent run IDs; `requires` names prerequisite IDs and their transitive chain.
-The host validates exact write scopes, never grants every directory in a plan,
-and never discovers unrelated runs by scanning the host store. Coexistence allows
-authorized changes to remain; it does not satisfy prerequisite receipts or bypass
-checks on writes and acceptance. Stale downstream evidence neither erases its
-previous edits nor prevents an upstream owner repairing its own stage. Disjoint
-checkouts need no coauthor references until integration on an admitted baseline.
-
-### Isolated Inputs And Execution Evidence
-
-The host materializes each stage's declared inputs into an isolated snapshot.
-The runner cannot read undeclared repository dependencies; declare them before
-admission instead of granting a repository mount or shell escape. Receipt reuse
-requires unchanged exact stage inputs and bound upstream evidence. Downstream
-receipts bind actual stage input hashes and upstream receipt hashes; an input or
-bound evidence change invalidates only the affected stage and its dependents.
-Status is computed from those inputs and hashes, not an agent-editable completion
-field. A new session/model can continue a valid run without restarting its stages.
-
-The host appends per-run execution receipts to host-owned storage protected from
-workers; it never overwrites attempts or automatically edits `docs/status.md`,
-`docs/roadmap.md` or a global state file. Canonical summaries are explicit owner
-changes. Passing behavior requires actual executed tests, zero exit code and zero
-failures, skips or TODOs; a passing label alone is not evidence.
-
-Receipt lookup reads only the named development gate's attempt sequence and
-verifies identity, input hashes and bound dependency hashes. It does not enumerate
-business receipt bodies. Source, business qualification and Instance receipts
-retain their existing owners and formats; none proves completion of another layer.
-Fixtures and source checks do not establish runtime, Candidate qualification,
-Instance deployment or production readiness. Preserve accepted owner work and
-production steps; adopting this entry does not justify discarding or rerunning them.
-
-### Host Commands And Adapters
-
-Use `npm run dev:tools` and `npm run dev:run` as host integration entrypoints.
-The current command interface is:
-
-```bash
-npm run dev:approve -- /absolute/host-approval.json /absolute/host-store
-npm run dev:context -- /absolute/host-store run-id
-npm run dev:tools -- /absolute/host-store run-id
-npm run dev:run -- /absolute/host-store run-id https://model.example/v1/chat/completions model-id
-npm run dev:verify -- /absolute/host-store run-id gate-id
-npm run verify:dev-scope -- /absolute/host-store run-id
-```
-
-Enforcement belongs at the trusted host entry, not a model loop.
-`runRestrictedWorker` is one replaceable adapter; `dev:run` launches a separate
-worker with only the six admitted tools. Existing clients may use the host-owned
-`dev:context`/`dev:tools` entry without that adapter. A chat retaining unrestricted
-shell/filesystem access is not controlled merely because these tools are attached.
-These commands and references prove neither universal restricted adoption nor
-remote branch protection; both require actual host/runner or remote evidence.
-
-The host's `dev:verify` executes an admitted stage and appends its runtime receipt.
-It does not automatically create a repository source-check record. When a run
-needs that optional reference, use [Host Source-Check Reference](#host-source-check-reference);
-complete stage-input/dependency-hash binding remains in the host receipt. The
-source runner is not an Instance executor. Keep live business-chain work in its
-own authorized session and existing protected workflows/receipt validators.
-
-Changes to host tools require their relevant behavior tests and development-tools
-typecheck. Ordinary CI retains the exhaustive source gate; development-plan
-freshness is selected separately for affected target-spec paths using explicit
-PR base/head SHAs, as described in
-[Development Plan Verification](#development-plan-verification).
-
-### Framework Reference
-
-The generic owner-slice process (S0-S7, implementation versus recovery/evidence
-refresh RED/GREEN applicability, receipt reuse and parallel/serial criteria) is
-owned by `RenDeHuang/opl-development-framework` at commit
-`d995df3aaf6473a2b7714fc868327919bac4bbd4`:
-
-- Skill: `skills/owner-slice-development/SKILL.md`
-- Checklist: `skills/owner-slice-development/references/slice-checklist.md`
-- Design: `docs/design/owner-slice-framework-v1.md`
-- Wiring acceptance: `docs/design/wiring-acceptance.md`
-
-This guide and the existing host entry retain Cloud wiring for explicitly
-controlled runs. The framework's migration-task process is not an ordinary PR
-prerequisite. Citing it or attaching tools restricts nothing by itself; restricted
-adoption requires actual admitted-run evidence under its wiring-acceptance
-criteria. The optional host export can assess that wiring and does not establish
-that all Codex sessions are restricted.
-
-### Host Source-Check Reference
-
-An admitted host run retains its authoritative execution receipts in runtime
-storage. When that run needs a repository evidence reference, the host may
-export its current passed stage:
-
-```bash
-node tools/dev-session.ts source-check /absolute/host-store <run-id> <gate-id>
-```
-
-Export is optional for the host branch and is not an ordinary PR prerequisite.
-The exporter writes
-`docs/evidence/source-checks/<run-id>-<gate-id>-<attempt>.json` only from a current
-passed stage and its recorded command. It refuses stale or absent execution
-evidence and appends a new record without rewriting a previous attempt. This
-host operation does not grant workers access to approval, run state or receipts.
-
-The host exporter binds the actual base and changed content to its recorded
-execution. Complete declared-input and upstream receipt-hash binding remains in
-host stage receipts. Historical receipts stay unchanged and cannot serve as
-current PASS evidence. The former PR-body checker is retired; host evidence never
-substitutes for actual current-revision CI, review, merge authorization,
-business-chain E2E or Instance acceptance.
-
-### Scoped Acceptance Inputs
-
-Restricted workers cannot write `AGENTS.md`, `DEV_GUIDE.md`, `.github/**`,
-`tools/**`, `tests/tools/**`, `package.json` or the development plan; the
-development-governance work is a host-owned reference lane
-(`W27.development-governance`), not a worker grant. A bounded Console
-presentation fix uses `W16.console-ui-fixes`; its phase record includes the
-shared Console stylesheet and explicitly grants the listed existing console
-test files through `testWritePaths` (exact files under
-`tests/`, never a directory or a business owner) so the implementation and its
-test stay in one owner scope.
-
-A Go acceptance gate that can only be executed against a real PostgreSQL server
-declares the host-owned fixture with `"database": "isolated-owner-postgres"` on
-that gate. The host provisions one ephemeral container from the pinned compose
-image with trust authentication, a loopback-only published port and, on Linux, a
-host-created Unix-socket directory, and removes the container after the stage.
-The sealed runner receives only that endpoint as
-`OPL_OWNER_MIGRATION_TEST_ADMIN_DSN` with `OPL_POSTGRES_TESTS=1`; a Linux stage
-runs in a private network namespace that cannot reach the host's published
-port, so it connects through the bound socket directory. The runner validates
-the endpoint shape and the socket-directory pairing before any execution;
-provenance comes from the host entry being the only provisioner, which never
-reads a DSN or socket directory from the worker or the invoking environment.
-The declaration is part of the approved record, so the stage receipt's approval
-hash binds which fixture the evidence came from.
-
-A browser acceptance gate (`"kind": "browser"`) names its exact test targets
-from the approved `test:browser:suite` inventory; a target outside that
-inventory is refused before any browser is resolved. The host resolves one
-fixed installed browser (macOS: `/Applications/Google Chrome.app`, Linux:
-`/opt/google/chrome`), launches it inside the OS sandbox before any repository
-test executes, and refuses absent installations instead of falling back to a
-downloaded bundle: `PLAYWRIGHT_BROWSERS_PATH` is redirected to an absent
-scratch path and browser downloads stay disabled. When a stage declares the
-locked `package.json`/`package-lock.json`, the host materializes the approved
-`node_modules` as a private writable scratch copy, so Vite's configuration and
-dependency temporary writes stay in admitted scratch while the shared
-installation and the source checkout are never granted. Zero registered tests,
-failures, skips and TODOs all refuse PASS.
-
-W20 owner source closeout uses `W20.workspace-deletion-source` for the existing
-Workspace deletion/recovery files and `W20.deletion-grant-source` for Gateway's
-accepted-deletion authorization files. These exact-file slices consume typed
-source inputs and isolated owner tests, not completion receipts for the whole
-purchase, upgrade and renewal program. Their receipts prove only source checks;
-the full W20 dependencies and deletion/refund business acceptance remain intact.
-The Workspace source run requires the Gateway source run's actual receipt;
-the downstream serialized check consumes both on the same exact baseline.
-Legacy cleanup still uses its original owner and the existing Cloud
-chain PASS prerequisite; source checks never authorize production effects.
-
-## Development Plan Verification
-
-Ordinary exhaustive source checks do not compare the current migration task
-book with generated projections. The PR `source` job uses its explicit
-base and head SHAs to select the dedicated development-plan freshness check for
-affected target-spec paths. Focused local selection uses the same scope classifier.
-Plan verification tests exercise isolated fresh and stale projections; they do
-not turn unrelated task-book edits into ordinary source-test failures.
-
-The old PR-body checker and its command are retired. Host admission and execution
-receipts remain available for explicitly controlled tasks. Adoption and remaining
-qualification evidence are maintained in the canonical
-[development governance outcome](docs/roadmap.md#development-governance-migration-2026-10-13).
-
 ## Pre-Commit Checks
 
 ```bash
@@ -377,13 +156,13 @@ Focused verification is the normal local path. It requires an explicit base
 ref, inspects committed, staged, unstaged, and untracked paths, and selects only
 the affected checks. It does not claim that unrelated full-suite evidence ran.
 Development/tool changes select development typecheck; generated-contract inputs
-and outputs reuse the existing freshness inventory; plan changes select plan
-freshness; `apps/` and `packages/` TypeScript changes select typecheck. Current
-changed test files run directly. A source-only change must declare the existing
-owner behavior targets from its acceptance scope, for example:
+and outputs reuse the existing freshness inventory; `apps/` and `packages/`
+TypeScript changes select typecheck. Current changed test files run directly.
+A source-only change must declare the existing owner behavior targets from its
+acceptance scope, for example:
 
 ```bash
-npm run verify:local:focused -- --base origin/main --test tests/tools/dev-session.test.ts
+npm run verify:local:focused -- --base origin/main --test tests/tools/verify-local.test.ts
 ```
 
 Repeated `--test` selects multiple targets; deleted tests are not executed, and
@@ -401,11 +180,10 @@ browser suites, builds and full repository tests are not selected automatically.
 Git scope uses the merge base plus local index/worktree changes, not unrelated
 upstream changes. Whitespace checks cover committed, staged and unstaged diffs.
 The focused command outputs actual execution results. Record them in the ordinary
-PR; no independent source-check JSON is required. Explicitly admitted host runs
-retain their separate runtime receipts and may use
-[Host Source-Check Reference](#host-source-check-reference) when needed. Focused
-success proves only the selected checks, not downstream completeness,
-business-chain E2E, Instance acceptance or production readiness.
+PR; no separate source-check JSON is required. Focused success proves only the
+selected checks, not downstream completeness, business-chain E2E, Instance
+acceptance or production readiness.
+
 The exhaustive source gate remains available for CI or explicit local rehearsal:
 
 ```bash
@@ -488,15 +266,9 @@ high-availability claim.
 
 For generated-field changes, run `npm run verify:generated-contracts` to
 regenerate the covered outputs from their declared source inputs and compare
-exact bytes. For migration-plan inputs or projections, run
-`npm run verify:development-plan` to regenerate the plan task
-book into an isolated tree, compare exact task-book bytes and canonicalized plan
-JSON with the checked-in projection and validate its coverage read-only; a stale or hand-edited plan projection is refused
-instead of being treated as current state. CI runs this check separately for affected target-spec paths; see
-[Development Plan Verification](#development-plan-verification).
-Freshness is separate from production/spec reconciliation, W01
-migration and real consumer verification; it does not freeze handwritten
-business fields. See [contract ownership](packages/contracts/README.md).
+exact bytes. Freshness is separate from production/spec reconciliation and real
+consumer verification; it does not freeze handwritten business fields. See
+[contract ownership](packages/contracts/README.md).
 Fixture and source passes are evidence only for the exercised layer, not
 installed product runtime or Instance acceptance.
 

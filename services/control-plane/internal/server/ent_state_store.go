@@ -9,19 +9,11 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 
-	controlplaneent "opl-cloud/services/control-plane/ent"
-	"opl-cloud/services/control-plane/ent/adminauditevent"
-	"opl-cloud/services/control-plane/ent/announcement"
-	"opl-cloud/services/control-plane/ent/announcementread"
-	"opl-cloud/services/control-plane/ent/billingreconciliation"
-	"opl-cloud/services/control-plane/ent/productione2erecord"
-	"opl-cloud/services/control-plane/ent/runtimeoperation"
 	controlplanemigrations "opl-cloud/services/control-plane/migrations"
 	"opl-cloud/services/internal/postgresmigrate"
 )
@@ -47,8 +39,21 @@ func StateStoreFromEnv() (StateStore, error) {
 	return nil, errors.New("DATABASE_URL is required for control-plane persistence")
 }
 
+type sqlQueryRunner interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 type postgresEntStateStore struct {
-	client *controlplaneent.Client
+	db                    *sql.DB
+	dialect               string
+	onQuery               func(string)
+	beforeUpdateRuntimeOp func(ctx context.Context, id, result, status string) error
+}
+
+func (s *postgresEntStateStore) Close() error {
+	return s.db.Close()
 }
 
 func NewPostgresEntStateStore(databaseURL string) (StateStore, error) {
@@ -69,17 +74,16 @@ func newPostgresEntStateStore(databaseURL string) (StateStore, error) {
 	}
 	// ponytail: fixed for the single Pod; revisit only with measured DB and replica capacity.
 	db.SetMaxOpenConns(controlPlaneMaxOpenDBConnections)
-	driver := entsql.OpenDB(dialect.Postgres, db)
-	client := controlplaneent.NewClient(controlplaneent.Driver(driver))
+	store := &postgresEntStateStore{db: db, dialect: "postgres"}
 	ctx := context.Background()
-	if err := postgresmigrate.Apply(ctx, db, "control-plane", controlPlaneMigrations(client, driver)); err != nil {
-		_ = client.Close()
+	if err := postgresmigrate.Apply(ctx, db, "control-plane", controlPlaneMigrations(controlplanemigrations.OpenDriver(db))); err != nil {
+		_ = store.Close()
 		return nil, err
 	}
-	return &postgresEntStateStore{client: client}, nil
+	return store, nil
 }
 
-func controlPlaneMigrations(client *controlplaneent.Client, driver dialect.Driver) []postgresmigrate.Migration {
+func controlPlaneMigrations(driver controlplanemigrations.Driver) []postgresmigrate.Migration {
 	return []postgresmigrate.Migration{
 		{Version: "202607140001_sub2api_monthly_hard_cut", Run: func(ctx context.Context) error {
 			return controlplanemigrations.Apply(ctx, driver)
@@ -94,7 +98,7 @@ func controlPlaneMigrations(client *controlplaneent.Client, driver dialect.Drive
 			return backfillControlPlaneMigrationNulls(ctx, driver)
 		}},
 		{Version: "202607150003_ent_schema", Run: func(ctx context.Context) error {
-			return client.Schema.Create(ctx)
+			return controlplanemigrations.ApplyCoreSchema(ctx, driver)
 		}},
 		{Version: "202607150004_post_schema_backfill", Run: func(ctx context.Context) error {
 			return backfillControlPlaneMigrationNulls(ctx, driver)
@@ -153,7 +157,7 @@ func controlPlaneMigrations(client *controlplaneent.Client, driver dialect.Drive
 	}
 }
 
-func validateAndNormalizeLegacyMemberships(ctx context.Context, driver dialect.Driver) error {
+func validateAndNormalizeLegacyMemberships(ctx context.Context, driver controlplanemigrations.Driver) error {
 	const query = `
 DO $$
 BEGIN
@@ -188,11 +192,11 @@ BEGIN
   END IF;
   UPDATE control_plane_memberships SET role = lower(btrim(role));
 END $$;`
-	tx, err := driver.Tx(ctx)
+	tx, err := driver.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin legacy membership migration: %w", err)
 	}
-	if err := tx.Exec(ctx, query, []any{}, nil); err != nil {
+	if _, err := tx.ExecContext(ctx, query); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("validate legacy memberships: %w", err)
 	}
@@ -202,7 +206,7 @@ END $$;`
 	return nil
 }
 
-func backfillControlPlaneMigrationNulls(ctx context.Context, driver dialect.Driver) error {
+func backfillControlPlaneMigrationNulls(ctx context.Context, driver controlplanemigrations.Driver) error {
 	const query = `
 DO $$
 DECLARE
@@ -331,47 +335,384 @@ BEGIN
     END IF;
   END LOOP;
 END $$;`
-	if err := driver.Exec(ctx, query, []any{}, nil); err != nil {
+	if _, err := driver.ExecContext(ctx, query); err != nil {
 		return fmt.Errorf("backfill control-plane migration nulls: %w", err)
 	}
 	return nil
 }
 
-type entRecordField struct {
-	EntityField string
-	Setter      string
-	Path        []string
-	Kind        string
+type sqlRecordField struct {
+	Column string
+	Path   []string
+	Kind   string
 }
 
-func textField(entityField, setter string, path ...string) entRecordField {
-	return entRecordField{EntityField: entityField, Setter: setter, Path: path, Kind: "text"}
+func sqlTextField(column string, path ...string) sqlRecordField {
+	return sqlRecordField{Column: column, Path: path, Kind: "text"}
 }
 
-func intField(entityField, setter string, path ...string) entRecordField {
-	return entRecordField{EntityField: entityField, Setter: setter, Path: path, Kind: "int"}
+func sqlIntField(column string, path ...string) sqlRecordField {
+	return sqlRecordField{Column: column, Path: path, Kind: "int"}
 }
 
-func floatField(entityField, setter string, path ...string) entRecordField {
-	return entRecordField{EntityField: entityField, Setter: setter, Path: path, Kind: "float"}
+func sqlNullableIntField(column string, path ...string) sqlRecordField {
+	return sqlRecordField{Column: column, Path: path, Kind: "nullable_int"}
 }
 
-func boolField(entityField, setter string, path ...string) entRecordField {
-	return entRecordField{EntityField: entityField, Setter: setter, Path: path, Kind: "bool"}
+func sqlFloatField(column string, path ...string) sqlRecordField {
+	return sqlRecordField{Column: column, Path: path, Kind: "float"}
 }
 
-func billingJSONField(entityField, setter string) entRecordField {
-	return entRecordField{EntityField: entityField, Setter: setter, Kind: "billing_json"}
+func sqlBoolField(column string, path ...string) sqlRecordField {
+	return sqlRecordField{Column: column, Path: path, Kind: "bool"}
 }
 
-func jsonTextField(entityField, setter string, path ...string) entRecordField {
-	return entRecordField{EntityField: entityField, Setter: setter, Path: path, Kind: "json_text"}
+func sqlBillingJSONField(column string) sqlRecordField {
+	return sqlRecordField{Column: column, Kind: "billing_json"}
 }
 
-func lockRowForUpdate(selector *entsql.Selector) {
-	if selector.Dialect() == dialect.Postgres {
-		selector.ForUpdate()
+func sqlJSONTextField(column string, path ...string) sqlRecordField {
+	return sqlRecordField{Column: column, Path: path, Kind: "json_text"}
+}
+
+func (s *postgresEntStateStore) rebind(query string) string {
+	if s.dialect != "postgres" {
+		return query
 	}
+	var b strings.Builder
+	b.Grow(len(query) + 16)
+	index := 1
+	for i := 0; i < len(query); i++ {
+		if query[i] == '?' {
+			b.WriteByte('$')
+			b.WriteString(strconv.Itoa(index))
+			index++
+		} else {
+			b.WriteByte(query[i])
+		}
+	}
+	return b.String()
+}
+
+func (s *postgresEntStateStore) forUpdateClause() string {
+	if s.dialect == "postgres" {
+		return " FOR UPDATE"
+	}
+	return ""
+}
+
+func (s *postgresEntStateStore) logQuery(bound string, args []any) {
+	if s.onQuery != nil {
+		s.onQuery(fmt.Sprintf("query=%s args=%v", bound, args))
+	}
+}
+
+func (s *postgresEntStateStore) execSQL(ctx context.Context, runner sqlQueryRunner, query string, args ...any) (sql.Result, error) {
+	bound := s.rebind(query)
+	s.logQuery(bound, args)
+	return runner.ExecContext(ctx, bound, args...)
+}
+
+func (s *postgresEntStateStore) queryRows(ctx context.Context, runner sqlQueryRunner, query string, args ...any) (*sql.Rows, error) {
+	bound := s.rebind(query)
+	s.logQuery(bound, args)
+	return runner.QueryContext(ctx, bound, args...)
+}
+
+func (s *postgresEntStateStore) queryRow(ctx context.Context, runner sqlQueryRunner, query string, args ...any) *sql.Row {
+	bound := s.rebind(query)
+	s.logQuery(bound, args)
+	return runner.QueryRowContext(ctx, bound, args...)
+}
+
+func isSQLConstraintError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		return pqErr.Code.Class() == "23"
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "unique constraint failed") ||
+		strings.Contains(msg, "check constraint failed") ||
+		strings.Contains(msg, "not null constraint failed") ||
+		strings.Contains(msg, "foreign key constraint failed") ||
+		strings.Contains(msg, "duplicate key value violates unique constraint")
+}
+
+func selectColumnsSQL(fields []sqlRecordField) string {
+	cols := make([]string, 0, len(fields)+3)
+	cols = append(cols, "id", "created_at", "updated_at")
+	for _, field := range fields {
+		cols = append(cols, field.Column)
+	}
+	return strings.Join(cols, ", ")
+}
+
+func scanTimestampValue(raw any) time.Time {
+	switch typed := raw.(type) {
+	case time.Time:
+		return typed.UTC()
+	case *time.Time:
+		if typed != nil {
+			return typed.UTC()
+		}
+	case []byte:
+		return parseSQLTimestampText(string(typed))
+	case string:
+		return parseSQLTimestampText(typed)
+	}
+	return time.Time{}
+}
+
+func parseSQLTimestampText(text string) time.Time {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return time.Time{}
+	}
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+	} {
+		if parsed, err := time.Parse(layout, text); err == nil {
+			return parsed.UTC()
+		}
+	}
+	return time.Time{}
+}
+
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanSQLRecord(scanner rowScanner, fields []sqlRecordField) (controlPlaneRecord, error) {
+	var id string
+	var createdRaw, updatedRaw any
+	dest := make([]any, len(fields)+3)
+	dest[0] = &id
+	dest[1] = &createdRaw
+	dest[2] = &updatedRaw
+	holders := make([]any, len(fields))
+	for i, field := range fields {
+		switch field.Kind {
+		case "int":
+			holders[i] = new(sql.NullInt64)
+		case "nullable_int":
+			holders[i] = new(sql.NullInt64)
+		case "float":
+			holders[i] = new(sql.NullFloat64)
+		case "bool":
+			holders[i] = new(sql.NullBool)
+		default:
+			holders[i] = new(sql.NullString)
+		}
+		dest[i+3] = holders[i]
+	}
+	if err := scanner.Scan(dest...); err != nil {
+		return nil, err
+	}
+	row := controlPlaneRecord{"id": id}
+	if createdAt := scanTimestampValue(createdRaw); !createdAt.IsZero() {
+		row["createdAt"] = createdAt.Format(time.RFC3339Nano)
+	}
+	if updatedAt := scanTimestampValue(updatedRaw); !updatedAt.IsZero() {
+		row["updatedAt"] = updatedAt.Format(time.RFC3339Nano)
+	}
+	var workspaceBillingJSON string
+	for i, field := range fields {
+		switch field.Kind {
+		case "int":
+			val := holders[i].(*sql.NullInt64)
+			if val.Valid && val.Int64 != 0 {
+				setPath(row, field.Path, val.Int64)
+			}
+		case "nullable_int":
+			val := holders[i].(*sql.NullInt64)
+			if val.Valid && val.Int64 != 0 {
+				setPath(row, field.Path, val.Int64)
+			}
+		case "float":
+			val := holders[i].(*sql.NullFloat64)
+			if val.Valid && val.Float64 != 0 {
+				setPath(row, field.Path, val.Float64)
+			}
+		case "bool":
+			val := holders[i].(*sql.NullBool)
+			setPath(row, field.Path, val.Valid && val.Bool)
+		case "billing_json":
+			text := holders[i].(*sql.NullString).String
+			var billing map[string]any
+			if text != "" && json.Unmarshal([]byte(text), &billing) == nil {
+				for key, value := range billing {
+					row[key] = value
+				}
+			}
+		case "workspace_billing_json":
+			workspaceBillingJSON = holders[i].(*sql.NullString).String
+		case "json_text":
+			text := holders[i].(*sql.NullString).String
+			var decoded any
+			if text != "" && json.Unmarshal([]byte(text), &decoded) == nil {
+				setPath(row, field.Path, decoded)
+			}
+		default:
+			text := holders[i].(*sql.NullString).String
+			if text != "" {
+				setPath(row, field.Path, text)
+			}
+		}
+	}
+	if billing, err := decodeWorkspaceBillingState(workspaceBillingJSON, row); err == nil {
+		for key, value := range billing {
+			row[key] = value
+		}
+	}
+	return row, nil
+}
+
+func encodeSQLFieldValue(row controlPlaneRecord, field sqlRecordField, includeEmptyText bool) (any, bool, error) {
+	if field.Kind == "billing_json" {
+		encoded, err := encodeMonthlyBillingState(row)
+		return encoded, err == nil, err
+	}
+	if field.Kind == "workspace_billing_json" {
+		encoded, err := encodeWorkspaceBillingState(row)
+		return encoded, err == nil, err
+	}
+	value, ok := valueAtPath(row, field.Path)
+	if !ok {
+		return nil, false, nil
+	}
+	switch field.Kind {
+	case "int", "nullable_int":
+		return int64(numberValue(value)), true, nil
+	case "float":
+		return numberValue(value), true, nil
+	case "bool":
+		return boolValue(value), true, nil
+	case "json_text":
+		encoded, err := json.Marshal(value)
+		return string(encoded), err == nil, err
+	default:
+		text := stringValue(value)
+		if text == "" && !includeEmptyText {
+			return nil, false, nil
+		}
+		return text, true, nil
+	}
+}
+
+func (s *postgresEntStateStore) insertSQLRecord(ctx context.Context, runner sqlQueryRunner, table, id string, row controlPlaneRecord, fields []sqlRecordField) error {
+	now := time.Now().UTC()
+	createdAt := now
+	updatedAt := now
+	if parsed, ok := parseRecordTime(row); ok {
+		createdAt = parsed
+		updatedAt = parsed
+	}
+	columns := make([]string, 0, len(fields)+3)
+	placeholders := make([]string, 0, len(fields)+3)
+	args := make([]any, 0, len(fields)+3)
+	columns = append(columns, "id", "created_at", "updated_at")
+	placeholders = append(placeholders, "?", "?", "?")
+	args = append(args, id, createdAt, updatedAt)
+	for _, field := range fields {
+		val, include, err := encodeSQLFieldValue(row, field, false)
+		if err != nil || !include {
+			continue
+		}
+		columns = append(columns, field.Column)
+		placeholders = append(placeholders, "?")
+		args = append(args, val)
+	}
+	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", table, strings.Join(columns, ", "), strings.Join(placeholders, ", "))
+	_, err := s.execSQL(ctx, runner, query, args...)
+	return err
+}
+
+func (s *postgresEntStateStore) updateSQLRecord(ctx context.Context, runner sqlQueryRunner, table, id string, row controlPlaneRecord, fields []sqlRecordField, includeEmptyText bool) error {
+	assignments := make([]string, 0, len(fields)+1)
+	args := make([]any, 0, len(fields)+2)
+	assignments = append(assignments, "updated_at = ?")
+	args = append(args, time.Now().UTC())
+	for _, field := range fields {
+		val, include, err := encodeSQLFieldValue(row, field, includeEmptyText)
+		if err != nil || !include {
+			continue
+		}
+		assignments = append(assignments, field.Column+" = ?")
+		args = append(args, val)
+	}
+	args = append(args, id)
+	query := fmt.Sprintf("UPDATE %s SET %s WHERE id = ?", table, strings.Join(assignments, ", "))
+	res, err := s.execSQL(ctx, runner, query, args...)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err == nil && affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (s *postgresEntStateStore) getSQLRecord(ctx context.Context, runner sqlQueryRunner, table, id string, fields []sqlRecordField, forUpdate bool) (controlPlaneRecord, bool, error) {
+	query := fmt.Sprintf("SELECT %s FROM %s WHERE id = ?", selectColumnsSQL(fields), table)
+	if forUpdate {
+		query += s.forUpdateClause()
+	}
+	row, err := scanSQLRecord(s.queryRow(ctx, runner, query, id), fields)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return row, true, nil
+}
+
+func (s *postgresEntStateStore) listSQLRecords(ctx context.Context, runner sqlQueryRunner, table string, fields []sqlRecordField, suffix string, args ...any) ([]controlPlaneRecord, error) {
+	query := fmt.Sprintf("SELECT %s FROM %s", selectColumnsSQL(fields), table)
+	if suffix != "" {
+		query += " " + suffix
+	}
+	rows, err := s.queryRows(ctx, runner, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []controlPlaneRecord{}
+	for rows.Next() {
+		record, err := scanSQLRecord(rows, fields)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, record)
+	}
+	return out, rows.Err()
+}
+
+func (s *postgresEntStateStore) loadSQLRecordSet(ctx context.Context, runner sqlQueryRunner, table string, fields []sqlRecordField, suffix string, args ...any) (controlPlaneRecordSet, error) {
+	rows, err := s.listSQLRecords(ctx, runner, table, fields, suffix, args...)
+	if err != nil {
+		return nil, err
+	}
+	out := make(controlPlaneRecordSet, len(rows))
+	for _, row := range rows {
+		out[stringValue(row["id"])] = row
+	}
+	return out, nil
+}
+
+func (s *postgresEntStateStore) deleteSQLByID(ctx context.Context, runner sqlQueryRunner, table, id string) error {
+	_, err := s.execSQL(ctx, runner, fmt.Sprintf("DELETE FROM %s WHERE id = ?", table), id)
+	return err
 }
 
 // ponytail: keep low-cardinality monthly state in one JSON column at the current
@@ -427,149 +768,143 @@ var monthlyBillingStateKeys = []string{
 }
 
 var (
-	runtimeOpEntFields = []entRecordField{
-		textField("OperationID", "SetOperationID", "operationId"),
-		textField("AccountID", "SetAccountID", "accountId"),
-		textField("WorkspaceID", "SetWorkspaceID", "workspaceId"),
-		textField("PeriodStart", "SetPeriodStart", "periodStart"),
-		textField("ResourceID", "SetResourceID", "resourceId"),
-		textField("ResourceKind", "SetResourceKind", "resourceKind"),
-		textField("Action", "SetAction", "action"),
-		textField("Provider", "SetProvider", "provider"),
-		textField("ProviderRequestID", "SetProviderRequestID", "providerRequestId"),
-		textField("Status", "SetStatus", "status"),
-		textField("Result", "SetResult", "result"),
-		textField("ComputeAllocationID", "SetComputeAllocationID", "computeAllocationId"),
-		textField("StorageID", "SetStorageID", "storageId"),
-		textField("AttachmentID", "SetAttachmentID", "attachmentId"),
-		textField("RuntimeServiceName", "SetRuntimeServiceName", "runtimeServiceName"),
+	runtimeOpEntFields = []sqlRecordField{
+		sqlTextField("operation_id", "operationId"),
+		sqlTextField("account_id", "accountId"),
+		sqlTextField("workspace_id", "workspaceId"),
+		sqlTextField("period_start", "periodStart"),
+		sqlTextField("resource_id", "resourceId"),
+		sqlTextField("resource_kind", "resourceKind"),
+		sqlTextField("action", "action"),
+		sqlTextField("provider", "provider"),
+		sqlTextField("provider_request_id", "providerRequestId"),
+		sqlTextField("status", "status"),
+		sqlTextField("result", "result"),
+		sqlTextField("compute_allocation_id", "computeAllocationId"),
+		sqlTextField("storage_id", "storageId"),
+		sqlTextField("attachment_id", "attachmentId"),
+		sqlTextField("runtime_service_name", "runtimeServiceName"),
 	}
-	auditEntFields = []entRecordField{
-		textField("ActorUserID", "SetActorUserID", "actorUserId"),
-		textField("ActorRole", "SetActorRole", "actorRole"),
-		textField("ActorAccountID", "SetActorAccountID", "actorAccountId"),
-		textField("TargetAccountID", "SetTargetAccountID", "targetAccountId"),
-		textField("Action", "SetAction", "action"),
-		textField("ResourceKind", "SetResourceKind", "resourceKind"),
-		textField("ResourceID", "SetResourceID", "resourceId"),
-		textField("IPAddress", "SetIPAddress", "ipAddress"),
-		textField("UserAgent", "SetUserAgent", "userAgent"),
-		jsonTextField("BeforeJSON", "SetBeforeJSON", "before"),
-		jsonTextField("AfterJSON", "SetAfterJSON", "after"),
-		textField("Result", "SetResult", "result"),
+	auditEntFields = []sqlRecordField{
+		sqlTextField("actor_user_id", "actorUserId"),
+		sqlTextField("actor_role", "actorRole"),
+		sqlTextField("actor_account_id", "actorAccountId"),
+		sqlTextField("target_account_id", "targetAccountId"),
+		sqlTextField("action", "action"),
+		sqlTextField("resource_kind", "resourceKind"),
+		sqlTextField("resource_id", "resourceId"),
+		sqlTextField("ip_address", "ipAddress"),
+		sqlTextField("user_agent", "userAgent"),
+		sqlJSONTextField("before_json", "before"),
+		sqlJSONTextField("after_json", "after"),
+		sqlTextField("result", "result"),
 	}
-	announcementEntFields = []entRecordField{
-		textField("Title", "SetTitle", "title"),
-		textField("Body", "SetBody", "body"),
-		textField("Status", "SetStatus", "status"),
-		textField("StartsAt", "SetStartsAt", "startsAt"),
-		textField("EndsAt", "SetEndsAt", "endsAt"),
-		textField("PublishedAt", "SetPublishedAt", "publishedAt"),
-		textField("CreatedByUserID", "SetCreatedByUserID", "createdByUserId"),
-		textField("UpdatedByUserID", "SetUpdatedByUserID", "updatedByUserId"),
+	announcementEntFields = []sqlRecordField{
+		sqlTextField("title", "title"),
+		sqlTextField("body", "body"),
+		sqlTextField("status", "status"),
+		sqlTextField("starts_at", "startsAt"),
+		sqlTextField("ends_at", "endsAt"),
+		sqlTextField("published_at", "publishedAt"),
+		sqlTextField("created_by_user_id", "createdByUserId"),
+		sqlTextField("updated_by_user_id", "updatedByUserId"),
 	}
-	announcementReadEntFields = []entRecordField{
-		textField("AnnouncementID", "SetAnnouncementID", "announcementId"),
-		textField("UserID", "SetUserID", "userId"),
-		textField("ReadAt", "SetReadAt", "readAt"),
+	announcementReadEntFields = []sqlRecordField{
+		sqlTextField("announcement_id", "announcementId"),
+		sqlTextField("user_id", "userId"),
+		sqlTextField("read_at", "readAt"),
 	}
-	productionE2EEntFields = []entRecordField{
-		textField("AccountID", "SetAccountID", "accountId"),
-		textField("WorkspaceID", "SetWorkspaceID", "workspaceId"),
-		textField("Status", "SetStatus", "status"),
-		textField("Result", "SetResult", "result"),
-		textField("Reason", "SetReason", "reason"),
-		textField("URL", "SetURL", "url"),
+	productionE2EEntFields = []sqlRecordField{
+		sqlTextField("account_id", "accountId"),
+		sqlTextField("workspace_id", "workspaceId"),
+		sqlTextField("status", "status"),
+		sqlTextField("result", "result"),
+		sqlTextField("reason", "reason"),
+		sqlTextField("url", "url"),
 	}
-	reconcileEntFields = []entRecordField{
-		textField("Status", "SetStatus", "status"),
-		textField("GuardStatus", "SetGuardStatus", "guard", "status"),
-		textField("GuardReason", "SetGuardReason", "guard", "reason"),
-		textField("MessageAuthor", "SetMessageAuthor", "messageAuthor"),
-		textField("MessageText", "SetMessageText", "messageText"),
-		textField("MessageCreatedAt", "SetMessageCreatedAt", "messageCreatedAt"),
-		boolField("GuardBlockNewWorkspaces", "SetGuardBlockNewWorkspaces", "guard", "blockNewWorkspaces"),
-		intField("Reports", "SetReports", "reports"),
+	reconcileEntFields = []sqlRecordField{
+		sqlTextField("status", "status"),
+		sqlTextField("guard_status", "guard", "status"),
+		sqlTextField("guard_reason", "guard", "reason"),
+		sqlTextField("message_author", "messageAuthor"),
+		sqlTextField("message_text", "messageText"),
+		sqlTextField("message_created_at", "messageCreatedAt"),
+		sqlBoolField("guard_block_new_workspaces", "guard", "blockNewWorkspaces"),
+		sqlIntField("reports", "reports"),
 	}
 )
 
 func (s *postgresEntStateStore) ListAuditEvents(ctx context.Context, accountID string) ([]map[string]any, error) {
-	query := s.client.AdminAuditEvent.Query().Order(controlplaneent.Asc(adminauditevent.FieldCreatedAt, adminauditevent.FieldID))
+	suffix := "ORDER BY created_at ASC, id ASC"
+	var args []any
 	if accountID != "" {
-		query.Where(adminauditevent.Or(adminauditevent.TargetAccountID(accountID), adminauditevent.And(adminauditevent.TargetAccountID(""), adminauditevent.ActorAccountID(accountID))))
+		suffix = "WHERE (target_account_id = ? OR (target_account_id = '' AND actor_account_id = ?)) ORDER BY created_at ASC, id ASC"
+		args = []any{accountID, accountID}
 	}
-	rows, err := loadEventRows(ctx, query.All, auditEntFields)
-	return filteredEvents(rows, accountID), err
-}
-
-func (s *postgresEntStateStore) SaveAuditEvent(ctx context.Context, row map[string]any) error {
-	return s.replaceRecord(ctx, row, func(id string) error { return s.client.AdminAuditEvent.DeleteOneID(id).Exec(ctx) }, func() any { return s.client.AdminAuditEvent.Create() }, auditEntFields)
-}
-
-func (s *postgresEntStateStore) ListAnnouncements(ctx context.Context) ([]map[string]any, error) {
-	entities, err := s.client.Announcement.Query().Order(controlplaneent.Desc(announcement.FieldCreatedAt, announcement.FieldID)).All(ctx)
+	rows, err := s.listSQLRecords(ctx, s.db, "control_plane_admin_audit_events", auditEntFields, suffix, args...)
 	if err != nil {
 		return nil, err
 	}
-	rows := make([]map[string]any, 0, len(entities))
-	for _, entity := range entities {
-		rows = append(rows, announcementRecordFromEnt(entity))
-	}
-	return rows, nil
+	return filteredEvents(rows, accountID), nil
+}
+
+func (s *postgresEntStateStore) SaveAuditEvent(ctx context.Context, row map[string]any) error {
+	return s.replaceRecord(ctx, "control_plane_admin_audit_events", row, auditEntFields)
+}
+
+func (s *postgresEntStateStore) ListAnnouncements(ctx context.Context) ([]map[string]any, error) {
+	return s.listSQLRecords(ctx, s.db, "control_plane_announcements", announcementEntFields, "ORDER BY created_at DESC, id DESC")
 }
 
 func (s *postgresEntStateStore) ApplyAnnouncementMutation(ctx context.Context, mutation announcementMutation) (map[string]any, error) {
-	tx, err := s.client.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	client := tx.Client()
 	auditID := stringValue(mutation.AuditEvent["id"])
-	if existing, auditErr := client.AdminAuditEvent.Query().Where(adminauditevent.IDEQ(auditID), lockRowForUpdate).Only(ctx); auditErr == nil {
-		return announcementReplay(recordFromEnt(existing, auditEntFields), mutation)
-	} else if !controlplaneent.IsNotFound(auditErr) {
+	if existing, found, auditErr := s.getSQLRecord(ctx, tx, "control_plane_admin_audit_events", auditID, auditEntFields, true); auditErr != nil {
 		return nil, auditErr
+	} else if found {
+		return announcementReplay(existing, mutation)
 	}
 
-	var current map[string]any
-	entity, queryErr := client.Announcement.Query().Where(announcement.IDEQ(mutation.AnnouncementID), lockRowForUpdate).Only(ctx)
-	if queryErr == nil {
-		current = announcementRecordFromEnt(entity)
-	} else if !controlplaneent.IsNotFound(queryErr) {
+	current, entityFound, queryErr := s.getSQLRecord(ctx, tx, "control_plane_announcements", mutation.AnnouncementID, announcementEntFields, true)
+	if queryErr != nil {
 		return nil, queryErr
 	}
-	if existing, auditErr := client.AdminAuditEvent.Query().Where(adminauditevent.IDEQ(auditID), lockRowForUpdate).Only(ctx); auditErr == nil {
-		return announcementReplay(recordFromEnt(existing, auditEntFields), mutation)
-	} else if !controlplaneent.IsNotFound(auditErr) {
+	if existing, found, auditErr := s.getSQLRecord(ctx, tx, "control_plane_admin_audit_events", auditID, auditEntFields, true); auditErr != nil {
 		return nil, auditErr
+	} else if found {
+		return announcementReplay(existing, mutation)
 	}
+
 	desired, err := prepareAnnouncementMutation(current, mutation, time.Now().UTC())
 	if err != nil {
 		return nil, err
 	}
-	if entity == nil {
-		err = saveRecord(ctx, mutation.AnnouncementID, desired, client.Announcement.Create(), announcementEntFields)
+	if !entityFound {
+		err = s.insertSQLRecord(ctx, tx, "control_plane_announcements", mutation.AnnouncementID, desired, announcementEntFields)
 	} else {
-		builder := client.Announcement.UpdateOneID(mutation.AnnouncementID)
-		setRecordFieldsWithEmptyText(builder, desired, announcementEntFields, true)
-		err = execCreate(ctx, builder)
+		err = s.updateSQLRecord(ctx, tx, "control_plane_announcements", mutation.AnnouncementID, desired, announcementEntFields, true)
 	}
 	if err != nil {
-		if controlplaneent.IsConstraintError(err) {
+		if isSQLConstraintError(err) {
 			_ = tx.Rollback()
 			return s.replayAnnouncementMutation(ctx, mutation)
 		}
 		return nil, err
 	}
-	saved, err := client.Announcement.Get(ctx, mutation.AnnouncementID)
+	authoritative, found, err := s.getSQLRecord(ctx, tx, "control_plane_announcements", mutation.AnnouncementID, announcementEntFields, false)
 	if err != nil {
 		return nil, err
 	}
-	authoritative := announcementRecordFromEnt(saved)
+	if !found {
+		return nil, sql.ErrNoRows
+	}
 	audit := announcementAudit(mutation, current, authoritative)
-	if err := saveRecord(ctx, auditID, audit, client.AdminAuditEvent.Create(), auditEntFields); err != nil {
-		if controlplaneent.IsConstraintError(err) {
+	if err := s.insertSQLRecord(ctx, tx, "control_plane_admin_audit_events", auditID, audit, auditEntFields); err != nil {
+		if isSQLConstraintError(err) {
 			_ = tx.Rollback()
 			return s.replayAnnouncementMutation(ctx, mutation)
 		}
@@ -582,30 +917,24 @@ func (s *postgresEntStateStore) ApplyAnnouncementMutation(ctx context.Context, m
 }
 
 func (s *postgresEntStateStore) replayAnnouncementMutation(ctx context.Context, mutation announcementMutation) (map[string]any, error) {
-	existing, err := s.client.AdminAuditEvent.Get(ctx, stringValue(mutation.AuditEvent["id"]))
+	existing, found, err := s.getSQLRecord(ctx, s.db, "control_plane_admin_audit_events", stringValue(mutation.AuditEvent["id"]), auditEntFields, false)
 	if err != nil {
-		if controlplaneent.IsNotFound(err) {
-			return nil, errIdempotencyConflict
-		}
 		return nil, err
 	}
-	return announcementReplay(recordFromEnt(existing, auditEntFields), mutation)
+	if !found {
+		return nil, errIdempotencyConflict
+	}
+	return announcementReplay(existing, mutation)
 }
 
 func (s *postgresEntStateStore) ListAnnouncementReads(ctx context.Context, userID string) ([]map[string]any, error) {
-	query := s.client.AnnouncementRead.Query().Order(controlplaneent.Asc(announcementread.FieldCreatedAt, announcementread.FieldID))
+	suffix := "ORDER BY created_at ASC, id ASC"
+	var args []any
 	if userID != "" {
-		query.Where(announcementread.UserID(userID))
+		suffix = "WHERE user_id = ? ORDER BY created_at ASC, id ASC"
+		args = []any{userID}
 	}
-	entities, err := query.All(ctx)
-	if err != nil {
-		return nil, err
-	}
-	rows := make([]map[string]any, 0, len(entities))
-	for _, entity := range entities {
-		rows = append(rows, announcementReadRecordFromEnt(entity))
-	}
-	return rows, nil
+	return s.listSQLRecords(ctx, s.db, "control_plane_announcement_reads", announcementReadEntFields, suffix, args...)
 }
 
 func (s *postgresEntStateStore) MarkAnnouncementRead(ctx context.Context, announcementID, userID, readAt string) (map[string]any, error) {
@@ -613,41 +942,40 @@ func (s *postgresEntStateStore) MarkAnnouncementRead(ctx context.Context, announ
 		return nil, errAnnouncementNotActive
 	}
 	id := announcementReadID(announcementID, userID)
-	if existing, err := s.client.AnnouncementRead.Get(ctx, id); err == nil {
-		return announcementReadRecordFromEnt(existing), nil
-	} else if !controlplaneent.IsNotFound(err) {
+	if existing, found, err := s.getSQLRecord(ctx, s.db, "control_plane_announcement_reads", id, announcementReadEntFields, false); err != nil {
 		return nil, err
+	} else if found {
+		return existing, nil
 	}
 	readTime, ok := optionalAnnouncementTime(readAt)
 	if !ok {
 		return nil, errAnnouncementNotActive
 	}
-	tx, err := s.client.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	client := tx.Client()
-	announcementEntity, err := client.Announcement.Query().Where(announcement.IDEQ(announcementID), lockRowForUpdate).Only(ctx)
+	announcementRow, found, err := s.getSQLRecord(ctx, tx, "control_plane_announcements", announcementID, announcementEntFields, true)
 	if err != nil {
-		if !controlplaneent.IsNotFound(err) {
-			return nil, err
-		}
+		return nil, err
+	}
+	if !found {
 		return nil, errAnnouncementNotActive
 	}
-	if existing, queryErr := client.AnnouncementRead.Get(ctx, id); queryErr == nil {
-		return announcementReadRecordFromEnt(existing), nil
-	} else if !controlplaneent.IsNotFound(queryErr) {
+	if existing, foundRead, queryErr := s.getSQLRecord(ctx, tx, "control_plane_announcement_reads", id, announcementReadEntFields, false); queryErr != nil {
 		return nil, queryErr
+	} else if foundRead {
+		return existing, nil
 	}
-	if !announcementIsActive(announcementRecordFromEnt(announcementEntity), readTime) {
+	if !announcementIsActive(announcementRow, readTime) {
 		return nil, errAnnouncementNotActive
 	}
 	row := map[string]any{
 		"id": id, "announcementId": announcementID, "userId": userID, "readAt": readAt,
 		"createdAt": readAt, "updatedAt": readAt,
 	}
-	if err := saveRecord(ctx, id, row, client.AnnouncementRead.Create(), announcementReadEntFields); err != nil {
+	if err := s.insertSQLRecord(ctx, tx, "control_plane_announcement_reads", id, row, announcementReadEntFields); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -669,53 +997,48 @@ func (s *postgresEntStateStore) markAnnouncementReadAliases(ctx context.Context,
 	if announcementID == "" || userID == "" || !ok || readTime.IsZero() {
 		return nil, errAnnouncementNotActive
 	}
-	tx, err := s.client.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	client := tx.Client()
-	publication, err := client.Announcement.Query().Where(announcement.IDEQ(announcementID), lockRowForUpdate).Only(ctx)
-	if controlplaneent.IsNotFound(err) {
-		return nil, errAnnouncementNotActive
-	}
+	publication, found, err := s.getSQLRecord(ctx, tx, "control_plane_announcements", announcementID, announcementEntFields, true)
 	if err != nil {
 		return nil, err
 	}
-	if !announcementIsActive(announcementRecordFromEnt(publication), time.Now().UTC()) {
+	if !found || !announcementIsActive(publication, time.Now().UTC()) {
 		return nil, errAnnouncementNotActive
 	}
-	refs := []string{userID}
+	var existing []map[string]any
 	if aliasUserID != "" {
-		refs = append(refs, aliasUserID)
+		existing, err = s.listSQLRecords(ctx, tx, "control_plane_announcement_reads", announcementReadEntFields, "WHERE announcement_id = ? AND user_id IN (?, ?)", announcementID, userID, aliasUserID)
+	} else {
+		existing, err = s.listSQLRecords(ctx, tx, "control_plane_announcement_reads", announcementReadEntFields, "WHERE announcement_id = ? AND user_id = ?", announcementID, userID)
 	}
-	existing, err := client.AnnouncementRead.Query().Where(announcementread.AnnouncementIDEQ(announcementID), announcementread.UserIDIn(refs...)).All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	rows := make([]map[string]any, 0, len(existing))
-	var canonical *controlplaneent.AnnouncementRead
+	var canonical map[string]any
 	for _, entity := range existing {
-		rows = append(rows, announcementReadRecordFromEnt(entity))
-		if entity.UserID == userID {
+		if stringValue(entity["userId"]) == userID {
 			canonical = entity
 		}
 	}
-	row, err := mergedAnnouncementRead(announcementID, userID, readAt, rows)
+	row, err := mergedAnnouncementRead(announcementID, userID, readAt, existing)
 	if err != nil {
 		return nil, err
 	}
 	if canonical != nil {
-		if canonical.ReadAt != stringValue(row["readAt"]) {
-			if _, err := client.AnnouncementRead.UpdateOneID(canonical.ID).SetReadAt(stringValue(row["readAt"])).Save(ctx); err != nil {
+		if stringValue(canonical["readAt"]) != stringValue(row["readAt"]) {
+			if _, err := s.execSQL(ctx, tx, "UPDATE control_plane_announcement_reads SET read_at = ?, updated_at = ? WHERE id = ?", stringValue(row["readAt"]), time.Now().UTC(), stringValue(canonical["id"])); err != nil {
 				return nil, err
 			}
 		}
-	} else if err := saveRecord(ctx, stringValue(row["id"]), row, client.AnnouncementRead.Create(), announcementReadEntFields); err != nil {
+	} else if err := s.insertSQLRecord(ctx, tx, "control_plane_announcement_reads", stringValue(row["id"]), row, announcementReadEntFields); err != nil {
 		return nil, err
 	}
 	if aliasUserID != "" {
-		if _, err := client.AnnouncementRead.Delete().Where(announcementread.AnnouncementIDEQ(announcementID), announcementread.UserIDEQ(aliasUserID)).Exec(ctx); err != nil {
+		if _, err := s.execSQL(ctx, tx, "DELETE FROM control_plane_announcement_reads WHERE announcement_id = ? AND user_id = ?", announcementID, aliasUserID); err != nil {
 			return nil, err
 		}
 	}
@@ -725,75 +1048,65 @@ func (s *postgresEntStateStore) markAnnouncementReadAliases(ctx context.Context,
 	return row, nil
 }
 
-func announcementRecordFromEnt(entity *controlplaneent.Announcement) map[string]any {
-	if entity == nil {
-		return nil
-	}
-	row := recordFromEnt(entity, announcementEntFields)
-	if !entity.UpdatedAt.IsZero() {
-		row["updatedAt"] = entity.UpdatedAt.UTC().Format(time.RFC3339Nano)
-	}
-	return row
-}
-
-func announcementReadRecordFromEnt(entity *controlplaneent.AnnouncementRead) map[string]any {
-	if entity == nil {
-		return nil
-	}
-	row := recordFromEnt(entity, announcementReadEntFields)
-	if !entity.UpdatedAt.IsZero() {
-		row["updatedAt"] = entity.UpdatedAt.UTC().Format(time.RFC3339Nano)
-	}
-	return row
-}
-
 func (s *postgresEntStateStore) ListRuntimeOperations(ctx context.Context) ([]map[string]any, error) {
-	rows, err := loadEventRows(ctx, s.client.RuntimeOperation.Query().Order(controlplaneent.Asc(runtimeoperation.FieldCreatedAt, runtimeoperation.FieldID)).All, runtimeOpEntFields)
-	return rows, err
+	return s.listSQLRecords(ctx, s.db, "control_plane_runtime_operations", runtimeOpEntFields, "ORDER BY created_at ASC, id ASC")
 }
 
 func (s *postgresEntStateStore) GetRuntimeOperation(ctx context.Context, id string) (map[string]any, bool, error) {
-	entity, err := s.client.RuntimeOperation.Get(ctx, id)
-	if controlplaneent.IsNotFound(err) {
-		return nil, false, nil
+	return s.getSQLRecord(ctx, s.db, "control_plane_runtime_operations", id, runtimeOpEntFields, false)
+}
+
+func appendINPredicate(clauses *[]string, args *[]any, column string, values []string, negate bool) {
+	if len(values) == 0 {
+		return
 	}
-	if err != nil {
-		return nil, false, err
+	marks := make([]string, len(values))
+	for i, value := range values {
+		marks[i] = "?"
+		*args = append(*args, value)
 	}
-	return recordFromEnt(entity, runtimeOpEntFields), true, nil
+	op := "IN"
+	if negate {
+		op = "NOT IN"
+	}
+	*clauses = append(*clauses, fmt.Sprintf("%s %s (%s)", column, op, strings.Join(marks, ", ")))
 }
 
 func (s *postgresEntStateStore) PageRuntimeOperations(ctx context.Context, page runtimeOperationQuery) (tablePage, error) {
-	query := s.client.RuntimeOperation.Query()
+	var clauses []string
+	var args []any
 	if page.AccountID != "" {
-		query.Where(runtimeoperation.AccountIDEQ(page.AccountID))
+		clauses = append(clauses, "account_id = ?")
+		args = append(args, page.AccountID)
 	}
 	if page.WorkspaceID != "" {
-		query.Where(runtimeoperation.WorkspaceIDEQ(page.WorkspaceID))
+		clauses = append(clauses, "workspace_id = ?")
+		args = append(args, page.WorkspaceID)
 	}
 	if page.Action != "" {
-		query.Where(runtimeoperation.ActionEQ(page.Action))
+		clauses = append(clauses, "action = ?")
+		args = append(args, page.Action)
 	}
-	if len(page.Statuses) > 0 {
-		query.Where(runtimeoperation.StatusIn(page.Statuses...))
-	}
-	if len(page.ExcludedStatuses) > 0 {
-		query.Where(runtimeoperation.StatusNotIn(page.ExcludedStatuses...))
-	}
+	appendINPredicate(&clauses, &args, "status", page.Statuses, false)
+	appendINPredicate(&clauses, &args, "status", page.ExcludedStatuses, true)
 	if page.PeriodStart != "" {
-		query.Where(runtimeoperation.PeriodStartEQ(page.PeriodStart))
+		clauses = append(clauses, "period_start = ?")
+		args = append(args, page.PeriodStart)
 	}
 	if !page.AfterCreatedAt.IsZero() {
-		query.Where(runtimeoperation.Or(
-			runtimeoperation.CreatedAtGT(page.AfterCreatedAt),
-			runtimeoperation.And(runtimeoperation.CreatedAtEQ(page.AfterCreatedAt), runtimeoperation.IDGT(page.AfterID)),
-		))
+		clauses = append(clauses, "(created_at > ? OR (created_at = ? AND id > ?))")
+		args = append(args, page.AfterCreatedAt, page.AfterCreatedAt, page.AfterID)
 	}
-	total, err := query.Clone().Count(ctx)
-	if err != nil {
+	whereSQL := ""
+	if len(clauses) > 0 {
+		whereSQL = " WHERE " + strings.Join(clauses, " AND ")
+	}
+	var total int
+	if err := s.queryRow(ctx, s.db, "SELECT count(*) FROM control_plane_runtime_operations"+whereSQL, args...).Scan(&total); err != nil {
 		return tablePage{}, err
 	}
-	rows, err := loadEventRows(ctx, query.Order(controlplaneent.Asc(runtimeoperation.FieldCreatedAt, runtimeoperation.FieldID)).Offset(page.Offset).Limit(page.Limit).All, runtimeOpEntFields)
+	pageArgs := append(append([]any(nil), args...), page.Limit, page.Offset)
+	rows, err := s.listSQLRecords(ctx, s.db, "control_plane_runtime_operations", runtimeOpEntFields, strings.TrimPrefix(whereSQL+" ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?", " "), pageArgs...)
 	if err != nil {
 		return tablePage{}, err
 	}
@@ -801,30 +1114,17 @@ func (s *postgresEntStateStore) PageRuntimeOperations(ctx context.Context, page 
 }
 
 func (s *postgresEntStateStore) SaveRuntimeOperation(ctx context.Context, row map[string]any) error {
-	return s.upsertRecord(ctx, row,
-		func(id string) (any, error) { return s.client.RuntimeOperation.Get(ctx, id) },
-		runtimeOperationIdentityMatches,
-		func() any { return s.client.RuntimeOperation.Create() },
-		func(id string) any { return s.client.RuntimeOperation.UpdateOneID(id) },
-		runtimeOpEntFields,
-		true,
-	)
+	return s.upsertSQLRecord(ctx, "control_plane_runtime_operations", row, runtimeOperationIdentityMatches, runtimeOpEntFields)
 }
 
 func (s *postgresEntStateStore) ReserveProductionE2EAttempt(ctx context.Context, claim productionE2EAttemptClaim) (map[string]any, error) {
 	now := time.Now().UTC()
-	err := s.client.ProductionE2ERecord.Create().
-		SetID(claim.ID).
-		SetAccountID(claim.AccountID).
-		SetWorkspaceID(claim.WorkspaceID).
-		SetStatus("attempted").
-		SetResult(claim.Binding).
-		SetReason(recoveredWorkspaceE2EAttemptReason).
-		SetURL(claim.URL).
-		SetCreatedAt(now).
-		SetUpdatedAt(now).
-		Exec(ctx)
-	if controlplaneent.IsConstraintError(err) {
+	_, err := s.execSQL(ctx, s.db, `
+		INSERT INTO control_plane_production_e2e_records (id, created_at, updated_at, account_id, workspace_id, status, result, reason, url)
+		VALUES (?, ?, ?, ?, ?, 'attempted', ?, ?, ?)`,
+		claim.ID, now, now, claim.AccountID, claim.WorkspaceID, claim.Binding, recoveredWorkspaceE2EAttemptReason, claim.URL,
+	)
+	if isSQLConstraintError(err) {
 		return nil, errProductionE2EAttemptAlreadyExists
 	}
 	if err != nil {
@@ -838,26 +1138,20 @@ func (s *postgresEntStateStore) ReserveProductionE2EAttempt(ctx context.Context,
 }
 
 func (s *postgresEntStateStore) GetProductionE2EAttempt(ctx context.Context, id string) (map[string]any, bool, error) {
-	entity, err := s.client.ProductionE2ERecord.Get(ctx, id)
-	if controlplaneent.IsNotFound(err) {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, err
-	}
-	return recordFromEnt(entity, productionE2EEntFields), true, nil
+	return s.getSQLRecord(ctx, s.db, "control_plane_production_e2e_records", id, productionE2EEntFields, false)
 }
 
 func (s *postgresEntStateStore) CompleteProductionE2EAttempt(ctx context.Context, id, binding string) (map[string]any, error) {
-	updated, err := s.client.ProductionE2ERecord.Update().Where(
-		productione2erecord.IDEQ(id),
-		productione2erecord.ReasonEQ(recoveredWorkspaceE2EAttemptReason),
-		productione2erecord.ResultEQ(binding),
-		productione2erecord.StatusEQ("attempted"),
-	).SetStatus("passed").SetUpdatedAt(time.Now().UTC()).Save(ctx)
+	res, err := s.execSQL(ctx, s.db, `
+		UPDATE control_plane_production_e2e_records
+		SET status = 'passed', updated_at = ?
+		WHERE id = ? AND reason = ? AND result = ? AND status = 'attempted'`,
+		time.Now().UTC(), id, recoveredWorkspaceE2EAttemptReason, binding,
+	)
 	if err != nil {
 		return nil, err
 	}
+	updated, _ := res.RowsAffected()
 	record, found, err := s.GetProductionE2EAttempt(ctx, id)
 	if err != nil {
 		return nil, err
@@ -875,18 +1169,18 @@ func (s *postgresEntStateStore) CompleteProductionE2EAttempt(ctx context.Context
 }
 
 func (s *postgresEntStateStore) BillingReconciliation(ctx context.Context) (map[string]any, bool, error) {
-	row, err := s.client.BillingReconciliation.Query().Order(controlplaneent.Desc(billingreconciliation.FieldCreatedAt, billingreconciliation.FieldID)).First(ctx)
-	if controlplaneent.IsNotFound(err) {
-		return nil, false, nil
-	}
+	rows, err := s.listSQLRecords(ctx, s.db, "control_plane_billing_reconciliation", reconcileEntFields, "ORDER BY created_at DESC, id DESC LIMIT 1")
 	if err != nil {
 		return nil, false, err
 	}
-	return recordFromEnt(row, reconcileEntFields), true, nil
+	if len(rows) == 0 {
+		return nil, false, nil
+	}
+	return rows[0], true, nil
 }
 
 func (s *postgresEntStateStore) ApplyRetention(ctx context.Context, policy retentionPolicy) (map[string]any, error) {
-	tx, err := s.client.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -894,152 +1188,31 @@ func (s *postgresEntStateStore) ApplyRetention(ctx context.Context, policy reten
 
 	result := map[string]any{"retentionPolicy": policy.dto()}
 	if cutoff := policy.cutoff(policy.AdminAuditDays); !cutoff.IsZero() {
-		rows, err := tx.AdminAuditEvent.Query().Where(adminauditevent.CreatedAtLT(cutoff)).All(ctx)
+		rows, err := s.listSQLRecords(ctx, tx, "control_plane_admin_audit_events", auditEntFields, "WHERE created_at < ?", cutoff)
 		if err != nil {
 			return nil, err
 		}
-		for _, row := range rows {
-			record := recordFromEnt(row, auditEntFields)
-			if err := saveRecord(ctx, row.ID, record, tx.ArchivedAdminAuditEvent.Create(), auditEntFields); err != nil {
+		for _, record := range rows {
+			if err := s.insertSQLRecord(ctx, tx, "control_plane_archived_admin_audit_events", stringValue(record["id"]), record, auditEntFields); err != nil {
 				return nil, err
 			}
 		}
 		if len(rows) > 0 {
-			if _, err := tx.AdminAuditEvent.Delete().Where(adminauditevent.CreatedAtLT(cutoff)).Exec(ctx); err != nil {
+			if _, err := s.execSQL(ctx, tx, "DELETE FROM control_plane_admin_audit_events WHERE created_at < ?", cutoff); err != nil {
 				return nil, err
 			}
 		}
 		result["adminAuditArchived"] = len(rows)
 	}
 	if cutoff := policy.cutoff(policy.ProductionE2EDays); !cutoff.IsZero() {
-		deleted, err := tx.ProductionE2ERecord.Delete().Where(productione2erecord.CreatedAtLT(cutoff)).Exec(ctx)
+		res, err := s.execSQL(ctx, tx, "DELETE FROM control_plane_production_e2e_records WHERE created_at < ?", cutoff)
 		if err != nil {
 			return nil, err
 		}
-		result["productionE2EDeleted"] = deleted
+		deleted, _ := res.RowsAffected()
+		result["productionE2EDeleted"] = int(deleted)
 	}
 	return result, tx.Commit()
-}
-
-func loadRecordSet[T any](ctx context.Context, all func(context.Context) ([]*T, error), fields []entRecordField) (controlPlaneRecordSet, error) {
-	rows, err := all(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := controlPlaneRecordSet{}
-	for _, row := range rows {
-		record := recordFromEnt(row, fields)
-		out[stringValue(record["id"])] = record
-	}
-	return out, nil
-}
-
-func loadEventRows[T any](ctx context.Context, all func(context.Context) ([]*T, error), fields []entRecordField) ([]controlPlaneRecord, error) {
-	rows, err := all(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]controlPlaneRecord, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, recordFromEnt(row, fields))
-	}
-	return out, nil
-}
-
-func recordFromEnt(entity any, fields []entRecordField) controlPlaneRecord {
-	value := reflect.Indirect(reflect.ValueOf(entity))
-	row := controlPlaneRecord{"id": stringValue(fieldValue(value, "ID"))}
-	if createdAt, ok := fieldValue(value, "CreatedAt").(time.Time); ok && !createdAt.IsZero() {
-		row["createdAt"] = createdAt.UTC().Format(time.RFC3339Nano)
-	}
-	if updatedAt, ok := fieldValue(value, "UpdatedAt").(time.Time); ok && !updatedAt.IsZero() {
-		row["updatedAt"] = updatedAt.UTC().Format(time.RFC3339Nano)
-	}
-	var workspaceBillingJSON string
-	for _, field := range fields {
-		raw := fieldValue(value, field.EntityField)
-		if field.Kind == "billing_json" {
-			var billing map[string]any
-			if text := stringValue(raw); text != "" && json.Unmarshal([]byte(text), &billing) == nil {
-				for key, value := range billing {
-					row[key] = value
-				}
-			}
-			continue
-		}
-		if field.Kind == "workspace_billing_json" {
-			workspaceBillingJSON = stringValue(raw)
-			continue
-		}
-		if field.Kind == "json_text" {
-			var decoded any
-			if text := stringValue(raw); text != "" && json.Unmarshal([]byte(text), &decoded) == nil {
-				setPath(row, field.Path, decoded)
-			}
-			continue
-		}
-		if isZero(raw) && field.Kind != "bool" {
-			continue
-		}
-		setPath(row, field.Path, raw)
-	}
-	if billing, err := decodeWorkspaceBillingState(workspaceBillingJSON, row); err == nil {
-		for key, value := range billing {
-			row[key] = value
-		}
-	}
-	return row
-}
-
-func saveRecord(ctx context.Context, id string, row controlPlaneRecord, builder any, fields []entRecordField) error {
-	callSetter(builder, "SetID", id)
-	if createdAt, ok := parseRecordTime(row); ok {
-		callSetter(builder, "SetCreatedAt", createdAt)
-		callSetter(builder, "SetUpdatedAt", createdAt)
-	}
-	setRecordFields(builder, row, fields)
-	return execCreate(ctx, builder)
-}
-
-func setRecordFields(builder any, row controlPlaneRecord, fields []entRecordField) {
-	setRecordFieldsWithEmptyText(builder, row, fields, false)
-}
-
-func setRecordFieldsWithEmptyText(builder any, row controlPlaneRecord, fields []entRecordField, includeEmptyText bool) {
-	for _, field := range fields {
-		if field.Setter == "" {
-			continue
-		}
-		value, ok := valueAtPath(row, field.Path)
-		if !ok {
-			continue
-		}
-		switch field.Kind {
-		case "int":
-			callSetter(builder, field.Setter, int64(numberValue(value)))
-		case "float":
-			callSetter(builder, field.Setter, numberValue(value))
-		case "bool":
-			callSetter(builder, field.Setter, boolValue(value))
-		case "billing_json":
-			if encoded, err := encodeMonthlyBillingState(row); err == nil {
-				callSetter(builder, field.Setter, string(encoded))
-			}
-		case "workspace_billing_json":
-			if encoded, err := encodeWorkspaceBillingState(row); err == nil {
-				callSetter(builder, field.Setter, encoded)
-			}
-		case "json_text":
-			if encoded, err := json.Marshal(value); err == nil {
-				callSetter(builder, field.Setter, string(encoded))
-			}
-		default:
-			text := stringValue(value)
-			if text != "" || includeEmptyText {
-				callSetter(builder, field.Setter, text)
-			}
-		}
-	}
 }
 
 func encodeMonthlyBillingState(row map[string]any) (string, error) {
@@ -1053,46 +1226,58 @@ func encodeMonthlyBillingState(row map[string]any) (string, error) {
 	return string(encoded), err
 }
 
-func (s *postgresEntStateStore) upsertRecord(ctx context.Context, row map[string]any, get func(string) (any, error), identityMatches func(any, map[string]any) bool, create func() any, update func(string) any, fields []entRecordField, includeEmptyText bool) error {
+func (s *postgresEntStateStore) upsertSQLRecord(ctx context.Context, table string, row map[string]any, identityMatches func(map[string]any, map[string]any) bool, fields []sqlRecordField) error {
 	id := stringValue(row["id"])
 	if id == "" {
 		return errors.New("missing_record_id")
 	}
-	if existing, err := get(id); err == nil {
+	if existing, found, err := s.getSQLRecord(ctx, s.db, table, id, fields, false); err != nil {
+		return err
+	} else if found {
 		if !identityMatches(existing, row) {
 			return errIdempotencyConflict
 		}
-		builder := update(id)
-		setRecordFieldsWithEmptyText(builder, row, fields, includeEmptyText)
-		return execCreate(ctx, builder)
-	} else if !controlplaneent.IsNotFound(err) {
-		return err
+		return s.updateSQLRecord(ctx, s.db, table, id, row, fields, true)
 	}
-	if err := saveRecord(ctx, id, row, create(), fields); !controlplaneent.IsConstraintError(err) {
+	err := s.insertSQLRecord(ctx, s.db, table, id, row, fields)
+	if !isSQLConstraintError(err) {
 		return err
 	}
 	// Another writer inserted the canonical ID between the read and create.
-	existing, err := get(id)
-	if err != nil || !identityMatches(existing, row) {
+	existing, found, err := s.getSQLRecord(ctx, s.db, table, id, fields, false)
+	if err != nil || !found || !identityMatches(existing, row) {
 		return errIdempotencyConflict
 	}
 	return nil
 }
 
-func runtimeOperationIdentityMatches(existing any, row map[string]any) bool {
-	entity, ok := existing.(*controlplaneent.RuntimeOperation)
-	return ok && entity.OperationID == stringValue(row["operationId"]) && entity.AccountID == stringValue(row["accountId"]) && entity.WorkspaceID == stringValue(row["workspaceId"]) && entity.ResourceID == stringValue(row["resourceId"]) && entity.ResourceKind == stringValue(row["resourceKind"]) && entity.Action == stringValue(row["action"])
+func runtimeOperationIdentityMatches(existing, row map[string]any) bool {
+	return existing != nil &&
+		stringValue(existing["operationId"]) == stringValue(row["operationId"]) &&
+		stringValue(existing["accountId"]) == stringValue(row["accountId"]) &&
+		stringValue(existing["workspaceId"]) == stringValue(row["workspaceId"]) &&
+		stringValue(existing["resourceId"]) == stringValue(row["resourceId"]) &&
+		stringValue(existing["resourceKind"]) == stringValue(row["resourceKind"]) &&
+		stringValue(existing["action"]) == stringValue(row["action"])
 }
 
-func (s *postgresEntStateStore) replaceRecord(ctx context.Context, row map[string]any, deleteOne func(string) error, create func() any, fields []entRecordField) error {
+func (s *postgresEntStateStore) replaceRecord(ctx context.Context, table string, row map[string]any, fields []sqlRecordField) error {
 	id := stringValue(row["id"])
 	if id == "" {
 		return errors.New("missing_record_id")
 	}
-	if err := deleteOne(id); err != nil && !controlplaneent.IsNotFound(err) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
 		return err
 	}
-	return saveRecord(ctx, id, row, create(), fields)
+	defer func() { _ = tx.Rollback() }()
+	if err := s.deleteSQLByID(ctx, tx, table, id); err != nil {
+		return err
+	}
+	if err := s.insertSQLRecord(ctx, tx, table, id, row, fields); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func filteredRecords(rows controlPlaneRecordSet, accountID string) ([]map[string]any, error) {
@@ -1115,49 +1300,6 @@ func filteredEvents(rows []controlPlaneRecord, accountID string) []map[string]an
 		out = append(out, cloneMap(row))
 	}
 	return out
-}
-
-func callSetter(builder any, name string, value any) {
-	method := reflect.ValueOf(builder).MethodByName(name)
-	if !method.IsValid() {
-		return
-	}
-	method.Call([]reflect.Value{reflect.ValueOf(value)})
-}
-
-func execCreate(ctx context.Context, builder any) error {
-	results := reflect.ValueOf(builder).MethodByName("Exec").Call([]reflect.Value{reflect.ValueOf(ctx)})
-	if len(results) == 0 || results[0].IsNil() {
-		return nil
-	}
-	return results[0].Interface().(error)
-}
-
-func fieldValue(value reflect.Value, name string) any {
-	field := value.FieldByName(name)
-	if !field.IsValid() || !field.CanInterface() {
-		return nil
-	}
-	return field.Interface()
-}
-
-func isZero(value any) bool {
-	switch typed := value.(type) {
-	case nil:
-		return true
-	case string:
-		return typed == ""
-	case int64:
-		return typed == 0
-	case float64:
-		return typed == 0
-	case bool:
-		return !typed
-	case time.Time:
-		return typed.IsZero()
-	default:
-		return reflect.ValueOf(value).IsZero()
-	}
 }
 
 func parseRecordTime(row controlPlaneRecord) (time.Time, bool) {
@@ -1224,6 +1366,9 @@ func numberValue(value any) float64 {
 func boolValue(value any) bool {
 	if parsed, ok := value.(bool); ok {
 		return parsed
+	}
+	if value == nil || reflect.ValueOf(value).IsZero() {
+		return false
 	}
 	parsed, _ := strconv.ParseBool(stringValue(value))
 	return parsed

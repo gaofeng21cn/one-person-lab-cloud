@@ -372,7 +372,7 @@ func TestPostgresStoreStartsFromFreshDatabase(t *testing.T) {
 	if err != nil || len(accounts) != 0 {
 		t.Fatalf("fresh account table = %v, err=%v", accounts, err)
 	}
-	if err := store.(*postgresEntStateStore).client.Close(); err != nil {
+	if err := store.(*postgresEntStateStore).Close(); err != nil {
 		t.Fatal(err)
 	}
 	check, err := sql.Open("postgres", databaseURL)
@@ -388,8 +388,8 @@ func TestPostgresStoreStartsFromFreshDatabase(t *testing.T) {
 	if err := check.QueryRow(`SELECT count(*) FROM opl_schema_migrations WHERE service = 'control-plane'`).Scan(&migrationCount); err != nil {
 		t.Fatalf("read control-plane migration journal: %v", err)
 	}
-	if migrationCount != len(controlPlaneMigrations(nil, nil)) {
-		t.Fatalf("control-plane migration count = %d, want %d", migrationCount, len(controlPlaneMigrations(nil, nil)))
+	if migrationCount != len(controlPlaneMigrations(nil)) {
+		t.Fatalf("control-plane migration count = %d, want %d", migrationCount, len(controlPlaneMigrations(nil)))
 	}
 	var autoRenewAuditMigration bool
 	if err := check.QueryRow(`SELECT EXISTS (SELECT 1 FROM opl_schema_migrations WHERE service = 'control-plane' AND version = '202607170003_workspace_auto_renew_audit')`).Scan(&autoRenewAuditMigration); err != nil || !autoRenewAuditMigration {
@@ -437,7 +437,7 @@ func TestPostgresStoreStartsFromFreshDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start store a second time: %v", err)
 	}
-	if err := second.(*postgresEntStateStore).client.Close(); err != nil {
+	if err := second.(*postgresEntStateStore).Close(); err != nil {
 		t.Fatal(err)
 	}
 	var probe sql.NullString
@@ -471,7 +471,7 @@ func TestPostgresRuntimeOperationConcurrentUpsert(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := stateStore.(*postgresEntStateStore)
-	t.Cleanup(func() { _ = store.client.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 	operation := map[string]any{
 		"id": "operation-capacity", "operationId": "operation-capacity", "accountId": "acct-capacity",
 		"resourceId": "compute-capacity", "resourceKind": "compute_allocation", "action": "create_compute_allocation", "status": "succeeded",

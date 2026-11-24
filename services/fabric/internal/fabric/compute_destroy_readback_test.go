@@ -335,7 +335,7 @@ func TestComputeOwnerReadbackUsesExactActiveOwnershipWithoutPersistingTags(t *te
 					}
 				}
 				store = persisted
-				t.Cleanup(func() { _ = persisted.client.Close() })
+				t.Cleanup(func() { _ = persisted.Close() })
 			}
 			owner := MachineOwnership{ID: "current-owner", ResourceID: compute.ID, AccountID: compute.AccountID, WorkspaceID: compute.WorkspaceID,
 				PackageID: compute.PackageID, NodePoolID: compute.NodePoolID, MachineID: compute.MachineName, InstanceID: compute.InstanceID,
@@ -348,14 +348,14 @@ func TestComputeOwnerReadbackUsesExactActiveOwnershipWithoutPersistingTags(t *te
 				t.Fatal(err)
 			}
 			if postgres {
-				if err := store.(*PostgresOperationStore).client.Close(); err != nil {
+				if err := store.(*PostgresOperationStore).Close(); err != nil {
 					t.Fatal(err)
 				}
 				reopened, err := newTestPostgresOperationStore(databaseURL)
 				if err != nil {
 					t.Fatal(err)
 				}
-				t.Cleanup(func() { _ = reopened.client.Close() })
+				t.Cleanup(func() { _ = reopened.Close() })
 				store = reopened
 			}
 			service := NewServiceWithOperationStore(provider, store)

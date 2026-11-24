@@ -1,7 +1,6 @@
 package fabric
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -849,48 +848,6 @@ func TestPostgresOperationSchemaDefinesFabricOperationsAuditTable(t *testing.T) 
 	}
 }
 
-func TestRuntimeClaimMigrationMatchesEmbeddedCopy(t *testing.T) {
-	formal, err := os.ReadFile("../../migrations/202607110003_runtime_operation_claim.sql")
-	if err != nil {
-		t.Fatalf("read formal migration: %v", err)
-	}
-	embedded, err := os.ReadFile("ent_migrations/202607110003_runtime_operation_claim.sql")
-	if err != nil {
-		t.Fatalf("read embedded migration: %v", err)
-	}
-	if !bytes.Equal(formal, embedded) {
-		t.Fatal("formal and embedded runtime claim migrations differ")
-	}
-}
-
-func TestComputePoolAdmissionMigrationMatchesEmbeddedCopy(t *testing.T) {
-	formal, err := os.ReadFile("../../migrations/202607260001_compute_pool_admission.sql")
-	if err != nil {
-		t.Fatalf("read formal migration: %v", err)
-	}
-	embedded, err := os.ReadFile("ent_migrations/202607260001_compute_pool_admission.sql")
-	if err != nil {
-		t.Fatalf("read embedded migration: %v", err)
-	}
-	if !bytes.Equal(formal, embedded) {
-		t.Fatal("formal and embedded compute pool admission migrations differ")
-	}
-}
-
-func TestComputeClaimPendingPoolHeadMigrationMatchesEmbeddedCopy(t *testing.T) {
-	formal, err := os.ReadFile("../../migrations/202607290001_compute_claim_pending_pool_head.sql")
-	if err != nil {
-		t.Fatalf("read formal migration: %v", err)
-	}
-	embedded, err := os.ReadFile("ent_migrations/202607290001_compute_claim_pending_pool_head.sql")
-	if err != nil {
-		t.Fatalf("read embedded migration: %v", err)
-	}
-	if !bytes.Equal(formal, embedded) {
-		t.Fatal("formal and embedded compute claim pending pool head migrations differ")
-	}
-}
-
 func TestHistoricalEntHardCutMigrationRetainsContentTransferTables(t *testing.T) {
 	migration, err := os.ReadFile("ent_migrations/202607090001_ent_hard_cut.sql")
 	if err != nil {
@@ -927,7 +884,7 @@ func TestPostgresOperationStoreMapsHistoricalCorrelationIDToOperationID(t *testi
 			if err != nil {
 				t.Fatalf("install historical Fabric schema: %v", err)
 			}
-			defer store.client.Close()
+			defer store.Close()
 
 			var operationID, callerService, status string
 			var startedAt time.Time
@@ -1073,20 +1030,6 @@ func assertMigrationCount(t *testing.T, db *sql.DB, service, version string, wan
 	}
 	if got != want {
 		t.Fatalf("migration count for %s/%s = %d, want %d", service, version, got, want)
-	}
-}
-
-func TestHistoricalOperationMigrationMatchesFormalEmbeddedCopy(t *testing.T) {
-	formal, err := os.ReadFile("../../migrations/202607080001_fabric_operations_legacy_migration.sql")
-	if err != nil {
-		t.Fatalf("read formal migration: %v", err)
-	}
-	embedded, err := os.ReadFile("ent_migrations/202607080001_fabric_operations_legacy_migration.sql")
-	if err != nil {
-		t.Fatalf("read embedded migration: %v", err)
-	}
-	if !bytes.Equal(formal, embedded) {
-		t.Fatal("formal and embedded historical operation migrations differ")
 	}
 }
 

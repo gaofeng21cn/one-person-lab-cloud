@@ -1,22 +1,18 @@
 package ledger
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/lib/pq"
-
-	ledgerent "opl-cloud/services/ledger/ent"
 )
 
 func TestPostgresSchemaKeepsEvidenceAndDropsRetiredCommercialTables(t *testing.T) {
@@ -60,36 +56,6 @@ func TestPostgresStoreReadyFailsWhenDatabaseIsClosed(t *testing.T) {
 	}
 	if err := NewPostgresStore(db).Ready(context.Background()); err == nil {
 		t.Fatal("closed PostgreSQL database reported ready")
-	}
-}
-
-func TestFormalAndEmbeddedMigrationTreesMatch(t *testing.T) {
-	formal, err := os.ReadDir("../../migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	embedded, err := os.ReadDir("ent_migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(formal) != len(embedded) {
-		t.Fatalf("migration file count differs: formal=%d embedded=%d", len(formal), len(embedded))
-	}
-	for i := range formal {
-		if formal[i].Name() != embedded[i].Name() {
-			t.Fatalf("migration names differ: %q != %q", formal[i].Name(), embedded[i].Name())
-		}
-		formalSQL, err := os.ReadFile(filepath.Join("../../migrations", formal[i].Name()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		embeddedSQL, err := os.ReadFile(filepath.Join("ent_migrations", embedded[i].Name()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(formalSQL, embeddedSQL) {
-			t.Fatalf("migration %s differs", formal[i].Name())
-		}
 	}
 }
 
@@ -171,7 +137,7 @@ func TestWalletAdjustmentReceiptPostgres(t *testing.T) {
 }
 
 func TestPostgresReceiptRowPreservesLargeInteger(t *testing.T) {
-	receipt, err := receiptFromEnt(&ledgerent.EvidenceReceipt{
+	receipt, err := receiptFromRow(evidenceReceiptRow{
 		ID: "receipt-large", ReceiptType: "billing.resource_purchased.v1", Status: "completed",
 		PayloadJSON: `{"cost":{"monthlyPriceCnyCents":9007199254740993}}`,
 	})
@@ -184,13 +150,13 @@ func TestPostgresReceiptRowPreservesLargeInteger(t *testing.T) {
 }
 
 func TestPostgresReceiptRowRejectsTrailingJSON(t *testing.T) {
-	if _, err := receiptFromEnt(&ledgerent.EvidenceReceipt{PayloadJSON: `{"cost":{}} {}`}); err == nil {
+	if _, err := receiptFromRow(evidenceReceiptRow{PayloadJSON: `{"cost":{}} {}`}); err == nil {
 		t.Fatal("persisted receipt payload with trailing JSON must fail closed")
 	}
 }
 
 func TestPostgresReconciliationRowPreservesMaxInt64(t *testing.T) {
-	result, err := reconciliationFromEnt(&ledgerent.ReconciliationReport{
+	result, err := reconciliationFromRow(reconciliationReportRow{
 		ID: "recon-max-int64", Status: "ok", BlockNewWorkspaces: false, Reason: "operator_reconciliation",
 		ReportJSON: `{"id":"recon-max-int64","status":"ok","counts":{"billingOperations":9223372036854775807,"matched":9223372036854775807,"exceptions":0},"exceptions":[]}`,
 	})
@@ -203,7 +169,7 @@ func TestPostgresReconciliationRowPreservesMaxInt64(t *testing.T) {
 }
 
 func TestPostgresReconciliationRowRejectsTrailingJSON(t *testing.T) {
-	_, err := reconciliationFromEnt(&ledgerent.ReconciliationReport{
+	_, err := reconciliationFromRow(reconciliationReportRow{
 		ID: "recon-trailing", Status: "ok", BlockNewWorkspaces: false, Reason: "operator_reconciliation",
 		ReportJSON: `{"id":"recon-trailing","status":"ok","counts":{"billingOperations":0,"matched":0,"exceptions":0},"exceptions":[]} {}`,
 	})

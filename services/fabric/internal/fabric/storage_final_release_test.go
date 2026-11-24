@@ -185,7 +185,7 @@ func TestPostgresStorageFinalReleaseFenceSurvivesReopen(t *testing.T) {
 	databaseURL := fabricTestDatabaseURL(t)
 	reopen := func(store OperationStore) OperationStore {
 		if store != nil {
-			if err := store.(*PostgresOperationStore).client.Close(); err != nil {
+			if err := store.(*PostgresOperationStore).Close(); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -193,7 +193,7 @@ func TestPostgresStorageFinalReleaseFenceSurvivesReopen(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { _ = next.client.Close() })
+		t.Cleanup(func() { _ = next.Close() })
 		return next
 	}
 	testStorageFinalReleaseRestart(t, reopen(nil), reopen)
@@ -357,7 +357,7 @@ func TestPostgresStorageFinalReleaseConcurrentServicesSendOnce(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { _ = store.client.Close() })
+		t.Cleanup(func() { _ = store.Close() })
 		stores[i] = store
 	}
 	testStorageFinalReleaseConcurrentServices(t, stores[0], stores[1])
@@ -711,7 +711,7 @@ func TestPostgresStorageFinalReleaseRejectsUnknownPersistedFields(t *testing.T) 
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { _ = store.client.Close() })
+		t.Cleanup(func() { _ = store.Close() })
 		return store
 	})
 }
@@ -776,12 +776,12 @@ func TestPostgresStorageFinalReleaseLostAdvisorySessionSendsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = first.client.Close() })
+	t.Cleanup(func() { _ = first.Close() })
 	second, err := newTestPostgresOperationStore(databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = second.client.Close() })
+	t.Cleanup(func() { _ = second.Close() })
 	frozen, input := storageFinalReleaseFixture(t, first)
 	before := storageFinalReleaseOriginalJournal(t, first)
 	providerA := newStorageFinalReleaseTestProvider(t, frozen)

@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
 	"github.com/lib/pq"
 )
 
@@ -80,7 +78,7 @@ func TestCustomerIdentityHardCutPostgresFailsClosedWithoutMutation(t *testing.T)
 			if err := db.QueryRow(`SELECT count(*) FROM control_plane_sessions`).Scan(&beforeSessions); err != nil {
 				t.Fatal(err)
 			}
-			if err := ApplyCustomerIdentityHardCut(context.Background(), entsql.OpenDB(dialect.Postgres, db)); err == nil {
+			if err := ApplyCustomerIdentityHardCut(context.Background(), OpenDriver(db)); err == nil {
 				t.Fatal("invalid legacy identity was accepted")
 			}
 			var afterOwner, afterHash string
@@ -98,7 +96,7 @@ func TestCustomerIdentityHardCutPostgresFailsClosedWithoutMutation(t *testing.T)
 func TestCustomerIdentityHardCutPostgresBackfillsClearsSecretsAndEnforcesConstraints(t *testing.T) {
 	db := newIdentityMigrationDatabase(t, requiredIdentityTestDatabaseURL(t))
 	seedIdentityMigrationTables(t, db, "")
-	driver := entsql.OpenDB(dialect.Postgres, db)
+	driver := OpenDriver(db)
 	for range 2 {
 		if err := ApplyCustomerIdentityHardCut(context.Background(), driver); err != nil {
 			t.Fatal(err)
@@ -166,7 +164,7 @@ func TestCustomerIdentityHardCutPostgresRejectsOldSessionInsertAcrossMigrationWi
 	}
 	migrationDone := make(chan error, 1)
 	go func() {
-		migrationDone <- ApplyCustomerIdentityHardCut(context.Background(), entsql.OpenDB(dialect.Postgres, db))
+		migrationDone <- ApplyCustomerIdentityHardCut(context.Background(), OpenDriver(db))
 	}()
 	deadline := time.Now().Add(5 * time.Second)
 	for {

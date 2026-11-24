@@ -24,8 +24,6 @@ import (
 	contracts "opl-cloud/packages/contracts/go"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
-	controlplaneent "opl-cloud/services/control-plane/ent"
-	"opl-cloud/services/control-plane/ent/announcement"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
 
@@ -469,9 +467,9 @@ func TestCloudAnnouncementsOwnerHTTPRejectsBrokenOriginalLineage(t *testing.T) {
 							memory.mu.Unlock()
 						} else {
 							entStore := store.(*postgresEntStateStore)
-							_, err := entStore.client.User.UpdateOneID("usr-legacy").SetAccountID("acct-other").Save(t.Context())
+							_, err := entStore.execSQL(t.Context(), entStore.db, `UPDATE control_plane_users SET account_id = ? WHERE id = ?`, "acct-other", "usr-legacy")
 							if backend.name == "postgres" {
-								if !controlplaneent.IsConstraintError(err) {
+								if !isSQLConstraintError(err) {
 									t.Fatalf("PostgreSQL reciprocal lineage constraint=%v", err)
 								}
 								return
@@ -496,7 +494,7 @@ func TestCloudAnnouncementsOwnerHTTPRejectsBrokenOriginalLineage(t *testing.T) {
 				})
 			}
 			if err := store.DeleteUser(t.Context(), "usr-legacy"); err != nil {
-				if backend.name == "postgres" && controlplaneent.IsConstraintError(err) {
+				if backend.name == "postgres" && isSQLConstraintError(err) {
 					return
 				}
 				t.Fatal(err)
@@ -684,8 +682,11 @@ func TestCloudAnnouncementsOwnerHTTPRejectsInactiveOriginalAccount(t *testing.T)
 					if err := memory.SaveAccount(t.Context(), account); err != nil {
 						t.Fatal(err)
 					}
-				} else if _, err := store.(*postgresEntStateStore).client.Account.UpdateOneID("acct-usr-legacy").SetStatus(state).Save(t.Context()); err != nil {
-					t.Fatal(err)
+				} else {
+					entStore := store.(*postgresEntStateStore)
+					if _, err := entStore.execSQL(t.Context(), entStore.db, `UPDATE control_plane_accounts SET status = ? WHERE id = ?`, state, "acct-usr-legacy"); err != nil {
+						t.Fatal(err)
+					}
 				}
 				result := f.request(t, http.MethodGet, "/internal/cloud/announcements", ref, "")
 				if result.code != 409 {
@@ -756,12 +757,12 @@ func TestPostgresCloudAnnouncementsConcurrentACKAndWithdrawal(t *testing.T) {
 		t.Fatalf("canonical ACK=%v %v", canonical, err)
 	}
 	// Withdrawing holds the same publication row lock used by the new ACK writer.
-	tx, err := store.client.Tx(t.Context())
+	tx, err := store.db.BeginTx(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.Announcement.Query().Where(announcement.IDEQ("concurrent"), lockRowForUpdate).Only(t.Context()); err != nil {
+	if _, _, err := store.getSQLRecord(t.Context(), tx, "control_plane_announcements", "concurrent", announcementEntFields, true); err != nil {
 		t.Fatal(err)
 	}
 	finished := make(chan error, 1)
@@ -769,7 +770,7 @@ func TestPostgresCloudAnnouncementsConcurrentACKAndWithdrawal(t *testing.T) {
 		_, err := store.MarkCloudAnnouncementRead(t.Context(), "concurrent", cloud, legacy, now.Format(time.RFC3339Nano))
 		finished <- err
 	}()
-	if _, err := tx.Announcement.UpdateOneID("concurrent").SetStatus("withdrawn").Save(t.Context()); err != nil {
+	if _, err := store.execSQL(t.Context(), tx, `UPDATE control_plane_announcements SET status = ? WHERE id = ?`, "withdrawn", "concurrent"); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(); err != nil {

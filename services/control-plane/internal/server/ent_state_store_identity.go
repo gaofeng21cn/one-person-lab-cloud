@@ -2,70 +2,48 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"errors"
-	"sort"
-
-	controlplaneent "opl-cloud/services/control-plane/ent"
-	"opl-cloud/services/control-plane/ent/account"
-	"opl-cloud/services/control-plane/ent/adminauditevent"
-	"opl-cloud/services/control-plane/ent/computeallocation"
-	"opl-cloud/services/control-plane/ent/session"
-	"opl-cloud/services/control-plane/ent/storagevolume"
-	"opl-cloud/services/control-plane/ent/user"
-	"opl-cloud/services/control-plane/ent/workspace"
+	"time"
 )
 
 var (
-	accountEntFields = []entRecordField{
-		textField("OwnerUserID", "SetOwnerUserID", "ownerUserId"),
-		intField("Sub2apiUserID", "SetSub2apiUserID", "sub2apiUserId"),
-		textField("Name", "SetName", "name"),
-		textField("Status", "SetStatus", "status"),
-		boolField("WorkspacePurchaseEnabled", "SetWorkspacePurchaseEnabled", "workspacePurchaseEnabled"),
+	accountEntFields = []sqlRecordField{
+		sqlTextField("owner_user_id", "ownerUserId"),
+		sqlIntField("sub2api_user_id", "sub2apiUserId"),
+		sqlTextField("name", "name"),
+		sqlTextField("status", "status"),
+		sqlBoolField("workspace_purchase_enabled", "workspacePurchaseEnabled"),
 	}
-	userEntFields = []entRecordField{
-		textField("AccountID", "SetAccountID", "accountId"),
-		textField("Email", "SetEmail", "email"),
-		textField("Role", "SetRole", "role"),
-		textField("Status", "SetStatus", "status"),
-		textField("DisabledAt", "SetDisabledAt", "disabledAt"),
-		textField("DisabledBy", "SetDisabledBy", "disabledBy"),
-		textField("DisabledReason", "SetDisabledReason", "disabledReason"),
-		textField("DeletedAt", "SetDeletedAt", "deletedAt"),
-		textField("DeletedBy", "SetDeletedBy", "deletedBy"),
-		textField("DeleteReason", "SetDeleteReason", "deleteReason"),
+	userEntFields = []sqlRecordField{
+		sqlTextField("account_id", "accountId"),
+		sqlTextField("email", "email"),
+		sqlTextField("role", "role"),
+		sqlTextField("status", "status"),
+		sqlTextField("disabled_at", "disabledAt"),
+		sqlTextField("disabled_by", "disabledBy"),
+		sqlTextField("disabled_reason", "disabledReason"),
+		sqlTextField("deleted_at", "deletedAt"),
+		sqlTextField("deleted_by", "deletedBy"),
+		sqlTextField("delete_reason", "deleteReason"),
 	}
-	sessionEntFields = []entRecordField{
-		textField("UserID", "SetUserID", "userId"),
-		textField("Csrf", "SetCsrf", "csrf"),
-		textField("ExpiresAt", "SetExpiresAt", "expiresAt"),
+	sessionEntFields = []sqlRecordField{
+		sqlTextField("user_id", "userId"),
+		sqlTextField("csrf", "csrf"),
+		sqlTextField("expires_at", "expiresAt"),
 	}
 )
 
 func (s *postgresEntStateStore) ListUsers(ctx context.Context, includeDeleted bool) ([]map[string]any, error) {
-	rows, err := loadRecordSet(ctx, s.client.User.Query().All, userEntFields)
-	if err != nil {
-		return nil, err
+	suffix := ""
+	if !includeDeleted {
+		suffix = "WHERE status <> 'deleted'"
 	}
-	out := make([]map[string]any, 0, len(rows))
-	for _, row := range rows {
-		if !includeDeleted && stringValue(row["status"]) == "deleted" {
-			continue
-		}
-		out = append(out, cloneMap(row))
-	}
-	return out, nil
+	return s.listSQLRecords(ctx, s.db, "control_plane_users", userEntFields, suffix)
 }
 
 func (s *postgresEntStateStore) GetUser(ctx context.Context, id string) (map[string]any, bool, error) {
-	entity, err := s.client.User.Get(ctx, id)
-	if controlplaneent.IsNotFound(err) {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, err
-	}
-	return recordFromEnt(entity, userEntFields), true, nil
+	return s.getSQLRecord(ctx, s.db, "control_plane_users", id, userEntFields, false)
 }
 
 func (s *postgresEntStateStore) GetUserByEmail(ctx context.Context, email string, includeDeleted bool) (map[string]any, bool, error) {
@@ -73,18 +51,21 @@ func (s *postgresEntStateStore) GetUserByEmail(ctx context.Context, email string
 	if err != nil {
 		return nil, false, err
 	}
-	query := s.client.User.Query().Where(user.Email(email))
+	suffix := "WHERE email = ? LIMIT 2"
 	if !includeDeleted {
-		query = query.Where(user.StatusNEQ("deleted"))
+		suffix = "WHERE email = ? AND status <> 'deleted' LIMIT 2"
 	}
-	entity, err := query.Only(ctx)
-	if controlplaneent.IsNotFound(err) {
-		return nil, false, nil
-	}
+	rows, err := s.listSQLRecords(ctx, s.db, "control_plane_users", userEntFields, suffix, email)
 	if err != nil {
 		return nil, false, err
 	}
-	return recordFromEnt(entity, userEntFields), true, nil
+	if len(rows) == 0 {
+		return nil, false, nil
+	}
+	if len(rows) > 1 {
+		return nil, false, errUserExists
+	}
+	return rows[0], true, nil
 }
 
 func (s *postgresEntStateStore) SaveUser(ctx context.Context, row map[string]any) error {
@@ -92,140 +73,111 @@ func (s *postgresEntStateStore) SaveUser(ctx context.Context, row map[string]any
 	if stringValue(row["role"]) != "owner" && !operator {
 		return errInvalidRole
 	}
-	return s.replaceRecord(ctx, row, func(id string) error { return s.client.User.DeleteOneID(id).Exec(ctx) }, func() any { return s.client.User.Create() }, userEntFields)
+	return s.replaceRecord(ctx, "control_plane_users", row, userEntFields)
 }
 
 func (s *postgresEntStateStore) DeleteUser(ctx context.Context, id string) error {
-	err := s.client.User.DeleteOneID(id).Exec(ctx)
-	if controlplaneent.IsNotFound(err) {
-		return nil
-	}
-	return err
+	return s.deleteSQLByID(ctx, s.db, "control_plane_users", id)
 }
 
 func (s *postgresEntStateStore) ListSessions(ctx context.Context) (controlPlaneRecordSet, error) {
-	return loadRecordSet(ctx, s.client.Session.Query().All, sessionEntFields)
+	return s.loadSQLRecordSet(ctx, s.db, "control_plane_sessions", sessionEntFields, "")
 }
 
 func (s *postgresEntStateStore) GetSession(ctx context.Context, id string) (map[string]any, bool, error) {
-	entity, err := s.client.Session.Get(ctx, id)
-	if controlplaneent.IsNotFound(err) {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, err
-	}
-	return recordFromEnt(entity, sessionEntFields), true, nil
+	return s.getSQLRecord(ctx, s.db, "control_plane_sessions", id, sessionEntFields, false)
 }
 
 func (s *postgresEntStateStore) ListSessionsByUser(ctx context.Context, userID string) (controlPlaneRecordSet, error) {
-	return loadRecordSet(ctx, s.client.Session.Query().Where(session.UserID(userID)).All, sessionEntFields)
+	return s.loadSQLRecordSet(ctx, s.db, "control_plane_sessions", sessionEntFields, "WHERE user_id = ?", userID)
 }
 
 func (s *postgresEntStateStore) SaveSession(ctx context.Context, row map[string]any) error {
 	if !validSessionLookupKey(stringValue(row["id"])) {
 		return errors.New("invalid_session_id")
 	}
-	return s.replaceRecord(ctx, row, func(id string) error { return s.client.Session.DeleteOneID(id).Exec(ctx) }, func() any { return s.client.Session.Create() }, sessionEntFields)
+	return s.replaceRecord(ctx, "control_plane_sessions", row, sessionEntFields)
 }
 
 func (s *postgresEntStateStore) DeleteSession(ctx context.Context, id string) error {
-	err := s.client.Session.DeleteOneID(id).Exec(ctx)
-	if controlplaneent.IsNotFound(err) {
-		return nil
-	}
-	return err
+	return s.deleteSQLByID(ctx, s.db, "control_plane_sessions", id)
 }
 
 func (s *postgresEntStateStore) ListAccounts(ctx context.Context, accountID string) ([]map[string]any, error) {
-	query := s.client.Account.Query()
 	if accountID != "" {
-		query.Where(account.ID(accountID))
+		return s.listSQLRecords(ctx, s.db, "control_plane_accounts", accountEntFields, "WHERE id = ?", accountID)
 	}
-	rows, err := loadRecordSet(ctx, query.All, accountEntFields)
-	if err != nil {
-		return nil, err
-	}
-	return filteredRecords(rows, "")
+	return s.listSQLRecords(ctx, s.db, "control_plane_accounts", accountEntFields, "")
 }
 
 func (s *postgresEntStateStore) GetAccount(ctx context.Context, id string) (map[string]any, bool, error) {
-	entity, err := s.client.Account.Get(ctx, id)
-	if controlplaneent.IsNotFound(err) {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, err
-	}
-	return recordFromEnt(entity, accountEntFields), true, nil
+	return s.getSQLRecord(ctx, s.db, "control_plane_accounts", id, accountEntFields, false)
 }
 
-// Only is intentional: ambiguous persisted lineage must fail closed.
+// Multiple rows must fail closed rather than picking one arbitrarily.
 func (s *postgresEntStateStore) GetAccountBySub2APIUserID(ctx context.Context, subjectID int64) (map[string]any, bool, error) {
-	entity, err := s.client.Account.Query().Where(account.Sub2apiUserIDEQ(subjectID)).Only(ctx)
-	if controlplaneent.IsNotFound(err) {
-		return nil, false, nil
-	}
-	if controlplaneent.IsNotSingular(err) {
-		return nil, false, errSub2APIAccountMappingConflict
-	}
+	rows, err := s.listSQLRecords(ctx, s.db, "control_plane_accounts", accountEntFields, "WHERE sub2api_user_id = ? LIMIT 2", subjectID)
 	if err != nil {
 		return nil, false, err
 	}
-	return recordFromEnt(entity, accountEntFields), true, nil
+	if len(rows) == 0 {
+		return nil, false, nil
+	}
+	if len(rows) > 1 {
+		return nil, false, errSub2APIAccountMappingConflict
+	}
+	return rows[0], true, nil
 }
 
 func (s *postgresEntStateStore) PageAccounts(ctx context.Context, page tablePageQuery) (tablePage, error) {
-	query := s.client.Account.Query()
-	total, err := query.Clone().Count(ctx)
+	var total int
+	if err := s.queryRow(ctx, s.db, "SELECT count(*) FROM control_plane_accounts").Scan(&total); err != nil {
+		return tablePage{}, err
+	}
+	items, err := s.listSQLRecords(ctx, s.db, "control_plane_accounts", accountEntFields, "ORDER BY id ASC LIMIT ? OFFSET ?", page.Limit, page.Offset)
 	if err != nil {
 		return tablePage{}, err
 	}
-	rows, err := loadRecordSet(ctx, query.Order(account.ByID()).Offset(page.Offset).Limit(page.Limit).All, accountEntFields)
-	if err != nil {
-		return tablePage{}, err
-	}
-	items, err := filteredRecords(rows, "")
-	sort.Slice(items, func(i, j int) bool { return stringValue(items[i]["id"]) < stringValue(items[j]["id"]) })
-	return tablePage{Items: items, Total: total}, err
+	return tablePage{Items: items, Total: total}, nil
 }
 
 func (s *postgresEntStateStore) CountAccountStatuses(ctx context.Context) (map[string]int, error) {
-	var groups []struct {
-		Status string `json:"status"`
-		Count  int    `json:"count"`
-	}
-	err := s.client.Account.Query().
-		GroupBy(account.FieldStatus).
-		Aggregate(controlplaneent.As(controlplaneent.Count(), "count")).
-		Scan(ctx, &groups)
+	rows, err := s.queryRows(ctx, s.db, "SELECT status, count(*) FROM control_plane_accounts GROUP BY status")
 	if err != nil {
 		return nil, err
 	}
-	counts := make(map[string]int, len(groups))
-	for _, group := range groups {
-		counts[group.Status] = group.Count
+	defer rows.Close()
+	counts := map[string]int{}
+	for rows.Next() {
+		var status string
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			return nil, err
+		}
+		counts[status] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return counts, nil
 }
 
 func (s *postgresEntStateStore) SaveAccount(ctx context.Context, row map[string]any) error {
-	tx, err := s.client.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	rollback := func(err error) error {
 		_ = tx.Rollback()
-		if int64(numberField(row, "sub2apiUserId", 0)) > 0 && controlplaneent.IsConstraintError(err) {
+		if int64(numberField(row, "sub2apiUserId", 0)) > 0 && isSQLConstraintError(err) {
 			return errSub2APIAccountMappingConflict
 		}
 		return err
 	}
-	accounts, err := loadRecordSet(ctx, tx.Account.Query().All, accountEntFields)
+	accountRows, err := s.listSQLRecords(ctx, tx, "control_plane_accounts", accountEntFields, "")
 	if err != nil {
 		return rollback(err)
 	}
-	accountRows, _ := filteredRecords(accounts, "")
 	if err := validateSub2APIAccountMapping(accountRows, row); err != nil {
 		return rollback(err)
 	}
@@ -233,17 +185,17 @@ func (s *postgresEntStateStore) SaveAccount(ctx context.Context, row map[string]
 	if id == "" {
 		return rollback(errors.New("missing_record_id"))
 	}
-	if err := tx.Account.DeleteOneID(id).Exec(ctx); err != nil && !controlplaneent.IsNotFound(err) {
+	if err := s.deleteSQLByID(ctx, tx, "control_plane_accounts", id); err != nil {
 		return rollback(err)
 	}
-	if err := saveRecord(ctx, id, row, tx.Account.Create(), accountEntFields); err != nil {
+	if err := s.insertSQLRecord(ctx, tx, "control_plane_accounts", id, row, accountEntFields); err != nil {
 		return rollback(err)
 	}
 	return tx.Commit()
 }
 
 func (s *postgresEntStateStore) ApplyWorkspacePurchaseEligibility(ctx context.Context, mutation workspacePurchaseEligibilityMutation) (map[string]any, error) {
-	tx, err := s.client.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -251,74 +203,78 @@ func (s *postgresEntStateStore) ApplyWorkspacePurchaseEligibility(ctx context.Co
 		_ = tx.Rollback()
 		return nil, err
 	}
-	client := tx.Client()
 	auditID := stringValue(mutation.AuditEvent["id"])
 	if auditID == "" || mutation.AccountID == "" {
 		return rollback(errIdempotencyConflict)
 	}
-	if existing, auditErr := client.AdminAuditEvent.Query().Where(adminauditevent.IDEQ(auditID), lockRowForUpdate).Only(ctx); auditErr == nil {
-		accountEntity, accountErr := client.Account.Query().Where(account.IDEQ(mutation.AccountID), lockRowForUpdate).Only(ctx)
-		if accountErr != nil || !workspacePurchaseEligibilityAuditMatches(recordFromEnt(existing, auditEntFields), mutation.AuditEvent) ||
-			accountEntity.WorkspacePurchaseEnabled != mutation.Enabled {
+	if existing, auditFound, auditErr := s.getSQLRecord(ctx, tx, "control_plane_admin_audit_events", auditID, auditEntFields, true); auditErr != nil {
+		return rollback(auditErr)
+	} else if auditFound {
+		accountRow, accountFound, accountErr := s.getSQLRecord(ctx, tx, "control_plane_accounts", mutation.AccountID, accountEntFields, true)
+		if accountErr != nil || !accountFound || !workspacePurchaseEligibilityAuditMatches(existing, mutation.AuditEvent) ||
+			boolValue(accountRow["workspacePurchaseEnabled"]) != mutation.Enabled {
 			return rollback(errIdempotencyConflict)
 		}
-		row := recordFromEnt(accountEntity, accountEntFields)
 		_ = tx.Rollback()
-		return row, nil
-	} else if !controlplaneent.IsNotFound(auditErr) {
-		return rollback(auditErr)
+		return accountRow, nil
 	}
 
-	accountEntity, err := client.Account.Query().Where(account.IDEQ(mutation.AccountID), lockRowForUpdate).Only(ctx)
+	accountRow, accountFound, err := s.getSQLRecord(ctx, tx, "control_plane_accounts", mutation.AccountID, accountEntFields, true)
 	if err != nil {
 		return rollback(err)
 	}
-	if existing, auditErr := client.AdminAuditEvent.Query().Where(adminauditevent.IDEQ(auditID), lockRowForUpdate).Only(ctx); auditErr == nil {
-		if !workspacePurchaseEligibilityAuditMatches(recordFromEnt(existing, auditEntFields), mutation.AuditEvent) || accountEntity.WorkspacePurchaseEnabled != mutation.Enabled {
+	if !accountFound {
+		return rollback(sql.ErrNoRows)
+	}
+	if existing, auditFound, auditErr := s.getSQLRecord(ctx, tx, "control_plane_admin_audit_events", auditID, auditEntFields, true); auditErr != nil {
+		return rollback(auditErr)
+	} else if auditFound {
+		if !workspacePurchaseEligibilityAuditMatches(existing, mutation.AuditEvent) || boolValue(accountRow["workspacePurchaseEnabled"]) != mutation.Enabled {
 			return rollback(errIdempotencyConflict)
 		}
-		row := recordFromEnt(accountEntity, accountEntFields)
 		_ = tx.Rollback()
-		return row, nil
-	} else if !controlplaneent.IsNotFound(auditErr) {
-		return rollback(auditErr)
+		return accountRow, nil
 	}
+
 	audit := cloneMap(mutation.AuditEvent)
-	audit["before"] = map[string]any{"workspacePurchaseEnabled": accountEntity.WorkspacePurchaseEnabled}
-	if _, err := client.Account.UpdateOneID(mutation.AccountID).SetWorkspacePurchaseEnabled(mutation.Enabled).Save(ctx); err != nil {
+	audit["before"] = map[string]any{"workspacePurchaseEnabled": boolValue(accountRow["workspacePurchaseEnabled"])}
+	if _, err := s.execSQL(ctx, tx, "UPDATE control_plane_accounts SET workspace_purchase_enabled = ?, updated_at = ? WHERE id = ?", mutation.Enabled, time.Now().UTC(), mutation.AccountID); err != nil {
 		return rollback(err)
 	}
-	if err := saveRecord(ctx, auditID, audit, client.AdminAuditEvent.Create(), auditEntFields); err != nil {
-		if controlplaneent.IsConstraintError(err) {
+	if err := s.insertSQLRecord(ctx, tx, "control_plane_admin_audit_events", auditID, audit, auditEntFields); err != nil {
+		if isSQLConstraintError(err) {
 			_ = tx.Rollback()
 			return s.replayWorkspacePurchaseEligibility(ctx, mutation)
 		}
 		return rollback(err)
 	}
-	saved, err := client.Account.Get(ctx, mutation.AccountID)
+	saved, savedFound, err := s.getSQLRecord(ctx, tx, "control_plane_accounts", mutation.AccountID, accountEntFields, false)
 	if err != nil {
 		return rollback(err)
+	}
+	if !savedFound {
+		return rollback(sql.ErrNoRows)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return recordFromEnt(saved, accountEntFields), nil
+	return saved, nil
 }
 
 func (s *postgresEntStateStore) replayWorkspacePurchaseEligibility(ctx context.Context, mutation workspacePurchaseEligibilityMutation) (map[string]any, error) {
-	existing, err := s.client.AdminAuditEvent.Get(ctx, stringValue(mutation.AuditEvent["id"]))
-	if err != nil {
+	existing, auditFound, err := s.getSQLRecord(ctx, s.db, "control_plane_admin_audit_events", stringValue(mutation.AuditEvent["id"]), auditEntFields, false)
+	if err != nil || !auditFound {
 		return nil, errIdempotencyConflict
 	}
-	accountEntity, err := s.client.Account.Get(ctx, mutation.AccountID)
-	if err != nil || !workspacePurchaseEligibilityAuditMatches(recordFromEnt(existing, auditEntFields), mutation.AuditEvent) || accountEntity.WorkspacePurchaseEnabled != mutation.Enabled {
+	accountRow, accountFound, err := s.getSQLRecord(ctx, s.db, "control_plane_accounts", mutation.AccountID, accountEntFields, false)
+	if err != nil || !accountFound || !workspacePurchaseEligibilityAuditMatches(existing, mutation.AuditEvent) || boolValue(accountRow["workspacePurchaseEnabled"]) != mutation.Enabled {
 		return nil, errIdempotencyConflict
 	}
-	return recordFromEnt(accountEntity, accountEntFields), nil
+	return accountRow, nil
 }
 
 func (s *postgresEntStateStore) CreateProvisionedAccount(ctx context.Context, accountRow, userRow map[string]any) error {
-	tx, err := s.client.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -328,7 +284,7 @@ func (s *postgresEntStateStore) CreateProvisionedAccount(ctx context.Context, ac
 	}
 	replayAfterConstraint := func(conflict error) error {
 		_ = tx.Rollback()
-		readback, err := s.client.Tx(ctx)
+		readback, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
 			return err
 		}
@@ -336,12 +292,11 @@ func (s *postgresEntStateStore) CreateProvisionedAccount(ctx context.Context, ac
 			_ = readback.Rollback()
 			return err
 		}
-		client := readback.Client()
-		accounts, err := loadRecordSet(ctx, client.Account.Query().All, accountEntFields)
+		accounts, err := s.loadSQLRecordSet(ctx, readback, "control_plane_accounts", accountEntFields, "")
 		if err != nil {
 			return finish(err)
 		}
-		users, err := loadRecordSet(ctx, client.User.Query().All, userEntFields)
+		users, err := s.loadSQLRecordSet(ctx, readback, "control_plane_users", userEntFields, "")
 		if err != nil {
 			return finish(err)
 		}
@@ -351,21 +306,16 @@ func (s *postgresEntStateStore) CreateProvisionedAccount(ctx context.Context, ac
 		}
 		return finish(nil)
 	}
-	client := tx.Client()
 	accountID := stringValue(accountRow["id"])
-	accountExists := true
-	if _, err := client.Account.UpdateOneID(accountID).Save(ctx); err != nil {
-		if controlplaneent.IsNotFound(err) {
-			accountExists = false
-		} else {
-			return rollback(err)
-		}
-	}
-	accounts, err := loadRecordSet(ctx, client.Account.Query().All, accountEntFields)
+	_, accountExists, err := s.getSQLRecord(ctx, tx, "control_plane_accounts", accountID, accountEntFields, true)
 	if err != nil {
 		return rollback(err)
 	}
-	users, err := loadRecordSet(ctx, client.User.Query().All, userEntFields)
+	accounts, err := s.loadSQLRecordSet(ctx, tx, "control_plane_accounts", accountEntFields, "")
+	if err != nil {
+		return rollback(err)
+	}
+	users, err := s.loadSQLRecordSet(ctx, tx, "control_plane_users", userEntFields, "")
 	if err != nil {
 		return rollback(err)
 	}
@@ -376,24 +326,26 @@ func (s *postgresEntStateStore) CreateProvisionedAccount(ctx context.Context, ac
 	}
 
 	if accountExists {
-		if _, err := client.Account.UpdateOneID(accountID).
-			SetOwnerUserID(stringValue(accounts[accountID]["ownerUserId"])).
-			SetSub2apiUserID(int64(numberField(accounts[accountID], "sub2apiUserId", 0))).
-			Save(ctx); err != nil {
-			if controlplaneent.IsConstraintError(err) {
+		if _, err := s.execSQL(ctx, tx, `
+			UPDATE control_plane_accounts
+			SET owner_user_id = ?, sub2api_user_id = ?, updated_at = ?
+			WHERE id = ?`,
+			stringValue(accounts[accountID]["ownerUserId"]), int64(numberField(accounts[accountID], "sub2apiUserId", 0)), time.Now().UTC(), accountID,
+		); err != nil {
+			if isSQLConstraintError(err) {
 				return replayAfterConstraint(errSub2APIAccountMappingConflict)
 			}
 			return rollback(err)
 		}
-	} else if err := saveRecord(ctx, accountID, accounts[accountID], client.Account.Create(), accountEntFields); err != nil {
-		if controlplaneent.IsConstraintError(err) {
+	} else if err := s.insertSQLRecord(ctx, tx, "control_plane_accounts", accountID, accounts[accountID], accountEntFields); err != nil {
+		if isSQLConstraintError(err) {
 			return replayAfterConstraint(errSub2APIAccountMappingConflict)
 		}
 		return rollback(err)
 	}
 	if !userExists {
-		if err := saveRecord(ctx, userID, users[userID], client.User.Create(), userEntFields); err != nil {
-			if controlplaneent.IsConstraintError(err) {
+		if err := s.insertSQLRecord(ctx, tx, "control_plane_users", userID, users[userID], userEntFields); err != nil {
+			if isSQLConstraintError(err) {
 				return replayAfterConstraint(errUserExists)
 			}
 			return rollback(err)
@@ -403,7 +355,7 @@ func (s *postgresEntStateStore) CreateProvisionedAccount(ctx context.Context, ac
 }
 
 func (s *postgresEntStateStore) ApplyUserLifecycle(ctx context.Context, user map[string]any) error {
-	tx, err := s.client.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -411,92 +363,74 @@ func (s *postgresEntStateStore) ApplyUserLifecycle(ctx context.Context, user map
 		_ = tx.Rollback()
 		return err
 	}
-	client := tx.Client()
 	userID := stringValue(user["id"])
-	userUpdate := client.User.UpdateOneID(userID)
-	setRecordFieldsWithEmptyText(userUpdate, user, userEntFields, true)
-	if err := execCreate(ctx, userUpdate); err != nil {
-		if controlplaneent.IsNotFound(err) {
+	if err := s.updateSQLRecord(ctx, tx, "control_plane_users", userID, user, userEntFields, true); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
 			return rollback(errUserNotFound)
 		}
 		return rollback(err)
 	}
-	if _, err := client.Session.Delete().Where(session.UserID(userID)).Exec(ctx); err != nil {
+	if _, err := s.execSQL(ctx, tx, "DELETE FROM control_plane_sessions WHERE user_id = ?", userID); err != nil {
 		return rollback(err)
 	}
 	if stringValue(user["role"]) == "owner" {
 		accountID := stringValue(user["accountId"])
-		computes, err := client.ComputeAllocation.Query().Where(computeallocation.AccountID(accountID)).All(ctx)
+		computes, err := s.listSQLRecords(ctx, tx, "control_plane_compute_allocations", computeEntFields, "WHERE account_id = ? ORDER BY id ASC", accountID)
 		if err != nil {
 			return rollback(err)
 		}
-		sort.Slice(computes, func(i, j int) bool { return computes[i].ID < computes[j].ID })
 		for _, compute := range computes {
-			current, err := client.ComputeAllocation.UpdateOneID(compute.ID).Save(ctx)
-			if controlplaneent.IsNotFound(err) {
-				continue
-			}
+			current, found, err := s.getSQLRecord(ctx, tx, "control_plane_compute_allocations", stringValue(compute["id"]), computeEntFields, true)
 			if err != nil {
 				return rollback(err)
 			}
-			row := recordFromEnt(current, computeEntFields)
-			if row["autoRenew"] != true {
+			if !found || current["autoRenew"] != true {
 				continue
 			}
-			row["autoRenew"] = false
-			billingState, err := encodeMonthlyBillingState(row)
+			current["autoRenew"] = false
+			billingState, err := encodeMonthlyBillingState(current)
 			if err != nil {
 				return rollback(err)
 			}
-			if _, err := client.ComputeAllocation.UpdateOneID(compute.ID).SetBillingStateJSON(billingState).Save(ctx); err != nil {
+			if _, err := s.execSQL(ctx, tx, "UPDATE control_plane_compute_allocations SET billing_state_json = ?, updated_at = ? WHERE id = ?", billingState, time.Now().UTC(), stringValue(compute["id"])); err != nil {
 				return rollback(err)
 			}
 		}
-		storages, err := client.StorageVolume.Query().Where(storagevolume.AccountID(accountID)).All(ctx)
+		storages, err := s.listSQLRecords(ctx, tx, "control_plane_storage_volumes", storageEntFields, "WHERE account_id = ? ORDER BY id ASC", accountID)
 		if err != nil {
 			return rollback(err)
 		}
-		sort.Slice(storages, func(i, j int) bool { return storages[i].ID < storages[j].ID })
 		for _, storage := range storages {
-			current, err := client.StorageVolume.UpdateOneID(storage.ID).Save(ctx)
-			if controlplaneent.IsNotFound(err) {
-				continue
-			}
+			current, found, err := s.getSQLRecord(ctx, tx, "control_plane_storage_volumes", stringValue(storage["id"]), storageEntFields, true)
 			if err != nil {
 				return rollback(err)
 			}
-			row := recordFromEnt(current, storageEntFields)
+			if !found || current["autoRenew"] != true {
+				continue
+			}
+			current["autoRenew"] = false
+			billingState, err := encodeMonthlyBillingState(current)
+			if err != nil {
+				return rollback(err)
+			}
+			if _, err := s.execSQL(ctx, tx, "UPDATE control_plane_storage_volumes SET billing_state_json = ?, updated_at = ? WHERE id = ?", billingState, time.Now().UTC(), stringValue(storage["id"])); err != nil {
+				return rollback(err)
+			}
+		}
+		workspaces, err := s.listSQLRecords(ctx, tx, "control_plane_workspaces", workspaceEntFields, "WHERE owner_user_id = ? ORDER BY id ASC"+s.forUpdateClause(), userID)
+		if err != nil {
+			return rollback(err)
+		}
+		for _, row := range workspaces {
 			if row["autoRenew"] != true {
 				continue
 			}
 			row["autoRenew"] = false
-			billingState, err := encodeMonthlyBillingState(row)
+			billingState, err := encodeWorkspaceBillingState(row)
 			if err != nil {
 				return rollback(err)
 			}
-			if _, err := client.StorageVolume.UpdateOneID(storage.ID).SetBillingStateJSON(billingState).Save(ctx); err != nil {
-				return rollback(err)
-			}
-		}
-		workspaces, err := client.Workspace.Query().Where(workspace.OwnerUserID(userID)).All(ctx)
-		if err != nil {
-			return rollback(err)
-		}
-		sort.Slice(workspaces, func(i, j int) bool { return workspaces[i].ID < workspaces[j].ID })
-		for _, entity := range workspaces {
-			base := recordFromEnt(entity, workspaceEntFields)
-			billing, err := decodeWorkspaceBillingState(entity.BillingStateJSON, base)
-			if err != nil || billing == nil || billing["autoRenew"] != true {
-				continue
-			}
-			billing["ownerUserId"], billing["currentComputeAllocationId"] = entity.OwnerUserID, entity.CurrentComputeAllocationID
-			billing["state"], billing["status"] = entity.State, entity.Status
-			billing["autoRenew"] = false
-			billingState, err := encodeWorkspaceBillingState(billing)
-			if err != nil {
-				return rollback(err)
-			}
-			if _, err := client.Workspace.UpdateOneID(entity.ID).SetBillingStateJSON(billingState).Save(ctx); err != nil {
+			if _, err := s.execSQL(ctx, tx, "UPDATE control_plane_workspaces SET billing_state_json = ?, updated_at = ? WHERE id = ?", billingState, time.Now().UTC(), stringValue(row["id"])); err != nil {
 				return rollback(err)
 			}
 		}

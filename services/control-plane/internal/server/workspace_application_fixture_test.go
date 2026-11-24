@@ -83,10 +83,12 @@ func seedAdmittedApplicationRevisionForTest(t *testing.T, store controlPlaneTabl
 			"digest": digest, "payload": string(payload), "admittedByUserId": "operator-test",
 		}
 	case *postgresEntStateStore:
-		_, err := target.client.ApplicationRevision.Create().SetID(id).
-			SetApplicationID(revision.ApplicationID).SetVersion(revision.Version).
-			SetDigest(digest).SetPayload(string(payload)).SetAdmittedByUserID("operator-test").Save(ctx)
-		if err != nil {
+		now := time.Now().UTC()
+		if _, err := target.execSQL(ctx, target.db, `
+			INSERT INTO control_plane_application_revisions (id, created_at, updated_at, application_id, version, digest, payload, admitted_by_user_id)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			id, now, now, revision.ApplicationID, revision.Version, digest, string(payload), "operator-test",
+		); err != nil {
 			t.Fatal(err)
 		}
 	default:

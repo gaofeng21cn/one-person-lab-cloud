@@ -2,13 +2,50 @@ package migrations
 
 import (
 	"context"
+	"database/sql"
 	_ "embed"
-
-	"entgo.io/ent/dialect"
 )
+
+// Execer executes SQL statements without ORM dialect abstractions.
+type Execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// Tx represents an open database transaction for transactional migrations.
+type Tx interface {
+	Execer
+	Commit() error
+	Rollback() error
+}
+
+// Driver executes schema and data migrations against *sql.DB or test recorders.
+type Driver interface {
+	Execer
+	BeginTx(ctx context.Context, opts *sql.TxOptions) (Tx, error)
+}
+
+type sqlDriver struct {
+	db *sql.DB
+}
+
+// OpenDriver wraps a standard database/sql handle for control-plane migrations.
+func OpenDriver(db *sql.DB) Driver {
+	return sqlDriver{db: db}
+}
+
+func (d sqlDriver) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return d.db.ExecContext(ctx, query, args...)
+}
+
+func (d sqlDriver) BeginTx(ctx context.Context, opts *sql.TxOptions) (Tx, error) {
+	return d.db.BeginTx(ctx, opts)
+}
 
 //go:embed 202607140001_sub2api_monthly_hard_cut.sql
 var monthlyHardCut string
+
+//go:embed 202607150003_ent_schema.sql
+var coreSchema string
 
 //go:embed 202607160001_sub2api_user_unique.sql
 var sub2APIUserUnique string
@@ -64,102 +101,99 @@ var applicationDataMaterials string
 //go:embed 202609130001_workspace_application_selection.sql
 var workspaceApplicationSelection string
 
-func Apply(ctx context.Context, driver dialect.Driver) error {
-	return driver.Exec(ctx, monthlyHardCut, []any{}, nil)
+func execMigration(ctx context.Context, driver Driver, query string) error {
+	_, err := driver.ExecContext(ctx, query)
+	return err
 }
 
-func ApplySub2APIUserUniqueness(ctx context.Context, driver dialect.Driver) error {
-	return driver.Exec(ctx, sub2APIUserUnique, []any{}, nil)
-}
-
-func ApplyPrimaryWorkspace(ctx context.Context, driver dialect.Driver) error {
-	return driver.Exec(ctx, primaryWorkspace, []any{}, nil)
-}
-
-func ApplyInvitedAccountIdentity(ctx context.Context, driver dialect.Driver) error {
-	tx, err := driver.Tx(ctx)
+func execMigrationTx(ctx context.Context, driver Driver, query string) error {
+	tx, err := driver.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	if err := tx.Exec(ctx, invitedAccountIdentity, []any{}, nil); err != nil {
+	if _, err := tx.ExecContext(ctx, query); err != nil {
 		_ = tx.Rollback()
 		return err
 	}
 	return tx.Commit()
 }
 
-func ApplyWorkspaceRenewal(ctx context.Context, driver dialect.Driver) error {
-	tx, err := driver.Tx(ctx)
-	if err != nil {
-		return err
-	}
-	if err := tx.Exec(ctx, workspaceRenewal, []any{}, nil); err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-	return tx.Commit()
+func Apply(ctx context.Context, driver Driver) error {
+	return execMigration(ctx, driver, monthlyHardCut)
 }
 
-func ApplyAutoRenewAudit(ctx context.Context, driver dialect.Driver) error {
-	return driver.Exec(ctx, autoRenewAudit, []any{}, nil)
+func ApplyCoreSchema(ctx context.Context, driver Driver) error {
+	return execMigration(ctx, driver, coreSchema)
 }
 
-func ApplyCustomerIdentityHardCut(ctx context.Context, driver dialect.Driver) error {
-	tx, err := driver.Tx(ctx)
-	if err != nil {
-		return err
-	}
-	if err := tx.Exec(ctx, customerIdentityHardCut, []any{}, nil); err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-	return tx.Commit()
+func ApplySub2APIUserUniqueness(ctx context.Context, driver Driver) error {
+	return execMigration(ctx, driver, sub2APIUserUnique)
 }
 
-func ApplyWorkspaceAPIKeyID(ctx context.Context, driver dialect.Driver) error {
-	return driver.Exec(ctx, workspaceAPIKeyID, []any{}, nil)
+func ApplyPrimaryWorkspace(ctx context.Context, driver Driver) error {
+	return execMigration(ctx, driver, primaryWorkspace)
 }
 
-func ApplyPilotAnnouncements(ctx context.Context, driver dialect.Driver) error {
-	return driver.Exec(ctx, pilotAnnouncements, []any{}, nil)
+func ApplyInvitedAccountIdentity(ctx context.Context, driver Driver) error {
+	return execMigrationTx(ctx, driver, invitedAccountIdentity)
 }
 
-func ApplyWorkspacePurchaseReceiptID(ctx context.Context, driver dialect.Driver) error {
-	return driver.Exec(ctx, workspacePurchaseReceiptID, []any{}, nil)
+func ApplyWorkspaceRenewal(ctx context.Context, driver Driver) error {
+	return execMigrationTx(ctx, driver, workspaceRenewal)
 }
 
-func ApplyMultiWorkspacePagination(ctx context.Context, driver dialect.Driver) error {
-	return driver.Exec(ctx, multiWorkspacePagination, []any{}, nil)
+func ApplyAutoRenewAudit(ctx context.Context, driver Driver) error {
+	return execMigration(ctx, driver, autoRenewAudit)
 }
 
-func ApplyControlPlaneCapacityIndexes(ctx context.Context, driver dialect.Driver) error {
-	return driver.Exec(ctx, controlPlaneCapacityIndexes, []any{}, nil)
+func ApplyCustomerIdentityHardCut(ctx context.Context, driver Driver) error {
+	return execMigrationTx(ctx, driver, customerIdentityHardCut)
 }
 
-func ApplyLegacyIdentityTableCustody(ctx context.Context, driver dialect.Driver) error {
-	return driver.Exec(ctx, legacyIdentityTableCustody, []any{}, nil)
+func ApplyWorkspaceAPIKeyID(ctx context.Context, driver Driver) error {
+	return execMigration(ctx, driver, workspaceAPIKeyID)
 }
 
-func ApplyWorkspacePurchaseEligibility(ctx context.Context, driver dialect.Driver) error {
-	return driver.Exec(ctx, workspacePurchaseEligibility, []any{}, nil)
+func ApplyPilotAnnouncements(ctx context.Context, driver Driver) error {
+	return execMigration(ctx, driver, pilotAnnouncements)
 }
 
-func ApplyWorkspaceApplicationBinding(ctx context.Context, driver dialect.Driver) error {
-	return driver.Exec(ctx, workspaceApplicationBinding, []any{}, nil)
+func ApplyWorkspacePurchaseReceiptID(ctx context.Context, driver Driver) error {
+	return execMigration(ctx, driver, workspacePurchaseReceiptID)
 }
 
-func ApplyApplicationRevisions(ctx context.Context, driver dialect.Driver) error {
-	return driver.Exec(ctx, applicationRevisions, []any{}, nil)
+func ApplyMultiWorkspacePagination(ctx context.Context, driver Driver) error {
+	return execMigration(ctx, driver, multiWorkspacePagination)
 }
 
-func ApplyWorkspaceApplicationBindingVersion(ctx context.Context, driver dialect.Driver) error {
-	return driver.Exec(ctx, workspaceApplicationBindingVersion, []any{}, nil)
+func ApplyControlPlaneCapacityIndexes(ctx context.Context, driver Driver) error {
+	return execMigration(ctx, driver, controlPlaneCapacityIndexes)
 }
 
-func ApplyApplicationDataMaterials(ctx context.Context, driver dialect.Driver) error {
-	return driver.Exec(ctx, applicationDataMaterials, []any{}, nil)
+func ApplyLegacyIdentityTableCustody(ctx context.Context, driver Driver) error {
+	return execMigration(ctx, driver, legacyIdentityTableCustody)
 }
 
-func ApplyWorkspaceApplicationSelection(ctx context.Context, driver dialect.Driver) error {
-	return driver.Exec(ctx, workspaceApplicationSelection, []any{}, nil)
+func ApplyWorkspacePurchaseEligibility(ctx context.Context, driver Driver) error {
+	return execMigration(ctx, driver, workspacePurchaseEligibility)
+}
+
+func ApplyWorkspaceApplicationBinding(ctx context.Context, driver Driver) error {
+	return execMigration(ctx, driver, workspaceApplicationBinding)
+}
+
+func ApplyApplicationRevisions(ctx context.Context, driver Driver) error {
+	return execMigration(ctx, driver, applicationRevisions)
+}
+
+func ApplyWorkspaceApplicationBindingVersion(ctx context.Context, driver Driver) error {
+	return execMigration(ctx, driver, workspaceApplicationBindingVersion)
+}
+
+func ApplyApplicationDataMaterials(ctx context.Context, driver Driver) error {
+	return execMigration(ctx, driver, applicationDataMaterials)
+}
+
+func ApplyWorkspaceApplicationSelection(ctx context.Context, driver Driver) error {
+	return execMigration(ctx, driver, workspaceApplicationSelection)
 }

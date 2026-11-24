@@ -40,14 +40,13 @@ read the relevant sections rather than loading every linked document.
 | Resolve conflicting intent or evidence | [Decisions](docs/decisions.md), the owning source/contracts, relevant Git history and authoritative readback |
 | Change documentation | [Documentation hierarchy](docs/README.md) and [lifecycle policy](docs/policies/docs-lifecycle-policy.md) |
 | Build a Candidate or handle Release evidence | [Release operations](docs/runtime/release.md) and the current distribution contract |
-| Explicitly controlled delegation or host-tool changes | [Scoped Development Contract](#scoped-development-contract) |
 
 The latest user decision sets intent. Distinguish target, implementation,
 runtime/production evidence, history and unknowns; reconcile conflicts in their
 canonical owner and consumers. Issues, PRs and session claims are inputs.
 Update [status](docs/status.md) and [roadmap](docs/roadmap.md) when evidence or
 acceptance changes; preserve open external obligations. Completed plans and
-transcripts belong in Git history or `docs/history/`.
+transcripts belong in Git history.
 
 ## Ownership And Implementation
 
@@ -61,10 +60,10 @@ transcripts belong in Git history or `docs/history/`.
 - Keep DTOs, state machines and retry policy with their owner; consumers use thin
   typed clients. Provider behavior stays behind Fabric adapters. Cross-owner
   changes update the owning contract, affected consumers and boundary tests.
-- Keep the single shared Go module at `packages/contracts/go/go.mod`, proto in
-  `packages/contracts/proto/` and generated Go under that module. Consumers use
-  the same Cloud commit, schema hashes and locked tools; update required
-  consumer `go.mod`/`go.sum` with the contract.
+- Keep the single root Go module at `go.mod` (`module opl-cloud`), proto in
+  `packages/contracts/proto/` and generated Go under `packages/contracts/go/`. Consumers use
+  the same Cloud commit, schema hashes and locked tools; keep `go.mod`/`go.sum`
+  in sync with the contract.
 - Shared infrastructure needs two current callers and stays policy-free. New
   abstractions, dependencies, services or gates need a demonstrated capability
   gap or reachable failure, a caller and a bounded owner. Follow adopted typed
@@ -162,12 +161,3 @@ receipts; never overwrite attempts or include credentials, raw Keys, customer
 data or private addresses. Cloud owns source/business evidence, Instance owns
 installation/deployment evidence; Cloud-only success leaves Instance obligations open.
 <!-- RECEIPT_RULES_END -->
-
-## Scoped Development Contract
-
-Only when a task explicitly selects controlled delegation, or changes its host
-entry/runner, read and follow the full contract in
-[Scoped Host And Worker Entry](DEV_GUIDE.md#scoped-host-and-worker-entry).
-Ordinary source development does not require host admission, phase-plan
-registration, restricted workers or host receipts. Attaching tools or citing the
-framework alone does not restrict a shell-enabled chat.

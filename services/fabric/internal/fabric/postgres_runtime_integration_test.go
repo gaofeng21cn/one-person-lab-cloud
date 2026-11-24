@@ -18,11 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
 	"github.com/lib/pq"
-
-	fabricent "opl-cloud/services/fabric/ent"
 )
 
 type runtimeMutationBarrier struct {
@@ -121,10 +117,10 @@ func newBarrierPostgresOperationStore(t *testing.T, databaseURL, mutation string
 	}
 	barrier := newRuntimeMutationBarrier(mutation)
 	db := sql.OpenDB(&runtimeMutationBarrierConnector{Connector: connector, barrier: barrier})
-	store := &PostgresOperationStore{db: db, client: fabricent.NewClient(fabricent.Driver(entsql.OpenDB(dialect.Postgres, db)))}
+	store := &PostgresOperationStore{db: db}
 	t.Cleanup(func() {
 		barrier.releaseRead()
-		if err := store.client.Close(); err != nil {
+		if err := store.Close(); err != nil {
 			t.Errorf("close barrier operation store: %v", err)
 		}
 	})
@@ -141,7 +137,7 @@ func TestPostgresRuntimeMutationReturnsOwnFenceAtomically(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer currentStore.client.Close()
+			defer currentStore.Close()
 			barrierStore, barrier := newBarrierPostgresOperationStore(t, databaseURL, mutation)
 
 			startedAt := time.Date(2026, 7, 17, 0, 0, 0, 123456789, time.UTC)
@@ -244,12 +240,12 @@ func TestPostgresPersistedClaimPendingConcurrentReplayWaitsForControlPlaneDecisi
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = firstStore.client.Close() })
+	t.Cleanup(func() { _ = firstStore.Close() })
 	secondStore, err := newTestPostgresOperationStore(databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = secondStore.client.Close() })
+	t.Cleanup(func() { _ = secondStore.Close() })
 	provider := &normalLaunchComputeProvider{}
 	input, allocation := seedNormalWorkspaceComputeClaimPending(t, firstStore, provider, "postgres-automatic-concurrent")
 	first := NewServiceWithOperationStore(provider, firstStore)
@@ -293,12 +289,12 @@ func TestPostgresStaleRuntimeClaimConvergesAcrossServiceInstances(t *testing.T) 
 	if err != nil {
 		t.Fatalf("open first operation store: %v", err)
 	}
-	defer firstStore.client.Close()
+	defer firstStore.Close()
 	secondStore, err := newTestPostgresOperationStore(databaseURL)
 	if err != nil {
 		t.Fatalf("open second operation store: %v", err)
 	}
-	defer secondStore.client.Close()
+	defer secondStore.Close()
 
 	provider := &stalePostgresRuntimeProvider{}
 	firstService := runtimeTestService(provider, &failFirstRuntimeSaveStore{OperationStore: firstStore})
@@ -338,12 +334,12 @@ func TestPostgresRuntimeClaimAcrossServiceInstances(t *testing.T) {
 	var firstStore, secondStore *PostgresOperationStore
 	t.Cleanup(func() {
 		if secondStore != nil {
-			if err := secondStore.client.Close(); err != nil {
+			if err := secondStore.Close(); err != nil {
 				t.Errorf("close second operation store: %v", err)
 			}
 		}
 		if firstStore != nil {
-			if err := firstStore.client.Close(); err != nil {
+			if err := firstStore.Close(); err != nil {
 				t.Errorf("close first operation store: %v", err)
 			}
 		}
@@ -398,12 +394,12 @@ func TestPostgresComputePoolHeadSerializesDifferentWorkspacesAcrossServiceInstan
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer firstStore.client.Close()
+	defer firstStore.Close()
 	secondStore, err := newTestPostgresOperationStore(databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer secondStore.client.Close()
+	defer secondStore.Close()
 
 	provider := newSerializedPoolProvider("workspace-alpha")
 	firstService := NewServiceWithOperationStore(provider, firstStore)
@@ -498,7 +494,7 @@ func TestPostgresComputeClaimPendingKeepsFIFOHead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.client.Close()
+	defer store.Close()
 	createdAt := time.Date(2026, 7, 26, 1, 0, 0, 0, time.UTC)
 	first := newOperation("create_compute_allocation", "compute_allocation", "compute-first", "acct-alpha", "workspace-first", "compute-first", "hash-first", createdAt)
 	first.ID = "fop-compute-first"
@@ -540,12 +536,12 @@ func TestPostgresComputePoolHeadTerminalizationCASReleasesFreshFIFOHead(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer firstStore.client.Close()
+	defer firstStore.Close()
 	secondStore, err := newTestPostgresOperationStore(databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer secondStore.client.Close()
+	defer secondStore.Close()
 	provider := &normalLaunchComputeProvider{}
 	input, _, _ := seedOperatorTerminalizationHeadWithBinding(t, firstStore, provider, func(binding *computeClaimRecoveryBinding) {
 		binding.IdempotencyKey = "recovery-exec-14deb7f41022c8a5ae9d"
@@ -609,12 +605,12 @@ func TestPostgresComputePoolLeaseUsesDatabaseClockAcrossServiceInstances(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer firstStore.client.Close()
+	defer firstStore.Close()
 	secondStore, err := newTestPostgresOperationStore(databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer secondStore.client.Close()
+	defer secondStore.Close()
 
 	operation := newOperation("create_compute_allocation", "compute_allocation", "compute-clock-skew", "acct-alpha", "workspace-alpha", "compute-clock-skew", "hash-clock-skew", time.Now().UTC())
 	operation.ID = "fop_compute_claim_clock_skew"
@@ -646,12 +642,12 @@ func TestPostgresDestroyRuntimeFailedRetryBindsWorkspaceAcrossServiceInstances(t
 	if err != nil {
 		t.Fatalf("open first operation store: %v", err)
 	}
-	defer firstStore.client.Close()
+	defer firstStore.Close()
 	secondStore, err := newTestPostgresOperationStore(databaseURL)
 	if err != nil {
 		t.Fatalf("open second operation store: %v", err)
 	}
-	defer secondStore.client.Close()
+	defer secondStore.Close()
 
 	originalProvider := &failOnceDestroyProvider{}
 	originalService := NewServiceWithOperationStore(originalProvider, firstStore)
@@ -704,7 +700,7 @@ func TestPostgresComputeClaimRecoveryOperationCASRejectsSkippedTransition(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.client.Close()
+	defer store.Close()
 
 	operation := postgresComputeClaimOperation("skipped", "failed")
 	if err := store.Append(context.Background(), operation); err != nil {
@@ -728,7 +724,7 @@ func TestPostgresComputeClaimRecoveryOperationCASAllowsOneTerminalClaimResult(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.client.Close()
+	defer store.Close()
 
 	operation := postgresComputeClaimOperation("terminal", "claim_pending")
 	if err := store.Append(context.Background(), operation); err != nil {
@@ -763,7 +759,7 @@ func TestPostgresComputeClaimRecoveryOperationCASRejectsStaleAndRequestHashDrift
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.client.Close()
+	defer store.Close()
 
 	operation := postgresComputeClaimOperation("identity", "failed")
 	if err := store.Append(context.Background(), operation); err != nil {
@@ -811,7 +807,7 @@ func TestPostgresComputeClaimRecoveryOperationCASRejectsBindingDrift(t *testing.
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer store.client.Close()
+			defer store.Close()
 
 			operation := postgresComputeClaimOperation("binding", "failed")
 			if err := store.Append(context.Background(), operation); err != nil {
@@ -851,12 +847,12 @@ func TestPostgresComputeClaimRecoveryOperationCASHasSingleConcurrentWinner(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer firstStore.client.Close()
+	defer firstStore.Close()
 	secondStore, err := newTestPostgresOperationStore(databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer secondStore.client.Close()
+	defer secondStore.Close()
 
 	operation := postgresComputeClaimOperation("concurrent", "claim_pending")
 	if err := firstStore.Append(context.Background(), operation); err != nil {
@@ -897,12 +893,12 @@ func TestPostgresComputeClaimRecoveryNodeReservationCASHasSingleWinnerAndKeepsOr
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer firstStore.client.Close()
+	defer firstStore.Close()
 	secondStore, err := newTestPostgresOperationStore(databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer secondStore.client.Close()
+	defer secondStore.Close()
 
 	operation := postgresComputeClaimOperation("node-reservation", "claim_pending")
 	observed := observedComputeClaimRecoveryMutation(ComputeClaimRecoveryProof{
@@ -975,12 +971,12 @@ func TestPostgresComputeClaimRecoveryReconciliationProvenanceCASHasSingleWinner(
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer firstStore.client.Close()
+	defer firstStore.Close()
 	secondStore, err := newTestPostgresOperationStore(databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer secondStore.client.Close()
+	defer secondStore.Close()
 
 	operation := postgresComputeClaimOperation("request-hash-reconciliation", "claim_pending")
 	originalBinding, present, valid := decodeComputeClaimRecoveryBinding(operation)
@@ -1082,7 +1078,7 @@ func TestPostgresOperationStoreReadsExactIdentitiesAndFailsClosedOnDuplicates(t 
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer store.client.Close()
+		defer store.Close()
 		exact := postgresComputeClaimOperation("exact-read", "failed")
 		alias := exact
 		alias.ID, alias.OperationID, alias.IdempotencyKey = "fop-postgres-alias-read", "op-postgres-alias-read", "launch-postgres-alias:compute"
@@ -1113,7 +1109,7 @@ func TestPostgresOperationStoreReadsExactIdentitiesAndFailsClosedOnDuplicates(t 
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer store.client.Close()
+		defer store.Close()
 		approvalID := "postgres-approval-exact-30970000001"
 		exact := postgresComputeClaimOperation("terminal-read", "failed")
 		exact.RedactedProviderPayload = map[string]any{
@@ -1148,7 +1144,7 @@ func TestPostgresOperationStoreBoundsJobHistoryAndOperationPages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.client.Close()
+	defer store.Close()
 
 	now := time.Date(2026, 8, 14, 4, 0, 0, 0, time.UTC)
 	service := NewServiceWithOperationStore(testProvider{}, store)
@@ -1256,12 +1252,12 @@ func TestPostgresProviderMutationReplayEpochSurvivesRestartAndCAS(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer firstStore.client.Close()
+	defer firstStore.Close()
 	secondStore, err := newTestPostgresOperationStore(databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer secondStore.client.Close()
+	defer secondStore.Close()
 
 	now := time.Date(2026, 8, 15, 8, 0, 0, 0, time.UTC)
 	parent := testWorkspaceLaunchBinding("storage", "ensure_storage", "launch-postgres-replay:storage")
@@ -1361,12 +1357,12 @@ func TestPostgresProviderMutationStateSurvivesJSONBRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer firstStore.client.Close()
+	defer firstStore.Close()
 	secondStore, err := newTestPostgresOperationStore(databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer secondStore.client.Close()
+	defer secondStore.Close()
 
 	now := time.Date(2026, 8, 23, 8, 0, 0, 0, time.UTC)
 	parent := testWorkspaceLaunchBinding("ensure_compute_allocation", "ensure_compute_allocation", "launch-postgres-state:compute")
@@ -1423,7 +1419,7 @@ func TestPostgresOperationStoreRunsEmbeddedMigrationsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := first.client.Close(); err != nil {
+	if err := first.Close(); err != nil {
 		t.Fatal(err)
 	}
 	db, err := sql.Open("postgres", databaseURL)
@@ -1445,7 +1441,7 @@ func TestPostgresOperationStoreRunsEmbeddedMigrationsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := second.client.Close(); err != nil {
+	if err := second.Close(); err != nil {
 		t.Fatal(err)
 	}
 	var table sql.NullString
@@ -1490,7 +1486,7 @@ func TestPostgresWorkspaceRuntimeIdentityCandidatesCanonicalRestart(t *testing.T
 			t.Fatal(err)
 		}
 	}
-	if err := first.client.Close(); err != nil {
+	if err := first.Close(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1498,7 +1494,7 @@ func TestPostgresWorkspaceRuntimeIdentityCandidatesCanonicalRestart(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer restarted.client.Close()
+	defer restarted.Close()
 	for _, test := range []struct {
 		name        string
 		workspaceID string
@@ -1539,18 +1535,18 @@ func TestPostgresServiceReplaysCanonicalLaunchAttachmentFromParentAfterRestart(t
 	fixture := canonicalAttachmentReplayFixtureFor(t, provider.Descriptor().Name, "canonical-attachment-pg")
 	for _, operation := range fixture.operations {
 		if err := first.Append(ctx, operation); err != nil {
-			_ = first.client.Close()
+			_ = first.Close()
 			t.Fatal(err)
 		}
 	}
-	if err := first.client.Close(); err != nil {
+	if err := first.Close(); err != nil {
 		t.Fatal(err)
 	}
 	restartedStore, err := newTestPostgresOperationStore(databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer restartedStore.client.Close()
+	defer restartedStore.Close()
 	restarted := NewServiceWithOperationStore(provider, restartedStore)
 	facts, err := restarted.ProviderFactsBatch(ctx, ProviderFactsBatchInput{Items: []ProviderFactInput{{
 		AccountID: fixture.binding.AccountID, WorkspaceID: fixture.binding.WorkspaceID, ResourceType: "attachment", ResourceID: fixture.attachment.ID,
@@ -1623,21 +1619,21 @@ func TestPostgresServiceRestartsTencentComputeDestroyAfterUncertainMutation(t *t
 		ID: "owner-postgres-uncertain-delete", ResourceID: resource.ID, AccountID: resource.AccountID, WorkspaceID: resource.WorkspaceID, PackageID: resource.PackageID,
 		NodePoolID: resource.NodePoolID, MachineID: resource.MachineName, InstanceID: resource.InstanceID, NodeName: resource.NodeName, Status: "active", ClaimedAt: time.Now().UTC(),
 	}); err != nil {
-		_ = firstStore.client.Close()
+		_ = firstStore.Close()
 		t.Fatal(err)
 	}
 	first := NewServiceWithOperationStore(provider, firstStore)
 	if _, err := first.DestroyComputeAllocation(ctx, resource.ID); err != nil {
-		_ = firstStore.client.Close()
+		_ = firstStore.Close()
 		t.Fatal(err)
 	}
 	waitForComputeDestroyPhaseOperationCount(t, first, resource.ID, "failed", 1)
 	failed, ok := first.GetComputeAllocation(ctx, resource.ID)
 	if !ok || failed.ProviderData[tencentComputeDestroyPhaseKey] != tencentComputeDestroyPhaseAttempted || destroyCalls.Load() != 1 || readbackCalls.Load() != 0 || kubectlCalls.Load() != 0 {
-		_ = firstStore.client.Close()
+		_ = firstStore.Close()
 		t.Fatalf("first PostgreSQL destroy=%#v ok=%v destroy=%d readback=%d kubectl=%d", failed, ok, destroyCalls.Load(), readbackCalls.Load(), kubectlCalls.Load())
 	}
-	if err := firstStore.client.Close(); err != nil {
+	if err := firstStore.Close(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1645,7 +1641,7 @@ func TestPostgresServiceRestartsTencentComputeDestroyAfterUncertainMutation(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer secondStore.client.Close()
+	defer secondStore.Close()
 	second := NewServiceWithOperationStore(provider, secondStore)
 	restored, ok := second.GetComputeAllocation(ctx, resource.ID)
 	if !ok || restored.ProviderData[tencentComputeDestroyPhaseKey] != tencentComputeDestroyPhaseAttempted {
@@ -1722,23 +1718,23 @@ func TestPostgresDestroyStorageVolumeNeverRedispatchesDispatchUncertainTencentMu
 		t.Fatal(err)
 	}
 	if err := firstStore.Append(ctx, create); err != nil {
-		_ = firstStore.client.Close()
+		_ = firstStore.Close()
 		t.Fatal(err)
 	}
 	first := NewServiceWithOperationStore(provider, firstStore)
 	firstResult, err := first.DestroyStorageVolume(ctx, resource.ID)
 	if err == nil || firstResult.ProviderData["storageDestroyPhase"] != storageDestroyPhaseDispatchAuthorized || firstResult.ProviderData["storageDestroyMutationCount"] != "0" || destroyActions.Load() != 1 || readbackCalls.Load() != 1 {
-		_ = firstStore.client.Close()
+		_ = firstStore.Close()
 		t.Fatalf("first destroy=%#v err=%v actions=%d readback=%d", firstResult, err, destroyActions.Load(), readbackCalls.Load())
 	}
 	latest, found, latestErr := firstStore.LatestResourceOperation(ctx, "storage_volume", resource.ID)
 	var persistedUncertain StorageVolume
 	if latestErr != nil || !found || latest.Action != "destroy_storage_volume" || latest.Status != "failed" || !decodeOperationResource(latest, &persistedUncertain) ||
 		persistedUncertain.ProviderData["storageDestroyPhase"] != storageDestroyPhaseDispatchAuthorized {
-		_ = firstStore.client.Close()
+		_ = firstStore.Close()
 		t.Fatalf("persisted uncertain destroy=%#v found=%v resource=%#v err=%v", latest, found, persistedUncertain, latestErr)
 	}
-	if err := firstStore.client.Close(); err != nil {
+	if err := firstStore.Close(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1746,7 +1742,7 @@ func TestPostgresDestroyStorageVolumeNeverRedispatchesDispatchUncertainTencentMu
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reopenedStore.client.Close()
+	defer reopenedStore.Close()
 	restarted := NewServiceWithOperationStore(provider, reopenedStore)
 	replayed, err := restarted.DestroyStorageVolume(ctx, resource.ID)
 	// The retained evidence proves a terminate may already have been sent while the

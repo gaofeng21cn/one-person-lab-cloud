@@ -64,7 +64,7 @@ func TestPostgresTencentStorageDeleteRecoversPersistedShortenedDeadline(t *testi
 	databaseURL := fabricTestDatabaseURL(t)
 	reopen := func(previous OperationStore) OperationStore {
 		if previous != nil {
-			if err := previous.(*PostgresOperationStore).client.Close(); err != nil {
+			if err := previous.(*PostgresOperationStore).Close(); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -72,7 +72,7 @@ func TestPostgresTencentStorageDeleteRecoversPersistedShortenedDeadline(t *testi
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { _ = store.client.Close() })
+		t.Cleanup(func() { _ = store.Close() })
 		return store
 	}
 	testTencentStorageDeleteRecoversShortenedDeadline(t, reopen(nil), reopen, StorageDestroyStatePendingRetry)

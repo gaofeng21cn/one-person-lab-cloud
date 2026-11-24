@@ -247,7 +247,7 @@ func (c *d1FinanceChain) openControlPlane(t *testing.T, ledger clients.LedgerCli
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = store.(*postgresEntStateStore).client.Close() })
+	t.Cleanup(func() { _ = store.(*postgresEntStateStore).Close() })
 	fabric := newGatewayAccountingFabric()
 	if c.process != nil {
 		fabric = c.process.fabric
@@ -265,7 +265,7 @@ func (c *d1FinanceChain) openControlPlane(t *testing.T, ledger clients.LedgerCli
 func (c *d1FinanceChain) restart(t *testing.T, ledger clients.LedgerClient) {
 	t.Helper()
 	c.process.server.Close()
-	if err := c.process.store.(*postgresEntStateStore).client.Close(); err != nil {
+	if err := c.process.store.(*postgresEntStateStore).Close(); err != nil {
 		t.Fatal(err)
 	}
 	c.process = c.openControlPlane(t, ledger)

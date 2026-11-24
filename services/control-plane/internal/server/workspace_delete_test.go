@@ -2180,7 +2180,7 @@ func TestPostgresWorkspaceDeleteComputePendingSurvivesRestart(t *testing.T) {
 	if response.Code != http.StatusAccepted {
 		t.Fatalf("pending delete status=%d body=%s", response.Code, response.Body.String())
 	}
-	if err := first.client.Close(); err != nil {
+	if err := first.Close(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2189,7 +2189,7 @@ func TestPostgresWorkspaceDeleteComputePendingSurvivesRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	restarted := restartedState.(*postgresEntStateStore)
-	t.Cleanup(func() { _ = restarted.client.Close() })
+	t.Cleanup(func() { _ = restarted.Close() })
 	row, found, err := restarted.GetRuntimeOperation(context.Background(), workspaceDeleteOperationID("ws-alpha"))
 	operation, decodeErr := decodeWorkspaceDeleteOperation(row)
 	if err != nil || !found || decodeErr != nil || operation.Phase != "storage_absent" || operation.Status != "running" ||
@@ -2210,7 +2210,7 @@ func TestPostgresWorkspaceDeleteComputePendingSurvivesRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	second := secondState.(*postgresEntStateStore)
-	t.Cleanup(func() { _ = second.client.Close() })
+	t.Cleanup(func() { _ = second.Close() })
 	secondServer, err := NewPersistentServer(service, second)
 	if err != nil {
 		t.Fatal(err)
@@ -2428,7 +2428,7 @@ func clearWorkspaceDeleteKeyProjection(t *testing.T, store controlPlaneTableStor
 		delete(row, "workspaceApiKeyId")
 		typed.workspaces[workspaceID] = row
 	case *postgresEntStateStore:
-		if err := typed.client.Workspace.UpdateOneID(workspaceID).ClearWorkspaceAPIKeyID().Exec(context.Background()); err != nil {
+		if _, err := typed.execSQL(context.Background(), typed.db, `UPDATE control_plane_workspaces SET workspace_api_key_id = NULL, updated_at = ? WHERE id = ?`, time.Now().UTC(), workspaceID); err != nil {
 			t.Fatal(err)
 		}
 	default:

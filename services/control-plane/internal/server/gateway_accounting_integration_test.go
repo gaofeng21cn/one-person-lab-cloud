@@ -454,7 +454,7 @@ func newGatewayAccountingControlPlane(t *testing.T, ledger clients.LedgerClient,
 	if err != nil {
 		t.Fatalf("start Control Plane PostgreSQL store: %v", err)
 	}
-	t.Cleanup(func() { _ = store.(*postgresEntStateStore).client.Close() })
+	t.Cleanup(func() { _ = store.(*postgresEntStateStore).Close() })
 	account, user := provisionedAccountRowsFor(accountID, userID, sub2API.ownerEmail, gatewayAccountingSub2APIUserID)
 	if err := store.CreateProvisionedAccount(context.Background(), account, user); err != nil {
 		t.Fatalf("seed Control Plane owner: %v", err)

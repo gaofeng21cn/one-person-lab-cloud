@@ -38,17 +38,8 @@
     "verify:local:full": "node tools/verify-local.ts --with-postgres",
     "qualify:local:workspace": "node tools/local-workspace-qualification.ts",
     "validate:production-manifest": "node tools/validate-production-manifest.ts",
-    "dev:context": "node tools/dev-session.ts context",
-    "dev:tools": "node tools/dev-session.ts serve",
-    "verify:dev-scope": "node tools/dev-session.ts scope",
     "verify:generated-contracts": "node tools/verify-generated-contracts.ts",
-    "test:development-gates": "node --test tests/tools/dev-session.test.ts tests/tools/verify-generated-contracts.test.ts tests/tools/verify-development-plan.test.ts",
-    "typecheck:development-tools": "tsc --ignoreConfig --strict --noEmit --skipLibCheck --target ES2023 --module NodeNext --moduleResolution NodeNext --allowImportingTsExtensions --types node --lib ES2023,DOM tools/dev-session.ts tools/verify-local.ts tools/run-browser-suite.ts tools/verify-generated-contracts.ts tools/verify-development-plan.ts tools/verify-unbound-identifiers.ts tools/workspace-model-scope.ts tests/tools/dev-session.test.ts tests/tools/verify-local.test.ts tests/tools/verify-generated-contracts.test.ts tests/tools/verify-development-plan.test.ts tests/tools/verify-unbound-identifiers.test.ts tests/tools/workspace-model-scope.test.ts",
-    "verify:unbound-identifiers": "node tools/verify-unbound-identifiers.ts",
-    "dev:approve": "node tools/dev-session.ts approve",
-    "dev:run": "node tools/dev-session.ts run",
-    "dev:verify": "node tools/dev-session.ts verify",
-    "verify:development-plan": "node tools/verify-development-plan.ts"
+    "typecheck:development-tools": "tsc -p tsconfig.tools.json --noEmit"
   },
   "dependencies": {
     "@openai/apps-sdk-ui": "^0.2.2",
