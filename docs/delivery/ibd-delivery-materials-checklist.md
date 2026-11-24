@@ -4,7 +4,7 @@ Owner: `IBD publisher`, with Fabric verifying executable capability
 Purpose: `handoff_checklist`
 State: `current_checklist`
 
-This checklist turns the [roadmap handoff inputs](../roadmap.md#handoff-inputs-and-parallel-work)
+This checklist turns the [Workspace delivery model](../architecture.md#workspace-application-boundary)
 into a per-item list the IBD publisher can prepare and the Cloud owners can
 verify. Preparation runs in parallel with Cloud implementation; the latest
 consumption point for each group is binding. A material is delivered when its

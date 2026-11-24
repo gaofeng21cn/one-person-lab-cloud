@@ -41,8 +41,7 @@ remove the duplicate current writer in the same pull request.
    and physical dependency map in `docs/implementation-architecture.md`.
    Extracted owners and retained callers do not share one universal HTTP path.
    Runtime imports of sibling service implementations are forbidden; shared
-   infrastructure stays policy-free and `packages/contracts/go` remains the
-   single shared contracts module for actual cross-owner consumers.
+   infrastructure stays policy-free and `packages/contracts/go/` shares the single root `go.mod` (`module opl-cloud`) for cross-owner consumers.
 5. Rebase or update from fresh `main` before review. If another pull request has
    entered the same write set, coordinate ownership or split at a contract/API
    boundary before continuing.
@@ -57,7 +56,7 @@ deployment qualification.
 
 ## Ordinary Source Development
 
-The [2026-10-13 decision](docs/decisions.md#2026-10-13-ordinary-source-development-uses-git-scope-and-current-ci)
+The [ordinary development policy](docs/decisions.md#ordinary-source-development-and-ci)
 sets the default: explicit Git scope, relevant local behavior tests, a PR and CI
 for the current revision. Describe the problem, resulting behavior, actual
 verification and risks in the PR. No independent source-check JSON, fixed

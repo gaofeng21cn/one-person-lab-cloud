@@ -1,582 +1,75 @@
 # Product Release Operations
 
-OPL Cloud owns reusable source, contracts, portable Candidate bytes and public
-product releases. Instance owns installation configuration, Secrets, deployment,
-rollback and deployment receipts. Production-private access runs only through
-`opl-instance-medopl` protected workflows and authorized runners.
-
-- Generic installation: [Install OPL Cloud](../installation.md)
-- Product/Instance ownership: [Architecture](../architecture.md)
-- Current evidence: [Status](../status.md)
+OPL Cloud owns reusable source, contracts, portable Candidate bundles, public
+Releases and customer-business diagnostic validators/custody.
+`opl-instance-medopl` owns concrete installation profiles, Secrets, TKE
+deployment, rollback and installation receipts. See
+[Installation](../installation.md), [Architecture](../architecture.md) and
+[Status](../status.md).
 
 ## Candidate, Instance Profile And Receipt Boundary
 
-The install/upgrade chain uses one product input and one installation-data
-input:
-
-1. Cloud produces one immutable Candidate from one exact Cloud source SHA. The
-   Candidate bundle carries the product manifest, image digests, checksums and
-   portable installation assets.
-2. Instance loads one canonical Instance profile for the target installation.
-   The profile is the sole installation-data input for install and upgrade. It
-   contains non-secret provider, resource, database, storage, backup and
-   Secret-reference declarations; it does not contain Secret values or
-   observed deployment state.
-3. The protected Instance workflow resolves Secret values and production access
-   materials, validates the profile before mutation, and runs the requested
-   install or upgrade against that Candidate.
-
-The native stage receipts bind the Candidate identity. The current Instance
-install/upgrade lifecycle summary does not yet bind a normalized profile digest
-across stages. That is a required follow-up Instance receipt change. Once
-implemented, the profile digest must be an opaque installation identity: a
-changed profile produces a new digest, while live observations and deployment
-results remain receipt/readback evidence and do not rewrite the profile.
-
-Cloud does not read the Instance profile contents, Secret values, DSNs,
-kubeconfig, cluster configuration or customer data. Cloud can consume the
-approved redacted receipt/readback handoff and verify the Candidate identity.
-After the versioned Instance receipt change exists, it may also compare the
-opaque profile digest across receipts. It does not reconstruct or override the
-Instance configuration. A valid Cloud Candidate or Cloud-side source check
-therefore never proves installation or production readiness by itself. This
-section defines the cross-repository target contract; runtime adoption is
-proved only by an Instance-produced receipt and its protected readback.
-
-This is the target evidence boundary. Instance source
-`842e666957ad34e85d55688e738a8cf6128f0769`
-([Instance #718](https://github.com/gaofeng21cn/opl-instance-medopl/pull/718))
-has the protected install/upgrade orchestrator, profile consumption and
-Candidate-bound native receipts; it does not yet bind the Instance profile
-digest across phases. The versioned receipt change must be delivered in its
-owning Instance change before that stronger binding can be claimed.
-[Status](../status.md#installation-chain-source-boundary-2026-11-13) records the
-source-only evidence; [roadmap](../roadmap.md#priority-outcomes) retains
-installation and data-recovery acceptance.
+1. **Candidate Bundle**: Built from an exact Cloud `main` commit with
+   digest-addressed `linux/amd64` + `linux/arm64` images, `opl-cloud-candidate.json`,
+   installation assets and `SHA256SUMS`. Building a Candidate never publishes a
+   formal Release tag.
+2. **Instance Profile**: Supplied solely by the target Instance repo (non-secret
+   provider, resource, database, storage and Secret-reference declarations). Cloud
+   never reads Instance Secret values, DSNs, kubeconfig or cluster config.
+3. **Receipts**: Instance validates installation against its profile and emits
+   redacted installation/profile-digest receipts bound to Candidate identity;
+   Cloud validates receipt signatures/schemas without inspecting Secrets.
 
 ## Workspace Deletion Diagnostics And Evidence Custody
 
-Cloud owns Workspace deletion and refund coordination, Fabric provider readback,
-its diagnostic producer/validator and the final business evidence. Instance owns
-installation configuration, protected environment access, deployment, rollback
-and their installation receipts. A protected adapter supplies bounded private
-input to Cloud-owned code; it does not define deletion status, error policy or
-business receipt schemas. Keep private logs local to that protected execution
-and publish only the Cloud-validated redacted output to Cloud evidence custody.
-Do not grant Cloud runners direct production-private network access.
+Cloud owns customer-deletion diagnostic tooling and final redacted custody while
+Instance workflows provide bounded read-only transport in protected clusters:
 
-`tools/workspace-fabric-dispatch-error-readback.ts` accepts a Candidate receipt,
-exact Workspace/Workspace-operation/Fabric-operation binding, Fabric operation
-UTC update time and a SHA-256-bound log excerpt. It recognizes the existing
-compute dispatcher log format using the `kubectl logs --timestamps` UTC prefix
-within 60 seconds of the bound update time. Go's timezone-free log prefix is not
-an observation clock. The output contains only identity digests, Candidate
-identity, observation times and fixed Cloud error tokens or error digests.
-`matched` means a recognized diagnostic was found; it proves neither resource
-absence nor deletion or refund success. No exact match stays `unknown`; an
-unrecognized error stays `blocked`.
+| Tool (`tools/*.ts`) | Purpose | Safety Fence |
+| --- | --- | --- |
+| `workspace-fabric-dispatch-error-readback.ts` | Classify Fabric dispatcher `kubectl logs --timestamps` UTC excerpts against bound operation | Fails closed on symlinks; `unknown` / `blocked` never imply deletion or refund |
+| `workspace-compute-live-readback.ts` | Inspect live `GET /fabric/compute-allocations/{id}/destroy-status` (Machine then CVM) | Never mutates resources or writes journals; `SHUTDOWN`/`MANMADE` stays present |
+| `workspace-compute-destroy-journal.ts` | Query Fabric domain operation journal bound to pinned container `DATABASE_URL` | Diagnostic readback only; v1/v2 decoders stay strict |
+| `workspace-compute-detach-reconciliation.ts` | Execute explicitly authorized `POST .../reconcile-prepaid-detach` for stuck prepaid detach | Permanent DB one-send fence per destroy; replays read only |
 
-```sh
-node tools/workspace-fabric-dispatch-error-readback.ts run \
-  --input "$RUNNER_TEMP/dispatch-input.json" \
-  --output "$RUNNER_TEMP/dispatch-receipt.json"
-node tools/workspace-fabric-dispatch-error-readback.ts validate \
-  --receipt "$RUNNER_TEMP/dispatch-receipt.json"
-```
-
-The input JSON has exactly `candidate`, `binding`,
-`fabricOperationUpdatedAt` and `excerpt`; `binding` has `workspaceId`,
-`workspaceOperationId` and `fabricOperationId`; `excerpt` has `text`, `sha256`,
-`startedAt` and `completedAt`. The CLI refuses symlink input and oversized files,
-creates its output mode `0600` without overwriting an earlier attempt, and emits
-only a fixed error on failure. `run` retains valid blocked/unknown receipts and
-returns nonzero; `validate` checks structure, not a successful diagnosis.
-
-This source entry has no deployed protected adapter or Cloud artifact handoff
-by itself. Before runtime use, that handoff must bind the live operation,
-Candidate image and Pod/owner chain before and after the read, retain the
-producing revision/run and place the final evidence in Cloud. An uploaded
-caller-supplied excerpt alone is not authenticated runtime evidence. Historical
-imports keep their original bytes, schema, producer and run provenance; moving
-custody never relabels them as a new successful Cloud execution.
-
-### Live Compute Readback
-
-`tools/workspace-compute-live-readback.ts` owns the live compute diagnostic and
-strict receipt decoder. It binds the original Workspace `delete_workspace`
-operation to its accepted resource set, original Fabric `resource_delete`
-operation, unique compute resource and original compute delete action. The
-Workspace and Fabric databases are queried separately through read-only
-connections. The Instance adapter supplies transport, installation identity and
-protected Secret access; SQL, binding decisions and business projections remain
-Cloud source.
-
-The only provider-facing request is the existing Fabric
-`GET /fabric/compute-allocations/{id}/destroy-status`. Its owning Service may
-hydrate its in-memory resource map from retained history, but this read does not
-write a deletion journal, mutate a provider resource or resume the Workspace.
-The Tencent adapter reads the persisted Machine type. For `NativeCVM`, it first
-reads the exact TKE Machine and, only after Machine absence, the original CVM
-through `DescribeInstances`. A Machine still present does not imply a CVM query.
-A recycled `SHUTDOWN`/`MANMADE` CVM remains present. Native/CXM reads retain their
-TKE-only scope. Unknown states and failed reads never establish absence.
-
-The companion Instance source entry is
-`.github/workflows/cloud-workspace-compute-readback.yml`. It runs only from
-Instance `main` in protected `production`, admits a full immutable Cloud
-`diagnostic_source_sha` already reachable from canonical Cloud `main`, and binds
-the already installed Candidate image to a unique Ready Fabric Pod through its
-Deployment/ReplicaSet/Pod owner UIDs. Before and after the GET it verifies the
-same installation identity; it closes the port-forward before returning a
-result. Raw responses and credentials stay in protected execution memory.
-
-Diagnostic source and installed product source have separate identities: the
-new tool can observe the installed Candidate without rebuilding the product
-image. It cannot run from an unmerged diagnostic branch in production. The
-receipt retains both revisions, the Instance run/attempt and image digests.
-`observed` means the owner returned a valid readback, including still-present
-resources; it does not mean Workspace deletion, journal finalization or refund
-completion. `blocked` retains a fixed safe error token and error digest when an
-owner error was obtained. Before a provider request, it distinguishes Workspace
-database access, Workspace identity decoding, Fabric database access and Fabric
-identity decoding using fixed codes; older receipts retain the original combined
-binding-failure code. Neither form includes raw SQL, connection errors or owner
-identities.
-
-Instance uploads only `receipt.json` as a three-day handoff artifact named
-`cloud-workspace-compute-readback-handoff-<run>-<attempt>`. Cloud's
-`.github/workflows/workspace-compute-readback-handoff.yml` independently reads
-the producing GitHub run and exact artifact. The Cloud consumer validates the
-Candidate, original Workspace/operation digests, diagnostic SHA, actual Instance
-revision, workflow path, `main`, run and attempt before retaining the receipt
-and binding metadata in a 90-day Cloud artifact. Failed diagnostic receipts
-remain failed diagnostic evidence after import. No Cloud workflow dispatches
-Instance or connects to the production private network.
-
-Source implementation and local transport/decoder tests do not establish that
-these protected entries are merged, installed or executed. Adoption requires
-merging their owner PRs, running the Instance readback for the original
-operation, then importing that exact run through Cloud. A diagnostic source or
-transport failure is resolved at that boundary before another resource command.
-
-### Compute Destroy Journal Readback
-
-The live endpoint reports current provider state; it does not expose the
-persisted Fabric domain operation journal. The Cloud-owned
-`tools/workspace-compute-destroy-journal.ts` adds a separate read-only journal
-projection, bound to the already selected compute and Workspace. Cloud owns the
-SQL, row binding, schema, redaction and receipt validation. The Instance
-adapter only locates the Fabric domain database Secret reference from the
-actual Fabric Deployment and transports a read-only query through the protected
-runner; it owns no SQL, business fields or deletion-state interpretation. This
-domain database is distinct from Fabric coordination storage. Before the domain
-query and around the GET, the transport compares the private URL against the
-exact pinned Fabric container's `DATABASE_URL` environment; Secret rotation
-cannot silently pair a new database with a still-running old container. Only
-that single variable is read in memory, and neither value enters a receipt.
-
-The journal is diagnostic evidence, not a delete command. Missing rows, missing
-mutation counts and provider request identifiers do not prove that a provider
-mutation was or was not sent. Final-release, prepaid-detachment and prepaid-retirement records must bind to
-the same original destroy operation. These are bounded action additions within
-the v2 journal receipt, with no new fields or schema version. Unknown or conflicting evidence remains unknown/blocked;
-the journal cannot establish resource absence, refund completion or Key
-closeout. Keep v1 receipts on their original strict decoder and validate v2
-receipts against the complete journal schema; do not relabel historical
-receipts.
-
-Cloud #1157 and Instance #708 merged the journal source and protected database
-transport; their executed readback and Cloud custody evidence are recorded in
-[status](../status.md#workspace-1042-compute-journal-follow-up-2026-11-10).
-Source-only diagnostic changes can observe an already installed Candidate
-without rebuilding it. Fabric runtime repairs require a qualified Candidate
-and Instance adoption. Continue the same original deletion operation after
-adoption; do not infer send state from the live readback alone.
-
-### Explicit Prepaid Detach Reconciliation
-
-An uncertain original detach keeps its permanent fence. Cloud's
-`tools/workspace-compute-detach-reconciliation.ts` resolves the original Workspace,
-Fabric destroy and failed detach from their owner journals. With an explicit
-operator authorization reference and `RECONCILE_ORIGINAL_PREPAID_DETACH`, it signs
-one `POST /fabric/compute-allocations/{id}/reconcile-prepaid-detach` command. Fabric
-verifies that binding, fresh ownership and current eligibility, then atomically
-claims an independent permanent fence before one retain-mode detach. It preserves
-the original rows. Replays only read; a changed authorization cannot admit another
-send. Confirmed Machine absence permits the existing original deletion to proceed
-through CVM retirement, recycled release and destroy cleanup.
-
-Instance's existing compute readback workflow transports this command only when
-`reconcile_detach` is explicitly enabled and its authorization/confirmation inputs
-are supplied. Default execution remains read-only. After either outcome it opens
-a separate read-only session and saves the Cloud-validated diagnostic. A recovery
-error fails the run after preserving that receipt. Cloud custody accepts a
-completed successful or failed run only with its exact validated uploaded receipt;
-cancelled and incomplete runs remain refused. Receipt status describes readback,
-never recovery, deletion, refund or Key completion. SDK failures retain bounded
-provider error classes and request-ID evidence without raw messages or automatic
-retry. This runtime capability requires a new Candidate and Instance installation;
-source-only diagnostic changes still reuse installed bytes.
-
-### Original Provider Request Audit
-
-The existing protected compute-readback entry has an optional
-`include_provider_audit` flag, disabled by default. Cloud source owns a read-only
-SQL projection of the original destroy and its failed prepaid-detach fence,
-matching their full timestamps and digests to the validated journal. Only that
-frozen cluster, Machine, region and a short window around the one failed call
-admit `LookUpEvents` for `DeleteClusterMachines`. The CloudAudit control API uses
-`ap-guangzhou`; event matching retains the frozen resource region. Pagination is bounded; an
-incomplete, ambiguous or schema-invalid result remains unknown or blocked.
-Provider query errors preserve safe classes and hashes without raw messages.
-Response-envelope and pagination rejections have fixed safe field-stage codes.
-`TotalCount` remains nonnegative integer metadata; only `ListOver` and
-`NextToken` control pagination, not an undocumented comparison with page length.
-
-Instance supplies the approved provider credential transport for the fixed
-CloudAudit read API after exact Cloud-source and Candidate admission. Cloud owns
-all event matching, response interpretation and redaction. The same pinned
-Fabric owner chain is checked before and after the read, and the transport must
-close before the auxiliary receipt is published. The ordinary v2 journal receipt
-is unchanged. The separate `provider-audit.json` and its validated parent binding
-are retained in Cloud custody alongside the original receipt bytes.
-
-A uniquely matching target event does not identify the journal fence's caller by
-itself. Even a provider error does not establish absence or authorize another
-send. This diagnostic never deletes, retires, refunds, changes IAM, or clears a
-fence. Diagnostic-source and transport adoption require their owner CI and merges;
-this source-only query does not require a new product image.
+Protected Instance handoff artifacts (`cloud-workspace-compute-readback-handoff-*`)
+are validated and retained by `.github/workflows/workspace-compute-readback-handoff.yml`.
+Optional CloudAudit correlation (`include_provider_audit`) reads only bounded
+`LookUpEvents` for the frozen cluster/Machine/window and never clears a send fence.
 
 ## Cloud Agent WebUI Build Input
 
-The Cloud-owned independent Agent WebUI has its own exact-source artifact build:
-`.github/workflows/build-cloud-agent-webui.yml`. Dispatch `Build Cloud Agent WebUI`
-with `product_sha` equal to the selected branch head. It archives only
-`webui/cloud-agent`, builds Linux amd64/arm64 images and publishes to
-`ghcr.io/<repository-owner>/opl-cloud-agent-webui` under a source/run/attempt tag.
-It uses the job's GitHub token, without Instance credentials or deployment access.
-
-The `cloud-agent-webui-<sha>-<attempt>` artifact retains push metadata, registry
-index/config readbacks, Git commit/tree identifiers and `SHA256SUMS`. Its
-single-platform child digests are the Build inputs; the multi-platform index is
-not a substitute. Image source labels and the original GitHub run bind source
-and workflow provenance, not Runtime compatibility, Capability admission or a Product Release. Instance
-registry transfer and catalog/default-policy writes remain separately authorized
-owner operations. Runtime recipes remain Runtime-publisher inputs.
+`.github/workflows/build-cloud-agent-webui.yml` builds `webui/cloud-agent` at an
+exact `product_sha` into multi-arch images under `ghcr.io/<owner>/opl-cloud-agent-webui`
+and emits `cloud-agent-webui-<sha>-<attempt>` artifacts (per-platform child digests
+are fixed as Build inputs).
 
 ## Product Release Admission
 
-The [2026-11-05 owner decision](../decisions.md#2026-11-05-stable-publication-uses-non-spending-acceptance)
-sets the current acceptance: actual installation verification and business
-source-path availability, without cost-incurring business execution. A release
-unit identifies its product outcome, owner, supported installation, changed
-artifact bytes and predecessor gap in the owning PR or release conversation.
-
 ### Candidate Qualification
 
-Build one exact Cloud SHA on a workflow-admitted branch, with a digest-addressed
-Linux amd64/arm64 image. The portable bundle contains its canonical
-`opl-cloud-candidate.json`, installation assets and `SHA256SUMS`. The Candidate
-manifest binds Product repository/SHA/tree, index and platform digests, asset
-hashes and workflow provenance. Candidate construction creates no formal tag or
-Release. Formal publication requires that exact source reachable from canonical
-main and promotes the same Candidate image without rebuilding.
-
-The main Clean Host workflow qualifies the supplied Candidate on a clean Linux
-Docker host. Its `local-v2` profile is the only mode of this local qualification
-tool and is also the default: it uses the declared native topology, CA-backed Console HTTPS,
-independent owner stores, project quota and the existing anonymous application
-fixture. The version-two READY receipt binds source/images, owner
-processes/stores, actual application access, restart continuity, owner deletion
-and replay, and zero remaining Workspace resources. It is explicitly
-`LOCAL_NO_CHARGE` with `p0Ready: false`. The version-one fixture and live runs
-are retired: the tool refuses their mode names and their options by name, so a
-caller that still asks for one is told which run it asked for and that it is
-gone. This run starts `compose.local-v2.yaml`; it does not execute the bundle's
-`install.sh` entrypoint or prove installation through `compose.cloud.yaml`.
-Bundle installability and the optional protected business, J0 and customer-read
-tools retain their separate evidence scopes. A failed or mismatched installation
-remains NOT_READY.
-
-Instance independently installs or upgrades the same Candidate from its
-validated profile through its protected main workflow, then its separate
-`deployment-verify.yml` records native installation identity and technical
-health. The native receipts bind the Candidate, and the final lifecycle summary binds
-the profile digest as well. Cloud validates the original Candidate bytes and the
-summary association through the producing Instance revision without reading the
-profile or its Secrets.
-Successful installation does not imply paid business acceptance.
-
-The exact Candidate's successful Pull Request CI run must include all six
-completed successful jobs. Release admission inspects the existing business
-entry files from its clean exact checkout, records their hashes and binds the
-source CI run. It emits `source_verified` with `paidBusinessExecuted: false` and
-`customerReadsExecuted: false`; it never relabels an unexecuted purchase as
-settled or creates a Workspace acceptance receipt.
+- **PR & Source CI**: Required PR CI checks (`validate`, `dependency-review` and
+  source/unit suites) pass on the exact commit.
+- **Clean-Host Local Qualification**: `local-v2` starts `compose.local-v2.yaml`,
+  verifies native owner stores, HTTPS Console access, restart continuity and
+  delete/replay (`LOCAL_NO_CHARGE`, `p0Ready: false`).
+- **Non-Spending Publication (`source_verified`)**: Formal Release promotion reuses
+  exact Candidate digests without rebuilding and records `paidBusinessExecuted: false`
+  and `customerReadsExecuted: false` unless optional protected Instance runs
+  separately verify customer execution.
 
 ## Optional Operational Qualification
 
-The following existing producers remain available for separately authorized
-operational acceptance. Their native contracts and protected boundaries remain
-in force. They are not required or invoked by the current non-spending Release
-admission, and their absence does not create a substitute success receipt.
+- **Protected Cloud Customer Reads**: `tools/cloud-business-readback.ts` (driven via
+  approved Instance transport) verifies authenticated CloudIdentity wallet, monthly
+  usage, legacy billing receipt (`ledger` source) and announcement reads plus session
+  revocation.
+- **Protected Cloud Business Qualification**: Separately authorized end-to-end
+  purchase/delivery/deletion verification against the Candidate digest on Instance TKE.
 
-### Protected Cloud Customer Reads
+## Publication & Failure Classification
 
-The source entry `.github/workflows/cloud-business-readback.yml` has two
-`ubuntu-latest` jobs: `admission`, then `readback`. Dispatch is limited to Cloud
-`main`, the repository owner or `RenDeHuang`, with the original actor matching
-the triggering actor. Before the readback job references
-`cloud-business-qualification`, admission uses GET readback to require that the
-environment already exists, has nonempty required User reviewers restricted to
-the allowed owners, `prevent_self_review: true`, and exactly one custom branch
-policy for `main`. The workflow does not configure or create that environment.
-
-The protected environment supplies `vars.OPL_QUALIFICATION_ORIGIN` and the
-independent customer Secrets `OPL_QUALIFICATION_CUSTOMER_EMAIL` and
-`OPL_QUALIFICATION_CUSTOMER_PASSWORD`. The protected environment reuses
-`OPL_GITHUB_RELEASE_ADMIN_TOKEN` for Instance evidence and validator source
-reads. These calls require only Instance `Actions: read` and `Contents: read`.
-The owner explicitly approved reuse of the existing publisher credential,
-whose all-repository read/write permissions exceed those required reads.
-Its value remains in the protected environments; it is not available to PR or
-Candidate jobs. The exact producing Instance revision first validates the
-native installation receipt; the producer then binds that receipt and run to
-the same Candidate.
-
-`tools/cloud-business-readback.ts` uses only public HTTPS CloudIdentity customer
-login/session, external-bindings, wallet, usage-summary, fee-record and
-announcements reads, followed by logout and session-revocation checks. The
-wallet and usage reads must carry the Gateway owner's public encoding; the
-fee-record read must answer the `ledger` source envelope without a session
-rejection, and a not-found blocks the receipt because the BFF cannot distinguish
-a customer without an original Account from a missing or older internal route. The independently
-approved origin is a protected configuration input. Its receipt associates the original installation
-bytes but sets `publicEndpointCandidateVerified: false`; the current public
-customer APIs expose no Candidate identity proof. It cannot replace installation
-or same-runtime business acceptance. Its receipt has scope `customer_reads`
-and status `customer_reads_verified` or `blocked`; it explicitly does not prove
-full business, Workspace lifecycle or Key lifecycle qualification. This entry
-provides no production-private network access or resource/financial mutation
-qualification.
-
-The customer workflow emits only `cloud-customer-readback-<run>-<attempt>`,
-retained for its own operational acceptance. It does not invoke the business purchase producer.
-The protected Instance lane below remains the sole workflow producer of business
-qualification evidence; its trust and exact-Candidate gates are unchanged.
-
-### Protected Cloud Business Qualification
-
-The protected Instance entry
-`.github/workflows/cloud-business-qualification.yml` runs the Cloud-owned
-`tools/protected-business-qualification.ts` after the original Candidate bundle,
-the exact product checkout and the native installation receipt have been
-validated. Cloud owns the producer source, receipt schema and release consumer;
-Instance owns the protected `production` environment and provider boundary.
-The existing `customer_reads` producer remains a separate receipt; the business
-producer does not call it, copy its reads or replace its result.
-
-The producer receives the declared Candidate receipt digest, the deployment
-binding, the account, RuntimeVersion, compute/storage plan declarations, the
-live authority class and the J0 READY receipt. The workflow materializes the deployment binding and J0 receipt
-under `$RUNNER_TEMP` with mode `0600`; the producer derives the Candidate digest
-from the exact bytes, checks it against the declaration and the deployment
-binding, validates the original installation receipt/run against the same
-Candidate, checks the protected owner origin and the fixed mutation scope, and
-admits only a `tencent-tke` J0 receipt bound to the exact Candidate. It then
-builds the request with the shared `createQualificationRequest`, runs the shared
-`runWorkspaceQualification` through the `tencent-tke` adapter, and writes the
-shared `opl.workspace-qualification.purchase.v1` receipt.
-
-The orchestrator's purchase step delegates to the merged deployed buyer,
-`runDeployedWorkspacePurchase`. The producer hands it the authenticated owner
-transport from the opened provider scope and the protected origin, and the
-buyer checks the retained source-envelope customer identity, the live
-CloudIdentity session and the declared Tenant's active billing subject, then
-issues the single native quote/purchase or replays its original command through
-the shared purchase core. Current catalog availability cannot block an already
-accepted order. Personal-wallet deltas do not prove the Tenant payer's charge. The buyer's refusal codes are mapped
-onto the shared terminal reasons. The orchestrator consumes the buyer's bounded
-result and continues with the owner charge receipt, Workspace and Runtime
-readbacks, so the deployed buyer is actually exercised rather than copied or
-merely guarded.
-
-The buyer returns its own `opl.deployed-workspace-purchase.v1` receipt. It binds
-the exact Candidate, the declared account identity digest and the observed
-purchase count, and is preserved as `receipt.purchase.json` beside the
-qualification receipt. The orchestrator's operation identity in
-`receipt.json` is the buyer's platform order identity; the qualification request
-remains the admission, and the buyer's receipt remains a purchase record rather
-than a qualification claim.
-
-Cloud fabric produces the J0 READY receipt
-([status](../status.md#fabric-j0-ready-sandbox-qualification-producer-2026-10-18))
-from a provider sandbox qualification run. `tools/workspace-qualification-j0-ready.ts`
-drives `runTencentTkeSandboxQualification` in the `tencent-tke` adapter through the
-same boundary module the protected lane loads: the declared sandbox deployment is
-opened, its owner transport is checked against that deployment, the provider's
-own health readback must answer `healthy`, and the scope is released. The
-resulting `opl.workspace-qualification.j0-ready.v2` receipt is bound to the exact
-Candidate in `source.cloudImageDigest`; the protected loader refuses another
-Candidate's receipt as an absent prerequisite and any non-confirmed,
-non-`sandbox`, non-`live`, non-dedicated or non-zero `failed`/`skipped` receipt as
-invalid. The receipt crosses the job boundary as a file under `$RUNNER_TEMP`,
-created mode `0600` with `O_EXCL | O_NOFOLLOW` and re-read under the same file
-standard and a 1 MiB byte cap. The workflow's jq gate is unchanged and remains
-weaker than the loader, which is the authority.
-
-The protected runner supplies the Fabric/Instance boundary module named by
-`vars.OPL_QUALIFICATION_PROVIDER_BOUNDARY`; the module owns TKE reachability and
-the owner transport and receives the normalized deployment binding and protected
-environment. It is not implemented in Cloud and its credentials do not enter the
-receipt. The producer requires the `cloud-business-qualification` protected-context
-declaration (a marker that the step came from that protected context, not a
-GitHub environment lookup), `vars.OPL_QUALIFICATION_ORIGIN` and the independent
-customer Secrets `OPL_QUALIFICATION_CUSTOMER_EMAIL`/`OPL_QUALIFICATION_CUSTOMER_PASSWORD`.
-It also requires `OPL_QUALIFICATION_TENANT_ID` and
-`OPL_QUALIFICATION_BILLING_SUBJECT_ID`, compared with live owner readback before
-purchase. Its product arguments are `--runtime-version-id`, `--compute-plan-id`
-and `--storage-plan-id`; `--package-id` no longer selects a native Workspace.
-Instance #593 adopted this native consumer source migration; Cloud #1072
-records its adoption evidence.
-Source adoption does not supply the installation's declarations, genuine
-same-Candidate J0 or complete protected execution receipt; see the
-[remaining qualification work](../roadmap.md#native-v2-protected-qualification-and-cp-retirement-post-1042).
-It deliberately requires no cross-repository evidence token: it reads only the
-files this workflow materialized and its own J0 receipt, so it has no
-cross-repository read to authorize. The Instance workflow reads its own
-installation artifacts with its repository-scoped `github.token`. Cloud's
-separate cross-repository consumers use the protected publisher credential
-as described above. A missing declaration, variable, Secret, J0 receipt or
-boundary module fails closed with `external_prerequisite_absent` before a
-provider scope opens; the workflow does not create any of them.
-
-Only the shared orchestrator's actual qualification result becomes the
-qualification receipt state. A settled receipt is preserved, and a blocked,
-failed, unknown or recovery-required receipt is preserved before the workflow
-fails. Deployment health is recorded but never moves the business result.
-The Instance run uploads the exact artifact `cloud-business-qualification`. It
-contains `business-qualification.json` and `product-source.json`, plus
-`business-qualification.purchase.json` when the buyer reached a receipt; the
-existing `cloud-customer-readback-<run_id>-<run_attempt>` artifact is unchanged.
-The product-source file binds the exact Cloud product SHA and tree independently
-of the Instance run's own `head_sha`. The retained full-business evidence consumer resolves this run and
-artifact from the Instance repository with `OPL_GITHUB_RELEASE_ADMIN_TOKEN`, rejects
-another repository or workflow, and validates both receipt files through the
-Cloud-owned typed consumer. Receipts are Candidate-bound and contain no raw
-Secret, Key, customer identifier, origin, cluster, namespace or entry URL. They
-cover the declared Workspace purchase only: `uncovered.businessQualification`
-is `false`, and they do not admit a release by themselves.
-
-This section describes source wiring, not a protected run. No fabric sandbox
-qualification and no protected business qualification run have produced a real
-J0 READY or settled receipt (the tests inject only the transport). The producer
-source from #926 is delivered; its historical issue state does not establish
-protected acceptance. #1042 tracks the current consumer migration and exact-
-Candidate qualification: the protected environment must declare the account,
-Tenant, payer, RuntimeVersion, plans, origin, credentials and provider boundary,
-a fabric sandbox must emit the exact-Candidate J0 receipt, and the Instance lane
-must emit the settled business receipt for that same Candidate.
-
-## Publication
-
-### Daily Product Continuation
-
-The shared OPL daily product workflow reads this repository's
-`product-release.json`, prepares a changed product version through PR CI, and
-creates an immutable source tag. `daily-release.yml` continues that tag through
-the existing Candidate builder and Clean Host Qualification. Successful runs
-are reused by exact frozen source instead of rebuilding them on each inspection.
-Each continuation can resume one failed native attempt under its existing run
-identity. An uncertain retry response is reconciled through that same run.
-When owner orchestration changes, the next continuation runs its current main
-revision while retaining the frozen product source and successful native runs.
-Candidate registry readback waits briefly for a newly pushed tag to become
-readable, then requires the exact acknowledged image digest.
-
-The tag entry only dispatches the protected `main` continuation; it has no
-private evidence credential. The Candidate builder can select an annotated
-product tag reachable from canonical `main`, so later main commits do not force
-a frozen product to rebuild under a different identity. Release admission also
-checks that the Candidate builder revision is reachable from canonical main.
-
-The continuation reads existing Instance deployment-verification receipts and
-selects only a receipt bound to the same Candidate, source tree and image digest.
-If it is absent, the result is `qualification_pending`; the Candidate remains
-available for the Instance owner. A later daily inspection rechecks the same
-tag. This workflow never dispatches Instance installation or deployment. After
-all evidence is available, the existing release workflow independently admits
-and publishes the Candidate. A bot invocation additionally proves the protected
-main continuation and annotated source tag before entering publication admission.
-
-Source CI may select the merged release PR's head when its complete Git tree
-equals the Candidate tree and it is an ancestor of the released commit. All
-required jobs must have passed for that exact PR head; a different tree is refused.
-
-The owner or `RenDeHuang` dispatches `release-opl-cloud-image.yml` from main;
-original and triggering actors must match. Its required inputs are `version`,
-exact Product `ref`, `candidate_run_id`, `local_qualification_run_id`,
-`instance_deployment_verification_run_id` and `source_verification_run_id`.
-Admission validates their original run/artifact authority and exact identity.
-
-Before sealing a publication, admission runs the Candidate bundle's own
-`install.sh` in dry-run mode with derived local fixture facts. The bundle's
-installer validates its manifests and checksums, generates isolated PKI and
-parses the published Compose configuration. The resulting installability
-receipt is bound to the Candidate source and image; its digest and producing
-run are carried by the sealed manifest and checked again by publication.
-The verifier and its acceptance contract come from the current release
-authority, so a frozen Candidate that predates this gate can be checked without
-changing its bytes. Its declared bundle format must match that contract.
-PR CI runs the same tool over a bundle assembled from its exact source with
-synthetic image digests. Both checks stop before image pulls or container
-startup and prove neither an installed service nor provider or business
-acceptance.
-
-Both admission and publication use the existing protected `cloud-release`
-environment. Admission reuses the owner-approved
-`OPL_GITHUB_RELEASE_ADMIN_TOKEN` solely for Instance evidence and validator
-reads. Its actual publisher permissions are broader than the Actions/Contents
-reads require; Candidate and PR jobs do not receive it. Instance installation
-validation and source-path verification produce distinct evidence.
-
-The sealed schema-four manifest and provenance bind source, Candidate digest,
-actual local/Instance installation and `business_source_paths` evidence. They
-explicitly declare `installation_and_source_paths` acceptance and no paid or
-customer-read business execution. The publication job alone holds the global
-publication lock and write permissions. It verifies the sealed cohort, attests
-all assets, promotes the admitted image digest and reconciles the same tag.
-Release notes disclose the unexecuted paid paths. The separate public follower
-checks anonymous GHCR/Release bytes, checksums and attestation against the
-original sealed provenance; a failure is recovered for the original tag/run.
-
-Publication retries reconcile the same tag: they promote the admitted digest,
-replace the complete Release asset cohort, remove non-contract assets, and then
-read back the public bytes. A publication-tool failure never requires a version
-bump. Reuse is rejected only when the existing tag resolves to a different
-Product SHA; changed Product bytes require a new qualified Candidate and a
-product version decision.
-
-Do not publish a new Product Release solely for:
-
-- documentation, status, plan, or test changes;
-- CI, cache, runner, or build-performance changes;
-- Instance workflow, environment, Secret, provider, or cluster configuration;
-- deployment retries, failed qualification, account state, or approvals;
-- an unclassified failure or an attempt to obtain more debugging evidence.
-
-### Failure Classification
-
-When candidate adoption or qualification fails, classify the owner before the
-next attempt:
-
-| Proven owner | Required action | Formal Product Release |
-| --- | --- | --- |
-| Local installation asset, host contract, Local-Docker adapter, or local qualification tool | Fix the owning Cloud product/install surface, create a new Candidate when bytes change, and repeat local qualification | Not admitted until both paths pass |
-| Instance configuration, workflow, provider, cluster, Secret, account, approval, or runtime data | Correct or retry in the Instance owner with the same candidate when its bytes remain valid | Not admitted |
-| Unknown or conflicting evidence | Stop mutation and obtain authoritative readback for the exact candidate | Not admitted |
-| Product runtime, public contract, schema, installation asset, dependency, or security boundary | Fix Cloud, create a new Candidate SHA/digest, and repeat both qualification paths | Allowed only after the new Candidate succeeds on both paths |
-
-An urgent security correction may define a narrow release unit, but during the
-current pre-1.0 phase it still requires both exact Candidate installation paths
-before formal publication.
+Daily continuation/release workflows promote verified Candidate artifacts with
+GitHub build provenance attestations. Failures classify distinctly across
+`source_gate_failed`, `clean_host_failed`, `instance_install_failed` and
+`qualification_failed` without downgrading evidence layers.

@@ -39,7 +39,7 @@ the retained Control Plane projection. The identity-specific DTO validator
 refuses the other owner's projection in both directions. Cloud access uses the
 owner's returned URL and facts; the root passes no cloud Workspace to retained
 credential, deletion, renewal, budget or application-installation controllers.
-Missing owner maintenance routes remain a [roadmap gap](../roadmap.md#cloud-identity-customer-workspace-read-2026-09-30).
+Missing owner maintenance routes remain a [roadmap gap](../roadmap.md#workspace-key-and-customer-read-boundaries).
 
 Gateway Account Read's wallet projection follows the same baked identity as the
 reader: a cloud build commits the Gateway owner's envelope, a legacy build the
@@ -53,11 +53,14 @@ wallet/catalog read is a separate caller and does not go through Gateway Account
 Read. The package pricing catalog and preview are withdrawn: the Control Plane
 publishes no current price and no preview, the cloud launch surface prices
 through the Resource Catalog quote, and the legacy launch surface presents an
-accepted operation's own terms. The exact
-caller, owner, route and transitional status for every customer read is the
-[Console customer read inventory (#840)](./840-console-customer-reads.md); this
-composition does not prove that a deployment exposes or authorizes any retained
-API for a CloudIdentity session.
+accepted operation's own terms.
+
+### Identity Fences & Transitional Customer Reads
+
+- **Build-time Identity**: `VITE_CONSOLE_IDENTITY` is immutable per build (`cloud` → BFF `/api/v2/*`; `legacy` → retained `/api/*`); there is never runtime identity switching, cookie translation or catch-and-retry fallback to the alternate owner.
+- **Envelope Guard**: Responses commit only when `source` matches the active caller (`gateway`, `sub2api`, `control_plane`/`ledger`, `workspace`). Missing/unavailable owners surface explicit `{ status: "unavailable", available: false }` envelopes rather than zeroed values.
+- **Transitional Reads**: Gateway Key CRUD/balance-history (delegated custody), legacy billing receipts/settlement trend (Control Plane/Ledger HTTP bridge) and announcements (Control Plane HTTP bridge) retain live CloudIdentity proof + reciprocal mapping checks until migrated in [roadmap](../roadmap.md#workspace-key-and-customer-read-boundaries).
+- **Retained-Only Routes**: Legacy Workspace renewal, runtime-status, Gateway-budget and launch list/detail routes have no `cloud` caller.
 
 A response commits only for its current Session, route, request generation and
 selected identity. Pagination parameters and source identity must match.

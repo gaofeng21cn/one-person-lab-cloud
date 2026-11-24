@@ -21,7 +21,7 @@ Account starts at zero balance, and registration performs no purchase or Fabric
 mutation. Each provisioned Workspace has its own launch identity, resources,
 entitlement and purchase Receipt, with at most one current application selection.
 The
-[September 29 decision](../decisions.md#2026-09-29-default-opl-app-and-optional-agent-on-one-tencenttke-delivery-path)
+[application model decision](../decisions.md#default-opl-app-and-optional-agent-delivery)
 owns the default-App/optional-Agent target. Retained Control Plane Launches and
 resource-only orders keep their original contracts; their current callers and
 the cloud-identity implementation are mapped in
@@ -65,7 +65,7 @@ entry may additionally require a Cloud account. Application login is not a
 universal provisioning or deployment requirement.
 The retained Control Plane source exposes the OPL App credential and image
 controls described below; complete owner-backed maintenance is an
-[open outcome](../roadmap.md#workspace-application-decoupling).
+[open outcome](../roadmap.md).
 
 ## Owner Surface
 

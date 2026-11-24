@@ -63,11 +63,9 @@ portable control stack. The current deployment-unit inventory belongs to
 docker compose --env-file deploy/portable/opl-cloud.env.example config --quiet
 ```
 
-For an actual installation, use only the assets from one GitHub Release and
-replace the template values as described in
-[installation.md](docs/installation.md). The only public Release, `v0.1.7`, has
-five assets. The current source Candidate format has ten and must not be mixed
-with it. A healthy Compose stack proves only that the Cloud control services
+For an actual installation, use only the assets from one GitHub Release (`v0.1.8`
+for the current public release, or a current Candidate bundle) and replace template values as described in
+[installation.md](docs/installation.md). Do not mix assets across releases. A healthy Compose stack proves only that the Cloud control services
 start; it does not by itself prove Workspace create, readback, access, and
 delete through the Local-Docker provider.
 
@@ -95,7 +93,7 @@ receipts to this repository.
 
 ## Ordinary Pull Request Flow
 
-The [2026-10-13 decision](docs/decisions.md#2026-10-13-ordinary-source-development-uses-git-scope-and-current-ci)
+The [ordinary development policy](docs/decisions.md#ordinary-source-development-and-ci)
 sets the default for ordinary source maintenance:
 
 1. Establish the verified Git base and actual change scope, then identify the

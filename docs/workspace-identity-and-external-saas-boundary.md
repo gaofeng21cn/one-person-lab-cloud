@@ -52,7 +52,7 @@ Workspaces and routes external access through its Agent Edge.
 
 ## Workspace Application Selection
 
-The adopted [application decision](decisions.md#2026-09-29-default-opl-app-and-optional-agent-on-one-tencenttke-delivery-path)
+The adopted [application decision](decisions.md#default-opl-app-and-optional-agent-delivery)
 preserves Workspace cardinality: one account may own many independent
 Workspaces. New delivery selects default OPL App/native UI or an optional built
 Agent. A Workspace has at most one current application selection; replacement

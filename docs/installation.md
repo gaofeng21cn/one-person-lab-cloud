@@ -1,148 +1,55 @@
 # Install OPL Cloud
 
-## One-command install and update
+Download a complete portable **Release** or **Candidate** bundle from
+[GitHub Releases](https://github.com/gaofeng21cn/one-person-lab-cloud/releases)
+matching your target commit/tag and install from one bundle rather than mixing
+assets across versions.
 
-A current Candidate or Release is a complete Cloud bundle. Download all files from one bundle, then run:
+## Installation Preconditions
+
+Before pulling images or starting containers, `install.sh` checks two host
+requirements fail-closed:
+
+1. **Docker Compose v2 (`docker compose`)** capable of parsing the shipped
+   `compose.cloud.yaml` (standalone legacy `docker-compose` is unsupported).
+2. **Reachable External Sub2API Authority**: `OPL_SUB2API_BASE_URL` must resolve
+   and accept a TCP connection (skipped only under `--dry-run`). Sub2API
+   remains external to `compose.cloud.yaml`.
+
+## Standard One-Command Install & Update
 
 ```bash
-bash install.sh
-```
+# Download an admitted Release/Candidate bundle (example: current public Release v0.1.8 or newer)
+gh release download <tag> --repo gaofeng21cn/one-person-lab-cloud --dir opl-cloud-bundle
+cd opl-cloud-bundle
 
-The installer stores configuration, generated secrets, mTLS certificates and persistent data in a separate `opl-cloud/` directory. The downloaded bundle can be removed after installation. On the first run it writes `opl-cloud/installation.json` and reports the installation facts that only the operator can supply. Fill those values in that file and run the same command again.
+# Dry-run validation (verifies bundle SHA256SUMS, state & compose syntax)
+bash install.sh --dry-run
 
-The same command updates an existing installation. It reads the new bundle manifest, pins `OPL_CLOUD_IMAGE` and `OPL_RELEASE_SHA` to that bundle, preserves the existing installation state and data, pulls the new digest, starts the complete Cloud owner topology, and verifies actual container image identity, owner health and the Control Plane baked source revision. It never recreates the PostgreSQL volume or rotates an existing secret during an update.
-
-The shipped product topology is `compose.cloud.yaml`: PostgreSQL, the eleven Cloud owner processes and the same-origin proxy. It contains no qualification Sub2API fixture. Sub2API URL and credentials, Workspace domain, provider profile, storage root and schema inputs remain installation-owned facts. Local Docker is the supported one-command provider path; production TLS and external provider deployment remain Instance or operator responsibilities.
-
-For an explicit installation directory:
-
-```bash
+# First run generates opl-cloud/installation.json and prompts for operator fields
+# Fill Workspace domain, OPL_SUB2API_BASE_URL, provider profile & credentials, then re-run:
 bash install.sh --install-dir /srv/opl-cloud
 ```
 
-Use `--dry-run` to verify the bundle, derive state and Compose configuration without pulling images or starting containers.
+Re-running `bash install.sh` against an existing directory upgrades the stack
+to the bundle's pinned `OPL_CLOUD_IMAGE` digest and `OPL_RELEASE_SHA` while
+preserving PostgreSQL volumes and existing secrets.
 
+## Shipped Runtime Topology (`compose.cloud.yaml`)
 
-OPL Cloud publishes portable product artifacts; a concrete Instance owns its
-deployment, domain, Secrets, provider profile, rollback, and acceptance. Use
-one admitted Release and its own manifest, checksums and installation assets. Candidate construction and formal publication have distinct formats.
+- PostgreSQL 16 (isolated database and role pair per Cloud owner).
+- The 11 Cloud owner processes (`gateway-integration`, `capability`, `build`,
+  `runtime-control`, `resource-catalog`, `workspace`, `serve`, `control-plane`,
+  `fabric`, `ledger`, `console-bff`) plus same-origin proxy (`console-ui`).
+- Local Docker is the single-host installation provider (Linux host with ext4/XFS
+  project quotas required for full Workspace local execution). Production Tencent/TKE
+  deployments are owned by `opl-instance-medopl`.
 
-## Installation preconditions
-
-The installer reads two facts about the host before it pulls any image or starts
-any container, and it refuses to continue until both hold. Both refusals name
-the fact to change.
-
-**A Docker Compose that can read the published compose file.** The published
-`compose.cloud.yaml` is the installation surface, so the requirement is not a
-version number: the installed Docker Compose must be able to parse the file
-this bundle ships. The installer reads `docker compose version`, then parses
-`compose.cloud.yaml` with the resolved installation facts, before it generates
-the PKI, records the version it checked against or pulls anything. A Compose
-that cannot read the file is refused with the version the host has and the
-Compose parser's own complaint:
-
-```
-install.mjs: docker_compose_parse_failed
-The installed Docker Compose (2.24.3) cannot read the published compose file compose.cloud.yaml.
-The Compose parser reported: cannot override services.x.networks.opl-cloud-local-v2
-The published compose file uses the !override or !reset merge tags, and this Docker Compose does not apply them.
-Upgrade Docker Compose (https://docs.docker.com/compose/install/), then run this command again.
-```
-
-The requirement follows the file and not a floor. A published compose file
-that uses no syntax the installed Compose does not know is accepted by that
-Compose, and a file that does use it is refused; the installer never refuses a
-version for being old. Install the Compose v2 plugin from the
-[Docker Compose install guide](https://docs.docker.com/compose/install/); the
-installer drives `docker compose` and does not use the legacy standalone
-`docker-compose` binary. The version the installer checked against is printed
-on stdout and recorded in `opl-cloud/installation.json` as `composeVersion`.
-
-**A reachable Sub2API authority.** The installation's Sub2API authority is an
-external service. The shipped `compose.cloud.yaml` contains no Sub2API
-service, so `OPL_SUB2API_BASE_URL` must name an authority this machine can
-reach. Before it pulls, the installer resolves the host that URL names and
-opens a TCP connection to it. The probe sends no credential, asks no question
-and verifies no identity: only the host part of the URL is read, reported and
-stored. An authority that does not resolve, or does not accept the connection,
-is refused with the variable to change.
-
-The probe proves network reachability only. It does not prove that the
-configured administrator or user identity can log in; the first operator login
-remains the first proof of that. `--dry-run` verifies the bundle, the
-installation state and the Compose configuration, and it stays on this machine,
-so it does not contact the authority.
-
-## Public Product Release: v0.1.8
-
-Download [OPL Cloud v0.1.8](https://github.com/gaofeng21cn/one-person-lab-cloud/releases/tag/v0.1.8).
-The stable Release binds Product source `5e3d58dc2897648a01aa298dfa77bb02c3615aea` and the Linux
-amd64/arm64 image index `sha256:411b9948b0701c44525abedfec20d2ed2f651b25e48c8e88334cc6badf40c2c1`. Its ten assets are:
-
-- `compose.yaml` and the three `compose.deployment-*.yaml` overlays;
-- `compose.fabric-local-docker.yaml` and `compose.fabric-tencent-tke.yaml`;
-- `compose.local-workspace.yaml`, `opl-cloud.env.example`,
-  `opl-cloud-release.json` and `SHA256SUMS`.
-
-This Release predates the bundle's own installer, so it is installed with the
-Compose steps under [Install without the installer](#install-without-the-installer).
-The current source carries one more asset, `install.sh`, and installs with one
-command.
-
-The schema-four manifest records actual clean-host Local-Docker lifecycle and
-independent Instance installation evidence, plus exact-source CI and business
-entry-path hashes. Paid business operations and customer-read acceptance were
-not executed for this release. The public assets, immutable image digest and
-GitHub attestation were independently read back after publication.
-
-### Download and verify
-
-Download all assets from the same Release. With GitHub CLI:
+## Manual Compose Install (Bundles Without `install.sh`)
 
 ```bash
-gh release download v0.1.8 --repo gaofeng21cn/one-person-lab-cloud --dir opl-cloud-v0.1.8
-cd opl-cloud-v0.1.8
-```
-
-### Install
-
-The current bundle carries its own installer. It checks every file against the
-bundle's `SHA256SUMS`, refuses a file the checksum manifest does not name,
-and reads the image digest and the product revision from the bundle's own
-manifest:
-
-```bash
-bash install.sh
-```
-
-The first run writes the environment file and reports the facts only you can
-supply: a Workspace hostname, the Sub2API authority, the Workspace image and
-the deployment-owned provider profile. Fill them in the file the installer
-names and run the same command again. The second run pulls the images and
-starts the stack.
-
-Every secret the installation owns is generated by the installer, and the image
-that runs is the immutable digest the release names. Nothing is typed twice.
-
-### Install without the installer
-
-A Release that carries no `install.sh` — v0.1.8, for instance — is installed by
-driving Compose yourself. The steps are the ones the installer performs:
-
-```bash
-if command -v sha256sum >/dev/null; then
-  sha256sum --check --strict SHA256SUMS
-else
-  shasum -a 256 -c SHA256SUMS
-fi
-```
-
-Create `.env` from this Release's environment template and replace every
-placeholder with installation-owned values. Select one deployment overlay and
-one Fabric overlay. For the platform-owned Local-Docker profile:
-
-```bash
+sha256sum --check --strict SHA256SUMS   # or: shasum -a 256 -c SHA256SUMS
+cp opl-cloud.env.example .env           # fill installation-owned values
 docker compose --env-file .env -f compose.yaml \
   -f compose.deployment-platform-owned.yaml \
   -f compose.fabric-local-docker.yaml -f compose.local-workspace.yaml pull
@@ -151,339 +58,10 @@ docker compose --env-file .env -f compose.yaml \
   -f compose.fabric-local-docker.yaml -f compose.local-workspace.yaml up -d
 ```
 
-This portable base profile installs PostgreSQL, Control Plane, Fabric and Ledger.
-The complete owner-backed installation additionally supplies the processes,
-stores, peer identities and routes declared by the topology contract. The exact
-source includes the [published installation surface](../deploy/portable/compose.cloud.yaml),
-which the clean-host qualification starts, together with the repository-only
-[qualification overlay](../deploy/portable/compose.local-qualification.yaml) that
-supplies the Sub2API authority fixture. That overlay stays in the repository
-and is not part of the release bundle. The native Local-v2 topology is no
-longer started by any run path; Instance supplies its own concrete manifests,
-protected Secrets, domains and deployment approval.
+## Kubernetes Admission & Rollback
 
-The previous [v0.1.7](https://github.com/gaofeng21cn/one-person-lab-cloud/releases/tag/v0.1.7)
-has its historical five-file format. Use each version's own files and manifest.
-
-## Current Distribution Formats
-
-Current source constructs a Candidate with ten portable assets plus
-`opl-cloud-candidate.json` and `SHA256SUMS`: one base Compose file, three
-deployment overlays, two Fabric overlays, one Local-Workspace overlay, an
-environment template, `opl-cloud-owner-topology.json` and `install.sh`. The Candidate receipt
-contract and builder own this exact set. The Product Release promotes nine
-installation assets plus
-`opl-cloud-release.json` and `SHA256SUMS`. The Candidate topology contract stays
-in its Candidate bundle; it is not an additional public Release asset.
-Deployment mode and Fabric provider are independent selections. Pair the base
-`compose.yaml` with the selected deployment overlay and exactly one Fabric
-overlay: `compose.fabric-local-docker.yaml` or `compose.fabric-tencent-tke.yaml`.
-The current `compose.local-workspace.yaml` enables Workspace workers and supplies
-local PostgreSQL storage; it does not select a Fabric provider or replace its
-overlay.
-
-Create `.env` from the same Release or Candidate bundle's `opl-cloud.env.example`. For
-source development, its source is `deploy/portable/opl-cloud.env.example`; the
-root `.env.example` is not a replacement. Compose uses `.env` for interpolation;
-a value there is not automatically passed into a service container. The current
-base file does not forward `OPL_FABRIC_PROVIDER`; the selected Fabric overlay
-sets it and supplies the provider configuration and mounts. Current Fabric
-rejects an absent provider with `OPL_FABRIC_PROVIDER is required`. On a clean
-Compose startup, this prevents Control Plane from starting because it depends
-on Fabric being healthy. This current-source requirement does not apply to the
-historical `v0.1.7` base file.
-
-Fabric's `/healthz` is a liveness check, while `/fabric/readiness` calls the
-provider's readiness checks. The Local-Docker provider validates its Secret
-root, storage root and provider profile, and readiness reports those validation
-errors. It also requires Workspace storage on a dedicated ext4/XFS mount with
-project quota enabled and rejects unsupported layouts before Launch mutation.
-These configuration and health checks do not establish Candidate qualification;
-see [Candidate Qualification](runtime/release.md#candidate-qualification).
-
-The retained Compose services are Control Plane, Fabric and Ledger. The product
-image also carries Console BFF and the extracted
-domain-owner executables, but the base profile does not install them. A conforming
-owner-backed installation materializes the addresses, databases, peer identities,
-required variables and browser HTTP surfaces declared by
-`opl-cloud-owner-topology.json`. The Instance owner supplies its concrete
-manifest, Secrets and certificates.
-
-For an owner-backed installation, Gateway Integration requires both its Tenant
-and Gateway databases. Set `OPL_TENANT_DATABASE_URL` for CloudIdentity and
-`OPL_GATEWAY_DATABASE_URL` for Gateway. These must identify distinct databases
-with their own writer roles and connection pools; changing only DSN formatting
-does not provide isolation. Login and live-session validation consume the
-Gateway store for the User↔Sub2API User and User↔OCI Destination mappings, so
-Gateway DB is required even when settlement and Key operations are not selected
-for development. Supply these values through the installation's protected
-configuration. This requirement does not change the historical v0.1.7 installation contract or establish that an Instance has adopted the source change.
-
-Fabric keeps its HTTP provider bridge and owner RPC boundary in the same process.
-The optional RPC surface uses `OPL_FABRIC_ADDR` (default `:8187`),
-`OPL_FABRIC_DATABASE_URL` and `OPL_FABRIC_PEER_TOKENS`. Its template admits the
-actual Workspace, Serve and Tenant transport principals; method-level guards
-still decide which of those peers may perform each operation. Installation must
-configure the RPC peer tokens separately from the HTTP service token.
-
-Console identity is an image-level fact: `VITE_CONSOLE_IDENTITY` is a build
-argument with default `legacy`, recorded by the image label
-`opl.cloud.console-identity`. `legacy` uses the retained Control Plane APIs;
-`cloud` uses Console BFF for authentication, Workspace, Publisher and delivery,
-while shared Gateway/Billing and other unmigrated panels retain Control Plane
-APIs. A runtime environment variable cannot change that baked bundle. Owner
-binaries alone do not prove that the selected APIs are routed or ready. See the
-[current request map](implementation-architecture.md#request-path).
-
-The installation model has three separate axes: `OPL_DEPLOYMENT_MODE` is the
-deployment-owner value (`platform_owned`, `managed_tke`, or `customer_owned`),
-`OPL_FABRIC_PROVIDER` is the execution provider (`local-docker` or
-`tencent-tke`), and the `admin`/`customer` surface is derived from login and
-Console routing. Customer Console does not select a provider. The current
-`managed_tke` path is paired with `tencent-tke`; `managed_tke` with
-`local-docker` is rejected, while `platform_owned` with `local-docker` remains
-qualification-only.
-
-`compose.fabric-tencent-tke.yaml` forwards Fabric every installation fact its
-Tencent provider validates or reports: `OPL_WORKSPACE_DOMAIN`,
-`OPL_CLOUD_IMAGE`, `OPL_WORKSPACE_IMAGE`, `OPL_K8S_NAMESPACE`,
-`OPL_IMAGE_PULL_SECRET_NAME`, `OPL_WORKSPACE_STORAGE_CLASS`,
-`OPL_TENCENT_PROVISIONER_BIN`, `TENCENT_DEPLOY_KUBECONFIG_REF` and
-`RUN_TENCENT_CREATE_RELEASE_EXECUTION`. It also mounts the TKE deploy
-kubeconfig read-only from `TENCENT_DEPLOY_KUBECONFIG_HOST_PATH` to
-`TENCENT_DEPLOY_KUBECONFIG_REF`, because Fabric is the only process that holds
-the cluster credentials. `RUN_TENCENT_CREATE_RELEASE_EXECUTION=1` is the
-provisioner's explicit live-mutation opt-in; `0` keeps an installation
-read-only.
-
-Five further facts protect the installation's own system node:
-`OPL_SYSTEM_COMPUTE_NODE_POOL_ID`, `OPL_SYSTEM_COMPUTE_MACHINE_ID`,
-`OPL_SYSTEM_COMPUTE_NODE_NAME`, `OPL_SYSTEM_COMPUTE_MACHINE_TYPE` and
-`OPL_SYSTEM_COMPUTE_CVM_ID`. Fabric's protected-resource guard refuses every
-mutating `kubectl` action unless they identify that node, so the overlay
-requires them and the environment template declares them. The same names are
-validated by `services/control-plane/ops/production-manifest.ts`.
-
-`OPL_WORKSPACE_APPLICATION_DOMAIN` is the installer's own per-binding
-application-origin domain; the base Compose forwards it to the Control Plane,
-and leaving it empty publishes no application origins rather than an address
-that cannot resolve.
-
-A Candidate is not a Product Release. Its files are admitted and qualified as
-one checksum-bound set from one exact Cloud SHA and image digest. Candidate
-construction admits the workflow's allowed branch refs; formal publication
-requires the exact source to be merged into canonical `main`. The
-Instance owner supplies the domain, provider profile, immutable Workspace image
-catalog, production Secrets, deployment, rollback, and receipts. Only after the
-same Candidate bytes pass the required Local and Instance qualification may an
-authorized publisher promote those bytes without rebuilding them.
-The [October 15 ownership decision](decisions.md#2026-10-15-workspace-key-lifecycle-and-cloud-customer-reads)
-separates Instance installation evidence from Cloud-owned product qualification.
-[Release operations](runtime/release.md) owns the admitted local receipt versions
-and the remaining protected execution and evidence requirements.
-Installing Cloud does not authorize customer business operations.
-
-No public successor currently contains this format. For current source
-development and qualification, use the repository-owned tooling and
-[developer guide](../DEV_GUIDE.md); do not present a locally generated Candidate
-as a public Release.
-
-## Kubernetes Installation Admission CLI
-
-From the exact Product checkout matching the installation, validate the full
-Kubernetes `v1/List`, including Deployments, Services, NetworkPolicies and referenced
-ConfigMaps. When validating a live installation, also supply Pods, ReplicaSets,
-other workload controllers, Endpoints and EndpointSlices from that same namespace.
-Preserve their live UIDs, controller references, Pod IPs and endpoint targetRefs:
-
-```bash
-node /path/to/exact-product/tools/validate-production-manifest.ts \
-  --installation-manifest installation-bound.json > installation-report.json
-```
-
-The Instance renderer must bind the approved namespace before this call. This
-entry performs local manifest analysis; it neither resolves live cluster DNS nor
-reads Secrets or connects to private endpoints. The existing `--manifest` mode
-retains its production-environment validation behavior.
-
-`deploy/portable/opl-cloud-owner-topology.json` owns the explicit owner RPC edges,
-transport principals, activation requirements and token minimum length. Gateway's
-transport principal is `tenant`; BFF is `console_bff`. The declarations cover the
-BFF owner clients, shared CloudIdentity authorizer, owner coordination/readback
-clients, Build's additional `OPL_TENANT_TOKEN` call at the CloudIdentity address,
-and Serve's distinct Fabric coordination address/token. Configured optional edges
-are checked without making unrelated provider/profile variables mandatory.
-Retained HTTP transports, including variables not consumed by this checkout's
-BFF, are outside this owner-RPC contract.
-
-The report has `ok`, fixed-code `errors` and `communication`. Successful
-`communication.edges` contain `caller`, `target`, `addressEnv`, `tokenEnv`,
-`callerDeployment`, `targetDeployment`, `port`, `tokenRef: {name,key}`,
-`peerRef: {name,key}`, `serviceRef: {name,namespace}`, `ingressPolicies` and
-`egressPolicies`. The Service reference is resolved by Product after applying the
-caller's declared address semantics; installers consume that identity directly
-instead of parsing addresses a second time. `port` is the
-resolved target container TCP port, after Service `port`/`targetPort` mapping.
-`peerRef` comes from the actual target container's declared peer-token environment.
-Policy arrays identify selecting policies; they do not assert policy ownership.
-`communication.security.tokenMinimumLength` is mandatory (currently 32), so a
-protected executor can validate Secret contents without inventing Product policy.
-The executor must reject missing/invalid security requirements, short tokens,
-missing caller principals and token mismatches; the CLI itself checks references
-and never reads Secret contents.
-
-Service process recognition requires the declared long-running binary entrypoint;
-probe arguments do not establish a running service. A Pod cannot declare another
-listener for the target TCP port, including a restartable init container or a
-known Product process. Generated replicas are accepted only through the exact
-Pod-to-ReplicaSet-to-Deployment controller UID chain. Every supplied endpoint
-must identify an owned Pod, its observed address and the target port; an
-EndpointSlice must also belong to the exact Service UID. Unmanaged Pods and other
-workload producers sharing the Service selector are refused. The live target
-container must exist uniquely and retain its revision's process entrypoint.
-Other Pod and container fields are not compared for equality with the ReplicaSet
-template: Kubernetes admission may add or change resources, probes, mounts,
-environment entries and scheduling settings. The executor verifies the running
-Candidate's image identity and required process configuration separately. These
-are checks of supplied declarations and inventory, not an observation of live
-connectivity or proof of all live Pod configuration.
-
-An endpoint object that publishes no address is admitted, not refused: it cannot
-deliver traffic to any Pod, so it cannot hand the Service to another workload and
-it proves nothing about the target Deployment. This is the state of a Service
-whose Pods are crash-looping, mid-rollout or scaled to zero, and the Deploy that
-creates those Pods is the only repair, so refusing admission until they exist
-would make the fault permanent. A legacy `Endpoints` publishes an address through
-`subsets[].addresses`, or through `subsets[].notReadyAddresses` when the Service
-sets `publishNotReadyAddresses`; an `EndpointSlice` publishes an address through
-an `endpoints[]` entry that is serviceable. When neither holds — empty or absent
-`subsets`/`endpoints`, references that are not ready and not published, or no
-serviceable `EndpointSlice` condition — the endpoint proof has nothing to prove.
-The obligation applies to what the object does publish: every listed `Endpoints`
-entry (including a not-ready entry the Service does not publish) and every
-`EndpointSlice` entry is still resolved against its Pod, and a non-empty set that
-cannot prove its ownership is still refused with the reason codes below. The
-Service selector's own ownership proof is unchanged, so a Service that selects
-another workload's Pods still fails closed even when its endpoint object is empty.
-
-The CLI proves Service selection, the target listener, non-optional Secret
-references, target ingress admission and caller egress admission when egress is
-isolated. It evaluates additive policies, selector conjunction, namespace facts,
-named ports and ranges. An absent/empty listener uses the Product-declared
-`defaultAddress` or `defaultRPCAddress`; an explicit invalid value is refused.
-Same ports in different Pods are valid. Same-Deployment Service calls still need
-policy proof because a Service can route to another replica. ConfigMap `envFrom`
-and relevant `configMapKeyRef` values are resolved from the List in Kubernetes
-precedence order; explicit env overrides imported ConfigMap data. Unrelated
-profile placeholders are not rendered or printed.
-
-This report format supports one Product namespace and one provable Deployment
-per transport principal. Ambiguous Service backends, opaque Secret `envFrom`,
-declared host networking, arbitrary IP targets and policies whose required namespace/IP
-facts cannot be proved are refused. A non-isolated ingress is refused rather than
-reported as protected closure. This is manifest-level communication admission,
-not live CNI enforcement, certificate validity, application health or business
-qualification evidence.
-
-Successful admission exits 0. Failure exits 1 with no executable edges; stdout
-remains JSON and stderr contains `installation_manifest_invalid`. Values of
-addresses, tokens and profiles are omitted. Input errors still include the Product
-security requirement; an unreadable/invalid Product security contract instead
-returns `security: null`, an error and no edges, which must never be executed.
-
-### Endpoint-proof rejection reason codes
-
-Every error carries a fixed `code`; errors whose cause is not implied by the code
-also carry a `reasonCode`. The Instance relays that symbol verbatim in its
-rejection receipt, so it is the operator's only description of a refused edge
-when the cluster credential stays on the Instance runner. `rpc_service_backend_ambiguous`
-uses these reason codes. An endpoint object that publishes no address is not
-reported here; it is admitted, so no symbol names that state:
-
-| `reasonCode` | Operator-facing meaning |
-| --- | --- |
-| `listener_unproven` | Another process in the target Pod may bind the target port and its listener cannot be resolved from the manifest. |
-| `listener_conflict` | Another process in the target Pod binds the target port. |
-| `service_backend_owner` | A selector-matching workload object is owned by a different live Deployment, or is a workload producer that this Deployment does not own; the Service selects another owner's Pods. |
-| `pod_owner_chain_unproven` | A Pod's ReplicaSet resolves, but that ReplicaSet's Deployment owner reference is stale, missing, ambiguous, or names no live Deployment; the same applies to a selector-matching ReplicaSet backend. Repair the Deployment/ReplicaSet chain, not the Service. A Pod whose ReplicaSet itself cannot be resolved is reported as `endpoint_pod_replicaset_unresolved`. |
-| `endpoint_pod_absent` | An endpoint's `targetRef` names a Pod that is absent from the live read, for example an endpoint left behind by a previous rollout. |
-| `endpoint_port_mismatch` | The endpoint publishes a port whose name or number does not match the Service port the caller addresses. |
-| `endpoint_port_unpublished` | The endpoint object publishes no ports at all. |
-| `endpoint_pod_selector_mismatch` | The endpoint's Pod exists but its labels no longer match the Service `selector`. |
-| `endpoint_target_invalid` | The endpoint `targetRef` is not a `v1` Pod reference. |
-| `endpoint_target_unidentified` | The endpoint `targetRef` carries no Pod UID. |
-| `endpoint_target_namespace_mismatch` | The endpoint `targetRef` names a Pod in another namespace. |
-| `endpoint_address_invalid` | An endpoint address is missing, empty or not an IP address. |
-| `endpoint_address_mismatch` | An endpoint address is not one of the Pod's observed `status.podIP`/`podIPs` addresses. |
-| `endpoint_address_family_mismatch` | An EndpointSlice address does not match its declared `addressType`. |
-| `endpoint_slice_owner_mismatch` | An EndpointSlice is not controlled by the exact Service UID. |
-| `endpoint_slice_shape_invalid` | An EndpointSlice has an unsupported API version or address type. |
-| `endpoint_shape_invalid` | An Endpoints object or subset has a malformed shape. |
-| `endpoint_pod_shape_unproven` | The endpoint's Pod does not carry valid container declarations. |
-| `endpoint_pod_replicaset_unresolved` | The Pod's ReplicaSet controller cannot be resolved (missing, ambiguous, or stale UID), or the resolved ReplicaSet carries no `spec.template.spec`. The proof cannot resolve the process entrypoint from its revision, so repair the Pod/ReplicaSet chain first. |
-| `endpoint_pod_template_containers_invalid` | The ReplicaSet template's `containers` list is missing, empty, malformed, or contains duplicate names. |
-| `endpoint_pod_template_init_containers_invalid` | The ReplicaSet template's `initContainers` list is malformed or contains duplicate names. |
-| `endpoint_pod_container_mismatch` | The target container name does not resolve uniquely in both the live Pod and its ReplicaSet template. |
-| `endpoint_pod_command_mismatch` | The live target container's argv is unresolved or differs from its ReplicaSet revision's process entrypoint. |
-| `endpoint_pod_port_conflict` | Another live container in the Pod publishes the target port. |
-| `endpoint_pod_listener_unproven` | Another live Product process in the Pod may bind the target port and its listener cannot be proven. |
-| `endpoint_pod_ip_absent` | The endpoint's Pod has no valid `status.podIP`. |
-| `endpoint_pod_ip_invalid` | The endpoint's Pod has a malformed `status.podIPs` list. |
-
-A symbol is added only together with its operator-facing meaning here; admission
-itself never branches on which symbol it emits.
-
-## Local Qualification Fixture
-
-`deploy/portable/compose.local-qualification.yaml` runs the repository-owned
-Sub2API authority fixture, so a Local installation can be qualified without an
-external wallet backend. The fixture serves one qualification user and one
-optional qualification admin, including the delegated identity read that
-`customer_owned` requires. Both deployment modes can therefore be qualified
-against it:
-
-- `platform_owned` and `managed_tke` authenticate with
-  `OPL_SUB2API_ADMIN_EMAIL` / `OPL_SUB2API_ADMIN_PASSWORD`.
-- `customer_owned` additionally requires `OPL_SUB2API_USER_EMAIL` /
-  `OPL_SUB2API_USER_PASSWORD` and signs in as that configured user.
-
-The fixture is qualification-only. It carries no real balance authority, holds
-no production credential, and keeps its state in the
-`opl-qualification-sub2api` volume.
-
-## Local Qualification Fixture Balance Envelope
-
-`deploy/portable/compose.local-qualification.yaml` runs the repository-owned
-Sub2API authority fixture so a Local installation can be qualified without an
-external wallet backend. The fixture models one qualification run rather than a
-general wallet: its state file holds **one debit and one refund**, each refused
-by name once used (`debit_identity_conflict` / `refund_identity_conflict`).
-
-The envelope is deliberate. It is what makes a second charge under a different
-code impossible to mistake for a missing one, which is the property a
-qualification run must be able to prove. A repeat of the *same* code replays
-idempotently instead of charging again.
-
-Consequences an operator must plan for:
-
-- A qualification run consumes the envelope. `OPL_QUALIFICATION_STATE_PATH` is
-  the reset boundary: start a fresh run from a fresh state file rather than
-  retrying the dispatch that was refused.
-- Scenarios that need a second debit against the same state file — a second
-  Workspace purchase, or a monthly renewal — are outside the fixture's envelope.
-  Qualify those against a live authority instead.
-- `customer_owned` installations do not debit resource charges at all, so the
-  envelope does not constrain them.
-
-## Upgrade and Rollback
-
-For an admitted Product Release, set `OPL_CLOUD_IMAGE` to the immutable digest
-in that Release manifest, then run `docker compose pull` and
-`docker compose up -d` with exactly that Release's files. Rollback uses the same
-procedure with another available admitted Release. Confirm schema/data compatibility for the selected installation before a
-rollback; published historical bytes alone do not qualify that migration.
-Mutable `latest` and `stable` tags are not publication or rollback evidence.
-
-Serve application access requires the Workspace peer read: set
-`OPL_WORKSPACE_ADDR` and `OPL_WORKSPACE_TOKEN`, and include `serve` in
-`OPL_WORKSPACE_PEER_TOKENS`. An absent/unreadable verdict never permits a route.
+- Kubernetes installations enforce cluster endpoint proofs, admission CLI checks
+  and explicit Secret bindings owned by the target Instance repository.
+- Rollback re-runs deployment with the prior verified Release bundle manifest and
+  immutable image digest; PostgreSQL schema migrations are forward-compatible per
+  release policy.

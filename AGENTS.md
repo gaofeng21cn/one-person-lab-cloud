@@ -44,7 +44,7 @@ read the relevant sections rather than loading every linked document.
 
 | Task | Required reference |
 | --- | --- |
-| Change a module or its callers | [Target topology](docs/architecture.md#repository-and-instance-topology), [owner matrix](docs/spec/target/01_domain_ownership_matrix.md#2-领域分工与内部lane), and [current source/request map](docs/implementation-architecture.md) |
+| Change a module or its callers | [Target topology](docs/architecture.md#repository-and-instance-topology), [module & caller map](docs/implementation-architecture.md#physical-module-and-dependency-map), and [machine contracts](docs/spec/README.md) |
 | Change billing, Workspace, Fabric, Ledger, Gateway, deployment or E2E | Owning sections in [architecture](docs/architecture.md), [invariants](docs/invariants.md), and the current [machine contracts](packages/contracts/README.md) |
 | Resolve conflicting intent or evidence | [Decisions](docs/decisions.md), the owning source/contracts, relevant Git history and authoritative readback |
 | Change documentation | [Documentation hierarchy](docs/README.md) and [lifecycle policy](docs/policies/docs-lifecycle-policy.md) |

@@ -60,9 +60,9 @@ open the account Workspace list
 ```
 
 A provisioned Workspace may have no Agent. Default App uses its approved Runtime
-Release without a synthetic Package, BuildJob or CapabilityVersion. The
-[September 29 decision](decisions.md#2026-09-29-default-opl-app-and-optional-agent-on-one-tencenttke-delivery-path)
-owns that product selection. Workspace owns its identity, members,
+Release without a synthetic Package, BuildJob or CapabilityVersion, as captured in
+[workspace application model](decisions.md#default-opl-app-and-optional-agent-delivery).
+Resource plan upgrades/downgrades follow the [D17 settlement and lifecycle rules](invariants.md#plan-change-and-settlement-d17). Workspace owns its identity, members,
 entitlements, resource plan, lifecycle and authorization to target it. Capability
 owns uploaded Agent Package bytes and metadata even when upload begins in a Serve
 screen. Build fixes the selected Package, WebUI and Runtime-version inputs and
