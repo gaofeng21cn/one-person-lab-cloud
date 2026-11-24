@@ -1132,4 +1132,3 @@ func (s *memoryTableStore) ApplyWorkspaceResourceReconcile(_ context.Context, mu
 	}
 	return nil
 }
-
