@@ -620,12 +620,15 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
       postgresImage
     ]);
     waitFor(() => {
+      // The entrypoint's temporary server accepts socket connections during initialization.
+      // Probe the network listener that the backend will use after initialization.
       const databases = docker([
-        "exec", postgresName, "psql", "-U", "postgres", "-d", "postgres", "-Atqc",
+        "exec", "-e", `PGPASSWORD=${postgresPassword}`, postgresName,
+        "psql", "-w", "-h", postgresHost, "-U", "postgres", "-d", "postgres", "-Atqc",
         "select count(*) from pg_database where datname like 'opl_%'"
       ], false).stdout.trim();
       return databases === String(databaseOwners.length);
-    }, "the published database initialization did not create every owner database");
+    }, "the PostgreSQL network listener did not make every owner database reachable");
 
     // The owner binaries the contract declares run from the product image. The
     // composition entrypoint starts them, so the container runs the owner
