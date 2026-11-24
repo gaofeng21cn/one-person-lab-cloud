@@ -146,28 +146,6 @@ func (w *workspaceAppDeploySweepWorker) Work(ctx context.Context, _ *river.Job[W
 	return nil
 }
 
-type MonthlyBillingSweepJobArgs struct{}
-
-func (MonthlyBillingSweepJobArgs) Kind() string { return "control_plane.monthly_billing_sweep" }
-
-func (MonthlyBillingSweepJobArgs) InsertOpts() river.InsertOpts {
-	return river.InsertOpts{Queue: riverQueueMaintenance, MaxAttempts: 3, UniqueOpts: river.UniqueOpts{ByArgs: true, ByPeriod: 15 * time.Second}}
-}
-
-type monthlyBillingSweepWorker struct {
-	river.WorkerDefaults[MonthlyBillingSweepJobArgs]
-	app     *controlPlaneServer
-	service *controlplane.Service
-}
-
-func (w *monthlyBillingSweepWorker) Work(ctx context.Context, _ *river.Job[MonthlyBillingSweepJobArgs]) error {
-	if _, err := w.app.runMonthlyBillingSweep(ctx, w.service, time.Now().UTC()); err != nil {
-		log.Printf("monthly billing failed: %v", err)
-		return err
-	}
-	return nil
-}
-
 type ProviderReconcileSweepJobArgs struct{}
 
 func (ProviderReconcileSweepJobArgs) Kind() string { return "control_plane.provider_reconcile_sweep" }
@@ -219,18 +197,10 @@ func (app *controlPlaneServer) startRiverWorkers(ctx context.Context, service *c
 	river.AddWorker(workers, &workspaceLaunchJobWorker{app: app, service: service})
 	river.AddWorker(workers, &workspaceLaunchSweepWorker{app: app, pool: pool})
 	river.AddWorker(workers, &workspaceAppDeploySweepWorker{app: app, service: service})
-	river.AddWorker(workers, &monthlyBillingSweepWorker{app: app, service: service})
 	river.AddWorker(workers, &providerReconcileSweepWorker{app: app, service: service})
 	river.AddWorker(workers, &archiveRetentionSweepWorker{app: app})
 
 	var periodic []*river.PeriodicJob
-	if monthlyBillingWorkerEnabled() {
-		periodic = append(periodic, river.NewPeriodicJob(
-			river.PeriodicInterval(monthlyBillingWorkerInterval()),
-			func() (river.JobArgs, *river.InsertOpts) { return MonthlyBillingSweepJobArgs{}, nil },
-			&river.PeriodicJobOpts{RunOnStart: true},
-		))
-	}
 	if workspaceLaunchWorkerEnabled() {
 		interval := workspaceLaunchWorkerInterval()
 		periodic = append(periodic,
