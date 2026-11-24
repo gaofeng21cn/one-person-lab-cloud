@@ -10,7 +10,7 @@ Machine boundary: 面向用户的产品愿景源文，不持有服务实现、�
 > 让复杂知识工作跨越本机、私有数据、远端资源与对外服务，仍然保持连续、受控、可复查
 
 发布日期：2026-07-15
-最近修订：2026-09-30
+最近修订：2026-11-24
 
 适用对象：正在使用 AI 推进科研、基金、汇报、书籍或其他长期知识项目，希望沿用现有工作方式使用在线工作台、协作资源与远端计算，或者把成熟 Agent 能力提供给外部用户的个人、实验室和机构。
 
@@ -59,11 +59,11 @@ OPL Cloud 因此以五组用户矛盾为设计起点：
 用户在 OPL App 与 OPL Workspace 中沿着同一套项目、材料、任务、产物、审阅和下一步继续工作。OPL Cloud 把在线工作空间、资源连接、协作与服务治理自然接入这条工作链。
 
 从整个 OPL 生态看，`OPL Base`、`OPL App`、`OPL Packages` 和 `OPL Cloud`
-共同组成四层产品体系。Base 提供共同运行底座，App 提供统一工作台产品，
+共同组成四层产品体系。Base 提供共同运行底座，App 以极薄稳定的本地宿主承载全来源平权的插件生态与统一产品入口，
 Packages 提供专业能力，Cloud 提供账号、协作、在线 Workspace、远端资源和治理。
-OPL App 是用户统一的产品工作入口，Cloud 则按照项目场景动态接入在线 Workspace、
-远端资源、协作与治理能力。能力可以持续演进，用户面对的项目、材料、动作、结果和
-继续入口保持一致；账号、资源、费用与证据责任也不会因为产品演进而转移。
+Cloud 按照项目场景动态接入在线 Workspace、远端资源、协作与对外服务能力；
+本机设备的远程接入（如 OPL Link）仍由独立连接服务持有，外部 AI 网关继续保留身份、钱包余额、密钥、路由与用量的权威事实，Cloud 只做清晰映射与受控治理而不建立第二套账本。
+能力可以持续演进，用户面对的项目、材料、动作、结果和继续入口保持一致；账号、资源、费用与证据责任也不会因为产品演进而转移。
 
 ```text
 用户工作面        OPL App / OPL Workspace
@@ -113,7 +113,7 @@ OPL 使用一组跨产品的能力域来保持长期一致的语言：工作空�
 
 本机 OPL App 适合个人控制、敏感材料和日常编辑；在线 OPL Workspace 适合远程访问、协作和托管执行。两者共享同一套产品语言，分别承载同一工作模型在本机与云端的工作面。
 
-用户可以从本机开始，在需要在线访问或更强资源时选择合适的 Workspace，再把结果带回原项目。环境改变后，任务身份、材料引用、产物关系和继续入口仍然保留。Workspace 默认交付 OPL App 及其原生界面，也可以选择已构建的 Agent；默认 App 直接使用获准的 Runtime Release，不需要虚构 Package 或构建任务。一个 Workspace 至多有一个当前应用选择，交付状态由 Serve 持有；选择 Agent 时，API、Embed、Hosted UI 访问同一个当前 Agent，而不是另建一个与 Workspace 并列的 Agent Service。
+用户可以从本机开始，在需要在线访问或更强资源时选择合适的 Workspace，再把结果带回原项目。环境改变后，任务身份、材料引用、产物关系和继续入口仍然保留。每个在线 Workspace 拥有独立隔离的访问源与清晰的权益边界，开通、授权、升级、删除与退款收口均有明确归属与可复查证据。Workspace 默认交付 OPL App 及其原生界面，也可以选择已构建的 Agent；默认 App 直接使用获准的 Runtime Release，不需要虚构 Package 或构建任务。一个 Workspace 至多有一个当前应用选择，交付状态由 Serve 持有；选择 Agent 时，API、Embed、Hosted UI 访问同一个当前 Agent，而不是另建一个与 Workspace 并列的 Agent Service。
 
 ### 三、先形成计划，再授予资源权力
 
@@ -151,7 +151,9 @@ OPL Cloud 的能力按用户在一条工作链中遇到的问题组织。每个�
 
 ## 从成熟 Agent 到对外服务
 
-成熟 Agent 不只可以在个人工作台中使用，也可以通过 OPL Serve 交付到 Workspace，成为其他产品或团队可访问的服务。OPL Cloud 把“Package 内容”“构建产物”“Workspace 交付”和“一次具体调用”分开，让每一层都有清楚责任。Serve UI 可以作为上传入口，但 Agent Package 的字节、身份和元数据由 Capability 持有；Build 固定 Package、WebUI 和获准 Runtime 版本，生成不可变 OCI。Runtime Control 管理获准 Runtime 版本目录，不部署 Agent 实例；OPL App/Framework 的 Runtime 实现由其外部 Owner 提供。Serve 拥有每个 Workspace 唯一的 Agent 交付/当前状态；Workspace 拥有自身身份、成员、权益、资源计划和目标授权；Fabric 只负责基础设施资源的开通、绑定和资源状态读回。
+成熟 Agent 不只可以在个人工作台中使用，也可以通过 OPL Serve 交付到 Workspace，成为其他产品或团队可访问的服务。OPL Cloud 把“Package 内容”“构建产物”“获准运行基线”“Workspace 交付”和“基础设施资源”分开，让每一层都有清楚的单一责任方。
+
+具体而言，Serve UI 可作为上传入口，但 Agent Package 的字节、身份与元数据由 Capability 持有；Runtime Control 管理获准 Runtime 版本目录（OPL App 与 Framework 的 Runtime 实现继续由其外部 Owner 提供）；Build 固定 Package、WebUI 与获准 Runtime 版本，生成不可变 OCI；Workspace 校验身份、成员、权益与资源计划；Fabric 只负责基础设施资源的就绪校验、开通、绑定与状态读回；Serve 则唯一持有每个 Workspace 的当前 Agent 交付状态。
 
 ```text
 用户在 Serve 选择/上传 Agent Package
@@ -238,15 +240,17 @@ Fabric 连接获准资源，提交并监控任务。数据默认留在资源所�
 
 ### 版本可信
 
-用户能知道正在使用或发布的是哪一版能力，变化有清楚来源。Package、WebUI 和 Runtime 版本被固定进不可变 OCI；Workspace Agent 的交付状态由 Serve 唯一拥有，不由工作台、Workspace 和 Fabric 重复维护。
+用户能知道正在使用或发布的是哪一版能力，变化有清楚来源。Agent Package、WebUI 和 Runtime 版本被固定进不可变 OCI，Workspace Agent 的交付状态由 Serve 唯一拥有，不由工作台、Workspace 和 Fabric 重复维护。
+
+在平台交付层面，OPL Cloud 同样把“产品版本”与“部署环境”严格分离：经验证的产品源码与服务固化为摘要绑定的统一后端部署单元与便携候选包，具体机构或自有环境再通过独立的部署配置接入自有计算、存储、数据库与密钥管理，并在挂载私有资源前完成就绪校验。升级与回退始终围绕精确版本与显式环境配置展开，不依赖脆弱的手工拼装。
 
 ### 服务可信
 
-对外 Agent 服务有清楚身份、访问政策、运行状态和责任方。API、嵌入组件和托管界面遵循一致的访问、反馈与证据原则。
+对外 Agent 服务有清楚身份、访问政策、运行状态和责任方。API、嵌入组件和托管界面遵循一致的访问、反馈与证据原则，并沿用各自的权益校验与独立访问源边界。
 
 ### 结果可信
 
-运行证据交给领域审阅。Agent Package、WebUI 和 Runtime 版本被固定进 OCI；Workspace 的 Agent 由 Serve 统一交付并提供 API、Embed、Hosted UI 访问。最终质量、发布、提交或交付决定来自对应领域的专业 Agent 和必要的人类负责人。
+运行成功只说明获准计划已执行且输入输出可追溯，不自动代表专业结论成立。运行证据与产物交回领域审阅；最终质量、发布、提交或交付决定来自对应领域的专业 Agent 和必要的人类负责人。
 
 ### 接力可信
 
