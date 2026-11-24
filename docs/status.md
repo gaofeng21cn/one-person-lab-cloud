@@ -38,6 +38,13 @@ chronological snapshots.
     `services/control-plane/internal/server/workspace_delete.go` and
     `workspace_store.go` so historical rotated Workspaces can still be deleted
     safely.
+  - The Control Plane purchase-eligibility policy writer
+    (`POST /api/operator/accounts/{accountId}/workspace-purchase-eligibility`)
+    is retained: it is the only path that grants or revokes
+    `Account.WorkspacePurchaseEnabled` for an existing Account, and the native
+    Workspace owner gates every new purchase on the value it produces through
+    the Control Plane's `GET /internal/cloud/workspace-purchase-eligibility`
+    reader.
 - **What Remains Unproven Here**: Same-Candidate paid customer purchase
   execution on Tencent/TKE, J0 READY qualification bound to the latest
   Candidate, end-to-end custom Agent Package build-to-serve production delivery,

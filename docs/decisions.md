@@ -66,6 +66,25 @@ Git log.
   transitional Control Plane announcements/billing reads require live
   CloudIdentity proof and reciprocal subject bindings; CloudIdentity User
   delegated credentials never bypass Tenant/Role fences.
+- **Account Purchase-Eligibility Policy Ownership**: The retained Control Plane
+  operator endpoint
+  `POST /api/operator/accounts/{accountId}/workspace-purchase-eligibility`
+  (`services/control-plane/internal/server/routes_admin.go:126`) stays the only
+  path that can change `Account.WorkspacePurchaseEnabled` after an Account
+  exists; it commits the column and its audit event in one transaction through
+  `ApplyWorkspacePurchaseEligibility`
+  (`services/control-plane/internal/server/ent_state_store_identity.go:197`). The
+  native Workspace owner gates every new purchase on the value it produces
+  (`services/workspace/internal/launch/service.go:229` ->
+  `services/workspace/internal/launch/purchase_eligibility.go:87`) by reading the
+  Control Plane's `GET /internal/cloud/workspace-purchase-eligibility` reader
+  (`services/control-plane/internal/server/cloud_workspace_purchase_eligibility.go:15`);
+  no other owner has a writer for this fact. Removing the writer therefore
+  requires a two-sided owner/caller migration — an Account-policy writer in the
+  target topology plus the native Workspace consumer's read path — not a
+  writer-only deletion, and the shared read contract
+  `contracts.WorkspacePurchaseEligibility`
+  (`packages/contracts/go/workspace_provisioning.go:39`) stays.
 
 ## Non-Spending Publication & Incremental Retirement
 
