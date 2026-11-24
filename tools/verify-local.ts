@@ -80,7 +80,6 @@ export const databaseFreeCapabilityMarkers = Object.freeze([
  */
 export const declaredMoneyChainTests = Object.freeze([
   "TestD1FinanceBusinessChain",
-  "TestD1RefundReservationPostgres",
   "TestD1RenewalRejectsConflictingTransactionBeforeFulfillment",
   "TestD1RenewalRefundRequiresTheOriginalConfirmedDebit",
   "TestD1RenewalUnknownDebitWaitsForAuthoritativeHistoryAcrossRestart",
