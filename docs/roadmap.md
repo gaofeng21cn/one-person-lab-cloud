@@ -69,5 +69,10 @@ Plane / delegated process-local custody onto canonical domain owners:
      path. Deleting the writer alone would freeze
      `Account.WorkspacePurchaseEnabled` and keep gating new purchases on a
      stale fact.
+   - Preserve the retained deletion, refund, and renewal executors until their
+     live clients have migrated and a current owner census can distinguish
+     non-terminal operations from completed settlement. Include accepted
+     refunds that still need their first execution and renewals whose expiry
+     or Ledger settlement is incomplete.
 4. **Module & DB-Role Coverage**: Expand `tests/contracts/module-physical-boundaries.test.ts`
    and PostgreSQL role-isolation checks to cover every extracted service and Console BFF.

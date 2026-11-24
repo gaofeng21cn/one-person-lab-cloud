@@ -96,6 +96,12 @@ Git log.
 - **Consumer-First Path Retirement**: Legacy Control Plane writers, routes and
   tests are retired only after live callers move and persisted customer/financial
   obligations retain explicit dispositions.
+- **Lifecycle Execution Retirement Evidence**. Before removing the retained
+  deletion, refund, or renewal executors, migrate their live callers and use
+  an owner-scoped operation census to settle or transfer the obligations they
+  can still advance. The census must identify the relevant operation types and
+  the stage needed to determine terminality. A partial observation of the
+  current owner API leaves the disposition of unobserved obligations unknown.
 - **Retained Launch Executor**: The Control Plane continues accepted
   `workspace.launch.v2` operations carried forward from before the purchase
   cutover. Keep that execution path until those obligations complete or migrate.

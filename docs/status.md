@@ -48,6 +48,10 @@ chronological snapshots.
   - The native Workspace owner accepts new purchases. The Control Plane
     [Launch executor](implementation/workspace-launch-recovery.md) continues
     accepted operations carried forward from before the purchase cutover.
+  - A current-owner API observation established that retained lifecycle
+    operations can be enumerated. Its coverage was partial, and operation
+    identities and terminal phases still need a complete readback for the
+    deletion, refund, and renewal retirement evidence tracked in the roadmap.
 - **Retained Application Deployment**: The shared Control Plane worker advances
   accepted `workspace.application.deploy` children through predecessor
   suspension, activation and receipt. The source qualification covers retained
