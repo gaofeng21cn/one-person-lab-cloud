@@ -95,6 +95,6 @@ chronological snapshots.
   rows therefore stay unresolved (tracked in [roadmap.md](roadmap.md)).
   The withdrawn delete/refund executor was measured
   by source readback only: no live refund population was read, so the number of
-  unsettled refund reservations is unknown, and the R5 census rows that carry no
+  unsettled refund reservations is unknown, and the census rows that carry no
   action name stay unresolved until an Instance-side action-projection change
   produces a fresh observation. Source withdrawal is not installed adoption.
