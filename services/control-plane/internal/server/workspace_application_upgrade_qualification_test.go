@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -20,8 +18,14 @@ import (
 // `workspace.application.deploy` child for the selected application
 // generation. The rotation constructor and its rotation recovery are retired,
 // so the only way such a row exists today is an older release having written
-// it. These fixtures reproduce the persisted fields used by the retained
-// worker and drive it over that state.
+// it.
+//
+// The shared application deployment Worker that used to advance that child is
+// retired with the rest of the engine. What has to survive the retirement is
+// the read side: the retained decoders still read the carried-forward row with
+// the identities the older release wrote, and the retained consumers still see
+// the rotation that owns it. These fixtures seed exactly that pre-upgrade state
+// and prove the retained surface still sees it.
 const (
 	upgradeRotationOldKeyID  = int64(19)
 	upgradeRotationNewKeyID  = int64(27)
@@ -59,8 +63,7 @@ func (f *upgradeProviderFabric) ReadWorkspaceApplicationRuntimeCredentials(_ con
 	return contracts.WorkspaceApplicationRuntimeCredentials{RuntimeID: input.RuntimeID, WorkspaceID: input.WorkspaceID}, nil
 }
 
-// upgradeLedger records the deployment receipt so the qualification can prove
-// it carries the original operation identity.
+// upgradeLedger records the deployment receipt the retired worker wrote.
 type upgradeLedger struct {
 	fakeLedgerClient
 	receipts []clients.ReceiptInput
@@ -87,12 +90,12 @@ type upgradeQualificationFixture struct {
 	before   map[string]any
 }
 
-// seedUpgradeQualificationFixture models the v0.1.8 child constructor and its
-// accepted rotation parent, bound to its runtime and carrying the child it
+// seedUpgradeQualificationFixture reproduces the v0.1.8 child constructor
+// field for field. The rotation parent is persisted in the state v0.1.8 left
+// it: accepted, bound to its runtime, and still carrying the child it
 // claimed.
 func seedUpgradeQualificationFixture(t *testing.T, store controlPlaneTableStore) upgradeQualificationFixture {
 	t.Helper()
-	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
 	ctx := context.Background()
 	fabric := &upgradeProviderFabric{states: map[string]string{}}
 	ledger := &upgradeLedger{}
@@ -139,11 +142,10 @@ func seedUpgradeQualificationFixture(t *testing.T, store controlPlaneTableStore)
 	if err != nil {
 		t.Fatal(err)
 	}
-	mustStore(t, store.SaveRuntimeOperation(ctx, map[string]any{
+	mustStore(t, store.SaveRuntimeOperation(context.Background(), map[string]any{
 		"id": parentID, "operationId": parentID, "accountId": "acct-alpha",
 		"workspaceId": "ws-alpha", "resourceId": "ws-alpha", "resourceKind": "workspace_gateway_key",
 		"action": "workspace.gateway_key.rotate", "status": "started", "result": string(encodedParent),
-		"provider":  "sub2api",
 		"createdAt": time.Now().UTC().Format(time.RFC3339Nano),
 	}))
 
@@ -226,82 +228,17 @@ func upgradeQualificationRetainedRow(t *testing.T, store controlPlaneTableStore,
 	return intent
 }
 
-// upgradeQualificationAssertFinished proves the record finished under its
-// original operation and resource identities.
-func upgradeQualificationAssertFinished(t *testing.T, fixture upgradeQualificationFixture) workspaceApplicationDeploymentIntent {
-	t.Helper()
-	ctx := context.Background()
-	intent := upgradeQualificationRetainedRow(t, fixture.store, fixture.child)
-	if intent.Phase != workspaceApplicationDeploymentActivePhase || intent.ReceiptID != "receipt-from-ledger" {
-		t.Fatalf("retained child did not finish: %+v", intent)
-	}
-	row, _, _ := fixture.store.GetRuntimeOperation(ctx, fixture.child.OperationID)
-	if stringValue(row["status"]) != "succeeded" {
-		t.Fatalf("retained child status=%q", stringValue(row["status"]))
-	}
-	workspace, _, _ := fixture.store.GetWorkspace(ctx, fixture.child.WorkspaceID)
-	if stringValue(workspace["applicationBinding"]) != fixture.child.ApplicationID+"@"+fixture.child.TargetRevision ||
-		int64(numberField(workspace, "applicationBindingVersion", 0)) != fixture.child.ExpectedWorkspaceVersion+1 ||
-		stringValue(workspace["currentApplicationDeploymentId"]) != fixture.child.OperationID ||
-		int64(numberField(workspace, "workspaceApiKeyId", 0)) != upgradeRotationNewKeyID {
-		t.Fatalf("retained workspace was not activated at the reserved version: %+v", workspace)
-	}
-	for _, field := range []string{"storageId", "currentComputeAllocationId", "currentAttachmentId", "paidThrough", "periodStart", "totalUsdMicros", "priceVersion"} {
-		if !reflect.DeepEqual(workspace[field], fixture.before[field]) {
-			t.Fatalf("the recovery changed the retained %s: before=%v after=%v", field, fixture.before[field], workspace[field])
-		}
-	}
-	if len(fixture.ledger.receipts) != 1 {
-		t.Fatalf("deployment receipts=%d", len(fixture.ledger.receipts))
-	}
-	receipt := fixture.ledger.receipts[0]
-	if receipt.Type != "workspace.application_deployed.v1" || receipt.RequestID != fixture.child.OperationID ||
-		receipt.WorkspaceID != fixture.child.WorkspaceID || receipt.AccountID != fixture.child.AccountID ||
-		receipt.Execution["operationId"] != fixture.child.OperationID ||
-		receipt.Execution["applicationId"] != fixture.child.ApplicationID ||
-		receipt.Execution["targetRevision"] != fixture.child.TargetRevision ||
-		receipt.Execution["configurationDigest"] != fixture.child.ConfigurationDigest {
-		t.Fatalf("deployment receipt lost the original operation identity: %+v", receipt)
-	}
-	return intent
-}
-
-// upgradeQualificationAssertPredecessor proves the selected generation was
-// retired under the child's own mutation identity. A suspension that was
-// already recorded is continued rather than issued again, so the expected
-// number of suspension mutations depends on where the recovery window starts.
-func upgradeQualificationAssertPredecessor(t *testing.T, fixture upgradeQualificationFixture, suspensions int) {
-	t.Helper()
-	predecessor := fixture.selected.OperationID + ":runtime"
-	suspended, retired := 0, 0
-	for index, mutation := range fixture.fabric.mutations {
-		if mutation.RuntimeOperationID != predecessor {
-			t.Fatalf("lifecycle mutation touched %q", mutation.RuntimeOperationID)
-		}
-		expected := fixture.child.OperationID + ":predecessor:" + mutation.DesiredState
-		if fixture.fabric.keys[index] != expected || mutation.IdempotencyKey != expected {
-			t.Fatalf("lifecycle mutation %d lost the original mutation identity: key=%q input=%q", index, fixture.fabric.keys[index], mutation.IdempotencyKey)
-		}
-		switch mutation.DesiredState {
-		case "suspended":
-			suspended++
-		case "absent":
-			retired++
-		}
-	}
-	if suspended != suspensions || retired != 1 {
-		t.Fatalf("predecessor lifecycle suspended=%d retired=%d mutations=%+v", suspended, retired, fixture.fabric.mutations)
-	}
-	if fixture.fabric.states[predecessor] != "absent" {
-		t.Fatalf("predecessor was not retired: %q", fixture.fabric.states[predecessor])
-	}
-}
-
-// TestWorkspaceApplicationUpgradeQualificationFinishesRetainedRotationChild
-// drives the retained worker over the pending child an in-place upgrade from
-// public v0.1.8 carries forward, and proves the record finishes under the
-// operation and resource identities the older release wrote.
-func TestWorkspaceApplicationUpgradeQualificationFinishesRetainedRotationChild(t *testing.T) {
+// TestRetainedV018RotationChildStaysDecodableAndFenced proves the retained read
+// side still sees a rotation an in-place upgrade from public v0.1.8 carried
+// forward: the pending deployment child decodes with the identities the older
+// release wrote, the Workspace still reserves it, the rotation parent still
+// names it, and a retained consumer still refuses the Workspace while that
+// rotation has not succeeded.
+//
+// The execution engine that used to advance the child is retired with this
+// slice. The read side is the part the retirement must not break, because it
+// is what keeps an unresolved carried-forward rotation visible.
+func TestRetainedV018RotationChildStaysDecodableAndFenced(t *testing.T) {
 	store := newMemoryTableStore()
 	fixture := seedUpgradeQualificationFixture(t, store)
 	ctx := context.Background()
@@ -316,6 +253,10 @@ func TestWorkspaceApplicationUpgradeQualificationFinishesRetainedRotationChild(t
 	if stringValue(workspace["reservedApplicationDeploymentId"]) != fixture.child.OperationID {
 		t.Fatalf("retained child lost its reservation: %+v", workspace)
 	}
+	intent := upgradeQualificationRetainedRow(t, fixture.store, fixture.child)
+	if intent.Phase != workspaceApplicationDeploymentIntentPhase {
+		t.Fatalf("retained child is not an intent-phase row: %+v", intent)
+	}
 	parentRow, found, _ := store.GetRuntimeOperation(ctx, fixture.parentID)
 	if !found {
 		t.Fatal("the retained rotation parent is missing")
@@ -324,195 +265,10 @@ func TestWorkspaceApplicationUpgradeQualificationFinishesRetainedRotationChild(t
 	if err != nil || parent.ApplicationDeploymentID != fixture.child.OperationID || parent.NewKeyID != upgradeRotationNewKeyID {
 		t.Fatalf("the retained rotation no longer names its child: %+v err=%v", parent, err)
 	}
-
-	if got := upgradeQualificationRetainedRow(t, store, fixture.child); got.Phase != workspaceApplicationDeploymentIntentPhase {
-		t.Fatalf("retained child phase = %q, want %q", got.Phase, workspaceApplicationDeploymentIntentPhase)
-	}
+	// The Gateway budget admission is a retained consumer of the rotation rows.
+	// It has to keep refusing while the carried-forward rotation has not
+	// succeeded, otherwise the unresolved rotation stops being visible.
 	if err := fixture.app.admitWorkspaceGatewayBudgetMutation(ctx, fixture.child.WorkspaceID); !errors.Is(err, errWorkspaceKeyRotationInProgress) {
-		t.Fatalf("retained rotation budget admission error = %v, want %v", err, errWorkspaceKeyRotationInProgress)
-	}
-
-	runDeploymentWorkerToCompletion(t, fixture.app, fixture.service, fixture.child.OperationID)
-	upgradeQualificationAssertFinished(t, fixture)
-	upgradeQualificationAssertPredecessor(t, fixture, 1)
-
-	// The provider mutation ran once, for the child's own runtime, with the
-	// original resource, data and credential identities.
-	if len(fixture.fabric.applicationRuntimeInputs) != 1 {
-		t.Fatalf("provider runtime mutations=%d", len(fixture.fabric.applicationRuntimeInputs))
-	}
-	input := fixture.fabric.applicationRuntimeInputs[0]
-	if input.RuntimeOperationID != fixture.child.OperationID+":runtime" || input.ComputeID != fixture.child.ComputeID ||
-		input.VolumeID != fixture.child.StorageID || input.AttachmentID != fixture.child.AttachmentID ||
-		input.AttachmentOperationID != "workspace-launch-alpha:attachment" ||
-		input.DataBindingID != fixture.child.DataBindingID || input.ConfigurationDigest != fixture.child.ConfigurationDigest ||
-		input.Configuration.CredentialVersion != fixture.child.Configuration.CredentialVersion ||
-		input.SecretBindings[0].SecretRef != upgradeRotationSecretRef || input.SecretBindings[0].Version != upgradeRotationSecretVer {
-		t.Fatalf("provider mutation lost the original identities: %+v", input)
-	}
-}
-
-// TestWorkspaceApplicationUpgradeQualificationResumesLostActivationResponse
-// proves a lost activation response does not repeat the provider mutation or
-// the activation, and that the receipt still carries the original operation
-// identity.
-func TestWorkspaceApplicationUpgradeQualificationResumesLostActivationResponse(t *testing.T) {
-	backing := newMemoryTableStore()
-	store := &activationResponseLossStore{controlPlaneTableStore: backing, loseResponse: true}
-	fixture := seedUpgradeQualificationFixture(t, backing)
-	fixture.store = store
-	fixture.app.tables = store
-	ctx := context.Background()
-
-	// The retained record reaches the activation on its third phase, and the
-	// activation commits before its response is lost.
-	var driveErr error
-	for range 3 {
-		if driveErr = fixture.app.runWorkspaceApplicationDeploymentsOnce(ctx, fixture.service); driveErr != nil {
-			break
-		}
-	}
-	if driveErr == nil {
-		t.Fatal("expected the lost activation response")
-	}
-	// The activation committed with the retired phase, so the next tick has to
-	// resume from there instead of activating again.
-	row, _, _ := store.GetRuntimeOperation(ctx, fixture.child.OperationID)
-	intent, err := decodeWorkspaceApplicationDeploymentIntent(row)
-	if err != nil || intent.Phase != workspaceApplicationDeploymentRetiringPhase {
-		t.Fatalf("lost activation response did not leave a resumable record: %+v err=%v", intent, err)
-	}
-	workspace, _, _ := store.GetWorkspace(ctx, fixture.child.WorkspaceID)
-	if stringValue(workspace["applicationBinding"]) != fixture.child.ApplicationID+"@"+fixture.child.TargetRevision ||
-		int64(numberField(workspace, "applicationBindingVersion", 0)) != fixture.child.ExpectedWorkspaceVersion+1 {
-		t.Fatalf("the committed activation was not durable: %+v", workspace)
-	}
-
-	runDeploymentWorkerToCompletion(t, fixture.app, fixture.service, fixture.child.OperationID)
-	upgradeQualificationAssertFinished(t, fixture)
-	upgradeQualificationAssertPredecessor(t, fixture, 1)
-	if len(fixture.fabric.applicationRuntimeInputs) != 1 {
-		t.Fatalf("the lost activation response repeated the provider mutation: %d", len(fixture.fabric.applicationRuntimeInputs))
-	}
-}
-
-// TestWorkspaceApplicationUpgradeQualificationContinuesSuspendedPredecessor
-// proves a predecessor that is already suspended is continued, not re-issued
-// under a second identity.
-func TestWorkspaceApplicationUpgradeQualificationContinuesSuspendedPredecessor(t *testing.T) {
-	for _, recorded := range []bool{true, false} {
-		name := "recorded suspension"
-		if !recorded {
-			name = "unrecorded suspension"
-		}
-		t.Run(name, func(t *testing.T) {
-			store := newMemoryTableStore()
-			fixture := seedUpgradeQualificationFixture(t, store)
-			ctx := context.Background()
-			predecessor := fixture.selected.OperationID + ":runtime"
-
-			// The predecessor is already suspended at the provider. Whether the
-			// worker recorded that suspension is the only difference between
-			// the two recovery states.
-			fixture.fabric.states[predecessor] = "suspended"
-			row, _, _ := store.GetRuntimeOperation(ctx, fixture.child.OperationID)
-			intent, err := decodeWorkspaceApplicationDeploymentIntent(row)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if recorded {
-				intent.Phase = workspaceApplicationDeploymentRuntimePhase
-				intent.PredecessorObservation = &contracts.WorkspaceApplicationRuntimeLifecycleResult{
-					RuntimeID: contracts.WorkspaceApplicationRuntimeID(predecessor), WorkspaceID: fixture.child.WorkspaceID, State: "suspended",
-				}
-			} else {
-				intent.Phase = workspaceApplicationDeploymentPredecessorPhase
-			}
-			encoded, err := json.Marshal(intent)
-			if err != nil {
-				t.Fatal(err)
-			}
-			row["result"] = string(encoded)
-			mustStore(t, store.SaveRuntimeOperation(ctx, row))
-
-			runDeploymentWorkerToCompletion(t, fixture.app, fixture.service, fixture.child.OperationID)
-			upgradeQualificationAssertFinished(t, fixture)
-			// A recorded suspension is continued, never issued again. An
-			// unrecorded one is re-issued under the original mutation identity.
-			upgradeQualificationAssertPredecessor(t, fixture, map[bool]int{true: 0, false: 1}[recorded])
-			for index, mutation := range fixture.fabric.mutations {
-				expected := fixture.child.OperationID + ":predecessor:" + mutation.DesiredState
-				if fixture.fabric.keys[index] != expected {
-					t.Fatalf("lifecycle mutation %d used a new identity: %q", index, fixture.fabric.keys[index])
-				}
-			}
-			if len(fixture.fabric.applicationRuntimeInputs) != 1 {
-				t.Fatalf("the predecessor recovery repeated the provider mutation: %d", len(fixture.fabric.applicationRuntimeInputs))
-			}
-		})
-	}
-}
-
-// TestWorkspaceApplicationUpgradeQualificationResumesAcrossRestart proves the
-// restarted Control Plane resumes the retained child from the same database
-// and finishes it under its original identities.
-func TestWorkspaceApplicationUpgradeQualificationResumesAcrossRestart(t *testing.T) {
-	admin := openControlPlaneTestPostgres(t)
-	database := fmt.Sprintf("control_plane_application_upgrade_%d", time.Now().UnixNano())
-	if _, err := admin.Exec(`CREATE DATABASE ` + database); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		_, _ = admin.Exec(`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1`, database)
-		_, _ = admin.Exec(`DROP DATABASE ` + database)
-		_ = admin.Close()
-	})
-	databaseURL := controlPlaneTestPostgresURL(t, database, "")
-	store, err := newTestPostgresEntStateStore(databaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fixture := seedUpgradeQualificationFixture(t, store)
-	ctx := context.Background()
-
-	// The upgrade interrupts the retained child after the predecessor is
-	// suspended but before the binding is activated.
-	if err := fixture.app.runWorkspaceApplicationDeploymentsOnce(ctx, fixture.service); err != nil {
-		t.Fatal(err)
-	}
-	row, _, _ := store.GetRuntimeOperation(ctx, fixture.child.OperationID)
-	intent, err := decodeWorkspaceApplicationDeploymentIntent(row)
-	if err != nil || intent.Phase != workspaceApplicationDeploymentRuntimePhase {
-		t.Fatalf("retained child did not reach the interrupted phase: %+v err=%v", intent, err)
-	}
-	_ = store.(*postgresEntStateStore).Close()
-
-	// The upgraded Control Plane opens the same retained database.
-	store, err = newTestPostgresEntStateStore(databaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = store.(*postgresEntStateStore).Close() })
-	fixture.store = store
-	restarted, err := NewPersistentServer(fixture.service, store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fixture.app = restarted.(*controlPlaneHTTPHandler).app
-	runDeploymentWorkerToCompletion(t, fixture.app, fixture.service, fixture.child.OperationID)
-
-	upgradeQualificationAssertFinished(t, fixture)
-	upgradeQualificationAssertPredecessor(t, fixture, 1)
-	if len(fixture.fabric.applicationRuntimeInputs) != 1 {
-		t.Fatalf("the restart repeated the provider mutation: %d", len(fixture.fabric.applicationRuntimeInputs))
-	}
-	// The retained rotation still names the child it claimed.
-	parentRow, found, _ := store.GetRuntimeOperation(ctx, fixture.parentID)
-	if !found {
-		t.Fatal("the retained rotation parent did not survive the restart")
-	}
-	parent, err := decodeWorkspaceKeyRotation(parentRow)
-	if err != nil || parent.ApplicationDeploymentID != fixture.child.OperationID {
-		t.Fatalf("the retained rotation lost its child across the restart: %+v err=%v", parent, err)
+		t.Fatalf("gateway budget admission error=%v, want %v", err, errWorkspaceKeyRotationInProgress)
 	}
 }
