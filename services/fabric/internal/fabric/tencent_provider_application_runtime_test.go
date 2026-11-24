@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	contracts "opl-cloud/packages/contracts/go"
@@ -915,16 +916,28 @@ func TestTencentApplicationManifestCarriesDeclaredComputeEnvelope(t *testing.T) 
 		Compute: contracts.WorkspaceApplicationCompute{CPURequestMilli: 1000, MemoryRequestBytes: 1 << 30},
 	}}
 
+	quantityMatches := func(actual any, expected string) bool {
+		raw, ok := actual.(string)
+		if !ok {
+			return false
+		}
+		got, err := resource.ParseQuantity(raw)
+		if err != nil {
+			return false
+		}
+		want := resource.MustParse(expected)
+		return got.Cmp(want) == 0
+	}
 	main := containerResources(t, renderedApplicationDeployment(t, input, tkeapply.ComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)))
 	mainRequests, _ := main["requests"].(map[string]any)
 	mainLimits, _ := main["limits"].(map[string]any)
-	if mainRequests["cpu"] != "500m" || mainRequests["memory"] != "2147483648" || mainLimits["cpu"] != "2000m" || mainLimits["memory"] != "3221225472" {
+	if !quantityMatches(mainRequests["cpu"], "500m") || !quantityMatches(mainRequests["memory"], "2147483648") || !quantityMatches(mainLimits["cpu"], "2000m") || !quantityMatches(mainLimits["memory"], "3221225472") {
 		t.Fatalf("main envelope mismatch: %#v", main)
 	}
 	dependency := containerResources(t, renderedApplicationDeployment(t, input, tkeapply.ComponentResourceName(input, "retrieval")))
 	dependencyRequests, _ := dependency["requests"].(map[string]any)
 	dependencyLimits, _ := dependency["limits"].(map[string]any)
-	if dependencyRequests["cpu"] != "1000m" || dependencyRequests["memory"] != "1073741824" {
+	if !quantityMatches(dependencyRequests["cpu"], "1000m") || !quantityMatches(dependencyRequests["memory"], "1073741824") {
 		t.Fatalf("dependency requests mismatch: %#v", dependency)
 	}
 	if _, declared := dependencyLimits["memory"]; declared {

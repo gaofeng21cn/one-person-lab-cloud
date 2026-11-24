@@ -13,6 +13,11 @@ import (
 	"testing"
 	"time"
 
+	dockercontainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/api/types/volume"
+	mobyclient "github.com/moby/moby/client"
+
 	contracts "opl-cloud/packages/contracts/go"
 )
 
@@ -377,48 +382,66 @@ func TestProviderFactsBatchReportsRedactedRuntimeBindingAcrossComputeReadFailure
 }
 
 type providerFactsDockerRunner struct {
+	stubDockerClient
 	networkID     string
 	networkName   string
 	volumeName    string
 	networkLabels map[string]string
 	volumeLabels  map[string]string
-	calls         [][]string
+	calls         []string
 }
 
-func (r *providerFactsDockerRunner) Run(_ context.Context, _ []byte, args ...string) ([]byte, error) {
-	r.calls = append(r.calls, append([]string(nil), args...))
-	switch {
-	case len(args) == 7 && args[0] == "network" && args[1] == "ls":
-		r.networkName = strings.TrimSuffix(strings.TrimPrefix(args[4], "name=^"), "$")
-		return json.Marshal(dockerObjectInventoryRow{ID: r.networkID, Name: r.networkName})
-	case len(args) == 3 && args[0] == "network" && args[1] == "inspect":
-		return json.Marshal([]dockerNetworkInspect{{ID: r.networkID, Name: r.networkName, Labels: r.networkLabels}})
-	case len(args) == 6 && args[0] == "volume" && args[1] == "ls":
-		return json.Marshal(dockerObjectInventoryRow{Name: r.volumeName})
-	case len(args) == 3 && args[0] == "volume" && args[1] == "inspect":
-		return json.Marshal([]dockerVolumeInspect{{Name: r.volumeName, Labels: r.volumeLabels}})
-	default:
-		return nil, fmt.Errorf("unexpected docker action: %v", args)
+func (r *providerFactsDockerRunner) NetworkList(_ context.Context, options mobyclient.NetworkListOptions) ([]network.Summary, error) {
+	r.calls = append(r.calls, "NetworkList")
+	if names := dockerFilterValues(options.Filters, "name"); len(names) > 0 {
+		r.networkName = strings.TrimSuffix(strings.TrimPrefix(names[0], "^"), "$")
 	}
+	return []network.Summary{sdkNetworkSummary(r.networkID, r.networkName)}, nil
+}
+
+func (r *providerFactsDockerRunner) NetworkInspect(context.Context, string, mobyclient.NetworkInspectOptions) (network.Inspect, error) {
+	r.calls = append(r.calls, "NetworkInspect")
+	return sdkNetworkInspect(dockerNetworkInspect{ID: r.networkID, Name: r.networkName, Labels: r.networkLabels}), nil
+}
+
+func (r *providerFactsDockerRunner) VolumeInspect(context.Context, string) (volume.Volume, error) {
+	r.calls = append(r.calls, "VolumeInspect")
+	return volume.Volume{Name: r.volumeName, Labels: r.volumeLabels}, nil
 }
 
 func TestDockerObjectInventoryRequiresExactUniqueStructuredIdentity(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
-		output  string
-		exists  bool
-		wantErr bool
+		name      string
+		networks  []network.Summary
+		exists    bool
+		wantErr   bool
 	}{
-		{name: "empty is authoritative absent", output: "", exists: false},
-		{name: "exact network", output: `{"ID":"full-id","Name":"opl-runtime-alpha"}`, exists: true},
-		{name: "exact container", output: `{"ID":"full-id","Names":"opl-runtime-alpha"}`, exists: true},
-		{name: "foreign row conflicts", output: `{"ID":"full-id","Name":"opl-runtime-alphabet"}`, wantErr: true},
-		{name: "duplicate exact rows conflict", output: "{\"ID\":\"one\",\"Name\":\"opl-runtime-alpha\"}\n{\"ID\":\"two\",\"Name\":\"opl-runtime-alpha\"}", wantErr: true},
-		{name: "name fields disagree", output: `{"ID":"full-id","Name":"opl-runtime-alpha","Names":"opl-runtime-beta"}`, wantErr: true},
-		{name: "malformed row", output: `{`, wantErr: true},
+		{name: "empty network list is authoritative absent", networks: nil, exists: false},
+		{name: "exact network", networks: []network.Summary{sdkNetworkSummary("full-id", "opl-runtime-alpha")}, exists: true},
+		{name: "foreign network conflicts", networks: []network.Summary{sdkNetworkSummary("full-id", "opl-runtime-alphabet")}, wantErr: true},
+		{name: "duplicate exact networks conflict", networks: []network.Summary{sdkNetworkSummary("one", "opl-runtime-alpha"), sdkNetworkSummary("two", "opl-runtime-alpha")}, wantErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, exists, err := decodeDockerObjectInventory([]byte(tc.output), "opl-runtime-alpha")
+			_, exists, err := matchExactNetworkSummary(tc.networks, "opl-runtime-alpha")
+			if exists != tc.exists || (err != nil) != tc.wantErr {
+				t.Fatalf("exists=%v err=%v", exists, err)
+			}
+		})
+	}
+	for _, tc := range []struct {
+		name       string
+		containers []dockercontainer.Summary
+		exists     bool
+		wantErr    bool
+	}{
+		{name: "empty container list is authoritative absent", containers: nil, exists: false},
+		{name: "exact container", containers: []dockercontainer.Summary{{ID: "full-id", Names: []string{"/opl-runtime-alpha"}}}, exists: true},
+		{name: "foreign container conflicts", containers: []dockercontainer.Summary{{ID: "full-id", Names: []string{"/opl-runtime-alphabet"}}}, wantErr: true},
+		{name: "duplicate exact containers conflict", containers: []dockercontainer.Summary{{ID: "one", Names: []string{"/opl-runtime-alpha"}}, {ID: "two", Names: []string{"/opl-runtime-alpha"}}}, wantErr: true},
+		{name: "ambiguous container names conflict", containers: []dockercontainer.Summary{{ID: "full-id", Names: []string{"/opl-runtime-alpha", "/opl-runtime-beta"}}}, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, exists, err := matchExactContainerSummary(tc.containers, "opl-runtime-alpha")
 			if exists != tc.exists || (err != nil) != tc.wantErr {
 				t.Fatalf("exists=%v err=%v", exists, err)
 			}
@@ -465,7 +488,7 @@ func TestLocalDockerProviderFactsParityAndReadOnly(t *testing.T) {
 		t.Fatalf("local facts: compute=%#v storage=%#v attachment=%#v runtime=%#v", computeFacts, storageFacts, attachmentFacts, runtimeFacts)
 	}
 	for _, call := range runner.calls {
-		if len(call) < 2 || (call[1] != "ls" && call[1] != "inspect") || call[0] != "network" {
+		if call != "NetworkList" && call != "NetworkInspect" {
 			t.Fatalf("local provider facts issued mutation: %#v", runner.calls)
 		}
 	}

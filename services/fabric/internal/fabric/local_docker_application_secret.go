@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/moby/moby/api/types/mount"
+
 	contracts "opl-cloud/packages/contracts/go"
 )
 
@@ -221,15 +223,21 @@ func (p *LocalDockerProvider) applicationSecretEnvironmentFile(input WorkspaceAp
 	return filepath.Join(p.gatewaySecretRoot, path), nil
 }
 
-func (p *LocalDockerProvider) applicationComponentSecretArgs(input WorkspaceApplicationRuntimeInput, component string, declarations []contracts.WorkspaceApplicationSecretInput) ([]string, error) {
+type localDockerSecretSpec struct {
+	Mounts  []mount.Mount
+	Env     []string
+	EnvFile string
+}
+
+func (p *LocalDockerProvider) applicationComponentSecretSpec(input WorkspaceApplicationRuntimeInput, component string, declarations []contracts.WorkspaceApplicationSecretInput) (localDockerSecretSpec, error) {
 	files, env, err := p.applicationDeclaredSecrets(input, declarations)
 	if err != nil {
-		return nil, err
+		return localDockerSecretSpec{}, err
 	}
 	if component == "main" {
 		files, _, err = p.applicationSecretFiles(input)
 		if err != nil {
-			return nil, err
+			return localDockerSecretSpec{}, err
 		}
 	}
 	targets := make([]string, 0, len(files))
@@ -237,18 +245,32 @@ func (p *LocalDockerProvider) applicationComponentSecretArgs(input WorkspaceAppl
 		targets = append(targets, target)
 	}
 	sort.Strings(targets)
-	args := []string{}
+	var spec localDockerSecretSpec
 	for _, target := range targets {
-		args = append(args, "--mount", "type=bind,source="+files[target]+",target="+target+",readonly,bind-propagation=rprivate")
+		spec.Mounts = append(spec.Mounts, mount.Mount{
+			Type:        mount.TypeBind,
+			Source:      files[target],
+			Target:      target,
+			ReadOnly:    true,
+			BindOptions: &mount.BindOptions{Propagation: mount.PropagationRPrivate},
+		})
 	}
 	path, err := p.applicationSecretEnvironmentFile(input, component, env)
 	if err != nil {
-		return nil, err
+		return localDockerSecretSpec{}, err
 	}
-	if path != "" {
-		args = append(args, "--env-file", path)
+	spec.EnvFile = path
+	if len(env) > 0 {
+		names := make([]string, 0, len(env))
+		for name := range env {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			spec.Env = append(spec.Env, name+"="+env[name])
+		}
 	}
-	return args, nil
+	return spec, nil
 }
 
 func (p *LocalDockerProvider) verifyApplicationDeclaredSecrets(input WorkspaceApplicationRuntimeInput, container dockerContainerInspect, declarations []contracts.WorkspaceApplicationSecretInput) error {

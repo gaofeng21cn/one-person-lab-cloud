@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/moby/moby/api/types/network"
 )
 
 func TestWorkspaceRuntimeAdaptersProjectVersionedABI(t *testing.T) {
@@ -42,17 +44,17 @@ func TestWorkspaceRuntimeAdaptersProjectVersionedABI(t *testing.T) {
 	if runtime.URL != "http://192.0.2.40:30123/" {
 		t.Fatalf("Local-Docker Runtime URL=%q, want deployment-owned host", runtime.URL)
 	}
-	wantPublish := localProvider.publishHost + "::" + localDockerWorkspaceRuntimeWebUIPort
+	wantPort := network.MustParsePort(localDockerWorkspaceRuntimeWebUIPort + "/tcp")
 	foundPublish := false
-	for _, call := range runner.calls {
-		for index := 0; index+1 < len(call); index++ {
-			if call[index] == "-p" && call[index+1] == wantPublish {
+	for _, created := range runner.created {
+		for _, binding := range created.HostConfig.PortBindings[wantPort] {
+			if binding.HostIP.IsValid() && binding.HostIP.String() == localProvider.publishHost {
 				foundPublish = true
 			}
 		}
 	}
 	if !foundPublish {
-		t.Fatalf("Local-Docker create did not publish the Runtime ABI port %q: %#v", wantPublish, runner.calls)
+		t.Fatalf("Local-Docker create did not publish the Runtime ABI port %s on %s: %#v", wantPort, localProvider.publishHost, runner.created)
 	}
 	if tencentWorkspaceRuntimeWebUIPort != contract.WorkspaceWebUI.Port {
 		t.Fatalf("Tencent Workspace Runtime port=%d, contract=%d", tencentWorkspaceRuntimeWebUIPort, contract.WorkspaceWebUI.Port)

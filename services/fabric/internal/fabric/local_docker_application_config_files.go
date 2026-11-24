@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/moby/moby/api/types/mount"
+
 	contracts "opl-cloud/packages/contracts/go"
 )
 
@@ -139,13 +141,20 @@ func (p *LocalDockerProvider) applicationConfigFiles(input WorkspaceApplicationR
 	return readApplicationConfigDirectory(root, directory, files)
 }
 
-func (p *LocalDockerProvider) applicationConfigMountArgs(input WorkspaceApplicationRuntimeInput, component string) []string {
-	args := []string{}
-	for _, config := range applicationComponentConfigs(input, component) {
+func (p *LocalDockerProvider) applicationConfigMounts(input WorkspaceApplicationRuntimeInput, component string) []mount.Mount {
+	configs := applicationComponentConfigs(input, component)
+	mounts := make([]mount.Mount, 0, len(configs))
+	for _, config := range configs {
 		source := filepath.Join(p.gatewaySecretRoot, "application-configurations", applicationRuntimeID(input), applicationConfigFilename(config.Name))
-		args = append(args, "--mount", "type=bind,source="+source+",target="+config.Target+",readonly,bind-propagation=rprivate")
+		mounts = append(mounts, mount.Mount{
+			Type:        mount.TypeBind,
+			Source:      source,
+			Target:      config.Target,
+			ReadOnly:    true,
+			BindOptions: &mount.BindOptions{Propagation: mount.PropagationRPrivate},
+		})
 	}
-	return args
+	return mounts
 }
 
 func (p *LocalDockerProvider) verifyApplicationConfigMounts(input WorkspaceApplicationRuntimeInput, component string, container dockerContainerInspect) error {

@@ -5,17 +5,26 @@ import (
 	"fmt"
 	"strings"
 
+	mobyclient "github.com/moby/moby/client"
+
 	contracts "opl-cloud/packages/contracts/go"
 )
 
 func (p *LocalDockerProvider) readRuntimeObservations(ctx context.Context) ([]runtimeProviderObservation, error) {
-	raw, err := p.runner.Run(ctx, nil, "container", "ls", "-a", "--filter", "label=opl.fabric.kind=runtime", "--format", "{{.Names}}")
+	summaries, err := p.docker.ContainerList(ctx, mobyclient.ContainerListOptions{
+		All:     true,
+		Filters: make(mobyclient.Filters).Add("label", "opl.fabric.kind=runtime"),
+	})
 	if err != nil {
 		return nil, err
 	}
-	result := make([]runtimeProviderObservation, 0)
+	result := make([]runtimeProviderObservation, 0, len(summaries))
 	seen := map[string]bool{}
-	for _, name := range strings.Fields(string(raw)) {
+	for _, summary := range summaries {
+		name, nameErr := containerSummaryName(summary)
+		if nameErr != nil {
+			return nil, fmt.Errorf("local_docker_runtime_readback_invalid")
+		}
 		container, exists, err := p.inspectContainer(ctx, name)
 		if err != nil || !exists || container.ID == "" || seen[container.ID] {
 			return nil, firstNonNil(err, fmt.Errorf("local_docker_runtime_readback_invalid"))

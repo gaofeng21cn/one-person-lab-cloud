@@ -1,39 +1,45 @@
 package tkeapply
 
 import (
-	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
-	"os"
-	"path/filepath"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
+
+	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/registry"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/empty"
+	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	contracts "opl-cloud/packages/contracts/go"
 )
 
-func TestImageCommandDecoderSelectsExactPlatform(t *testing.T) {
+func TestExtractImageCommandSelectsExactPlatform(t *testing.T) {
 	for _, test := range []struct {
-		name, raw, platform string
-		want                []string
-		invalid             bool
+		name     string
+		cfg      *v1.ConfigFile
+		platform string
+		want     []string
+		invalid  bool
 	}{
-		{name: "single", raw: `{"os":"linux","architecture":"amd64","config":{"Cmd":["node","scripts/headless/run.mjs"]}}`, platform: "linux/amd64", want: []string{"node", "scripts/headless/run.mjs"}},
-		{name: "index", raw: `{"linux/amd64":{"os":"linux","architecture":"amd64","config":{"Cmd":["amd64"]}},"linux/arm64":{"os":"linux","architecture":"arm64","config":{"Cmd":["arm64"]}}}`, platform: "linux/amd64", want: []string{"amd64"}},
-		{name: "variant", raw: `{"os":"linux","architecture":"arm","variant":"v7","config":{"Cmd":["arm"]}}`, platform: "linux/arm/v7", want: []string{"arm"}},
-		{name: "empty", raw: `{"os":"linux","architecture":"amd64","config":{"Cmd":null}}`, platform: "linux/amd64"},
-		{name: "omitted cmd", raw: `{"os":"linux","architecture":"amd64","config":{}}`, platform: "linux/amd64"},
-		{name: "wrong platform", raw: `{"os":"linux","architecture":"arm64","config":{"Cmd":["arm64"]}}`, platform: "linux/amd64", invalid: true},
-		{name: "missing platform", raw: `{"linux/arm64":{"os":"linux","architecture":"arm64","config":{}}}`, platform: "linux/amd64", invalid: true},
-		{name: "missing config", raw: `{"os":"linux","architecture":"amd64"}`, platform: "linux/amd64", invalid: true},
-		{name: "null config", raw: `{"os":"linux","architecture":"amd64","config":null}`, platform: "linux/amd64", invalid: true},
-		{name: "invalid cmd", raw: `{"os":"linux","architecture":"amd64","config":{"Cmd":[1]}}`, platform: "linux/amd64", invalid: true},
-		{name: "null argument", raw: `{"os":"linux","architecture":"amd64","config":{"Cmd":[null]}}`, platform: "linux/amd64", invalid: true},
-		{name: "malformed", raw: `{`, platform: "linux/amd64", invalid: true},
+		{name: "single", cfg: &v1.ConfigFile{OS: "linux", Architecture: "amd64", Config: v1.Config{Cmd: []string{"node", "scripts/headless/run.mjs"}}}, platform: "linux/amd64", want: []string{"node", "scripts/headless/run.mjs"}},
+		{name: "variant", cfg: &v1.ConfigFile{OS: "linux", Architecture: "arm", Variant: "v7", Config: v1.Config{Cmd: []string{"arm"}}}, platform: "linux/arm/v7", want: []string{"arm"}},
+		{name: "empty", cfg: &v1.ConfigFile{OS: "linux", Architecture: "amd64", Config: v1.Config{Cmd: nil}}, platform: "linux/amd64"},
+		{name: "wrong platform", cfg: &v1.ConfigFile{OS: "linux", Architecture: "arm64", Config: v1.Config{Cmd: []string{"arm64"}}}, platform: "linux/amd64", invalid: true},
+		{name: "nil config", cfg: nil, platform: "linux/amd64", invalid: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			actual, err := decodeImageCommand([]byte(test.raw), test.platform)
+			actual, err := extractImageCommand(test.cfg, test.platform)
 			if test.invalid {
 				if !errors.Is(err, errImageCommand) {
 					t.Fatalf("got %v, %v", actual, err)
@@ -49,7 +55,7 @@ func TestImageCommandDecoderSelectsExactPlatform(t *testing.T) {
 
 func TestExecutorPreservesMainImageCMDAndRejectsArgumentDrift(t *testing.T) {
 	cluster := newFakeCluster()
-	cluster.store(pvcObject())
+	cluster.storePVC(pvcObject())
 	input := testInput(t)
 	input.Revision.Entrypoint = []string{"/usr/local/bin/opl-webui-entrypoint", "entry-arg"}
 	executor := testExecutor(cluster, testInstallation(map[string]string{"app": "serve"}))
@@ -66,35 +72,38 @@ func TestExecutorPreservesMainImageCMDAndRejectsArgumentDrift(t *testing.T) {
 		t.Fatalf("ensure=%+v %v", result, err)
 	}
 	component := contracts.WorkspaceApplicationRuntimeComponents(input.Revision)[0]
-	deployment := cluster.objects["Deployment/"+ComponentResourceName(input, component.Name)]
-	if !bytes.Equal(mustJSON(firstContainerField(deployment, "command")), mustJSON(input.Revision.Entrypoint)) {
+	depName := ComponentResourceName(input, component.Name)
+	deployment := cluster.deployment(t, depName)
+	if !reflect.DeepEqual(deployment.Spec.Template.Spec.Containers[0].Command, input.Revision.Entrypoint) {
 		t.Fatal("entrypoint changed")
 	}
 	expected := []string{"node", "scripts/headless/run.mjs", "$$(LITERAL)", "$$x", "$$$$"}
-	if !bytes.Equal(mustJSON(firstContainerField(deployment, "args")), mustJSON(expected)) {
-		t.Fatalf("args=%v", firstContainerField(deployment, "args"))
+	if !reflect.DeepEqual(deployment.Spec.Template.Spec.Containers[0].Args, expected) {
+		t.Fatalf("args=%v", deployment.Spec.Template.Spec.Containers[0].Args)
 	}
 	if calls == 0 {
 		t.Fatal("image CMD was not read")
 	}
-	containers := nested(deployment, "spec", "template", "spec", "containers").([]any)
-	containers[0].(map[string]any)["args"] = []string{"foreign-server"}
+	deployment.Spec.Template.Spec.Containers[0].Args = []string{"foreign-server"}
+	if _, err := cluster.clientset.AppsV1().Deployments(testNamespace).Update(context.Background(), deployment, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
 	result, err = executor.ReadWorkspaceApplicationRuntime(context.Background(), input)
 	if err != nil || result.Status == "ready" {
 		t.Fatalf("drift accepted: %+v %v", result, err)
 	}
 	// A replay of the original command repairs the old command-only workload;
 	// a read above did not overwrite it.
-	if !reflect.DeepEqual(firstContainerField(deployment, "args"), []string{"foreign-server"}) {
+	if !reflect.DeepEqual(cluster.deployment(t, depName).Spec.Template.Spec.Containers[0].Args, []string{"foreign-server"}) {
 		t.Fatal("read mutated deployment")
 	}
 	result, err = executor.EnsureWorkspaceApplicationRuntime(context.Background(), input, testPlacement())
 	if err != nil && !errors.Is(err, ErrWorkspaceLaunchPending) {
 		t.Fatalf("replay=%+v %v", result, err)
 	}
-	corrected := cluster.objects["Deployment/"+ComponentResourceName(input, component.Name)]
-	if !bytes.Equal(mustJSON(firstContainerField(corrected, "args")), mustJSON(expected)) {
-		t.Fatalf("original replay did not restore image CMD: %v", firstContainerField(corrected, "args"))
+	corrected := cluster.deployment(t, depName)
+	if !reflect.DeepEqual(corrected.Spec.Template.Spec.Containers[0].Args, expected) {
+		t.Fatalf("original replay did not restore image CMD: %v", corrected.Spec.Template.Spec.Containers[0].Args)
 	}
 }
 
@@ -111,7 +120,7 @@ func TestExecutorLeavesImageDefaultsWhenEntrypointIsNotOverridden(t *testing.T) 
 
 func TestImageCommandFailurePreventsApply(t *testing.T) {
 	cluster := newFakeCluster()
-	cluster.store(pvcObject())
+	cluster.storePVC(pvcObject())
 	executor := testExecutor(cluster, testInstallation(map[string]string{"app": "serve"}))
 	executor.ImageCommand = func(context.Context, string, string) ([]string, error) { return nil, errImageCommand }
 	input := testInput(t)
@@ -119,80 +128,142 @@ func TestImageCommandFailurePreventsApply(t *testing.T) {
 	if _, err := executor.EnsureWorkspaceApplicationRuntime(context.Background(), input, testPlacement()); !errors.Is(err, errImageCommand) {
 		t.Fatalf("err=%v", err)
 	}
-	if len(cluster.objects) != 1 {
+	if cluster.objectCount(t) != 1 {
 		t.Fatal("failed image read mutated cluster")
 	}
 }
 
-func TestImageCommandReadsInstallationSecretAndCachesOnlySuccess(t *testing.T) {
-	image := "registry.test/cmd@sha256:" + strings.Repeat("b", 64)
-	key := image + "\x00linux/amd64"
-	imageCommandCache.Delete(key)
-	t.Cleanup(func() { imageCommandCache.Delete(key) })
-	dir := t.TempDir()
-	// Exercise the real process/config transport without a registry or daemon.
-	script := `#!/bin/sh
-set -eu
-[ "$1" = --config ]
-[ -f "$2/config.json" ]
-[ "$(cat "$2/config.json")" = '{"auths":{"registry.test":{"auth":"fixture"}}}' ]
-printf '%s' "$2" > "$TEST_COMMAND_CONFIG_PATH"
-[ "$3" = buildx ] && [ "$4" = imagetools ] && [ "$5" = inspect ]
-[ "$6" = "$TEST_COMMAND_IMAGE" ] && [ "$7" = --format ] && [ "$8" = '{{json .Image}}' ]
-[ "$TEST_COMMAND_FAIL" = 0 ] || exit 1
-printf '%s' '{"os":"linux","architecture":"amd64","config":{"Cmd":["node","server.mjs"]}}'
-`
-	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(script), 0700); err != nil {
+func TestImageCommandReadsInstallationSecretInMemoryAndCachesOnlySuccess(t *testing.T) {
+	const expectedUser, expectedPass = "pull-user", "pull-pass"
+	expectedAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(expectedUser+":"+expectedPass))
+	var failRequests atomic.Bool
+	var requireAuth atomic.Bool
+	var authObserved atomic.Bool
+
+	regHandler := registry.New()
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requireAuth.Load() {
+			if r.Header.Get("Authorization") != expectedAuth {
+				w.Header().Set("WWW-Authenticate", `Basic realm="test"`)
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			authObserved.Store(true)
+			if failRequests.Load() {
+				http.Error(w, "https://signed.example/secret-token-url", http.StatusBadGateway)
+				return
+			}
+		}
+		regHandler.ServeHTTP(w, r)
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "https://")
+	imgAMD64, err := mutate.ConfigFile(empty.Image, &v1.ConfigFile{
+		OS:           "linux",
+		Architecture: "amd64",
+		Config:       v1.Config{Cmd: []string{"node", "server.mjs"}},
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("TEST_COMMAND_IMAGE", image)
-	t.Setenv("TEST_COMMAND_CONFIG_PATH", filepath.Join(dir, "config-path"))
-	t.Setenv("TEST_COMMAND_FAIL", "1")
+	imgARM64, err := mutate.ConfigFile(empty.Image, &v1.ConfigFile{
+		OS:           "linux",
+		Architecture: "arm64",
+		Config:       v1.Config{Cmd: []string{"node", "arm-server.mjs"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx := mutate.AppendManifests(empty.Index,
+		mutate.IndexAddendum{Add: imgAMD64, Descriptor: v1.Descriptor{Platform: &v1.Platform{OS: "linux", Architecture: "amd64"}}},
+		mutate.IndexAddendum{Add: imgARM64, Descriptor: v1.Descriptor{Platform: &v1.Platform{OS: "linux", Architecture: "arm64"}}},
+	)
+	digest, err := idx.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	imageRef := host + "/opl/cmd@" + digest.String()
+	ref, err := name.ParseReference(imageRef, name.StrictValidation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.WriteIndex(ref, idx, remote.WithTransport(server.Client().Transport)); err != nil {
+		t.Fatalf("seed in-memory registry: %v", err)
+	}
+	requireAuth.Store(true)
+
+	key := imageRef + "\x00linux/amd64"
+	imageCommandCache.Delete(key)
+	t.Cleanup(func() { imageCommandCache.Delete(key) })
+
+	dockerConfig := fmt.Sprintf(`{"auths":{%q:{"auth":%q}}}`, host, base64.StdEncoding.EncodeToString([]byte(expectedUser+":"+expectedPass)))
 	cluster := newFakeCluster()
-	cluster.store(map[string]any{"kind": "Secret", "metadata": map[string]any{"name": "tcr-pull-secret", "namespace": "opl-cloud"}, "type": "kubernetes.io/dockerconfigjson", "data": map[string]any{".dockerconfigjson": base64String(`{"auths":{"registry.test":{"auth":"fixture"}}}`)}})
-	executor := &Executor{Kubectl: cluster.kubectl, Installation: testInstallation()}
-	if _, err := executor.readImageCommand(context.Background(), image, "linux/amd64"); !errors.Is(err, errImageCommand) {
-		t.Fatalf("err=%v", err)
+	cluster.storeSecret(&corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "tcr-pull-secret", Namespace: testNamespace},
+		Type:       corev1.SecretTypeDockerConfigJson,
+		Data:       map[string][]byte{corev1.DockerConfigJsonKey: []byte(dockerConfig)},
+	})
+	executor := &Executor{
+		Client:            cluster,
+		Installation:      testInstallation(),
+		RegistryTransport: server.Client().Transport,
+	}
+
+	failRequests.Store(true)
+	_, err = executor.readImageCommand(context.Background(), imageRef, "linux/amd64")
+	if !errors.Is(err, errImageCommand) || strings.Contains(err.Error(), "secret-token-url") {
+		t.Fatalf("failed registry read err=%v", err)
 	}
 	if _, cached := imageCommandCache.Load(key); cached {
 		t.Fatal("failed read cached")
 	}
-	t.Setenv("TEST_COMMAND_FAIL", "0")
-	actual, err := executor.readImageCommand(context.Background(), image, "linux/amd64")
+
+	failRequests.Store(false)
+	actual, err := executor.readImageCommand(context.Background(), imageRef, "linux/amd64")
 	if err != nil || !reflect.DeepEqual(actual, []string{"node", "server.mjs"}) {
 		t.Fatalf("args=%v err=%v", actual, err)
 	}
-	configPath, err := os.ReadFile(filepath.Join(dir, "config-path"))
-	if err != nil {
-		t.Fatal(err)
+	if !authObserved.Load() {
+		t.Fatal("in-memory pull secret credentials were not sent to registry")
 	}
-	if _, err = os.Stat(string(configPath)); !os.IsNotExist(err) {
-		t.Fatal("registry config was not removed")
-	}
+
+	// Mutating returned slice must not poison cache; subsequent reads serve cache
+	// without calling registry again.
 	actual[0] = "changed"
-	t.Setenv("TEST_COMMAND_FAIL", "1")
-	cached, err := executor.readImageCommand(context.Background(), image, "linux/amd64")
-	if err != nil || cached[0] != "node" {
-		t.Fatalf("cache mutated: %v %v", cached, err)
+	failRequests.Store(true)
+	cached, err := executor.readImageCommand(context.Background(), imageRef, "linux/amd64")
+	if err != nil || !reflect.DeepEqual(cached, []string{"node", "server.mjs"}) {
+		t.Fatalf("cache mutated or missed: %v %v", cached, err)
 	}
 }
 
 func TestImageCommandRejectsUnverifiedSecretAndMutableImage(t *testing.T) {
 	for _, test := range []struct {
 		name, image string
-		secret      map[string]any
+		secret      *corev1.Secret
 	}{
 		{name: "mutable", image: "registry.test/app:latest"},
 		{name: "absent", image: "registry.test/app@sha256:" + strings.Repeat("c", 64)},
-		{name: "foreign namespace", image: "registry.test/app@sha256:" + strings.Repeat("d", 64), secret: map[string]any{"kind": "Secret", "metadata": map[string]any{"name": "tcr-pull-secret", "namespace": "foreign"}, "type": "kubernetes.io/dockerconfigjson", "data": map[string]any{".dockerconfigjson": base64String(`{}`)}}},
+		{
+			name:  "foreign namespace",
+			image: "registry.test/app@sha256:" + strings.Repeat("d", 64),
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "tcr-pull-secret", Namespace: "foreign"},
+				Type:       corev1.SecretTypeDockerConfigJson,
+				Data:       map[string][]byte{corev1.DockerConfigJsonKey: []byte(`{}`)},
+			},
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cluster := newFakeCluster()
 			if test.secret != nil {
-				cluster.store(test.secret)
+				// Store under testNamespace with mismatched ObjectMeta.Namespace to
+				// verify executor checks the returned object's Namespace field.
+				stored := test.secret.DeepCopy()
+				_, _ = cluster.clientset.CoreV1().Secrets(testNamespace).Create(context.Background(), stored, metav1.CreateOptions{})
 			}
-			executor := &Executor{Kubectl: cluster.kubectl, Installation: testInstallation()}
+			executor := &Executor{Client: cluster, Installation: testInstallation()}
 			if _, err := executor.readImageCommand(context.Background(), test.image, "linux/amd64"); !errors.Is(err, errImageCommand) {
 				t.Fatalf("err=%v", err)
 			}
@@ -219,10 +290,23 @@ func TestAbsentRuntimeReadDoesNotRequireRegistry(t *testing.T) {
 	}
 }
 
+type failingSecretCluster struct {
+	ClusterClient
+	err error
+}
+
+func (f failingSecretCluster) GetSecret(context.Context, string) (*corev1.Secret, error) {
+	return nil, f.err
+}
+
 func TestImageCommandPreservesCancellationWithoutLeakingTransportError(t *testing.T) {
-	executor := &Executor{Installation: testInstallation(), Kubectl: func(context.Context, []string, []byte) ([]byte, error) {
-		return nil, errors.Join(context.Canceled, errors.New("sensitive transport data"))
-	}}
+	executor := &Executor{
+		Installation: testInstallation(),
+		Client: failingSecretCluster{
+			ClusterClient: newFakeCluster(),
+			err:           errors.Join(context.Canceled, errors.New("sensitive transport data")),
+		},
+	}
 	_, err := executor.readImageCommand(context.Background(), "registry.test/cancel@sha256:"+strings.Repeat("e", 64), "linux/amd64")
 	if !errors.Is(err, context.Canceled) || !errors.Is(err, errImageCommand) || strings.Contains(err.Error(), "sensitive") {
 		t.Fatalf("unsafe or lost cause: %v", err)

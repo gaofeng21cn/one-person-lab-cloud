@@ -3,7 +3,6 @@ package fabric
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/internal/tkeapply"
@@ -12,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/moby/moby/api/types/network"
 )
 
 func applicationLifecycleInput(input WorkspaceApplicationRuntimeInput, state, key string) WorkspaceApplicationRuntimeLifecycleInput {
@@ -301,12 +302,9 @@ func TestWorkspaceApplicationLifecycleResumeReadsCurrentEntryAfterPending(t *tes
 		t.Fatalf("suspend=%#v err=%v", result, err)
 	}
 	name, _ := localDockerApplicationComponentNameForInput(input, "main")
-	var containers []dockerContainerInspect
-	if err := json.Unmarshal(runner.containers[name], &containers); err != nil {
-		t.Fatal(err)
-	}
-	containers[0].NetworkSettings.Ports["8080/tcp"][0].HostPort = "32080"
-	runner.containers[name], runner.containers["cid-"+name] = mustJSON(containers), mustJSON(containers)
+	c := runner.containers[name]
+	c.NetworkSettings.Ports[network.MustParsePort("8080/tcp")][0].HostPort = "32080"
+	runner.containers[name] = c
 	runner.probeReady = false
 	resume := applicationLifecycleInput(input, "running", "resume-current-entry")
 	pending, err := service.SetWorkspaceApplicationRuntimeLifecycle(ctx, resume)

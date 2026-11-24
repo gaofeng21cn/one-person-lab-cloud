@@ -15,6 +15,11 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	dockercontainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/api/types/system"
+	mobyclient "github.com/moby/moby/client"
 )
 
 type closeoutTestProvider struct {
@@ -332,26 +337,44 @@ func TestWorkspaceLaunchCloseoutWaitsForOriginalEnsureBeforeFreezing(t *testing.
 }
 
 type closeoutDockerRunner struct {
+	stubDockerClient
 	mu      sync.Mutex
 	base    localDockerComputeRoundTripRunner
 	removes int
 }
 
-func (r *closeoutDockerRunner) Run(ctx context.Context, stdin []byte, args ...string) ([]byte, error) {
+func (r *closeoutDockerRunner) Info(context.Context) (system.Info, error) {
+	return system.Info{ServerVersion: "test-docker-version", NCPU: 64, MemTotal: 274877906944}, nil
+}
+
+func (r *closeoutDockerRunner) ContainerList(context.Context, mobyclient.ContainerListOptions) ([]dockercontainer.Summary, error) {
+	return nil, nil
+}
+
+func (r *closeoutDockerRunner) NetworkList(ctx context.Context, options mobyclient.NetworkListOptions) ([]network.Summary, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if len(args) > 1 && args[0] == "info" {
-		return []byte(`{"NCPU":64,"MemTotal":274877906944}`), nil
-	}
-	if len(args) > 1 && (args[0] == "container" || args[0] == "volume") && args[1] == "ls" {
-		return nil, nil
-	}
-	if len(args) == 3 && args[0] == "network" && args[1] == "rm" {
-		r.removes++
-		r.base.network = dockerNetworkInspect{}
-		return nil, nil
-	}
-	return r.base.Run(ctx, stdin, args...)
+	return r.base.NetworkList(ctx, options)
+}
+
+func (r *closeoutDockerRunner) NetworkInspect(ctx context.Context, id string, options mobyclient.NetworkInspectOptions) (network.Inspect, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.base.NetworkInspect(ctx, id, options)
+}
+
+func (r *closeoutDockerRunner) NetworkCreate(ctx context.Context, name string, options mobyclient.NetworkCreateOptions) (mobyclient.NetworkCreateResult, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.base.NetworkCreate(ctx, name, options)
+}
+
+func (r *closeoutDockerRunner) NetworkRemove(context.Context, string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.removes++
+	r.base.network = dockerNetworkInspect{}
+	return nil
 }
 func TestWorkspaceLaunchCloseoutLocalAdapterRemovesOriginalPartialResources(t *testing.T) {
 	ctx := context.Background()

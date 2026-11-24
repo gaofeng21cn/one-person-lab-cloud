@@ -2,42 +2,63 @@ package fabric
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
+
+	dockercontainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	mobyclient "github.com/moby/moby/client"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	contracts "opl-cloud/packages/contracts/go"
 )
 
 type applicationStartupRunner struct {
+	*applicationRuntimeDockerRunner
 	base    *applicationRuntimeDockerRunner
 	ready   map[string]bool
 	actions []string
 }
 
-func (r *applicationStartupRunner) Run(ctx context.Context, stdin []byte, args ...string) ([]byte, error) {
-	if args[0] == "run" && strings.Contains(strings.Join(args, " "), "--name opl-app-probe-") {
+func (r *applicationStartupRunner) ContainerCreate(ctx context.Context, config *dockercontainer.Config, hostConfig *dockercontainer.HostConfig, networkingConfig *network.NetworkingConfig, platform *ocispec.Platform, containerName string) (mobyclient.ContainerCreateResult, error) {
+	if strings.HasPrefix(containerName, "opl-app-probe-") && hostConfig != nil {
 		r.base.probeReady = true
 		for name, ready := range r.ready {
-			if strings.Contains(strings.Join(args, " "), "--network container:cid-opl-app-"+name+"-") {
+			if strings.Contains(string(hostConfig.NetworkMode), "container:cid-opl-app-"+name+"-") {
 				r.base.probeReady = ready
 			}
 		}
 	}
-	if args[0] == "container" && (args[1] == "start" || args[1] == "stop" || args[1] == "rm") {
-		name := args[len(args)-1]
-		if !strings.HasPrefix(name, "opl-app-probe-") {
-			r.actions = append(r.actions, args[1]+":"+name)
-		}
-	}
-	return r.base.Run(ctx, stdin, args...)
+	return r.base.ContainerCreate(ctx, config, hostConfig, networkingConfig, platform, containerName)
 }
+
+func (r *applicationStartupRunner) ContainerStart(ctx context.Context, containerID string, options mobyclient.ContainerStartOptions) error {
+	if !strings.HasPrefix(containerID, "cid-") && !strings.HasPrefix(containerID, "opl-app-probe-") {
+		r.actions = append(r.actions, "start:"+containerID)
+	}
+	return r.base.ContainerStart(ctx, containerID, options)
+}
+
+func (r *applicationStartupRunner) ContainerStop(ctx context.Context, containerID string, options mobyclient.ContainerStopOptions) error {
+	if !strings.HasPrefix(containerID, "opl-app-probe-") {
+		r.actions = append(r.actions, "stop:"+containerID)
+	}
+	return r.base.ContainerStop(ctx, containerID, options)
+}
+
+func (r *applicationStartupRunner) ContainerRemove(ctx context.Context, containerID string, options mobyclient.ContainerRemoveOptions) error {
+	if !strings.HasPrefix(containerID, "opl-app-probe-") {
+		r.actions = append(r.actions, "rm:"+containerID)
+	}
+	return r.base.ContainerRemove(ctx, containerID, options)
+}
+
 func applicationStartupFixture(t *testing.T) (*LocalDockerProvider, *applicationStartupRunner, WorkspaceApplicationRuntimeInput) {
 	t.Helper()
 	provider, base, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
-	runner := &applicationStartupRunner{base: base, ready: map[string]bool{"database": false, "retrieval": false}}
-	provider.runner = runner
+	runner := &applicationStartupRunner{applicationRuntimeDockerRunner: base, base: base, ready: map[string]bool{"database": false, "retrieval": false}}
+	provider.docker = runner
 	revision := applicationRevisionForTest()
 	revision.Dependencies[0].DependsOn = []string{"database"}
 	revision.Dependencies[0].HealthChecks = []contracts.WorkspaceApplicationDependencyHealthCheck{{Type: "http", Port: 9200, Path: "/health"}}
@@ -99,12 +120,7 @@ func TestLocalDockerApplicationDependencyFailureDoesNotStartDependents(t *testin
 	p, runner, input := applicationStartupFixture(t)
 	ensureApplicationStartup(t, p, input)
 	name, _ := localDockerApplicationComponentNameForInput(input, "database")
-	var objects []map[string]any
-	if err := json.Unmarshal(runner.base.containers[name], &objects); err != nil {
-		t.Fatal(err)
-	}
-	objects[0]["State"] = map[string]any{"Running": false, "Status": "exited"}
-	runner.base.containers[name] = mustJSON(objects)
+	runner.base.setContainerState(name, "exited", false)
 	result := ensureApplicationStartup(t, p, input)
 	if result.Status != "failed" || runner.base.runCount() != 1 {
 		t.Fatalf("failed prerequisite started dependents: %s", result.Status)
@@ -166,10 +182,7 @@ func TestWorkspaceApplicationCreateReplayContinuesOnlyDeferredNodes(t *testing.T
 				delete(runner.base.containers, name)
 			case "failed-existing":
 				name, _ := localDockerApplicationComponentNameForInput(input, "database")
-				var objects []map[string]any
-				_ = json.Unmarshal(runner.base.containers[name], &objects)
-				objects[0]["State"] = map[string]any{"Running": false, "Status": "exited"}
-				runner.base.containers[name] = mustJSON(objects)
+				runner.base.setContainerState(name, "exited", false)
 			case "read-only":
 				_, _ = service.WorkspaceApplicationRuntimeReadback(context.Background(), input)
 				if runner.base.runCount() != 1 {

@@ -2,13 +2,16 @@ package fabric
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	dockercontainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	mobyclient "github.com/moby/moby/client"
 )
 
 type runtimeGatewayNetworkRecoveryTestProvider struct {
@@ -83,37 +86,45 @@ func TestRecoverWorkspaceRuntimeGatewayNetworkIsUnavailableForTencent(t *testing
 }
 
 type runtimeGatewayNetworkRecoveryStateRunner struct {
+	stubDockerClient
 	network    dockerNetworkInspect
 	containers map[string]dockerContainerInspect
 	connects   int
 }
 
-func (r *runtimeGatewayNetworkRecoveryStateRunner) Run(_ context.Context, _ []byte, args ...string) ([]byte, error) {
-	switch {
-	case len(args) == 7 && args[0] == "network" && args[1] == "ls":
-		return json.Marshal(dockerObjectInventoryRow{ID: r.network.ID, Name: r.network.Name})
-	case len(args) == 3 && args[0] == "network" && args[1] == "inspect":
-		return json.Marshal([]dockerNetworkInspect{r.network})
-	case len(args) == 8 && args[0] == "container" && args[1] == "ls":
-		name := strings.TrimSuffix(strings.TrimPrefix(args[5], "name=^/"), "$")
-		container, ok := r.containers[name]
-		if !ok {
-			return nil, nil
-		}
-		return json.Marshal(dockerObjectInventoryRow{ID: container.ID, Names: name})
-	case len(args) == 3 && args[0] == "container" && args[1] == "inspect":
-		for _, container := range r.containers {
-			if container.ID == args[2] {
-				return json.Marshal([]dockerContainerInspect{container})
-			}
-		}
-		return nil, fmt.Errorf("container not found")
-	case len(args) == 4 && args[0] == "network" && args[1] == "connect":
-		r.connects++
+func (r *runtimeGatewayNetworkRecoveryStateRunner) NetworkList(context.Context, mobyclient.NetworkListOptions) ([]network.Summary, error) {
+	return []network.Summary{sdkNetworkSummary(r.network.ID, r.network.Name)}, nil
+}
+
+func (r *runtimeGatewayNetworkRecoveryStateRunner) NetworkInspect(context.Context, string, mobyclient.NetworkInspectOptions) (network.Inspect, error) {
+	return sdkNetworkInspect(r.network), nil
+}
+
+func (r *runtimeGatewayNetworkRecoveryStateRunner) ContainerList(_ context.Context, options mobyclient.ContainerListOptions) ([]dockercontainer.Summary, error) {
+	names := dockerFilterValues(options.Filters, "name")
+	if len(names) == 0 {
 		return nil, nil
-	default:
-		return nil, fmt.Errorf("unexpected docker call: %q", args)
 	}
+	name := strings.TrimSuffix(strings.TrimPrefix(names[0], "^/"), "$")
+	item, ok := r.containers[name]
+	if !ok {
+		return nil, nil
+	}
+	return []dockercontainer.Summary{{ID: item.ID, Names: []string{"/" + name}}}, nil
+}
+
+func (r *runtimeGatewayNetworkRecoveryStateRunner) ContainerInspect(_ context.Context, containerID string) (dockercontainer.InspectResponse, error) {
+	for _, item := range r.containers {
+		if item.ID == containerID {
+			return sdkContainerInspect(item), nil
+		}
+	}
+	return dockercontainer.InspectResponse{}, fmt.Errorf("container not found")
+}
+
+func (r *runtimeGatewayNetworkRecoveryStateRunner) NetworkConnect(context.Context, string, string, *network.EndpointSettings) error {
+	r.connects++
+	return nil
 }
 
 func runtimeGatewayNetworkRecoveryStateFixture(t *testing.T) (*LocalDockerProvider, *runtimeGatewayNetworkRecoveryStateRunner, WorkspaceRuntimeGatewayNetworkRecoveryInput, ComputeAllocation) {

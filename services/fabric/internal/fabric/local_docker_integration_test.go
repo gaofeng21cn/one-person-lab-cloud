@@ -1,6 +1,7 @@
 package fabric
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -11,12 +12,22 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
+
+	dockercontainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/api/types/system"
+	"github.com/moby/moby/api/types/volume"
+	mobyclient "github.com/moby/moby/client"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 const qualificationWorkspaceDockerfilePath = "../../../../deploy/portable/qualification-workspace.Dockerfile"
@@ -124,7 +135,8 @@ func waitForLocalRuntime(ctx context.Context, url string) error {
 }
 
 type bindingCheckingDockerRunner struct {
-	base                       dockerRunner
+	localDockerClient
+	base                       localDockerClient
 	store                      OperationStore
 	parents                    map[string]WorkspaceLaunchStageBinding
 	mutationIDs                map[string]string
@@ -139,53 +151,53 @@ type bindingCheckingDockerRunner struct {
 }
 
 type recordingDockerRunner struct {
-	calls [][]string
+	stubDockerClient
+	calls []string
 }
 
-func (r *recordingDockerRunner) Run(_ context.Context, _ []byte, args ...string) ([]byte, error) {
-	r.calls = append(r.calls, append([]string(nil), args...))
-	if len(args) >= 1 && args[0] == "info" {
-		return []byte("test-docker-version"), nil
-	}
-	return nil, fmt.Errorf("unexpected docker call: %q", args)
+func (r *recordingDockerRunner) Info(context.Context) (system.Info, error) {
+	r.calls = append(r.calls, "Info")
+	return system.Info{ServerVersion: "test-docker-version"}, nil
 }
 
 type localDockerComputeRoundTripRunner struct {
+	stubDockerClient
 	network       dockerNetworkInspect
 	mutationCalls int
 }
 
-func (r *localDockerComputeRoundTripRunner) Run(_ context.Context, _ []byte, args ...string) ([]byte, error) {
-	switch {
-	case len(args) >= 1 && args[0] == "info":
-		return []byte("test-docker-version"), nil
-	case len(args) == 7 && args[0] == "network" && args[1] == "ls":
-		if r.network.ID == "" {
-			return nil, nil
-		}
-		return json.Marshal(dockerObjectInventoryRow{ID: r.network.ID, Name: r.network.Name})
-	case len(args) >= 4 && args[0] == "network" && args[1] == "create":
-		r.mutationCalls++
-		r.network = dockerNetworkInspect{ID: "network-round-trip", Name: args[len(args)-1], Labels: map[string]string{}}
-		for index := 0; index+1 < len(args); index++ {
-			if args[index] != "--label" {
-				continue
-			}
-			key, value, found := strings.Cut(args[index+1], "=")
-			if found {
-				r.network.Labels[key] = value
-			}
-		}
-		return []byte(r.network.ID), nil
-	case len(args) == 3 && args[0] == "network" && args[1] == "inspect" && r.network.ID != "":
-		return json.Marshal([]dockerNetworkInspect{r.network})
-	default:
-		return nil, fmt.Errorf("unexpected docker call: %q", args)
+func (r *localDockerComputeRoundTripRunner) Info(context.Context) (system.Info, error) {
+	return system.Info{ServerVersion: "test-docker-version"}, nil
+}
+
+func (r *localDockerComputeRoundTripRunner) NetworkList(context.Context, mobyclient.NetworkListOptions) ([]network.Summary, error) {
+	if r.network.ID == "" {
+		return nil, nil
 	}
+	return []network.Summary{sdkNetworkSummary(r.network.ID, r.network.Name)}, nil
+}
+
+func (r *localDockerComputeRoundTripRunner) NetworkCreate(_ context.Context, name string, options mobyclient.NetworkCreateOptions) (mobyclient.NetworkCreateResult, error) {
+	r.mutationCalls++
+	labels := make(map[string]string, len(options.Labels))
+	for k, v := range options.Labels {
+		labels[k] = v
+	}
+	r.network = dockerNetworkInspect{ID: "network-round-trip", Name: name, Labels: labels}
+	return mobyclient.NetworkCreateResult{ID: r.network.ID}, nil
+}
+
+func (r *localDockerComputeRoundTripRunner) NetworkInspect(_ context.Context, _ string, _ mobyclient.NetworkInspectOptions) (network.Inspect, error) {
+	if r.network.ID == "" {
+		return network.Inspect{}, fmt.Errorf("network not found")
+	}
+	return sdkNetworkInspect(r.network), nil
 }
 
 type localDockerRuntimeReplayRunner struct {
-	calls                  [][]string
+	stubDockerClient
+	calls                  []string
+	created                []recordedApplicationContainerCreate
 	network                dockerNetworkInspect
 	volume                 dockerVolumeInspect
 	container              dockerContainerInspect
@@ -196,42 +208,67 @@ type localDockerRuntimeReplayRunner struct {
 	secretArchive          []byte
 }
 
-func (r *localDockerRuntimeReplayRunner) Run(_ context.Context, _ []byte, args ...string) ([]byte, error) {
-	r.calls = append(r.calls, append([]string(nil), args...))
-	switch {
-	case len(args) == 8 && args[0] == "container" && args[1] == "ls" && args[5] == "label=opl.fabric.kind=runtime":
-		if !r.containerVisible && !(r.containerVisibleOnRead > 0 && r.containerReads >= r.containerVisibleOnRead) {
-			return nil, nil
+func (r *localDockerRuntimeReplayRunner) Info(context.Context) (system.Info, error) {
+	r.calls = append(r.calls, "Info")
+	return system.Info{NCPU: 64, MemTotal: 274877906944}, nil
+}
+
+func (r *localDockerRuntimeReplayRunner) NetworkList(context.Context, mobyclient.NetworkListOptions) ([]network.Summary, error) {
+	r.calls = append(r.calls, "NetworkList")
+	return []network.Summary{sdkNetworkSummary(r.network.ID, r.network.Name)}, nil
+}
+
+func (r *localDockerRuntimeReplayRunner) NetworkInspect(context.Context, string, mobyclient.NetworkInspectOptions) (network.Inspect, error) {
+	r.calls = append(r.calls, "NetworkInspect")
+	return sdkNetworkInspect(r.network), nil
+}
+
+func (r *localDockerRuntimeReplayRunner) VolumeInspect(context.Context, string) (volume.Volume, error) {
+	r.calls = append(r.calls, "VolumeInspect")
+	return volume.Volume{Name: r.volume.Name, Labels: r.volume.Labels}, nil
+}
+
+func (r *localDockerRuntimeReplayRunner) ContainerList(_ context.Context, options mobyclient.ContainerListOptions) ([]dockercontainer.Summary, error) {
+	r.calls = append(r.calls, "ContainerList")
+	for _, label := range dockerFilterValues(options.Filters, "label") {
+		if label == "opl.fabric.kind=runtime" {
+			if !r.containerVisible && !(r.containerVisibleOnRead > 0 && r.containerReads >= r.containerVisibleOnRead) {
+				return nil, nil
+			}
+			return []dockercontainer.Summary{{ID: r.container.ID, Names: []string{"/" + strings.TrimPrefix(r.container.Name, "/")}}}, nil
 		}
-		return json.Marshal(dockerObjectInventoryRow{ID: r.container.ID, Names: strings.TrimPrefix(r.container.Name, "/")})
-	case len(args) == 3 && args[0] == "info" && args[1] == "--format" && args[2] == "{{json .}}":
-		return []byte(`{"NCPU":64,"MemTotal":274877906944}`), nil
-	case len(args) == 7 && args[0] == "network" && args[1] == "ls":
-		return json.Marshal(dockerObjectInventoryRow{ID: r.network.ID, Name: r.network.Name})
-	case len(args) == 3 && args[0] == "network" && args[1] == "inspect":
-		return json.Marshal([]dockerNetworkInspect{r.network})
-	case len(args) == 6 && args[0] == "volume" && args[1] == "ls":
-		return json.Marshal(dockerObjectInventoryRow{Name: r.volume.Name})
-	case len(args) == 3 && args[0] == "volume" && args[1] == "inspect":
-		return json.Marshal([]dockerVolumeInspect{r.volume})
-	case len(args) == 8 && args[0] == "container" && args[1] == "ls":
-		r.containerReads++
-		visible := r.containerVisible || r.containerVisibleOnRead > 0 && r.containerReads >= r.containerVisibleOnRead
-		if !visible {
-			return nil, nil
-		}
-		return json.Marshal(dockerObjectInventoryRow{ID: r.container.ID, Names: strings.TrimPrefix(r.container.Name, "/")})
-	case len(args) == 3 && args[0] == "container" && args[1] == "inspect":
-		return json.Marshal([]dockerContainerInspect{r.container})
-	case len(args) == 4 && args[0] == "container" && args[1] == "cp":
-		return append([]byte(nil), r.secretArchive...), nil
-	case len(args) > 0 && args[0] == "run":
-		r.runCalls++
-		r.containerVisible = true
-		return []byte(r.container.ID), nil
-	default:
-		return nil, fmt.Errorf("unexpected docker call: %q", args)
 	}
+	r.containerReads++
+	visible := r.containerVisible || r.containerVisibleOnRead > 0 && r.containerReads >= r.containerVisibleOnRead
+	if !visible {
+		return nil, nil
+	}
+	return []dockercontainer.Summary{{ID: r.container.ID, Names: []string{"/" + strings.TrimPrefix(r.container.Name, "/")}}}, nil
+}
+
+func (r *localDockerRuntimeReplayRunner) ContainerInspect(context.Context, string) (dockercontainer.InspectResponse, error) {
+	r.calls = append(r.calls, "ContainerInspect")
+	return sdkContainerInspect(r.container), nil
+}
+
+func (r *localDockerRuntimeReplayRunner) CopyFromContainer(context.Context, string, string) (io.ReadCloser, dockercontainer.PathStat, error) {
+	r.calls = append(r.calls, "CopyFromContainer")
+	return io.NopCloser(bytes.NewReader(append([]byte(nil), r.secretArchive...))), dockercontainer.PathStat{}, nil
+}
+
+func (r *localDockerRuntimeReplayRunner) ContainerCreate(_ context.Context, config *dockercontainer.Config, hostConfig *dockercontainer.HostConfig, networkingConfig *network.NetworkingConfig, platform *ocispec.Platform, containerName string) (mobyclient.ContainerCreateResult, error) {
+	r.calls = append(r.calls, "ContainerCreate")
+	r.created = append(r.created, recordedApplicationContainerCreate{
+		Name: containerName, Config: config, HostConfig: hostConfig, NetworkingConfig: networkingConfig, Platform: platform,
+	})
+	r.runCalls++
+	r.containerVisible = true
+	return mobyclient.ContainerCreateResult{ID: r.container.ID}, nil
+}
+
+func (r *localDockerRuntimeReplayRunner) ContainerStart(context.Context, string, mobyclient.ContainerStartOptions) error {
+	r.calls = append(r.calls, "ContainerStart")
+	return nil
 }
 
 func localDockerReadyRuntimeContainer(t *testing.T, name, id, image string, labels map[string]string, storage localDockerStoragePaths, secretPath string) dockerContainerInspect {
@@ -326,6 +363,7 @@ func localDockerRuntimeReplayFixture(t *testing.T, visibleOnRead int) (*LocalDoc
 }
 
 type localDockerDestroyRunner struct {
+	stubDockerClient
 	calls          [][]string
 	containers     map[string]dockerContainerInspect
 	volumes        map[string]dockerVolumeInspect
@@ -334,69 +372,55 @@ type localDockerDestroyRunner struct {
 	volumeRMErr    map[string]error
 }
 
-func (r *localDockerDestroyRunner) Run(_ context.Context, _ []byte, args ...string) ([]byte, error) {
-	r.calls = append(r.calls, append([]string(nil), args...))
-	if len(args) < 2 {
-		return nil, fmt.Errorf("unexpected docker call: %q", args)
-	}
-	switch {
-	case len(args) == 8 && args[0] == "container" && args[1] == "ls":
-		name := strings.TrimSuffix(strings.TrimPrefix(args[5], "name=^/"), "$")
-		container, ok := r.containers[name]
-		if !ok {
-			return nil, nil
-		}
-		return json.Marshal(dockerObjectInventoryRow{ID: container.ID, Names: name})
-	case len(args) == 3 && args[0] == "container" && args[1] == "inspect":
-		var container dockerContainerInspect
-		ok := false
-		for _, candidate := range r.containers {
-			if candidate.ID == args[2] {
-				container, ok = candidate, true
-				break
-			}
-		}
-		if !ok {
-			return nil, errors.New("container inventory drift")
-		}
-		return json.Marshal([]dockerContainerInspect{container})
-	case len(args) == 4 && args[0] == "container" && args[1] == "cp":
-		name := strings.TrimSuffix(args[2], ":"+localDockerRuntimeSecretMountPath+"/.")
-		archive, ok := r.archives[name]
-		if !ok {
-			return nil, errors.New("runtime Secret archive unavailable")
-		}
-		return append([]byte(nil), archive...), nil
-	case len(args) == 4 && args[0] == "container" && args[1] == "rm" && args[2] == "-f":
-		name := args[3]
-		if err := r.containerRMErr[name]; err != nil {
-			return nil, err
-		}
-		delete(r.containers, name)
+func (r *localDockerDestroyRunner) ContainerList(_ context.Context, options mobyclient.ContainerListOptions) ([]dockercontainer.Summary, error) {
+	r.calls = append(r.calls, []string{"ContainerList"})
+	names := dockerFilterValues(options.Filters, "name")
+	if len(names) == 0 {
 		return nil, nil
-	case len(args) == 6 && args[0] == "volume" && args[1] == "ls":
-		name := strings.TrimSuffix(strings.TrimPrefix(args[3], "name=^"), "$")
-		if _, ok := r.volumes[name]; !ok {
-			return nil, nil
-		}
-		return json.Marshal(dockerObjectInventoryRow{Name: name})
-	case len(args) == 3 && args[0] == "volume" && args[1] == "inspect":
-		name := args[2]
-		volume, ok := r.volumes[name]
-		if !ok {
-			return nil, errors.New("no such volume")
-		}
-		return json.Marshal([]dockerVolumeInspect{volume})
-	case len(args) == 3 && args[0] == "volume" && args[1] == "rm":
-		name := args[2]
-		if err := r.volumeRMErr[name]; err != nil {
-			return nil, err
-		}
-		delete(r.volumes, name)
-		return nil, nil
-	default:
-		return nil, fmt.Errorf("unexpected docker call: %q", args)
 	}
+	name := strings.TrimSuffix(strings.TrimPrefix(names[0], "^/"), "$")
+	item, ok := r.containers[name]
+	if !ok {
+		return nil, nil
+	}
+	return []dockercontainer.Summary{{ID: item.ID, Names: []string{"/" + name}}}, nil
+}
+
+func (r *localDockerDestroyRunner) ContainerInspect(_ context.Context, containerID string) (dockercontainer.InspectResponse, error) {
+	r.calls = append(r.calls, []string{"ContainerInspect", containerID})
+	for _, candidate := range r.containers {
+		if candidate.ID == containerID {
+			return sdkContainerInspect(candidate), nil
+		}
+	}
+	return dockercontainer.InspectResponse{}, errors.New("container inventory drift")
+}
+
+func (r *localDockerDestroyRunner) CopyFromContainer(_ context.Context, containerID, _ string) (io.ReadCloser, dockercontainer.PathStat, error) {
+	r.calls = append(r.calls, []string{"CopyFromContainer", containerID})
+	archive, ok := r.archives[containerID]
+	if !ok {
+		return nil, dockercontainer.PathStat{}, errors.New("runtime Secret archive unavailable")
+	}
+	return io.NopCloser(bytes.NewReader(append([]byte(nil), archive...))), dockercontainer.PathStat{}, nil
+}
+
+func (r *localDockerDestroyRunner) ContainerRemove(_ context.Context, containerID string, _ mobyclient.ContainerRemoveOptions) error {
+	r.calls = append(r.calls, []string{"ContainerRemove", containerID})
+	if err := r.containerRMErr[containerID]; err != nil {
+		return err
+	}
+	delete(r.containers, containerID)
+	return nil
+}
+
+func (r *localDockerDestroyRunner) VolumeInspect(_ context.Context, volumeID string) (volume.Volume, error) {
+	r.calls = append(r.calls, []string{"VolumeInspect", volumeID})
+	item, ok := r.volumes[volumeID]
+	if !ok {
+		return volume.Volume{}, errors.New("no such volume")
+	}
+	return volume.Volume{Name: item.Name, Labels: item.Labels}, nil
 }
 
 func localDockerDestroyRuntimeContainer(workspaceID string) dockerContainerInspect {
@@ -474,74 +498,99 @@ func localDockerRemoveCalls(calls [][]string, resource string) []string {
 	for _, call := range calls {
 		switch resource {
 		case "container":
-			if len(call) == 4 && call[0] == "container" && call[1] == "rm" && call[2] == "-f" {
-				removed = append(removed, call[3])
+			if len(call) == 2 && call[0] == "ContainerRemove" {
+				removed = append(removed, call[1])
 			}
 		case "volume":
-			if len(call) == 3 && call[0] == "volume" && call[1] == "rm" {
-				removed = append(removed, call[2])
+			if len(call) == 2 && call[0] == "VolumeRemove" {
+				removed = append(removed, call[1])
 			}
 		}
 	}
 	return removed
 }
 
-func (r *bindingCheckingDockerRunner) Run(ctx context.Context, stdin []byte, args ...string) ([]byte, error) {
-	stage, mutation := "", ""
-	if len(args) >= 2 && args[0] == "network" && args[1] == "create" {
-		stage, mutation = "ensure_compute_allocation", "local_docker_network_create"
+func (r *bindingCheckingDockerRunner) checkBinding(ctx context.Context, stage, mutation string) error {
+	binding := r.parents[stage]
+	parent, err := r.store.Get(ctx, binding.FabricOperationID)
+	if err != nil || parent.Status != "started" {
+		return fmt.Errorf("local_docker_%s_mutation_before_parent_binding", stage)
 	}
-	if len(args) == 4 && args[0] == "network" && args[1] == "connect" {
-		if strings.HasPrefix(args[2], "opl-compute-") {
-			stage, mutation = "runtime", "local_docker_runtime_create"
-			r.gatewayConnectCalls++
-		} else {
-			r.gatewayRecoveryCalls++
+	persisted, ok := decodeLaunchStageBinding(parent)
+	if !ok || persisted != binding {
+		return fmt.Errorf("local_docker_%s_parent_binding_mismatch", stage)
+	}
+	child, err := r.store.Get(ctx, r.mutationIDs[mutation])
+	if err != nil || child.Status != "started" || child.Action != mutation {
+		return fmt.Errorf("local_docker_%s_mutation_before_child_binding", mutation)
+	}
+	return nil
+}
+
+func (r *bindingCheckingDockerRunner) NetworkCreate(ctx context.Context, name string, options mobyclient.NetworkCreateOptions) (mobyclient.NetworkCreateResult, error) {
+	if err := r.checkBinding(ctx, "ensure_compute_allocation", "local_docker_network_create"); err != nil {
+		return mobyclient.NetworkCreateResult{}, err
+	}
+	resp, err := r.base.NetworkCreate(ctx, name, options)
+	if err != nil && r.t != nil {
+		r.t.Logf("docker NetworkCreate name=%q error=%v", name, err)
+	}
+	return resp, err
+}
+
+func (r *bindingCheckingDockerRunner) NetworkConnect(ctx context.Context, networkID, containerID string, config *network.EndpointSettings) error {
+	if strings.HasPrefix(networkID, "opl-compute-") {
+		r.gatewayConnectCalls++
+		if err := r.checkBinding(ctx, "runtime", "local_docker_runtime_create"); err != nil {
+			return err
 		}
+	} else {
+		r.gatewayRecoveryCalls++
 	}
-	if len(args) == 4 && args[0] == "network" && args[1] == "disconnect" {
-		r.gatewayDisconnectCalls++
-	}
-	if len(args) == 3 && args[0] == "network" && args[1] == "rm" {
-		r.networkRemoveCalls++
-	}
-	if len(args) > 0 && args[0] == "run" {
-		for _, value := range args {
-			if value == "-d" {
-				stage, mutation = "runtime", "local_docker_runtime_create"
-				r.runtimeCreateCalls++
-			}
-			if value == "tar" {
-				stage, mutation = "secret", "local_docker_secret_write"
-			}
-		}
-	}
-	if stage != "" {
-		binding := r.parents[stage]
-		parent, err := r.store.Get(ctx, binding.FabricOperationID)
-		if err != nil || parent.Status != "started" {
-			return nil, fmt.Errorf("local_docker_%s_mutation_before_parent_binding", stage)
-		}
-		persisted, ok := decodeLaunchStageBinding(parent)
-		if !ok || persisted != binding {
-			return nil, fmt.Errorf("local_docker_%s_parent_binding_mismatch", stage)
-		}
-		child, err := r.store.Get(ctx, r.mutationIDs[mutation])
-		if err != nil || child.Status != "started" || child.Action != mutation {
-			return nil, fmt.Errorf("local_docker_%s_mutation_before_child_binding", mutation)
-		}
-	}
-	output, err := r.base.Run(ctx, stdin, args...)
-	if err == nil && r.loseGatewayConnectResponse && len(args) == 4 && args[0] == "network" && args[1] == "connect" {
-		return output, fmt.Errorf("local_docker_test_gateway_connect_response_lost")
-	}
-	if err == nil && r.loseGatewayCleanupResponse && len(args) >= 2 && args[0] == "network" && (args[1] == "disconnect" || args[1] == "rm") {
-		return output, fmt.Errorf("local_docker_test_gateway_cleanup_response_lost")
+	err := r.base.NetworkConnect(ctx, networkID, containerID, config)
+	if err == nil && r.loseGatewayConnectResponse {
+		return fmt.Errorf("local_docker_test_gateway_connect_response_lost")
 	}
 	if err != nil && r.t != nil {
-		r.t.Logf("docker args=%q error=%v", args, err)
+		r.t.Logf("docker NetworkConnect network=%q container=%q error=%v", networkID, containerID, err)
 	}
-	return output, err
+	return err
+}
+
+func (r *bindingCheckingDockerRunner) NetworkDisconnect(ctx context.Context, networkID, containerID string, force bool) error {
+	r.gatewayDisconnectCalls++
+	err := r.base.NetworkDisconnect(ctx, networkID, containerID, force)
+	if err == nil && r.loseGatewayCleanupResponse {
+		return fmt.Errorf("local_docker_test_gateway_cleanup_response_lost")
+	}
+	if err != nil && r.t != nil {
+		r.t.Logf("docker NetworkDisconnect network=%q container=%q error=%v", networkID, containerID, err)
+	}
+	return err
+}
+
+func (r *bindingCheckingDockerRunner) NetworkRemove(ctx context.Context, networkID string) error {
+	r.networkRemoveCalls++
+	err := r.base.NetworkRemove(ctx, networkID)
+	if err == nil && r.loseGatewayCleanupResponse {
+		return fmt.Errorf("local_docker_test_gateway_cleanup_response_lost")
+	}
+	if err != nil && r.t != nil {
+		r.t.Logf("docker NetworkRemove network=%q error=%v", networkID, err)
+	}
+	return err
+}
+
+func (r *bindingCheckingDockerRunner) ContainerCreate(ctx context.Context, config *dockercontainer.Config, hostConfig *dockercontainer.HostConfig, networkingConfig *network.NetworkingConfig, platform *ocispec.Platform, containerName string) (mobyclient.ContainerCreateResult, error) {
+	r.runtimeCreateCalls++
+	if err := r.checkBinding(ctx, "runtime", "local_docker_runtime_create"); err != nil {
+		return mobyclient.ContainerCreateResult{}, err
+	}
+	resp, err := r.base.ContainerCreate(ctx, config, hostConfig, networkingConfig, platform, containerName)
+	if err != nil && r.t != nil {
+		r.t.Logf("docker ContainerCreate name=%q error=%v", containerName, err)
+	}
+	return resp, err
 }
 
 func localLaunchBinding(launchID, accountID, workspaceID, stage, action, idempotencyKey string) WorkspaceLaunchStageBinding {
@@ -640,7 +689,7 @@ func TestLocalDockerAcceptsApprovedImmutableWorkspaceImage(t *testing.T) {
 	if !preflight.Available || preflight.Reason != "none" || preflight.ProviderBindingRef == "" {
 		t.Fatalf("approved image preflight=%#v", preflight)
 	}
-	if len(runner.calls) != 1 || len(runner.calls[0]) == 0 || runner.calls[0][0] != "info" {
+	if len(runner.calls) != 1 || runner.calls[0] != "Info" {
 		t.Fatalf("approved image Docker calls=%#v", runner.calls)
 	}
 	if len(operations) != 1 || operations[0].ID != preflight.ProviderBindingRef || operations[0].Status != "succeeded" {
@@ -1038,8 +1087,9 @@ func TestLocalDockerWorkspaceCorePath(t *testing.T) {
 	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(key)))
 	mutationIDs := map[string]string{}
 	store := NewMemoryOperationStore()
+	baseDocker := newMobyDockerClient()
 	runner := &bindingCheckingDockerRunner{
-		base: execDockerRunner{binary: "docker"}, store: store, parents: bindings, mutationIDs: mutationIDs,
+		localDockerClient: baseDocker, base: baseDocker, store: store, parents: bindings, mutationIDs: mutationIDs,
 		loseGatewayConnectResponse: true, loseGatewayCleanupResponse: true, t: t,
 	}
 	storageRoot := localDockerStorageTestRoot(t)
@@ -2136,29 +2186,33 @@ func TestLocalDockerRuntimeUsesExactReadOnlySecretBindAndIdentityLabels(t *testi
 	if runner.runCalls != 1 {
 		t.Fatalf("runtime create calls=%d all=%#v", runner.runCalls, runner.calls)
 	}
-	var run []string
-	for _, call := range runner.calls {
-		if len(call) > 0 && call[0] == "run" {
-			run = call
-			break
-		}
+	if len(runner.created) != 1 {
+		t.Fatalf("expected 1 ContainerCreate, got %d", len(runner.created))
 	}
-	joined := strings.Join(run, " ")
+	created := runner.created[0]
 	secretPath := runner.container.Mounts[3].Source
 	storagePaths, storageErr := provider.storagePaths(input.WorkspaceID)
 	if storageErr != nil {
 		t.Fatal(storageErr)
 	}
-	for _, required := range []string{
-		`--health-cmd node -e 'fetch("http://127.0.0.1:3000/").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))'`,
-		"--health-interval 5s",
-		"--health-timeout 3s",
-		"--health-start-period 10s",
-		"--health-retries 120",
-		"type=bind,source=" + storagePaths.Data + ",target=/data,bind-propagation=rprivate",
-		"type=bind,source=" + storagePaths.Projects + ",target=/projects,bind-propagation=rprivate",
-		"type=tmpfs,target=/recovery,tmpfs-mode=0700",
-		"type=bind,source=" + secretPath + ",target=/run/secrets,readonly,bind-propagation=rprivate",
+	if created.Config.Healthcheck == nil ||
+		!reflect.DeepEqual(created.Config.Healthcheck.Test, []string{"CMD-SHELL", localDockerRuntimeHealthCommand}) ||
+		created.Config.Healthcheck.Interval != 5*time.Second ||
+		created.Config.Healthcheck.Timeout != 3*time.Second ||
+		created.Config.Healthcheck.StartPeriod != 10*time.Second ||
+		created.Config.Healthcheck.Retries != 120 {
+		t.Fatalf("unexpected healthcheck: %#v", created.Config.Healthcheck)
+	}
+	wantMounts := []mount.Mount{
+		{Type: mount.TypeBind, Source: storagePaths.Data, Target: "/data", BindOptions: &mount.BindOptions{Propagation: mount.PropagationRPrivate}},
+		{Type: mount.TypeBind, Source: storagePaths.Projects, Target: "/projects", BindOptions: &mount.BindOptions{Propagation: mount.PropagationRPrivate}},
+		{Type: mount.TypeTmpfs, Target: "/recovery", TmpfsOptions: &mount.TmpfsOptions{Mode: 0700}},
+		{Type: mount.TypeBind, Source: secretPath, Target: "/run/secrets", ReadOnly: true, BindOptions: &mount.BindOptions{Propagation: mount.PropagationRPrivate}},
+	}
+	if !reflect.DeepEqual(created.HostConfig.Mounts, wantMounts) {
+		t.Fatalf("mounts=%#v want=%#v", created.HostConfig.Mounts, wantMounts)
+	}
+	for _, requiredEnv := range []string{
 		"OPL_PROJECTS_DIR=/projects",
 		"OPL_WORKSPACE_ROOT=/projects",
 		"OPL_WEBUI_RECOVERY_DIR=/recovery",
@@ -2170,19 +2224,25 @@ func TestLocalDockerRuntimeUsesExactReadOnlySecretBindAndIdentityLabels(t *testi
 		"ALLOW_REMOTE=true",
 		"HOME=/data",
 		"CODEX_HOME=/data/.codex",
-		"opl.secret.ref=" + input.GatewaySecretRef,
-		"opl.secret.version=" + runner.container.Config.Labels["opl.secret.version"],
-		"opl.secret.fingerprint=" + runner.container.Config.Labels["opl.secret.fingerprint"],
 	} {
-		if !strings.Contains(joined, required) {
-			t.Fatalf("docker run=%q missing %q", run, required)
-		}
-		if strings.Contains(joined, "OPL_GATEWAY_API_KEY_FILE=") {
-			t.Fatalf("runtime must configure the Gateway key after WebUI health, not during App startup: %q", run)
+		if !slices.Contains(created.Config.Env, requiredEnv) {
+			t.Fatalf("env=%q missing %q", created.Config.Env, requiredEnv)
 		}
 	}
-	if strings.Contains(joined, "type=volume,source="+input.GatewaySecretRef) || strings.Contains(joined, " tar ") {
-		t.Fatalf("runtime used legacy secret volume/helper: %q", run)
+	for _, env := range created.Config.Env {
+		if strings.HasPrefix(env, "OPL_GATEWAY_API_KEY_FILE=") {
+			t.Fatalf("runtime must configure the Gateway key after WebUI health, not during App startup: %q", created.Config.Env)
+		}
+	}
+	if created.Config.Labels["opl.secret.ref"] != input.GatewaySecretRef ||
+		created.Config.Labels["opl.secret.version"] != runner.container.Config.Labels["opl.secret.version"] ||
+		created.Config.Labels["opl.secret.fingerprint"] != runner.container.Config.Labels["opl.secret.fingerprint"] {
+		t.Fatalf("secret labels=%#v", created.Config.Labels)
+	}
+	for _, m := range created.HostConfig.Mounts {
+		if m.Type == mount.TypeVolume && m.Source == input.GatewaySecretRef {
+			t.Fatalf("runtime used legacy secret volume: %#v", created.HostConfig.Mounts)
+		}
 	}
 }
 
@@ -2206,32 +2266,14 @@ func TestLocalDockerRuntimeEnforcesComputePlanCgroupLimits(t *testing.T) {
 			if err != nil || !runtime.Ready {
 				t.Fatalf("runtime=%#v err=%v", runtime, err)
 			}
-			var run []string
-			for _, call := range runner.calls {
-				if len(call) > 0 && call[0] == "run" {
-					run = call
-					break
-				}
+			if len(runner.created) != 1 {
+				t.Fatalf("expected 1 ContainerCreate, got %d", len(runner.created))
 			}
-			for index := 0; index+1 < len(run); index++ {
-				if run[index] == "--cpus" && run[index+1] == test.cpus {
-					break
-				}
-				if index == len(run)-2 {
-					t.Fatalf("docker run=%q missing --cpus %s", run, test.cpus)
-				}
-			}
-			for _, flag := range []string{"--memory", "--memory-swap"} {
-				found := false
-				for index := 0; index+1 < len(run); index++ {
-					if run[index] == flag && run[index+1] == test.memoryByte {
-						found = true
-						break
-					}
-				}
-				if !found {
-					t.Fatalf("docker run=%q missing %s %s", run, flag, test.memoryByte)
-				}
+			cpuCount, _ := strconv.ParseInt(test.cpus, 10, 64)
+			memBytes, _ := strconv.ParseInt(test.memoryByte, 10, 64)
+			res := runner.created[0].HostConfig.Resources
+			if res.NanoCPUs != cpuCount*localDockerNanoCPUsPerCPU || res.Memory != memBytes || res.MemorySwap != memBytes {
+				t.Fatalf("resources=%#v want cpus=%s memory=%s", res, test.cpus, test.memoryByte)
 			}
 		})
 	}

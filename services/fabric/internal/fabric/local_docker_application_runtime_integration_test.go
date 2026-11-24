@@ -227,7 +227,7 @@ require('node:http').createServer((request, response) => {
 	}
 	launchID := "local-app-" + stableSuffix(t.Name(), time.Now().String())[:12]
 	accountID, workspaceID := "acct-local", "ws-"+stableSuffix(launchID)[:10]
-	runner := &execDockerRunner{binary: "docker"}
+	runner := newMobyDockerClient()
 	storageRoot := localDockerStorageTestRoot(t)
 	provider := newLocalDockerProvider(LocalDockerProviderConfig{
 		GatewaySecretRoot: localDockerSecretTestRoot(t), HostStorageRoot: storageRoot, RuntimeHost: "127.0.0.1",

@@ -7,6 +7,10 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	dockercontainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/system"
+	mobyclient "github.com/moby/moby/client"
 )
 
 func TestLocalDockerProviderRequiresDeploymentOwnedProfile(t *testing.T) {
@@ -91,43 +95,64 @@ func TestLocalDockerProviderProfileControlsBasicAndProAvailability(t *testing.T)
 }
 
 type localDockerCapacityRunner struct {
-	info                        []byte
+	stubDockerClient
+	info                        system.Info
+	infoErr                     error
 	container                   dockerContainerInspect
 	excludeFromRuntimeInventory bool
 }
 
-func (r *localDockerCapacityRunner) Run(_ context.Context, _ []byte, args ...string) ([]byte, error) {
-	switch {
-	case len(args) == 3 && args[0] == "info":
-		return append([]byte(nil), r.info...), nil
-	case len(args) == 8 && args[0] == "container" && args[1] == "ls" && args[5] == "label=opl.fabric.kind=runtime":
-		if r.container.ID == "" || r.excludeFromRuntimeInventory {
-			return nil, nil
-		}
-		return json.Marshal(dockerObjectInventoryRow{ID: r.container.ID, Names: r.container.Name})
-	case len(args) == 8 && args[0] == "container" && args[1] == "ls":
-		if r.container.ID != "" && strings.Contains(args[5], r.container.Name) {
-			return json.Marshal(dockerObjectInventoryRow{ID: r.container.ID, Names: r.container.Name})
-		}
-		return nil, nil
-	case len(args) == 3 && args[0] == "container" && args[1] == "inspect" && args[2] == r.container.ID:
-		return json.Marshal([]dockerContainerInspect{r.container})
-	default:
-		return nil, errors.New("unexpected docker call")
+func (r *localDockerCapacityRunner) Info(context.Context) (system.Info, error) {
+	if r.infoErr != nil {
+		return system.Info{}, r.infoErr
 	}
+	return r.info, nil
+}
+
+func (r *localDockerCapacityRunner) ContainerList(_ context.Context, options mobyclient.ContainerListOptions) ([]dockercontainer.Summary, error) {
+	for _, label := range dockerFilterValues(options.Filters, "label") {
+		if label == "opl.fabric.kind=runtime" {
+			if r.container.ID == "" || r.excludeFromRuntimeInventory {
+				return nil, nil
+			}
+			return []dockercontainer.Summary{{ID: r.container.ID, Names: []string{"/" + strings.TrimPrefix(r.container.Name, "/")}}}, nil
+		}
+	}
+	for _, name := range dockerFilterValues(options.Filters, "name") {
+		if r.container.ID != "" && strings.Contains(name, r.container.Name) {
+			return []dockercontainer.Summary{{ID: r.container.ID, Names: []string{"/" + strings.TrimPrefix(r.container.Name, "/")}}}, nil
+		}
+	}
+	return nil, nil
+}
+
+func (r *localDockerCapacityRunner) ContainerInspect(_ context.Context, containerID string) (dockercontainer.InspectResponse, error) {
+	if containerID != r.container.ID {
+		return dockercontainer.InspectResponse{}, errors.New("unexpected docker container inspect")
+	}
+	return sdkContainerInspect(r.container), nil
 }
 
 func TestLocalDockerRuntimeHostCapacityRequiresCompleteJSONReadback(t *testing.T) {
 	root := localDockerStorageTestRoot(t)
-	provider := newLocalDockerProvider(LocalDockerProviderConfig{HostStorageRoot: root}, &localDockerCapacityRunner{info: []byte("{\"NCPU\":2,\"MemTotal\":4294967296}")})
+	provider := newLocalDockerProvider(LocalDockerProviderConfig{HostStorageRoot: root}, &localDockerCapacityRunner{info: system.Info{NCPU: 2, MemTotal: 4294967296}})
 	capacity, err := provider.readDockerHostCapacity(context.Background())
 	if err != nil || capacity.CPUs != 2 || capacity.MemoryBytes != 4294967296 {
 		t.Fatalf("capacity=%#v err=%v", capacity, err)
 	}
-	for _, body := range []string{"{\"NCPU\":0,\"MemTotal\":1}", "{\"NCPU\":2}", "not-json", "{\"NCPU\":2,\"MemTotal\":1} trailing"} {
-		candidate := newLocalDockerProvider(LocalDockerProviderConfig{HostStorageRoot: root}, &localDockerCapacityRunner{info: []byte(body)})
+	for _, tc := range []struct {
+		name    string
+		info    system.Info
+		infoErr error
+	}{
+		{name: "zero cpu", info: system.Info{NCPU: 0, MemTotal: 1}},
+		{name: "zero memory", info: system.Info{NCPU: 2, MemTotal: 0}},
+		{name: "negative memory", info: system.Info{NCPU: 2, MemTotal: -1}},
+		{name: "info error", infoErr: errors.New("daemon unavailable")},
+	} {
+		candidate := newLocalDockerProvider(LocalDockerProviderConfig{HostStorageRoot: root}, &localDockerCapacityRunner{info: tc.info, infoErr: tc.infoErr})
 		if _, err := candidate.readDockerHostCapacity(context.Background()); err == nil {
-			t.Fatalf("accepted invalid info=%q", body)
+			t.Fatalf("accepted invalid info case %s", tc.name)
 		}
 	}
 }
@@ -136,7 +161,7 @@ func TestLocalDockerRuntimeCapacityCountsDurableReservations(t *testing.T) {
 	rootPath := localDockerStorageTestRoot(t)
 	workspaceID := "ws-existing"
 	resourceID := localRuntimeID(workspaceID)
-	runner := &localDockerCapacityRunner{info: []byte("{\"NCPU\":4,\"MemTotal\":8589934592}")}
+	runner := &localDockerCapacityRunner{info: system.Info{NCPU: 4, MemTotal: 8589934592}}
 	runner.container.ID, runner.container.Name = "container-existing", localRuntimeName(workspaceID)
 	runner.container.Config.Labels = map[string]string{"opl.fabric.provider": "local-docker", "opl.fabric.kind": "runtime", "opl.workspace.id": workspaceID, "opl.resource.id": resourceID, localDockerComputePackageLabel: "basic"}
 	runner.container.HostConfig.NanoCPUs, runner.container.HostConfig.Memory, runner.container.HostConfig.MemorySwap = 2_000_000_000, 4_294_967_296, 4_294_967_296
@@ -164,7 +189,7 @@ func TestLocalDockerRuntimeCapacityUsesDurableReservationAcrossProfileDrift(t *t
 	rootPath := localDockerStorageTestRoot(t)
 	workspaceID := "ws-existing"
 	resourceID := localRuntimeID(workspaceID)
-	runner := &localDockerCapacityRunner{info: []byte("{\"NCPU\":8,\"MemTotal\":17179869184}")}
+	runner := &localDockerCapacityRunner{info: system.Info{NCPU: 8, MemTotal: 17179869184}}
 	runner.container.ID, runner.container.Name = "container-existing", localRuntimeName(workspaceID)
 	runner.container.Config.Labels = map[string]string{
 		"opl.fabric.provider": "local-docker", "opl.fabric.kind": "runtime", "opl.workspace.id": workspaceID,
@@ -200,7 +225,7 @@ func TestLocalDockerRuntimeCapacityRecoversMissingReservationFromLiveLimits(t *t
 	rootPath := localDockerStorageTestRoot(t)
 	workspaceID := "ws-existing"
 	resourceID := localRuntimeID(workspaceID)
-	runner := &localDockerCapacityRunner{info: []byte("{\"NCPU\":8,\"MemTotal\":17179869184}")}
+	runner := &localDockerCapacityRunner{info: system.Info{NCPU: 8, MemTotal: 17179869184}}
 	runner.container.ID, runner.container.Name = "container-existing", localRuntimeName(workspaceID)
 	runner.container.Config.Labels = map[string]string{
 		"opl.fabric.provider": "local-docker", "opl.fabric.kind": "runtime", "opl.workspace.id": workspaceID,
@@ -228,7 +253,7 @@ func TestLocalDockerRuntimeCapacityRecoversUnboundedSwapOnlyWithOptIn(t *testing
 	rootPath := localDockerStorageTestRoot(t)
 	workspaceID := "ws-unbounded-swap"
 	resourceID := localRuntimeID(workspaceID)
-	runner := &localDockerCapacityRunner{info: []byte("{\"NCPU\":4,\"MemTotal\":8589934592}")}
+	runner := &localDockerCapacityRunner{info: system.Info{NCPU: 4, MemTotal: 8589934592}}
 	runner.container.ID, runner.container.Name = "container-unbounded-swap", localRuntimeName(workspaceID)
 	runner.container.Config.Labels = map[string]string{
 		"opl.fabric.provider": "local-docker", "opl.fabric.kind": "runtime", "opl.workspace.id": workspaceID,
@@ -265,7 +290,7 @@ func TestLocalDockerRuntimeCapacityRejectsUnboundedLegacyContainer(t *testing.T)
 	rootPath := localDockerStorageTestRoot(t)
 	workspaceID := "ws-legacy"
 	resourceID := localRuntimeID(workspaceID)
-	runner := &localDockerCapacityRunner{info: []byte("{\"NCPU\":8,\"MemTotal\":17179869184}")}
+	runner := &localDockerCapacityRunner{info: system.Info{NCPU: 8, MemTotal: 17179869184}}
 	runner.container.ID, runner.container.Name = "container-legacy", localRuntimeName(workspaceID)
 	runner.container.Config.Labels = map[string]string{
 		"opl.fabric.provider": "local-docker", "opl.fabric.kind": "runtime", "opl.workspace.id": workspaceID,
@@ -291,7 +316,7 @@ func TestLocalDockerRuntimeCapacityRejectsNonCanonicalContainerName(t *testing.T
 	rootPath := localDockerStorageTestRoot(t)
 	workspaceID := "ws-existing"
 	resourceID := localRuntimeID(workspaceID)
-	runner := &localDockerCapacityRunner{info: []byte("{\"NCPU\":8,\"MemTotal\":17179869184}")}
+	runner := &localDockerCapacityRunner{info: system.Info{NCPU: 8, MemTotal: 17179869184}}
 	runner.container.ID, runner.container.Name = "container-existing", "foreign-runtime-name"
 	runner.container.Config.Labels = map[string]string{
 		"opl.fabric.provider": "local-docker", "opl.fabric.kind": "runtime", "opl.workspace.id": workspaceID,
@@ -318,7 +343,7 @@ func TestLocalDockerRuntimeCapacityRejectsStaleReservationBoundToUnmanagedContai
 	rootPath := localDockerStorageTestRoot(t)
 	workspaceID := "ws-existing"
 	resourceID := localRuntimeID(workspaceID)
-	runner := &localDockerCapacityRunner{info: []byte("{\"NCPU\":8,\"MemTotal\":17179869184}"), excludeFromRuntimeInventory: true}
+	runner := &localDockerCapacityRunner{info: system.Info{NCPU: 8, MemTotal: 17179869184}, excludeFromRuntimeInventory: true}
 	runner.container.ID, runner.container.Name = "container-existing", localRuntimeName(workspaceID)
 	runner.container.Config.Labels = map[string]string{"opl.workspace.id": workspaceID, "opl.resource.id": resourceID, localDockerComputePackageLabel: "basic"}
 	provider := newLocalDockerProvider(LocalDockerProviderConfig{HostStorageRoot: rootPath}, runner)
@@ -344,7 +369,7 @@ func TestLocalDockerRuntimeCapacityRejectsStaleReservationBoundToUnmanagedContai
 
 func TestLocalDockerRuntimeCapacityRecoversReservationWithoutContainer(t *testing.T) {
 	rootPath := localDockerStorageTestRoot(t)
-	provider := newLocalDockerProvider(LocalDockerProviderConfig{HostStorageRoot: rootPath}, &localDockerCapacityRunner{info: []byte("{\"NCPU\":2,\"MemTotal\":4294967296}")})
+	provider := newLocalDockerProvider(LocalDockerProviderConfig{HostStorageRoot: rootPath}, &localDockerCapacityRunner{info: system.Info{NCPU: 2, MemTotal: 4294967296}})
 	root, err := provider.openStorageRoot()
 	if err != nil {
 		t.Fatal(err)

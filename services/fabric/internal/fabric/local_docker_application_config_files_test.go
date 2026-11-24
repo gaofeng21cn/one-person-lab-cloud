@@ -3,7 +3,6 @@ package fabric
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	contracts "opl-cloud/packages/contracts/go"
@@ -26,9 +25,9 @@ func TestLocalDockerApplicationConfigFilesAreBoundAndComponentScoped(t *testing.
 	if err = p.applicationConfigFiles(input, true); err != nil {
 		t.Fatal("exact replay", err)
 	}
-	args := strings.Join(p.applicationConfigMountArgs(input, "main"), " ")
-	if !strings.Contains(args, "target=/etc/main/config,readonly") || strings.Contains(args, "/etc/dependency/config") {
-		t.Fatal("component config leak")
+	mounts := p.applicationConfigMounts(input, "main")
+	if len(mounts) != 1 || mounts[0].Target != "/etc/main/config" || !mounts[0].ReadOnly {
+		t.Fatalf("component config mounts invalid: %+v", mounts)
 	}
 	root := filepath.Join(p.gatewaySecretRoot, "application-configurations", applicationRuntimeID(input))
 	body, err := os.ReadFile(filepath.Join(root, applicationConfigFilename("dependency-config")))

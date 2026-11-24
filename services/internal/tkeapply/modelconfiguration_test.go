@@ -9,6 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	contracts "opl-cloud/packages/contracts/go"
 )
 
@@ -98,13 +101,19 @@ func modelConfigurationFixture(t *testing.T) (WorkspaceApplicationRuntimeInput, 
 func modelConfigurationCluster(t *testing.T, input WorkspaceApplicationRuntimeInput) (*fakeCluster, *Executor) {
 	t.Helper()
 	cluster := newFakeCluster()
-	cluster.store(pvcObject())
-	cluster.store(map[string]any{"apiVersion": "v1", "kind": "Secret", "metadata": map[string]any{
-		"name": controlSecretRef,
-		"annotations": map[string]any{
-			"oplcloud.cn/account-id": input.AccountID, "oplcloud.cn/workspace-id": input.WorkspaceID, "oplcloud.cn/secret-version": "control-v1",
+	cluster.storePVC(pvcObject())
+	cluster.storeSecret(&corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      controlSecretRef,
+			Namespace: testNamespace,
+			Annotations: map[string]string{
+				"oplcloud.cn/account-id":     input.AccountID,
+				"oplcloud.cn/workspace-id":   input.WorkspaceID,
+				"oplcloud.cn/secret-version": "control-v1",
+			},
 		},
-	}, "data": map[string]any{"token": base64String(controlSecretValue)}})
+		Data: map[string][]byte{"token": []byte(controlSecretValue)},
+	})
 	return cluster, testExecutor(cluster, testInstallation(map[string]string{"app.kubernetes.io/name": "opl-cloud"}))
 }
 
@@ -310,7 +319,9 @@ func TestModelConfigurationApplyRefusesAnUndeliveredAuthorization(t *testing.T) 
 	// The binding is confirmed but the Secret it names is not in the namespace, so
 	// the value the application holds cannot be read and nothing is addressed.
 	cluster, executor := modelConfigurationCluster(t, input)
-	delete(cluster.objects, "Secret/"+controlSecretRef)
+	if err := cluster.clientset.CoreV1().Secrets(testNamespace).Delete(context.Background(), controlSecretRef, metav1.DeleteOptions{}); err != nil {
+		t.Fatal(err)
+	}
 	executor.HTTPClient = &http.Client{Transport: stub}
 	if _, err := executor.ApplyModelConfiguration(context.Background(), input, contract, ModelConfigurationRequest{Version: 2}); !errors.Is(err, ErrModelConfigurationUnsupported) {
 		t.Fatalf("absent Secret err=%v want the unsupported refusal", err)

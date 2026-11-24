@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	dockercontainer "github.com/moby/moby/api/types/container"
+	mobyclient "github.com/moby/moby/client"
+
 	contracts "opl-cloud/packages/contracts/go"
 )
 
@@ -185,22 +188,22 @@ func TestRuntimeObservationsCannotHideOrphanPods(t *testing.T) {
 }
 
 type observationDockerRunner struct {
+	stubDockerClient
 	container dockerContainerInspect
-	calls     [][]string
+	calls     []string
 }
 
-func (r *observationDockerRunner) Run(_ context.Context, _ []byte, args ...string) ([]byte, error) {
-	r.calls = append(r.calls, append([]string(nil), args...))
-	switch {
-	case reflect.DeepEqual(args, []string{"container", "ls", "-a", "--filter", "label=opl.fabric.kind=runtime", "--format", "{{.Names}}"}):
-		return []byte(r.container.Name + "\n"), nil
-	case len(args) == 8 && args[0] == "container" && args[1] == "ls":
-		return mustJSON(dockerObjectInventoryRow{ID: r.container.ID, Names: r.container.Name}), nil
-	case len(args) == 3 && args[0] == "container" && args[1] == "inspect" && args[2] == r.container.ID:
-		return mustJSON([]dockerContainerInspect{r.container}), nil
-	default:
-		return nil, fmt.Errorf("unexpected docker mutation or read: %v", args)
+func (r *observationDockerRunner) ContainerList(context.Context, mobyclient.ContainerListOptions) ([]dockercontainer.Summary, error) {
+	r.calls = append(r.calls, "ContainerList")
+	return []dockercontainer.Summary{{ID: r.container.ID, Names: []string{"/" + strings.TrimPrefix(r.container.Name, "/")}}}, nil
+}
+
+func (r *observationDockerRunner) ContainerInspect(_ context.Context, containerID string) (dockercontainer.InspectResponse, error) {
+	r.calls = append(r.calls, "ContainerInspect")
+	if containerID != r.container.ID {
+		return dockercontainer.InspectResponse{}, fmt.Errorf("unexpected docker container inspect: %s", containerID)
 	}
+	return sdkContainerInspect(r.container), nil
 }
 
 func TestLocalRuntimeObservationsRetainUnregisteredStoppedContainer(t *testing.T) {
