@@ -12,7 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func TestPostgresOperationStoreLegacyMigrationMatrix(t *testing.T) {
@@ -296,7 +297,7 @@ func createHistoricalFabricOperationsMatrixFixture(t *testing.T, db *sql.DB, uni
 		t.Fatal(err)
 	}
 	for _, source := range []string{"workspaces", "fabric_events", "fabric_evidence_refs", "idempotency_keys"} {
-		query := fmt.Sprintf(`CREATE TABLE %s (id TEXT PRIMARY KEY, operation_id TEXT NOT NULL REFERENCES fabric_operations(id))`, pq.QuoteIdentifier(source))
+		query := fmt.Sprintf(`CREATE TABLE %s (id TEXT PRIMARY KEY, operation_id TEXT NOT NULL REFERENCES fabric_operations(id))`, pgx.Identifier{source}.Sanitize())
 		if _, err := db.Exec(query); err != nil {
 			t.Fatalf("create inbound FK source %s: %v", source, err)
 		}
@@ -316,7 +317,7 @@ func createHistoricalFabricOperationsMatrixFixture(t *testing.T, db *sql.DB, uni
 		t.Fatal(err)
 	}
 	for _, source := range []string{"workspaces", "fabric_events", "fabric_evidence_refs", "idempotency_keys"} {
-		if _, err := db.Exec(`INSERT INTO `+pq.QuoteIdentifier(source)+` (id, operation_id) VALUES ($1, $2)`, source+"-row-1", "legacy-operation-1"); err != nil {
+		if _, err := db.Exec(`INSERT INTO `+pgx.Identifier{source}.Sanitize()+` (id, operation_id) VALUES ($1, $2)`, source+"-row-1", "legacy-operation-1"); err != nil {
 			t.Fatalf("seed inbound FK source %s: %v", source, err)
 		}
 	}
@@ -548,7 +549,7 @@ func runHistoricalOperationMigrationDirectly(t *testing.T, db *sql.DB) {
 
 func openLegacyMigrationTestDB(t *testing.T, databaseURL string) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("postgres", databaseURL)
+	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -586,7 +587,7 @@ func legacyMigrationTestDatabaseURL(t *testing.T) string {
 			optional = true
 		}
 	}
-	admin, err := sql.Open("postgres", databaseURL)
+	admin, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -603,12 +604,12 @@ func legacyMigrationTestDatabaseURL(t *testing.T) string {
 		t.Fatal(err)
 	}
 	schema := "fabric_legacy_matrix_" + hex.EncodeToString(suffix)
-	if _, err := admin.Exec(`CREATE SCHEMA ` + pq.QuoteIdentifier(schema)); err != nil {
+	if _, err := admin.Exec(`CREATE SCHEMA ` + pgx.Identifier{schema}.Sanitize()); err != nil {
 		_ = admin.Close()
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_, _ = admin.Exec(`DROP SCHEMA ` + pq.QuoteIdentifier(schema) + ` CASCADE`)
+		_, _ = admin.Exec(`DROP SCHEMA ` + pgx.Identifier{schema}.Sanitize() + ` CASCADE`)
 		_ = admin.Close()
 	})
 	if parsed, err := url.Parse(databaseURL); err == nil && parsed.Scheme != "" {

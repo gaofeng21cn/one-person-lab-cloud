@@ -9,7 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func TestApplyInvitedAccountIdentityNormalizesAndFailsClosed(t *testing.T) {
@@ -34,7 +35,7 @@ func TestApplyInvitedAccountIdentityNormalizesAndFailsClosed(t *testing.T) {
 
 func TestInvitedAccountIdentityMigrationPostgres(t *testing.T) {
 	databaseURL := requiredIdentityTestDatabaseURL(t)
-	admin, err := sql.Open("postgres", databaseURL)
+	admin, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,12 +44,12 @@ func TestInvitedAccountIdentityMigrationPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	schema := fmt.Sprintf("control_plane_identity_%d", time.Now().UnixNano())
-	if _, err := admin.Exec(`CREATE SCHEMA ` + pq.QuoteIdentifier(schema)); err != nil {
+	if _, err := admin.Exec(`CREATE SCHEMA ` + pgx.Identifier{schema}.Sanitize()); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _, _ = admin.Exec(`DROP SCHEMA ` + pq.QuoteIdentifier(schema) + ` CASCADE`) })
+	t.Cleanup(func() { _, _ = admin.Exec(`DROP SCHEMA ` + pgx.Identifier{schema}.Sanitize() + ` CASCADE`) })
 
-	db, err := sql.Open("postgres", postgresURLWithSearchPath(databaseURL, schema))
+	db, err := sql.Open("pgx", postgresURLWithSearchPath(databaseURL, schema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,5 +92,5 @@ func postgresURLWithSearchPath(databaseURL, schema string) string {
 		parsed.RawQuery = query.Encode()
 		return parsed.String()
 	}
-	return databaseURL + " search_path=" + pq.QuoteLiteral(schema)
+	return databaseURL + " search_path=" + ("'" + strings.ReplaceAll(schema, "'", "''") + "'")
 }

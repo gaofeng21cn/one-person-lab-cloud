@@ -20,7 +20,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgconn"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -111,7 +111,7 @@ func dbError(err error) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return status.Error(codes.NotFound, "resource catalog entry not found")
 	}
-	var p *pq.Error
+	var p *pgconn.PgError
 	if errors.As(err, &p) {
 		switch p.Code {
 		case "23505":

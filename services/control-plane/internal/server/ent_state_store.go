@@ -12,8 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 
+	"opl-cloud/services/control-plane/internal/server/sqlcgen"
 	controlplanemigrations "opl-cloud/services/control-plane/migrations"
 	"opl-cloud/services/internal/postgresmigrate"
 )
@@ -47,13 +49,22 @@ type sqlQueryRunner interface {
 
 type postgresEntStateStore struct {
 	db                    *sql.DB
+	pool                  *pgxpool.Pool
+	queries               *sqlcgen.Queries
 	dialect               string
 	onQuery               func(string)
 	beforeUpdateRuntimeOp func(ctx context.Context, id, result, status string) error
 }
 
 func (s *postgresEntStateStore) Close() error {
-	return s.db.Close()
+	var err error
+	if s.db != nil {
+		err = s.db.Close()
+	}
+	if s.pool != nil {
+		s.pool.Close()
+	}
+	return err
 }
 
 func NewPostgresEntStateStore(databaseURL string) (StateStore, error) {
@@ -68,14 +79,15 @@ func newTestPostgresEntStateStore(databaseURL string) (StateStore, error) {
 }
 
 func newPostgresEntStateStore(databaseURL string) (StateStore, error) {
-	db, err := sql.Open("postgres", databaseURL)
+	ctx := context.Background()
+	pool, db, err := postgresmigrate.OpenPool(ctx, databaseURL, func(cfg *pgxpool.Config) {
+		// ponytail: fixed for the single Pod; revisit only with measured DB and replica capacity.
+		cfg.MaxConns = controlPlaneMaxOpenDBConnections
+	})
 	if err != nil {
 		return nil, err
 	}
-	// ponytail: fixed for the single Pod; revisit only with measured DB and replica capacity.
-	db.SetMaxOpenConns(controlPlaneMaxOpenDBConnections)
-	store := &postgresEntStateStore{db: db, dialect: "postgres"}
-	ctx := context.Background()
+	store := &postgresEntStateStore{db: db, pool: pool, queries: sqlcgen.New(pool), dialect: "postgres"}
 	if err := postgresmigrate.Apply(ctx, db, "control-plane", controlPlaneMigrations(controlplanemigrations.OpenDriver(db))); err != nil {
 		_ = store.Close()
 		return nil, err
@@ -429,9 +441,9 @@ func isSQLConstraintError(err error) bool {
 	if err == nil {
 		return false
 	}
-	var pqErr *pq.Error
-	if errors.As(err, &pqErr) {
-		return pqErr.Code.Class() == "23"
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return strings.HasPrefix(pgErr.Code, "23")
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "unique constraint failed") ||

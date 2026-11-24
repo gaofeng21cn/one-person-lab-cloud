@@ -18,7 +18,7 @@ import (
 	"strings"
 	"sync"
 
-	_ "github.com/lib/pq"
+	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"opl-cloud/services/internal/ownerstore"
 )
@@ -100,7 +100,7 @@ func Setup(ctx context.Context, config Config) (*Harness, error) {
 		strings.TrimSpace(config.RuntimeRole) == "" {
 		return nil, errors.New("owner, database, schema owner role, writer role, and runtime role are required")
 	}
-	db, err := sql.Open("postgres", config.AdminDSN)
+	db, err := sql.Open("pgx", config.AdminDSN)
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +199,7 @@ func (h *Harness) plantNeighbor(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	db, err := sql.Open("postgres", dsn)
+	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return err
 	}
@@ -280,7 +280,7 @@ func (h *Harness) open(ctx context.Context, dsn, database string) (*sql.DB, erro
 	if err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("postgres", scoped)
+	db, err := sql.Open("pgx", scoped)
 	if err != nil {
 		return nil, err
 	}

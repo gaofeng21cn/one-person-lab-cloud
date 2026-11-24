@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgconn"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -187,7 +187,7 @@ func (s *Service) runtimeExecutionResource(ctx context.Context, tx *sql.Tx, work
 }
 
 func isUniqueViolation(err error) bool {
-	var p *pq.Error
+	var p *pgconn.PgError
 	return errors.As(err, &p) && p.Code == "23505"
 }
 

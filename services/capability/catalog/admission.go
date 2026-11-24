@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lib/pq"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -135,7 +134,7 @@ func (s *Service) RegisterWebuiVersion(ctx context.Context, r *api.RegisterWebui
 		*out = api.WebuiVersion{Id: id("webui"), Name: b.Name, VersionLabel: b.VersionLabel, ArtifactDigest: image.Digest, Status: api.WebuiVersionStatusEnum_WEBUI_VERSION_STATUS_ENUM_APPROVED, RuntimeAbiVersions: b.PublisherContract.RuntimeAbiVersions, UiProtocolVersion: "opl-webui/v1", AdmissionReceiptId: b.AdmissionReceiptId, PublisherNamespaceId: b.PublisherNamespaceId, PublisherContract: b.PublisherContract, PublisherContractDigest: digest(raw), CreatedAt: timestamppb.Now()}
 		out.PublisherContractObjectRef = "webui-contract:" + out.Id + "@" + out.PublisherContractDigest
 		var created time.Time
-		if e := tx.QueryRowContext(ctx, `INSERT INTO capability.webui_versions(id,name,version_label,artifact_repository,artifact_digest,approved_by,runtime_abi_versions,ui_protocol_version,admission_receipt_id,publisher_namespace_id,publisher_contract_digest,publisher_contract,publisher_contract_object_ref,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING created_at`, out.Id, out.Name, out.VersionLabel, image.Repository, image.Digest, r.Context.ActorId, pq.Array(out.RuntimeAbiVersions), out.UiProtocolVersion, out.AdmissionReceiptId, out.PublisherNamespaceId, out.PublisherContractDigest, raw, out.PublisherContractObjectRef, out.CreatedAt.AsTime()).Scan(&created); e != nil {
+		if e := tx.QueryRowContext(ctx, `INSERT INTO capability.webui_versions(id,name,version_label,artifact_repository,artifact_digest,approved_by,runtime_abi_versions,ui_protocol_version,admission_receipt_id,publisher_namespace_id,publisher_contract_digest,publisher_contract,publisher_contract_object_ref,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING created_at`, out.Id, out.Name, out.VersionLabel, image.Repository, image.Digest, r.Context.ActorId, out.RuntimeAbiVersions, out.UiProtocolVersion, out.AdmissionReceiptId, out.PublisherNamespaceId, out.PublisherContractDigest, raw, out.PublisherContractObjectRef, out.CreatedAt.AsTime()).Scan(&created); e != nil {
 			return dbError(e)
 		}
 		out.CreatedAt = timestamppb.New(created)

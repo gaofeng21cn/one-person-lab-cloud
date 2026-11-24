@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lib/pq"
+	"opl-cloud/services/internal/postgresmigrate"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	api "opl-cloud/packages/contracts/go/api"
@@ -509,7 +509,7 @@ func (s *Service) IssueAcceptedOperationGrant(ctx context.Context, r *api.Accept
 	if tid != "" {
 		scope = "tenant"
 	}
-	_, e = tx.ExecContext(ctx, `INSERT INTO tenant.accepted_operation_grants(id,scope_type,tenant_id,actor_id,accepted_operation_owner,accepted_operation_id,accepted_action,resource_id,accepted_permission_version,allowed_actions,issued_at,mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now(),'continue_original') ON CONFLICT(accepted_operation_owner,accepted_operation_id) DO NOTHING`, "grant_"+randomID(), scope, null(tid), d.ActorId, ownerName(actual.Owner), actual.OperationId, actionName(d.Action), actual.ResourceId, d.PermissionVersion, pq.Array(names))
+	_, e = tx.ExecContext(ctx, `INSERT INTO tenant.accepted_operation_grants(id,scope_type,tenant_id,actor_id,accepted_operation_owner,accepted_operation_id,accepted_action,resource_id,accepted_permission_version,allowed_actions,issued_at,mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now(),'continue_original') ON CONFLICT(accepted_operation_owner,accepted_operation_id) DO NOTHING`, "grant_"+randomID(), scope, null(tid), d.ActorId, ownerName(actual.Owner), actual.OperationId, actionName(d.Action), actual.ResourceId, d.PermissionVersion, names)
 	if e != nil {
 		return nil, persistence(e)
 	}
@@ -547,7 +547,7 @@ func readGrant(ctx context.Context, db queryer, key string, owner api.OwnerEnum)
 	var actions []string
 	var mode, acceptedOwner, acceptedAction string
 	var issued time.Time
-	e := db.QueryRowContext(ctx, `SELECT id,tenant_id,actor_id,accepted_operation_owner,accepted_operation_id,accepted_action,resource_id,accepted_permission_version,allowed_actions,mode,issued_at FROM tenant.accepted_operation_grants WHERE `+where+` AND revoked_at IS NULL AND obligation_completed_at IS NULL AND (expires_at IS NULL OR expires_at>now())`, args...).Scan(&g.Id, &tid, &g.ActorId, &acceptedOwner, &g.AcceptedOperationId, &acceptedAction, &g.ResourceId, &g.AcceptedPermissionVersion, pq.Array(&actions), &mode, &issued)
+	e := db.QueryRowContext(ctx, `SELECT id,tenant_id,actor_id,accepted_operation_owner,accepted_operation_id,accepted_action,resource_id,accepted_permission_version,allowed_actions,mode,issued_at FROM tenant.accepted_operation_grants WHERE `+where+` AND revoked_at IS NULL AND obligation_completed_at IS NULL AND (expires_at IS NULL OR expires_at>now())`, args...).Scan(&g.Id, &tid, &g.ActorId, &acceptedOwner, &g.AcceptedOperationId, &acceptedAction, &g.ResourceId, &g.AcceptedPermissionVersion, postgresmigrate.StringArrayScanner(&actions), &mode, &issued)
 	if e != nil {
 		return nil, persistence(e)
 	}

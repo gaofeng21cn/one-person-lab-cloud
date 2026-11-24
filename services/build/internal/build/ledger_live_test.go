@@ -21,7 +21,7 @@ import (
 
 func liveLedger(t *testing.T, ctx context.Context) (*sql.DB, *lostInboxAck, *lostInboxAck) {
 	t.Helper()
-	db, err := sql.Open("postgres", startLivePostgres(t, ctx))
+	db, err := sql.Open("pgx", startLivePostgres(t, ctx))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lib/pq"
+	"opl-cloud/services/internal/postgresmigrate"
 
 	api "opl-cloud/packages/contracts/go/api"
 )
@@ -113,7 +113,7 @@ func (s *GatewayStore) insertManagedKeyBinding(ctx context.Context, exec execer,
 			model_ids, observation_result, name, expires_at, created_at, updated_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13)`,
 		binding.ID, binding.TenantID, binding.WorkspaceID, nullString(binding.ActorID), binding.ExternalKeyID, binding.Fingerprint,
-		binding.SecretRef, binding.Purpose, pq.Array(binding.ModelIDs), binding.ObservationResult, binding.ID, nullTime(binding.ExpiresAt), now); err != nil {
+		binding.SecretRef, binding.Purpose, binding.ModelIDs, binding.ObservationResult, binding.ID, nullTime(binding.ExpiresAt), now); err != nil {
 		return ManagedKeyBinding{}, err
 	}
 	binding.CreatedAt = now
@@ -206,7 +206,7 @@ func (s *GatewayStore) ReadManagedKeyBinding(ctx context.Context, id string) (Ma
 			purpose, model_ids, observation_result, expires_at, revoked_at, disabled_at, lifecycle_version, lifecycle_updated_at, created_at
 		FROM gateway.key_bindings WHERE id = $1`, id).
 		Scan(&binding.ID, &binding.TenantID, &binding.WorkspaceID, &binding.ActorID, &binding.ExternalKeyID, &binding.Fingerprint,
-			&binding.SecretRef, &binding.Purpose, pq.Array(&binding.ModelIDs), &binding.ObservationResult, &expiresAt, &revokedAt, &disabledAt,
+			&binding.SecretRef, &binding.Purpose, postgresmigrate.StringArrayScanner(&binding.ModelIDs), &binding.ObservationResult, &expiresAt, &revokedAt, &disabledAt,
 			&binding.LifecycleVersion, &lifecycleUpdatedAt, &binding.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ManagedKeyBinding{}, ErrGatewayWalletUnknown

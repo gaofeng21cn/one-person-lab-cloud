@@ -13,8 +13,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 
+	"opl-cloud/services/fabric/internal/fabric/sqlcgen"
 	"opl-cloud/services/internal/postgresmigrate"
 )
 
@@ -1113,14 +1115,37 @@ func (s *MemoryOperationStore) ListPage(_ context.Context, cursor string, limit 
 }
 
 type PostgresOperationStore struct {
-	db *sql.DB
+	db      *sql.DB
+	pool    *pgxpool.Pool
+	queries *sqlcgen.Queries
+}
+
+func (s *PostgresOperationStore) q() *sqlcgen.Queries {
+	if s.queries != nil {
+		return s.queries
+	}
+	return sqlcgen.New(s.db)
+}
+
+func (s *PostgresOperationStore) Pool() *pgxpool.Pool {
+	if s == nil {
+		return nil
+	}
+	return s.pool
 }
 
 func (s *PostgresOperationStore) Close() error {
-	if s == nil || s.db == nil {
+	if s == nil {
 		return nil
 	}
-	return s.db.Close()
+	var err error
+	if s.db != nil {
+		err = s.db.Close()
+	}
+	if s.pool != nil {
+		s.pool.Close()
+	}
+	return err
 }
 
 const fabricOperationColumns = `id, operation_id, caller_service, action, resource_kind, resource_id, account_id, workspace_id,
@@ -1185,37 +1210,94 @@ func newTestPostgresOperationStore(databaseURL string) (*PostgresOperationStore,
 }
 
 func newPostgresOperationStore(databaseURL string) (*PostgresOperationStore, error) {
-	db, err := sql.Open("postgres", databaseURL)
+	ctx := context.Background()
+	pool, db, err := postgresmigrate.OpenPool(ctx, databaseURL, nil)
 	if err != nil {
 		return nil, err
 	}
 	store := &PostgresOperationStore{
-		db: db,
+		db:      db,
+		pool:    pool,
+		queries: sqlcgen.New(db),
 	}
-	if err := store.Install(context.Background()); err != nil {
-		_ = db.Close()
+	if err := store.Install(ctx); err != nil {
+		_ = store.Close()
 		return nil, err
 	}
 	return store, nil
 }
 
 func (s *PostgresOperationStore) Install(ctx context.Context) error {
-	embedded, err := fabricEmbeddedMigrations()
-	if err != nil {
-		return err
+	return postgresmigrate.ApplyFS(ctx, s.db, "", "fabric", fabricMigrations, "ent_migrations")
+}
+
+func fabricOperationFromRow(
+	id, operationID, callerService, action, resourceKind, resourceID,
+	accountID, workspaceID, provider, providerRequestID, idempotencyKey,
+	requestHash, payload, status, errorCode string,
+	retryable bool,
+	computePoolKey, computePoolLeaseOwner string,
+	leaseExpiresAt sql.NullTime,
+	startedAt time.Time,
+	finishedAt sql.NullTime,
+	createdAt time.Time,
+) FabricOperation {
+	op := FabricOperation{
+		ID:                    id,
+		OperationID:           operationID,
+		CallerService:         callerService,
+		Action:                action,
+		ResourceKind:          resourceKind,
+		ResourceID:            resourceID,
+		AccountID:             accountID,
+		WorkspaceID:           workspaceID,
+		Provider:              provider,
+		ProviderRequestID:     providerRequestID,
+		IdempotencyKey:        idempotencyKey,
+		RequestHash:           requestHash,
+		Status:                status,
+		ErrorCode:             errorCode,
+		Retryable:             retryable,
+		ComputePoolKey:        computePoolKey,
+		ComputePoolLeaseOwner: computePoolLeaseOwner,
+		StartedAt:             startedAt,
+		CreatedAt:             createdAt,
 	}
-	migrations := make([]postgresmigrate.Migration, 0, len(embedded))
-	for _, migration := range embedded {
-		migration := migration
-		migrations = append(migrations, postgresmigrate.Migration{
-			Version: migration.version,
-			Run: func(ctx context.Context) error {
-				_, err := s.db.ExecContext(ctx, migration.query)
-				return err
-			},
-		})
+	if leaseExpiresAt.Valid {
+		t := leaseExpiresAt.Time
+		op.ComputePoolLeaseExpires = &t
 	}
-	return postgresmigrate.Apply(ctx, s.db, "fabric", migrations)
+	if finishedAt.Valid {
+		op.FinishedAt = finishedAt.Time
+	}
+	if payload != "" {
+		_ = json.Unmarshal([]byte(payload), &op.RedactedProviderPayload)
+	}
+	return op
+}
+
+func machineOwnershipFromSQLC(row sqlcgen.MachineOwnership) MachineOwnership {
+	ownership := MachineOwnership{
+		ID:                row.ID,
+		ResourceID:        row.ResourceID,
+		AccountID:         row.AccountID,
+		WorkspaceID:       row.WorkspaceID,
+		PackageID:         row.PackageID,
+		NodePoolID:        row.NodePoolID,
+		MachineID:         row.MachineID,
+		NodeName:          row.NodeName,
+		Status:            row.Status,
+		ProviderRequestID: row.ProviderRequestID,
+		ClaimedAt:         row.ClaimedAt,
+	}
+	if row.InstanceID.Valid {
+		ownership.InstanceID = row.InstanceID.String
+	}
+	if row.ReleasedAt.Valid {
+		t := row.ReleasedAt.Time
+		ownership.ReleasedAt = &t
+	}
+	return ownership
 }
 
 func (s *PostgresOperationStore) Append(ctx context.Context, operation FabricOperation) error {
@@ -1223,27 +1305,47 @@ func (s *PostgresOperationStore) Append(ctx context.Context, operation FabricOpe
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO fabric_operations (
-		`+fabricOperationColumns+`
-	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
-		operation.ID, operation.OperationID, operation.CallerService, operation.Action, operation.ResourceKind, operation.ResourceID,
-		operation.AccountID, operation.WorkspaceID, operation.Provider, operation.ProviderRequestID, operation.IdempotencyKey,
-		operation.RequestHash, payloadJSON, operation.Status, operation.ErrorCode, operation.Retryable, operation.ComputePoolKey,
-		operation.ComputePoolLeaseOwner, nullableTimePtr(operation.ComputePoolLeaseExpires),
-		operation.StartedAt, nullableTime(operation.FinishedAt), operation.CreatedAt)
-	return err
+	return s.q().InsertFabricOperation(ctx, sqlcgen.InsertFabricOperationParams{
+		ID:                        operation.ID,
+		OperationID:               operation.OperationID,
+		CallerService:             operation.CallerService,
+		Action:                    operation.Action,
+		ResourceKind:              operation.ResourceKind,
+		ResourceID:                operation.ResourceID,
+		AccountID:                 operation.AccountID,
+		WorkspaceID:               operation.WorkspaceID,
+		Provider:                  operation.Provider,
+		ProviderRequestID:         operation.ProviderRequestID,
+		IdempotencyKey:            operation.IdempotencyKey,
+		RequestHash:               operation.RequestHash,
+		RedactedProviderPayload:   payloadJSON,
+		Status:                    operation.Status,
+		ErrorCode:                 operation.ErrorCode,
+		Retryable:                 operation.Retryable,
+		ComputePoolKey:            operation.ComputePoolKey,
+		ComputePoolLeaseOwner:     operation.ComputePoolLeaseOwner,
+		ComputePoolLeaseExpiresAt: nullableTimePtr(operation.ComputePoolLeaseExpires),
+		StartedAt:                 operation.StartedAt,
+		FinishedAt:                nullableTime(operation.FinishedAt),
+		CreatedAt:                 operation.CreatedAt,
+	})
 }
 
 func (s *PostgresOperationStore) Get(ctx context.Context, id string) (FabricOperation, error) {
-	operation, err := scanPostgresFabricOperation(s.db.QueryRowContext(ctx,
-		`SELECT `+fabricOperationColumns+` FROM fabric_operations WHERE id = $1`, id))
+	row, err := s.q().GetFabricOperationByID(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return FabricOperation{}, ErrOperationNotFound
 	}
 	if err != nil {
 		return FabricOperation{}, err
 	}
-	return operation, nil
+	return fabricOperationFromRow(
+		row.ID, row.OperationID, row.CallerService, row.Action, row.ResourceKind, row.ResourceID,
+		row.AccountID, row.WorkspaceID, row.Provider, row.ProviderRequestID, row.IdempotencyKey,
+		row.RequestHash, row.RedactedProviderPayload, row.Status, row.ErrorCode, row.Retryable,
+		row.ComputePoolKey, row.ComputePoolLeaseOwner, row.ComputePoolLeaseExpiresAt,
+		row.StartedAt, row.FinishedAt, row.CreatedAt,
+	), nil
 }
 
 func (s *PostgresOperationStore) OperationByActionIdempotency(ctx context.Context, action, idempotencyKey string) (FabricOperation, bool, error) {
@@ -1443,52 +1545,51 @@ func (s *PostgresOperationStore) ClaimMachine(ctx context.Context, ownership Mac
 }
 
 func (s *PostgresOperationStore) SaveMachineOwnership(ctx context.Context, ownership MachineOwnership) error {
-	row, err := s.MachineOwnership(ctx, ownership.ResourceID)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.ExecContext(ctx, `UPDATE machine_ownerships
-		SET account_id = $1, workspace_id = $2, package_id = $3, node_pool_id = $4,
-			machine_id = $5, instance_id = $6, node_name = $7, status = $8,
-			provider_request_id = $9, claimed_at = $10, released_at = $11
-		WHERE id = $12`,
-		ownership.AccountID, ownership.WorkspaceID, ownership.PackageID, ownership.NodePoolID,
-		ownership.MachineID, nullableString(ownership.InstanceID), ownership.NodeName, ownership.Status,
-		ownership.ProviderRequestID, ownership.ClaimedAt, nullableTimePtr(ownership.ReleasedAt), row.ID)
+	rows, err := s.q().UpdateMachineOwnership(ctx, sqlcgen.UpdateMachineOwnershipParams{
+		ResourceID:        ownership.ResourceID,
+		AccountID:         ownership.AccountID,
+		WorkspaceID:       ownership.WorkspaceID,
+		PackageID:         ownership.PackageID,
+		NodePoolID:        ownership.NodePoolID,
+		MachineID:         ownership.MachineID,
+		InstanceID:        nullableString(ownership.InstanceID),
+		NodeName:          ownership.NodeName,
+		Status:            ownership.Status,
+		ProviderRequestID: ownership.ProviderRequestID,
+		ClaimedAt:         ownership.ClaimedAt,
+		ReleasedAt:        nullableTimePtr(ownership.ReleasedAt),
+	})
 	if isConstraintViolation(err) {
 		return ErrMachineOwnershipConflict
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrMachineOwnershipNotFound
+	}
+	return nil
 }
 
 func (s *PostgresOperationStore) MachineOwnership(ctx context.Context, resourceID string) (MachineOwnership, error) {
-	ownership, err := scanPostgresMachineOwnership(s.db.QueryRowContext(ctx,
-		`SELECT `+machineOwnershipColumns+` FROM machine_ownerships WHERE resource_id = $1`, resourceID))
+	row, err := s.q().GetMachineOwnershipByResourceID(ctx, resourceID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return MachineOwnership{}, ErrMachineOwnershipNotFound
 	}
 	if err != nil {
 		return MachineOwnership{}, err
 	}
-	return ownership, nil
+	return machineOwnershipFromSQLC(row), nil
 }
 
 func (s *PostgresOperationStore) ListMachineOwnerships(ctx context.Context) ([]MachineOwnership, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+machineOwnershipColumns+` FROM machine_ownerships ORDER BY claimed_at ASC, id ASC`)
+	rows, err := s.q().ListMachineOwnerships(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := make([]MachineOwnership, 0)
-	for rows.Next() {
-		ownership, err := scanPostgresMachineOwnership(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, ownership)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+	out := make([]MachineOwnership, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, machineOwnershipFromSQLC(row))
 	}
 	return out, nil
 }
@@ -1706,29 +1807,34 @@ func (s *PostgresOperationStore) ClaimComputePoolRuntime(ctx context.Context, op
 }
 
 func postgresFabricOperationByClaim(ctx context.Context, tx *sql.Tx, action, idempotencyKey string) (FabricOperation, error) {
-	row := tx.QueryRowContext(ctx, `
-		SELECT id, operation_id, caller_service, action, resource_kind, resource_id, account_id, workspace_id,
-			provider, provider_request_id, idempotency_key, request_hash, redacted_provider_payload, status,
-			error_code, retryable, compute_pool_key, compute_pool_lease_owner, compute_pool_lease_expires_at,
-			started_at, finished_at, created_at
-		FROM fabric_operations
-		WHERE action = $1 AND idempotency_key = $2 AND status <> 'rejected'
-		ORDER BY created_at DESC, id DESC
-		LIMIT 1`, action, idempotencyKey)
-	return scanPostgresFabricOperation(row)
+	row, err := sqlcgen.New(tx).GetFabricOperationByClaim(ctx, sqlcgen.GetFabricOperationByClaimParams{
+		Action:         action,
+		IdempotencyKey: idempotencyKey,
+	})
+	if err != nil {
+		return FabricOperation{}, err
+	}
+	return fabricOperationFromRow(
+		row.ID, row.OperationID, row.CallerService, row.Action, row.ResourceKind, row.ResourceID,
+		row.AccountID, row.WorkspaceID, row.Provider, row.ProviderRequestID, row.IdempotencyKey,
+		row.RequestHash, row.RedactedProviderPayload, row.Status, row.ErrorCode, row.Retryable,
+		row.ComputePoolKey, row.ComputePoolLeaseOwner, row.ComputePoolLeaseExpiresAt,
+		row.StartedAt, row.FinishedAt, row.CreatedAt,
+	), nil
 }
 
 func postgresFabricOperationByPoolHead(ctx context.Context, tx *sql.Tx, poolKey string) (FabricOperation, error) {
-	row := tx.QueryRowContext(ctx, `
-		SELECT id, operation_id, caller_service, action, resource_kind, resource_id, account_id, workspace_id,
-			provider, provider_request_id, idempotency_key, request_hash, redacted_provider_payload, status,
-			error_code, retryable, compute_pool_key, compute_pool_lease_owner, compute_pool_lease_expires_at,
-			started_at, finished_at, created_at
-		FROM fabric_operations
-		WHERE action IN ('create_compute_allocation', 'ensure_compute_allocation') AND status IN ('started', 'claim_pending') AND compute_pool_key = $1
-		ORDER BY created_at, id
-		LIMIT 1`, poolKey)
-	return scanPostgresFabricOperation(row)
+	row, err := sqlcgen.New(tx).GetComputePoolHead(ctx, poolKey)
+	if err != nil {
+		return FabricOperation{}, err
+	}
+	return fabricOperationFromRow(
+		row.ID, row.OperationID, row.CallerService, row.Action, row.ResourceKind, row.ResourceID,
+		row.AccountID, row.WorkspaceID, row.Provider, row.ProviderRequestID, row.IdempotencyKey,
+		row.RequestHash, row.RedactedProviderPayload, row.Status, row.ErrorCode, row.Retryable,
+		row.ComputePoolKey, row.ComputePoolLeaseOwner, row.ComputePoolLeaseExpiresAt,
+		row.StartedAt, row.FinishedAt, row.CreatedAt,
+	), nil
 }
 
 func computePoolHeadStatus(status string) bool {
@@ -1769,23 +1875,20 @@ func scanPostgresFabricOperation(row postgresRowScanner) (FabricOperation, error
 }
 
 func (s *PostgresOperationStore) ComputePoolHead(ctx context.Context, poolKey string) (FabricOperation, bool, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, operation_id, caller_service, action, resource_kind, resource_id, account_id, workspace_id,
-			provider, provider_request_id, idempotency_key, request_hash, redacted_provider_payload, status,
-			error_code, retryable, compute_pool_key, compute_pool_lease_owner, compute_pool_lease_expires_at,
-			started_at, finished_at, created_at
-		FROM fabric_operations
-		WHERE action IN ('create_compute_allocation', 'ensure_compute_allocation') AND status IN ('started', 'claim_pending') AND compute_pool_key = $1
-		ORDER BY created_at, id
-		LIMIT 1`, poolKey)
-	operation, err := scanPostgresFabricOperation(row)
+	row, err := s.q().GetComputePoolHead(ctx, poolKey)
 	if errors.Is(err, sql.ErrNoRows) {
 		return FabricOperation{}, false, nil
 	}
 	if err != nil {
 		return FabricOperation{}, false, err
 	}
-	return operation, true, nil
+	return fabricOperationFromRow(
+		row.ID, row.OperationID, row.CallerService, row.Action, row.ResourceKind, row.ResourceID,
+		row.AccountID, row.WorkspaceID, row.Provider, row.ProviderRequestID, row.IdempotencyKey,
+		row.RequestHash, row.RedactedProviderPayload, row.Status, row.ErrorCode, row.Retryable,
+		row.ComputePoolKey, row.ComputePoolLeaseOwner, row.ComputePoolLeaseExpiresAt,
+		row.StartedAt, row.FinishedAt, row.CreatedAt,
+	), true, nil
 }
 
 func (s *PostgresOperationStore) TryClaimComputePoolHead(ctx context.Context, operationID, poolKey, leaseOwner string, now, leaseExpiresAt time.Time) (FabricOperation, bool, error) {
@@ -1841,14 +1944,11 @@ func (s *PostgresOperationStore) TryClaimComputePoolHead(ctx context.Context, op
 }
 
 func (s *PostgresOperationStore) ReleaseComputePoolHead(ctx context.Context, operationID, poolKey, leaseOwner string) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE fabric_operations
-		SET compute_pool_lease_owner = '', compute_pool_lease_expires_at = NULL
-		WHERE id = $1 AND status = 'started' AND compute_pool_key = $2 AND compute_pool_lease_owner = $3`,
-		operationID, poolKey, leaseOwner)
-	if err != nil {
-		return err
-	}
-	updated, err := res.RowsAffected()
+	updated, err := s.q().ReleaseComputePoolHeadLease(ctx, sqlcgen.ReleaseComputePoolHeadLeaseParams{
+		ID:                    operationID,
+		ComputePoolKey:        poolKey,
+		ComputePoolLeaseOwner: leaseOwner,
+	})
 	if err != nil {
 		return err
 	}
@@ -2302,8 +2402,8 @@ func nullableString(v string) sql.NullString {
 }
 
 func isConstraintViolation(err error) bool {
-	var pqErr *pq.Error
-	return errors.As(err, &pqErr) && pqErr.Code.Class() == "23"
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && strings.HasPrefix(pgErr.Code, "23")
 }
 
 // A Workspace has five Launch stages. A sixth row is retained to expose a

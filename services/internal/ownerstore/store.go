@@ -18,6 +18,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"opl-cloud/services/internal/postgresmigrate"
 )
 
@@ -56,6 +58,7 @@ var ownerSchemas = map[string]struct{}{
 // Store reads and writes one owner's records in that owner's schema.
 type Store struct {
 	db     *sql.DB
+	pool   *pgxpool.Pool
 	schema string
 }
 
@@ -63,11 +66,17 @@ type Store struct {
 // The schema must be one of the fixed Cloud owner schemas; a caller cannot pass a
 // free-form identifier into the generated SQL.
 func New(db *sql.DB, schema string) (*Store, error) {
+	return NewWithPool(db, nil, schema)
+}
+
+// NewWithPool returns a Store over both a database/sql handle and its backing
+// native pgxpool.Pool so pgx/v5 and River workers share one pool.
+func NewWithPool(db *sql.DB, pool *pgxpool.Pool, schema string) (*Store, error) {
 	schema = strings.TrimSpace(schema)
 	if _, ok := ownerSchemas[schema]; !ok {
 		return nil, fmt.Errorf("ownerstore: %q is not a Cloud owner schema", schema)
 	}
-	return &Store{db: db, schema: schema}, nil
+	return &Store{db: db, pool: pool, schema: schema}, nil
 }
 
 // Schema is the owner schema this store writes.
@@ -76,6 +85,9 @@ func (s *Store) Schema() string { return s.schema }
 // DB exposes the owner connection for transactional call sites in the owning
 // service's own store package.
 func (s *Store) DB() *sql.DB { return s.db }
+
+// Pool exposes the backing native pgxpool.Pool when opened via ownerservice.OpenDatabase.
+func (s *Store) Pool() *pgxpool.Pool { return s.pool }
 
 // Ready reports whether the owner's database is reachable. A dependency that is
 // not ready surfaces as not-ready; it is never reported as healthy.

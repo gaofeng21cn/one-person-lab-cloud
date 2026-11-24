@@ -1,6 +1,7 @@
 package server
 
 import (
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -21,7 +22,7 @@ func TestD2HistoricalWorkspaceSettlementsThroughLedgerHTTP(t *testing.T) {
 	}
 	ledgerDatabaseURL := gatewayAccountingDatabase(t, "opl_gateway_ledger_")
 	owner, list := startGatewayAccountingLedger(t, ledgerDatabaseURL)
-	ledgerDatabase, err := sql.Open("postgres", ledgerDatabaseURL)
+	ledgerDatabase, err := sql.Open("pgx", ledgerDatabaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}

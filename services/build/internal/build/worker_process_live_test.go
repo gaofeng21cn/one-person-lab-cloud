@@ -43,7 +43,7 @@ func TestLiveWorkerProcess(t *testing.T) {
 	if err := json.Unmarshal(raw, &config); err != nil {
 		t.Fatal(err)
 	}
-	db, err := sql.Open("postgres", config.DSN)
+	db, err := sql.Open("pgx", config.DSN)
 	if err != nil {
 		t.Fatal("open isolated worker database")
 	}

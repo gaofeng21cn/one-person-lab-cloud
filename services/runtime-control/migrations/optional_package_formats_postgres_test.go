@@ -11,7 +11,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgconn"
 	"opl-cloud/services/internal/ownerstore"
 	"opl-cloud/services/internal/ownerstore/ownerstoretest"
 	"opl-cloud/services/runtime-control/migrations"
@@ -93,7 +93,7 @@ func TestOptionalPackageFormatsMigrationPreservesHistoryAndRetries(t *testing.T)
 		if _, err := tx.ExecContext(ctx, `INSERT INTO runtime_control.runtime_releases
 			(id,name,version_label,artifact_repository,artifact_digest,approved_by,runtime_abi_version,package_format_versions,admission_receipt_id,publisher_namespace_id,publisher_contract_digest,publisher_contract,publisher_contract_object_ref)
 			VALUES ($1,'retained-runtime',$1,$2::jsonb #>> '{image,repository}',$2::jsonb #>> '{image,digest}','retained-actor',$2::jsonb->>'runtimeAbiVersion',$3,'retained-receipt',$2::jsonb->>'publisherNamespaceId',$4,$2::jsonb,$5)`,
-			mode, raw, pq.Array(formats), "sha256:"+hash, "runtime-contract:"+mode+"@sha256:"+hash); err != nil {
+			mode, raw, formats, "sha256:"+hash, "runtime-contract:"+mode+"@sha256:"+hash); err != nil {
 			t.Fatal(err)
 		}
 		response, err := json.Marshal(map[string]any{"id": mode, "publisherContract": json.RawMessage(raw), "publisherContractDigest": "sha256:" + hash})
@@ -158,7 +158,7 @@ func TestOptionalPackageFormatsMigrationPreservesHistoryAndRetries(t *testing.T)
 		name    string
 		value   string
 		formats []string
-		code    pq.ErrorCode
+		code    string
 	}{
 		{"omitted_empty", "", []string{}, ""},
 		{"explicit_empty", `[]`, []string{}, ""},
@@ -180,19 +180,19 @@ func TestOptionalPackageFormatsMigrationPreservesHistoryAndRetries(t *testing.T)
 			defer tx.Rollback()
 			_, err = tx.ExecContext(ctx, `UPDATE runtime_control.runtime_releases SET
 				publisher_contract=CASE WHEN $1='' THEN publisher_contract-'packageFormatVersions' ELSE jsonb_set(publisher_contract,'{packageFormatVersions}',NULLIF($1,'')::jsonb) END,
-				package_format_versions=$2 WHERE id='empty'`, tc.value, pq.Array(tc.formats))
+				package_format_versions=$2 WHERE id='empty'`, tc.value, tc.formats)
 			if tc.code == "" {
 				if err != nil {
 					t.Fatal(err)
 				}
 				return
 			}
-			var pgErr *pq.Error
+			var pgErr *pgconn.PgError
 			if !errors.As(err, &pgErr) || pgErr.Code != tc.code {
 				t.Fatalf("constraint error=%v, want SQLSTATE %s", err, tc.code)
 			}
-			if tc.code == "23514" && pgErr.Constraint != "runtime_releases_package_formats_match" {
-				t.Fatalf("wrong constraint rejected the row: %s", pgErr.Constraint)
+			if tc.code == "23514" && pgErr.ConstraintName != "runtime_releases_package_formats_match" {
+				t.Fatalf("wrong constraint rejected the row: %s", pgErr.ConstraintName)
 			}
 		})
 	}

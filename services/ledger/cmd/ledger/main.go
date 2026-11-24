@@ -12,8 +12,6 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq"
-
 	"opl-cloud/services/internal/ownerservice"
 	"opl-cloud/services/internal/postgresmigrate"
 	"opl-cloud/services/ledger/eventconsumer"
@@ -42,10 +40,14 @@ func main() {
 	store := ledger.Store(ledger.NewMemoryStore())
 	var domainDB *sql.DB
 	if databaseURL != "" {
-		db, err := sql.Open("postgres", databaseURL)
+		pool, db, err := postgresmigrate.OpenPool(context.Background(), databaseURL, nil)
 		if err != nil {
 			log.Fatal(err)
 		}
+		defer func() {
+			_ = db.Close()
+			pool.Close()
+		}()
 		domainDB = db
 		postgresStore := ledger.NewPostgresStore(db)
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

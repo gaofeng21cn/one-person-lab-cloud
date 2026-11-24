@@ -26,7 +26,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lib/pq"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -903,7 +902,7 @@ func qLegacyDatabase(t *testing.T, ctx context.Context, dsn string) string {
 	if err != nil || u.Scheme != "postgres" || u.Hostname() != "127.0.0.1" || u.Port() == "" {
 		t.Fatal("qualification admin must be an explicit loopback postgres URL")
 	}
-	admin, err := sql.Open("postgres", dsn)
+	admin, err := sql.Open("pgx", dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -938,7 +937,7 @@ func qLegacyDatabase(t *testing.T, ctx context.Context, dsn string) string {
 			}
 			candidate := *u
 			candidate.Host = net.JoinHostPort(network.IPAddress, "5432")
-			db, e := sql.Open("postgres", candidate.String())
+			db, e := sql.Open("pgx", candidate.String())
 			if e != nil {
 				continue
 			}
@@ -1110,7 +1109,7 @@ func qSeedRealBuildHandoff(t *testing.T, ctx context.Context, db *sql.DB, platfo
 		execute(`INSERT INTO capability.publisher_namespaces(id,name,kind,registry_id,repository_prefix,admission_receipt_id) VALUES($1,$2,$3,$4,$5,$6)`, id, "handoff-"+id, kind, registry, prefix, "build-handoff-"+id)
 	}
 	webuiImage := webui.GetImage()
-	execute(`INSERT INTO capability.webui_versions(id,name,version_label,artifact_repository,artifact_digest,approved_by,runtime_abi_versions,ui_protocol_version,admission_receipt_id,publisher_namespace_id,publisher_contract_digest,publisher_contract,publisher_contract_object_ref) VALUES($1,'handoff-webui','v1',$2,$3,'103',$4,($5::jsonb->>'uiProtocolVersion'),'build-handoff-webui',$6,$7,$8,$9)`, input.GetWebuiVersionId(), webuiImage.GetRepository(), webuiImage.GetDigest(), pq.Array(webui.GetRuntimeAbiVersions()), webuiRaw, webuiRef.GetPublisherNamespaceId(), webuiRef.GetDescriptorDigest(), webuiRaw, webuiRef.GetDescriptorObjectRef())
+	execute(`INSERT INTO capability.webui_versions(id,name,version_label,artifact_repository,artifact_digest,approved_by,runtime_abi_versions,ui_protocol_version,admission_receipt_id,publisher_namespace_id,publisher_contract_digest,publisher_contract,publisher_contract_object_ref) VALUES($1,'handoff-webui','v1',$2,$3,'103',$4,($5::jsonb->>'uiProtocolVersion'),'build-handoff-webui',$6,$7,$8,$9)`, input.GetWebuiVersionId(), webuiImage.GetRepository(), webuiImage.GetDigest(), webui.GetRuntimeAbiVersions(), webuiRaw, webuiRef.GetPublisherNamespaceId(), webuiRef.GetDescriptorDigest(), webuiRaw, webuiRef.GetDescriptorObjectRef())
 	execute(`INSERT INTO capability.capability_versions(id,package_id,package_version_id,build_job_id,version_label,runtime_version_id,webui_version_id,artifact_repository,artifact_digest,status,model_requirements,data_compatibility,provenance_evidence,provenance,deployment_descriptor,deployment_descriptor_digest,deployment_descriptor_object_ref) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'ready',$10,$11,$12,'build',$13,$14,$15)`, version.GetId(), packageID, packageVersionID, version.GetBuildJobId(), version.GetVersionLabel(), input.GetRuntimeVersionId(), input.GetWebuiVersionId(), artifact.GetArtifact().GetRepository(), artifact.GetArtifact().GetDigest(), modelRequirements, dataCompatibility, artifactRaw, descriptorBytes, artifact.GetDeploymentDescriptorDigest(), artifact.GetDeploymentDescriptorObjectRef())
 	return version
 }

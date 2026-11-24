@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/lib/pq"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 type recordingDriver struct {
@@ -126,7 +126,7 @@ func TestWorkspacePurchaseReceiptIDMigrationIsAdditiveAndIdempotent(t *testing.T
 	}
 
 	databaseURL := requiredIdentityTestDatabaseURL(t)
-	admin, err := sql.Open("postgres", databaseURL)
+	admin, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestWorkspacePurchaseReceiptIDMigrationIsAdditiveAndIdempotent(t *testing.T
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _, _ = admin.Exec(`DROP SCHEMA ` + schema + ` CASCADE`) })
-	db, err := sql.Open("postgres", postgresURLWithSearchPath(databaseURL, schema))
+	db, err := sql.Open("pgx", postgresURLWithSearchPath(databaseURL, schema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestMultiWorkspacePaginationMigrationIsAdditiveAndIdempotent(t *testing.T) 
 	}
 
 	databaseURL := requiredIdentityTestDatabaseURL(t)
-	admin, err := sql.Open("postgres", databaseURL)
+	admin, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestMultiWorkspacePaginationMigrationIsAdditiveAndIdempotent(t *testing.T) 
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _, _ = admin.Exec(`DROP SCHEMA ` + schema + ` CASCADE`) })
-	db, err := sql.Open("postgres", postgresURLWithSearchPath(databaseURL, schema))
+	db, err := sql.Open("pgx", postgresURLWithSearchPath(databaseURL, schema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +256,7 @@ func TestControlPlaneCapacityIndexesMigrationIsAdditiveAndIdempotent(t *testing.
 	}
 
 	databaseURL := requiredIdentityTestDatabaseURL(t)
-	admin, err := sql.Open("postgres", databaseURL)
+	admin, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +266,7 @@ func TestControlPlaneCapacityIndexesMigrationIsAdditiveAndIdempotent(t *testing.
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _, _ = admin.Exec(`DROP SCHEMA ` + schema + ` CASCADE`) })
-	db, err := sql.Open("postgres", postgresURLWithSearchPath(databaseURL, schema))
+	db, err := sql.Open("pgx", postgresURLWithSearchPath(databaseURL, schema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +369,7 @@ func TestApplyPrimaryWorkspaceAddsClassificationAndFailsClosedOnDuplicates(t *te
 
 func TestAutoRenewAuditMigrationUpgradesExistingTablesIdempotently(t *testing.T) {
 	databaseURL := requiredIdentityTestDatabaseURL(t)
-	admin, err := sql.Open("postgres", databaseURL)
+	admin, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,7 +382,7 @@ func TestAutoRenewAuditMigrationUpgradesExistingTablesIdempotently(t *testing.T)
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _, _ = admin.Exec(`DROP SCHEMA ` + schema + ` CASCADE`) })
-	db, err := sql.Open("postgres", postgresURLWithSearchPath(databaseURL, schema))
+	db, err := sql.Open("pgx", postgresURLWithSearchPath(databaseURL, schema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +421,7 @@ func TestAutoRenewAuditMigrationUpgradesExistingTablesIdempotently(t *testing.T)
 
 func TestWorkspaceRenewalMigrationPostgres(t *testing.T) {
 	databaseURL := requiredIdentityTestDatabaseURL(t)
-	admin, err := sql.Open("postgres", databaseURL)
+	admin, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,7 +434,7 @@ func TestWorkspaceRenewalMigrationPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _, _ = admin.Exec(`DROP SCHEMA ` + schema + ` CASCADE`) })
-	db, err := sql.Open("postgres", postgresURLWithSearchPath(databaseURL, schema))
+	db, err := sql.Open("pgx", postgresURLWithSearchPath(databaseURL, schema))
 	if err != nil {
 		t.Fatal(err)
 	}

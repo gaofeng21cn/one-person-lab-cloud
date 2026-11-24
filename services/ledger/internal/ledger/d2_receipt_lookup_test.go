@@ -8,7 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 )
 
 func TestD2ReceiptRequestLookupMemory(t *testing.T) {
@@ -21,31 +22,30 @@ func TestD2ReceiptRequestLookupMemory(t *testing.T) {
 
 func TestD2ReceiptRequestLookupPostgres(t *testing.T) {
 	store, db := installedLedgerTestPostgres(t)
-	tx, err := db.Begin()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback()
-	copy, err := tx.Prepare(pq.CopyIn("evidence_receipts", "id", "receipt_type", "status", "account_id", "workspace_id", "payload_json", "idempotency_key", "request_hash", "created_at"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, receipt := range d2ReceiptLookupHistory() {
+	history := d2ReceiptLookupHistory()
+	copyRows := make([][]any, 0, len(history))
+	for _, receipt := range history {
 		payload, err := json.Marshal(receiptPayload{ReceiptInput: receipt.ReceiptInput})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := copy.Exec(receipt.ReceiptID, receipt.Type, receipt.Status, receipt.AccountID, receipt.WorkspaceID, string(payload), receipt.ReceiptID, receipt.ReceiptID, receipt.CreatedAt); err != nil {
-			t.Fatal(err)
-		}
+		copyRows = append(copyRows, []any{receipt.ReceiptID, receipt.Type, receipt.Status, receipt.AccountID, receipt.WorkspaceID, string(payload), receipt.ReceiptID, receipt.ReceiptID, receipt.CreatedAt})
 	}
-	if _, err := copy.Exec(); err != nil {
+	sqlConn, err := db.Conn(context.Background())
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := copy.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := tx.Commit(); err != nil {
+	defer sqlConn.Close()
+	if err := sqlConn.Raw(func(driverConn any) error {
+		pgxConn := driverConn.(*stdlib.Conn).Conn()
+		_, err := pgxConn.CopyFrom(
+			context.Background(),
+			pgx.Identifier{"evidence_receipts"},
+			[]string{"id", "receipt_type", "status", "account_id", "workspace_id", "payload_json", "idempotency_key", "request_hash", "created_at"},
+			pgx.CopyFromRows(copyRows),
+		)
+		return err
+	}); err != nil {
 		t.Fatal(err)
 	}
 	// Recreate the pre-upgrade schema with existing evidence, then let the real
