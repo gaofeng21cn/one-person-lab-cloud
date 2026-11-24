@@ -124,28 +124,6 @@ func (w *workspaceLaunchSweepWorker) Work(ctx context.Context, _ *river.Job[Work
 	return errors.Join(errs...)
 }
 
-type WorkspaceDeleteSweepJobArgs struct{}
-
-func (WorkspaceDeleteSweepJobArgs) Kind() string { return "control_plane.workspace_delete_sweep" }
-
-func (WorkspaceDeleteSweepJobArgs) InsertOpts() river.InsertOpts {
-	return river.InsertOpts{Queue: riverQueueMaintenance, MaxAttempts: 3, UniqueOpts: river.UniqueOpts{ByArgs: true, ByPeriod: 5 * time.Second}}
-}
-
-type workspaceDeleteSweepWorker struct {
-	river.WorkerDefaults[WorkspaceDeleteSweepJobArgs]
-	app     *controlPlaneServer
-	service *controlplane.Service
-}
-
-func (w *workspaceDeleteSweepWorker) Work(ctx context.Context, _ *river.Job[WorkspaceDeleteSweepJobArgs]) error {
-	if err := w.app.runWorkspaceDeletesOnce(ctx, w.service); err != nil {
-		log.Printf("workspace delete recovery failed: %v", err)
-		return err
-	}
-	return nil
-}
-
 type WorkspaceAppDeploySweepJobArgs struct{}
 
 func (WorkspaceAppDeploySweepJobArgs) Kind() string { return "control_plane.workspace_app_deploy_sweep" }
@@ -240,7 +218,6 @@ func (app *controlPlaneServer) startRiverWorkers(ctx context.Context, service *c
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &workspaceLaunchJobWorker{app: app, service: service})
 	river.AddWorker(workers, &workspaceLaunchSweepWorker{app: app, pool: pool})
-	river.AddWorker(workers, &workspaceDeleteSweepWorker{app: app, service: service})
 	river.AddWorker(workers, &workspaceAppDeploySweepWorker{app: app, service: service})
 	river.AddWorker(workers, &monthlyBillingSweepWorker{app: app, service: service})
 	river.AddWorker(workers, &providerReconcileSweepWorker{app: app, service: service})
@@ -260,11 +237,6 @@ func (app *controlPlaneServer) startRiverWorkers(ctx context.Context, service *c
 			river.NewPeriodicJob(
 				river.PeriodicInterval(interval),
 				func() (river.JobArgs, *river.InsertOpts) { return WorkspaceLaunchSweepJobArgs{}, nil },
-				&river.PeriodicJobOpts{RunOnStart: true},
-			),
-			river.NewPeriodicJob(
-				river.PeriodicInterval(interval),
-				func() (river.JobArgs, *river.InsertOpts) { return WorkspaceDeleteSweepJobArgs{}, nil },
 				&river.PeriodicJobOpts{RunOnStart: true},
 			),
 		)
