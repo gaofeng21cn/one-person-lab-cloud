@@ -3469,6 +3469,10 @@ AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES = 153;
  AUTHORIZATION_ACTION_ENUM_LISTOPERATORDEPLOYMENTS = 166;
  AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACEACCESS = 167;
  AUTHORIZATION_ACTION_ENUM_GETTENANTWALLET = 168;
+ AUTHORIZATION_ACTION_ENUM_CREATEPERSONALGATEWAYKEY = 169;
+ AUTHORIZATION_ACTION_ENUM_UPDATEPERSONALGATEWAYKEY = 170;
+ AUTHORIZATION_ACTION_ENUM_REVEALPERSONALGATEWAYKEY = 171;
+ AUTHORIZATION_ACTION_ENUM_REVOKEPERSONALGATEWAYKEY = 172;
 }
 
 enum ServiceIdentityEnum {
@@ -4710,6 +4714,11 @@ message UpdatePersonalGatewayKeyRequest {
  optional bool reset_quota = 10;
  optional bool reset_rate_limit_usage = 11;
  optional bool enabled = 12;
+ // Clearing an existing expiry is an instruction in its own right, so it is
+ // stated explicitly instead of being carried by an absent or empty instant.
+ // expires_at sets an absolute instant; clear_expires_at removes the expiry.
+ // The two are exclusive: a request that carries both is refused.
+ optional bool clear_expires_at = 13;
 }
 message CreatePersonalGatewayKeyRpcRequest {
  CallContext context = 1;

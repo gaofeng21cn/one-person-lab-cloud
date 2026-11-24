@@ -5,10 +5,12 @@ import (
 	"net/http"
 	"opl-cloud/services/gateway-integration/identity"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	api "opl-cloud/packages/contracts/go/api"
 )
 
@@ -188,6 +190,72 @@ func TestPersonalKeyUpdateCarriesEveryFieldAndConfirmsTheReadback(t *testing.T) 
 	}
 	if rows := personalKeyAuditRows(t, service); len(rows) != 1 || rows[0] != "gateway.personal_key_update 71 confirmed" {
 		t.Fatalf("the update left no audit evidence: %v", rows)
+	}
+}
+
+func TestPersonalKeyUpdateClearsAnExistingExpiryAsAnExplicitInstruction(t *testing.T) {
+	var request map[string]json.RawMessage
+	state := personalWrittenKey(nil)
+	client, tenant, service := gatewayProductSystemWithUpstream(t, func(w http.ResponseWriter, r *http.Request) bool {
+		if r.URL.Path != "/api/v1/keys/71" {
+			return false
+		}
+		if r.Header.Get("Authorization") != "Bearer user-token" {
+			w.WriteHeader(401)
+			return true
+		}
+		if r.Method == http.MethodPut {
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Error(err)
+				w.WriteHeader(400)
+				return true
+			}
+			// The provider removes the expiry and its own readback carries none.
+			state = personalWrittenKey(map[string]any{"expires_at": nil})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": state})
+		return true
+	})
+	call := personalWriteCall(t, tenant, service, "personal-key-clear-1")
+	updated, err := client.UpdatePersonalGatewayKey(t.Context(), &api.UpdatePersonalGatewayKeyRpcRequest{Context: call, KeyId: "71", Body: &api.UpdatePersonalGatewayKeyRequest{ClearExpiresAt: proto.Bool(true)}})
+	if err != nil {
+		t.Fatalf("personal key clear: %v", err)
+	}
+	got, ok := request["expires_at"]
+	if !ok {
+		t.Fatalf("the provider never received the clear: %v", request)
+	}
+	if string(got) != `""` {
+		t.Fatalf("the provider received another clear: %s", got)
+	}
+	if updated.GetExpiresAt() != nil {
+		t.Fatalf("the cleared key still carries an expiry: %v", updated)
+	}
+	if rows := personalKeyAuditRows(t, service); len(rows) != 1 || rows[0] != "gateway.personal_key_update 71 confirmed" {
+		t.Fatalf("the clear left no audit evidence: %v", rows)
+	}
+}
+
+func TestPersonalKeyUpdateRefusesAnExpiryAndAClearTogether(t *testing.T) {
+	client, tenant, service := gatewayProductSystemWithUpstream(t, func(w http.ResponseWriter, r *http.Request) bool {
+		if r.URL.Path != "/api/v1/keys/71" {
+			return false
+		}
+		if r.Header.Get("Authorization") != "Bearer user-token" {
+			w.WriteHeader(401)
+			return true
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": personalWrittenKey(nil)})
+		return true
+	})
+	call := personalWriteCall(t, tenant, service, "personal-key-clear-2")
+	_, err := client.UpdatePersonalGatewayKey(t.Context(), &api.UpdatePersonalGatewayKeyRpcRequest{Context: call, KeyId: "71", Body: &api.UpdatePersonalGatewayKeyRequest{
+		ExpiresAt: timestamppb.New(time.Now().Add(time.Hour)), ClearExpiresAt: proto.Bool(true)}})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("a command naming both an expiry and a clear answered %v", err)
+	}
+	if rows := personalKeyAuditRows(t, service); len(rows) != 0 {
+		t.Fatalf("a refused clear left audit evidence: %v", rows)
 	}
 }
 

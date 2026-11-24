@@ -706,7 +706,10 @@ export interface GatewayKeysData {
 export interface GatewayKeySecretDTO {
   id: string;
   name: string;
-  status: "active" | "disabled";
+  // A revealed Key carries the owner's own status. The personal Gateway surface
+  // publishes the same statuses the Key list publishes, so a revealed Key that
+  // has exhausted its quota is not reported as an active one.
+  status: "active" | "disabled" | "quota_exhausted" | "expired";
   value: string;
 }
 

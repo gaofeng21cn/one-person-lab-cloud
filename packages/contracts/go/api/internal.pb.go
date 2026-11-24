@@ -1857,6 +1857,10 @@ const (
 	AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORDEPLOYMENTS               AuthorizationActionEnum = 166
 	AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACEACCESS            AuthorizationActionEnum = 167
 	AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANTWALLET                       AuthorizationActionEnum = 168
+	AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEPERSONALGATEWAYKEY              AuthorizationActionEnum = 169
+	AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATEPERSONALGATEWAYKEY              AuthorizationActionEnum = 170
+	AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVEALPERSONALGATEWAYKEY              AuthorizationActionEnum = 171
+	AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVOKEPERSONALGATEWAYKEY              AuthorizationActionEnum = 172
 )
 
 // Enum value maps for AuthorizationActionEnum.
@@ -2031,6 +2035,10 @@ var (
 		166: "AUTHORIZATION_ACTION_ENUM_LISTOPERATORDEPLOYMENTS",
 		167: "AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACEACCESS",
 		168: "AUTHORIZATION_ACTION_ENUM_GETTENANTWALLET",
+		169: "AUTHORIZATION_ACTION_ENUM_CREATEPERSONALGATEWAYKEY",
+		170: "AUTHORIZATION_ACTION_ENUM_UPDATEPERSONALGATEWAYKEY",
+		171: "AUTHORIZATION_ACTION_ENUM_REVEALPERSONALGATEWAYKEY",
+		172: "AUTHORIZATION_ACTION_ENUM_REVOKEPERSONALGATEWAYKEY",
 	}
 	AuthorizationActionEnum_value = map[string]int32{
 		"AUTHORIZATION_ACTION_ENUM_UNSPECIFIED":                           0,
@@ -2202,6 +2210,10 @@ var (
 		"AUTHORIZATION_ACTION_ENUM_LISTOPERATORDEPLOYMENTS":               166,
 		"AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACEACCESS":            167,
 		"AUTHORIZATION_ACTION_ENUM_GETTENANTWALLET":                       168,
+		"AUTHORIZATION_ACTION_ENUM_CREATEPERSONALGATEWAYKEY":              169,
+		"AUTHORIZATION_ACTION_ENUM_UPDATEPERSONALGATEWAYKEY":              170,
+		"AUTHORIZATION_ACTION_ENUM_REVEALPERSONALGATEWAYKEY":              171,
+		"AUTHORIZATION_ACTION_ENUM_REVOKEPERSONALGATEWAYKEY":              172,
 	}
 )
 
@@ -45751,8 +45763,13 @@ type UpdatePersonalGatewayKeyRequest struct {
 	ResetQuota           *bool                         `protobuf:"varint,10,opt,name=reset_quota,json=resetQuota,proto3,oneof" json:"reset_quota,omitempty"`
 	ResetRateLimitUsage  *bool                         `protobuf:"varint,11,opt,name=reset_rate_limit_usage,json=resetRateLimitUsage,proto3,oneof" json:"reset_rate_limit_usage,omitempty"`
 	Enabled              *bool                         `protobuf:"varint,12,opt,name=enabled,proto3,oneof" json:"enabled,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// Clearing an existing expiry is an instruction in its own right, so it is
+	// stated explicitly instead of being carried by an absent or empty instant.
+	// expires_at sets an absolute instant; clear_expires_at removes the expiry.
+	// The two are exclusive: a request that carries both is refused.
+	ClearExpiresAt *bool `protobuf:"varint,13,opt,name=clear_expires_at,json=clearExpiresAt,proto3,oneof" json:"clear_expires_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *UpdatePersonalGatewayKeyRequest) Reset() {
@@ -45865,6 +45882,13 @@ func (x *UpdatePersonalGatewayKeyRequest) GetResetRateLimitUsage() bool {
 func (x *UpdatePersonalGatewayKeyRequest) GetEnabled() bool {
 	if x != nil && x.Enabled != nil {
 		return *x.Enabled
+	}
+	return false
+}
+
+func (x *UpdatePersonalGatewayKeyRequest) GetClearExpiresAt() bool {
+	if x != nil && x.ClearExpiresAt != nil {
+		return *x.ClearExpiresAt
 	}
 	return false
 }
@@ -50066,7 +50090,7 @@ const file_internal_proto_rawDesc = "" +
 	"\x17rate_limit5h_usd_micros\x18\a \x01(\x03R\x14rateLimit5hUsdMicros\x125\n" +
 	"\x17rate_limit1d_usd_micros\x18\b \x01(\x03R\x14rateLimit1dUsdMicros\x125\n" +
 	"\x17rate_limit7d_usd_micros\x18\t \x01(\x03R\x14rateLimit7dUsdMicrosB\x12\n" +
-	"\x10_expires_in_days\"\x8d\a\n" +
+	"\x10_expires_in_days\"\xd1\a\n" +
 	"\x1fUpdatePersonalGatewayKeyRequest\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12\x1e\n" +
 	"\bgroup_id\x18\x02 \x01(\tH\x01R\agroupId\x88\x01\x01\x12S\n" +
@@ -50083,7 +50107,8 @@ const file_internal_proto_rawDesc = "" +
 	"resetQuota\x88\x01\x01\x128\n" +
 	"\x16reset_rate_limit_usage\x18\v \x01(\bH\n" +
 	"R\x13resetRateLimitUsage\x88\x01\x01\x12\x1d\n" +
-	"\aenabled\x18\f \x01(\bH\vR\aenabled\x88\x01\x01B\a\n" +
+	"\aenabled\x18\f \x01(\bH\vR\aenabled\x88\x01\x01\x12-\n" +
+	"\x10clear_expires_at\x18\r \x01(\bH\fR\x0eclearExpiresAt\x88\x01\x01B\a\n" +
 	"\x05_nameB\v\n" +
 	"\t_group_idB\x0f\n" +
 	"\r_ip_whitelistB\x0f\n" +
@@ -50096,7 +50121,8 @@ const file_internal_proto_rawDesc = "" +
 	"\f_reset_quotaB\x19\n" +
 	"\x17_reset_rate_limit_usageB\n" +
 	"\n" +
-	"\b_enabled\"\x9e\x01\n" +
+	"\b_enabledB\x13\n" +
+	"\x11_clear_expires_at\"\x9e\x01\n" +
 	"\"CreatePersonalGatewayKeyRpcRequest\x124\n" +
 	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\x12B\n" +
 	"\x04body\x18\x02 \x01(\v2..opl.cloud.api.CreatePersonalGatewayKeyRequestR\x04body\"\xb5\x01\n" +
@@ -50448,7 +50474,7 @@ const file_internal_proto_rawDesc = "" +
 	"\x1bOPERATION_OWNER_ENUM_FABRIC\x10\x06\x12 \n" +
 	"\x1cOPERATION_OWNER_ENUM_GATEWAY\x10\a\x12)\n" +
 	"%OPERATION_OWNER_ENUM_RESOURCE_CATALOG\x10\b\x12\x1e\n" +
-	"\x1aOPERATION_OWNER_ENUM_SERVE\x10\t*\xc9B\n" +
+	"\x1aOPERATION_OWNER_ENUM_SERVE\x10\t*\xadD\n" +
 	"\x17AuthorizationActionEnum\x12)\n" +
 	"%AUTHORIZATION_ACTION_ENUM_UNSPECIFIED\x10\x00\x12.\n" +
 	"*AUTHORIZATION_ACTION_ENUM_ACCEPTINVITATION\x10\x01\x12.\n" +
@@ -50619,7 +50645,11 @@ const file_internal_proto_rawDesc = "" +
 	"/AUTHORIZATION_ACTION_ENUM_READOPERATORRESOURCES\x10\xa5\x01\x126\n" +
 	"1AUTHORIZATION_ACTION_ENUM_LISTOPERATORDEPLOYMENTS\x10\xa6\x01\x129\n" +
 	"4AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACEACCESS\x10\xa7\x01\x12.\n" +
-	")AUTHORIZATION_ACTION_ENUM_GETTENANTWALLET\x10\xa8\x01*\x99\x03\n" +
+	")AUTHORIZATION_ACTION_ENUM_GETTENANTWALLET\x10\xa8\x01\x127\n" +
+	"2AUTHORIZATION_ACTION_ENUM_CREATEPERSONALGATEWAYKEY\x10\xa9\x01\x127\n" +
+	"2AUTHORIZATION_ACTION_ENUM_UPDATEPERSONALGATEWAYKEY\x10\xaa\x01\x127\n" +
+	"2AUTHORIZATION_ACTION_ENUM_REVEALPERSONALGATEWAYKEY\x10\xab\x01\x127\n" +
+	"2AUTHORIZATION_ACTION_ENUM_REVOKEPERSONALGATEWAYKEY\x10\xac\x01*\x99\x03\n" +
 	"\x13ServiceIdentityEnum\x12%\n" +
 	"!SERVICE_IDENTITY_ENUM_UNSPECIFIED\x10\x00\x12%\n" +
 	"!SERVICE_IDENTITY_ENUM_CONSOLE_BFF\x10\x01\x12$\n" +
