@@ -20,8 +20,8 @@ import (
 // `workspace.application.deploy` child for the selected application
 // generation. The rotation constructor and its rotation recovery are retired,
 // so the only way such a row exists today is an older release having written
-// it. These fixtures seed exactly that pre-upgrade state and drive the
-// retained worker over it.
+// it. These fixtures reproduce the persisted fields used by the retained
+// worker and drive it over that state.
 const (
 	upgradeRotationOldKeyID  = int64(19)
 	upgradeRotationNewKeyID  = int64(27)
@@ -87,9 +87,8 @@ type upgradeQualificationFixture struct {
 	before   map[string]any
 }
 
-// seedUpgradeQualificationFixture reproduces the v0.1.8 child constructor
-// field for field. The rotation parent is persisted in the state v0.1.8 left
-// it: accepted, bound to its runtime, and still carrying the child it
+// seedUpgradeQualificationFixture models the v0.1.8 child constructor and its
+// accepted rotation parent, bound to its runtime and carrying the child it
 // claimed.
 func seedUpgradeQualificationFixture(t *testing.T, store controlPlaneTableStore) upgradeQualificationFixture {
 	t.Helper()
@@ -144,6 +143,7 @@ func seedUpgradeQualificationFixture(t *testing.T, store controlPlaneTableStore)
 		"id": parentID, "operationId": parentID, "accountId": "acct-alpha",
 		"workspaceId": "ws-alpha", "resourceId": "ws-alpha", "resourceKind": "workspace_gateway_key",
 		"action": "workspace.gateway_key.rotate", "status": "started", "result": string(encodedParent),
+		"provider":  "sub2api",
 		"createdAt": time.Now().UTC().Format(time.RFC3339Nano),
 	}))
 
@@ -325,6 +325,13 @@ func TestWorkspaceApplicationUpgradeQualificationFinishesRetainedRotationChild(t
 		t.Fatalf("the retained rotation no longer names its child: %+v err=%v", parent, err)
 	}
 
+	if got := upgradeQualificationRetainedRow(t, store, fixture.child); got.Phase != workspaceApplicationDeploymentIntentPhase {
+		t.Fatalf("retained child phase = %q, want %q", got.Phase, workspaceApplicationDeploymentIntentPhase)
+	}
+	if err := fixture.app.admitWorkspaceGatewayBudgetMutation(ctx, fixture.child.WorkspaceID); !errors.Is(err, errWorkspaceKeyRotationInProgress) {
+		t.Fatalf("retained rotation budget admission error = %v, want %v", err, errWorkspaceKeyRotationInProgress)
+	}
+
 	runDeploymentWorkerToCompletion(t, fixture.app, fixture.service, fixture.child.OperationID)
 	upgradeQualificationAssertFinished(t, fixture)
 	upgradeQualificationAssertPredecessor(t, fixture, 1)
@@ -446,10 +453,10 @@ func TestWorkspaceApplicationUpgradeQualificationContinuesSuspendedPredecessor(t
 	}
 }
 
-// TestWorkspaceApplicationUpgradeQualificationTransfersAcrossRestart proves the
-// retained child transfers to a restarted Control Plane over the same
-// database, and finishes under its original identities.
-func TestWorkspaceApplicationUpgradeQualificationTransfersAcrossRestart(t *testing.T) {
+// TestWorkspaceApplicationUpgradeQualificationResumesAcrossRestart proves the
+// restarted Control Plane resumes the retained child from the same database
+// and finishes it under its original identities.
+func TestWorkspaceApplicationUpgradeQualificationResumesAcrossRestart(t *testing.T) {
 	admin := openControlPlaneTestPostgres(t)
 	database := fmt.Sprintf("control_plane_application_upgrade_%d", time.Now().UnixNano())
 	if _, err := admin.Exec(`CREATE DATABASE ` + database); err != nil {
