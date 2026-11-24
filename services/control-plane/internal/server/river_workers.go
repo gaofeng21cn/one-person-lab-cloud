@@ -146,28 +146,6 @@ func (w *workspaceDeleteSweepWorker) Work(ctx context.Context, _ *river.Job[Work
 	return nil
 }
 
-type WorkspaceAppDeploySweepJobArgs struct{}
-
-func (WorkspaceAppDeploySweepJobArgs) Kind() string { return "control_plane.workspace_app_deploy_sweep" }
-
-func (WorkspaceAppDeploySweepJobArgs) InsertOpts() river.InsertOpts {
-	return river.InsertOpts{Queue: riverQueueMaintenance, MaxAttempts: 3, UniqueOpts: river.UniqueOpts{ByArgs: true, ByPeriod: 5 * time.Second}}
-}
-
-type workspaceAppDeploySweepWorker struct {
-	river.WorkerDefaults[WorkspaceAppDeploySweepJobArgs]
-	app     *controlPlaneServer
-	service *controlplane.Service
-}
-
-func (w *workspaceAppDeploySweepWorker) Work(ctx context.Context, _ *river.Job[WorkspaceAppDeploySweepJobArgs]) error {
-	if err := w.app.runWorkspaceApplicationDeploymentsOnce(ctx, w.service); err != nil {
-		log.Printf("workspace application deployment recovery failed: %v", err)
-		return err
-	}
-	return nil
-}
-
 type MonthlyBillingSweepJobArgs struct{}
 
 func (MonthlyBillingSweepJobArgs) Kind() string { return "control_plane.monthly_billing_sweep" }
@@ -241,7 +219,6 @@ func (app *controlPlaneServer) startRiverWorkers(ctx context.Context, service *c
 	river.AddWorker(workers, &workspaceLaunchJobWorker{app: app, service: service})
 	river.AddWorker(workers, &workspaceLaunchSweepWorker{app: app, pool: pool})
 	river.AddWorker(workers, &workspaceDeleteSweepWorker{app: app, service: service})
-	river.AddWorker(workers, &workspaceAppDeploySweepWorker{app: app, service: service})
 	river.AddWorker(workers, &monthlyBillingSweepWorker{app: app, service: service})
 	river.AddWorker(workers, &providerReconcileSweepWorker{app: app, service: service})
 	river.AddWorker(workers, &archiveRetentionSweepWorker{app: app})
@@ -268,13 +245,6 @@ func (app *controlPlaneServer) startRiverWorkers(ctx context.Context, service *c
 				&river.PeriodicJobOpts{RunOnStart: true},
 			),
 		)
-	}
-	if workspaceApplicationDeploymentWorkerEnabled() {
-		periodic = append(periodic, river.NewPeriodicJob(
-			river.PeriodicInterval(workspaceApplicationDeploymentWorkerInterval),
-			func() (river.JobArgs, *river.InsertOpts) { return WorkspaceAppDeploySweepJobArgs{}, nil },
-			&river.PeriodicJobOpts{RunOnStart: true},
-		))
 	}
 	if providerReconcileWorkerEnabled() {
 		periodic = append(periodic, river.NewPeriodicJob(
