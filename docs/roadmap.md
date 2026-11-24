@@ -60,7 +60,7 @@ Plane / delegated process-local custody onto canonical domain owners:
      path. Deleting the writer alone would freeze
      `Account.WorkspacePurchaseEnabled` and keep gating new purchases on a
      stale fact.
-   - The R5 all-object/operation census (Instance run `45320968122`, Candidate
+   - The all-object/operation census (Instance run `45320968122`, Candidate
      `8baf91f1e5a64d1ec46a041f904fd7bc5dcb51c2`) narrowed but did not close the
      retained-execution-slice precondition: 22 of its 44 projected rows carry no
      action name and resolve to five unnamed `actionIdentityDigest` values, so the
