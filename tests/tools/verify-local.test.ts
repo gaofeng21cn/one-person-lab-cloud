@@ -328,20 +328,17 @@ test("database-free coverage separates executed, capability-excluded and failed 
   assert.equal(coverage.excluded[1].reason, "children require isolated-owner-postgres");
   assert.deepEqual(coverage.failed.map((entry) => entry.name), ["TestSettlementRoundTrips"]);
   assert.deepEqual(coverage.declared.missing, [
-    "TestD1RenewalRejectsConflictingTransactionBeforeFulfillment",
-    "TestD1RenewalRefundRequiresTheOriginalConfirmedDebit",
-    "TestD1RenewalUnknownDebitWaitsForAuthoritativeHistoryAcrossRestart",
-    "TestD4ExpiredWorkspaceRequiresExplicitOriginalRenewalAfterTopUp",
     "TestGatewayRevealAuditFailureDoesNotReturnKey",
     "TestGatewayRevealDoesNotLeakAcrossAccounts"
   ]);
   // A real failure outranks every other finding.
   assert.equal(coverage.reason, "Go tests failed: TestSettlementRoundTrips");
   const report = databaseFreeCoverageReport(coverage);
-  // The accounted-for count follows the declared chain: this branch retires
-  // TestD1RefundReservationPostgres with the refund reservation engine it
-  // covered, so the fixture now accounts for two declared names of eight.
-  assert.match(report, /database-free coverage: executed=1 excluded=3 declared=2\/8/);
+  // The accounted-for count follows the declared chain: the refund reservation
+  // engine and the renewal/expiry engine are each withdrawn with the declared
+  // names they covered, so the fixture now accounts for two declared names of
+  // four.
+  assert.match(report, /database-free coverage: executed=1 excluded=3 declared=2\/4/);
   assert.match(report, /excluded by unprovisioned capability isolated-owner-postgres: 3/);
   assert.match(report, /\n {4}TestD1FinanceBusinessChain \(PostgreSQL test gate is not configured\)/);
   assert.match(report, /failed TestSettlementRoundTrips/);
