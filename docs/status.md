@@ -94,11 +94,22 @@ chronological snapshots.
     retained — the worker advances a non-terminal `workspace.launch.v2` operation
     that an in-place upgrade can carry forward, and the customer-owned Key stage
     still needs the customer's own Gateway credential.
+- **Retained Application Deployment Worker**: The shared Control Plane application
+  deployment Worker (driver, deployment activation store, portable/local
+  `OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED`) stays and is the only
+  executor that advances a `workspace.application.deploy` child through
+  predecessor suspension, activation and receipt. The source-layer upgrade
+  qualification
+  (`services/control-plane/internal/server/workspace_application_upgrade_qualification_test.go`)
+  passes over the seeded public v0.1.8 retained state and is a source result,
+  not installed adoption.
 - **What Remains Unproven Here**: Same-Candidate paid customer purchase
   execution on Tencent/TKE, J0 READY qualification bound to the latest
   Candidate, end-to-end custom Agent Package build-to-serve production delivery,
-  and PlanChange v2 runtime resize implementation (tracked in
-  [roadmap.md](roadmap.md)). The operation census above is `partial /
+  PlanChange v2 runtime resize implementation, and the installed qualification
+  of the retained application deployment Worker upgrade, whose source proof covers
+  neither the retained rotation parent row nor a cross-installation transfer
+  (tracked in [roadmap.md](roadmap.md)). The operation census above is `partial /
   owner_readback_partial` and covers the current owner API result rather than an
   audit archive, so it proves no terminality for historical operations. 22 of
   its 44 rows carry no action name at all and resolve to five

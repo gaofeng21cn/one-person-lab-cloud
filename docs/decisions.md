@@ -136,6 +136,12 @@ Git log.
   requires the customer's own Gateway credential. Removing it would strand a
   carried-forward accepted operation with no executor — the same exposure the shared
   application deployment worker is retained for.
+- **Retained Deployment Worker Until Upgrade Completion**: The shared application
+  deployment Worker, its driver, the deployment activation store and the
+  portable/local `OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED`
+  declarations stay until a supported upgrade completes or transfers a retained
+  installation's accepted pending or running deployment operations with their
+  original operation and resource identities.
 
 ## Ordinary Source Development And CI
 
