@@ -338,7 +338,10 @@ test("database-free coverage separates executed, capability-excluded and failed 
   // A real failure outranks every other finding.
   assert.equal(coverage.reason, "Go tests failed: TestSettlementRoundTrips");
   const report = databaseFreeCoverageReport(coverage);
-  assert.match(report, /database-free coverage: executed=1 excluded=3 declared=3\/9/);
+  // The accounted-for count follows the declared chain: this branch retires
+  // TestD1RefundReservationPostgres with the refund reservation engine it
+  // covered, so the fixture now accounts for two declared names of eight.
+  assert.match(report, /database-free coverage: executed=1 excluded=3 declared=2\/8/);
   assert.match(report, /excluded by unprovisioned capability isolated-owner-postgres: 3/);
   assert.match(report, /\n {4}TestD1FinanceBusinessChain \(PostgreSQL test gate is not configured\)/);
   assert.match(report, /failed TestSettlementRoundTrips/);
@@ -425,7 +428,7 @@ test("the real database-free lane executes the Gateway reveal family and names i
   const excluded = coverage.excluded.find((entry) => entry.name === "TestD1FinanceBusinessChain");
   assert.equal(excluded?.capability, "isolated-owner-postgres");
   assert.ok(coverage.executed.length > 1000, `only ${coverage.executed.length} tests executed`);
-  assert.match(databaseFreeCoverageReport(coverage), /declared=9\/9/);
+  assert.match(databaseFreeCoverageReport(coverage), new RegExp(`declared=${declaredMoneyChainTests.length}\\/${declaredMoneyChainTests.length}`));
 });
 
 test("the control-plane lane keeps its executed-test floor without the duplicate run", () => {
