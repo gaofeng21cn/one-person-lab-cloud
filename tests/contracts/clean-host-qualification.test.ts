@@ -6,6 +6,7 @@ import { parse } from "yaml";
 import { cleanHostInstallation } from "../../tools/local-v2-clean-host.ts";
 
 const workflowPath = new URL("../../.github/workflows/clean-host-qualification.yml", import.meta.url);
+const buildFixturePath = new URL("../tools/fixtures/clean-host-build.sh", import.meta.url);
 const templatePath = new URL("../../deploy/portable/opl-cloud.env.example", import.meta.url);
 const composePath = new URL("../../deploy/portable/compose.local-v2.yaml", import.meta.url);
 
@@ -110,15 +111,20 @@ test("the plain-HTTP host of the lane registry is named by the lane that created
   const job = workflow.jobs?.clean_host_qualification;
   const steps = job?.steps as Array<{ name?: string; run?: string; env?: Record<string, string> }>;
 
-  const registry = steps.find((step) => step.name === "Prepare immutable qualification Workspace image");
+  const registry = steps.find((step) => step.name === "Prepare immutable qualification Build artifacts");
   assert.ok(registry?.run, "missing registry preparation");
-  assert.match(registry.run, /printf 'registry_host=127\.0\.0\.1:%s\\n' "\$port"/);
+  assert.equal(registry.run, "bash tests/tools/fixtures/clean-host-build.sh prepare");
+  const fixture = await readFile(buildFixturePath, "utf8");
+  assert.match(fixture, /registry_host="127\.0\.0\.1:\$port"/);
+  assert.match(fixture, /-p "\$registry_host:\$port"/);
+  assert.match(fixture, /registry_host=%s\\n' "\$registry" "\$registry_host" >> "\$GITHUB_OUTPUT"/);
 
   const qualification = steps.find((step) => step.name === "Prepare and exercise the native owner installation");
   assert.ok(qualification?.run, "missing reusable qualification invocation");
   // The host travels from the registry step into the installation declaration.
   assert.equal(qualification.env?.REGISTRY_HOST, "${{ steps.workspace.outputs.registry_host }}");
   assert.match(qualification.run, /--insecure-http-hosts "\$REGISTRY_HOST"/);
+  assert.match(qualification.run, /--build-registry "\$REGISTRY_HOST"/);
 });
 
 test("the installation declares a plain-HTTP host only when the caller names one", async () => {

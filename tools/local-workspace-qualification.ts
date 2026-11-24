@@ -183,12 +183,16 @@ const LOCAL_V2_ENDPOINTS = Object.freeze({
   createTenant: "/api/v2/admin/tenants",
   publisherNamespaces: "/api/v2/admin/catalog/publisher-namespaces",
   runtimeVersions: "/api/v2/admin/catalog/runtime-versions",
+  webuiVersions: "/api/v2/admin/catalog/webui-versions",
+  buildPolicy: "/api/v2/catalog/build-policy",
+  writeBuildPolicy: "/api/v2/admin/catalog/build-policy",
   computePlans: "/api/v2/admin/catalog/compute-plans",
   storagePlans: "/api/v2/admin/catalog/storage-plans",
   retentionPolicies: "/api/v2/admin/catalog/retention-policies",
   refundPolicies: "/api/v2/admin/catalog/refund-policies",
   pricePolicies: "/api/v2/admin/catalog/price-policies",
   catalogRuntimeVersions: "/api/v2/catalog/runtime-versions",
+  catalogWebuiVersions: "/api/v2/catalog/webui-versions",
   catalogComputePlans: "/api/v2/catalog/compute-plans",
   catalogStoragePlans: "/api/v2/catalog/storage-plans",
   quotes: "/api/v2/quotes",
@@ -283,7 +287,7 @@ function optionValues(args) {
       buildSourceImages = true;
       continue;
     }
-    if (!["--source-sha", "--cloud-image", "--workspace-image", "--receipt", "--authority-mode", "--j0-ready-receipt", "--sub2api-secret-file", "--mode", "--installation-env", "--application-contract", "--project", "--workspace-name", "--customer-package-dir", "--customer-package-archive", "--customer-probe-path", "--customer-package-name", "--customer-version-label", "--customer-expected-evidence-level"].includes(token)) {
+    if (!["--source-sha", "--cloud-image", "--workspace-image", "--receipt", "--authority-mode", "--j0-ready-receipt", "--sub2api-secret-file", "--mode", "--installation-env", "--application-contract", "--project", "--workspace-name", "--customer-package-dir", "--customer-package-archive", "--customer-probe-path", "--customer-package-name", "--customer-version-label", "--customer-expected-evidence-level", "--build-catalog"].includes(token)) {
       throw new Error(`unknown local qualification argument: ${token}`);
     }
     const value = args[index + 1];
@@ -346,12 +350,16 @@ export function parseLocalQualificationArgs(args = process.argv.slice(2)) {
   }
   const customerPackageName = String(values.get("--customer-package-name") || "").trim();
   const customerVersionLabel = String(values.get("--customer-version-label") || "").trim();
+  const buildCatalog = values.get("--build-catalog");
+  if (buildCatalog && (!customer.declared || !isAbsolute(buildCatalog))) {
+    throw namedQualificationError("local_v2_build_catalog_invalid", "--build-catalog requires a declared customer package and an absolute catalog path");
+  }
   // A run that did not declare a customer package keeps the shape it had: the
   // customer keys appear only when the caller asked for the chain.
   if (!customer.declared) {
     return { mode, sourceSha, receiptPath, installationEnv, applicationContract, project, workspaceName };
   }
-  return { mode, sourceSha, receiptPath, installationEnv, applicationContract, project, workspaceName, customer, customerPackageName, customerVersionLabel };
+  return { mode, sourceSha, receiptPath, installationEnv, applicationContract, project, workspaceName, customer, customerPackageName, customerVersionLabel, ...(buildCatalog ? { buildCatalog } : {}) };
 }
 
 function namedQualificationError(code, message) {
@@ -1738,6 +1746,13 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       readbacks.customerPackage = customerReadback;
       const customerWorkspaceName = `${workspaceName} customer package`;
       try {
+        if (options.buildCatalog) {
+          if (!["localhost", "127.0.0.1", "[::1]"].includes(new URL(origin).hostname)) {
+            throw namedQualificationError("local_v2_build_catalog_invalid", "the fixture catalog is installed only on a loopback qualification origin");
+          }
+          const declarations = JSON.parse(await readFile(options.buildCatalog, "utf8"));
+          customerReadback.catalog = await admitLocalBuildCatalog(http, auth, options.sourceSha, declarations, values.OPL_WORKSPACE_REGISTRY_HOST);
+        }
         await runCustomerPackageEvidenceChain({
           http, auth, wait, plan: options.customer,
           packageName: customerPackageName(options.customer, options.customerPackageName),
@@ -2176,6 +2191,60 @@ async function declareOrRead(http, auth, collectionPath, matchKey, matchValue, b
 async function catalogIds(http, auth, path) {
   const page = (await http.json(`${path}?limit=100`, {}, auth)).payload;
   return (Array.isArray(page?.items) ? page.items : []).map((item) => String(item?.id || "")).filter(Boolean);
+}
+
+export async function admitLocalBuildCatalog(http, auth, sourceSha, { runtime, webui }, registryHost) {
+  const endpoints = LOCAL_V2_ENDPOINTS;
+  const repositoryPrefix = `${registryHost}/qualification-fixtures`;
+  if (!/^127\.0\.0\.1:[1-9][0-9]{0,4}$/.test(registryHost || "") ||
+      ![runtime, webui].every((contract) => contract?.image?.repository?.startsWith(`${repositoryPrefix}/`) &&
+        digestPattern.test(contract.image.digest))) {
+    throw namedQualificationError("local_v2_build_catalog_invalid", "the qualification catalog requires immutable Runtime and WebUI images from its loopback fixture registry");
+  }
+  const admissionReceiptId = `local-v2-build-admission:${sourceSha}`;
+  const name = "local-v2-build-fixtures";
+  const publisherNamespaceId = await declareOrRead(http, auth, endpoints.publisherNamespaces, "name", name, {
+    name, kind: "official", registryId: "127.0.0.1", repositoryPrefix, admissionReceiptId,
+  });
+  const admit = async (path, readPath, contract) => {
+    const nameOfVersion = `${name}-${contract.kind}`;
+    const id = await declareOrRead(http, auth, path, "name", nameOfVersion, {
+      name: nameOfVersion, versionLabel: "1.0.0", publisherNamespaceId, admissionReceiptId,
+      publisherContract: { ...contract, publisherNamespaceId },
+    }, { readPath });
+    const { payload } = await http.json(`${readPath}?limit=100`, {}, auth);
+    const version = payload?.items?.find((item) => item.id === id);
+    if (version?.artifactDigest !== contract.image.digest || version?.status !== "approved" ||
+        version?.publisherContract?.image?.repository !== contract.image.repository) {
+      throw namedQualificationError("local_v2_build_catalog_artifact_unconfirmed", `the owner did not read back the approved ${contract.kind} fixture`);
+    }
+    return id;
+  };
+  const runtimeVersionId = await admit(endpoints.runtimeVersions, endpoints.catalogRuntimeVersions, runtime);
+  const defaultWebuiVersionId = await admit(endpoints.webuiVersions, endpoints.catalogWebuiVersions, webui);
+
+  const readPolicy = async () => {
+    const { response, payload } = await http.json(endpoints.buildPolicy, {}, auth, [200, 404]);
+    return response.status === 404 ? null : payload;
+  };
+  const matches = (policy) => policy?.runtimeVersionId === runtimeVersionId &&
+    policy?.defaultWebuiVersionId === defaultWebuiVersionId;
+  const currentPolicy = await readPolicy();
+  if (currentPolicy && !matches(currentPolicy)) {
+    throw namedQualificationError("local_v2_build_catalog_policy_conflict", "the effective Build policy refers to a different Runtime or WebUI");
+  }
+  if (!currentPolicy) {
+    await http.json(endpoints.writeBuildPolicy, {
+      method: "PUT",
+      headers: { "idempotency-key": `local-v2-build-policy:${sourceSha}:${runtimeVersionId}:${defaultWebuiVersionId}` },
+      body: { runtimeVersionId, defaultWebuiVersionId, expectedPolicyVersionId: "" },
+    }, auth);
+  }
+  const policy = await readPolicy();
+  if (!matches(policy) || !policy.policyVersion) {
+    throw namedQualificationError("local_v2_build_catalog_policy_unconfirmed", "Runtime Control did not read back the declared Build policy");
+  }
+  return { runtimeVersionId, defaultWebuiVersionId, policyVersion: policy.policyVersion };
 }
 
 // ---------------------------------------------------------------------------

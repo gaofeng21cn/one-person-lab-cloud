@@ -8,7 +8,7 @@ import {
 
 // Installation inputs for the existing native topology. These are run-owned
 // fixture facts; no production credential, provider or billing authority is used.
-export function cleanHostInstallation({ template, compose, directory, sourceSha, cloudImage, workspaceImage, storageRoot, project, publisherSchemaDigest, tenantId = "qualification-bootstrap", insecureHttpHosts = "" }) {
+export function cleanHostInstallation({ template, compose, directory, sourceSha, cloudImage, workspaceImage, storageRoot, project, publisherSchemaDigest, tenantId = "qualification-bootstrap", insecureHttpHosts = "", buildRegistry = "" }) {
   if (!/^[0-9a-f]{40}$/.test(sourceSha)) throw new Error("clean_host_source_invalid");
   for (const image of [cloudImage, workspaceImage]) {
     if (!/^[^\s@]+@sha256:[0-9a-f]{64}$/.test(image)) throw new Error("clean_host_image_invalid");
@@ -25,8 +25,11 @@ export function cleanHostInstallation({ template, compose, directory, sourceSha,
   // Build owner may write into are one installation fact. The Build owner
   // refuses any destination whose registry namespace is outside its approved
   // prefix, so the two must name the same host and the same namespace.
-  const registryHost = workspaceImage.split("/")[0];
+  const registryHost = buildRegistry || workspaceImage.split("/")[0];
   const registryNamespace = "qualification";
+  if (buildRegistry && !/^127\.0\.0\.1:[1-9][0-9]{0,4}$/.test(buildRegistry)) {
+    throw new Error("clean_host_build_registry_invalid");
+  }
   // The plain-HTTP hosts the Build owner may pull from.
   //
   // The value belongs to whoever created the registry: only that caller knows
@@ -64,14 +67,17 @@ export function cleanHostInstallation({ template, compose, directory, sourceSha,
     OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: storageRoot,
     OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT: resolve(directory, "fabric-secrets"),
     OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: JSON.stringify(profile),
-    OPL_FABRIC_LOCAL_DOCKER_TRUSTED_WORKSPACE_IMAGES: workspaceImage,
+    OPL_FABRIC_LOCAL_DOCKER_TRUSTED_WORKSPACE_IMAGES: buildRegistry
+      ? `${workspaceImage},${registryHost}/${registryNamespace}/local-qualification`
+      : workspaceImage,
     OPL_FABRIC_LOCAL_DOCKER_PROBE_IMAGE: workspaceImage,
     OPL_RESOURCE_CATALOG_PROFILE_JSON: JSON.stringify({ provider: "local-docker", region: "local", billingMode: "LOCAL_NO_CHARGE", providerCapabilityVersion: "local-docker/v1" }),
     OPL_DOCKER_SOCKET_PATH: "/var/run/docker.sock",
     OPL_CONSOLE_USERS_JSON: "[]", OPL_PLATFORM_ADMIN_SUBJECTS: "41", OPL_INVITATION_TTL: "168h",
     OPL_GATEWAY_WORKSPACE_KEY_GROUP: "Codex", OPL_WORKSPACE_APPLICATION_INGRESS_PEERS: "{}",
     OPL_WORKSPACE_REGISTRY_HOST: registryHost, OPL_WORKSPACE_REGISTRY_NAMESPACE: registryNamespace,
-    OPL_BUILD_BUILDER: "default", OPL_BUILD_REGISTRY_PREFIX: `${registryHost}/${registryNamespace}`,
+    OPL_BUILD_BUILDER: buildRegistry ? "qualification" : "default",
+    OPL_BUILD_REGISTRY_PREFIX: `${registryHost}/${registryNamespace}`,
   });
   if (insecureHosts) values.OPL_BUILD_INSECURE_HTTP_HOSTS = insecureHosts;
   const facts = localV2InstallationFacts({ template, compose, values });
@@ -95,6 +101,50 @@ export function cleanHostApplication(workspaceImage) {
       ports: [{ name: "http", port: 3000, protocol: "TCP" }], entryPort: "http",
       healthChecks: [{ port: 3000, path: "/" }],
       persistentMounts: [{ name: "workspace-data", mountPath: "/data", readOnly: false }], exposurePolicy: "anonymous",
+    },
+  };
+}
+
+export function cleanHostBuildCatalog({ runtimeImage, webuiImage, frontendImage, recipeRef, registry }) {
+  const image = (ref) => {
+    const [repository, digest, extra] = String(ref || "").split("@");
+    if (extra !== undefined || !repository.startsWith(`${registry}/qualification-fixtures/`) ||
+        !/^sha256:[0-9a-f]{64}$/.test(digest || "")) {
+      throw new Error("clean_host_build_artifact_invalid");
+    }
+    return { repository, digest, platform: { os: "linux", architecture: "amd64" } };
+  };
+  const runtimeArtifact = image(runtimeImage);
+  const runtime = cleanHostApplication(runtimeImage);
+  const recipe = image(recipeRef);
+  runtime.applicationRevisionTemplate.applicationId = "local-qualification-build-runtime";
+  runtime.packageFormatVersions = ["agent-plugins/1.0.0"];
+  runtime.buildRecipe = {
+    version: "opl-build-recipe/v1",
+    frontend: image(frontendImage),
+    recipe: {
+      repository: recipe.repository, digest: recipe.digest,
+      mediaType: "application/vnd.opl.build-recipe.v1+tar", dockerfilePath: "Dockerfile",
+    },
+    runtimeContextName: "runtime",
+    packageInput: {
+      contextName: "agent_package", formatVersion: runtime.packageFormatVersions[0],
+      sourceRoot: "agent", targetPath: "/agent", uid: 1000, gid: 1000,
+    },
+    webuiInput: { contextName: "webui", sourcePath: "/web", targetPath: "/web", uid: 1000, gid: 1000 },
+    networkPolicy: "none",
+    outputPlatform: runtimeArtifact.platform,
+    outputImageCommand: { entrypoint: ["/agent/bin/runtime"], cmd: ["serve"] },
+  };
+  return {
+    runtime,
+    webui: {
+      schemaVersion: "opl-publisher-contract/v1", kind: "webui",
+      publisherNamespaceId: runtime.publisherNamespaceId, image: image(webuiImage),
+      runtimeAbiVersions: [runtime.runtimeAbiVersion], uiProtocolVersion: "opl-webui/v1",
+      integrationMode: "bundled_static", staticRoot: "/web", entryFile: "index.html",
+      assetBasePath: "/assets/", apiBasePath: "/api/", authenticationProtocol: "opl-application-session/v1",
+      supportsSse: true, supportsWebsocket: false,
     },
   };
 }
@@ -162,9 +212,16 @@ async function main() {
   const facts = cleanHostInstallation({ template, compose, directory, sourceSha: options["source-sha"],
     cloudImage: options["cloud-image"], workspaceImage: options["workspace-image"], storageRoot: options["storage-root"], project: options.project,
     publisherSchemaDigest: `sha256:${createHash("sha256").update(schema).digest("hex")}`,
-    insecureHttpHosts: options["insecure-http-hosts"] || "" });
+    insecureHttpHosts: options["insecure-http-hosts"] || "", buildRegistry: options["build-registry"] || "" });
   await writeFile(resolve(directory, "installation.env"), localV2EnvFile(facts), { mode: 0o600 });
   await writeFile(resolve(directory, "application.json"), `${JSON.stringify(cleanHostApplication(options["workspace-image"]))}\n`, { mode: 0o600 });
+  if (options["build-registry"]) {
+    const catalog = cleanHostBuildCatalog({
+      registry: options["build-registry"], runtimeImage: options["runtime-image"], webuiImage: options["webui-image"],
+      frontendImage: options["frontend-image"], recipeRef: options["recipe-ref"],
+    });
+    await writeFile(resolve(directory, "build-catalog.json"), `${JSON.stringify(catalog)}\n`, { mode: 0o600 });
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) await main();
