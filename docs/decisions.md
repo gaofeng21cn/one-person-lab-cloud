@@ -90,7 +90,9 @@ Git log.
   Sub2API authority, projecting the same `PersonalGatewayKey` fact the personal
   reads use. The Tenant-managed `GatewayKey` contract is a different contract and
   is not reused for personal writes — it cannot express a group, an IP list, a
-  quota or a rate limit.
+  quota or a rate limit. The public surface is the Console BFF, which carries the
+  customer's whole instruction to that owner and projects its answer; the Control
+  Plane's own `/api/gateway/keys` write routes are not yet migrated onto it.
 
 ## Non-Spending Publication & Incremental Retirement
 

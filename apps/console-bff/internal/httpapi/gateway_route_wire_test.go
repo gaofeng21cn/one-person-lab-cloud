@@ -48,6 +48,11 @@ type gatewayOwnerServer struct {
 	personalGroupRequest   *api.ListPersonalGatewayGroupsRpcRequest
 	personalUsageRequest   *api.ListPersonalGatewayKeyUsageRpcRequest
 	personalSummaryRequest *api.GetPersonalGatewayKeyUsageSummaryRpcRequest
+	personalCreateRequest  *api.CreatePersonalGatewayKeyRpcRequest
+	personalUpdateRequest  *api.UpdatePersonalGatewayKeyRpcRequest
+	personalRevealRequest  *api.RevealPersonalGatewayKeyRpcRequest
+	personalRevokeRequest  *api.RevokePersonalGatewayKeyRpcRequest
+	personalWriteErr       error
 }
 
 func (s *gatewayOwnerServer) GetWorkspaceTransactionTrend(_ context.Context, r *api.GetWorkspaceTransactionTrendRpcRequest) (*api.WorkspaceTransactionTrend, error) {
@@ -465,6 +470,62 @@ func (s *gatewayOwnerServer) GetPersonalGatewayKeyUsageSummary(_ context.Context
 		return nil, s.personalErr
 	}
 	return &api.UsageSummary{TotalRequests: 7, TotalActualCostUsdMicros: 13}, nil
+}
+
+// The four personal Key writes answer with the owner's own projection. The
+// secret is returned exactly once, by the create and by the explicit reveal.
+func (s *gatewayOwnerServer) CreatePersonalGatewayKey(_ context.Context, r *api.CreatePersonalGatewayKeyRpcRequest) (*api.PersonalGatewayKeySecret, error) {
+	s.personalCreateRequest = r
+	if s.personalWriteErr != nil {
+		return nil, s.personalWriteErr
+	}
+	return &api.PersonalGatewayKeySecret{Key: personalOwnerKey("71", "personal key"), Secret: "raw-secret-must-never-escape"}, nil
+}
+
+func (s *gatewayOwnerServer) UpdatePersonalGatewayKey(_ context.Context, r *api.UpdatePersonalGatewayKeyRpcRequest) (*api.PersonalGatewayKey, error) {
+	s.personalUpdateRequest = r
+	if s.personalWriteErr != nil {
+		return nil, s.personalWriteErr
+	}
+	key := personalOwnerKey("71", "renamed personal key")
+	key.Status = api.PersonalGatewayKeyStatusEnum_PERSONAL_GATEWAY_KEY_STATUS_ENUM_DISABLED
+	return key, nil
+}
+
+func (s *gatewayOwnerServer) RevealPersonalGatewayKey(_ context.Context, r *api.RevealPersonalGatewayKeyRpcRequest) (*api.PersonalGatewayKeySecret, error) {
+	s.personalRevealRequest = r
+	if s.personalWriteErr != nil {
+		return nil, s.personalWriteErr
+	}
+	return &api.PersonalGatewayKeySecret{Key: personalOwnerKey(r.GetKeyId(), "personal key"), Secret: "raw-secret-must-never-escape"}, nil
+}
+
+func (s *gatewayOwnerServer) RevokePersonalGatewayKey(_ context.Context, r *api.RevokePersonalGatewayKeyRpcRequest) (*api.Operation, error) {
+	s.personalRevokeRequest = r
+	if s.personalWriteErr != nil {
+		return nil, s.personalWriteErr
+	}
+	now := timestamppb.Now()
+	return &api.Operation{
+		OperationId: r.GetKeyId(), Owner: api.OperationOwnerEnum_OPERATION_OWNER_ENUM_GATEWAY,
+		Kind: api.OperationKindEnum_OPERATION_KIND_ENUM_REVOKE_KEY, ResourceId: r.GetKeyId(),
+		Status: api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED, Stage: api.OperationStageEnum_OPERATION_STAGE_ENUM_SUCCEEDED,
+		RequestId: r.GetContext().GetRequestId(), CreatedAt: now, UpdatedAt: now,
+	}, nil
+}
+
+// personalOwnerKey is the owner's own personal Key projection, with the money in
+// exact USD micros so a route that recomputes it would be visible.
+func personalOwnerKey(id, name string) *api.PersonalGatewayKey {
+	return &api.PersonalGatewayKey{
+		Id: id, Name: name, GroupId: proto.String("4"),
+		Status: api.PersonalGatewayKeyStatusEnum_PERSONAL_GATEWAY_KEY_STATUS_ENUM_ACTIVE,
+		Kind:   api.PersonalGatewayKeyKindEnum_PERSONAL_GATEWAY_KEY_KIND_ENUM_GENERAL,
+		IpWhitelist: []string{"10.0.0.0/8"}, IpBlacklist: []string{"192.168.1.1"},
+		QuotaUsdMicros: 1_500_000, QuotaUsedUsdMicros: 0,
+		RateLimit5HUsdMicros: 2_000_000, RateLimit1DUsdMicros: 3_000_000, RateLimit7DUsdMicros: 4_000_000,
+		Usage5HUsdMicros: 0, Usage1DUsdMicros: 0, Usage7DUsdMicros: 0,
+	}
 }
 
 func TestPersonalGatewayReadsTravelThroughSameSessionWire(t *testing.T) {

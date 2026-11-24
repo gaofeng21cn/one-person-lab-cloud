@@ -286,15 +286,19 @@ type personalKeyUpdateFacts struct {
 	blacklist *[]string
 	quota     *int64
 	expiresAt *time.Time
-	rate5h    *int64
-	rate1d    *int64
-	rate7d    *int64
-	status    *api.PersonalGatewayKeyStatusEnum
-	quotaUsed *int64
-	usage5h   *int64
-	usage1d   *int64
-	usage7d   *int64
-	details   map[string]any
+	// expiresAtCleared states that the command asked for the expiry to be
+	// removed. It is separate from expiresAt because an absent instant is
+	// ambiguous: it means "leave it unchanged" everywhere else.
+	expiresAtCleared *bool
+	rate5h          *int64
+	rate1d          *int64
+	rate7d          *int64
+	status          *api.PersonalGatewayKeyStatusEnum
+	quotaUsed       *int64
+	usage5h         *int64
+	usage1d         *int64
+	usage7d         *int64
+	details         map[string]any
 }
 
 // personalKeyUpdateRequest builds the provider's update body together with the
@@ -364,6 +368,20 @@ func personalKeyUpdateRequest(body *api.UpdatePersonalGatewayKeyRequest) (map[st
 		request["expires_at"] = instant.Format(time.RFC3339)
 		expected.expiresAt = &instant
 		expected.details["expiresAt"] = instant.Format(time.RFC3339)
+	}
+	if body.ClearExpiresAt != nil && *body.ClearExpiresAt {
+		// Clearing the expiry is an instruction of its own. It never rides on an
+		// absent or empty instant, and it never coexists with one: a command that
+		// names both states is refused instead of guessing which one was meant.
+		if body.ExpiresAt != nil {
+			return nil, expected, status.Error(codes.InvalidArgument, "a personal key expiry is either set or cleared, not both")
+		}
+		// The provider removes the expiry when it receives the empty instant it
+		// uses for a cleared expiry, and its own readback then carries none.
+		request["expires_at"] = ""
+		cleared := true
+		expected.expiresAtCleared = &cleared
+		expected.details["clearExpiresAt"] = true
 	}
 	if body.RateLimit5HUsdMicros != nil {
 		micros := *body.RateLimit5HUsdMicros
@@ -456,6 +474,11 @@ func personalKeyUpdateConfirmed(key *api.PersonalGatewayKey, expected personalKe
 		if key.GetExpiresAt() == nil || !key.GetExpiresAt().AsTime().UTC().Truncate(time.Second).Equal(*expected.expiresAt) {
 			return false
 		}
+	}
+	if expected.expiresAtCleared != nil && *expected.expiresAtCleared && key.GetExpiresAt() != nil {
+		// The command asked for the expiry to be gone, so a readback that still
+		// carries one contradicts the command.
+		return false
 	}
 	if expected.rate5h != nil && key.GetRateLimit5HUsdMicros() != *expected.rate5h {
 		return false

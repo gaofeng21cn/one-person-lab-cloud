@@ -50,7 +50,11 @@ runtime={'listRuntimeVersions','registerRuntimeVersion','setRuntimeVersionStatus
 # own (getOperation is a route-resolved session read and stays exempt).
 audience_overrides={'getWorkspaceAccess':'serve','listAdminOperations':'workspace','reconcileOperation':'workspace'}
 session_only={'getLoginContext','login','logout','getSession','getSelfUserExternalBinding'}
-subject_bound={'acceptInvitation','getWallet','getUsageSummary','listPersonalGatewayKeys','getPersonalGatewayKey','listPersonalGatewayGroups','listPersonalGatewayKeyUsage','getPersonalGatewayKeyUsageSummary'}
+# The personal Gateway Key surface belongs to the signed-in User, not to a Tenant
+# role: the reads and the writes over the same personal Key are both bound to the
+# live User's own delegated Sub2API credential. They never become grantable tenant
+# roles, so they carry no role row.
+subject_bound={'acceptInvitation','getWallet','getUsageSummary','listPersonalGatewayKeys','getPersonalGatewayKey','listPersonalGatewayGroups','listPersonalGatewayKeyUsage','getPersonalGatewayKeyUsageSummary','createPersonalGatewayKey','updatePersonalGatewayKey','revealPersonalGatewayKey','revokePersonalGatewayKey'}
 # An Operation is read through an explicit owner route, so the contract names no
 # single Operation writer and getOperation carries no x-owner of its own. The
 # audience is the route the caller chose, so CloudIdentity decides it as a
