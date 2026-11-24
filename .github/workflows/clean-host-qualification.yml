@@ -74,42 +74,13 @@ jobs:
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Prepare immutable qualification Workspace image
+      - name: Prepare immutable qualification Build artifacts
         id: workspace
         shell: bash
         env:
           SUPPLIED_WORKSPACE_IMAGE: ${{ inputs.workspace_image_ref }}
           PRODUCT_SHA: ${{ inputs.ref }}
-        run: |
-          set -euo pipefail
-          if [ -n "$SUPPLIED_WORKSPACE_IMAGE" ]; then
-            [[ "$SUPPLIED_WORKSPACE_IMAGE" =~ ^[a-z0-9.-]+(:[1-9][0-9]*)?/[a-z0-9._/-]+@sha256:[a-f0-9]{64}$ ]]
-            printf 'image_ref=%s\n' "$SUPPLIED_WORKSPACE_IMAGE" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # Build only the existing fixture. The supplied Cloud Candidate is
-          # still pulled and qualified by digest, without a source rebuild.
-          registry="opl-qualification-workspace-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          printf 'registry=%s\n' "$registry" >> "$GITHUB_OUTPUT"
-          docker run -d --name "$registry" -p 127.0.0.1::5000 \
-            registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
-          port="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "5000/tcp") 0).HostPort}}' "$registry")"
-          [[ "$port" =~ ^[1-9][0-9]*$ ]]
-          repository="127.0.0.1:$port/opl-qualification-workspace"
-          tag="$repository:fixture"
-          printf 'image_tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
-          # The lane registry serves plain HTTP on this host, and the Build
-          # owner may only pull from a host that is named here. The host is
-          # known here, where the registry was created, and nowhere else.
-          printf 'registry_host=127.0.0.1:%s\n' "$port" >> "$GITHUB_OUTPUT"
-          docker build --file deploy/portable/qualification-workspace.Dockerfile \
-            --label "org.opencontainers.image.revision=$PRODUCT_SHA" --tag "$tag" .
-          docker push "$tag"
-          image="$(docker image inspect --format '{{index .RepoDigests 0}}' "$tag")"
-          [[ "$image" == "$repository@sha256:"* ]]
-          [[ "${image##*@}" =~ ^sha256:[a-f0-9]{64}$ ]]
-          docker pull "$image"
-          printf 'image_ref=%s\n' "$image" >> "$GITHUB_OUTPUT"
+        run: bash tests/tools/fixtures/clean-host-build.sh prepare
 
       # The qualification binds this host's installation facts before Docker
       # starts: the quota-enabled Workspace storage root and the provider
@@ -196,6 +167,10 @@ jobs:
           STORAGE_ROOT: ${{ steps.storage.outputs.storage_root }}
           INSTALLER_SHA: ${{ github.sha }}
           REGISTRY_HOST: ${{ steps.workspace.outputs.registry_host }}
+          RUNTIME_IMAGE: ${{ steps.workspace.outputs.runtime_image }}
+          WEBUI_IMAGE: ${{ steps.workspace.outputs.webui_image }}
+          FRONTEND_IMAGE: ${{ steps.workspace.outputs.frontend_image }}
+          RECIPE_REF: ${{ steps.workspace.outputs.recipe_ref }}
           CUSTOMER_PACKAGE_DIR: ${{ steps.customer.outputs.package_dir }}
           CUSTOMER_PROBE_PATH: ${{ steps.customer.outputs.probe_path }}
           CUSTOMER_EVIDENCE_LEVEL: ${{ inputs.customer_evidence_level }}
@@ -215,11 +190,9 @@ jobs:
           args=(--product-root "$PWD" --directory "$directory" --project "$project"
             --source-sha "$PRODUCT_SHA" --cloud-image "$CLOUD_IMAGE_REF"
             --workspace-image "$WORKSPACE_IMAGE_REF" --storage-root "$STORAGE_ROOT")
-          # The plain-HTTP host of the lane registry is named here, where the
-          # registry was created. A registry that serves TLS is not named.
-          if [ -n "$REGISTRY_HOST" ]; then
-            args+=(--insecure-http-hosts "$REGISTRY_HOST")
-          fi
+          args+=(--insecure-http-hosts "$REGISTRY_HOST" --build-registry "$REGISTRY_HOST"
+            --runtime-image "$RUNTIME_IMAGE" --webui-image "$WEBUI_IMAGE"
+            --frontend-image "$FRONTEND_IMAGE" --recipe-ref "$RECIPE_REF")
           node "$installer/tools/local-v2-clean-host.ts" "${args[@]}"
           bash deploy/portable/local-v2-pki.sh "$directory/pki"
           curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
@@ -237,11 +210,13 @@ jobs:
             cp "$bootstrap" "$RUNNER_TEMP/local-workspace-qualification.json"
             exit 1
           fi
+          bash tests/tools/fixtures/clean-host-build.sh attach "$project" "$directory/installation.env" "$REGISTRY_HOST"
           # The customer package chain runs on the qualified installation: the
           # package the operator named is uploaded, built explicitly, and the
           # Workspace that runs that exact version has to answer with the nonce
           # this run put into the package.
           node tools/local-workspace-qualification.ts "${native_args[@]}" \
+            --build-catalog "$directory/build-catalog.json" \
             --customer-package-dir "$CUSTOMER_PACKAGE_DIR" \
             --customer-probe-path "$CUSTOMER_PROBE_PATH" \
             --customer-expected-evidence-level "$CUSTOMER_EVIDENCE_LEVEL" \
@@ -288,6 +263,7 @@ jobs:
           cleanup_failed=0
           if [ -n "${OPL_NATIVE_PROJECT:-}" ]; then
             test "$OPL_NATIVE_PROJECT" = "opl-native-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            bash tests/tools/fixtures/clean-host-build.sh detach "$OPL_NATIVE_PROJECT" || cleanup_failed=1
             docker compose --project-name "$OPL_NATIVE_PROJECT" \
               --env-file "$qualification_root/native/installation.env" \
               -f deploy/portable/compose.local-v2.yaml down --volumes --remove-orphans || cleanup_failed=1
@@ -310,18 +286,9 @@ jobs:
           fi
           exit "$cleanup_failed"
 
-      - name: Remove run-owned Workspace fixture registry
+      - name: Remove run-owned Build artifacts and services
         if: ${{ always() && steps.workspace.outputs.registry != '' }}
         shell: bash
         env:
-          REGISTRY: ${{ steps.workspace.outputs.registry }}
-          IMAGE_TAG: ${{ steps.workspace.outputs.image_tag }}
-        run: |
-          set -euo pipefail
-          test "$REGISTRY" = "opl-qualification-workspace-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          if docker container inspect "$REGISTRY" >/dev/null 2>&1; then
-            docker rm --force "$REGISTRY"
-          fi
-          if [ -n "$IMAGE_TAG" ] && docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
-            docker image rm "$IMAGE_TAG"
-          fi
+          REGISTRY_HOST: ${{ steps.workspace.outputs.registry_host }}
+        run: bash tests/tools/fixtures/clean-host-build.sh cleanup "$REGISTRY_HOST"

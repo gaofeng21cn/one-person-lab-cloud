@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   CUSTOMER_EVIDENCE_LEVEL_ARTIFACT,
   CUSTOMER_EVIDENCE_LEVEL_CONTENT,
+  admitLocalBuildCatalog,
   assertCustomerCompleteUploadOperation,
   assertCustomerDeployedVersionIdentity,
   assertCustomerEntryContentProvenance,
@@ -22,6 +23,7 @@ import {
   parseLocalQualificationArgs,
   runCustomerPackageEvidenceChain,
 } from "../../tools/local-workspace-qualification.ts";
+import { cleanHostBuildCatalog } from "../../tools/local-v2-clean-host.ts";
 
 const toolSource = new URL("../../tools/local-workspace-qualification.ts", import.meta.url);
 
@@ -61,6 +63,54 @@ test("the customer package, its probe and its evidence level are inputs of the r
   assert.equal(parsed.customer.requestedEvidenceLevel, CUSTOMER_EVIDENCE_LEVEL_CONTENT);
   assert.equal(parsed.customer.achievableEvidenceLevel, CUSTOMER_EVIDENCE_LEVEL_CONTENT);
   assert.equal(parsed.customer.degradationReason, "");
+});
+
+test("clean-host catalog publishes one effective policy and leaves an existing different policy intact", async () => {
+  const registry = "127.0.0.1:5123";
+  const ref = (name) => `${registry}/qualification-fixtures/${name}@sha256:${"a".repeat(64)}`;
+  const declarations = cleanHostBuildCatalog({
+    registry, runtimeImage: ref("runtime"), webuiImage: ref("webui"), frontendImage: ref("frontend"), recipeRef: ref("recipe"),
+  });
+  const rows = {
+    "publisher-namespaces": [],
+    "runtime-versions": [],
+    "webui-versions": [],
+  };
+  let policy;
+  let policyWrites = 0;
+  const result = (status, payload) => ({ response: { status }, payload });
+  const http = {
+    async request(path, init) {
+      assert.equal(init.method, "POST");
+      const collection = path.split("/").pop();
+      const contract = init.body.publisherContract;
+      const row = { id: collection, name: init.body.name, status: "approved",
+        artifactDigest: contract?.image.digest, publisherContract: contract };
+      rows[collection].push(row);
+      return result(201, row);
+    },
+    async json(path, init) {
+      if (path === "/api/v2/admin/catalog/build-policy") {
+        assert.equal(init.method, "PUT");
+        assert.equal(init.body.expectedPolicyVersionId, "");
+        policyWrites += 1;
+        policy = { policyVersion: "policy-1", ...init.body };
+        return result(200, policy);
+      }
+      if (path === "/api/v2/catalog/build-policy") return result(policy ? 200 : 404, policy);
+      const collection = path.split("?")[0].split("/").pop();
+      return result(200, { items: rows[collection] });
+    },
+  };
+  const provision = () => admitLocalBuildCatalog(http, {}, "a".repeat(40), declarations, registry);
+  assert.deepEqual(await provision(), {
+    runtimeVersionId: "runtime-versions", defaultWebuiVersionId: "webui-versions", policyVersion: "policy-1",
+  });
+  assert.equal((await provision()).policyVersion, "policy-1");
+  policy = { ...policy, defaultWebuiVersionId: "another-webui" };
+  await assert.rejects(provision, { code: "local_v2_build_catalog_policy_conflict" });
+  assert.equal(policy.defaultWebuiVersionId, "another-webui");
+  assert.equal(policyWrites, 1);
 });
 
 test("a package directory without a probe path is refused before anything is uploaded", () => {
