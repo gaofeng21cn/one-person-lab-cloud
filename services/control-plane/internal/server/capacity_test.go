@@ -1,6 +1,7 @@
 package server
 
 import (
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"context"
 	"database/sql"
 	"errors"
@@ -214,7 +215,7 @@ func TestSinglePodCapacity(t *testing.T) {
 			seedDuration := time.Since(seedStarted)
 
 			counter := &capacitySQLCounter{}
-			db, err := sql.Open("postgres", databaseURL)
+			db, err := sql.Open("pgx", databaseURL)
 			if err != nil {
 				t.Fatal(err)
 			}

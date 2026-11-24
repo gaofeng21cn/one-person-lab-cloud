@@ -1,6 +1,7 @@
 package fabric
 
 import (
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"context"
 	"database/sql"
 	"errors"
@@ -873,7 +874,7 @@ func TestPostgresOperationStoreMapsHistoricalCorrelationIDToOperationID(t *testi
 	for _, uniqueIdempotencyKey := range []bool{false, true} {
 		t.Run(fmt.Sprintf("pk_only=%t", !uniqueIdempotencyKey), func(t *testing.T) {
 			databaseURL := fabricTestDatabaseURL(t)
-			db, err := sql.Open("postgres", databaseURL)
+			db, err := sql.Open("pgx", databaseURL)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -982,7 +983,7 @@ func TestPostgresOperationStoreRejectsUnknownHistoricalOperationShapeBeforeHardC
 func testUnknownHistoricalOperationShape(t *testing.T, mutate string) {
 	t.Helper()
 	databaseURL := fabricTestDatabaseURL(t)
-	db, err := sql.Open("postgres", databaseURL)
+	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}

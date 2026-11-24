@@ -12,7 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func TestPostgresSchemaKeepsEvidenceAndDropsRetiredCommercialTables(t *testing.T) {
@@ -47,7 +49,7 @@ func TestPostgresSchemaKeepsEvidenceAndDropsRetiredCommercialTables(t *testing.T
 }
 
 func TestPostgresStoreReadyFailsWhenDatabaseIsClosed(t *testing.T) {
-	db, err := sql.Open("postgres", "")
+	db, err := sql.Open("pgx", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +218,7 @@ func TestPostgresEvidenceNumberReadback(t *testing.T) {
 	}
 
 	_, err = db.Exec(`UPDATE evidence_receipts SET payload_json = '{' WHERE id = $1`, created.ReceiptID)
-	var invalidJSON *pq.Error
+	var invalidJSON *pgconn.PgError
 	if !errors.As(err, &invalidJSON) || invalidJSON.Code != "22P02" {
 		t.Fatalf("indexed receipt payload must reject invalid JSON before persistence: %v", err)
 	}
@@ -527,7 +529,7 @@ func openLedgerTestPostgres(t *testing.T) *sql.DB {
 	if rawURL == "" {
 		t.Skip("LEDGER_TEST_DATABASE_URL is not set")
 	}
-	admin, err := sql.Open("postgres", rawURL)
+	admin, err := sql.Open("pgx", rawURL)
 	if err != nil {
 		t.Fatalf("open test postgres: %v", err)
 	}
@@ -538,7 +540,7 @@ func openLedgerTestPostgres(t *testing.T) *sql.DB {
 		t.Fatalf("connect test postgres: %v", err)
 	}
 	schema := fmt.Sprintf("ledger_test_%d", time.Now().UnixNano())
-	if _, err := admin.ExecContext(connectCtx, "CREATE SCHEMA "+pq.QuoteIdentifier(schema)); err != nil {
+	if _, err := admin.ExecContext(connectCtx, "CREATE SCHEMA "+pgx.Identifier{schema}.Sanitize()); err != nil {
 		_ = admin.Close()
 		t.Fatalf("create test schema: %v", err)
 	}
@@ -550,11 +552,11 @@ func openLedgerTestPostgres(t *testing.T) *sql.DB {
 		parsed.RawQuery = query.Encode()
 		testURL = parsed.String()
 	} else {
-		testURL += " search_path=" + pq.QuoteLiteral(schema) + " connect_timeout=10"
+		testURL += " search_path=" + ("'" + strings.ReplaceAll(schema, "'", "''") + "'") + " connect_timeout=10"
 	}
-	db, err := sql.Open("postgres", testURL)
+	db, err := sql.Open("pgx", testURL)
 	if err != nil {
-		_, _ = admin.Exec("DROP SCHEMA " + pq.QuoteIdentifier(schema) + " CASCADE")
+		_, _ = admin.Exec("DROP SCHEMA " + pgx.Identifier{schema}.Sanitize() + " CASCADE")
 		_ = admin.Close()
 		t.Fatalf("open isolated test schema: %v", err)
 	}
@@ -563,7 +565,7 @@ func openLedgerTestPostgres(t *testing.T) *sql.DB {
 		_ = db.Close()
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		_, _ = admin.ExecContext(cleanupCtx, "DROP SCHEMA "+pq.QuoteIdentifier(schema)+" CASCADE")
+		_, _ = admin.ExecContext(cleanupCtx, "DROP SCHEMA "+pgx.Identifier{schema}.Sanitize()+" CASCADE")
 		_ = admin.Close()
 	})
 	return db

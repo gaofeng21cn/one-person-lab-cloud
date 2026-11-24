@@ -1581,7 +1581,7 @@ test("every declared dependency of the Cloud backend unit is proved against the 
       assert.ok(config.includes(`getenv("${boundaryEnv}")`),
         "an owner must read the declared database name");
       const database = await readFile("services/internal/ownerservice/database.go", "utf8");
-      assert.match(database, /sql\.Open\("postgres"/,
+      assert.match(database, /postgresmigrate\.OpenPool\(ctx,\s*databaseURL/,
         "an owner must open a PostgreSQL connection from that name");
       // The database is the installation's own service. It is not a process of
       // the unit, and the installation deploys it as its own container.

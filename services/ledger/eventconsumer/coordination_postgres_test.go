@@ -17,7 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -105,7 +106,7 @@ func coordinationDB(t *testing.T) *sql.DB {
 			t.Skip("LEDGER_TEST_DATABASE_URL is not set")
 		}
 	}
-	admin, err := sql.Open("postgres", dsn)
+	admin, err := sql.Open("pgx", dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +116,7 @@ func coordinationDB(t *testing.T) *sql.DB {
 		t.Fatal(err)
 	}
 	schema := fmt.Sprintf("ledger_coord_%d", time.Now().UnixNano())
-	if _, err = admin.ExecContext(ctx, "CREATE SCHEMA "+pq.QuoteIdentifier(schema)); err != nil {
+	if _, err = admin.ExecContext(ctx, "CREATE SCHEMA "+pgx.Identifier{schema}.Sanitize()); err != nil {
 		t.Fatal(err)
 	}
 	testDSN := dsn
@@ -125,16 +126,16 @@ func coordinationDB(t *testing.T) *sql.DB {
 		u.RawQuery = q.Encode()
 		testDSN = u.String()
 	} else {
-		testDSN += " search_path=" + pq.QuoteLiteral(schema)
+		testDSN += " search_path=" + ("'" + strings.ReplaceAll(schema, "'", "''") + "'")
 	}
-	db, err := sql.Open("postgres", testDSN)
+	db, err := sql.Open("pgx", testDSN)
 	if err != nil {
 		t.Fatal(err)
 	}
 	db.SetMaxOpenConns(8)
 	t.Cleanup(func() {
 		db.Close()
-		admin.Exec("DROP SCHEMA " + pq.QuoteIdentifier(schema) + " CASCADE")
+		admin.Exec("DROP SCHEMA " + pgx.Identifier{schema}.Sanitize() + " CASCADE")
 		admin.Close()
 	})
 	return db

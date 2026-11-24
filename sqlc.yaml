@@ -1,0 +1,42 @@
+version: "2"
+sql:
+  - engine: postgresql
+    schema:
+      - services/ledger/internal/ledger/ent_migrations/202607140001_evidence_ledger_hard_cut.sql
+      - services/ledger/internal/ledger/ent_migrations/202608140001_evidence_receipt_lookup_ids.sql
+      - services/ledger/internal/ledger/ent_migrations/202608210001_cloud_evidence_index.sql
+      - services/ledger/internal/ledger/ent_migrations/202609080001_receipt_request_lookup.sql
+    queries: services/ledger/internal/ledger/queries.sql
+    gen:
+      go:
+        package: sqlcgen
+        out: services/ledger/internal/ledger/sqlcgen
+        sql_package: database/sql
+        emit_empty_slices: true
+
+  - engine: postgresql
+    schema:
+      - services/fabric/internal/fabric/ent_migrations/202607090001_ent_hard_cut.sql
+      - services/fabric/internal/fabric/ent_migrations/202607110003_runtime_operation_claim.sql
+      - services/fabric/internal/fabric/ent_migrations/202607120001_machine_ownership.sql
+      - services/fabric/internal/fabric/ent_migrations/202607260001_compute_pool_admission.sql
+      - services/fabric/internal/fabric/ent_migrations/202607290001_compute_claim_pending_pool_head.sql
+      - services/fabric/internal/fabric/ent_migrations/202609080001_launch_compute_pool_admission.sql
+    queries: services/fabric/internal/fabric/queries.sql
+    gen:
+      go:
+        package: sqlcgen
+        out: services/fabric/internal/fabric/sqlcgen
+        sql_package: database/sql
+        emit_empty_slices: true
+
+  - engine: postgresql
+    schema:
+      - services/control-plane/migrations/202607150003_ent_schema.sql
+    queries: services/control-plane/internal/server/queries.sql
+    gen:
+      go:
+        package: sqlcgen
+        out: services/control-plane/internal/server/sqlcgen
+        sql_package: pgx/v5
+        emit_empty_slices: true

@@ -46,7 +46,7 @@ func awaitHarnessBackendExit(t *testing.T, observer *sql.DB, application string)
 func harnessLifecycleFixture(t *testing.T) (Config, *sql.DB, string) {
 	t.Helper()
 	dsn := EnsureAdminDSNOrSkip(os.Getenv, t.Skip)
-	observer, err := sql.Open("postgres", dsn)
+	observer, err := sql.Open("pgx", dsn)
 	if err != nil {
 		t.Fatal(err)
 	}

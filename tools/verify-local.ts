@@ -7,6 +7,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse as parseYAML } from "yaml";
 import { generationInputs, generatedOutputs } from "./verify-generated-contracts.ts";
+import { openAPIInputs, openAPIOutputs } from "./verify-openapi-codegen.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -171,6 +172,7 @@ type VerificationOptions = {
 export const localVerificationSteps: readonly LocalVerificationStep[] = Object.freeze([
   { group: "source", name: "product boundary", command: "npm", args: ["run", "validate:product-boundary"] },
   { group: "source", name: "Generated contracts freshness", command: "npm", args: ["run", "verify:generated-contracts"] },
+  { group: "source", name: "OpenAPI codegen freshness", command: "npm", args: ["run", "verify:openapi"] },
   { group: "source", name: "Development tools typecheck", command: "npm", args: ["run", "typecheck:development-tools"] },
   { group: "source", name: "Node source tests", command: "npm", args: ["run", "test:source"] },
   // One bounded-concurrency invocation instead of nine sequential ones: each
@@ -213,6 +215,9 @@ export function focusedVerificationSteps(changedPaths: readonly string[], testTa
   if (hasRepositoryCode) add({ name: "product boundary", command: "npm", args: ["run", "validate:product-boundary"] });
   if (anyPath(changedPaths, [...generatedContractPaths, ...generationInputs, ...generatedOutputs, "tools/verify-generated-contracts.ts"])) {
     add({ name: "Generated contracts freshness", command: "npm", args: ["run", "verify:generated-contracts"] });
+  }
+  if (anyPath(changedPaths, [...openAPIInputs, ...openAPIOutputs])) {
+    add({ name: "OpenAPI codegen freshness", command: "npm", args: ["run", "verify:openapi"] });
   }
   if (anyPath(changedPaths, developmentToolPaths)) {
     add({ name: "Development tools typecheck", command: "npm", args: ["run", "typecheck:development-tools"] });

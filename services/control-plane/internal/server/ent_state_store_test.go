@@ -1,6 +1,7 @@
 package server
 
 import (
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -1910,7 +1911,7 @@ func newPostgresWorkspaceRenewalStoreWithDB(t *testing.T) (*postgresEntStateStor
 	}
 	store := stateStore.(*postgresEntStateStore)
 	t.Cleanup(func() { _ = store.Close() })
-	db, err := sql.Open("postgres", controlPlaneTestPostgresURL(t, "postgres", schema))
+	db, err := sql.Open("pgx", controlPlaneTestPostgresURL(t, "postgres", schema))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -422,7 +422,7 @@ func TestLiveAcceptedWorkspaceResourceReference(t *testing.T) {
 	// A real queued request cannot commit after membership is revoked while it
 	// waits for the same command lock. Observe the PostgreSQL wait before revoke.
 	queuedQuote := post(customer, "/api/v2/quotes", "queued-quote", `{"purpose":"deploy","capabilityVersionId":"cap-live","computePlanId":"`+cp+`","storagePlanId":"`+sp+`","periodMonths":1}`)["id"].(string)
-	observer, err := sql.Open("postgres", dsn)
+	observer, err := sql.Open("pgx", dsn)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -39,6 +39,7 @@ ARG OPL_SOURCE_SHA
 RUN printf '%s' "$OPL_SOURCE_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "opl_source_sha_invalid" >&2; exit 1; }
 
 WORKDIR /src/services/control-plane
+COPY services/internal/ownerstore /src/services/internal/ownerstore
 COPY services/internal/postgresmigrate /src/services/internal/postgresmigrate
 COPY packages/contracts/go /src/packages/contracts/go
 COPY go.mod go.sum /src/

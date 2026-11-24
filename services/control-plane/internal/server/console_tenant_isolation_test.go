@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/lib/pq"
+	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
@@ -354,7 +354,7 @@ func TestPostgresStoreStartsFromFreshDatabase(t *testing.T) {
 		_ = admin.Close()
 	})
 	databaseURL := controlPlaneTestPostgresURL(t, database, "")
-	legacy, err := sql.Open("postgres", databaseURL)
+	legacy, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +375,7 @@ func TestPostgresStoreStartsFromFreshDatabase(t *testing.T) {
 	if err := store.(*postgresEntStateStore).Close(); err != nil {
 		t.Fatal(err)
 	}
-	check, err := sql.Open("postgres", databaseURL)
+	check, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -507,7 +507,7 @@ func TestPostgresRuntimeOperationConcurrentUpsert(t *testing.T) {
 
 func openControlPlaneTestPostgres(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("postgres", controlPlaneTestPostgresURL(t, "postgres", ""))
+	db, err := sql.Open("pgx", controlPlaneTestPostgresURL(t, "postgres", ""))
 	if err != nil {
 		t.Fatal(err)
 	}

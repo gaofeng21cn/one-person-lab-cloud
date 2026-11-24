@@ -1,30 +1,9 @@
 import { getJson } from "./console-api.ts";
+import type { OpenAPISubscription } from "./dtos.ts";
 
-// Read model of the existing Subscription schema. Workspace remains the sole
+// Read model of the generated OpenAPI Subscription schema. Workspace remains the sole
 // writer of accepted price, period, renewal and provenance facts.
-export interface WorkspaceSubscription {
-  id: string;
-  workspaceId: string;
-  currentPeriodStart: string;
-  currentPeriodEnd: string;
-  periodMonths: number;
-  status: "pending" | "active" | "expired" | "terminated";
-  createdAt: string;
-  renewalMode: "manual" | "automatic";
-  renewalSettingsVersion: string;
-  version: string;
-  provenance: "quoted" | "legacy_import";
-  acceptedQuoteId?: string;
-  legacyPurchaseId?: string;
-  renewalOperationId?: string;
-  renewalConsentId?: string;
-  refundPolicyVersionId?: string;
-  retentionPolicyVersionId?: string;
-  refundTerms?: string;
-  retentionTerms?: string;
-  currentMonthlyUSDMicros?: string;
-  currentPricePolicyVersionId?: string;
-}
+export type WorkspaceSubscription = OpenAPISubscription;
 
 function nonnegativeInt64(value: unknown): value is string {
   return typeof value === "string" && /^(0|[1-9][0-9]{0,18})$/.test(value) && BigInt(value) <= 9223372036854775807n;

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgconn"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -48,7 +48,7 @@ func bindingPersistence(err error) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return status.Error(codes.NotFound, "User external binding not found")
 	}
-	var constraint *pq.Error
+	var constraint *pgconn.PgError
 	if errors.As(err, &constraint) && constraint.Code == "23505" {
 		return status.Error(codes.AlreadyExists, "User external binding conflicts with an existing identity or destination")
 	}

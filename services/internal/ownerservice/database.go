@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"opl-cloud/services/internal/ownerstore"
 	"opl-cloud/services/internal/postgresmigrate"
@@ -20,6 +20,7 @@ import (
 // same readiness reason.
 type Database struct {
 	owner Owner
+	pool  *pgxpool.Pool
 	db    *sql.DB
 	store *ownerstore.Store
 }
@@ -38,23 +39,26 @@ func OpenDatabase(ctx context.Context, owner Owner, databaseURL string) (*Databa
 	if err := postgresmigrate.AdmitDatabaseURL(Getenv, databaseURL); err != nil {
 		return nil, fmt.Errorf("%s: %w", owner, err)
 	}
-	db, err := sql.Open("postgres", databaseURL)
+	pool, db, err := postgresmigrate.OpenPool(ctx, databaseURL, func(cfg *pgxpool.Config) {
+		cfg.MaxConns = 8
+		cfg.MinConns = 1
+		cfg.MaxConnLifetime = 30 * time.Minute
+	})
 	if err != nil {
 		return nil, fmt.Errorf("%s: open database: %w", owner, err)
 	}
-	db.SetMaxOpenConns(8)
-	db.SetMaxIdleConns(4)
-	db.SetConnMaxLifetime(30 * time.Minute)
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
+		pool.Close()
 		return nil, fmt.Errorf("%s: connect to database: %w", owner, err)
 	}
-	store, err := ownerstore.New(db, owner.String())
+	store, err := ownerstore.NewWithPool(db, pool, owner.String())
 	if err != nil {
 		_ = db.Close()
+		pool.Close()
 		return nil, err
 	}
-	return &Database{owner: owner, db: db, store: store}, nil
+	return &Database{owner: owner, pool: pool, db: db, store: store}, nil
 }
 
 // Migrate installs this owner's own migrations. The DDL guards its own database
@@ -85,12 +89,22 @@ func (d *Database) Store() *ownerstore.Store { return d.store }
 // DB exposes the owner connection for owner-local transactional call sites.
 func (d *Database) DB() *sql.DB { return d.db }
 
+// Pool exposes the owner's shared native pgxpool.Pool for pgx/v5 and River call sites.
+func (d *Database) Pool() *pgxpool.Pool { return d.pool }
+
 // Close releases the owner connection.
 func (d *Database) Close() error {
-	if d == nil || d.db == nil {
+	if d == nil {
 		return nil
 	}
-	return d.db.Close()
+	var err error
+	if d.db != nil {
+		err = d.db.Close()
+	}
+	if d.pool != nil {
+		d.pool.Close()
+	}
+	return err
 }
 
 // RequireDatabaseReadiness registers this owner's database as a readiness

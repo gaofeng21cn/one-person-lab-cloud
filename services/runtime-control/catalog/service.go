@@ -15,7 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgconn"
+	"opl-cloud/services/internal/postgresmigrate"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -88,7 +89,7 @@ func dbError(e error) error {
 	if errors.Is(e, sql.ErrNoRows) {
 		return status.Error(codes.NotFound, "catalog entry not found")
 	}
-	var p *pq.Error
+	var p *pgconn.PgError
 	if errors.As(e, &p) && p.Code == "23505" {
 		return status.Error(codes.AlreadyExists, "catalog identity already exists")
 	}
@@ -208,7 +209,7 @@ func (s *Service) RegisterRuntimeVersion(ctx context.Context, r *api.RegisterRun
 		if len(packageFormats) == 0 {
 			packageFormats = []string{}
 		}
-		_, e := tx.ExecContext(ctx, `INSERT INTO runtime_control.runtime_releases(id,name,version_label,artifact_repository,artifact_digest,approved_by,runtime_abi_version,package_format_versions,admission_receipt_id,publisher_namespace_id,publisher_contract_digest,publisher_contract,publisher_contract_object_ref,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, out.Id, out.Name, out.VersionLabel, b.PublisherContract.Image.Repository, out.ArtifactDigest, r.Context.ActorId, out.RuntimeAbiVersion, pq.Array(packageFormats), out.AdmissionReceiptId, out.PublisherNamespaceId, out.PublisherContractDigest, raw, out.PublisherContractObjectRef, out.CreatedAt.AsTime())
+		_, e := tx.ExecContext(ctx, `INSERT INTO runtime_control.runtime_releases(id,name,version_label,artifact_repository,artifact_digest,approved_by,runtime_abi_version,package_format_versions,admission_receipt_id,publisher_namespace_id,publisher_contract_digest,publisher_contract,publisher_contract_object_ref,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, out.Id, out.Name, out.VersionLabel, b.PublisherContract.Image.Repository, out.ArtifactDigest, r.Context.ActorId, out.RuntimeAbiVersion, packageFormats, out.AdmissionReceiptId, out.PublisherNamespaceId, out.PublisherContractDigest, raw, out.PublisherContractObjectRef, out.CreatedAt.AsTime())
 		return dbError(e)
 	})
 	return out, e
@@ -223,7 +224,7 @@ func scanRuntime(row scanner) (*api.RuntimeVersion, error) {
 	var st string
 	var raw []byte
 	var created time.Time
-	e := row.Scan(&v.Id, &v.Name, &v.VersionLabel, &v.ArtifactDigest, &st, &v.RuntimeAbiVersion, pq.Array(&v.PackageFormatVersions), &v.AdmissionReceiptId, &created, &v.PublisherNamespaceId, &v.PublisherContractDigest, &raw, &v.PublisherContractObjectRef, &v.DefaultForNewBuilds)
+	e := row.Scan(&v.Id, &v.Name, &v.VersionLabel, &v.ArtifactDigest, &st, &v.RuntimeAbiVersion, postgresmigrate.StringArrayScanner(&v.PackageFormatVersions), &v.AdmissionReceiptId, &created, &v.PublisherNamespaceId, &v.PublisherContractDigest, &raw, &v.PublisherContractObjectRef, &v.DefaultForNewBuilds)
 	if e != nil {
 		return nil, dbError(e)
 	}

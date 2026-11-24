@@ -13,7 +13,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -125,7 +125,7 @@ func dbError(err error) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return status.Error(codes.NotFound, "resource not found")
 	}
-	var p *pq.Error
+	var p *pgconn.PgError
 	if errors.As(err, &p) && p.Code == "23505" {
 		return status.Error(codes.AlreadyExists, "immutable identity already exists")
 	}

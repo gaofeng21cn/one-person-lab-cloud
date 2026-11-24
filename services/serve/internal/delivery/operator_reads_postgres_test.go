@@ -76,7 +76,7 @@ func assertOperatorAuthorization(t *testing.T, r *api.AuthorizationRequest, c *a
 }
 
 func TestServeOperatorReadsRejectInvalidContextBeforeDatabase(t *testing.T) {
-	db, err := sql.Open("postgres", "")
+	db, err := sql.Open("pgx", "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -365,7 +365,7 @@ func TestWorkspaceRetirementWaitsForInFlightExclusiveSuspension(t *testing.T) {
 		t.Fatalf("parse administrator DSN for the lock observer: %v", err)
 	}
 	observerDSN.Path = "/" + database
-	observer, err := sql.Open("postgres", observerDSN.String())
+	observer, err := sql.Open("pgx", observerDSN.String())
 	if err != nil {
 		t.Fatalf("open isolated database observer: %v", err)
 	}

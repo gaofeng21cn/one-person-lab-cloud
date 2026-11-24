@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/fstest"
 	"time"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func TestValidateTLSRequiresExplicitVerifyFull(t *testing.T) {
@@ -207,6 +210,64 @@ func TestApplyDoesNotRecordFailedMigration(t *testing.T) {
 	assertMigrationCount(t, db, "failure-service", "001_failure", 1)
 }
 
+func TestApplyBackwardCompatibleWithExistingJournalAndFS(t *testing.T) {
+	databaseURL := isolatedPostgresURL(t)
+	pool, db, err := OpenPool(context.Background(), databaseURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = db.Close()
+		pool.Close()
+	})
+
+	// Simulate a live production database with a pre-existing opl_schema_migrations row
+	// written by the legacy runner before pressly/goose/v3 took over.
+	if _, err := db.Exec(`
+		CREATE TABLE opl_schema_migrations (
+			service TEXT NOT NULL,
+			version TEXT NOT NULL,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (service, version)
+		);
+		CREATE TABLE legacy_items (id integer PRIMARY KEY);
+		INSERT INTO legacy_items VALUES (42);
+		INSERT INTO opl_schema_migrations (service, version) VALUES ('legacy-svc', '202607010001_initial');
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	fsys := fstest.MapFS{
+		"migrations/202607010001_initial.sql": &fstest.MapFile{
+			Data: []byte(`CREATE TABLE legacy_items (id integer PRIMARY KEY); -- would fail if re-run`),
+		},
+		"migrations/202607020001_add_note.sql": &fstest.MapFile{
+			Data: []byte(`ALTER TABLE legacy_items ADD COLUMN note TEXT NOT NULL DEFAULT 'preserved';`),
+		},
+	}
+	if err := ApplyFS(context.Background(), db, "", "legacy-svc", fsys, "migrations"); err != nil {
+		t.Fatalf("ApplyFS over pre-existing journal: %v", err)
+	}
+
+	var note string
+	if err := pool.QueryRow(context.Background(), `SELECT note FROM legacy_items WHERE id = 42`).Scan(&note); err != nil {
+		t.Fatal(err)
+	}
+	if note != "preserved" {
+		t.Fatalf("note = %q, want preserved", note)
+	}
+	assertMigrationCount(t, db, "legacy-svc", "202607010001_initial", 1)
+	assertMigrationCount(t, db, "legacy-svc", "202607020001_add_note", 1)
+
+	var totalRows int
+	if err := db.QueryRow(`SELECT count(*) FROM opl_schema_migrations WHERE service = 'legacy-svc'`).Scan(&totalRows); err != nil {
+		t.Fatal(err)
+	}
+	if totalRows != 2 {
+		t.Fatalf("total opl_schema_migrations rows = %d, want 2 (no synthetic version 0)", totalRows)
+	}
+}
+
 func assertMigrationCount(t *testing.T, db *sql.DB, service, version string, want int) {
 	t.Helper()
 	var got int
@@ -225,7 +286,7 @@ func openIsolatedPostgres(t *testing.T) *sql.DB {
 
 func openPostgres(t *testing.T, databaseURL string) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("postgres", databaseURL)
+	db, err := OpenStdlib(databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +309,7 @@ func isolatedPostgresURL(t *testing.T) string {
 			t.Skip("PostgreSQL test gate is not configured: set POSTGRES_MIGRATION_TEST_DATABASE_URL or OPL_POSTGRES_TESTS=1 for an isolated fixture")
 		}
 	}
-	admin, err := sql.Open("postgres", databaseURL)
+	admin, err := OpenStdlib(databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,12 +318,13 @@ func isolatedPostgresURL(t *testing.T) string {
 		t.Fatal(err)
 	}
 	schema := fmt.Sprintf("opl_migration_%d", time.Now().UnixNano())
-	if _, err := admin.Exec(`CREATE SCHEMA ` + pq.QuoteIdentifier(schema)); err != nil {
+	quotedSchema := pgx.Identifier{schema}.Sanitize()
+	if _, err := admin.Exec(`CREATE SCHEMA ` + quotedSchema); err != nil {
 		_ = admin.Close()
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_, _ = admin.Exec(`DROP SCHEMA ` + pq.QuoteIdentifier(schema) + ` CASCADE`)
+		_, _ = admin.Exec(`DROP SCHEMA ` + quotedSchema + ` CASCADE`)
 		_ = admin.Close()
 	})
 	if parsed, err := url.Parse(databaseURL); err == nil && parsed.Scheme != "" {
@@ -271,5 +333,5 @@ func isolatedPostgresURL(t *testing.T) string {
 		parsed.RawQuery = query.Encode()
 		return parsed.String()
 	}
-	return databaseURL + " search_path=" + pq.QuoteLiteral(schema)
+	return databaseURL + " search_path='" + strings.ReplaceAll(schema, "'", "''") + "'"
 }

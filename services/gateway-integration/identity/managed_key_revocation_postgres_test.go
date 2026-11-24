@@ -279,7 +279,7 @@ func TestRevokeManagedKeyReportsAFailedRecording(t *testing.T) {
 		t.Fatal(err)
 	}
 	parsed.Path = "/opl_gateway"
-	adminDB, err := sql.Open("postgres", parsed.String())
+	adminDB, err := sql.Open("pgx", parsed.String())
 	if err != nil {
 		t.Fatal(err)
 	}

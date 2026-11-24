@@ -18,7 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 )
 
 type runtimeMutationBarrier struct {
@@ -111,10 +112,11 @@ func (r *runtimeMutationBarrierRows) Close() error {
 
 func newBarrierPostgresOperationStore(t *testing.T, databaseURL, mutation string) (*PostgresOperationStore, *runtimeMutationBarrier) {
 	t.Helper()
-	connector, err := pq.NewConnector(databaseURL)
+	connCfg, err := pgx.ParseConfig(databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
+	connector := stdlib.GetConnector(*connCfg)
 	barrier := newRuntimeMutationBarrier(mutation)
 	db := sql.OpenDB(&runtimeMutationBarrierConnector{Connector: connector, barrier: barrier})
 	store := &PostgresOperationStore{db: db}
@@ -1422,7 +1424,7 @@ func TestPostgresOperationStoreRunsEmbeddedMigrationsOnce(t *testing.T) {
 	if err := first.Close(); err != nil {
 		t.Fatal(err)
 	}
-	db, err := sql.Open("postgres", databaseURL)
+	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1780,7 +1782,7 @@ func fabricTestDatabaseURL(t *testing.T) string {
 			optional = true
 		}
 	}
-	admin, err := sql.Open("postgres", databaseURL)
+	admin, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}

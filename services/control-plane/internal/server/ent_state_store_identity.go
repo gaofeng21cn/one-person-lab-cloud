@@ -5,6 +5,11 @@ import (
 	"database/sql"
 	"errors"
 	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"opl-cloud/services/control-plane/internal/server/sqlcgen"
 )
 
 var (
@@ -42,7 +47,88 @@ func (s *postgresEntStateStore) ListUsers(ctx context.Context, includeDeleted bo
 	return s.listSQLRecords(ctx, s.db, "control_plane_users", userEntFields, suffix)
 }
 
+func recordFromAccountSQLC(row sqlcgen.ControlPlaneAccount) controlPlaneRecord {
+	out := controlPlaneRecord{
+		"id":                       row.ID,
+		"workspacePurchaseEnabled": row.WorkspacePurchaseEnabled,
+	}
+	if row.CreatedAt.Valid {
+		out["createdAt"] = row.CreatedAt.Time.UTC().Format(time.RFC3339Nano)
+	}
+	if row.UpdatedAt.Valid {
+		out["updatedAt"] = row.UpdatedAt.Time.UTC().Format(time.RFC3339Nano)
+	}
+	if row.OwnerUserID != "" {
+		out["ownerUserId"] = row.OwnerUserID
+	}
+	if row.Sub2apiUserID != 0 {
+		out["sub2apiUserId"] = row.Sub2apiUserID
+	}
+	if row.Name != "" {
+		out["name"] = row.Name
+	}
+	if row.Status != "" {
+		out["status"] = row.Status
+	}
+	return out
+}
+
+func recordFromUserSQLC(row sqlcgen.GetUserByIDRow) controlPlaneRecord {
+	out := controlPlaneRecord{"id": row.ID}
+	setTimestamptz(out, "createdAt", row.CreatedAt)
+	setTimestamptz(out, "updatedAt", row.UpdatedAt)
+	for _, pair := range [][2]string{
+		{"accountId", row.AccountID},
+		{"email", row.Email},
+		{"role", row.Role},
+		{"status", row.Status},
+		{"disabledAt", row.DisabledAt},
+		{"disabledBy", row.DisabledBy},
+		{"disabledReason", row.DisabledReason},
+		{"deletedAt", row.DeletedAt},
+		{"deletedBy", row.DeletedBy},
+		{"deleteReason", row.DeleteReason},
+	} {
+		if pair[1] != "" {
+			out[pair[0]] = pair[1]
+		}
+	}
+	return out
+}
+
+func recordFromSessionSQLC(row sqlcgen.ControlPlaneSession) controlPlaneRecord {
+	out := controlPlaneRecord{"id": row.ID}
+	setTimestamptz(out, "createdAt", row.CreatedAt)
+	setTimestamptz(out, "updatedAt", row.UpdatedAt)
+	if row.UserID != "" {
+		out["userId"] = row.UserID
+	}
+	if row.Csrf != "" {
+		out["csrf"] = row.Csrf
+	}
+	if row.ExpiresAt != "" {
+		out["expiresAt"] = row.ExpiresAt
+	}
+	return out
+}
+
+func setTimestamptz(row controlPlaneRecord, key string, value pgtype.Timestamptz) {
+	if value.Valid && !value.Time.IsZero() {
+		row[key] = value.Time.UTC().Format(time.RFC3339Nano)
+	}
+}
+
 func (s *postgresEntStateStore) GetUser(ctx context.Context, id string) (map[string]any, bool, error) {
+	if s.queries != nil && s.onQuery == nil {
+		row, err := s.queries.GetUserByID(ctx, id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, false, nil
+		}
+		if err != nil {
+			return nil, false, err
+		}
+		return recordFromUserSQLC(row), true, nil
+	}
 	return s.getSQLRecord(ctx, s.db, "control_plane_users", id, userEntFields, false)
 }
 
@@ -77,6 +163,9 @@ func (s *postgresEntStateStore) SaveUser(ctx context.Context, row map[string]any
 }
 
 func (s *postgresEntStateStore) DeleteUser(ctx context.Context, id string) error {
+	if s.queries != nil && s.onQuery == nil {
+		return s.queries.DeleteUserByID(ctx, id)
+	}
 	return s.deleteSQLByID(ctx, s.db, "control_plane_users", id)
 }
 
@@ -85,6 +174,16 @@ func (s *postgresEntStateStore) ListSessions(ctx context.Context) (controlPlaneR
 }
 
 func (s *postgresEntStateStore) GetSession(ctx context.Context, id string) (map[string]any, bool, error) {
+	if s.queries != nil && s.onQuery == nil {
+		row, err := s.queries.GetSessionByID(ctx, id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, false, nil
+		}
+		if err != nil {
+			return nil, false, err
+		}
+		return recordFromSessionSQLC(row), true, nil
+	}
 	return s.getSQLRecord(ctx, s.db, "control_plane_sessions", id, sessionEntFields, false)
 }
 
@@ -100,6 +199,9 @@ func (s *postgresEntStateStore) SaveSession(ctx context.Context, row map[string]
 }
 
 func (s *postgresEntStateStore) DeleteSession(ctx context.Context, id string) error {
+	if s.queries != nil && s.onQuery == nil {
+		return s.queries.DeleteSessionByID(ctx, id)
+	}
 	return s.deleteSQLByID(ctx, s.db, "control_plane_sessions", id)
 }
 
@@ -111,11 +213,34 @@ func (s *postgresEntStateStore) ListAccounts(ctx context.Context, accountID stri
 }
 
 func (s *postgresEntStateStore) GetAccount(ctx context.Context, id string) (map[string]any, bool, error) {
+	if s.queries != nil && s.onQuery == nil {
+		row, err := s.queries.GetAccountByID(ctx, id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, false, nil
+		}
+		if err != nil {
+			return nil, false, err
+		}
+		return recordFromAccountSQLC(row), true, nil
+	}
 	return s.getSQLRecord(ctx, s.db, "control_plane_accounts", id, accountEntFields, false)
 }
 
 // Multiple rows must fail closed rather than picking one arbitrarily.
 func (s *postgresEntStateStore) GetAccountBySub2APIUserID(ctx context.Context, subjectID int64) (map[string]any, bool, error) {
+	if s.queries != nil && s.onQuery == nil {
+		rows, err := s.queries.ListAccountsBySub2APIUserID(ctx, subjectID)
+		if err != nil {
+			return nil, false, err
+		}
+		if len(rows) == 0 {
+			return nil, false, nil
+		}
+		if len(rows) > 1 {
+			return nil, false, errSub2APIAccountMappingConflict
+		}
+		return recordFromAccountSQLC(rows[0]), true, nil
+	}
 	rows, err := s.listSQLRecords(ctx, s.db, "control_plane_accounts", accountEntFields, "WHERE sub2api_user_id = ? LIMIT 2", subjectID)
 	if err != nil {
 		return nil, false, err
@@ -131,7 +256,13 @@ func (s *postgresEntStateStore) GetAccountBySub2APIUserID(ctx context.Context, s
 
 func (s *postgresEntStateStore) PageAccounts(ctx context.Context, page tablePageQuery) (tablePage, error) {
 	var total int
-	if err := s.queryRow(ctx, s.db, "SELECT count(*) FROM control_plane_accounts").Scan(&total); err != nil {
+	if s.queries != nil && s.onQuery == nil {
+		count, err := s.queries.CountAccounts(ctx)
+		if err != nil {
+			return tablePage{}, err
+		}
+		total = int(count)
+	} else if err := s.queryRow(ctx, s.db, "SELECT count(*) FROM control_plane_accounts").Scan(&total); err != nil {
 		return tablePage{}, err
 	}
 	items, err := s.listSQLRecords(ctx, s.db, "control_plane_accounts", accountEntFields, "ORDER BY id ASC LIMIT ? OFFSET ?", page.Limit, page.Offset)
@@ -142,6 +273,17 @@ func (s *postgresEntStateStore) PageAccounts(ctx context.Context, page tablePage
 }
 
 func (s *postgresEntStateStore) CountAccountStatuses(ctx context.Context) (map[string]int, error) {
+	if s.queries != nil && s.onQuery == nil {
+		rows, err := s.queries.CountAccountStatuses(ctx)
+		if err != nil {
+			return nil, err
+		}
+		counts := make(map[string]int, len(rows))
+		for _, row := range rows {
+			counts[row.Status] = int(row.Total)
+		}
+		return counts, nil
+	}
 	rows, err := s.queryRows(ctx, s.db, "SELECT status, count(*) FROM control_plane_accounts GROUP BY status")
 	if err != nil {
 		return nil, err

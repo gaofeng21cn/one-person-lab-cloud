@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lib/pq"
+	"opl-cloud/services/internal/postgresmigrate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -239,7 +239,7 @@ func TestRuntimeReleaseRegistersOptionalPackageFormats(t *testing.T) {
 			var stored []byte
 			var formats []string
 			var storedDigest string
-			if err := service.DB.QueryRowContext(ctx, `SELECT publisher_contract,package_format_versions,publisher_contract_digest FROM runtime_control.runtime_releases WHERE id=$1`, admitted.Id).Scan(&stored, pq.Array(&formats), &storedDigest); err != nil {
+			if err := service.DB.QueryRowContext(ctx, `SELECT publisher_contract,package_format_versions,publisher_contract_digest FROM runtime_control.runtime_releases WHERE id=$1`, admitted.Id).Scan(&stored, postgresmigrate.StringArrayScanner(&formats), &storedDigest); err != nil {
 				t.Fatal(err)
 			}
 			if formats == nil || len(formats) != len(body.PublisherContract.PackageFormatVersions) || storedDigest != digest(canonical) {

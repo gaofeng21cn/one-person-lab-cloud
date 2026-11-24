@@ -20,7 +20,7 @@ import (
 func TestServeDeploymentListRejectsInvalidContextBeforeDatabase(t *testing.T) {
 	// A closed pool makes accidental database access return Internal. Validation
 	// must retain its original error even while persistence is unavailable.
-	db, err := sql.Open("postgres", "")
+	db, err := sql.Open("pgx", "")
 	if err != nil {
 		t.Fatal(err)
 	}

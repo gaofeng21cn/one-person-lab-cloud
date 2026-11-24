@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgconn"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -204,7 +204,7 @@ func (s *Service) GetWorkspaceTransactionTrend(ctx context.Context, r *api.GetWo
 }
 
 func transactionTrendError(err error) error {
-	var databaseError *pq.Error
+	var databaseError *pgconn.PgError
 	if errors.As(err, &databaseError) && databaseError.Code == "22003" {
 		return status.Error(codes.FailedPrecondition, "transaction aggregate exceeds int64 range")
 	}
