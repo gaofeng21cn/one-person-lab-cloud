@@ -130,12 +130,11 @@ export function shouldPollWorkspaceLaunch(operation: WorkspaceLaunchResponse): b
 // provisioning shape. A new customer Launch confirms an application and a plan
 // in one step: with neither a Package nor a separate WebUI selected, Cloud
 // deploys the exact approved OPL App Runtime Release
-// (docs/spec/target/00_master_index.md D01, 04_frontend_interaction_spec.md:15,
-// 11_ui_ux_design.md:89). The Control Plane runs its default application
+// (see docs/architecture.md#workspace-application-boundary). The Control Plane runs its default application
 // reconciliation branch for every mode other than resource_only
 // (routes_workspace_launch.go:45-49), so this states that default App product.
 // resource_only is the retained historical contract for pre-existing
-// resource-only purchases (docs/spec/target/09_legacy_migration.md:9) and must
+// resource-only purchases (docs/invariants.md#workspace-lifecycle-and-application-delivery) and must
 // not be sent for a new Launch.
 export const workspaceLaunchProvisioningMode = "full" as const;
 

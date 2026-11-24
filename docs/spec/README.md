@@ -1,49 +1,16 @@
-# Development Specifications
+# Machine API And Publisher Contracts
 
-This directory holds retained development specifications that the product's
-canonical owners adopt by reference.
+Human-readable product rules, ownership boundaries and settlement invariants
+live in [architecture](../architecture.md), [invariants](../invariants.md),
+[opl-workspace](../opl-workspace.md) and [opl-serve](../opl-serve.md). Narrative
+design/work-package snapshots are retired to Git history.
 
-## target architecture Target Development Specification
+This directory retains only the active machine-consumed schema sources:
 
-`target/` is the accepted target and planning specification for the
-domain-separated Agent SaaS architecture. The durable decision that adopts it is
-[2026-09-22: Adopt The Domain-Separated Agent SaaS Target Architecture](../decisions.md).
+- OpenAPI HTTP contract: [target/03_api_contract_complete.yaml](./target/03_api_contract_complete.yaml)
+- Publisher JSON Schema: [target/contracts/publisher-contract.schema.json](./target/contracts/publisher-contract.schema.json)
+- Production proto and generated Go bindings: [`packages/contracts/proto/`](../../packages/contracts/proto/) and [`packages/contracts/go/`](../../packages/contracts/go/)
 
-- Entry point: [00_master_index.md](./target/00_master_index.md)
-- Product main description: [12_product_spec.md](./target/12_product_spec.md)
-- Implementation work packages: [14_implementation_work_packages.md](./target/14_implementation_work_packages.md)
-- Production wire/event sources: [`packages/contracts/proto/`](../../packages/contracts/proto/)
-- Other target contracts: [`target/contracts/`](./target/contracts)
-- Verification receipts: [`target/checks/`](./target/checks)
-
-### Evidence Layer
-
-This specification is a target and planning owner. It is **not** implementation
-or production evidence. The current joined handoff conclusion is in
-[`target/checks/handoff_readiness.json`](./target/checks/handoff_readiness.json):
-it is `needs_correction` while current specification checks or bound evidence
-remain failed or stale. A planning slice may still start from W01; that does not
-make the complete contract set READY or mean any service is implemented.
-
-The specification's verification scope is documentation contracts, an
-interactive prototype, and isolated PostgreSQL contract tests using named
-fixtures. Provider router and Storage are explicit fixtures, not implemented
-services.
-
-### Source Freeze
-
-This copy was frozen when the target architecture was adopted:
-
-- Adopting repository: `RenDeHuang/opl-cloud`
-- Cloud source SHA the specification read as its migration start point:
-  `50520e27a6b9a630eefdc2df7da3e5ec498d28a0`
-- Upstream provenance: `gaofeng21cn/one-person-lab-cloud` at that SHA
-- Current specification counts are computed by `target/checks/validate_spec.py`
-  and `target/checks/validate_development_plan.py`; dated receipts retain their
-  original counts.
-
-The specification ships its own `checks/validate_*.py` scripts and recorded
-receipts under `target/checks/runs/`. Re-run them with the versions pinned in
-`target/checks/requirements.txt`.
-
-The development plan is a structural target plan, with `not_evaluated` implementation state. Its input hashes are checked by `npm run verify:development-plan`. Implementation evidence belongs in `docs/status.md`, current executable outcomes in GitHub Issues and `docs/roadmap.md`. The plan is not an active task ledger.
+Use [contract ownership](../../packages/contracts/README.md) for generation
+rules and consumer verification (`tools/verify-generated-contracts.ts`). Prose
+spec updates alone do not modify wire APIs or database schemas.

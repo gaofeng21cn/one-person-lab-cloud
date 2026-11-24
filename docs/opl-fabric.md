@@ -168,7 +168,7 @@ vision: it provisions, binds, and reads back compute, storage, network, and
 approved Secret/resource references. Serve remains the only owner of Agent
 Deployment, Runtime instance readiness, current traffic selection and
 API/Embed/Hosted UI access. Fabric owns resource/execution binding and provider
-route-generation facts under the [typed owner boundary](architecture.md#agent-delivery-and-serve-boundary).
+route-generation facts under the [typed owner boundary](architecture.md#workspace-application-boundary).
 Fabric may prepare the sandbox and return resource facts, but a
 successful resource readback is not an Agent-ready result. Existing remote jobs,
 Connect-backed access, App, Workspace and domain-agent callers remain valid

@@ -1,404 +1,68 @@
 # OPL Cloud Durable Invariants
 
-This document contains only facts that must survive implementation changes.
-Exact routes, DTO fields, stage names, retry counts, schemas, compatibility
-decoders, and workflow steps belong to source, focused contracts, tests, or
-current implementation documentation.
+This document contains durable integrity, authority, security and settlement rules
+that must survive refactors. Exact HTTP/gRPC fields, DTO definitions and workflow
+code belong to source, `packages/contracts/**` and [spec/README.md](spec/README.md).
 
 ## Authority
 
-- CloudIdentity owns Tenant/session authorization; Workspace owns its business
-  operations; Resource Catalog owns plans and pricing policies; Serve owns
-  application delivery/current selection/readiness/access. Capability, Build and
-  Runtime Control retain Package, OCI build and Runtime Release authority.
-  Console BFF presents owner DTOs without business persistence. Control Plane
-  owns only its retained sessions, account policy, Workspace and settlement paths.
-- Fabric owns provider-neutral compute, storage, attachment, Secret binding,
-  Runtime facts, provider operations, and provider-authoritative readback.
-- Ledger owns append-only receipts, evidence, retention, reconciliation, and
-  caller-supplied opaque provenance.
-- Sub2API owns customer identity credentials, API Keys, Usage, and the spendable
-  wallet balance.
-- An instance repository owns its domains, provider profile, production
-  environment, Secrets, deployment, deployment rollback, installation acceptance
-  and deployment receipts. Cloud's product owners retain customer operations
-  and business qualification with separately protected execution and evidence.
-- Cloud owns final customer deletion/diagnostic evidence custody and its receipt
-  schema and validator. Instance access adapters do not define business state or
-  retain a second canonical business evidence set. Original producer provenance
-  survives any evidence custody migration.
-- Each authoritative fact has one writer. Other modules consume it through a
-  typed public contract or an owner readback.
+- **Single Writer per Fact**:
+  - `CloudIdentity` owns sessions, Tenants, membership and accepted-operation grants.
+  - `Workspace` owns Workspace business identity, entitlements, plans, Launch/Delete/PlanChange Sagas and target authorization.
+  - `Resource Catalog` owns compute/storage/product plans and pricing/plan-change policies.
+  - `Capability` owns uploaded Package bytes, Package/WebUI catalog metadata and immutable reference claims.
+  - `Build` owns three-input BuildJobs, input snapshots and immutable Agent OCI outputs.
+  - `Runtime Control` owns approved Runtime Releases; `Serve` owns per-Workspace application delivery, current deployment selection, readiness evidence and API/Embed/Hosted UI access bindings.
+  - `Fabric` owns provider-neutral compute, storage, attachment, Secret bindings, provider execution and authoritative resource readback.
+  - `Gateway Integration` owns Cloud↔Sub2API and Cloud↔OCI-Destination mappings plus `gateway.key_bindings` scope coordination; external `Sub2API` owns effective balance, API Keys, routing and Token usage.
+  - `Ledger` owns append-only financial/deletion receipts, reconciliation evidence and caller-owned opaque provenance.
+  - `Console BFF` composes owner readbacks without business persistence; `Control Plane` retains only unmigrated legacy surfaces/history until consumers finish moving.
+  - `opl-instance-medopl` owns domains, provider profile, production Secrets, deployment, rollback and installation receipts; Cloud keeps customer-business evidence custody and receipt validators.
 
 ## Physical Ownership
 
-- Business owners retain separate process, module and database boundaries as
-  defined by the [architecture map](architecture.md#target-directory-and-service-map).
-  Tenant and Gateway remain distinct data owners in one deployment unit.
-- Extracted owners use typed gRPC/protobuf; retained callers use typed HTTP.
-  A service reads and writes only its own tables.
-- Console calls identity-specific same-origin product APIs. Provider, wallet and
-  Ledger access stays behind the owning server boundary; an unavailable owner
-  does not authorize fallback to a different writer.
-- Shared infrastructure remains policy-free and serves at least two current
-  owners.
+- Services under the single root `go.mod` (`module opl-cloud`) maintain strict runtime, store and PostgreSQL database-role isolation per owner schema (CloudIdentity and Gateway Integration share one deployment unit while retaining separate Tenant and Gateway databases).
+- Cross-owner communication uses typed gRPC/protobuf or authenticated owner HTTP (`Console` → same-origin BFF `/api/v2/*` or retained `/api/*`); an unavailable owner fails explicitly (`unavailable`) and never falls back to another writer or guessed zero values.
+- Shared infrastructure in `services/internal/` remains policy-free and serves at least two real consumers.
 
 ## Identity And Secrets
 
-- Customer access is authorized from the current session, Account, User, and
-  downstream identity mapping. Operator visibility does not grant customer
-  ownership.
-- Protected reads and mutations require an unambiguous owner match from the
-  authoritative source.
-- Passwords, raw Keys, tokens, provider credentials, approval payloads, and raw
-  downstream responses stay out of URLs, logs, audit payloads, Ledger, browser
-  storage, and non-secret artifacts.
-- Secret reveal is an explicit owner-authorized, private, no-store interaction.
-  Ordinary status projections remain redacted.
-- A Workspace Gateway Key is persisted only by the selected secret owner.
-  Business operations and Ledger retain references, not the raw Key.
-- Gateway Integration is the sole writer of `gateway.key_bindings` and the
-  only Cloud owner allowed to coordinate issuance, approved model permissions,
-  lifecycle disable/enable and separately authorized security revocation for a
-  Workspace-managed Gateway key through Sub2API. Workspace may persist only the returned opaque binding id on its model
-  configuration; it may not mint, reconstruct or substitute that id.
-- A model-configuration version is not accepted without a confirmed Gateway
-  binding and a confirmed runtime Secret-binding readback. Serve receives the
-  opaque `RuntimeManagedKeyBinding` and applies the publisher contract; it never
-  becomes a Gateway-key writer.
-- Privacy redaction must not change authorization authority. A stored receipt's
-  own provenance block is caller-owned and privacy-mutable, so it is reporting
-  only and is never the fence that admits a read. Where a receipt's payload
-  carries private owner commitments, that evidence is served only by the
-  authenticated typed owner-coordination read, which binds the read to the
-  immutable owner-accepted commit the evidence owner re-read at write time; a
-  generic receipt reader admits only receipt types whose own stored account and
-  Workspace projections identify the caller. Redacting a receipt may remove a
-  value from what an owner is shown; it may never widen who may read it. A
-  record whose authority cannot be established is refused, never read without
-  its fence.
+- Protected reads and mutations verify the live authenticated session, subject mapping and tenant/role authorization; operator visibility never grants customer data ownership.
+- Raw passwords, API Keys, tokens, provider Secrets and private downstream bodies never enter URLs, logs, browser storage, OCI images or Ledger payloads. Secret reveal uses a transient, non-stored, owner-authorized path.
+- `gateway.key_bindings` stores only opaque binding IDs referenced by Workspace model configs; ordinary model updates reconcile approved model scopes on the existing key binding through `Serve` and `Fabric.RebindSecret` (at most one active Secret binding per runtime purpose).
+- Privacy redaction on a receipt may hide fields from a reader but never bypasses or widens the underlying record's authorization fence.
 
 ## Money
 
-- Customer prices and wallet mutations use integer USD micros. Provider costs
-  are reconciliation evidence, not a customer pricing formula.
-- A Workspace purchase or renewal confirms at most one customer debit for the
-  accepted period price. Compute and storage are fulfillment of that purchase.
-- Sub2API must atomically reject an insufficient debit; clamping a debit to
-  available balance violates settlement.
-- A financial confirmation binds the original operation, account, full USD
-  amount and successful native adjustment evidence. A missing audit row after
-  a reserved dispatch remains unknown: wallet writes and audit persistence are
-  separate upstream operations. Recovery never dispatches that money write again.
-  Current wallet snapshots cannot prove one transaction amid other consumption.
-  Historical redeem records without a verified applied amount remain unverified.
-- Business refunds belong to the original confirmed charge and its account.
-  Persist the refund reservation atomically with the operation; completed and
-  unresolved refunds together cannot exceed that charge. Only a confirmed
-  pre-dispatch rejection releases its reservation. Dispatch and recovery compare
-  persisted operation state so a stale process cannot repeat a monetary write.
-- Operations that can change money use stable idempotency identities and retain
-  enough evidence to distinguish confirmed, absent, and unknown outcomes.
-- A confirmed absence of all billable fulfillment after a debit may authorize
-  one idempotent refund. Partial, conflicting, or unknown evidence requires
-  review before another monetary mutation.
-- Receipt failure retries the receipt only; it does not repeat an already
-  confirmed debit, refund, provider operation, activation, or renewal.
-- Financial reconciliation starts from retained original purchase, renewal and
-  refund operations. Workspace deletion, provider absence or a newer period
-  cannot remove historical settlements from the audit set. Each transaction
-  and receipt binds the original account, operation, amount and period.
-- Normal unfinished settlement is reported as pending, never matched. Missing
-  or conflicting evidence for a completed or manually reviewed settlement is
-  an exception. Reconciliation observes money and fulfillment; it never repeats
-  a payment, refund or provider mutation to manufacture a match.
+- Customer prices, wallet debits and refunds use exact `int64` / bigint USD micros serialized as decimal strings at JSON boundaries; floating-point arithmetic is forbidden. Provider cost is reconciliation evidence, not a customer price formula.
+- Sub2API rejects insufficient balance atomically (no debit clamping). Every financial write binds a stable `Idempotency-Key` and canonical request digest; unknown outcomes never trigger automatic duplicate debits or speculative refunds without prior owner readback.
+- Business refunds belong to confirmed original charges under atomic reservation guards so cumulative completed plus pending refunds never exceed the original charge. Workspace deletion and customer refund are separate steps: automatic refund requires verified resource absence plus Ledger deletion receipt.
+- Receipt persistence failure retries only the receipt, never repeating a confirmed debit, refund or provider mutation.
 
-## Workspace Lifecycle
+## Plan Change And Settlement (D17)
 
-References to the original Runtime apply to retained Launch contracts. New
-resource-only provisioning and selected-application behavior follow the
-[application deployment invariants](#application-deployment-and-data) below.
+- **Upgrade (`upgrade_immediate`)**: Takes effect immediately upon confirmed resource/runtime execution and health readback while **preserving `currentPeriodStart` and `paidThrough`** (`E`). Billing does not reset a new month.
+  - Using accepted prior monthly total `P_old`, target monthly total `P_new` (`USDMicros`), period timestamps `S < E`, and quote time `T` (`S <= T < E`), where `D = E - S > 0`, `R = E - T`:
+    `upgradeCharge = ceil(max(P_new - P_old, 0) * R / D)`
+  - Round up to 1 micro-USD **once** at the final step using arbitrary-precision integer math (no per-component ceil summing, no fixed 720-hour shortcut). If `P_new <= P_old`, charge is `0`.
+  - Supplemental charges carry exact coverage `quote_at_ms..period_end_ms`; if an upgraded Workspace is later deleted before `E`, refundable remaining supplement rounds **down**:
+    `unusedSupplement = floor(confirmedSupplement * max(E - deleteConfirmedAt, 0) / (E - quoteT))`
+- **Downgrade (`downgrade_next_period`)**: Preserves current plan, paid fee and running resources until `E`; queues one `scheduled` change effective at `E` billed at the accepted target plan price. Prepaid storage shrinking is forbidden where the provider (`tencent-tke` CBS) does not support disk shrink, and mixed up/down transitions must be split into explicit directional requests.
+- **Mutual Exclusion & Failure**: At most one active/scheduled PlanChange exists per Workspace. Payment or resource `unknown` freezes state until owner readback; unrecoverable partial infrastructure changes (e.g., expanded disk) preserve actual Fabric state and fail closed without charging unfulfilled target plans.
 
-- Ending an unfulfilled Launch preserves its original authorization and order.
-  Freeze and normal dispatch share owner serialization. Exact Fabric resource
-  absence precedes refund; previous and closing refunds share the same
-  original-charge reservation. A ready-before-freeze Workspace is never closed
-  as failed. Unknown outcomes cannot become absence or payment confirmation.
-- Launch, renewal, Key rotation, Runtime repair and deletion continue the
-  original owning operation over one Workspace identity. Retained Control Plane
-  obligations do not silently move to a new Workspace writer.
-- Recovery continues the original operation and original resource identities.
-  It cannot create a second purchase or silently replace an already confirmed
-  resource.
-- An authorized image revision for an existing unready Runtime preserves the
-  Launch, Runtime operation, service identity, stage request hash, idempotency
-  key, and all non-Runtime resources; only owner-authoritative READY readback
-  may advance the original Launch.
-- Before an external write, the owning operation persists its identity and
-  idempotency binding. An uncertain result converges through owner-authoritative
-  readback before another write is considered.
-- Workspace deletion removes owned Runtime, Secret, attachment, storage,
-  and compute state through Fabric before removing the Workspace projection.
-  Workspace closure also requests deactivation of its exact proven managed key;
-  resource absence and Secret removal do not prove that state. Authorized
-  recovery re-enables the original key under the existing entitlement, resource
-  and security constraints. Verified historical Workspaces adopt the same rule;
-  deployment alone does not authorize bulk mutation. Unknown or refused key
-  state remains visible. Delete and refund remain distinct operations: only complete, fresh, identity-bound absence
-  evidence plus the Ledger deletion receipt permits automatic hourly refund
-  dispatch through the existing original-charge reservation and wallet owner.
-- Unpaid expiry denies new access, ends existing proxied access, and stops the
-  original Runtime through Fabric. It does not authorize new procurement or
-  silently extend entitlement. Stop/resume preserves storage and Key identity.
-- Expiry is decided by the owner that holds the term and executed by the data
-  plane, and the two are not the same authority. A serving owner computes no
-  term, stores no copy of one and compares no deadline; it admits a request only
-  against one owner verdict, taken before any binding or runtime row is read, and
-  refuses a closed verdict even when the target is confirmed and ready. A
-  runtime reporting `ready` is an instance fact and never restores access, and an
-  entry wired to no verdict source at all must report that posture rather than
-  leave it implicit.
-- Expired recovery requires fresh explicit owner authorization, the original
-  anchored period, exact charge confirmation, original resources still present,
-  and Runtime ready. Balance changes alone cannot restore access. Older power
-  periods and a deleted Runtime cannot override newer entitlement or deletion.
-- A persisted Delete continues without a customer credential. Pending owner
-  absence never becomes success through a read-count limit; only exact absence
-  plus the non-financial deletion Receipt completes the operation.
-- Customers download and back up data before expiry. The product does not
-  promise post-expiry retention or restoration.
-- Operations that can mutate the same Workspace-owned resource serialize on the
-  owning durable state.
-- Historical rows needed for current reads or migration validation remain
-  readable until their real consumers and data obligations are retired.
+## Error & Recovery Handling
 
-## Application Deployment And Data
+- Synchronous and asynchronous errors return structured machine codes (`Validation`, `Unauthenticated`, `Forbidden`, `VersionConflict`, `IdempotencyConflict`, `ExternalOutcomeUnknown`, etc.); clients branch on canonical error codes rather than parsing upstream strings.
+- `awaiting_confirmation` / `unknown` means unverified outcome, never `failed` or resource absence. Response-lost retries reuse the exact `Idempotency-Key` and payload; polling honors `Retry-After` / `pollAfterSeconds` and stops on terminal states.
 
-These target invariants govern the application-decoupling work; current
-implementation and remaining gaps are reported separately in status/roadmap.
+## Workspace Lifecycle & Application Delivery
 
-- A Workspace's identity, entitlement and financial history are independent of
-  the chosen application. Application replacement within existing resource
-  entitlement does not authorize another charge or resource purchase.
-- New resource provisioning can complete without an application, application
-  login, application Gateway Key or model Key. Later deployment failure cannot
-  repeat a debit or turn fulfilled resources into an unfulfilled purchase.
-  Retained Launches keep the completion obligations of their original contract.
-- A Launch declares its application selection and provisioning shape explicitly.
-  New delivery selects default OPL App from an approved Runtime Release or an
-  optional built Agent; default App does not create a synthetic Package, BuildJob
-  or CapabilityVersion. Existing resource-only orders keep their original
-  obligations. Selection is never inferred from a server default or resources.
-- A retained data binding is keyed by the stable application identity, never by
-  an image tag, digest or deployment attempt. An update that keeps the
-  application keeps its data binding; an unrelated application does not inherit
-  it.
-- An executable image is identified as `host/namespace/repository@digest`. A
-  module confirms the reference its owner produced; it does not re-derive a
-  second reference format from parts.
-- A registry endpoint, its credentials and the repositories approved for
-  deployment are installation facts. A product has no built-in registry
-  endpoint, and an unconfigured endpoint is an absent capability rather than an
-  anonymous one. Deployment time is bound to the resolved digest and platform,
-  never to a tag.
-- Which repositories are approved is declared, never inferred from what a
-  registry happens to list. An installation that configures a registry but
-  declares no approved repository has a misconfigured capability, not an empty
-  one, and fails closed.
-- A Workspace binding to an application gets its own browser origin, derived
-  from the binding identity rather than allocated. A compatible update keeps it;
-  an unrelated application does not inherit it, and a superseded origin is
-  refused instead of served.
-- Native Workspace DNS encoding is reversible and preserves the original owner
-  identity. Native and retained hostname formats cannot collide; previously
-  published retained origins remain byte-compatible. Origin changes require
-  fresh owner URL evidence and never imply browser-session migration.
-- An application origin belongs entirely to its application. Platform
-  credentials, platform routes and platform cookies never appear on it, and an
-  application cookie cannot widen beyond its own binding.
-- The external host and scheme an application observes come from the trusted
-  proxy boundary, never from a caller-supplied header.
-- Initial application distribution, update, rollback and deployment settings
-  require administrator authorization. Account ownership alone does not grant
-  deployment permission; other management actions retain their role policies.
-- Serve alone reports the current application selection. Paginated deployment
-  history and the latest attempt do not determine which application is serving.
-  A composed view uses the selected deployment's artifact facts and accepts an
-  access readback only for that same deployment identity; a concurrent switch
-  stays unconfirmed rather than combining facts from different deployments.
-- Each Workspace fixes its own application revision, configuration and data
-  bindings. A registry upload or installation-default change cannot update
-  existing Workspaces; updating Workspace A does not change Workspace B.
-- Cloud management commands require role-specific authorization. Visitor login follows
-  the selected exposure policy: anonymous/application-owned entry is supported,
-  and Cloud-private access is optional. Application and platform credentials
-  remain separate, with per-Workspace browser and network isolation.
-- Every owned application service, restore workload, Secret and volume belongs
-  to the same Workspace lifecycle. External shared dependencies remain under
-  their own owner's deletion and retention policy.
-- Deployment and recovery bind immutable application/restore revisions, exact
-  data inputs and current owner-derived resource bindings. Uncertain execution
-  results require readback before a new side effect.
-- Configuration, Secret rotation and exposure changes preserve old deployment
-  intent and advance a confirmed version through the same Workspace operation
-  and activation rules. The current binding cannot silently claim an old Secret
-  version after its consumers have changed.
-- `UpdateWorkspaceModels` reads back the Workspace's existing Gateway key
-  binding and its approved model scope from the Gateway owner, refuses a
-  selection outside that scope before any effect, records the new configuration
-  under that same binding, and lets Serve perform the Secret handover and the
-  publisher apply/readback. The Workspace applied version advances only after
-  Serve confirms the target version. The public request never carries a
-  key-binding id.
-- `FabricCoordination.BindSecret` is initial-bind/replay only. A different
-  Secret for an already active runtime purpose must use the explicit Fabric
-  `RebindSecret` operation with the expected predecessor binding; Fabric never
-  permits two active bindings for the same runtime purpose.
-- Ordinary model updates preserve the same external Gateway key and only its
-  approved model scope. They do not issue a new key and revoke a predecessor.
-  Gateway permission readback, Fabric Secret readback, Serve applied-version
-  confirmation and Workspace CAS remain required. If scope changed but apply
-  is refused, the same operation must reconcile the same key's approved scope
-  with the actual applied configuration before success or dependent changes:
-  restore the last applied approved scope or confirm the original target through
-  owner readback. Unknown replacement or compensation remains unresolved;
-  scope widening or issuing a new key cannot conceal the failure. A separate
-  authorized Secret replacement does not conflate key identity with Secret
-  version or waive Fabric's one-active-binding invariant.
-- Retained data bindings are stable across ordinary image updates and are
-  independent of tag/digest/attempt identity. Tencent application persistence
-  uses Workspace-owned CBS via explicit mounts; container layers and tmpfs are
-  excluded. Unrelated application data remains retained but isolated, and data
-  is never implicitly shared across Workspaces. Paid retention and explicit
-  deletion remain separate from an update's authority.
-- Restart and image rollback cannot implicitly restore, overwrite or migrate
-  persistent data. Image compatibility with retained data must be established
-  before rollback; scratch storage does not imply durable application sessions.
-- Unsupported image requirements fail admission explicitly. A provider cannot
-  silently change architecture, process privileges, isolation or data semantics.
-- Existing applications and retained operations preserve their proven data,
-  credentials, financial facts and resource obligations during migration.
+- **Two Approved Combinations**: New deliveries select either **Default OPL App** (`opl_app(runtimeVersionId)`) or **Custom Built Agent** (`agent(capabilityVersionId)` requiring `packageVersionId` + `runtimeVersionId` + independent approved `webuiVersionId`). Half-selected Agent combinations are rejected. Legacy `resource_only` orders retain only existing obligations.
+- **Immutable Artifacts & Bindings**: Executable images use exact `host/namespace/repository@digest`; tags (`latest`) are refused at deployment. Data bindings and deterministic isolated browser origins key on stable application/binding identity (never on mutable tags or individual attempts), and tenant data lives on explicit persistent storage rather than ephemeral layers.
+- **Provider & Prepaid Destroy Fences**: Every external mutation persists an atomic epoch / one-send fence before dispatch. TKE Machine detachment uses retain mode, and prepaid CVM/CBS final release requires fresh absence plus explicit identity/ownership verification. Unknown RPC outcomes require owner readback (`destroy-status` / journal / audit) before any retry or reconciliation.
+- **Expiry Enforcement**: Serving data planes enforce owner entitlement verdicts fail-closed; a running/ready container never overrides an expired or suspended Workspace verdict.
 
-## Provider Resources
+## Release & Environment Isolation
 
-- Provider selection and concrete resource policy come from the active instance
-  profile. Provider-specific behavior stays inside the Fabric adapter.
-- Customer and verification compute/storage procurement uses the approved
-  prepaid monthly policy. Capacity and price checks are read-only.
-- Provider mutations bind the authorized caller, exact target, operation,
-  allowed action, request integrity, and expiry.
-- Provider absence, ownership, and completion come from the provider authority.
-  Ambiguous or conflicting facts require review before another mutation.
-- A recycled prepaid disk still contains retained data. Its explicit final release
-  binds the original destroy and exact provider identity, confirms PV/PVC absence,
-  and atomically claims a separate, uniquely identified dispatch fence before one
-  irreversible provider call. Lost lock connections cannot admit another sender.
-  Replays and uncertain replies only read back; they never rewrite the original
-  destroy or establish Workspace deletion or refund success.
-- Prepaid NativeCVM removal stays within the original Cloud Workspace deletion.
-  TKE Machine detachment uses retain mode; only fresh Machine absence permits
-  retirement of the exact active prepaid CVM. Each step binds the original
-  destroy and exact ownership to its own database-atomic, permanent one-send
-  fence. An uncertain reply never authorizes another send of the same step.
-  The generic TKE terminate mode cannot destroy prepaid instances.
-- Explicit operator reconciliation of a completed uncertain prepaid detach uses
-  a separate permanently claimed intent bound to the original destroy, detach
-  request hash and owner authorization. It preserves both original fence and
-  terminal evidence. No ordinary resume, audit result, changed authorization,
-  lost reply or restart can admit a further recovery send. Fresh Machine absence
-  remains required before CVM retirement.
-- Recycled NativeCVM final release stays within the original Cloud Workspace
-  deletion through Fabric. Fresh Machine absence and `SHUTDOWN / MANMADE`
-  observations precede the uniquely claimed one-send fence; the provider adapter
-  validates exact prepaid ownership before termination. Missing current evidence
-  cannot reuse cached eligibility. Provider absence and original destroy cleanup
-  are both required before confirming the compute deletion.
-- Instance-designated system resources remain outside customer allocation and
-  cleanup.
-
-## Console
-
-- Default wallet and Token usage reads use the logged-in User's own verified
-  Sub2API binding, without changing the original purchase payer or obligations.
-- Tenant owner and admin may read their Tenant's bills and settlements. An
-  owner's own historical bills require proof from the original data owner;
-  Tenant roles do not grant another User's personal historical records.
-- Every valid authenticated Cloud User may read active announcements without
-  Tenant membership. Proven same-User historical acknowledgements may be
-  inherited with original read timestamps and user isolation. Publication and
-  ACK persistence retain their existing owner; anonymous access is not granted.
-- Console presents current owner-backed account, wallet, Workspace, Usage,
-  receipt, and failure facts.
-- Independent sources load independently. A failed source does not erase valid
-  facts from another source.
-- `empty` represents a successful authoritative read with no rows;
-  `unavailable` represents a failed authoritative read and carries no invented
-  zero value.
-- Sensitive values are masked by default and revealed only through the owning
-  command.
-- Accessibility and clear responsive interaction are product requirements;
-  visual details remain implementation choices.
-
-## Release And Production
-
-- Cloud publishes portable product artifacts. The instance owner deploys an
-  immutable Cloud Candidate and proves installation identity and health in its
-  protected environment. Cloud's existing product owners separately qualify
-  customer business behavior against the same Candidate through an authorized
-  protected entry. Deploying Cloud does not execute customer business commands.
-  Release admission retains actual qualification and provenance checks.
-- Publication and deployment bind exact source commits, image digests, caller
-  authority, and owner readback. A build or test result proves only its own
-  layer.
-- Production credentials are available only inside the smallest authorized
-  publish or instance-mutation boundary.
-- Local development does not connect directly to production-private services.
-- Production runtime artifacts contain no project test programs, fixtures,
-  test datasets or test-only routes and startup hooks. Tests run outside the
-  deployable artifact; a disabled test switch does not establish isolation.
-- Test accounts, wallet entries, orders, Workspaces, Keys and receipts stay in
-  independently configured non-production stores and resources. Deployment
-  never imports test database snapshots, seeds, volumes or verification state.
-- Qualification reports stay in engineering evidence storage, not the
-  production business Ledger. Production readback observes actual deployed
-  state and natural business; verification must not create synthetic business
-  records to manufacture evidence.
-- Ordinary verification is read-only with respect to customer billing and
-  provider resources. Real mutations require separate explicit authorization.
-
-## Evidence Levels
-
-- `code-complete` means the exact source revision passed its required local
-  source, build, persistence, and integration gates with no required skips.
-- `pilot-ready` additionally requires approved real Gateway, Runtime, provider,
-  billing, and browser evidence for that revision.
-- `production-proven` additionally requires the same immutable revision to be
-  deployed and read back by the production owner.
-- Evidence is reported at the layer actually observed; lower-layer evidence
-  does not imply a higher layer.
-
-
-## Adopted Application Delivery Invariants
-
-The September 22 and September 29 decisions adopt these target invariants.
-They are not a claim that the current contracts or migration implement them:
-
-- Capability is the sole writer of uploaded Package bytes, Package identity,
-  metadata, immutable versions, and Package reference claims.
-- Runtime Control is the sole writer of the approved Runtime Release catalog;
-  it does not deploy Workspace instances or report their readiness.
-- The default App uses an exact approved Runtime Release with its built-in UI;
-  it needs no synthetic Package, Build or CapabilityVersion. A custom Agent uses
-  Build with exact Package, Runtime and independent WebUI inputs. These are the
-  only two new-product combinations; half-selected Agent inputs are rejected.
-  Both deploy by immutable OCI identity, never by a re-resolved mutable tag.
-- Workspace owns business identity, membership, entitlement, resource plan,
-  quote/purchase obligations, and target authorization; it does not persist a
-  second Agent deployment or current-selection fact.
-- Fabric owns infrastructure resource mutation and readback only. Resource
-  readiness cannot substitute for Agent readiness.
-- Serve is the sole writer of default-App and Agent deployment history, current deployment,
-  Runtime instance readiness evidence, and access bindings for a Workspace.
-  API, Embed, and Hosted UI address that same current Agent.
-- Console/BFF composes owner readbacks and does not persist a business copy;
-  Ledger records opaque evidence and does not become a domain workflow writer.
+- Release qualification separates layers cleanly: `code-complete` (source/tests/gates pass) -> `pilot-ready` (approved Gateway/Runtime/provider/browser proof) -> `production-proven` (immutable revision deployed & read back on Instance).
+- Production artifacts exclude test fixtures, seeds and mock hooks; production credentials stay inside bounded Instance/publish workflows and never enter Console, Build workers or ordinary logs.

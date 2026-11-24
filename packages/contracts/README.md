@@ -11,18 +11,18 @@ owned by [implementation architecture](../../docs/implementation-architecture.md
 not a fixed list of legacy services in this README. Keep service-local types in
 the service; a test fixture alone does not justify adding a cross-owner type.
 
-## Contract Layout And W01
+## Contract Layout And Alignment
 
-The single Cloud GitHub repository retains one shared Go contracts module at
-`packages/contracts/go/go.mod`. Current production proto/binding paths and
+Go contracts under `packages/contracts/go/` share the single root Cloud Go module
+(`go.mod`, `module opl-cloud`). Current production proto/binding paths and
 consumer dependencies belong to
 [implementation architecture](../../docs/implementation-architecture.md).
 A historical planned package name is not an instruction to rename an active
 protocol or create another Go module.
 
-[W01](../../docs/spec/target/14_implementation_work_packages.md#w01-生产契约与同仓版本一致性)
-owns reconciliation of the production contracts with their canonical target
-specification and migration of real consumers. It must bind the schema hash,
+Cross-owner contract alignment follows
+[Cloud architecture](../../docs/architecture.md#repository-and-instance-topology)
+and [machine contracts index](../../docs/spec/README.md): bind the schema hash,
 lock generation tools and verify both sides at the same revision. Merely adding
 a layout or regenerating outputs does not complete W01 or implement consumers.
 

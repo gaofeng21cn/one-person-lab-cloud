@@ -5,8 +5,8 @@ repository for OPL Cloud. It follows the development framework from
 `one-person-lab`; `opl-cloud` also remains the package and runtime identifier.
 All target Cloud domain services stay in this repository with independent
 module, process and data-owner boundaries. The adopted target and detailed
-placement are owned by [architecture.md](./architecture.md) and the
-[target architecture owner mapping](./spec/target/01_domain_ownership_matrix.md); external
+placement are owned by [architecture.md](./architecture.md) and
+[implementation-architecture.md](./implementation-architecture.md); external
 Instance, Sub2API and Framework authorities are not consolidated here.
 
 ## Owned Here

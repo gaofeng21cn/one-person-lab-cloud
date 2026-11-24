@@ -16,8 +16,7 @@ import (
 // Two implementations exist: a single-node filesystem provider that receives
 // bytes through Capability's restricted data plane, and a Tencent COS provider
 // that hands the browser a scoped presigned URL so bytes never transit
-// Capability (see docs/spec/target/05_build_service_technical_spec.md: "BFF签发
-// 受限上传许可而不代理大文件"). Both persist provider_upload_ref /
+// Capability (BFF issues scoped upload permits without proxying large payloads). Both persist provider_upload_ref /
 // provider_part_ref and both verify the assembled object's exact size and
 // digest before it becomes immutable.
 type Storage interface {

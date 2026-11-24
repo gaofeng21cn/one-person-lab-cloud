@@ -2,7 +2,7 @@
 
 This index owns the documentation hierarchy. It follows OPL Doc's semantic
 governance model: one current owner per topic, current truth separated from
-active gaps, support detail and history.
+active gaps, support detail and Git history.
 
 ## Hierarchy
 
@@ -14,10 +14,9 @@ active gaps, support detail and history.
 | 3. Durable invariants | Which safety, integrity and ownership facts must survive refactors? | [invariants.md](./invariants.md) and eligible machine contracts | Infrequent |
 | Security policy | Which boundaries are supported and how are vulnerabilities reported? | [`SECURITY.md`](../SECURITY.md) | Infrequent |
 | 4. Current implementation | What paths, schemas and module boundaries exist now? | [implementation-architecture.md](./implementation-architecture.md), source, schemas and focused tests | Frequent |
-| 5. Functional modules | What user capability does each product surface provide? | `docs/opl-*.md`, `docs/product/**` and public API schemas | Feature paced |
+| 5. Functional modules | What user capability does each product surface provide? | `docs/opl-*.md`, `docs/product/**` and [machine API schemas](./spec/README.md) | Feature paced |
 | 6. Status and plan | What is proven now, what is missing and what comes next? | [status.md](./status.md) for evidence; [roadmap.md](./roadmap.md) for gaps, priority and acceptance | Continuous |
-| 7. Operations | How is the current release operated? | `docs/runtime/**`, deployment manifests and workflows | Release paced |
-| 8. History | Why did a retired decision or shape exist? | [history](./history/README.md) | Append or retire |
+| 7. Operations | How is the current release operated? | `docs/runtime/**`, [installation.md](./installation.md), deployment manifests and workflows | Release paced |
 
 The hierarchy is directional. A lower level may implement, explain or report
 an upper-level decision; it cannot redefine it. When a product or architecture
@@ -29,119 +28,68 @@ cannot yet follow is an explicit roadmap gap, not a competing SSOT.
 
 - Root READMEs introduce the product and route readers here; this index maps
   questions to existing owners and does not repeat their business rules.
-- [`AGENTS.md`](../AGENTS.md) contains agent execution constraints, required
-  reading and verification entrypoints. [`DEV_GUIDE.md`](../DEV_GUIDE.md) owns
-  developer commands; neither is a second product specification.
-- Product intent and rationale belong in architecture/decisions; detailed target
-  behavior belongs under `spec/target/`. Current source behavior belongs in
-  implementation references, evidence in status, and unfinished outcomes in
-  roadmap. Runtime procedures describe executable mechanisms and identify target
-  changes their current producers and consumers do not yet support.
-- [Contract inputs and generated consumers](../packages/contracts/README.md)
-  and [release admission](./runtime/release.md) retain their current owners.
-  A prose decision alone does not update an API, permission table, receipt
-  validator or publication gate. Navigation is a reading entrypoint; automatic
-  consumption requires an identified loader, generator, service or workflow.
-- Issues and PRs carry bounded implementation work and verification. Questionnaires,
-  review transcripts and task-specific plans do not become active documentation
-  or another index. Use the existing [lifecycle policy](./policies/docs-lifecycle-policy.md)
-  before adding or moving a document.
+- [`AGENTS.md`](../AGENTS.md) owns agent execution constraints and verification
+  rules; [`DEV_GUIDE.md`](../DEV_GUIDE.md) owns developer commands;
+  [`CONTRIBUTING.md`](../CONTRIBUTING.md) owns PR workflow. None is a second
+  product specification.
+- Product intent belongs in `architecture.md` and `decisions.md`; durable rules
+  belong in `invariants.md`; current source behavior belongs in
+  `implementation-architecture.md`; live evidence belongs in `status.md`; open
+  outcomes belong in `roadmap.md`. Historical docs and completed logs live in Git
+  history, not `docs/`.
+- [Contract inputs and generated consumers](../packages/contracts/README.md),
+  [machine API/publisher contracts](./spec/README.md) and
+  [release operations](./runtime/release.md) retain their own owners.
+- Use the [lifecycle policy](./policies/docs-lifecycle-policy.md) before adding
+  or restructuring a document.
 
 ## Authority Rules
 
-- OPL family topology is owned outside this repository. Framework and Studio
-  have separate, explicitly scoped Hosts; App owns product/GUI/release truth
-  and the active Shell choice. The [architecture boundary](./architecture.md#host-client-and-cloud-authority-boundary)
-  links the current Framework contract. Cloud owns online services and does not
-  redefine another repository's runtime or Package authority.
-- Framework `Console` means an in-process read-model contribution. OPL Cloud
-  Console means the account/governance product owned here. Lower-level docs must
-  not merge these meanings.
-
-- Target intent comes from the latest user decision and its canonical product
-  or architecture owner. Current code does not silently redefine the target.
-- Current implementation claims require source, schema, tests or runtime
-  evidence. A target document or contract field is not delivery evidence.
-- `docs/status.md` is a replaceable current snapshot, not a chronological
-  ledger. `docs/roadmap.md` owns open gaps and acceptance outcomes, not agent
-  prompts, shell commands or branch write sets.
-- Machine contracts exist only when a cross-module, public-interface, security,
-  data-integrity or irreversible-side-effect fact needs deterministic
-  enforcement. Visual preference and ordinary implementation shape stay out.
-- `SECURITY.md` owns disclosure scope and reporting policy. Scanner artifacts,
-  GitHub alerts, Issues, pull requests, and agent sessions are evidence or work
-  surfaces; they do not become a second security, product, or status owner.
-- `one-person-lab` owns the reusable development method. Instance identity,
-  provider profile and deployment receipts belong to the instance repository;
-  `one-person-lab-cloud` is the current GitHub product repository and `opl-cloud`
-  is its product/artifact identifier; external owner repositories are not merged.
-- The release and installation boundary is explicit: a Cloud Candidate is the
-  product input, the Instance profile is the sole canonical installation-data
-  input, and Instance owns the protected Secret/production configuration and
-  the install/upgrade receipts. Cloud may validate the receipts and retain the
-  opaque profile digest, but does not read the Instance profile contents,
-  Secret values or production configuration.
-- Current Console identity routing, extracted services and retained Control
-  Plane callers belong to [implementation architecture](./implementation-architecture.md).
-  Architecture and target capability pages define ownership, not installed
-  process inventory. [Status](./status.md) owns dated evidence, and
-  [installation](./installation.md) separates public Release bytes from current
-  Candidate assets; [release operations](./runtime/release.md) defines the
-  Candidate-to-Instance receipt boundary.
+- `one-person-lab` owns generic runtime/Package host contracts; `one-person-lab-app`
+  owns desktop product and release truth; `opl-studio` owns the desktop/Docker
+  application host; `opl-instance-medopl` owns the medopl Instance profile,
+  domains, Secrets, deployment, rollback and installation receipts; Sub2API
+  remains the external spendable-wallet, Key, Group, routing and usage owner.
+- Framework `Console` is an in-process read-model projection. OPL Console here
+  is Cloud's account, policy and Workspace governance UI.
+- Cloud owns portable product builds (Candidates and Releases), diagnostic
+  validators and business evidence custody without reading Instance Secrets,
+  kubeconfig or cluster state.
+- Every authoritative fact has one writer; no doc summarizes or freezes another
+  owner's live status or dynamic API counts.
 
 ## Active Navigation
 
-- [Workspace SSOT migration map (explanatory overview)](./ssot-migration-map.html)
-- [Unified current SSOT entry](./status.md#current-capability-baseline)
+- [Current capability baseline](./status.md#current-capability-baseline)
 - [Open outcomes and acceptance](./roadmap.md#priority-outcomes)
-- [Capability design review](./architecture.md#capability-design-review)
+- [Target architecture and boundaries](./architecture.md#repository-and-instance-topology)
+- [Workspace application architecture](./architecture.md#workspace-application-boundary)
+- [Current source and module map](./implementation-architecture.md#physical-module-and-dependency-map)
+- [Durable invariants and D17 settlement](./invariants.md)
+- [Machine API & Publisher contracts](./spec/README.md)
 - [Medical Agent Platform boundary](./medical-agent-platform.md)
-- [target architecture development specification](./spec/target/00_master_index.md)
-- [Tencent/TKE delivery slices and work-window handoff](./spec/target/14_implementation_work_packages.md#9-tencenttke可直接开发的切片与窗口)
-- [Default OPL App and optional Agent product combinations](./spec/target/12_product_spec.md#11-明确的产品组合与默认行为2026-09-29采用)
-- [Workspace application delivery plan](./roadmap.md#workspace-application-decoupling)
-- [Final deliverables and owner handoff](./roadmap.md#required-deliverables)
-- [Workspace current capability baseline](./status.md#current-capability-baseline)
-- [Console Workspace interaction](./product/workspace-experience.md)
-- [Console experience guide](./product/console-experience-guide.md)
-- [Workspace identity and external SaaS boundary](./workspace-identity-and-external-saas-boundary.md)
+- [Install OPL Cloud](./installation.md)
 - [Product release operations](./runtime/release.md)
-- [Instance business-path retirement inventory](./implementation/instance-business-retirement-inventory.md)
+- [Isolated Package / BuildKit verification](./runtime/package-buildkit-local.md)
+- [Cloud connection helper](./runtime/cloud-connect.md)
 - [Console browser lifecycle](./implementation/console.md)
-- [Console customer read inventory (#840)](./implementation/840-console-customer-reads.md)
 - [Launch recovery reference](./implementation/workspace-launch-recovery.md)
 - [Workspace Runtime access](./implementation/workspace-runtime-access.md)
 - [Workspace image lifecycle](./implementation/workspace-images.md)
+- [Agent Package + Runtime + WebUI chain](./implementation/agent-package-runtime-webui-chain.md)
+- [Console Workspace interaction](./product/workspace-experience.md)
+- [Console experience guide](./product/console-experience-guide.md)
+- [Workspace identity and external SaaS boundary](./workspace-identity-and-external-saas-boundary.md)
 - [Documentation lifecycle policy](./policies/docs-lifecycle-policy.md)
 - [Development worktree policy](./policies/development-worktree-policy.md)
 
 ## Specialized Owners
 
-The [Medical Agent Platform boundary](./medical-agent-platform.md) defines
-medical-domain and institution ownership on top of Cloud without creating a
-parallel platform authority.
-
-[`opl-workspace.md`](./opl-workspace.md) defines the Cloud application environment; the
-[Workspace application architecture](architecture.md#workspace-application-boundary)
-owns its DDD model and context boundaries. The Workspace identity decision owns
-account cardinality, and `product/workspace-experience.md` owns its
-Console interaction. [`opl-console.md`](./opl-console.md) defines the wider Console target while
-the experience guide owns presentation principles. The other `opl-*.md` files
-are target capability references, not implementation inventories.
-
-The remaining target capability references:
-
 - [`agent-lifecycle.md`](./agent-lifecycle.md): cross-surface object and owner model for exposing standard OPL Agents in App and Workspace.
-- [`opl-gateway.md`](./opl-gateway.md): target frontier-AI capability gateway; Sub2API keeps balance, key and routing authority.
-- [`opl-serve.md`](./opl-serve.md): publishing a validated OPL Agent as an externally usable service.
-- [`opl-fabric.md`](./opl-fabric.md): target resource substrate for App, Workspace, jobs and approved agent actions, with the Connect access contract.
-- [`opl-connect.md`](./opl-connect.md): logical external-access capability inside Fabric; backends such as `glkvm-native` are replaceable and domain-specific adapters remain with their Agent.
-
-`DEV_GUIDE.md` owns local setup and commands; `CONTRIBUTING.md` owns contribution
-and review; `AGENTS.md` owns agent execution rules. Installation, release
-operations and Instance operations have distinct owners. Whitepaper source,
-generated-output handling and publication evidence boundaries stay in their
-respective directory READMEs.
-
-The [lifecycle policy](./policies/docs-lifecycle-policy.md) owns creation,
-replacement, archival and retirement rules. This index only routes readers.
+- [`opl-workspace.md`](./opl-workspace.md): Cloud application environment and resource plan-change rules.
+- [`opl-console.md`](./opl-console.md): account, approval, policy, billing and Agent-assisted read/review boundary.
+- [`opl-gateway.md`](./opl-gateway.md): Frontier-AI Gateway boundary above Sub2API.
+- [`opl-serve.md`](./opl-serve.md): delivering and exposing an approved OPL App or built Agent per Workspace.
+- [`opl-fabric.md`](./opl-fabric.md): provider-neutral resource substrate (compute, storage, attachment, Secret binding, Connect).
+- [`opl-connect.md`](./opl-connect.md): logical external-access capability inside Fabric.
+- [`opl-ledger.md`](./opl-ledger.md): append-only financial/deletion receipts, reconciliation and opaque provenance.

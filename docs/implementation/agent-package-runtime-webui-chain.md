@@ -73,20 +73,7 @@ authority. Cloud only consumes approved upstream facts.
 - Serve refuses a revision whose declared contract needs an input the deployment
   command does not carry.
 
-## Current source acceptance
-
-The [September 28 source repair](../evidence/source-checks/2026-09-28-runtime-capability-readback-repair.json)
-checks native candidate identity and byte integrity without upgrading its
-`not_qualified` / `not_evaluated` state. Capability owns the intake and approved
-catalogs; Build validates the immutable owner snapshot and fixed recipe.
-
-The [exact Runtime local build](../evidence/source-checks/2026-09-28-exact-runtime-local-build.json)
-uses the approved GHCR Runtime digest, Cloud WebUI and a synthetic Package. It
-proves composition, Registry digest readback, publisher browser behavior and
-restart recovery. The original OMA candidate and TCR publication remain
-unverified on this machine. These unknown facts do not imply Agent loading,
-model use or deployment success, and do not impose a recurring source-merge
-obligation. The historical September 26 missing-Runtime diagnosis is superseded.
+## Verification Diagnostic Note
 
 `tools/package-runtime-webui-intake.ts` is a development diagnostic exercised by
 its focused tests. It is not called by the Build admission path and must not be
