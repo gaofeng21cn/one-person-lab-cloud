@@ -85,6 +85,12 @@ Git log.
   writer-only deletion, and the shared read contract
   `contracts.WorkspacePurchaseEligibility`
   (`packages/contracts/go/workspace_provisioning.go:39`) stays.
+- **Personal Gateway Key Write Ownership**: `Gateway Integration` owns the native
+  personal Gateway Key create/update/reveal/revoke capability over the delegated
+  Sub2API authority, projecting the same `PersonalGatewayKey` fact the personal
+  reads use. The Tenant-managed `GatewayKey` contract is a different contract and
+  is not reused for personal writes — it cannot express a group, an IP list, a
+  quota or a rate limit.
 
 ## Non-Spending Publication & Incremental Retirement
 

@@ -4429,6 +4429,10 @@ const (
 	GatewayProductService_ListPersonalGatewayGroups_FullMethodName         = "/opl.cloud.api.GatewayProductService/ListPersonalGatewayGroups"
 	GatewayProductService_ListPersonalGatewayKeyUsage_FullMethodName       = "/opl.cloud.api.GatewayProductService/ListPersonalGatewayKeyUsage"
 	GatewayProductService_GetPersonalGatewayKeyUsageSummary_FullMethodName = "/opl.cloud.api.GatewayProductService/GetPersonalGatewayKeyUsageSummary"
+	GatewayProductService_CreatePersonalGatewayKey_FullMethodName          = "/opl.cloud.api.GatewayProductService/CreatePersonalGatewayKey"
+	GatewayProductService_UpdatePersonalGatewayKey_FullMethodName          = "/opl.cloud.api.GatewayProductService/UpdatePersonalGatewayKey"
+	GatewayProductService_RevealPersonalGatewayKey_FullMethodName          = "/opl.cloud.api.GatewayProductService/RevealPersonalGatewayKey"
+	GatewayProductService_RevokePersonalGatewayKey_FullMethodName          = "/opl.cloud.api.GatewayProductService/RevokePersonalGatewayKey"
 	GatewayProductService_ListWorkspaceTransactions_FullMethodName         = "/opl.cloud.api.GatewayProductService/ListWorkspaceTransactions"
 	GatewayProductService_GetWorkspaceTransactionTrend_FullMethodName      = "/opl.cloud.api.GatewayProductService/GetWorkspaceTransactionTrend"
 	GatewayProductService_GetWallet_FullMethodName                         = "/opl.cloud.api.GatewayProductService/GetWallet"
@@ -4452,6 +4456,10 @@ type GatewayProductServiceClient interface {
 	ListPersonalGatewayGroups(ctx context.Context, in *ListPersonalGatewayGroupsRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayGroupPage, error)
 	ListPersonalGatewayKeyUsage(ctx context.Context, in *ListPersonalGatewayKeyUsageRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayKeyUsagePage, error)
 	GetPersonalGatewayKeyUsageSummary(ctx context.Context, in *GetPersonalGatewayKeyUsageSummaryRpcRequest, opts ...grpc.CallOption) (*UsageSummary, error)
+	CreatePersonalGatewayKey(ctx context.Context, in *CreatePersonalGatewayKeyRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayKeySecret, error)
+	UpdatePersonalGatewayKey(ctx context.Context, in *UpdatePersonalGatewayKeyRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayKey, error)
+	RevealPersonalGatewayKey(ctx context.Context, in *RevealPersonalGatewayKeyRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayKeySecret, error)
+	RevokePersonalGatewayKey(ctx context.Context, in *RevokePersonalGatewayKeyRpcRequest, opts ...grpc.CallOption) (*Operation, error)
 	ListWorkspaceTransactions(ctx context.Context, in *ListWorkspaceTransactionsRpcRequest, opts ...grpc.CallOption) (*WalletOperationPage, error)
 	GetWorkspaceTransactionTrend(ctx context.Context, in *GetWorkspaceTransactionTrendRpcRequest, opts ...grpc.CallOption) (*WorkspaceTransactionTrend, error)
 	GetWallet(ctx context.Context, in *GetWalletRpcRequest, opts ...grpc.CallOption) (*Wallet, error)
@@ -4518,6 +4526,46 @@ func (c *gatewayProductServiceClient) GetPersonalGatewayKeyUsageSummary(ctx cont
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(UsageSummary)
 	err := c.cc.Invoke(ctx, GatewayProductService_GetPersonalGatewayKeyUsageSummary_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gatewayProductServiceClient) CreatePersonalGatewayKey(ctx context.Context, in *CreatePersonalGatewayKeyRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayKeySecret, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PersonalGatewayKeySecret)
+	err := c.cc.Invoke(ctx, GatewayProductService_CreatePersonalGatewayKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gatewayProductServiceClient) UpdatePersonalGatewayKey(ctx context.Context, in *UpdatePersonalGatewayKeyRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayKey, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PersonalGatewayKey)
+	err := c.cc.Invoke(ctx, GatewayProductService_UpdatePersonalGatewayKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gatewayProductServiceClient) RevealPersonalGatewayKey(ctx context.Context, in *RevealPersonalGatewayKeyRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayKeySecret, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PersonalGatewayKeySecret)
+	err := c.cc.Invoke(ctx, GatewayProductService_RevealPersonalGatewayKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gatewayProductServiceClient) RevokePersonalGatewayKey(ctx context.Context, in *RevokePersonalGatewayKeyRpcRequest, opts ...grpc.CallOption) (*Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Operation)
+	err := c.cc.Invoke(ctx, GatewayProductService_RevokePersonalGatewayKey_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -4653,6 +4701,10 @@ type GatewayProductServiceServer interface {
 	ListPersonalGatewayGroups(context.Context, *ListPersonalGatewayGroupsRpcRequest) (*PersonalGatewayGroupPage, error)
 	ListPersonalGatewayKeyUsage(context.Context, *ListPersonalGatewayKeyUsageRpcRequest) (*PersonalGatewayKeyUsagePage, error)
 	GetPersonalGatewayKeyUsageSummary(context.Context, *GetPersonalGatewayKeyUsageSummaryRpcRequest) (*UsageSummary, error)
+	CreatePersonalGatewayKey(context.Context, *CreatePersonalGatewayKeyRpcRequest) (*PersonalGatewayKeySecret, error)
+	UpdatePersonalGatewayKey(context.Context, *UpdatePersonalGatewayKeyRpcRequest) (*PersonalGatewayKey, error)
+	RevealPersonalGatewayKey(context.Context, *RevealPersonalGatewayKeyRpcRequest) (*PersonalGatewayKeySecret, error)
+	RevokePersonalGatewayKey(context.Context, *RevokePersonalGatewayKeyRpcRequest) (*Operation, error)
 	ListWorkspaceTransactions(context.Context, *ListWorkspaceTransactionsRpcRequest) (*WalletOperationPage, error)
 	GetWorkspaceTransactionTrend(context.Context, *GetWorkspaceTransactionTrendRpcRequest) (*WorkspaceTransactionTrend, error)
 	GetWallet(context.Context, *GetWalletRpcRequest) (*Wallet, error)
@@ -4689,6 +4741,18 @@ func (UnimplementedGatewayProductServiceServer) ListPersonalGatewayKeyUsage(cont
 }
 func (UnimplementedGatewayProductServiceServer) GetPersonalGatewayKeyUsageSummary(context.Context, *GetPersonalGatewayKeyUsageSummaryRpcRequest) (*UsageSummary, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPersonalGatewayKeyUsageSummary not implemented")
+}
+func (UnimplementedGatewayProductServiceServer) CreatePersonalGatewayKey(context.Context, *CreatePersonalGatewayKeyRpcRequest) (*PersonalGatewayKeySecret, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreatePersonalGatewayKey not implemented")
+}
+func (UnimplementedGatewayProductServiceServer) UpdatePersonalGatewayKey(context.Context, *UpdatePersonalGatewayKeyRpcRequest) (*PersonalGatewayKey, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdatePersonalGatewayKey not implemented")
+}
+func (UnimplementedGatewayProductServiceServer) RevealPersonalGatewayKey(context.Context, *RevealPersonalGatewayKeyRpcRequest) (*PersonalGatewayKeySecret, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RevealPersonalGatewayKey not implemented")
+}
+func (UnimplementedGatewayProductServiceServer) RevokePersonalGatewayKey(context.Context, *RevokePersonalGatewayKeyRpcRequest) (*Operation, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RevokePersonalGatewayKey not implemented")
 }
 func (UnimplementedGatewayProductServiceServer) ListWorkspaceTransactions(context.Context, *ListWorkspaceTransactionsRpcRequest) (*WalletOperationPage, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListWorkspaceTransactions not implemented")
@@ -4833,6 +4897,78 @@ func _GatewayProductService_GetPersonalGatewayKeyUsageSummary_Handler(srv interf
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(GatewayProductServiceServer).GetPersonalGatewayKeyUsageSummary(ctx, req.(*GetPersonalGatewayKeyUsageSummaryRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GatewayProductService_CreatePersonalGatewayKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreatePersonalGatewayKeyRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayProductServiceServer).CreatePersonalGatewayKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayProductService_CreatePersonalGatewayKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayProductServiceServer).CreatePersonalGatewayKey(ctx, req.(*CreatePersonalGatewayKeyRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GatewayProductService_UpdatePersonalGatewayKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdatePersonalGatewayKeyRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayProductServiceServer).UpdatePersonalGatewayKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayProductService_UpdatePersonalGatewayKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayProductServiceServer).UpdatePersonalGatewayKey(ctx, req.(*UpdatePersonalGatewayKeyRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GatewayProductService_RevealPersonalGatewayKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevealPersonalGatewayKeyRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayProductServiceServer).RevealPersonalGatewayKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayProductService_RevealPersonalGatewayKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayProductServiceServer).RevealPersonalGatewayKey(ctx, req.(*RevealPersonalGatewayKeyRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GatewayProductService_RevokePersonalGatewayKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokePersonalGatewayKeyRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayProductServiceServer).RevokePersonalGatewayKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayProductService_RevokePersonalGatewayKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayProductServiceServer).RevokePersonalGatewayKey(ctx, req.(*RevokePersonalGatewayKeyRpcRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -5079,6 +5215,22 @@ var GatewayProductService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetPersonalGatewayKeyUsageSummary",
 			Handler:    _GatewayProductService_GetPersonalGatewayKeyUsageSummary_Handler,
+		},
+		{
+			MethodName: "CreatePersonalGatewayKey",
+			Handler:    _GatewayProductService_CreatePersonalGatewayKey_Handler,
+		},
+		{
+			MethodName: "UpdatePersonalGatewayKey",
+			Handler:    _GatewayProductService_UpdatePersonalGatewayKey_Handler,
+		},
+		{
+			MethodName: "RevealPersonalGatewayKey",
+			Handler:    _GatewayProductService_RevealPersonalGatewayKey_Handler,
+		},
+		{
+			MethodName: "RevokePersonalGatewayKey",
+			Handler:    _GatewayProductService_RevokePersonalGatewayKey_Handler,
 		},
 		{
 			MethodName: "ListWorkspaceTransactions",
