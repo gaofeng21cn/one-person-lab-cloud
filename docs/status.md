@@ -45,8 +45,42 @@ chronological snapshots.
     Workspace owner gates every new purchase on the value it produces through
     the Control Plane's `GET /internal/cloud/workspace-purchase-eligibility`
     reader.
+- **Retained Control Plane Operation Census**: One read-only Instance
+  `workspace-state-observation` run (`45320968122`, Candidate
+  `8baf91f1e5a64d1ec46a041f904fd7bc5dcb51c2`) recorded `businessMutations: 0`,
+  `providerMutations: 0` and `kubernetesMutations: 0`, and projected 44 runtime
+  operations from the current owner API result:
+
+  | `action` | status | count |
+  | --- | --- | --- |
+  | `workspace.launch.v2` | `succeeded` | 7 |
+  | `workspace.delete.v2` | `succeeded` | 5 |
+  | `workspace.renewal` | `expired_unpaid` | 2 |
+  | `workspace.auto_renew` | `succeeded` | 1 |
+  | `workspace.runtime_image_replacement` | `succeeded` / `failed` | 5 / 2 |
+  | unnamed (`action: null`, identity digest only) | `succeeded` 17, `blocked` 2, `active` 1, `manual_review` 1, `failed` 1 | 22 |
+
+  No operation is in `pending` or `running`, so the shared application-deployment
+  worker's own scan condition (`workspace.application.deploy` with statuses
+  `pending`/`running`) matches no live record in this observation. Every
+  `workspace.launch.v2` and every `workspace.delete.v2` row is `succeeded`. The
+  two `workspace.renewal` rows are `expired_unpaid`, which is terminal only when
+  the operation's own recorded expiry phase is `complete`; the receipt projects
+  the status but not that phase, so their terminality is not established.
 - **What Remains Unproven Here**: Same-Candidate paid customer purchase
   execution on Tencent/TKE, J0 READY qualification bound to the latest
   Candidate, end-to-end custom Agent Package build-to-serve production delivery,
   and PlanChange v2 runtime resize implementation (tracked in
-  [roadmap.md](roadmap.md)).
+  [roadmap.md](roadmap.md)). The operation census above is `partial /
+  owner_readback_partial` and covers the current owner API result rather than an
+  audit archive, so it proves no terminality for historical operations. 22 of
+  its 44 rows carry no action name at all and resolve to five
+  `actionIdentityDigest` values that nothing in the receipt names. The Control
+  Plane operation actions the retirement records obligations under
+  (`workspace.delete.refund.v1`, `gateway.wallet_adjustment.v1`,
+  `workspace.gateway_key.rotate`, `workspace.application.deploy`,
+  `workspace.resource_reconcile`) are outside that tool's known-action
+  projection, so a refund row, a wallet reservation, a rotation parent and a
+  deployment child cannot be told apart from an unrelated action in this
+  receipt. The one `active`, two `blocked` and one `manual_review` unnamed
+  rows therefore stay unresolved (tracked in [roadmap.md](roadmap.md)).
