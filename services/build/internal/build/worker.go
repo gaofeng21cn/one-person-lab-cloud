@@ -4,6 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
+	"time"
+
+	"github.com/riverqueue/river"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -14,14 +18,66 @@ import (
 	"opl-cloud/packages/contracts/go/publicjson"
 	"opl-cloud/services/internal/ownerservice"
 	"opl-cloud/services/internal/ownerstore"
-	"strings"
-	"time"
 )
 
-// Run resumes durable work. A database session lock prevents two live
-// coordinators exporting a Job. A restarted building Job only reads the original
-// registry identity; it never starts another exporter with an unknown outcome.
+type buildSweepJobArgs struct{}
+
+func (buildSweepJobArgs) Kind() string { return "build.sweep" }
+
+func (buildSweepJobArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue:       "build_sweep",
+		MaxAttempts: 5,
+		UniqueOpts:  river.UniqueOpts{ByArgs: true, ByPeriod: time.Second},
+	}
+}
+
+type buildSweepWorker struct {
+	river.WorkerDefaults[buildSweepJobArgs]
+	svc *Service
+}
+
+func (w *buildSweepWorker) Work(ctx context.Context, _ *river.Job[buildSweepJobArgs]) error {
+	return w.svc.RunOnce(ctx)
+}
+
+// Run resumes durable work via PostgreSQL-native riverqueue/river when backed by
+// a pgxpool (falling back to a local ticker on non-pool or DDL-restricted fixtures).
+// A database session lock prevents two live coordinators exporting a Job. A
+// restarted building Job only reads the original registry identity; it never
+// starts another exporter with an unknown outcome.
 func (s *Service) Run(ctx context.Context) error {
+	if pool := s.store.Pool(); pool != nil {
+		if err := ownerstore.MigrateRiverSchema(ctx, pool, s.store.Schema()); err == nil {
+			workers := river.NewWorkers()
+			river.AddWorker(workers, &buildSweepWorker{svc: s})
+			client, clientErr := ownerstore.NewRiverClient(pool, ownerstore.RiverClientConfig{
+				Schema:  s.store.Schema(),
+				Workers: workers,
+				Queues: map[string]river.QueueConfig{
+					"build_sweep": {MaxWorkers: 1},
+				},
+				PeriodicJobs: []*river.PeriodicJob{
+					river.NewPeriodicJob(
+						river.PeriodicInterval(time.Second),
+						func() (river.JobArgs, *river.InsertOpts) { return buildSweepJobArgs{}, nil },
+						&river.PeriodicJobOpts{RunOnStart: true},
+					),
+				},
+			})
+			if clientErr == nil {
+				if startErr := client.Start(ctx); startErr == nil {
+					<-ctx.Done()
+					stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					_ = client.Stop(stopCtx)
+					return ctx.Err()
+				}
+			}
+		} else if !ownerstore.IsPermissionDenied(err) {
+			return err
+		}
+	}
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {

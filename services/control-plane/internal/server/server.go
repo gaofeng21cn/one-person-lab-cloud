@@ -46,8 +46,11 @@ func (h *controlPlaneHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	h.next.ServeHTTP(w, r)
 }
 
-// Close releases the optional CloudIdentity transport after HTTP shutdown.
-func (h *controlPlaneHTTPHandler) Close() error { return h.app.cloudAnnouncements.Close() }
+// Close releases the optional CloudIdentity transport and stops PostgreSQL-native
+// River background workers after HTTP shutdown.
+func (h *controlPlaneHTTPHandler) Close() error {
+	return errors.Join(h.app.stopRiverWorkers(context.Background()), h.app.cloudAnnouncements.Close())
+}
 
 func NewPersistentServer(service *controlplane.Service, store StateStore) (http.Handler, error) {
 	source, err := cloudAnnouncementSourceFromEnv(os.Getenv)
@@ -73,21 +76,27 @@ func NewPersistentServer(service *controlplane.Service, store StateStore) (http.
 	if err := app.ensureDeploymentIdentity(context.Background(), service); err != nil {
 		return nil, err
 	}
-	if monthlyBillingWorkerEnabled() {
-		app.startMonthlyBillingWorker(context.Background(), service, monthlyBillingWorkerInterval())
-	}
-	if workspaceLaunchWorkerEnabled() {
-		app.startWorkspaceLaunchWorker(context.Background(), service, workspaceLaunchWorkerInterval())
-		app.startWorkspaceDeleteWorker(context.Background(), service, workspaceLaunchWorkerInterval())
-	}
-	if workspaceApplicationDeploymentWorkerEnabled() {
-		app.startWorkspaceApplicationDeploymentWorker(context.Background(), service, workspaceApplicationDeploymentWorkerInterval)
-	}
-	if providerReconcileWorkerEnabled() {
-		app.startProviderReconcileWorker(context.Background(), service, providerReconcileInterval())
-	}
-	if retentionWorkerEnabled() {
-		app.startRetentionWorker(context.Background(), retentionWorkerInterval())
+	if pgStore, ok := store.(*postgresEntStateStore); ok && pgStore.pool != nil {
+		if err := app.startRiverWorkers(context.Background(), service, pgStore.pool); err != nil {
+			return nil, err
+		}
+	} else {
+		if monthlyBillingWorkerEnabled() {
+			app.startMonthlyBillingWorker(context.Background(), service, monthlyBillingWorkerInterval())
+		}
+		if workspaceLaunchWorkerEnabled() {
+			app.startWorkspaceLaunchWorker(context.Background(), service, workspaceLaunchWorkerInterval())
+			app.startWorkspaceDeleteWorker(context.Background(), service, workspaceLaunchWorkerInterval())
+		}
+		if workspaceApplicationDeploymentWorkerEnabled() {
+			app.startWorkspaceApplicationDeploymentWorker(context.Background(), service, workspaceApplicationDeploymentWorkerInterval)
+		}
+		if providerReconcileWorkerEnabled() {
+			app.startProviderReconcileWorker(context.Background(), service, providerReconcileInterval())
+		}
+		if retentionWorkerEnabled() {
+			app.startRetentionWorker(context.Background(), retentionWorkerInterval())
+		}
 	}
 	mux := http.NewServeMux()
 	registerCoreRoutes(mux, app, service)

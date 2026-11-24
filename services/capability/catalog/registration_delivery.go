@@ -3,10 +3,13 @@ package catalog
 import (
 	"context"
 	"fmt"
+	"time"
+
+	"github.com/riverqueue/river"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	api "opl-cloud/packages/contracts/go/api"
-	"time"
+	"opl-cloud/services/internal/ownerstore"
 )
 
 // DeliverRegistrations retries each consumer of the original registration event.
@@ -56,6 +59,38 @@ func (s *Service) DeliverRegistrations(ctx context.Context) error {
 	return nil
 }
 func (s *Service) RunRegistrationDelivery(ctx context.Context) {
+	if pool := s.Store.Pool(); pool != nil {
+		if err := ownerstore.MigrateRiverSchema(ctx, pool, s.Store.Schema()); err == nil {
+			workers := river.NewWorkers()
+			river.AddWorker(workers, &ownerstore.OutboxDispatchWorker{
+				Deliver: func(jobCtx context.Context, _ string) error {
+					return s.DeliverRegistrations(jobCtx)
+				},
+			})
+			client, clientErr := ownerstore.NewRiverClient(pool, ownerstore.RiverClientConfig{
+				Schema:  s.Store.Schema(),
+				Workers: workers,
+				PeriodicJobs: []*river.PeriodicJob{
+					river.NewPeriodicJob(
+						river.PeriodicInterval(time.Second),
+						func() (river.JobArgs, *river.InsertOpts) {
+							return ownerstore.OutboxDispatchJobArgs{Owner: s.Store.Schema()}, nil
+						},
+						&river.PeriodicJobOpts{RunOnStart: true},
+					),
+				},
+			})
+			if clientErr == nil {
+				if startErr := client.Start(ctx); startErr == nil {
+					<-ctx.Done()
+					stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					_ = client.Stop(stopCtx)
+					return
+				}
+			}
+		}
+	}
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {

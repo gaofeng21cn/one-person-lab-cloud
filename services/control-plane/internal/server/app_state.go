@@ -16,6 +16,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/riverqueue/river"
+
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -31,6 +34,7 @@ type controlPlaneServer struct {
 	tables                 controlPlaneTableStore
 	sessionCredentials     *SessionCredentialVault
 	cloudAnnouncements     *cloudAnnouncementSource
+	riverClient            *river.Client[pgx.Tx]
 	// ponytail: per-process limiter; move to Redis when login traffic spans multiple replicas.
 	loginRateLimits map[string]loginFailure
 	deployment      deploymentProfile
