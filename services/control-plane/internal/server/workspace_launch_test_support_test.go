@@ -1,12 +1,15 @@
 package server
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
+	"opl-cloud/services/control-plane/internal/clients"
 )
 
 // workspaceLaunchReconcileCreate is test-only fixture input. The production
@@ -191,4 +194,79 @@ func stripWorkspaceLaunchResourceBilling(row map[string]any) {
 	} {
 		delete(row, key)
 	}
+}
+
+// The fresh-creation side of the original Launch is retired. The create
+// command was withdrawn with the purchase cutover, so the descriptor and the
+// request-hash calculator have no production caller. The retained tests keep
+// them here: they are the request-hash identity the historical record stores
+// and the fixture shape a retained Launch row is built from.
+
+type workspaceLaunchDescriptor struct {
+	OperationID          string
+	RequestHash          string
+	WorkspaceID          string
+	WorkspaceImageDigest string
+}
+
+func newWorkspaceLaunchDescriptor(accountID, ownerUserID, name, packageID string, storageGB int, autoRenew bool, priceVersion, key string) (workspaceLaunchDescriptor, error) {
+	return newWorkspaceLaunchDescriptorWithImage(accountID, ownerUserID, name, packageID, storageGB, autoRenew, priceVersion, key, currentWorkspaceImageDigest(), "")
+}
+
+func newWorkspaceLaunchDescriptorWithImage(accountID, ownerUserID, name, packageID string, storageGB int, autoRenew bool, priceVersion, key, imageDigest string, mode contracts.WorkspaceProvisioningMode) (workspaceLaunchDescriptor, error) {
+	if mode != "" {
+		if err := contracts.ValidateWorkspaceProvisioningMode(mode); err != nil {
+			return workspaceLaunchDescriptor{}, errInvalidWorkspaceLaunchOperation
+		}
+	}
+	operationID := workspaceLaunchOperationID(accountID, key)
+	workspaceID := "ws-" + stableID("workspace-launch-v2", accountID, operationID)[:18]
+	fullMode := mode != contracts.WorkspaceProvisioningResourceOnly
+	if operationID == "" || fullMode && imageDigest == "" || !fullMode && imageDigest != "" {
+		return workspaceLaunchDescriptor{}, errInvalidWorkspaceLaunchOperation
+	}
+	requestHash, err := workspaceLaunchRequestHash(accountID, ownerUserID, name, packageID, storageGB, autoRenew, priceVersion, string(mode))
+	if err != nil {
+		return workspaceLaunchDescriptor{}, err
+	}
+	return workspaceLaunchDescriptor{
+		OperationID: operationID,
+		RequestHash: requestHash,
+		WorkspaceID: workspaceID, WorkspaceImageDigest: imageDigest,
+	}, nil
+}
+
+func workspaceLaunchRequestHash(accountID, ownerUserID, name, packageID string, storageGB int, autoRenew bool, priceVersion, provisioningMode string) (string, error) {
+	payload, err := json.Marshal(struct {
+		AccountID    string `json:"accountId"`
+		OwnerUserID  string `json:"ownerUserId"`
+		Name         string `json:"name"`
+		PackageID    string `json:"packageId"`
+		SizeGB       int    `json:"sizeGb"`
+		AutoRenew    bool   `json:"autoRenew"`
+		PriceVersion string `json:"priceVersion"`
+		// The provisioning mode stays omitted for the retained full Launch so
+		// historical request hashes are byte-stable.
+		ProvisioningMode string `json:"provisioningMode,omitempty"`
+	}{
+		AccountID:        accountID,
+		OwnerUserID:      ownerUserID,
+		Name:             name,
+		PackageID:        packageID,
+		SizeGB:           storageGB,
+		AutoRenew:        autoRenew,
+		PriceVersion:     priceVersion,
+		ProvisioningMode: provisioningMode,
+	})
+	if err != nil {
+		return "", fmt.Errorf("marshal workspace launch request hash payload: %w", err)
+	}
+	sum := sha256.Sum256(payload)
+	return fmt.Sprintf("%x", sum), nil
+}
+func workspaceLaunchPreflightConfirmed(input clients.WorkspaceLaunchPreflightInput, result clients.WorkspaceLaunchPreflight) bool {
+	return result.SchemaVersion == clients.WorkspaceLaunchFabricSchemaVersion && result.Available && result.Reason == "none" &&
+		result.LaunchOperationID == input.LaunchOperationID && result.RequestHash == input.RequestHash &&
+		strings.TrimSpace(result.ProviderProfileRef) != "" && strings.TrimSpace(result.BindingRef) != "" &&
+		workspaceProviderSpecDigestPattern.MatchString(result.SpecDigest)
 }

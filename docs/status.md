@@ -45,8 +45,19 @@ chronological snapshots.
     Workspace owner gates every new purchase on the value it produces through
     the Control Plane's `GET /internal/cloud/workspace-purchase-eligibility`
     reader.
+  - The native Workspace owner accepts new purchases. The Control Plane
+    [Launch executor](implementation/workspace-launch-recovery.md) continues
+    accepted operations carried forward from before the purchase cutover.
+  - A current-owner API observation established that retained lifecycle
+    operations can be enumerated. Its coverage was partial, and operation
+    identities and terminal phases still need a complete readback for the
+    deletion, refund, and renewal retirement evidence tracked in the roadmap.
+- **Retained Application Deployment**: The shared Control Plane worker advances
+  accepted `workspace.application.deploy` children through predecessor
+  suspension, activation and receipt. The source qualification covers retained
+  v0.1.8 fixtures, response loss and restart against the same database.
 - **What Remains Unproven Here**: Same-Candidate paid customer purchase
   execution on Tencent/TKE, J0 READY qualification bound to the latest
   Candidate, end-to-end custom Agent Package build-to-serve production delivery,
-  and PlanChange v2 runtime resize implementation (tracked in
-  [roadmap.md](roadmap.md)).
+  PlanChange v2 runtime resize implementation, and installed qualification of
+  the retained application deployment worker (tracked in [roadmap.md](roadmap.md)).
