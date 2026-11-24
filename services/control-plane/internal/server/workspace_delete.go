@@ -19,14 +19,12 @@ const (
 	workspaceDeleteAction       = "workspace.delete.v2"
 	workspaceDeleteLegacyAction = "workspace.delete.v1"
 	// Retained v2 encoding marker; delayed absence no longer has a lifetime read limit.
-	workspaceDeleteComputeReadbackBudget   = 8
-	workspaceDeleteComputeReadbackInterval = time.Second
+	workspaceDeleteComputeReadbackBudget = 8
 )
 
 var (
 	errWorkspaceDeleteCASConflict        = errors.New("workspace_delete_cas_conflict")
 	errWorkspaceDeleteUnconfirmed        = errors.New("workspace_delete_unconfirmed")
-	errWorkspaceDeletePending            = errors.New("workspace_delete_pending")
 	errWorkspaceDeleteHistoricalConflict = errors.New("workspace_delete_historical_manual_review")
 	errWorkspaceDeleteTerminalConflict   = errors.New("workspace_delete_terminal_conflict")
 	errWorkspaceDeleteStateRead          = errors.New("workspace_delete_state_read_failed")
@@ -256,38 +254,50 @@ func (app *controlPlaneServer) deleteWorkspace(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusConflict, errIdempotencyConflict.Error())
 		return
 	}
-	operation, err = app.runWorkspaceDelete(r.Context(), service, operation)
-	if err != nil {
-		if errors.Is(err, errWorkspaceDeleteTerminalConflict) {
-			if auditErr := app.saveWorkspaceDeleteTerminalConflictAudit(r, operation); auditErr != nil {
-				writeError(w, http.StatusInternalServerError, "state_persist_failed")
+	// The delete execution engine is retired: no stage of this operation is
+	// advanced here any more, and no provider resource is destroyed from the
+	// Control Plane. The command keeps what it always owned — the durable,
+	// identity-bound authorization of the customer's deletion — and answers with
+	// the recorded state of that operation. The platform refund is a separate
+	// obligation of the wallet owner against its own reservation, so this command
+	// never moves money.
+	if operation.Phase == "complete" {
+		if err := app.validateWorkspaceDeleteTerminal(r.Context(), operation); err != nil {
+			if errors.Is(err, errWorkspaceDeleteTerminalConflict) {
+				if auditErr := app.saveWorkspaceDeleteTerminalConflictAudit(r, operation); auditErr != nil {
+					writeError(w, http.StatusInternalServerError, "state_persist_failed")
+					return
+				}
+				writeJSON(w, http.StatusConflict, workspaceDeleteTerminalConflictResponse(operation))
 				return
 			}
-			writeJSON(w, http.StatusConflict, workspaceDeleteTerminalConflictResponse(operation))
-			return
-		}
-		if errors.Is(err, errWorkspaceDeleteStateRead) {
 			writeError(w, http.StatusInternalServerError, "state_read_failed")
 			return
 		}
-		if errors.Is(err, errWorkspaceDeletePending) {
-			if retryAfter := workspaceDeleteComputeRetryAfter(operation, time.Now().UTC()); retryAfter > 0 {
-				w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
-			}
-			writeJSON(w, http.StatusAccepted, workspaceDeletePendingResponse(operation))
-			return
-		}
-		if errors.Is(err, errWorkspaceDeleteUnconfirmed) {
-			writeJSON(w, http.StatusBadGateway, workspaceDeleteResponse(operation, "workspace_delete_unconfirmed"))
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "state_persist_failed")
+		writeJSON(w, http.StatusOK, workspaceDeleteResponse(operation, ""))
 		return
 	}
-	// Delete success and refund success are independent results: a refused or
-	// failed platform refund never rewrites the completed deletion.
-	_ = app.runWorkspaceDeleteRefund(r.Context(), service, operation)
-	writeJSON(w, http.StatusOK, workspaceDeleteResponse(operation, ""))
+	writeJSON(w, http.StatusAccepted, workspaceDeletePendingResponse(operation))
+}
+
+// validateWorkspaceDeleteTerminal proves that a completed deletion is still a
+// completed deletion: the recorded operation carries the confirmed absences and
+// the deletion receipt, and the Workspace projection is gone. A completed
+// operation whose Workspace is still present is a terminal conflict, never a
+// success.
+func (app *controlPlaneServer) validateWorkspaceDeleteTerminal(ctx context.Context, operation workspaceDeleteOperation) error {
+	if !validWorkspaceDeleteIdentity(operation) || operation.Status != "succeeded" || operation.RuntimeStatus != "absent" || operation.SecretStatus != "absent" ||
+		operation.AttachmentStatus != "absent" || operation.StorageStatus != "absent" || operation.ComputeStatus != "absent" || operation.DeletionReceiptID == "" {
+		return errWorkspaceDeleteTerminalConflict
+	}
+	_, found, err := app.tables.GetWorkspace(ctx, operation.WorkspaceID)
+	if err != nil {
+		return errWorkspaceDeleteStateRead
+	}
+	if found {
+		return errWorkspaceDeleteTerminalConflict
+	}
+	return nil
 }
 
 func (app *controlPlaneServer) workspaceDeleteOperation(ctx context.Context, workspaceID string) (workspaceDeleteOperation, bool, error) {
@@ -884,506 +894,6 @@ func workspaceDeleteBlocksRenewal(row map[string]any) bool {
 	return stringValue(row["action"]) == workspaceDeleteAction
 }
 
-func (app *controlPlaneServer) runWorkspaceDelete(ctx context.Context, service *controlplane.Service, operation workspaceDeleteOperation) (workspaceDeleteOperation, error) {
-	for {
-		if operation.Phase == "complete" {
-			if !validWorkspaceDeleteIdentity(operation) || operation.Status != "succeeded" || operation.RuntimeStatus != "absent" || operation.SecretStatus != "absent" ||
-				operation.AttachmentStatus != "absent" || operation.StorageStatus != "absent" || operation.ComputeStatus != "absent" || operation.DeletionReceiptID == "" {
-				return operation, errWorkspaceDeleteTerminalConflict
-			}
-			_, found, err := app.tables.GetWorkspace(ctx, operation.WorkspaceID)
-			if err != nil {
-				return operation, errWorkspaceDeleteStateRead
-			}
-			if found {
-				return operation, errWorkspaceDeleteTerminalConflict
-			}
-			return operation, nil
-		}
-		if !validWorkspaceDeleteIdentity(operation) {
-			return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "workspace_delete_identity_mismatch")
-		}
-		switch operation.Phase {
-		case "claimed":
-			if operation.ApplicationCleanup == nil || operation.ApplicationSecrets == nil {
-				workspace, found, err := app.tables.GetWorkspace(ctx, operation.WorkspaceID)
-				if err != nil || !found {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "workspace_delete_inventory_unavailable")
-				}
-				next := operation
-				if next.ApplicationCleanup == nil {
-					next.ApplicationCleanup, err = app.workspaceApplicationLifecycleInventory(ctx, service, workspace, "absent", operation.OperationID)
-					if err != nil {
-						return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "workspace_delete_inventory_unavailable")
-					}
-				}
-				if next.ApplicationSecrets == nil {
-					next.ApplicationSecrets, err = app.workspaceApplicationSecretInventory(ctx, workspace)
-					if err != nil {
-						return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "workspace_delete_secret_inventory_unavailable")
-					}
-				}
-				if err := app.persistWorkspaceDelete(ctx, operation, next, false, false); err != nil {
-					return operation, err
-				}
-				operation = next
-			}
-			persistedResult := stringValue(workspaceDeleteOperationRow(operation)["result"])
-			if err := app.convergeWorkspaceApplicationLifecycle(ctx, service, operation.ApplicationCleanup, func() error {
-				desired := workspaceDeleteOperationRow(operation)
-				if err := app.tables.ApplyWorkspaceDelete(ctx, workspaceDeleteStoreMutation{ExpectedResult: persistedResult, DesiredOperation: desired}); err != nil {
-					return err
-				}
-				persistedResult = stringValue(desired["result"])
-				return nil
-			}); err != nil {
-				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_application_cleanup_unconfirmed")
-			}
-			if operation.ProvisioningMode == string(contracts.WorkspaceProvisioningResourceOnly) {
-				// This purchase created no legacy Runtime, but its installed
-				// application still owns the Workspace Gateway Secret, and Fabric
-				// reports that Secret file as a residual of this Workspace until it
-				// is removed. Retire the owned application Secrets first, because
-				// the readback below is what the runtime stage evidence attests and
-				// a confirmed stage is immutable.
-				if err := app.convergeWorkspaceDeleteApplicationSecrets(ctx, service, operation); err != nil {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_application_secret_cleanup_unconfirmed")
-				}
-				residual, readErr := service.ObserveWorkspaceDeleteRuntimeResiduals(ctx, operation.WorkspaceID)
-				if readErr != nil || !workspaceDeleteRuntimeResidualsAbsent(residual, operation.WorkspaceID) {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_absence_unconfirmed")
-				}
-				next := confirmStageEvidence(operation, contracts.WorkspaceDeleteStageRuntimeAbsent, contracts.WorkspaceDeleteEvidenceAbsent, contracts.WorkspaceDeleteEvidenceProviderReadback,
-					// A resource-only purchase has no Runtime; the readback is scoped to
-					// the Workspace, so the Workspace is the resource identity.
-					firstNonEmpty(operation.RuntimeID, operation.WorkspaceID), operation.RuntimeServiceName, residual.ObservedAt, residual.ReadbackID, 0)
-				next.Phase, next.Status, next.RuntimeStatus, next.SecretStatus, next.LastErrorCode = "runtime_secret_absent", "running", "absent", "absent", ""
-				if err := app.persistWorkspaceDelete(ctx, operation, next, false, false); err != nil {
-					return operation, err
-				}
-				operation = next
-			} else {
-				runtimeObservation, secretObservation, err := observeWorkspaceDeleteRuntimeAndSecret(ctx, service, operation)
-				if err != nil {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_readback_unavailable")
-				}
-				if !workspaceDeleteRuntimeAndSecretOwned(operation, runtimeObservation, secretObservation) {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_identity_conflict")
-				}
-				needsDestroy := !workspaceDeleteRuntimeAndSecretAbsent(runtimeObservation, secretObservation)
-				// A query must never stand in for a destroy: this counts the mutation
-				// attempt separately from the readbacks that confirm its result.
-				runtimeMutationAttempts := 0
-				needsDestroyRead := false
-				var residual clients.WorkspaceRuntimeDeleteObservation
-				if !needsDestroy {
-					var readErr error
-					residual, readErr = service.ObserveWorkspaceDeleteRuntimeResiduals(ctx, operation.WorkspaceID)
-					needsDestroyRead = true
-					if readErr != nil || residual.SchemaVersion != clients.WorkspaceRuntimeDeleteObservationSchemaVersion || residual.WorkspaceID != operation.WorkspaceID ||
-						!workspaceDeleteRuntimeResidualsAbsent(residual, operation.WorkspaceID) && residual.State != clients.WorkspaceRuntimeDeleteObservationPresent {
-						return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_absence_unconfirmed")
-					}
-					needsDestroy = !workspaceDeleteRuntimeResidualsAbsent(residual, operation.WorkspaceID)
-				}
-				if needsDestroy {
-					// A destroy error is not itself the result: the fresh readback below
-					// decides whether the Runtime is gone, still converging, or conflicting.
-					runtimeMutationAttempts = 1
-					_, _ = service.DestroyWorkspaceRuntime(ctx, operation.AccountID, operation.WorkspaceID, workspaceDeleteStageKey(operation, "runtime"))
-					runtimeObservation, secretObservation, err = observeWorkspaceDeleteRuntimeAndSecret(ctx, service, operation)
-					if err != nil {
-						return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_readback_unavailable")
-					}
-					if !workspaceDeleteRuntimeAndSecretOwned(operation, runtimeObservation, secretObservation) {
-						return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_identity_conflict")
-					}
-					if !workspaceDeleteRuntimeAndSecretAbsent(runtimeObservation, secretObservation) {
-						// Owned Runtime objects still exist. That is an ordinary
-						// propagation wait on the same operation, not a conflict, and
-						// must not be recorded as a terminal review state. The wait is
-						// recorded from a fresh owning read, so the observation time and
-						// readback reference are the provider's rather than an inferred
-						// or leftover value.
-						return app.recordRuntimeDeleteWait(ctx, service, operation, runtimeMutationAttempts)
-					}
-					var readErr error
-					residual, readErr = service.ObserveWorkspaceDeleteRuntimeResiduals(ctx, operation.WorkspaceID)
-					needsDestroyRead = true
-					if readErr != nil {
-						// No readback was obtained. Record that explicitly and keep the
-						// same operation retryable instead of claiming an observation.
-						return app.recordRuntimeDeleteWait(ctx, service, operation, runtimeMutationAttempts)
-					}
-					if !workspaceDeleteRuntimeResidualsAbsent(residual, operation.WorkspaceID) {
-						waiting := markStageWaiting(operation, contracts.WorkspaceDeleteStageRuntimeAbsent, "owned_runtime_objects_present",
-							firstNonEmpty(operation.RuntimeID, operation.WorkspaceID), operation.RuntimeServiceName,
-							residual.ObservedAt, residual.ReadbackID, runtimeMutationAttempts)
-						if err := app.persistWorkspaceDelete(ctx, operation, waiting, false, false); err != nil {
-							return operation, err
-						}
-						return waiting, errWorkspaceDeletePending
-					}
-				}
-				if !needsDestroyRead {
-					var readErr error
-					residual, readErr = service.ObserveWorkspaceDeleteRuntimeResiduals(ctx, operation.WorkspaceID)
-					if readErr != nil || !workspaceDeleteRuntimeResidualsAbsent(residual, operation.WorkspaceID) {
-						return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_absence_unconfirmed")
-					}
-				}
-				next := confirmStageEvidence(operation, contracts.WorkspaceDeleteStageRuntimeAbsent, contracts.WorkspaceDeleteEvidenceAbsent, contracts.WorkspaceDeleteEvidenceProviderReadback,
-					firstNonEmpty(operation.RuntimeID, operation.WorkspaceID), operation.RuntimeServiceName, residual.ObservedAt, residual.ReadbackID,
-					runtimeMutationAttempts)
-				next.Phase, next.Status, next.RuntimeStatus, next.SecretStatus, next.LastErrorCode = "runtime_secret_absent", "running", "absent", "absent", ""
-				if err := app.persistWorkspaceDelete(ctx, operation, next, false, false); err != nil {
-					return operation, err
-				}
-				operation = next
-			}
-		case "runtime_secret_absent":
-			if operation.ApplicationSecrets == nil {
-				workspace, found, err := app.tables.GetWorkspace(ctx, operation.WorkspaceID)
-				if err != nil || !found {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "workspace_delete_secret_inventory_unavailable")
-				}
-				next := operation
-				next.ApplicationSecrets, err = app.workspaceApplicationSecretInventory(ctx, workspace)
-				if err != nil {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "workspace_delete_secret_inventory_unavailable")
-				}
-				if err := app.persistWorkspaceDelete(ctx, operation, next, false, false); err != nil {
-					return operation, err
-				}
-				operation = next
-			}
-			if err := app.convergeWorkspaceDeleteApplicationSecrets(ctx, service, operation); err != nil {
-				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_application_secret_cleanup_unconfirmed")
-			}
-			attachment, err := service.DetachWorkspaceStorage(ctx, operation.AccountID, operation.WorkspaceID, operation.AttachmentID, workspaceDeleteStageKey(operation, "attachment"))
-			if err != nil || !workspaceDeleteAttachmentMatches(operation, attachment) {
-				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_attachment_unconfirmed")
-			}
-			// Releasing the mount binding is a local transition. The physical CBS detach
-			// is proven later by the storage stage, so this confirmation never claims a
-			// provider readback.
-			next := confirmStageEvidence(operation, contracts.WorkspaceDeleteStageAttachmentAbsent, contracts.WorkspaceDeleteEvidenceReleased, contracts.WorkspaceDeleteEvidenceLocalTransition,
-				operation.AttachmentID, "", time.Now().UTC().Format(time.RFC3339Nano), "",
-				1)
-			next.Phase, next.Status, next.AttachmentStatus, next.LastErrorCode = "attachment_absent", "running", "absent", ""
-			if err := app.persistWorkspaceDelete(ctx, operation, next, false, false); err != nil {
-				return operation, err
-			}
-			operation = next
-		case "attachment_absent":
-			storage, err := service.DestroyWorkspaceStorage(ctx, operation.AccountID, operation.WorkspaceID, operation.StorageID, workspaceDeleteStageKey(operation, "storage"))
-			if err != nil {
-				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_storage_unconfirmed")
-			}
-			if !workspaceDeleteStorageOwned(operation, storage) {
-				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_storage_identity_conflict")
-			}
-			if clients.StorageVolumeDeletionPending(storage) {
-				// The CBS deletion is still converging (detached-but-not-yet-
-				// terminated, or an unconfirmed terminate). Retry the same operation
-				// instead of recording a terminal failure; a completed deletion and
-				// an unverifiable provider response never carry this classification.
-				// The observation itself is persisted so the wait is explainable from
-				// state, not only from a log, and so the next attempt counts as a
-				// further read rather than restarting the count.
-				waiting := markStageWaiting(operation, contracts.WorkspaceDeleteStageStorageAbsent, storage.DestroyState,
-					operation.StorageID, firstNonEmpty(storage.ProviderResourceID, operation.StorageProviderResourceID),
-					storage.ObservedAt, storage.ProviderRequestID, 1)
-				if err := app.persistWorkspaceDelete(ctx, operation, waiting, false, false); err != nil {
-					return operation, err
-				}
-				return waiting, errWorkspaceDeletePending
-			}
-			if !workspaceDeleteStorageMatches(operation, storage) {
-				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_storage_unconfirmed")
-			}
-			// A destroy response may be a retained operation result. Confirm this
-			// stage only from Fabric's fresh read surface, which owns the observation
-			// time and reference, before persisting an immutable confirmation.
-			storage, err = service.ReadWorkspaceDeleteStorage(ctx, operation.StorageID)
-			if err != nil {
-				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_storage_readback_unavailable")
-			}
-			if !workspaceDeleteStorageOwned(operation, storage) {
-				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_storage_identity_conflict")
-			}
-			observedAt, observedErr := time.Parse(time.RFC3339Nano, storage.ObservedAt)
-			createdAt, createdErr := time.Parse(time.RFC3339Nano, operation.CreatedAt)
-			now := time.Now().UTC()
-			if observedErr != nil || createdErr != nil || strings.TrimSpace(storage.ReadbackID) == "" ||
-				observedAt.Before(createdAt) || observedAt.After(now) || now.Sub(observedAt) > workspaceDeleteRefundReadbackMaxAge ||
-				strings.TrimSpace(storage.ProviderResourceID) == "" || !workspaceDeleteStorageMatches(operation, storage) ||
-				storage.BindingPresent == nil || *storage.BindingPresent || storage.CBSStatus != contracts.WorkspaceDeleteProviderStatusNotFound {
-				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_storage_unconfirmed")
-			}
-			next := confirmStageEvidence(operation, contracts.WorkspaceDeleteStageStorageAbsent, contracts.WorkspaceDeleteEvidenceAbsent, contracts.WorkspaceDeleteEvidenceProviderReadback,
-				operation.StorageID, firstNonEmpty(storage.ProviderResourceID, operation.StorageProviderResourceID),
-				storage.ObservedAt, storage.ReadbackID, 1)
-			next.Phase, next.Status, next.StorageStatus, next.LastErrorCode = "storage_absent", "running", "absent", ""
-			next.StorageProviderResourceID = firstNonEmpty(storage.ProviderResourceID, operation.StorageProviderResourceID)
-			if err := app.persistWorkspaceDelete(ctx, operation, next, false, false); err != nil {
-				return operation, err
-			}
-			operation = next
-		case "storage_absent":
-			var compute clients.ComputeAllocation
-			var err error
-			readNow := time.Now().UTC()
-			if operation.ComputeStatus == "destroying" {
-				notBefore, parseErr := time.Parse(time.RFC3339Nano, operation.ComputeReadbackNotBefore)
-				if parseErr != nil {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_compute_readback_schedule_invalid")
-				}
-				if readNow.Before(notBefore) {
-					return operation, errWorkspaceDeletePending
-				}
-				if operation.MaxComputeReadbacks != workspaceDeleteComputeReadbackBudget {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_compute_absence_unconfirmed")
-				}
-				claimed := operation
-				claimed.ComputeReadbacks++
-				claimed.ComputeReadbackNotBefore = readNow.Add(workspaceDeleteComputeReadbackInterval).Format(time.RFC3339Nano)
-				if err := app.persistWorkspaceDelete(ctx, operation, claimed, false, false); err != nil {
-					return operation, err
-				}
-				operation = claimed
-				compute, err = service.WorkspaceDeleteComputeStatus(ctx, operation.ComputeID)
-				if err != nil {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_compute_readback_unavailable")
-				}
-				if !workspaceDeleteComputeIdentityMatches(operation, compute) {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_compute_identity_conflict")
-				}
-			} else {
-				compute, err = service.DestroyWorkspaceCompute(ctx, operation.AccountID, operation.WorkspaceID, operation.ComputeID, workspaceDeleteStageKey(operation, "compute"))
-				if err != nil {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_compute_destroy_unconfirmed")
-				}
-				if !workspaceDeleteComputeIdentityMatches(operation, compute) {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_compute_identity_conflict")
-				}
-				if clients.ComputeAllocationDeletionPending(compute) {
-					// Fabric classified this destroy outcome as an unfinished deletion:
-					// the same operation retries instead of recording a terminal result.
-					return app.armWorkspaceDeleteComputeReadback(ctx, operation, readNow)
-				}
-				if !workspaceDeleteComputeStartMatches(operation, compute) {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_compute_destroy_unconfirmed")
-				}
-				claimed := operation
-				claimed.ComputeStatus, claimed.MaxComputeReadbacks, claimed.ComputeReadbacks = "destroying", workspaceDeleteComputeReadbackBudget, 1
-				claimed.ComputeReadbackNotBefore = readNow.Add(workspaceDeleteComputeReadbackInterval).Format(time.RFC3339Nano)
-				if err := app.persistWorkspaceDelete(ctx, operation, claimed, false, false); err != nil {
-					return operation, err
-				}
-				operation = claimed
-				compute, err = service.WorkspaceDeleteComputeStatus(ctx, operation.ComputeID)
-				if err != nil {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_compute_readback_unavailable")
-				}
-				if !workspaceDeleteComputeIdentityMatches(operation, compute) {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_compute_identity_conflict")
-				}
-			}
-			// A classified unfinished deletion and an in-flight destroy are ordinary
-			// waits on the same operation. Only an unclassified non-terminal status
-			// is reviewable.
-			if clients.ComputeAllocationDeletionPending(compute) || compute.Status == "destroying" {
-				// This observation read the provider; the destroy that this stage is
-				// waiting on was counted when it was dispatched.
-				waiting := markStageWaiting(operation, contracts.WorkspaceDeleteStageComputeAbsent, compute.DestroyState,
-					operation.ComputeID, firstNonEmpty(compute.MachineName, compute.CVMInstanceID, compute.InstanceID, operation.ComputeCVMInstanceID),
-					compute.ObservedAt, compute.ReadbackID, 0)
-				if err := app.persistWorkspaceDelete(ctx, operation, waiting, false, false); err != nil {
-					return operation, err
-				}
-				return waiting, errWorkspaceDeletePending
-			}
-			if !workspaceDeleteComputeTerminal(compute.Status) {
-				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_compute_absence_unconfirmed")
-			}
-			next := confirmStageEvidence(operation, contracts.WorkspaceDeleteStageComputeAbsent, contracts.WorkspaceDeleteEvidenceAbsent, contracts.WorkspaceDeleteEvidenceProviderReadback,
-				operation.ComputeID, firstNonEmpty(compute.CVMInstanceID, compute.InstanceID, operation.ComputeCVMInstanceID),
-				compute.ObservedAt, compute.ReadbackID, 1)
-			next.Phase, next.Status, next.ComputeStatus, next.ComputeReadbackNotBefore, next.LastErrorCode = "compute_absent", "running", "absent", "", ""
-			next.ComputeMachineName = firstNonEmpty(compute.MachineName, next.ComputeMachineName)
-			next.ComputeCVMInstanceID = firstNonEmpty(compute.CVMInstanceID, compute.InstanceID, next.ComputeCVMInstanceID)
-			if err := app.persistWorkspaceDelete(ctx, operation, next, false, false); err != nil {
-				return operation, err
-			}
-			operation = next
-		case "compute_absent", "key_absent":
-			// Removing the Workspace projection is committed atomically with this
-			// phase advance, so it is recorded as a local transition, not a readback.
-			next := confirmStageEvidence(operation, contracts.WorkspaceDeleteStageWorkspaceAbsent, contracts.WorkspaceDeleteEvidenceRemoved, contracts.WorkspaceDeleteEvidenceLocalTransition,
-				operation.WorkspaceID, "", time.Now().UTC().Format(time.RFC3339Nano), "",
-				0)
-			next.Phase, next.Status, next.LastErrorCode = "workspace_absent", "running", ""
-			if err := app.persistWorkspaceDelete(ctx, operation, next, true, false); err != nil {
-				return operation, err
-			}
-			operation = next
-		case "workspace_absent":
-			if _, found, err := app.tables.GetWorkspace(ctx, operation.WorkspaceID); err != nil || found {
-				return operation, errWorkspaceDeleteUnconfirmed
-			}
-			next, err := app.recordWorkspaceDeletionReceipt(ctx, service, operation)
-			if err != nil {
-				return next, err
-			}
-			operation = next
-		case "deletion_receipt_recorded":
-			next := operation
-			next.Phase, next.Status, next.LastErrorCode = "complete", "succeeded", ""
-			if err := app.persistWorkspaceDelete(ctx, operation, next, false, true); err != nil {
-				return operation, err
-			}
-			operation = next
-		default:
-			return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "workspace_delete_phase_invalid")
-		}
-	}
-}
-
-// armWorkspaceDeleteComputeReadback records the first scheduled absence readback
-// for a compute deletion that Fabric reported as unfinished, so the same
-// operation continues instead of ending in a terminal state.
-func (app *controlPlaneServer) armWorkspaceDeleteComputeReadback(ctx context.Context, operation workspaceDeleteOperation, now time.Time) (workspaceDeleteOperation, error) {
-	claimed := operation
-	claimed.ComputeStatus, claimed.MaxComputeReadbacks, claimed.ComputeReadbacks = "destroying", workspaceDeleteComputeReadbackBudget, 1
-	claimed.ComputeReadbackNotBefore = now.Add(workspaceDeleteComputeReadbackInterval).Format(time.RFC3339Nano)
-	if err := app.persistWorkspaceDelete(ctx, operation, claimed, false, false); err != nil {
-		return operation, err
-	}
-	return claimed, errWorkspaceDeletePending
-}
-
-// recordStageObservation records the latest observation of one stage. There is at
-// most one entry per stage, and entries appear in the frozen stage order.
-//
-// A confirmed entry is immutable: once a stage is proven, no later poll can
-// replace what a receipt or the refund gate already relies on. A waiting or failed
-// entry is replaced by the next observation of the same stage, so a stalled
-// deletion stays explainable from persisted state instead of only from a log.
-//
-// An operation that predates the evidence contract keeps an empty list and
-// completes on the original receipt shape, instead of being back-filled with
-// observations it never made.
-func recordStageObservation(operation workspaceDeleteOperation, evidence contracts.WorkspaceDeleteStageEvidence) workspaceDeleteOperation {
-	index := slices.Index(contracts.WorkspaceDeleteStageOrder(), evidence.Stage)
-	if index < 0 {
-		return operation
-	}
-	next := operation
-	next.StageEvidence = append([]contracts.WorkspaceDeleteStageEvidence(nil), operation.StageEvidence...)
-	if recorded, present := contracts.WorkspaceDeleteStageEvidenceLatest(next.StageEvidence, evidence.Stage); present {
-		if recorded.Confirmed() {
-			return operation
-		}
-		for position := range next.StageEvidence {
-			if next.StageEvidence[position].Stage == evidence.Stage {
-				next.StageEvidence[position] = evidence
-				return next
-			}
-		}
-	}
-	if len(next.StageEvidence) != index {
-		// The stage order is only entered at its next unrecorded stage, so evidence
-		// can never claim a stage whose predecessors were never observed.
-		return operation
-	}
-	next.StageEvidence = append(next.StageEvidence, evidence)
-	return next
-}
-
-// stageObservationAttempts derives the attempt counters for one observation from the
-// previously recorded entry. Every observation is one more read, and the caller
-// reports how many provider mutations this observation dispatched, because only it
-// knows. The two counters are separate and both accumulate: a query never stands in
-// for a destroy, and a destroy is never counted as a query.
-func stageObservationAttempts(operation workspaceDeleteOperation, stage string, dispatchedMutations int) (int, int) {
-	readAttempts, mutationAttempts := 1, dispatchedMutations
-	if previous, present := contracts.WorkspaceDeleteStageEvidenceLatest(operation.StageEvidence, stage); present {
-		readAttempts, mutationAttempts = previous.ReadAttempts+1, previous.MutationAttempts+dispatchedMutations
-	}
-	return readAttempts, mutationAttempts
-}
-
-// recordRuntimeDeleteWait records the Runtime stage's current state while owned
-// objects still exist, or while no readback could be obtained.
-//
-// It reads the labelled Runtime objects back itself, because that read is the owning
-// observation of this stage: only its own result carries the observation time and the
-// readback reference the record must name. When the read does not return a usable
-// readback, the wait is recorded as unavailable rather than given an invented
-// observation, and the same operation stays retryable.
-func (app *controlPlaneServer) recordRuntimeDeleteWait(ctx context.Context, service *controlplane.Service, operation workspaceDeleteOperation, mutationAttempts int) (workspaceDeleteOperation, error) {
-	resourceID := firstNonEmpty(operation.RuntimeID, operation.WorkspaceID)
-	residual, readErr := service.ObserveWorkspaceDeleteRuntimeResiduals(ctx, operation.WorkspaceID)
-	usable := readErr == nil && residual.SchemaVersion == clients.WorkspaceRuntimeDeleteObservationSchemaVersion &&
-		residual.WorkspaceID == operation.WorkspaceID && strings.TrimSpace(residual.ReadbackID) != ""
-	reasonCode := "fabric_runtime_readback_unavailable"
-	observedAt, readbackID := "", ""
-	if usable {
-		reasonCode, observedAt, readbackID = "owned_runtime_objects_present", residual.ObservedAt, residual.ReadbackID
-	}
-	waiting := markStageWaiting(operation, contracts.WorkspaceDeleteStageRuntimeAbsent, reasonCode, resourceID, operation.RuntimeServiceName, observedAt, readbackID, mutationAttempts)
-	if err := app.persistWorkspaceDelete(ctx, operation, waiting, false, false); err != nil {
-		return operation, err
-	}
-	return waiting, errWorkspaceDeletePending
-}
-
-// markStageWaiting records the current observation of a stage that has not finished,
-// so the deletion can explain itself while it converges.
-//
-// A waiting entry is a provider observation only when the owning read actually
-// returned an observation time and the readback reference it came from. When it did
-// not, the entry states explicitly that no readback was obtained: a local clock is
-// never substituted for a provider observation, and a provider observation is never
-// recorded without the readback behind it.
-func markStageWaiting(operation workspaceDeleteOperation, stage, reasonCode, resourceID, providerResourceID, observedAt, readbackID string, mutationAttempts int) workspaceDeleteOperation {
-	readAttempts, mutations := stageObservationAttempts(operation, stage, mutationAttempts)
-	if strings.TrimSpace(observedAt) == "" || strings.TrimSpace(readbackID) == "" {
-		// The attempt time is stamped here, and the entry's kind says that this was an
-		// attempt that returned no provider fact.
-		return recordStageObservation(operation, contracts.WorkspaceDeleteStageEvidence{
-			Stage: stage, Result: contracts.WorkspaceDeleteEvidenceWaiting, ReasonCode: reasonCode,
-			EvidenceKind: contracts.WorkspaceDeleteEvidenceUnavailable, ResourceID: resourceID, ProviderResourceID: providerResourceID,
-			ObservedAt: time.Now().UTC().Format(time.RFC3339Nano), ReadAttempts: readAttempts, MutationAttempts: mutations,
-		})
-	}
-	return recordStageObservation(operation, contracts.WorkspaceDeleteStageEvidence{
-		Stage: stage, Result: contracts.WorkspaceDeleteEvidenceWaiting, ReasonCode: reasonCode,
-		EvidenceKind: stageEvidenceKind(stage), ResourceID: resourceID, ProviderResourceID: providerResourceID,
-		ObservedAt: observedAt, ReadbackID: readbackID, ReadAttempts: readAttempts, MutationAttempts: mutations,
-	})
-}
-
-// stageEvidenceKind reports the evidence kind the frozen contract requires for a
-// stage.
-func stageEvidenceKind(stage string) string {
-	_, kind, _ := contracts.WorkspaceDeleteStageEvidenceExpected(stage)
-	return kind
-}
-
-// confirmStageEvidence records one confirmed stage result. observedAt must come from
-// the observer (a provider readback time or the committed local transition time),
-// never from the moment this record is written, and the attempt counters are derived
-// from what was already recorded rather than restated by the caller.
-func confirmStageEvidence(operation workspaceDeleteOperation, stage, result, kind, resourceID, providerResourceID, observedAt, readbackID string, mutationAttempts int) workspaceDeleteOperation {
-	readAttempts, mutations := stageObservationAttempts(operation, stage, mutationAttempts)
-	return recordStageObservation(operation, contracts.WorkspaceDeleteStageEvidence{
-		Stage: stage, Result: result, EvidenceKind: kind, ResourceID: resourceID, ProviderResourceID: providerResourceID,
-		ObservedAt: observedAt, ReadbackID: readbackID, ReadAttempts: readAttempts, MutationAttempts: mutations,
-	})
-}
-
 // workspaceDeleteLastReadbackAt reports the most recent observation any stage
 // confirmation recorded, which is what the deletion page shows as the last
 // readback time.
@@ -1395,214 +905,6 @@ func workspaceDeleteLastReadbackAt(operation workspaceDeleteOperation) string {
 		}
 	}
 	return latest
-}
-
-func (app *controlPlaneServer) persistWorkspaceDelete(ctx context.Context, current, next workspaceDeleteOperation, deleteWorkspace, requireAbsent bool) error {
-	return app.tables.ApplyWorkspaceDelete(ctx, workspaceDeleteStoreMutation{
-		DeleteWorkspace: deleteWorkspace, RequireWorkspaceAbsent: requireAbsent,
-		ExpectedResult: stringValue(workspaceDeleteOperationRow(current)["result"]), DesiredOperation: workspaceDeleteOperationRow(next),
-	})
-}
-
-// convergeWorkspaceDeleteApplicationSecrets retires every owned application
-// Gateway Secret this Delete still reports as pending and persists each
-// retirement against the currently stored operation. A retirement already
-// recorded as absent is skipped, so the Secret is never removed twice and a
-// partially converged inventory resumes exactly where it stopped.
-func (app *controlPlaneServer) convergeWorkspaceDeleteApplicationSecrets(ctx context.Context, service *controlplane.Service, operation workspaceDeleteOperation) error {
-	if operation.ApplicationSecrets == nil {
-		return nil
-	}
-	persistedResult := stringValue(workspaceDeleteOperationRow(operation)["result"])
-	return app.convergeWorkspaceApplicationSecretCleanup(ctx, service, operation, func() error {
-		desired := workspaceDeleteOperationRow(operation)
-		if err := app.tables.ApplyWorkspaceDelete(ctx, workspaceDeleteStoreMutation{ExpectedResult: persistedResult, DesiredOperation: desired}); err != nil {
-			return err
-		}
-		persistedResult = stringValue(desired["result"])
-		return nil
-	})
-}
-
-func (app *controlPlaneServer) markWorkspaceDeleteUnconfirmed(ctx context.Context, operation workspaceDeleteOperation, code string) (workspaceDeleteOperation, error) {
-	next := operation
-	next.Status, next.LastErrorCode = "manual_review", code
-	requireAbsent := operation.Phase == "workspace_absent" || operation.Phase == "deletion_receipt_recorded" || operation.Phase == "complete"
-	if err := app.persistWorkspaceDelete(ctx, operation, next, false, requireAbsent); err != nil {
-		return operation, err
-	}
-	return next, errWorkspaceDeleteUnconfirmed
-}
-
-func observeWorkspaceDeleteRuntimeAndSecret(ctx context.Context, service *controlplane.Service, operation workspaceDeleteOperation) (clients.WorkspaceRuntimeObservation, clients.WorkspaceRuntimeGatewaySecretObservation, error) {
-	runtime, err := service.ObserveWorkspaceDeleteRuntime(ctx, operation.WorkspaceID)
-	if err != nil {
-		return clients.WorkspaceRuntimeObservation{}, clients.WorkspaceRuntimeGatewaySecretObservation{}, err
-	}
-	secret, err := service.ObserveWorkspaceDeleteRuntimeGatewaySecret(ctx, operation.WorkspaceID)
-	return runtime, secret, err
-}
-
-func workspaceDeleteRuntimeAndSecretAbsent(runtime clients.WorkspaceRuntimeObservation, secret clients.WorkspaceRuntimeGatewaySecretObservation) bool {
-	return runtime.SchemaVersion == clients.WorkspaceOwnerObservationSchemaVersion && secret.SchemaVersion == clients.WorkspaceOwnerObservationSchemaVersion &&
-		runtime.State == clients.WorkspaceOwnerObservationAbsent && secret.State == clients.WorkspaceOwnerObservationAbsent && runtime.Runtime == nil && secret.Binding == nil
-}
-
-func workspaceDeleteRuntimeResidualsAbsent(observation clients.WorkspaceRuntimeDeleteObservation, workspaceID string) bool {
-	return observation.SchemaVersion == clients.WorkspaceRuntimeDeleteObservationSchemaVersion && observation.WorkspaceID == workspaceID &&
-		observation.State == clients.WorkspaceOwnerObservationAbsent && len(observation.Residuals) == 0
-}
-
-// Runtime and its standalone Gateway Secret can disappear independently. Every
-// remaining object must still match the original Delete before the owner acts.
-func workspaceDeleteRuntimeAndSecretOwned(operation workspaceDeleteOperation, runtime clients.WorkspaceRuntimeObservation, secret clients.WorkspaceRuntimeGatewaySecretObservation) bool {
-	if runtime.SchemaVersion != clients.WorkspaceOwnerObservationSchemaVersion || secret.SchemaVersion != clients.WorkspaceOwnerObservationSchemaVersion ||
-		runtime.WorkspaceID != operation.WorkspaceID || secret.WorkspaceID != operation.WorkspaceID {
-		return false
-	}
-	runtimeOwned := runtime.State == clients.WorkspaceOwnerObservationAbsent && runtime.Runtime == nil ||
-		(runtime.State == clients.WorkspaceOwnerObservationReady || runtime.State == clients.WorkspaceOwnerObservationPending) && runtime.Runtime != nil &&
-			runtime.Runtime.WorkspaceID == operation.WorkspaceID && runtime.Runtime.ID == operation.RuntimeID
-	secretOwned := secret.State == clients.WorkspaceOwnerObservationAbsent && secret.Binding == nil ||
-		(secret.State == clients.WorkspaceOwnerObservationReady || secret.State == clients.WorkspaceOwnerObservationPending) && secret.Binding != nil &&
-			secret.Binding.WorkspaceID == operation.WorkspaceID && secret.Binding.WorkspaceAPIKeyID == operation.WorkspaceAPIKeyID &&
-			secret.Binding.SecretRef == operation.GatewaySecretRef && secret.Binding.Fingerprint == operation.GatewayFingerprint
-	return runtimeOwned && secretOwned
-}
-
-// workspaceDeleteRecordedReceiptEvidence returns the evidence the deletion receipt
-// attests: every stage that preceded the receipt write. The receipt's own stage is
-// recorded afterwards, so verification rebuilds the payload from this prefix.
-func workspaceDeleteRecordedReceiptEvidence(operation workspaceDeleteOperation) []contracts.WorkspaceDeleteStageEvidence {
-	order := contracts.WorkspaceDeleteStageOrder()
-	if len(order) == 0 {
-		return operation.StageEvidence
-	}
-	attested := len(order) - 1
-	if len(operation.StageEvidence) < attested {
-		return operation.StageEvidence
-	}
-	return operation.StageEvidence[:attested]
-}
-
-func workspaceDeletionReceiptInput(operation workspaceDeleteOperation) clients.ReceiptInput {
-	input := clients.ReceiptInput{
-		Type: "workspace.deleted.v1", Status: "completed", Surface: "control_plane", AccountID: operation.AccountID, WorkspaceID: operation.WorkspaceID,
-		RequestID: operation.OperationID, InputRefs: map[string]any{"launchReceiptId": operation.LaunchReceiptID},
-		Execution: map[string]any{
-			"operationId": operation.OperationID, "resourceType": "workspace", "resourceId": operation.WorkspaceID,
-			"computeAllocationId": operation.ComputeID, "storageId": operation.StorageID, "attachmentId": operation.AttachmentID,
-			"runtimeId": operation.RuntimeID, "workspaceApiKeyId": operation.WorkspaceAPIKeyID, "workspaceKeyFingerprint": operation.GatewayFingerprint,
-			"runtimeServiceName": operation.RuntimeServiceName, "gatewaySecretRef": operation.GatewaySecretRef,
-		},
-		OutputRefs: map[string]any{
-			"runtimeStatus": "absent", "gatewaySecretStatus": "absent", "attachmentStatus": "absent", "storageStatus": "absent",
-			"computeStatus": "absent", "workspaceStatus": "absent",
-		},
-		Owner: map[string]any{"accountId": operation.AccountID, "workspaceId": operation.WorkspaceID, "ownerUserId": operation.OwnerUserID},
-	}
-	// Preserve exact payloads for receipts already requested by retained operations.
-	if operation.KeyStatus == "absent" {
-		input.OutputRefs["workspaceKeyStatus"] = "absent"
-	}
-	if operation.ProvisioningMode == string(contracts.WorkspaceProvisioningResourceOnly) {
-		input.Execution = (contracts.WorkspaceResourceReceiptExecution{OperationID: operation.OperationID, ResourceType: "workspace", ResourceID: operation.WorkspaceID, ComputeAllocationID: operation.ComputeID, StorageID: operation.StorageID, AttachmentID: operation.AttachmentID, ProvisioningMode: contracts.WorkspaceProvisioningResourceOnly}).Fields()
-	}
-	retirement := contracts.WorkspaceApplicationRetirementReceipt{CurrentDeploymentID: operation.CurrentApplicationDeploymentID}
-	if operation.ApplicationCleanup != nil {
-		for _, runtime := range operation.ApplicationCleanup.Runtimes {
-			retirement.Runtimes = append(retirement.Runtimes, contracts.WorkspaceApplicationRuntimeRetirementReceipt{RuntimeID: runtime.Input.RuntimeID, RuntimeOperationID: runtime.Input.RuntimeOperationID, State: runtime.Result.State, ImageRetirement: runtime.Result.ImageRetirement})
-		}
-	}
-	if operation.ApplicationSecrets != nil {
-		for _, secret := range operation.ApplicationSecrets.Secrets {
-			retirement.Secrets = append(retirement.Secrets, contracts.WorkspaceApplicationSecretRetirementReceipt{SecretRef: secret.SecretRef, Ownership: secret.Ownership, State: secret.State})
-		}
-		retirement.RetainedGatewayKeyIDs = operation.ApplicationSecrets.RetainedGatewayKeyIDs
-	}
-	if len(retirement.Runtimes)+len(retirement.Secrets)+len(retirement.RetainedGatewayKeyIDs) > 0 {
-		input.Execution["applicationRetirement"] = retirement
-	}
-	if len(retirement.RetainedGatewayKeyIDs) > 0 {
-		input.OutputRefs["applicationGatewayKeysStatus"] = "retained"
-	}
-	// The receipt carries the stage evidence that was already accepted and
-	// persisted for this operation. It is built only from recorded confirmations,
-	// never from the current clock or from page text.
-	//
-	// A retained operation that predates this contract has no evidence to attest.
-	// Its receipt keeps the original payload shape: it must not be back-filled with
-	// fabricated confirmations, and the missing summary is what distinguishes it.
-	if len(operation.StageEvidence) > 0 {
-		input.Execution["stageEvidence"] = contracts.WorkspaceDeleteStageEvidenceDigests(operation.StageEvidence)
-		input.Execution["stageEvidenceSchemaVersion"] = contracts.WorkspaceDeleteReadbackSchemaVersion
-	}
-	return input
-}
-
-func (app *controlPlaneServer) recordWorkspaceDeletionReceipt(ctx context.Context, service *controlplane.Service, operation workspaceDeleteOperation) (workspaceDeleteOperation, error) {
-	// The receipt may only be written from already persisted stage confirmations. A
-	// partial evidence list would let the receipt attest less than the deletion
-	// contract requires, so it is refused instead of recorded. A retained operation
-	// with no evidence at all predates the contract: it completes with the original
-	// receipt shape rather than inventing confirmations it never recorded.
-	if len(operation.StageEvidence) > 0 && !contracts.WorkspaceDeleteReceiptEvidenceComplete(operation.StageEvidence) {
-		return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "workspace_delete_evidence_incomplete")
-	}
-	input := workspaceDeletionReceiptInput(operation)
-	receipt, err := service.RecordMonthlyReceipt(ctx, input, operation.OperationID+":deletion-receipt")
-	if err != nil || receipt.ReceiptID == "" || !clients.ReceiptInputEqual(receipt.ReceiptInput, input) {
-		return operation, errWorkspaceDeleteUnconfirmed
-	}
-	// The receipt's own stage is recorded against the written receipt, so the
-	// operation ends with the full sequence and the receipt attests the stages that
-	// preceded it.
-	next := confirmStageEvidence(operation, contracts.WorkspaceDeleteStageReceiptRecorded, contracts.WorkspaceDeleteEvidenceRecorded, contracts.WorkspaceDeleteEvidenceLedgerReceipt,
-		operation.WorkspaceID, receipt.ReceiptID, receipt.CreatedAt, receipt.ReceiptID,
-		0)
-	next.Phase, next.Status, next.DeletionReceiptID, next.LastErrorCode = "deletion_receipt_recorded", "running", receipt.ReceiptID, ""
-	if deletedAt, parseErr := time.Parse(time.RFC3339Nano, receipt.CreatedAt); parseErr == nil {
-		next.DeletedAt = deletedAt.UTC().Format(time.RFC3339Nano)
-	}
-	if err := app.persistWorkspaceDelete(ctx, operation, next, false, true); err != nil {
-		return operation, err
-	}
-	return next, nil
-}
-
-func workspaceDeleteAttachmentMatches(operation workspaceDeleteOperation, attachment clients.StorageAttachment) bool {
-	return attachment.ID == operation.AttachmentID && attachment.WorkspaceID == operation.WorkspaceID && attachment.ComputeID == operation.ComputeID &&
-		attachment.VolumeID == operation.StorageID && attachment.Status == "detached"
-}
-
-// workspaceDeleteStorageOwned binds a storage result to the exact Workspace and
-// volume identity this Delete operation owns. An identity conflict is never a
-// retryable wait.
-func workspaceDeleteStorageOwned(operation workspaceDeleteOperation, storage clients.StorageVolume) bool {
-	if storage.ID != operation.StorageID || storage.WorkspaceID != operation.WorkspaceID {
-		return false
-	}
-	return storage.ProviderResourceID == "" || operation.StorageProviderResourceID == "" || storage.ProviderResourceID == operation.StorageProviderResourceID
-}
-
-func workspaceDeleteStorageMatches(operation workspaceDeleteOperation, storage clients.StorageVolume) bool {
-	if !workspaceDeleteStorageOwned(operation, storage) {
-		return false
-	}
-	switch storage.Status {
-	case "destroyed", "external_deleted":
-		return true
-	default:
-		return false
-	}
-}
-
-func workspaceDeleteComputeIdentityMatches(operation workspaceDeleteOperation, compute clients.ComputeAllocation) bool {
-	return compute.ID == operation.ComputeID && compute.WorkspaceID == operation.WorkspaceID
-}
-
-func workspaceDeleteComputeStartMatches(operation workspaceDeleteOperation, compute clients.ComputeAllocation) bool {
-	return workspaceDeleteComputeIdentityMatches(operation, compute) && (compute.Status == "destroying" || workspaceDeleteComputeTerminal(compute.Status))
 }
 
 func workspaceDeleteComputeTerminal(status string) bool {
@@ -1639,22 +941,13 @@ func workspaceDeleteResponse(operation workspaceDeleteOperation, errorCode strin
 	return response
 }
 
+// workspaceDeletePendingResponse reports a recorded deletion that no stage has
+// advanced. The stage it names is the owning stage vocabulary applied to the
+// operation's own recorded facts, so a freshly authorized deletion names the
+// stage it would work on rather than a fixed one.
 func workspaceDeletePendingResponse(operation workspaceDeleteOperation) map[string]any {
 	return map[string]any{
 		"workspaceId": operation.WorkspaceID, "operationId": operation.OperationID, "status": "pending", "phase": operation.Phase,
-		"ownerStage": "compute", "computeStatus": operation.ComputeStatus, "computeReadbacks": operation.ComputeReadbacks, "maxComputeReadbacks": operation.MaxComputeReadbacks,
+		"ownerStage": workspaceDeleteStageInProgress(operation), "computeStatus": operation.ComputeStatus, "computeReadbacks": operation.ComputeReadbacks, "maxComputeReadbacks": operation.MaxComputeReadbacks,
 	}
-}
-
-func workspaceDeleteComputeRetryAfter(operation workspaceDeleteOperation, now time.Time) int {
-	notBefore, err := time.Parse(time.RFC3339Nano, operation.ComputeReadbackNotBefore)
-	if err != nil || !notBefore.After(now) {
-		return 0
-	}
-	remaining := notBefore.Sub(now)
-	seconds := int((remaining + time.Second - 1) / time.Second)
-	if seconds < 1 {
-		return 1
-	}
-	return seconds
 }

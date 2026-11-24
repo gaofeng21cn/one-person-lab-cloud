@@ -68,5 +68,11 @@ Plane / delegated process-local custody onto canonical domain owners:
      unresolved. Naming them needs an Instance-side action-projection change and
      a fresh observation; Instance PR #788 supplies the projection fix and is
      open.
+   - The withdrawn Control Plane delete/refund execution leaves two open
+     outcomes: the Instance `workspace-delete-refund.yml` caller withdrawal, and
+     the settlement or transfer of a carried-forward refund obligation
+     (`workspace.delete.refund.v1` and `gateway.wallet_adjustment.v1` with
+     `Kind: "business_refund"`). An installation adopts a build without the
+     executor only after those rows carry an explicit disposition.
 4. **Module & DB-Role Coverage**: Expand `tests/contracts/module-physical-boundaries.test.ts`
    and PostgreSQL role-isolation checks to cover every extracted service and Console BFF.

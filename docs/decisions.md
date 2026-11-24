@@ -96,6 +96,11 @@ Git log.
 - **Consumer-First Path Retirement**: Legacy Control Plane writers, routes and
   tests are retired only after live callers move and persisted customer/financial
   obligations retain explicit dispositions.
+- **Retired Execution Keeps Its Money Obligations Open**: Withdrawing a Control
+  Plane execution engine does not withdraw the money obligations it owned. Every
+  persisted refund or wallet obligation keeps an explicit disposition — settle,
+  transfer, or keep the executor — and source withdrawal is not installed
+  adoption.
 
 ## Ordinary Source Development And CI
 

@@ -3,8 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -92,10 +90,6 @@ func newResourceOnlyWorkspaceLifecycleFixture(t *testing.T) (workspaceDeleteFixt
 	}
 	fixtureClock := time.Now().UTC()
 	periodStart, paidThrough := workspaceDeleteFixtureBillingPeriod(fixtureClock)
-	// This fixture's Workspace is refunded on deletion, so its refund window must
-	// stay inside the platform's monthly baseline exactly like the other delete
-	// fixture's.
-	assertWorkspaceDeleteFixtureRefundWindow(t, periodStart, fixtureClock)
 	readyFacts := map[string]any{
 		"sub2apiRedeemCode":          "opl:workspace-purchase-alpha",
 		"chargeAttempted":            true,
@@ -165,54 +159,6 @@ func newResourceOnlyWorkspaceLifecycleFixture(t *testing.T) (workspaceDeleteFixt
 	}
 	fixture.workspace = workspace
 	return fixture, sub2API, ledger, events
-}
-
-func TestWorkspaceDeleteCompletesResourceOnlyWorkspaceWithoutApplicationFacts(t *testing.T) {
-	fixture, sub2API, ledger, events := newResourceOnlyWorkspaceLifecycleFixture(t)
-	response := requestWithMutationKeyForTest(t, fixture.server, fixture.session, http.MethodDelete, "/api/workspaces/ws-alpha", `{}`, "delete-resource-only")
-	if response.Code != http.StatusOK {
-		row, _, _ := fixture.store.GetRuntimeOperation(context.Background(), workspaceDeleteOperationID("ws-alpha"))
-		t.Fatalf("delete status=%d body=%s operation=%#v", response.Code, response.Body.String(), row)
-	}
-	var terminal map[string]any
-	if json.Unmarshal(response.Body.Bytes(), &terminal) != nil || terminal["status"] != "deleted" || terminal["accountId"] != "acct-alpha" ||
-		terminal["workspaceId"] != "ws-alpha" || terminal["runtimeId"] != "" ||
-		int64(numberField(terminal, "workspaceApiKeyId", 0)) != 0 ||
-		terminal["runtimeStatus"] != "absent" || terminal["secretStatus"] != "absent" || terminal["keyStatus"] != nil {
-		t.Fatalf("resource-only delete terminal response=%#v", terminal)
-	}
-	if sub2API.keyDeletes != 0 || len(sub2API.refunds) != 0 {
-		t.Fatalf("Sub2API completion keyDeletes=%d refunds=%#v", sub2API.keyDeletes, sub2API.refunds)
-	}
-	if len(ledger.receipts) != 1 {
-		t.Fatalf("Ledger writes receipts=%#v", ledger.receipts)
-	}
-	receipt := ledger.receipts[0]
-	if receipt.Type != "workspace.deleted.v1" || receipt.Status != "completed" || receipt.AccountID != "acct-alpha" || receipt.WorkspaceID != "ws-alpha" ||
-		stringValue(receipt.Execution["runtimeId"]) != "" || stringValue(receipt.Execution["computeAllocationId"]) != "compute-alpha" ||
-		stringValue(receipt.Execution["storageId"]) != "storage-alpha" || stringValue(receipt.Execution["attachmentId"]) != "attachment-alpha" ||
-		int64(numberField(receipt.Execution, "workspaceApiKeyId", 0)) != 0 {
-		t.Fatalf("resource-only deletion receipt=%#v", receipt)
-	}
-	computes, computeErr := fixture.store.ListComputes(context.Background(), "acct-alpha")
-	storages, storageErr := fixture.store.ListStorages(context.Background(), "acct-alpha")
-	attachments, attachmentErr := fixture.store.ListAttachments(context.Background(), "acct-alpha")
-	if computeErr != nil || storageErr != nil || attachmentErr != nil || len(computes) != 0 || len(storages) != 0 || len(attachments) != 0 {
-		t.Fatalf("Delete left resource projections computes=%#v storages=%#v attachments=%#v", computes, storages, attachments)
-	}
-	wantEvents := []string{
-		"ledger:purchase-get",
-		// A resource-only purchase created no Runtime, but its absence is still a
-		// provider readback: Fabric reads the labelled Runtime objects back before
-		// the stage evidence is recorded.
-		"fabric:runtime-residual-read",
-		"fabric:attachment", "fabric:storage", "fabric:storage-read", "fabric:compute", "fabric:compute-read",
-		"control-plane:workspace-absent", "ledger:deletion-receipt",
-		"fabric:runtime-read", "fabric:secret-read", "fabric:runtime-residual-read", "fabric:storage-read", "fabric:compute-read",
-	}
-	if got := events.snapshot(); strings.Join(got, "\n") != strings.Join(wantEvents, "\n") {
-		t.Fatalf("resource-only deletion events=%#v want=%#v", got, wantEvents)
-	}
 }
 
 func TestWorkspaceRenewalRuntimePowerSkipsResourceOnlyWorkspace(t *testing.T) {

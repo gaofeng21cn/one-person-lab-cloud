@@ -67,11 +67,3 @@ func (s *Service) PreflightWorkspaceApplicationRuntime(ctx context.Context, inpu
 	}
 	return client.PreflightWorkspaceApplicationRuntime(ctx, input)
 }
-
-func (s *Service) RemoveWorkspaceApplicationGatewaySecret(ctx context.Context, input clients.WorkspaceApplicationGatewaySecretCleanupInput, key string) error {
-	client, ok := s.fabric.(clients.FabricWorkspaceApplicationGatewaySecretCleanupClient)
-	if !ok {
-		return errors.New("workspace_application_gateway_secret_cleanup_client_unavailable")
-	}
-	return client.RemoveWorkspaceApplicationGatewaySecret(ctx, input, key)
-}

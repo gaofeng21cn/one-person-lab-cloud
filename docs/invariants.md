@@ -38,6 +38,7 @@ code belong to source, `packages/contracts/**` and [spec/README.md](spec/README.
 - Sub2API rejects insufficient balance atomically (no debit clamping). Every financial write binds a stable `Idempotency-Key` and canonical request digest; unknown outcomes never trigger automatic duplicate debits or speculative refunds without prior owner readback.
 - Business refunds belong to confirmed original charges under atomic reservation guards so cumulative completed plus pending refunds never exceed the original charge. Workspace deletion and customer refund are separate steps: automatic refund requires verified resource absence plus Ledger deletion receipt.
 - Receipt persistence failure retries only the receipt, never repeating a confirmed debit, refund or provider mutation.
+- A refund reservation freezes its money facts (canonical redeem code, amount, original charge, adjustment-attempted, and the refund's own amount, used hours, refund hours and order identity) when it is created. A later executor dispatches against those recorded facts and never recomputes them from a later clock, so an adopted or retried reservation cannot double-refund.
 
 ## Plan Change And Settlement (D17)
 

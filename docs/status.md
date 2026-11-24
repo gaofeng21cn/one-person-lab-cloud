@@ -67,6 +67,15 @@ chronological snapshots.
   two `workspace.renewal` rows are `expired_unpaid`, which is terminal only when
   the operation's own recorded expiry phase is `complete`; the receipt projects
   the status but not that phase, so their terminality is not established.
+  - Control Plane Workspace deletion and platform-refund execution is retired:
+    the delete worker, the `workspace.delete.v2` stage machine and the refund
+    engine are gone. `DELETE /api/workspaces/{workspaceId}` still authorizes and
+    durably records the customer's deletion, `GET
+    /api/workspaces/{workspaceId}/deletion` still projects the deletion, its
+    block classification and the separate refund status, and the historical
+    decoders, the refund record read
+    (`services/control-plane/internal/server/workspace_delete_refund_history.go`)
+    and the rotation-lineage deletion preconditions remain.
 - **What Remains Unproven Here**: Same-Candidate paid customer purchase
   execution on Tencent/TKE, J0 READY qualification bound to the latest
   Candidate, end-to-end custom Agent Package build-to-serve production delivery,
@@ -84,3 +93,8 @@ chronological snapshots.
   deployment child cannot be told apart from an unrelated action in this
   receipt. The one `active`, two `blocked` and one `manual_review` unnamed
   rows therefore stay unresolved (tracked in [roadmap.md](roadmap.md)).
+  The withdrawn delete/refund executor was measured
+  by source readback only: no live refund population was read, so the number of
+  unsettled refund reservations is unknown, and the R5 census rows that carry no
+  action name stay unresolved until an Instance-side action-projection change
+  produces a fresh observation. Source withdrawal is not installed adoption.
