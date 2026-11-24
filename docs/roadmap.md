@@ -20,6 +20,7 @@ Close end-to-end customer lifecycle verification for the latest Cloud Candidate 
 - Invoke protected J0 READY producer against the same Candidate digest and capture Instance-side profile-digest-bound installation summary receipts.
 - Retire the remaining 11 zero-replica split Deployments on Instance only after fresh readback confirms zero active traffic.
 - The chain's `renewal` leg has no automatic executor: the retained Control Plane renewal/expiry execution engine is withdrawn at the source layer and the native Workspace owner has none, so an accepted renewal obligation stays unexecuted until an owner accepts, settles or transfers it.
+- The chain's `deletion` and `renewal` legs have no application runtime executor either: the application runtime convergence writer is withdrawn with the delete and renewal executors that were its only callers, so an accepted application suspension or recovery for a persisted record stays unexecuted until an owner accepts, settles or transfers it.
 
 ### PlanChange v2 (D17 Resource Plan Resize & Downgrade Execution)
 

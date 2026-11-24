@@ -98,6 +98,12 @@ reads are forbidden.
   creation/preview/worker/activation routes, the monthly renewal/expiry execution
   engine with its worker and the operator billing-review resolve route, and
   automated `workspace.gateway_key.rotate` creation/child deployments are retired.
+  The application runtime convergence writer
+  (`services/control-plane/internal/server/workspace_application_lifecycle.go`)
+  is retired with the delete and renewal executors that were its only callers;
+  its inventory reader, its historical operation decoders and validators, and
+  the shared application deployment worker that still writes a runtime lifecycle
+  stay.
 - **Preserved Historical Decoders**: `services/control-plane/internal/server/workspace_delete.go`
   and `workspace_store.go` keep read-only historical key-rotation decoding (`NewKeyID -> OldKeyID`),
   `workspace_runtime_image_history.go` keeps historical image operation decoding

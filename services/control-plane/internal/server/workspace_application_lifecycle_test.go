@@ -188,11 +188,14 @@ func seedApplicationRevisionForLifecycle(t *testing.T, app *controlPlaneServer, 
 	return intent
 }
 
-func TestApplicationLifecycleSuspendsEveryOwnedRuntimeAndRecoversSelectedOnly(t *testing.T) {
+// The inventory stays the reader of the application runtime set: the renewal
+// recovery reader still projects it. The write path that used to converge
+// those runtimes is withdrawn with the delete and renewal executors.
+func TestApplicationLifecycleInventoryCoversEveryOwnedRuntimeAndRecoversSelectedOnly(t *testing.T) {
 	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
 	app := fixture.server.(*controlPlaneHTTPHandler).app
 	selected := seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "selected-app", true)
-	candidate := seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "candidate-app", false)
+	seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "candidate-app", false)
 	workspace, _, _ := app.tables.GetWorkspace(context.Background(), "ws-alpha")
 	stop, err := app.workspaceApplicationLifecycleInventory(context.Background(), fixture.server.(*controlPlaneHTTPHandler).service, workspace, "suspended", "renewal-owner")
 	if err != nil || len(stop.Runtimes) != 2 {
@@ -201,26 +204,6 @@ func TestApplicationLifecycleSuspendsEveryOwnedRuntimeAndRecoversSelectedOnly(t 
 	recover, err := app.workspaceApplicationLifecycleInventory(context.Background(), fixture.server.(*controlPlaneHTTPHandler).service, workspace, "running", "renewal-owner")
 	if err != nil || len(recover.Runtimes) != 1 || recover.Runtimes[0].Input.RuntimeOperationID != selected.OperationID+":runtime" {
 		t.Fatalf("recovery=%#v error=%v", recover, err)
-	}
-	fabric := &applicationLifecycleFabric{workspaceDeleteFabric: fixture.fabric, states: map[string]string{}, failRuntime: contracts.WorkspaceApplicationRuntimeID(candidate.OperationID + ":runtime")}
-	service := newTestService(&fakeLedgerClient{}, fabric)
-	persists := 0
-	err = app.convergeWorkspaceApplicationLifecycle(context.Background(), service, stop, func() error { persists++; return nil })
-	if err == nil || len(fabric.mutations) != 1 || fabric.mutations[0].RuntimeOperationID != selected.OperationID+":runtime" || persists != 1 {
-		t.Fatalf("partial suspension err=%v mutations=%#v persists=%d", err, fabric.mutations, persists)
-	}
-	fabric.failRuntime = ""
-	if err := app.convergeWorkspaceApplicationLifecycle(context.Background(), service, stop, func() error { return nil }); err != nil {
-		t.Fatal(err)
-	}
-	if !workspaceApplicationLifecycleComplete(stop, "suspended") || len(fabric.mutations) != 2 {
-		t.Fatalf("suspension did not converge: %#v", stop)
-	}
-	if err := app.convergeWorkspaceApplicationLifecycle(context.Background(), service, recover, func() error { return nil }); err != nil {
-		t.Fatal(err)
-	}
-	if fabric.states[contracts.WorkspaceApplicationRuntimeID(candidate.OperationID+":runtime")] != "suspended" {
-		t.Fatal("recovery resumed an unselected candidate")
 	}
 }
 
@@ -265,42 +248,26 @@ func TestApplicationAccessUsesSelectedRuntimeAndSuppressesLegacyCredentials(t *t
 	}
 }
 
-func TestApplicationLifecycleFencesAbsentUnfinishedGeneration(t *testing.T) {
-	for _, desired := range []string{"suspended", "absent"} {
-		t.Run(desired, func(t *testing.T) {
-			fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
-			app := fixture.server.(*controlPlaneHTTPHandler).app
-			candidate := seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "candidate", false)
-			workspace, _, _ := app.tables.GetWorkspace(context.Background(), "ws-alpha")
-			fabric := &applicationLifecycleFabric{workspaceDeleteFabric: fixture.fabric, states: map[string]string{contracts.WorkspaceApplicationRuntimeID(candidate.OperationID + ":runtime"): "absent"}}
-			service := newTestService(&fakeLedgerClient{}, fabric)
-			inventory, err := app.workspaceApplicationLifecycleInventory(context.Background(), service, workspace, desired, "lifecycle-owner")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := app.convergeWorkspaceApplicationLifecycle(context.Background(), service, inventory, func() error { return nil }); err != nil {
-				t.Fatal(err)
-			}
-			if len(fabric.mutations) != 1 || fabric.mutations[0].DesiredState != desired {
-				t.Fatalf("absent generation never fenced: %+v", fabric.mutations)
-			}
-			if err := app.convergeWorkspaceApplicationLifecycle(context.Background(), service, inventory, func() error { return nil }); err != nil {
-				t.Fatal(err)
-			}
-			if len(fabric.mutations) != 1 {
-				t.Fatal("confirmed fence was repeated")
-			}
-		})
-	}
-}
-
-func TestApplicationLifecycleRejectsWrongOwnerReadbackBeforeMutation(t *testing.T) {
+// The write path that refused a foreign readback before mutating a runtime is
+// withdrawn with the delete and renewal executors. The renewal recovery reader
+// keeps the guard: a runtime that reports another runtime's identity, another
+// Workspace or an unknown state is refused before a recovery is eligible.
+func TestApplicationLifecycleRecoveryReaderRejectsWrongOwnerReadback(t *testing.T) {
 	for _, field := range []string{"runtime", "workspace", "state"} {
 		t.Run(field, func(t *testing.T) {
 			fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
 			app := fixture.server.(*controlPlaneHTTPHandler).app
 			seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "selected", true)
-			workspace, _, _ := app.tables.GetWorkspace(context.Background(), "ws-alpha")
+			renewal, err := newWorkspaceRenewalOperation(fixture.workspace, time.Now().UTC())
+			if err != nil {
+				t.Fatal(err)
+			}
+			row := workspaceRenewalOperationRow(renewal)
+			mustStore(t, fixture.store.SaveRuntimeOperation(context.Background(), row))
+			renewal, err = decodeWorkspaceRenewalOperation(row)
+			if err != nil {
+				t.Fatal(err)
+			}
 			fabric := &applicationLifecycleFabric{workspaceDeleteFabric: fixture.fabric, states: map[string]string{}}
 			fabric.readbackTransform = func(result contracts.WorkspaceApplicationRuntimeLifecycleResult) contracts.WorkspaceApplicationRuntimeLifecycleResult {
 				switch field {
@@ -314,16 +281,16 @@ func TestApplicationLifecycleRejectsWrongOwnerReadbackBeforeMutation(t *testing.
 				return result
 			}
 			service := newTestService(&fakeLedgerClient{}, fabric)
-			inventory, err := app.workspaceApplicationLifecycleInventory(context.Background(), service, workspace, "suspended", "lifecycle-owner")
-			if err != nil {
-				t.Fatal(err)
-			}
-			persists := 0
-			if err := app.convergeWorkspaceApplicationLifecycle(context.Background(), service, inventory, func() error { persists++; return nil }); err == nil {
+			err = app.workspaceRenewalRuntimeRecoveryEligible(context.Background(), service, renewal)
+			if err == nil {
 				t.Fatal("invalid owner readback accepted")
 			}
-			if len(fabric.mutations) != 0 || persists != 0 {
-				t.Fatal("invalid readback caused a mutation or completion claim")
+			want := "workspace_application_lifecycle_readback_invalid"
+			if field == "state" {
+				want = "workspace_application_lifecycle_pending"
+			}
+			if err.Error() != want {
+				t.Fatalf("readback refusal = %v, want %s", err, want)
 			}
 		})
 	}
@@ -406,7 +373,7 @@ func (f *absentHistoricalApplicationFabric) ReadWorkspaceApplicationRuntime(ctx 
 	return observation, err
 }
 
-func TestApplicationLifecycleUnactivatedHistoricalReservationIsFenced(t *testing.T) {
+func TestApplicationLifecycleUnactivatedHistoricalReservationIsRefused(t *testing.T) {
 	for _, phase := range []string{workspaceApplicationDeploymentIntentPhase, workspaceApplicationDeploymentRuntimePhase, workspaceApplicationDeploymentActivatingPhase, workspaceApplicationDeploymentManualReviewPhase} {
 		for _, desired := range []string{"absent", "suspended"} {
 			t.Run(phase+"/"+desired, func(t *testing.T) {
@@ -437,9 +404,6 @@ func TestApplicationLifecycleUnactivatedHistoricalReservationIsFenced(t *testing
 				input := inventory.Runtimes[0].Input
 				if !input.HistoricalApplicationRuntime || input.RuntimeID != runtimeID || input.RuntimeOperationID != reserved.OperationID+":runtime" {
 					t.Fatalf("wrong historical fence owner: %+v", input)
-				}
-				if err := app.convergeWorkspaceApplicationLifecycle(ctx, service, inventory, func() error { return nil }); err != nil || len(fabric.mutations) != 1 || !workspaceApplicationLifecycleComplete(inventory, desired) {
-					t.Fatalf("absent reserved Runtime was not fenced: inventory=%+v mutations=%+v err=%v", inventory, fabric.mutations, err)
 				}
 				for _, mismatch := range []struct {
 					field string

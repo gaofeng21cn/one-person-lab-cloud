@@ -108,6 +108,17 @@ Git log.
   retained-history evidence, and not the readers that still report them. A
   renewal operation an earlier release left non-terminal therefore stays a
   visible obligation instead of being silently completed or dropped.
+- **Application Runtime Write Path Withdrawal**: The Control Plane application
+  runtime convergence writer
+  (`services/control-plane/internal/server/workspace_application_lifecycle.go`)
+  is withdrawn with the delete and renewal executors that were its only
+  callers. Its readers stay: the application runtime inventory the renewal
+  recovery reader projects, the historical delete and renewal operation
+  decoders and validators that read a persisted record, and the shared
+  application deployment worker that still writes a runtime lifecycle. An
+  application suspension or recovery that was accepted for a persisted record
+  therefore stays a visible obligation instead of being silently completed or
+  dropped.
 
 ## Ordinary Source Development And CI
 

@@ -83,6 +83,11 @@ chronological snapshots.
     renewal operation decoder, the recovery-state reader, the settlement
     projection and the delete fence still read the records the engine wrote. No
     table, column, migration or persisted row was deleted.
+  - The Control Plane application runtime convergence writer is retired with the
+    delete and renewal executors that were its only callers. The application
+    runtime inventory the renewal recovery reader projects, the historical
+    delete and renewal operation decoders and validators, and the shared
+    application deployment worker that still writes a runtime lifecycle stay.
 - **What Remains Unproven Here**: Same-Candidate paid customer purchase
   execution on Tencent/TKE, J0 READY qualification bound to the latest
   Candidate, end-to-end custom Agent Package build-to-serve production delivery,
@@ -112,3 +117,8 @@ chronological snapshots.
   projects renewal rows in `expired_unpaid`, a status that is terminal only when
   the operation's own recorded expiry phase is `complete`, which that receipt
   does not project, so their terminality is unproven.
+  The withdrawal of the application runtime convergence writer is proven by
+  source readback only: it removes the only executor that could suspend or
+  recover an application runtime for a persisted delete or renewal record, so
+  an accepted application suspension or recovery stays unexecuted, and no
+  installed environment has adopted the withdrawal.
