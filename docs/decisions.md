@@ -101,6 +101,10 @@ Git log.
   cutover. Keep that execution path until those obligations complete or migrate.
   New purchases enter through the Workspace owner. A retained customer Key
   continuation uses the operation owner's Gateway credential.
+- **Retained Application Deployment Executor**: Keep the shared Control Plane
+  deployment worker, activation store and deployment wiring until a supported
+  upgrade completes or transfers accepted pending and running deployment
+  operations under their original operation and resource identities.
 
 ## Ordinary Source Development And CI
 

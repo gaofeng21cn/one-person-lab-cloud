@@ -48,8 +48,12 @@ chronological snapshots.
   - The native Workspace owner accepts new purchases. The Control Plane
     [Launch executor](implementation/workspace-launch-recovery.md) continues
     accepted operations carried forward from before the purchase cutover.
+- **Retained Application Deployment**: The shared Control Plane worker advances
+  accepted `workspace.application.deploy` children through predecessor
+  suspension, activation and receipt. The source qualification covers retained
+  v0.1.8 fixtures, response loss and restart against the same database.
 - **What Remains Unproven Here**: Same-Candidate paid customer purchase
   execution on Tencent/TKE, J0 READY qualification bound to the latest
   Candidate, end-to-end custom Agent Package build-to-serve production delivery,
-  and PlanChange v2 runtime resize implementation (tracked in
-  [roadmap.md](roadmap.md)).
+  PlanChange v2 runtime resize implementation, and installed qualification of
+  the retained application deployment worker (tracked in [roadmap.md](roadmap.md)).

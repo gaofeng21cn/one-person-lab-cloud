@@ -37,6 +37,15 @@ Implement the [D17 settlement and lifecycle specification](invariants.md#plan-ch
 
 - Roll out Cloud's read-only MCP endpoint (`/api/v2/mcp`), same-origin quote review and 1-hour parent-session-bound helper credentials (`runtime/cloud-connect.md`) to an installed OPL App / Studio Host under the same CloudIdentity account.
 
+### Retained v0.1.8 Deployment Worker Upgrade Qualification
+
+Qualify an installed upgrade on the Instance-owned managed TKE or Local
+Workspace overlay. For one retained Workspace, read back an accepted pending
+or running `workspace.application.deploy` child that completes under its
+original operation, resource and digest identities, with activation and receipt
+recovered. An unresolved rotation parent still fences Workspace deletion.
+Cross-installation transfer requires separate evidence if used.
+
 ## Workspace Key And Customer Read Boundaries
 
 Complete migration of remaining transitional customer reads off legacy Control
