@@ -53,5 +53,12 @@ Plane / delegated process-local custody onto canonical domain owners:
 3. **Retained Control Plane Cleanup**: Progressively retire remaining legacy
    Launch/Policy/Admin surfaces once open persisted Workspaces converge and all
    non-browser Instance callers confirm zero dependency.
+   - The purchase-eligibility policy writer
+     (`POST /api/operator/accounts/{accountId}/workspace-purchase-eligibility`)
+     stays until a two-sided owner/caller migration exists: an Account-policy
+     writer in the target topology plus the native Workspace consumer's read
+     path. Deleting the writer alone would freeze
+     `Account.WorkspacePurchaseEnabled` and keep gating new purchases on a
+     stale fact.
 4. **Module & DB-Role Coverage**: Expand `tests/contracts/module-physical-boundaries.test.ts`
    and PostgreSQL role-isolation checks to cover every extracted service and Console BFF.
