@@ -13,6 +13,7 @@ require (
 	github.com/moby/moby/api v1.57.0
 	github.com/moby/moby/client v0.6.3
 	github.com/modelcontextprotocol/go-sdk v1.4.1
+	github.com/oapi-codegen/runtime v1.9.1
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/pressly/goose/v3 v3.30.1
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
@@ -34,6 +35,7 @@ require (
 
 require (
 	github.com/Microsoft/go-winio v0.6.4 // indirect
+	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/clbanning/mxj v1.8.4 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect

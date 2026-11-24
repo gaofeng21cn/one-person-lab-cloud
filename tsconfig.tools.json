@@ -14,9 +14,11 @@
     "tools/verify-local.ts",
     "tools/run-browser-suite.ts",
     "tools/verify-generated-contracts.ts",
+    "tools/verify-openapi-codegen.ts",
     "tools/workspace-model-scope.ts",
     "tests/tools/verify-local.test.ts",
     "tests/tools/verify-generated-contracts.test.ts",
+    "tests/tools/verify-openapi-codegen.test.ts",
     "tests/tools/workspace-model-scope.test.ts"
   ]
 }

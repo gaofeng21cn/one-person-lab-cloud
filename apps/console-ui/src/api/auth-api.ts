@@ -1,5 +1,5 @@
 import { decodeDto, decodeSource } from "./dtos.ts";
-import type { AuthIdentity, AuthMeData, AuthSession, LoginRequest, SourceEnvelope } from "./dtos.ts";
+import type { AuthIdentity, AuthMeData, AuthSession, LoginRequest, OpenAPILoginContext, OpenAPILoginRequest, OpenAPISession, SourceEnvelope } from "./dtos.ts";
 import { getJson, postJson } from "./console-api.ts";
 import { cloudIdentity } from "../app/console-identity.ts";
 
@@ -45,7 +45,7 @@ function sessionFromAuthMe(value: unknown, csrfToken: string): AuthSession {
   return { user, isOperator: data.role === "admin", csrfToken };
 }
 
-type CloudSession = { actorId: string; displayName: string; tenantId?: string; role?: string; permissions: string[]; csrfToken: string; expiresAt: string };
+type CloudSession = OpenAPISession;
 function fromCloudSession(value: CloudSession): AuthSession {
   if (!value.actorId || !value.csrfToken) throw new Error("session_check_failed");
   return { user: { id: value.actorId, accountId: value.tenantId || "", email: value.displayName, role: value.role || "", status: "active" }, isOperator: value.permissions.includes("createPublisherNamespace"), csrfToken: value.csrfToken, expiresAt: value.expiresAt };
@@ -76,8 +76,9 @@ export async function currentSession(): Promise<AuthSession | null> {
 
 export async function login(credentials: LoginRequest, signal?: AbortSignal): Promise<AuthSession> {
   if (cloudIdentity) {
-    const context = await getJson<{ csrfToken: string }>("/api/v2/auth/context", { signal });
-    return fromCloudSession(await postJson<CloudSession>("/api/v2/auth/login", { username: credentials.email, password: credentials.password }, context.csrfToken, crypto.randomUUID(), 10_000, signal));
+    const context = await getJson<OpenAPILoginContext>("/api/v2/auth/context", { signal });
+    const body: OpenAPILoginRequest = { username: credentials.email, password: credentials.password };
+    return fromCloudSession(await postJson<CloudSession>("/api/v2/auth/login", body, context.csrfToken, crypto.randomUUID(), 10_000, signal));
   }
   return postJson<unknown>("/api/auth/login", credentials, "", "", 10_000, signal).then(sessionFromLogin);
 }

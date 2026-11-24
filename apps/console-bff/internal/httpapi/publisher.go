@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"opl-cloud/apps/console-bff/internal/clients"
 	api "opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/openapi"
 	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/packages/contracts/go/publicjson"
 )
@@ -321,7 +322,11 @@ func writeOwnerCallFailure(w http.ResponseWriter, r *http.Request, err error) {
 			if httpStatus == 429 || httpStatus == 503 {
 				w.Header().Set("Retry-After", "2")
 			}
-			writeJSON(w, httpStatus, map[string]any{"code": strings.TrimPrefix(ownerCode.String(), "ERROR_CODE_ENUM_"), "message": "publisher request could not be completed", "requestId": r.Header.Get(requestIDHeader)})
+			writeJSON(w, httpStatus, openapi.NewError(
+				openapi.ErrorCode(strings.TrimPrefix(ownerCode.String(), "ERROR_CODE_ENUM_")),
+				"publisher request could not be completed",
+				r.Header.Get(requestIDHeader),
+			))
 			return
 		}
 	}
@@ -389,5 +394,5 @@ func writePublisherError(w http.ResponseWriter, r *http.Request, httpStatus int,
 	if httpStatus == 429 || httpStatus == 503 {
 		w.Header().Set("Retry-After", "2")
 	}
-	writeJSON(w, httpStatus, map[string]any{"code": code, "message": message, "requestId": r.Header.Get(requestIDHeader)})
+	writeJSON(w, httpStatus, openapi.NewError(openapi.ErrorCode(code), message, r.Header.Get(requestIDHeader)))
 }

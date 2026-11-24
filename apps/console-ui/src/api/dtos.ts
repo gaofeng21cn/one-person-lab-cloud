@@ -1,3 +1,22 @@
+import type { components, paths } from "./openapi.generated.ts";
+
+// Canonical OpenAPI v2 contract types generated from docs/spec/target/03_api_contract_complete.yaml.
+// Legacy /api/* DTOs below remain separate while the v2 wire surface consumes these generated schemas.
+export type OpenAPIPaths = paths;
+export type OpenAPISchemas = components["schemas"];
+export type OpenAPILoginContext = OpenAPISchemas["LoginContext"];
+export type OpenAPILoginRequest = OpenAPISchemas["LoginRequest"];
+export type OpenAPISession = OpenAPISchemas["Session"];
+export type OpenAPIError = OpenAPISchemas["Error"];
+export type OpenAPIOperation = OpenAPISchemas["Operation"];
+export type OpenAPISubscription = OpenAPISchemas["Subscription"];
+export type OpenAPIWalletOperation = OpenAPISchemas["WalletOperation"];
+export type OpenAPIWorkspaceTransactionTrend = OpenAPISchemas["WorkspaceTransactionTrend"];
+export type OpenAPIWorkspaceTransactionTrendDay = OpenAPISchemas["WorkspaceTransactionTrendDay"];
+export type OpenAPICapabilityVersion = OpenAPISchemas["CapabilityVersion"];
+export type OpenAPIComputePlan = OpenAPISchemas["ComputePlan"];
+export type OpenAPIStoragePlan = OpenAPISchemas["StoragePlan"];
+
 export type SourceStatus = "available" | "empty" | "unavailable";
 export type SourceValueStatus = Exclude<SourceStatus, "unavailable">;
 

@@ -1,24 +1,11 @@
 import { getJson } from "./console-api.ts";
+import type { OpenAPIWalletOperation, OpenAPIWorkspaceTransactionTrend, OpenAPIWorkspaceTransactionTrendDay } from "./dtos.ts";
 
-// Projection of the existing Gateway WalletOperation contract. Gateway remains
+// Projection of the generated OpenAPI Gateway WalletOperation contract. Gateway remains
 // the record owner; the browser never recomputes settlement from these pages.
-export interface WorkspaceTransaction {
-  id: string;
+export type WorkspaceTransaction = Omit<OpenAPIWalletOperation, "workspaceId"> & {
   workspaceId: string;
-  kind: "charge" | "refund" | "recharge";
-  status: "requested" | "confirmed" | "rejected" | "unknown";
-  amountUSDMicros: string;
-  createdAt: string;
-  updatedAt: string;
-  purpose?: string;
-  originalChargeOperationId?: string;
-  externalReference?: string;
-  receiptId?: string;
-  errorCode?: string;
-  planChangeId?: string;
-  coverageStart?: string;
-  coverageEnd?: string;
-}
+};
 
 export interface WorkspaceTransactionPage {
   items: WorkspaceTransaction[];
@@ -57,21 +44,8 @@ export async function getWorkspaceTransactions(workspaceId: string, cursor: stri
   return page;
 }
 
-export interface WorkspaceTransactionTrendDay {
-  date: string;
-  confirmedChargeUSDMicros: string;
-  confirmedRefundUSDMicros: string;
-}
-export interface WorkspaceTransactionTrend {
-  workspaceId: string;
-  periodStart: string;
-  periodEnd: string;
-  days: WorkspaceTransactionTrendDay[];
-  unknownChargeUSDMicros: string;
-  unknownRefundUSDMicros: string;
-  requestedChargeUSDMicros: string;
-  requestedRefundUSDMicros: string;
-}
+export type WorkspaceTransactionTrendDay = OpenAPIWorkspaceTransactionTrendDay;
+export type WorkspaceTransactionTrend = OpenAPIWorkspaceTransactionTrend;
 
 function validTrendAmount(value: unknown): value is string {
   return typeof value === "string" && /^(0|[1-9]\d{0,18})$/.test(value) && BigInt(value) <= 9223372036854775807n;
