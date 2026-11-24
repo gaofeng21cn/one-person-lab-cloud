@@ -12,30 +12,11 @@ import (
 )
 
 var (
-	errMonthlyInsufficientBalance             = errors.New("monthly_balance_insufficient")
 	errMonthlyAccountUnmapped                 = errors.New("sub2api_account_mapping_required")
 	errWorkspaceLaunchMonthlyPreflightInvalid = errors.New("fabric_monthly_preflight_invalid")
 	errBillingReviewNotFound                  = errors.New("billing_review_not_found")
-	errBillingReviewNotPending                = errors.New("billing_review_not_pending")
-	errBillingReviewIdentity                  = errors.New("billing_review_identity_mismatch")
-	errBillingReviewChargeFact                = errors.New("billing_review_charge_fact_unconfirmed")
-	errBillingReviewProviderFact              = errors.New("billing_review_provider_fact_unconfirmed")
-	errBillingReviewReceipt                   = errors.New("billing_review_receipt_pending")
 	errInvalidBillingReview                   = errors.New("invalid_billing_review_request")
 )
-
-const billingReviewActivateCharged = "activate_charged_resource"
-
-type billingReviewResolutionInput struct {
-	ResourceType       string
-	ResourceID         string
-	AccountID          string
-	BillingOperationID string
-	Decision           string
-	EvidenceRef        string
-	IdempotencyKey     string
-	Reviewer           string
-}
 
 func monthlyPreflightConfirmed(input clients.MonthlyPreflightInput, result clients.MonthlyPreflight) bool {
 	return result.ResourceType == input.ResourceType && result.PackageID == input.PackageID && result.SizeGB == input.SizeGB &&

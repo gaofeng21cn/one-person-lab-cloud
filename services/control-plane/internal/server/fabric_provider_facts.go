@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -69,22 +68,6 @@ func readProviderFact(ctx context.Context, service *controlplane.Service, input 
 		return clients.ProviderFact{}, err
 	}
 	return facts[providerFactKey(input)], nil
-}
-
-func providerFactEvidence(fact clients.ProviderFact) map[string]any {
-	return structToMap(fact)
-}
-
-func providerFactFromEvidence(value map[string]any) (clients.ProviderFact, bool) {
-	if len(value) == 0 {
-		return clients.ProviderFact{}, false
-	}
-	var fact clients.ProviderFact
-	payload, err := json.Marshal(value)
-	if err != nil || json.Unmarshal(payload, &fact) != nil {
-		return clients.ProviderFact{}, false
-	}
-	return fact, true
 }
 
 func providerFactCovers(input clients.ProviderFactInput, fact clients.ProviderFact, expectedProviderID string, minimumExpiry time.Time) bool {

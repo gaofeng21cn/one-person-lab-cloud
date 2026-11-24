@@ -607,3 +607,34 @@ func TestBillingReceiptRouteIsScopedToTheSessionAccount(t *testing.T) {
 		})
 	}
 }
+
+func (fabric *monthlyFabric) ReadWorkspaceRuntimePower(_ context.Context, input contracts.WorkspaceRuntimePowerInput) (contracts.WorkspaceRuntimePowerResult, error) {
+	fabric.runtimePowerReads = append(fabric.runtimePowerReads, input)
+	if err := fabric.validateRuntimePower(input); err != nil {
+		return contracts.WorkspaceRuntimePowerResult{}, err
+	}
+	return contracts.WorkspaceRuntimePowerResult{SchemaVersion: 1, Binding: input, State: fabric.runtimePowerState}, nil
+}
+
+func (fabric *monthlyFabric) SetWorkspaceRuntimePower(_ context.Context, input contracts.WorkspaceRuntimePowerInput) (contracts.WorkspaceRuntimePowerResult, error) {
+	if err := fabric.validateRuntimePower(input); err != nil {
+		return contracts.WorkspaceRuntimePowerResult{}, err
+	}
+	fabric.runtimePowerCalls = append(fabric.runtimePowerCalls, input)
+	if fabric.runtimePowerErr != nil {
+		return contracts.WorkspaceRuntimePowerResult{}, fabric.runtimePowerErr
+	}
+	fabric.runtimePowerState = input.DesiredState
+	return contracts.WorkspaceRuntimePowerResult{SchemaVersion: 1, Binding: input, State: fabric.runtimePowerState}, nil
+}
+
+func (fabric *monthlyFabric) validateRuntimePower(input contracts.WorkspaceRuntimePowerInput) error {
+	binding := fabric.runtimePowerIdentity
+	if binding.RuntimeID == "" || input.SchemaVersion != 1 || input.AccountID != binding.AccountID || input.WorkspaceID != binding.WorkspaceID || input.RuntimeID != binding.RuntimeID || input.RuntimeOperationID != binding.RuntimeOperationID || input.IdempotencyKey == "" || input.PaidThrough == "" || input.DesiredState != "running" && input.DesiredState != "suspended" {
+		return errors.New("runtime_power_identity_mismatch")
+	}
+	if _, err := time.Parse(time.RFC3339, input.PaidThrough); err != nil {
+		return err
+	}
+	return nil
+}

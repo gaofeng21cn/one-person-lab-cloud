@@ -9,7 +9,6 @@ import "context"
 // - services/control-plane/internal/server/customer_facts_test.go
 // - services/control-plane/internal/server/ent_state_store_test.go
 // - services/control-plane/internal/server/operational_alerts_test.go
-// - services/control-plane/internal/server/renewal_worker.go
 // - services/control-plane/internal/server/resource_facts.go
 // - services/control-plane/internal/server/routes_admin.go
 // - services/control-plane/internal/server/routes_gateway.go
@@ -26,6 +25,7 @@ import "context"
 // - services/control-plane/internal/server/workspace_launch_repair.go
 // - services/control-plane/internal/server/workspace_launch_service.go
 // - services/control-plane/internal/server/workspace_renewal.go
+// - services/control-plane/internal/server/workspace_renewal_history.go
 // - services/control-plane/internal/server/workspace_renewal_test.go
 type WorkspaceStore interface {
 	ListComputes(ctx context.Context, accountID string) ([]map[string]any, error)
@@ -49,8 +49,6 @@ type WorkspaceStore interface {
 	ApplyWorkspaceResourceReconcile(ctx context.Context, mutation workspaceResourceReconcileMutation) error
 	ApplyWorkspaceRenewalIntent(ctx context.Context, update workspaceRenewalIntentCAS) error
 	PersistWorkspaceLaunchReconcile(ctx context.Context, update workspaceLaunchReconcileCAS) error
-	ClaimWorkspaceRenewal(ctx context.Context, claim workspaceRenewalClaimCAS) error
-	PersistWorkspaceRenewal(ctx context.Context, update workspaceRenewalPersistCAS) error
 	ActivateWorkspaceLaunchProjection(ctx context.Context, row map[string]any) (map[string]any, error)
 	ApplyWorkspaceDelete(ctx context.Context, mutation workspaceDeleteStoreMutation) error
 	DeleteWorkspace(ctx context.Context, id string) error

@@ -1101,13 +1101,6 @@ export interface WorkspaceLaunchRecoveryRequest {
   reason: string;
 }
 
-export interface BillingReviewResolutionRequest {
-  accountId: string;
-  billingOperationId: string;
-  decision: "activate_charged_resource" | "terminate_uncharged_absent" | "refund_charged_absent";
-  evidenceRef: string;
-}
-
 export interface ReadinessFact {
   ready?: boolean;
   generatedAt?: string;

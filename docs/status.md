@@ -76,6 +76,13 @@ chronological snapshots.
     decoders, the refund record read
     (`services/control-plane/internal/server/workspace_delete_refund_history.go`)
     and the rotation-lineage deletion preconditions remain.
+  - The Control Plane monthly renewal/expiry execution engine and its worker are
+    withdrawn, so the Control Plane no longer debits, renews, expires or refunds
+    a Workspace. The customer's auto-renew intent command remains a
+    compare-and-set that records and audits the intent and never charges, and the
+    renewal operation decoder, the recovery-state reader, the settlement
+    projection and the delete fence still read the records the engine wrote. No
+    table, column, migration or persisted row was deleted.
 - **What Remains Unproven Here**: Same-Candidate paid customer purchase
   execution on Tencent/TKE, J0 READY qualification bound to the latest
   Candidate, end-to-end custom Agent Package build-to-serve production delivery,
@@ -98,3 +105,10 @@ chronological snapshots.
   unsettled refund reservations is unknown, and the census rows that carry no
   action name stay unresolved until an Instance-side action-projection change
   produces a fresh observation. Source withdrawal is not installed adoption.
+  The withdrawal of the Control Plane renewal/expiry
+  execution engine is adopted by no installed environment, and a
+  `workspace.renewal` operation an earlier release left non-terminal now has no
+  executor: the read-only R5 census that measured the live obligation set
+  projects renewal rows in `expired_unpaid`, a status that is terminal only when
+  the operation's own recorded expiry phase is `complete`, which that receipt
+  does not project, so their terminality is unproven.

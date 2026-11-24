@@ -101,6 +101,13 @@ Git log.
   persisted refund or wallet obligation keeps an explicit disposition — settle,
   transfer, or keep the executor — and source withdrawal is not installed
   adoption.
+- **Renewal Engine Withdrawal**: The retained Control Plane monthly
+  renewal/expiry execution engine and its worker are withdrawn. The withdrawal
+  removes the executor of a `workspace.renewal` operation and of a carried-forward
+  `autoRenew` authorization — not their purchase, debit, refund and
+  retained-history evidence, and not the readers that still report them. A
+  renewal operation an earlier release left non-terminal therefore stays a
+  visible obligation instead of being silently completed or dropped.
 
 ## Ordinary Source Development And CI
 

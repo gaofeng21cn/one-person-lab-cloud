@@ -167,7 +167,6 @@ if (enabled) test("portable Compose enforces runtime database and caller isolati
       "OPL_SUB2API_ADMIN_PASSWORD=portable-fixture-password",
       "OPL_SUB2API_REQUEST_TIMEOUT_MS=2000",
       `OPL_AIONUI_ADMIN_PASSWORD_SEED=${randomBytes(32).toString("hex")}`,
-      "OPL_MONTHLY_BILLING_WORKER_ENABLED=0",
       "OPL_WORKSPACE_LAUNCH_WORKER_ENABLED=0",
       ""
     ];
@@ -302,7 +301,6 @@ if (enabled) test("portable Compose enforces runtime database and caller isolati
         "-e", "OPL_SUB2API_ADMIN_PASSWORD=portable-fixture-password",
         "-e", "OPL_SUB2API_REQUEST_TIMEOUT_MS=2000",
         "-e", `OPL_AIONUI_ADMIN_PASSWORD_SEED=${randomBytes(32).toString("hex")}`,
-        "-e", "OPL_MONTHLY_BILLING_WORKER_ENABLED=0",
         "-e", "OPL_WORKSPACE_LAUNCH_WORKER_ENABLED=0",
         "-e", `OPL_RELEASE_SHA=${revision}`,
         "-e", `OPL_CLOUD_IMAGE=registry.example/opl-cloud@${cloudDigest}`,

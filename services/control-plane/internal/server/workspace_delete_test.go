@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -1233,139 +1232,6 @@ func TestPostgresWorkspaceDeleteRenewalMutualExclusion(t *testing.T) {
 	exerciseWorkspaceDeleteRenewalMutualExclusion(t, newPostgresWorkspaceRenewalStore(t))
 }
 
-func TestPostgresWorkspaceDeleteRenewalConcurrentClaim(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	var blocker *sql.Tx
-	var wg sync.WaitGroup
-	defer func() {
-		cancel()
-		if blocker != nil {
-			_ = blocker.Rollback()
-		}
-		wg.Wait()
-	}()
-	store, db := newPostgresWorkspaceRenewalStoreWithDB(t)
-	workspace := currentWorkspaceRenewalAPIRow()
-	workspaceID := "workspace-delete-renewal-concurrent-claim"
-	workspace["id"], workspace["accountId"], workspace["ownerAccountId"], workspace["ownerUserId"] = workspaceID, "acct-delete", "acct-delete", "usr-delete"
-	workspace["autoRenew"], workspace["authorizedBy"], workspace["authorizedAt"] = true, "usr-delete", time.Now().UTC().Format(time.RFC3339Nano)
-	workspace["workspaceApiKeyId"] = int64(19)
-	if err := store.SaveWorkspace(ctx, workspace); err != nil {
-		t.Fatal(err)
-	}
-	operations, err := store.ListRuntimeOperations(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	renewal, err := newWorkspaceRenewalOperation(workspace, time.Now().UTC())
-	if err != nil {
-		t.Fatal(err)
-	}
-	renewalClaim := workspaceRenewalClaimCAS{
-		WorkspaceID: workspaceID, AccountID: "acct-delete", ExpectedPaidThrough: stringValue(workspace["paidThrough"]), ExpectedAutoRenew: true,
-		ExpectedOperationsVersion: runtimeOperationsVersion(operations, workspaceID), DesiredOperation: workspaceRenewalOperationRow(renewal),
-	}
-	deleteOperation := workspaceDeleteStoreOperationForWorkspace(workspace, time.Now().UTC().Format(time.RFC3339Nano))
-	blocker, err = db.BeginTx(ctx, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var blockerPID int
-	if err := blocker.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&blockerPID); err != nil {
-		t.Fatal(err)
-	}
-	var lockedID string
-	if err := blocker.QueryRowContext(ctx, `SELECT id FROM control_plane_workspaces WHERE id = $1 FOR UPDATE`, workspaceID).Scan(&lockedID); err != nil {
-		t.Fatal(err)
-	}
-	if lockedID != workspaceID {
-		t.Fatalf("blocker locked Workspace=%q", lockedID)
-	}
-	type claimResult struct {
-		kind string
-		err  error
-	}
-	start := make(chan struct{})
-	results := make(chan claimResult, 2)
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		<-start
-		results <- claimResult{kind: "delete", err: store.ApplyWorkspaceDelete(ctx, workspaceDeleteStoreMutation{Create: true, DesiredOperation: workspaceDeleteOperationRow(deleteOperation)})}
-	}()
-	go func() {
-		defer wg.Done()
-		<-start
-		results <- claimResult{kind: "renewal", err: store.ClaimWorkspaceRenewal(ctx, renewalClaim)}
-	}()
-	close(start)
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		var waiters, lockWaiters int
-		if err := db.QueryRowContext(ctx, `
-			WITH RECURSIVE blocker_waiters(pid, wait_event_type) AS (
-				SELECT activity.pid, activity.wait_event_type
-				FROM pg_stat_activity AS activity
-				WHERE $1 = ANY(pg_blocking_pids(activity.pid))
-				UNION
-				SELECT activity.pid, activity.wait_event_type
-				FROM pg_stat_activity AS activity
-				JOIN blocker_waiters AS parent
-				  ON parent.pid = ANY(pg_blocking_pids(activity.pid))
-			)
-			SELECT count(*), count(*) FILTER (WHERE wait_event_type = 'Lock')
-			FROM blocker_waiters
-		`, blockerPID).Scan(&waiters, &lockWaiters); err != nil {
-			t.Fatal(err)
-		}
-		if waiters == 2 && lockWaiters == 2 {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			t.Fatalf("claims did not both enter blocker PID %d lock wait chain: waiters=%d lockWaiters=%d err=%v", blockerPID, waiters, lockWaiters, ctx.Err())
-		case <-ticker.C:
-		}
-	}
-	if err := blocker.Commit(); err != nil {
-		t.Fatal(err)
-	}
-	claimErrors := make(map[string]error, 2)
-	for range 2 {
-		select {
-		case result := <-results:
-			claimErrors[result.kind] = result.err
-		case <-ctx.Done():
-			t.Fatalf("concurrent claims did not converge: %v", ctx.Err())
-		}
-	}
-	deleteErr, renewalErr := claimErrors["delete"], claimErrors["renewal"]
-	if (deleteErr == nil) == (renewalErr == nil) {
-		t.Fatalf("concurrent claims delete=%v renewal=%v", deleteErr, renewalErr)
-	}
-	if deleteErr == nil {
-		if !errors.Is(renewalErr, errWorkspaceRenewalCASConflict) {
-			t.Fatalf("Delete winner returned Renewal error=%v", renewalErr)
-		}
-	} else if !errors.Is(deleteErr, errWorkspaceDeleteCASConflict) || renewalErr != nil {
-		t.Fatalf("Renewal winner returned Delete error=%v renewal=%v", deleteErr, renewalErr)
-	}
-	operations, err = store.ListRuntimeOperations(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	lifecycleOperations := 0
-	for _, operation := range operations {
-		if stringValue(operation["workspaceId"]) == workspaceID && (stringValue(operation["action"]) == workspaceDeleteAction || stringValue(operation["action"]) == "workspace.renewal") {
-			lifecycleOperations++
-		}
-	}
-	if lifecycleOperations != 1 {
-		t.Fatalf("concurrent lifecycle operations=%d rows=%#v", lifecycleOperations, operations)
-	}
-}
-
 func exerciseWorkspaceDeleteRenewalMutualExclusion(t *testing.T, store controlPlaneTableStore) {
 	t.Helper()
 	ctx := context.Background()
@@ -1434,59 +1300,6 @@ func exerciseWorkspaceDeleteRenewalMutualExclusion(t *testing.T, store controlPl
 	invalidDelete := workspaceDeleteStoreOperationForWorkspace(invalidWorkspace, time.Now().UTC().Format(time.RFC3339Nano))
 	if err := store.ApplyWorkspaceDelete(ctx, workspaceDeleteStoreMutation{Create: true, DesiredOperation: workspaceDeleteOperationRow(invalidDelete)}); !errors.Is(err, errWorkspaceDeleteCASConflict) {
 		t.Fatalf("invalid Renewal did not fail closed before Delete claim: %v", err)
-	}
-
-	workspace := currentWorkspaceRenewalAPIRow()
-	workspaceID := "workspace-renewal-blocked-by-delete"
-	workspace["id"], workspace["accountId"], workspace["ownerAccountId"], workspace["ownerUserId"] = workspaceID, "acct-delete", "acct-delete", "usr-delete"
-	workspace["autoRenew"], workspace["authorizedBy"], workspace["authorizedAt"] = true, "usr-delete", time.Now().UTC().Format(time.RFC3339Nano)
-	workspace["workspaceApiKeyId"] = int64(19)
-	if err := store.SaveWorkspace(ctx, workspace); err != nil {
-		t.Fatal(err)
-	}
-	operation := workspaceDeleteStoreOperationForWorkspace(workspace, time.Now().UTC().Format(time.RFC3339Nano))
-	if err := store.ApplyWorkspaceDelete(ctx, workspaceDeleteStoreMutation{Create: true, DesiredOperation: workspaceDeleteOperationRow(operation)}); err != nil {
-		t.Fatal(err)
-	}
-	operations, err := store.ListRuntimeOperations(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	renewalID := "renewal-blocked-by-delete"
-	claim := workspaceRenewalClaimCAS{
-		WorkspaceID: workspaceID, AccountID: "acct-delete", ExpectedPaidThrough: stringValue(workspace["paidThrough"]), ExpectedAutoRenew: true,
-		ExpectedOperationsVersion: runtimeOperationsVersion(operations, workspaceID),
-		DesiredOperation: map[string]any{
-			"id": renewalID, "operationId": renewalID, "accountId": "acct-delete", "workspaceId": workspaceID, "resourceId": workspaceID,
-			"resourceKind": "workspace_renewal", "action": "workspace.renewal", "status": "claimed", "result": `{}`, "createdAt": time.Now().UTC().Format(time.RFC3339Nano),
-		},
-	}
-	if err := store.ClaimWorkspaceRenewal(ctx, claim); !errors.Is(err, errWorkspaceRenewalCASConflict) {
-		t.Fatalf("active Delete did not block Renewal claim: %v", err)
-	}
-}
-
-func TestWorkspaceRenewalWorkerSkipsActiveDeleteV2(t *testing.T) {
-	fixture := newWorkspaceRenewalWorkerFixture(t, []int64{100_000_000, 47_420_000})
-	operation := workspaceDeleteStoreOperationForWorkspace(fixture.workspace, time.Now().UTC().Format(time.RFC3339Nano))
-	if err := fixture.app.tables.ApplyWorkspaceDelete(context.Background(), workspaceDeleteStoreMutation{Create: true, DesiredOperation: workspaceDeleteOperationRow(operation)}); err != nil {
-		t.Fatal(err)
-	}
-	beforeEvents := len(*fixture.events)
-	if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead)); err != nil {
-		t.Fatal(err)
-	}
-	operations, err := fixture.app.tables.ListRuntimeOperations(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, row := range operations {
-		if stringValue(row["workspaceId"]) == stringValue(fixture.workspace["id"]) && stringValue(row["action"]) == "workspace.renewal" {
-			t.Fatalf("worker claimed Renewal during active Delete: %#v", row)
-		}
-	}
-	if len(*fixture.events) != beforeEvents || len(fixture.sub2API.charges) != 0 || len(fixture.fabric.computeRenewKeys) != 0 || len(fixture.fabric.storageRenewKeys) != 0 {
-		t.Fatalf("worker mutated during active Delete events=%#v charges=%#v compute=%#v storage=%#v", *fixture.events, fixture.sub2API.charges, fixture.fabric.computeRenewKeys, fixture.fabric.storageRenewKeys)
 	}
 }
 

@@ -12,56 +12,6 @@ import (
 	"opl-cloud/services/control-plane/internal/domain/provisioning"
 )
 
-// seedResourceOnlyRenewalLaunch persists a succeeded resource-only Launch for
-// the monthly billing fixture's Workspace, mirroring seedD4RenewalRuntime
-// without the Gateway key, secret and runtime stages.
-func seedResourceOnlyRenewalLaunch(t *testing.T, store controlPlaneTableStore, workspace map[string]any) {
-	t.Helper()
-	command := workspaceLaunchResourceOnlyUnitCommand()
-	command.OperationID = "workspace-launch-monthly"
-	command.AccountID = stringValue(workspace["accountId"])
-	command.OwnerUserID = stringValue(workspace["ownerUserId"])
-	command.WorkspaceID = stringValue(workspace["id"])
-	operation, err := newWorkspaceLaunchFixtureOperation(command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	plan, err := operation.stagePlan()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, stage := range plan[:len(plan)-1] {
-		operation.Stage = stage
-		facts := workspaceLaunchReadyFacts(stage)
-		for key, value := range map[string]any{"computeAllocationId": workspace["computeAllocationId"], "storageId": workspace["storageId"], "attachmentId": workspace["currentAttachmentId"]} {
-			if _, ok := facts[key]; ok {
-				facts[key] = value
-			}
-		}
-		if stage == contracts.StageActivation {
-			facts["activationOperationId"] = operation.ID + ":activation"
-		}
-		if stage == contracts.StageReceipt {
-			facts["receiptOperationId"] = operation.ID + ":purchase-receipt"
-		}
-		observation, err := reduceWorkspaceLaunchStageObservation(&operation, workspaceLaunchStageObservation{State: workspaceLaunchStageReady, Facts: facts})
-		if err != nil {
-			t.Fatalf("seed resource-only renewal stage %s: %v", stage, err)
-		}
-		attempt := operation.Attempts[stage]
-		attempt.Attempted, attempt.Confirmed, attempt.Status = 1, 1, "confirmed"
-		attempt.IdempotencyKey = workspaceLaunchStageIdempotencyKey(operation, 1)
-		operation.Attempts[stage], operation.Observations[stage] = attempt, observation
-	}
-	operation.Stage, operation.Status = contracts.StageSucceeded, contracts.StatusSucceeded
-	operation.Version = len(plan)
-	row, err := workspaceLaunchReconcileOperationRow(operation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	mustStore(t, store.SaveRuntimeOperation(context.Background(), row))
-}
-
 func newResourceOnlyWorkspaceLifecycleFixture(t *testing.T) (workspaceDeleteFixture, *workspaceDeleteSub2API, *workspaceDeleteLedger, *workspaceDeleteEvents) {
 	t.Helper()
 	events := &workspaceDeleteEvents{}
@@ -161,7 +111,7 @@ func newResourceOnlyWorkspaceLifecycleFixture(t *testing.T) (workspaceDeleteFixt
 	return fixture, sub2API, ledger, events
 }
 
-func TestWorkspaceRenewalRuntimePowerSkipsResourceOnlyWorkspace(t *testing.T) {
+func TestWorkspaceRenewalRuntimeRecoveryEligibleSkipsResourceOnlyWorkspace(t *testing.T) {
 	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
 	handler := fixture.server.(*controlPlaneHTTPHandler)
 	app := handler.app
@@ -175,24 +125,12 @@ func TestWorkspaceRenewalRuntimePowerSkipsResourceOnlyWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := app.convergeWorkspaceRenewalRuntimePower(context.Background(), handler.service, &renewal, "suspended"); err != nil {
-		t.Fatalf("resource-only runtime suspend error = %v, want skipped", err)
-	}
-	if err := app.convergeWorkspaceRenewalRuntimePower(context.Background(), handler.service, &renewal, "running"); err != nil {
-		t.Fatalf("resource-only runtime resume error = %v, want skipped", err)
-	}
-	if renewal.ExpiryRuntimePower != nil || renewal.ResumeRuntimePower != nil {
-		t.Fatal("runtime power facts must stay unset for a resource-only workspace")
-	}
-	if !workspaceApplicationLifecycleComplete(renewal.ExpiryApplicationPower, "suspended") || !workspaceApplicationLifecycleComplete(renewal.ResumeApplicationPower, "running") {
-		t.Fatal("application inventories must persist absence before skipping runtime power")
-	}
 	if err := app.workspaceRenewalRuntimeRecoveryEligible(context.Background(), nil, renewal); err != nil {
 		t.Fatalf("resource-only runtime recovery eligibility error = %v, want eligible", err)
 	}
 }
 
-func TestWorkspaceRenewalRuntimePowerFullModeStillRequiresRuntimeIdentity(t *testing.T) {
+func TestWorkspaceRenewalRuntimePowerInputFullModeStillRequiresRuntimeIdentity(t *testing.T) {
 	store := newMemoryTableStore()
 	command := workspaceLaunchUnitCommand()
 	command.OperationID, command.AccountID, command.WorkspaceID = "workspace-launch-alpha", "acct-alpha", "ws-alpha"
@@ -210,54 +148,7 @@ func TestWorkspaceRenewalRuntimePowerFullModeStillRequiresRuntimeIdentity(t *tes
 	}
 	app := &controlPlaneServer{tables: store}
 	renewal := workspaceRenewalOperation{WorkspaceID: "ws-alpha", AccountID: "acct-alpha"}
-	if err := app.convergeWorkspaceRenewalRuntimePower(context.Background(), nil, &renewal, "suspended"); err == nil {
+	if _, err := app.workspaceRenewalRuntimePowerInput(context.Background(), renewal, "suspended"); err == nil {
 		t.Fatal("full-mode runtime power without runtime identity must fail instead of skipping")
-	}
-}
-
-func TestResourceOnlyWorkspaceAutoRenewsWithoutGatewayKey(t *testing.T) {
-	fixture := newWorkspaceRenewalWorkerFixture(t, []int64{100_000_000, 47_420_000})
-	workspace := cloneMap(fixture.workspace)
-	delete(workspace, "workspaceApiKeyId")
-	mustStore(t, fixture.app.tables.SaveWorkspace(context.Background(), workspace))
-	fixture.workspace = workspace
-	seedResourceOnlyRenewalLaunch(t, fixture.app.tables, workspace)
-	if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead)); err != nil {
-		t.Fatal(err)
-	}
-	operation, err := decodeWorkspaceRenewalOperation(fixture.operation(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if operation.Status != "active" || len(fixture.sub2API.charges) != 1 || len(fixture.fabric.runtimePowerCalls) != 0 {
-		t.Fatalf("resource-only renewal operation=%#v charges=%#v runtimePower=%#v", operation, fixture.sub2API.charges, fixture.fabric.runtimePowerCalls)
-	}
-	workspaceAfter, _ := fixture.app.getWorkspace("workspace-monthly")
-	if workspaceAfter["renewalStatus"] != "active" || workspaceAfter["state"] != "running" {
-		t.Fatalf("resource-only renewal workspace=%#v", workspaceAfter)
-	}
-}
-
-func TestResourceOnlyWorkspaceExpirySkipsRuntimeSuspension(t *testing.T) {
-	fixture := newWorkspaceRenewalWorkerFixture(t, nil)
-	workspace := cloneMap(fixture.workspace)
-	delete(workspace, "workspaceApiKeyId")
-	workspace["autoRenew"] = false
-	mustStore(t, fixture.app.tables.SaveWorkspace(context.Background(), workspace))
-	fixture.workspace = workspace
-	seedResourceOnlyRenewalLaunch(t, fixture.app.tables, workspace)
-	if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, fixture.paidThrough.Add(time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	operation, err := decodeWorkspaceRenewalOperation(fixture.operation(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if operation.ExpiryStatus != "expired_unpaid" || len(fixture.fabric.runtimePowerCalls) != 0 || len(fixture.sub2API.charges) != 0 {
-		t.Fatalf("resource-only expiry operation=%#v runtimePower=%#v charges=%#v", operation, fixture.fabric.runtimePowerCalls, fixture.sub2API.charges)
-	}
-	workspaceAfter, _ := fixture.app.getWorkspace("workspace-monthly")
-	if workspaceAfter["state"] != "suspended" {
-		t.Fatalf("resource-only expiry workspace=%#v", workspaceAfter)
 	}
 }

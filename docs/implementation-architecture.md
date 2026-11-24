@@ -95,10 +95,14 @@ reads are forbidden.
 ## Owner Transition
 
 - **Retired Paths**: Control Plane package pricing catalog/preview, image-replacement
-  creation/preview/worker/activation routes, and automated `workspace.gateway_key.rotate`
-  creation/child deployments are retired.
+  creation/preview/worker/activation routes, the monthly renewal/expiry execution
+  engine with its worker and the operator billing-review resolve route, and
+  automated `workspace.gateway_key.rotate` creation/child deployments are retired.
 - **Preserved Historical Decoders**: `services/control-plane/internal/server/workspace_delete.go`
-  and `workspace_store.go` keep read-only historical key-rotation decoding (`NewKeyID -> OldKeyID`)
-  and `workspace_runtime_image_history.go` keeps historical image operation decoding
-  strictly as deletion/reconciliation preconditions for pre-existing Workspaces.
+  and `workspace_store.go` keep read-only historical key-rotation decoding (`NewKeyID -> OldKeyID`),
+  `workspace_runtime_image_history.go` keeps historical image operation decoding
+  strictly as deletion/reconciliation preconditions for pre-existing Workspaces,
+  and `workspace_renewal_history.go` keeps the `workspace.renewal` operation
+  decoder, receipt shapes, terminal-state classifier, recovery-state reader and
+  recovery-eligibility reader for renewal records an earlier release wrote.
 - **Open Extractions**: Tracked in [roadmap.md](roadmap.md#workspace-key-and-customer-read-boundaries).

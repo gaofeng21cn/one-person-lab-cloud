@@ -4,7 +4,6 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -49,60 +48,6 @@ func (c *capacitySQLCounter) snapshot() []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return append([]string(nil), c.queries...)
-}
-
-type renewalCapacityStore struct {
-	*memoryTableStore
-	workspacePages   int
-	operationQueries []runtimeOperationQuery
-}
-
-func (s *renewalCapacityStore) ListWorkspaces(context.Context, string) ([]map[string]any, error) {
-	return nil, errors.New("full Workspace scan")
-}
-
-func (s *renewalCapacityStore) PageWorkspaces(ctx context.Context, accountID string, query tablePageQuery) (tablePage, error) {
-	s.workspacePages++
-	return s.memoryTableStore.PageWorkspaces(ctx, accountID, query)
-}
-
-func (s *renewalCapacityStore) ListRuntimeOperations(context.Context) ([]map[string]any, error) {
-	return nil, errors.New("full RuntimeOperation scan")
-}
-
-func (s *renewalCapacityStore) PageRuntimeOperations(ctx context.Context, query runtimeOperationQuery) (tablePage, error) {
-	s.operationQueries = append(s.operationQueries, query)
-	return s.memoryTableStore.PageRuntimeOperations(ctx, query)
-}
-
-func TestMonthlyBillingScanPagesNonCandidatesWithoutOperationFanout(t *testing.T) {
-	for _, total := range []int{100, 1000} {
-		t.Run(fmt.Sprintf("workspaces_%d", total), func(t *testing.T) {
-			store := &renewalCapacityStore{memoryTableStore: newMemoryTableStore()}
-			for index := 0; index < total; index++ {
-				id := fmt.Sprintf("ws-capacity-%04d", index)
-				mustStore(t, store.SaveWorkspace(context.Background(), map[string]any{
-					"id": id, "accountId": "acct-capacity", "ownerAccountId": "acct-capacity", "ownerUserId": "usr-capacity",
-					"state": "running", "status": "running", "customerProduct": true,
-				}))
-			}
-			app, err := newControlPlaneAppWithStore(store)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := app.runMonthlyBillingSweep(context.Background(), newTestService(fakeLedgerClient{}, &fakeFabricClient{}), time.Now().UTC()); err != nil {
-				t.Fatal(err)
-			}
-			wantPages := (total + 49) / 50
-			if store.workspacePages != wantPages || len(store.operationQueries) != 1 {
-				t.Fatalf("total=%d Workspace pages=%d want=%d operation queries=%#v", total, store.workspacePages, wantPages, store.operationQueries)
-			}
-			query := store.operationQueries[0]
-			if query.Action != "workspace.renewal" || len(query.Statuses) != 1 || query.Statuses[0] != "verifying" || query.WorkspaceID != "" {
-				t.Fatalf("renewal candidate query=%#v", query)
-			}
-		})
-	}
 }
 
 func seedCapacityAccount(ctx context.Context, store controlPlaneTableStore, now time.Time, index int) error {
@@ -158,7 +103,6 @@ func TestSinglePodCapacity(t *testing.T) {
 	if os.Getenv("OPL_CAPACITY_TESTS") != "1" {
 		t.Skip("set OPL_CAPACITY_TESTS=1 to run the isolated 1000-user data-scale test")
 	}
-	t.Setenv("OPL_MONTHLY_BILLING_WORKER_ENABLED", "false")
 	t.Setenv("OPL_PROVIDER_RECONCILE_WORKER_ENABLED", "false")
 	t.Setenv("OPL_ARCHIVE_RETENTION_WORKER_ENABLED", "false")
 
@@ -273,28 +217,6 @@ func TestSinglePodCapacity(t *testing.T) {
 			}
 			operationPageQueries := len(counter.snapshot())
 
-			counter.reset()
-			renewalStarted := time.Now()
-			if _, err := app.runMonthlyBillingSweep(ctx, service, now); err != nil {
-				t.Fatal(err)
-			}
-			renewalDuration := time.Since(renewalStarted)
-			renewalQueries := counter.snapshot()
-			runtimeQueries := 0
-			for _, query := range renewalQueries {
-				if strings.Contains(query, "control_plane_runtime_operations") {
-					runtimeQueries++
-					if !strings.Contains(query, "workspace.renewal") || !strings.Contains(query, "verifying") || strings.Contains(query, "workspace-capacity-") {
-						t.Fatalf("renewal scan used non-candidate operation query: %s", query)
-					}
-				}
-			}
-			if runtimeQueries != 2 {
-				t.Fatalf("renewal candidate SQL queries=%d want=2: %#v", runtimeQueries, renewalQueries)
-			}
-			if want := ((total+monthlyBillingWorkspacePage-1)/monthlyBillingWorkspacePage)*2 + 2; len(renewalQueries) != want {
-				t.Fatalf("renewal SQL queries=%d want=%d: %#v", len(renewalQueries), want, renewalQueries)
-			}
 			remote.identityMu.Lock()
 			sub2APIRequests := remote.authCalls
 			remote.identityMu.Unlock()
@@ -315,9 +237,9 @@ func TestSinglePodCapacity(t *testing.T) {
 				t.Fatalf("seeded facts accounts=%d users=%d sessions=%d workspaces=%d operations=%d", accounts, users, sessions, workspaces, operations)
 			}
 			results[total] = result{loginQueries, sessionQueries, operationGetQueries, operationPageQueries}
-			t.Logf("single_pod_capacity records=%d accounts=%d users=%d sessions=%d workspaces=%d operation_history=%d seed=%s sql_login=%d login=%s sql_auth_me=%d auth_me=%s sql_operation_get=%d operation_get=%s sql_operation_page=%d operation_page=%s sql_renewal=%d renewal=%s sub2api_requests=%d fabric_requests=%d max_downstream_concurrency=1",
+			t.Logf("single_pod_capacity records=%d accounts=%d users=%d sessions=%d workspaces=%d operation_history=%d seed=%s sql_login=%d login=%s sql_auth_me=%d auth_me=%s sql_operation_get=%d operation_get=%s sql_operation_page=%d operation_page=%s sub2api_requests=%d fabric_requests=%d max_downstream_concurrency=1",
 				total, accounts, users, sessions, workspaces, operations, seedDuration, loginQueries, loginDuration, sessionQueries, sessionDuration,
-				operationGetQueries, operationDuration, operationPageQueries, operationPageDuration, len(renewalQueries), renewalDuration, sub2APIRequests, len(fabricCalls))
+				operationGetQueries, operationDuration, operationPageQueries, operationPageDuration, sub2APIRequests, len(fabricCalls))
 		})
 	}
 	if results[100] != results[1000] {

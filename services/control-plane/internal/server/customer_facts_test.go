@@ -282,20 +282,44 @@ type billingReconciliationFixture struct {
 	operations []workspaceRenewalOperation
 }
 
+// seedCompletedRenewalPeriod persists one completed renewal period and the
+// Ledger receipt that proved it. The renewal execution engine that used to
+// write both is withdrawn; the retained settlement projection and the
+// reconciliation readers still consume these historical records.
+func seedCompletedRenewalPeriod(t *testing.T, renewal workspaceRenewalWorkerFixture, periodStart, paidThrough time.Time) workspaceRenewalOperation {
+	t.Helper()
+	period := cloneMap(renewal.workspace)
+	period["periodStart"], period["paidThrough"] = periodStart.UTC().Format(time.RFC3339Nano), paidThrough.UTC().Format(time.RFC3339Nano)
+	operation, err := newWorkspaceRenewalOperation(period, periodStart)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation.Status, operation.Phase = "active", "complete"
+	operation.CreatedAt = periodStart.UTC().Format(time.RFC3339Nano)
+	operation.ChargeAttempted, operation.EntitlementCommitted = true, true
+	operation.ChargeConfirmation = map[string]any{
+		"code": operation.RedeemCode, "userId": int64(41), "chargeUsdMicros": operation.TotalUSDMicros, "status": "used",
+	}
+	receipt, err := renewal.service.RecordMonthlyReceipt(context.Background(), workspaceRenewalReceiptInput(operation, 41), operation.ID+":receipt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation.ReceiptID = receipt.ReceiptID
+	mustStore(t, renewal.app.tables.SaveRuntimeOperation(context.Background(), workspaceRenewalOperationRow(operation)))
+	return operation
+}
+
 func newBillingReconciliationFixture(t *testing.T) *billingReconciliationFixture {
 	t.Helper()
 	renewal := newWorkspaceRenewalWorkerFixture(t, []int64{200_000_000, 147_420_000})
 	ledger := &customerFactsLedger{}
 	renewal.service = controlplane.NewService(ledger, renewal.fabric, renewal.sub2API)
-	_, renewalErr := renewal.app.runMonthlyBillingSweep(context.Background(), renewal.service, renewal.paidThrough.Add(-monthlyRenewalLead))
-	mustStore(t, renewalErr)
-	first := d1RenewalOperation(t, renewal)
-	secondThrough := nextBillingMonth(renewal.renewedThrough, renewal.paidThrough.Day())
-	renewal.fabric.computeRenew.Deadline = secondThrough.Format(time.RFC3339)
-	renewal.fabric.storageRenew.Deadline = renewal.fabric.computeRenew.Deadline
-	renewal.fabric.computeSync, renewal.fabric.storageSync = renewal.fabric.computeRenew, renewal.fabric.storageRenew
-	_, renewalErr = renewal.app.runMonthlyBillingSweep(context.Background(), renewal.service, renewal.renewedThrough.Add(-monthlyRenewalLead))
-	mustStore(t, renewalErr)
+	firstPeriodStart, err := time.Parse(time.RFC3339, stringValue(renewal.workspace["periodStart"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := seedCompletedRenewalPeriod(t, renewal, firstPeriodStart, renewal.paidThrough)
+	second := seedCompletedRenewalPeriod(t, renewal, renewal.paidThrough, renewal.renewedThrough)
 	rows, err := queryRuntimeOperations(context.Background(), renewal.app.tables, runtimeOperationQuery{Action: "workspace.renewal"})
 	if err != nil || len(rows) != 2 || len(ledger.page.Receipts) != 2 {
 		t.Fatalf("two completed billing periods: rows=%d receipts=%d err=%v", len(rows), len(ledger.page.Receipts), err)
@@ -309,6 +333,9 @@ func newBillingReconciliationFixture(t *testing.T) *billingReconciliationFixture
 		if operation.ID != first.ID {
 			operations = append(operations, operation)
 		}
+	}
+	if second.ID == first.ID {
+		t.Fatal("two completed billing periods share one renewal operation identity")
 	}
 	usedBy := int64(41)
 	history := make([]clients.Sub2APIBalanceHistoryEntry, 0, 2)

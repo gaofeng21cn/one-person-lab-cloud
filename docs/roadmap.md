@@ -19,6 +19,7 @@ Close end-to-end customer lifecycle verification for the latest Cloud Candidate 
 - Default OPL App launch (`create -> quote -> debit -> Fabric provision -> Serve delivery -> readiness -> access -> renewal -> deletion -> refund/reconcile -> Ledger receipt`), plus custom Agent Package build-to-serve E2E on TKE.
 - Invoke protected J0 READY producer against the same Candidate digest and capture Instance-side profile-digest-bound installation summary receipts.
 - Retire the remaining 11 zero-replica split Deployments on Instance only after fresh readback confirms zero active traffic.
+- The chain's `renewal` leg has no automatic executor: the retained Control Plane renewal/expiry execution engine is withdrawn at the source layer and the native Workspace owner has none, so an accepted renewal obligation stays unexecuted until an owner accepts, settles or transfers it.
 
 ### PlanChange v2 (D17 Resource Plan Resize & Downgrade Execution)
 

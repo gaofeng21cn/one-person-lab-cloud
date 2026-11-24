@@ -25,7 +25,6 @@ import type {
   GatewayWalletReadbackDTO,
   AnnouncementDraftRequest,
   AnnouncementScheduleRequest,
-  BillingReviewResolutionRequest,
   ProvisionAccountRequest,
   OperatorAccountCommandDTO,
   OperatorProvisionAccountCommandDTO,
@@ -444,10 +443,6 @@ export function disableOperatorAccount(accountId: string, reason: string, csrfTo
 
 export function setOperatorWorkspacePurchaseEligibility(accountId: string, enabled: boolean, reason: string, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperatorWorkspacePurchaseEligibilityCommandDTO> {
   return postJson<unknown>(operatorWriteRoute(cloud, `/accounts/${encodeURIComponent(accountId)}/workspace-purchase-eligibility`), { confirmationAccountId: accountId, enabled, reason }, csrfToken, idempotencyKey).then(decodeDto<OperatorWorkspacePurchaseEligibilityCommandDTO>);
-}
-
-export function resolveBillingReview(resourceType: string, resourceId: string, input: BillingReviewResolutionRequest, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperationStatusDTO> {
-  return postJson<unknown>(operatorWriteRoute(cloud, `/billing-reviews/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}/resolve`), input, csrfToken, idempotencyKey).then(decodeDto<OperationStatusDTO>);
 }
 
 function decodeWorkspaceLaunchRecovery(value: unknown, operationId: string): WorkspaceLaunchRecoveryDTO {

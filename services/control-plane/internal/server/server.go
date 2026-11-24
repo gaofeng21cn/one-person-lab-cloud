@@ -81,9 +81,6 @@ func NewPersistentServer(service *controlplane.Service, store StateStore) (http.
 			return nil, err
 		}
 	} else {
-		if monthlyBillingWorkerEnabled() {
-			app.startMonthlyBillingWorker(context.Background(), service, monthlyBillingWorkerInterval())
-		}
 		if workspaceLaunchWorkerEnabled() {
 			app.startWorkspaceLaunchWorker(context.Background(), service, workspaceLaunchWorkerInterval())
 		}

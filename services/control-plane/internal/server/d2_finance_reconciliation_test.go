@@ -7,10 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"opl-cloud/services/control-plane/internal/clients"
-	"opl-cloud/services/control-plane/internal/controlplane"
 )
 
 // Financial commands run against isolated PostgreSQL and the real Ledger HTTP
@@ -137,102 +135,6 @@ func TestD2FinanceBusinessChain(t *testing.T) {
 		body = d2RequestReconciliation(t, chain, ledger, "d2-refund-evidence-completed")
 		assertReconciliationReport(t, body, "ok", 2, 2, 0)
 	})
-
-	t.Run("ordinary receipt retry stays pending without blocking buyers or charging twice", func(t *testing.T) {
-		receiptOwner, receiptList := startGatewayAccountingLedger(t)
-		fixture := newWorkspaceRenewalWorkerFixture(t, []int64{100_000_000})
-		ledger := &d2ReconciliationLedger{LedgerClient: receiptOwner, list: receiptList, rejectAccountScan: true, failNextReceipt: true}
-		fixture.service = controlplane.NewService(ledger, fixture.fabric, fixture.sub2API)
-		now := fixture.paidThrough.Add(-monthlyRenewalLead)
-		if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now); err == nil {
-			t.Fatal("injected receipt write failure did not surface")
-		}
-		pending := d1RenewalOperation(t, fixture)
-		if pending.Status != "verifying" || pending.Phase != "receipt" || !pending.EntitlementCommitted || pending.ReceiptID != "" || len(fixture.sub2API.charges) != 1 {
-			t.Fatalf("receipt retry lost completed payment or entitlement: %+v", pending)
-		}
-		server, err := NewPersistentServer(fixture.service, fixture.app.tables)
-		if err != nil {
-			t.Fatal(err)
-		}
-		operator := operatorSessionForTest(t, server)
-		beforeWrites, beforeEvents := ledger.receiptWrites, len(*fixture.events)
-		response := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/billing/reconciliation", `{"confirm":true}`, "d2-ordinary-receipt-pending")
-		if response.Code != http.StatusCreated {
-			t.Fatalf("pending reconciliation status=%d body=%s", response.Code, response.Body.String())
-		}
-		body := decodeReconciliationResponse(t, response)
-		assertReconciliationReport(t, body, "ok", 1, 0, 0)
-		if numberField(mapField(mapField(body, "report"), "counts"), "pending", -1) != 1 || ledger.receiptWrites != beforeWrites || len(*fixture.events) != beforeEvents {
-			t.Fatalf("normal settlement progress blocked buyers or reconciliation performed writes: %s", mustJSON(body))
-		}
-		if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, now.Add(time.Second)); err != nil {
-			t.Fatal(err)
-		}
-		completed := d1RenewalOperation(t, fixture)
-		if completed.ID != pending.ID || completed.Status != "active" || completed.Phase != "complete" || completed.ReceiptID == "" || len(fixture.sub2API.charges) != 1 || len(fixture.sub2API.refunds) != 0 || len(fixture.fabric.computeRenewKeys) != 1 || len(fixture.fabric.storageRenewKeys) != 1 {
-			t.Fatalf("receipt retry repeated financial or provider work: %+v", completed)
-		}
-		beforeWrites, beforeEvents = ledger.receiptWrites, len(*fixture.events)
-		response = requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/billing/reconciliation", `{"confirm":true}`, "d2-ordinary-receipt-completed")
-		if response.Code != http.StatusCreated {
-			t.Fatalf("completed reconciliation status=%d body=%s", response.Code, response.Body.String())
-		}
-		assertReconciliationReport(t, decodeReconciliationResponse(t, response), "ok", 1, 1, 0)
-		if ledger.receiptWrites != beforeWrites || len(*fixture.events) != beforeEvents {
-			t.Fatal("completed reconciliation mutated owner state")
-		}
-	})
-
-	t.Run("failed provider renewal reconciles original charge and automatic refund separately", func(t *testing.T) {
-		receiptOwner, receiptList := startGatewayAccountingLedger(t)
-		fixture := newWorkspaceRenewalWorkerFixture(t, []int64{100_000_000})
-		ledger := &d2ReconciliationLedger{LedgerClient: receiptOwner, list: receiptList, rejectAccountScan: true}
-		fixture.service = controlplane.NewService(ledger, fixture.fabric, fixture.sub2API)
-		fixture.fabric.computeRenewErr = fmt.Errorf("injected provider failure")
-		fixture.fabric.computeSync = clients.ComputeAllocation{ID: stringValue(fixture.compute["id"]), AccountID: "acct-monthly", WorkspaceID: "workspace-monthly", Status: "external_deleted"}
-		if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead)); err != nil {
-			t.Fatal(err)
-		}
-		operation := d1RenewalOperation(t, fixture)
-		if operation.Status != "refunded" || operation.Phase != "complete" || operation.EntitlementCommitted || operation.ReceiptID != "" || operation.RefundReceiptID == "" || len(fixture.sub2API.charges) != 1 || len(fixture.sub2API.refunds) != 1 {
-			t.Fatalf("failed provider renewal did not return the original charge exactly once: %+v", operation)
-		}
-		page, err := receiptList.ListReceipts(context.Background(), clients.ReceiptQuery{AccountID: operation.AccountID, RequestID: operation.ID, Limit: 50})
-		if err != nil || len(page.Receipts) != 1 || page.Receipts[0].Type != "billing.workspace_refunded.v1" {
-			t.Fatalf("failed renewal should have one refund receipt and no successful-renewal receipt: %+v err=%v", page, err)
-		}
-	})
-
-	t.Run("all paid renewal periods survive newer entitlements", func(t *testing.T) {
-		fixture := newWorkspaceRenewalWorkerFixture(t, []int64{200_000_000, 147_420_000})
-		ledger := &d2ReconciliationLedger{LedgerClient: owner, list: list, rejectAccountScan: true}
-		fixture.service = controlplane.NewService(ledger, fixture.fabric, fixture.sub2API)
-		if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead)); err != nil {
-			t.Fatal(err)
-		}
-		first := d1RenewalOperation(t, fixture)
-		if first.Status != "active" || first.Phase != "complete" {
-			t.Fatalf("first paid renewal was not fulfilled: %+v", first)
-		}
-		secondThrough := nextBillingMonth(fixture.renewedThrough, fixture.paidThrough.Day())
-		fixture.fabric.computeRenew.Deadline = secondThrough.Format("2006-01-02T15:04:05Z07:00")
-		fixture.fabric.storageRenew.Deadline = fixture.fabric.computeRenew.Deadline
-		fixture.fabric.computeSync, fixture.fabric.storageSync = fixture.fabric.computeRenew, fixture.fabric.storageRenew
-		if _, err := fixture.app.runMonthlyBillingSweep(context.Background(), fixture.service, fixture.renewedThrough.Add(-monthlyRenewalLead)); err != nil {
-			t.Fatal(err)
-		}
-		rows, err := queryRuntimeOperations(context.Background(), fixture.app.tables, runtimeOperationQuery{Action: "workspace.renewal"})
-		if err != nil || len(rows) != 2 {
-			t.Fatalf("two real renewal periods rows=%d error=%v", len(rows), err)
-		}
-		for _, row := range rows {
-			operation, err := decodeWorkspaceRenewalOperation(row)
-			if err != nil || operation.Status != "active" || operation.Phase != "complete" {
-				t.Fatalf("renewal period not fulfilled: operation=%+v err=%v", operation, err)
-			}
-		}
-	})
 }
 
 type d2ReconciliationLedger struct {
@@ -243,15 +145,10 @@ type d2ReconciliationLedger struct {
 	rejectAccountScan bool
 	faultRequestID    string
 	fault             string
-	failNextReceipt   bool
 }
 
 func (l *d2ReconciliationLedger) RecordReceipt(ctx context.Context, input clients.ReceiptInput, key string) (clients.Receipt, error) {
 	l.receiptWrites++
-	if l.failNextReceipt {
-		l.failNextReceipt = false
-		return clients.Receipt{}, fmt.Errorf("injected Ledger write unavailable")
-	}
 	return l.LedgerClient.RecordReceipt(ctx, input, key)
 }
 

@@ -151,7 +151,6 @@ const operatorCommands: Array<[string, string, (cloud: boolean) => Promise<unkno
   ["wallet recovery", "/wallet-adjustments/op/recover", cloud => operatorApi.recoverWalletAdjustment("op", {} as never, "csrf", "key", cloud)],
   ["disable account", "/accounts/acct/disable", cloud => operatorApi.disableOperatorAccount("acct", "reason", "csrf", "key", cloud)],
   ["eligibility", "/accounts/acct/workspace-purchase-eligibility", cloud => operatorApi.setOperatorWorkspacePurchaseEligibility("acct", false, "reason", "csrf", "key", cloud)],
-  ["billing review", "/billing-reviews/workspace/ws/resolve", cloud => operatorApi.resolveBillingReview("workspace", "ws", {} as never, "csrf", "key", cloud)],
   ["launch recovery", "/workspace-launches/op/recover", cloud => operatorApi.recoverWorkspaceLaunch("op", {} as never, "csrf", "key", cloud)],
   ["announcement create", "/announcements", cloud => operatorApi.createOperatorAnnouncement({} as never, "csrf", "key", cloud)],
   ["announcement update", "/announcements/a", cloud => operatorApi.updateOperatorAnnouncement("a", {} as never, "csrf", "key", cloud)],

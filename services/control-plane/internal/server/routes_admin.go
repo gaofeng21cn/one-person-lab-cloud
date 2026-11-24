@@ -205,46 +205,6 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 		}
 		writeJSON(w, http.StatusOK, result)
 	}))
-	mux.HandleFunc("POST /api/operator/billing-reviews/{resourceType}/{id}/resolve", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		input := decodeJSON(r)
-		if !billingReviewRequestShapeValid(input) {
-			writeError(w, http.StatusBadRequest, errInvalidBillingReview.Error())
-			return
-		}
-		key := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
-		if key == "" {
-			writeError(w, http.StatusBadRequest, "missing Idempotency-Key")
-			return
-		}
-		if !validBillingReviewOpaqueID(key) {
-			writeError(w, http.StatusBadRequest, "invalid_idempotency_key")
-			return
-		}
-		evidenceRef := strings.TrimSpace(stringValue(input["evidenceRef"]))
-		if !validBillingReviewEvidenceRef(evidenceRef) {
-			writeError(w, http.StatusBadRequest, "invalid_evidence_ref")
-			return
-		}
-		resolution := billingReviewResolutionInput{
-			ResourceType: strings.TrimSpace(r.PathValue("resourceType")), ResourceID: strings.TrimSpace(r.PathValue("id")),
-			AccountID: strings.TrimSpace(stringValue(input["accountId"])), BillingOperationID: strings.TrimSpace(stringValue(input["billingOperationId"])),
-			Decision: strings.TrimSpace(stringValue(input["decision"])), EvidenceRef: evidenceRef, IdempotencyKey: key, Reviewer: app.sessionUserID(r),
-		}
-		if resolution.ResourceType != "workspace" {
-			writeError(w, http.StatusBadRequest, errInvalidBillingReview.Error())
-			return
-		}
-		result, err := app.resolveWorkspaceRenewalReview(r.Context(), service, resolution)
-		if err != nil {
-			writeBillingReviewResolutionError(w, err)
-			return
-		}
-		if err := app.appendBillingReviewResolutionAudit(r, key, result); err != nil {
-			writeError(w, http.StatusInternalServerError, "state_persist_failed")
-			return
-		}
-		writeJSON(w, http.StatusOK, result)
-	}))
 }
 
 func exactWorkspaceComputeClaimKeys(input map[string]any, want []string) bool {
@@ -1219,19 +1179,6 @@ func (app *controlPlaneServer) operatorRuntimeHealth(ctx context.Context, servic
 	return sourceEnvelope("runtime", "available", data, "")
 }
 
-func billingReviewRequestShapeValid(input map[string]any) bool {
-	if len(input) != 4 {
-		return false
-	}
-	for _, key := range []string{"accountId", "billingOperationId", "decision", "evidenceRef"} {
-		value, ok := input[key].(string)
-		if !ok || value == "" || value != strings.TrimSpace(value) {
-			return false
-		}
-	}
-	return true
-}
-
 func validBillingReviewEvidenceRef(value string) bool {
 	return billingReviewEvidenceRefPattern.MatchString(value)
 }
@@ -1243,21 +1190,6 @@ func validBillingReviewOpaqueID(value string) bool {
 	// Opaque identifiers carry no credential semantics. Substring filtering
 	// rejects ordinary operation names without detecting actual credentials.
 	return true
-}
-
-func writeBillingReviewResolutionError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, errInvalidBillingReview):
-		writeError(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, errBillingReviewNotFound):
-		writeError(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, errIdempotencyConflict), errors.Is(err, errBillingReviewNotPending), errors.Is(err, errBillingReviewIdentity), errors.Is(err, errBillingReviewChargeFact), errors.Is(err, errBillingReviewProviderFact):
-		writeError(w, http.StatusConflict, err.Error())
-	case errors.Is(err, errBillingReviewReceipt):
-		writeError(w, http.StatusBadGateway, err.Error())
-	default:
-		writeError(w, http.StatusInternalServerError, "state_persist_failed")
-	}
 }
 
 func (app *controlPlaneServer) writeOperatorWorkspaceLaunchRecovery(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
