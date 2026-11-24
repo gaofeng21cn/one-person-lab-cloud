@@ -10,6 +10,19 @@ does not remove historical rows, workers, refunds or the retained DELETE path.
 and [its focused tests](../../services/control-plane/internal/server/workspace_launch_reconciler_test.go)
 are the current source; production execution remains Instance-owned.
 
+The legacy descriptor, constructors and request-hash calculator live in test
+support that builds historical Launch records. The executor decodes each
+persisted `requestHash` and uses it to bind the Fabric stage request hash,
+preserving the accepted purchase identity.
+
+Same-key replay returns the persisted operation. Only the retained pending Key or
+customer-owned Key/Secret unknown branch continues it, and that branch runs with
+the customer's own Gateway credential. The Launch worker is the executor of a
+non-terminal `workspace.launch.v2` operation, and the operator recovery route
+remains the operator's command over a `manual_review` operation. See
+[Worker Recovery](#worker-recovery) for the carried-forward obligation that
+keeps the worker.
+
 ## Stage Binding
 
 Fabric exposes `/fabric/workspace-launches/preflight`, the persisted binding
@@ -100,6 +113,21 @@ claim about Tencent provisioning latency or model capacity. The former active-
 Launch admission limit and one-use Acceptance B capacity slot cannot bypass the
 HTTP fresh-intent fence. Existing obligations continue through exact original
 operation/account reads.
+
+The worker sweeps `workspace.launch.v2` records, excluding `succeeded`,
+`refunded` and `failed`. PostgreSQL installations dispatch eligible rows
+through River. The local fallback starts its scheduler cursor empty on boot.
+An in-place upgrade from public v0.1.8 can carry forward a record accepted
+before the purchase cutover. History routes serve readback, and the operator
+recovery route handles `manual_review`. The worker continues eligible
+carried-forward operations in their persisted phases.
+
+The Key stage is the one state the worker cannot advance on its own.
+`CanMutateStage` rejects the Key stage unless the reconciler carries the
+operation owner's own Gateway credential, and the worker and the operator
+recovery route both reconcile with an empty credential. A customer-owned Key row
+therefore stays pending until the customer re-drives it through the customer
+route, which is why that single continuation branch is retained.
 
 The first stage dispatch persists its original key and a thirty-second lease
 before invoking the owner. Other workers leave that reservation unchanged while

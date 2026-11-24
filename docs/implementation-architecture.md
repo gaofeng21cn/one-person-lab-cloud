@@ -96,7 +96,12 @@ reads are forbidden.
 
 - **Retired Paths**: Control Plane package pricing catalog/preview, image-replacement
   creation/preview/worker/activation routes, and automated `workspace.gateway_key.rotate`
-  creation/child deployments are retired.
+  creation/child deployments are retired. The legacy Launch descriptor,
+  request-hash constructor and preflight confirmation are test fixtures for
+  historical operations.
+- **Retained Launch Executor**: The Control Plane worker continues accepted
+  `workspace.launch.v2` operations using their persisted identities. See
+  [Launch recovery](implementation/workspace-launch-recovery.md).
 - **Preserved Historical Decoders**: `services/control-plane/internal/server/workspace_delete.go`
   and `workspace_store.go` keep read-only historical key-rotation decoding (`NewKeyID -> OldKeyID`)
   and `workspace_runtime_image_history.go` keeps historical image operation decoding

@@ -45,6 +45,9 @@ chronological snapshots.
     Workspace owner gates every new purchase on the value it produces through
     the Control Plane's `GET /internal/cloud/workspace-purchase-eligibility`
     reader.
+  - The native Workspace owner accepts new purchases. The Control Plane
+    [Launch executor](implementation/workspace-launch-recovery.md) continues
+    accepted operations carried forward from before the purchase cutover.
 - **What Remains Unproven Here**: Same-Candidate paid customer purchase
   execution on Tencent/TKE, J0 READY qualification bound to the latest
   Candidate, end-to-end custom Agent Package build-to-serve production delivery,

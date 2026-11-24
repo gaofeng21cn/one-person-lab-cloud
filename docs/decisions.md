@@ -96,6 +96,11 @@ Git log.
 - **Consumer-First Path Retirement**: Legacy Control Plane writers, routes and
   tests are retired only after live callers move and persisted customer/financial
   obligations retain explicit dispositions.
+- **Retained Launch Executor**: The Control Plane continues accepted
+  `workspace.launch.v2` operations carried forward from before the purchase
+  cutover. Keep that execution path until those obligations complete or migrate.
+  New purchases enter through the Workspace owner. A retained customer Key
+  continuation uses the operation owner's Gateway credential.
 
 ## Ordinary Source Development And CI
 
