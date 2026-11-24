@@ -1080,8 +1080,12 @@ test("Cloud personal Key adapter preserves public money casing and read-only DTO
     await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
       requests.push(new URL(route.request().url()).pathname);
       const path = requests.at(-1)!;
+      const method = route.request().method();
       let response: unknown;
-      if (path === "/api/v2/gateway/keys") response = { items: [{ ...canonicalKey, ...keyOverrides }], total, page: 1, pageSize: 20, pages: 1 };
+      if (path === "/api/v2/gateway/keys" && method === "POST") response = { key: { ...canonicalKey, ...keyOverrides }, secret: "sk-cloud-personal" };
+      else if (path === "/api/v2/gateway/keys") response = { items: [{ ...canonicalKey, ...keyOverrides }], total, page: 1, pageSize: 20, pages: 1 };
+      else if (path === `/api/v2/gateway/keys/${canonicalKey.id}/reveal`) response = { key: { ...canonicalKey, ...keyOverrides }, secret: "sk-cloud-personal" };
+      else if (path === `/api/v2/gateway/keys/${canonicalKey.id}` && method === "DELETE") response = { operationId: "op-revoke-personal", kind: "revoke_key", status: "succeeded" };
       else if (path === `/api/v2/gateway/keys/${canonicalKey.id}`) response = { ...canonicalKey, ...keyOverrides };
       else if (path === "/api/v2/gateway/groups") response = { items: [{ id: "3", name: "Zero multiplier", description: "", platform: "openai", rateMultiplier: 0, subscriptionType: "standard", status: "active" }], total: 1 };
       else if (path.endsWith("/usage-summary")) response = { totalRequests: "7", totalInputTokens: "70", totalOutputTokens: "14", totalTokens: "84", totalActualCostUSDMicros: summaryCost };
@@ -1163,17 +1167,36 @@ test("Cloud personal Key adapter preserves public money casing and read-only DTO
       return Promise.all([api.getGatewayKeys(), api.getGatewayKeyUsage(id)].map((read) => read.then(() => "accepted", (error) => error.message)));
     }, canonicalKey.id);
     assert.deepEqual(totalErrors, ["unsafe_personal_gateway_integer", "unsafe_personal_gateway_integer"]);
+    // Under the cloud identity the four personal Key commands now reach the
+    // Gateway owner through the BFF. The Console no longer refuses them locally,
+    // so each one issues exactly one request against the owner's route.
     const beforeCommands = requests.length;
     const commands = await page.evaluate(async (id) => {
       const api = await import("/apps/console-ui/src/api/console-read-api.ts");
       return Promise.all([api.createGatewayKey({ name: "unsupported", groupId: "3", quotaUsdMicros: 0 }, "csrf", "intent"),
         api.updateGatewayKey(id, { enabled: false }, "csrf", "intent"), api.deleteGatewayKey(id, "csrf", "intent"), api.revealGatewayKey(id, "csrf")]);
     }, canonicalKey.id);
-    assert.equal(requests.length, beforeCommands);
-    for (const result of commands) {
-      assert.equal(result.source, "gateway"); assert.equal(result.available, false);
-      assert.equal(!result.available && result.reasonCode, "gateway_key_capability_unavailable");
+    assert.deepEqual(requests.slice(beforeCommands).sort(), [
+      "/api/v2/gateway/keys",
+      `/api/v2/gateway/keys/${canonicalKey.id}`,
+      `/api/v2/gateway/keys/${canonicalKey.id}`,
+      `/api/v2/gateway/keys/${canonicalKey.id}/reveal`
+    ].sort());
+    const [created, updated, revoked, revealed] = commands;
+    for (const result of [created, updated, revoked, revealed]) {
+      assert.equal(result.source, "gateway"); assert.equal(result.available, true);
     }
+    assert.equal(created.data.id, canonicalKey.id);
+    assert.equal(created.data.name, canonicalKey.name);
+    // The owner's create answer also carries the secret; the Console keeps the
+    // Key, not the secret. The explicit reveal is the surface that hands a
+    // secret back.
+    assert.equal("value" in created.data, false);
+    assert.equal(updated.data.id, canonicalKey.id);
+    assert.equal(revoked.data.operationId, "op-revoke-personal");
+    assert.equal(revoked.data.status, "deleted");
+    assert.equal(revealed.data.id, canonicalKey.id);
+    assert.equal(revealed.data.value, "sk-cloud-personal");
 
   } finally {
     await browser.close();
