@@ -113,7 +113,7 @@ chronological snapshots.
   The withdrawal of the Control Plane renewal/expiry
   execution engine is adopted by no installed environment, and a
   `workspace.renewal` operation an earlier release left non-terminal now has no
-  executor: the read-only R5 census that measured the live obligation set
+  executor: the read-only all-object/operation census that measured the live obligation set
   projects renewal rows in `expired_unpaid`, a status that is terminal only when
   the operation's own recorded expiry phase is `complete`, which that receipt
   does not project, so their terminality is unproven.
