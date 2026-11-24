@@ -24,6 +24,15 @@ Instance, Sub2API and Framework remain separate authorities.
 - Follow [the PR flow](DEV_GUIDE.md#ordinary-pull-request-flow) for PR delivery.
   Keep commit, push, PR, merge, publish and deployment actions within the user's
   authorization; passing checks or technical review grants no further authority.
+  `main` branch protection forbids direct pushes, not owner PR merges: when the
+  repository owner authorizes landing, pushing or aligning changes to `main`,
+  read back live branch protection and PR status, wait for all required checks
+  to pass (`mergeStateStatus: CLEAN`), and when `required_approving_review_count`
+  is `0`, merge via normal `gh pr merge --delete-branch` (never `--admin` or
+  bypassing protection) and fast-forward local `main` to `origin/main`. Pause
+  at an open PR only if approving reviews are actually required
+  (`required_approving_review_count > 0`), required checks fail, or the user
+  explicitly asked to stop before merging.
 - New GitHub-visible text is English: commits, PRs, Issues, comments and Release
   notes. Replies to another person's text use that person's language; existing
   historical text and original quotations retain their language.
