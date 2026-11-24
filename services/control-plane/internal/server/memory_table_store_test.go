@@ -953,7 +953,6 @@ func (s *memoryTableStore) SaveRuntimeOperation(_ context.Context, row map[strin
 	return nil
 }
 
-
 func (s *memoryTableStore) SaveWalletAdjustment(_ context.Context, operationID string, operation walletAdjustmentOperation) (walletAdjustmentOperation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
