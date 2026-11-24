@@ -114,6 +114,12 @@ sets the default for ordinary source maintenance:
    repository's existing review, branch protection and merge authorization
    requirements. A revision change needs CI for the new revision and renewed
    verification or review wherever the changed inputs affect earlier evidence.
+   `main` branch protection prevents direct pushes rather than owner self-merges:
+   when the owner has authorized landing changes to `main`, verify live branch
+   protection and PR mergeability, wait for all required checks to succeed
+   (`mergeStateStatus: CLEAN`), and when `required_approving_review_count` is
+   `0`, complete the merge with normal `gh pr merge --delete-branch` (without
+   bypassing protection) and fast-forward local `main` to `origin/main`.
 
 [Pull Request CI](.github/workflows/pull-request-ci.yml) runs dependency review
 alongside the `source`, `go` and two `browser` shards on independent runners.
