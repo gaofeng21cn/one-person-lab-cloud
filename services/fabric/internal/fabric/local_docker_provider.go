@@ -7,43 +7,19 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/moby/moby/api/types/network"
+	mobyclient "github.com/moby/moby/client"
 
 	contracts "opl-cloud/packages/contracts/go"
 )
 
 const localDockerProviderProfileEnv = "OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON"
 
-type dockerRunner interface {
-	Run(context.Context, []byte, ...string) ([]byte, error)
-}
-
-type execDockerRunner struct{ binary string }
-
-func (r execDockerRunner) Run(ctx context.Context, stdin []byte, args ...string) ([]byte, error) {
-	command := exec.CommandContext(ctx, r.binary, args...)
-	if stdin != nil {
-		command.Stdin = bytes.NewReader(stdin)
-	}
-	output, err := command.CombinedOutput()
-	if err != nil {
-		return output, fmt.Errorf("docker_%s_failed: %v: %s", firstNonEmpty(firstArg(args), "command"), err, strings.TrimSpace(string(output)))
-	}
-	return output, nil
-}
-
-func firstArg(values []string) string {
-	if len(values) == 0 {
-		return ""
-	}
-	return values[0]
-}
-
 type LocalDockerProviderConfig struct {
-	DockerBinary                 string
 	GatewaySecretRoot            string
 	HostStorageRoot              string
 	RuntimeHost                  string
@@ -92,7 +68,7 @@ type localDockerPlanSpec struct {
 }
 
 type LocalDockerProvider struct {
-	runner                            dockerRunner
+	docker                            localDockerClient
 	gatewaySecretRoot                 string
 	gatewaySecretRootErr              error
 	hostStorageRoot                   string
@@ -120,7 +96,6 @@ func NewLocalDockerProvider() *LocalDockerProvider {
 	}
 	runtimeHost := firstNonEmpty(strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_HOST")), "127.0.0.1")
 	return newLocalDockerProvider(LocalDockerProviderConfig{
-		DockerBinary:                 firstNonEmpty(strings.TrimSpace(os.Getenv("OPL_FABRIC_DOCKER_BINARY")), "docker"),
 		GatewaySecretRoot:            strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT")),
 		HostStorageRoot:              strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT")),
 		RuntimeHost:                  runtimeHost,
@@ -134,9 +109,9 @@ func NewLocalDockerProvider() *LocalDockerProvider {
 	}, nil)
 }
 
-func newLocalDockerProvider(config LocalDockerProviderConfig, runner dockerRunner) *LocalDockerProvider {
-	if runner == nil {
-		runner = execDockerRunner{binary: firstNonEmpty(strings.TrimSpace(config.DockerBinary), "docker")}
+func newLocalDockerProvider(config LocalDockerProviderConfig, docker localDockerClient) *LocalDockerProvider {
+	if docker == nil {
+		docker = newMobyDockerClient()
 	}
 	trustedSources := config.TrustedWorkspaceImageSources
 	if trustedSources == nil {
@@ -165,7 +140,7 @@ func newLocalDockerProvider(config LocalDockerProviderConfig, runner dockerRunne
 	profile, plans, profileErr := decodeLocalDockerProviderProfile(profileJSON)
 	runtimeHost := firstNonEmpty(strings.TrimSpace(config.RuntimeHost), "127.0.0.1")
 	return &LocalDockerProvider{
-		runner: runner, gatewaySecretRoot: secretRoot, gatewaySecretRootErr: secretRootErr,
+		docker: docker, gatewaySecretRoot: secretRoot, gatewaySecretRootErr: secretRootErr,
 		hostStorageRoot: storageRoot, hostStorageRootErr: storageRootErr,
 		storageQuota:                      storageQuota,
 		workloadOwnership:                 workloadOwnership,
@@ -333,7 +308,7 @@ func (p *LocalDockerProvider) MonthlyPreflight(ctx context.Context, input Monthl
 	if !ok {
 		return MonthlyPreflight{}, ErrProviderPlanUnavailable
 	}
-	if _, err := p.runner.Run(ctx, nil, "info", "--format", "{{.ServerVersion}}"); err != nil {
+	if _, err := p.docker.Info(ctx); err != nil {
 		return MonthlyPreflight{}, err
 	}
 	requestIDs := map[string]string{"nodePool": "local-docker", "subnets": "local-bridge", "availability": "docker-engine", "quota": "local-host"}
@@ -362,7 +337,7 @@ func (p *LocalDockerProvider) prepareComputeAllocationWithPlan(ctx context.Conte
 	if input.NodePoolID != "local-docker" {
 		return ComputeAllocationPreparation{}, fmt.Errorf("local_docker_compute_pool_mismatch")
 	}
-	if _, err := p.runner.Run(ctx, nil, "info", "--format", "{{.ServerVersion}}"); err != nil {
+	if _, err := p.docker.Info(ctx); err != nil {
 		return ComputeAllocationPreparation{}, err
 	}
 	return ComputeAllocationPreparation{
@@ -390,57 +365,43 @@ type dockerVolumeInspect struct {
 	Labels map[string]string `json:"Labels"`
 }
 
-type dockerObjectInventoryRow struct {
-	ID    string `json:"ID"`
-	Name  string `json:"Name"`
-	Names string `json:"Names"`
-}
-
-func decodeDockerObjectInventory(output []byte, objectName string) (dockerObjectInventoryRow, bool, error) {
-	rows := make([]dockerObjectInventoryRow, 0, 1)
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-		if strings.TrimSpace(line) == "" {
-			continue
+func matchExactNetworkSummary(summaries []network.Summary, name string) (network.Summary, bool, error) {
+	var matched []network.Summary
+	for _, summary := range summaries {
+		if summary.Name != name {
+			return network.Summary{}, false, fmt.Errorf("local_docker_inventory_identity_conflict")
 		}
-		var row dockerObjectInventoryRow
-		if json.Unmarshal([]byte(line), &row) != nil {
-			return dockerObjectInventoryRow{}, false, fmt.Errorf("local_docker_inventory_readback_invalid")
-		}
-		if row.Name != "" && row.Names != "" && row.Name != row.Names {
-			return dockerObjectInventoryRow{}, false, fmt.Errorf("local_docker_inventory_identity_conflict")
-		}
-		if firstNonEmpty(row.Name, row.Names) != objectName {
-			return dockerObjectInventoryRow{}, false, fmt.Errorf("local_docker_inventory_identity_conflict")
-		}
-		rows = append(rows, row)
+		matched = append(matched, summary)
 	}
-	if len(rows) == 0 {
-		return dockerObjectInventoryRow{}, false, nil
+	if len(matched) == 0 {
+		return network.Summary{}, false, nil
 	}
-	if len(rows) != 1 || firstNonEmpty(rows[0].Name, rows[0].Names) != objectName {
-		return dockerObjectInventoryRow{}, false, fmt.Errorf("local_docker_inventory_identity_conflict")
+	if len(matched) != 1 {
+		return network.Summary{}, false, fmt.Errorf("local_docker_inventory_identity_conflict")
 	}
-	return rows[0], true, nil
+	return matched[0], true, nil
 }
 
 func (p *LocalDockerProvider) inspectNetwork(ctx context.Context, name string) (dockerNetworkInspect, bool, error) {
-	inventory, err := p.runner.Run(ctx, nil, "network", "ls", "--no-trunc", "--filter", "name=^"+name+"$", "--format", "{{json .}}")
+	summaries, err := p.docker.NetworkList(ctx, mobyclient.NetworkListOptions{
+		Filters: make(mobyclient.Filters).Add("name", "^"+name+"$"),
+	})
 	if err != nil {
 		return dockerNetworkInspect{}, false, err
 	}
-	row, exists, err := decodeDockerObjectInventory(inventory, name)
+	summary, exists, err := matchExactNetworkSummary(summaries, name)
 	if err != nil || !exists {
 		return dockerNetworkInspect{}, false, err
 	}
-	output, err := p.runner.Run(ctx, nil, "network", "inspect", firstNonEmpty(row.ID, name))
+	resp, err := p.docker.NetworkInspect(ctx, firstNonEmpty(summary.ID, name), mobyclient.NetworkInspectOptions{})
 	if err != nil {
 		return dockerNetworkInspect{}, false, err
 	}
-	var values []dockerNetworkInspect
-	if json.Unmarshal(output, &values) != nil || len(values) != 1 || values[0].ID == "" || values[0].Name != name || row.ID != "" && values[0].ID != row.ID {
+	inspected := dockerNetworkInspectFromSDK(resp)
+	if inspected.ID == "" || inspected.Name != name || (summary.ID != "" && inspected.ID != summary.ID) {
 		return dockerNetworkInspect{}, false, fmt.Errorf("local_docker_network_readback_invalid")
 	}
-	return values[0], true, nil
+	return inspected, true, nil
 }
 
 func localDockerLabels(accountID, workspaceID, resourceID, operationID, kind string) map[string]string {
@@ -448,21 +409,6 @@ func localDockerLabels(accountID, workspaceID, resourceID, operationID, kind str
 		"opl.fabric.provider": "local-docker", "opl.fabric.kind": kind, "opl.account.id": accountID,
 		"opl.workspace.id": workspaceID, "opl.resource.id": resourceID, "opl.operation.id": operationID,
 	}
-}
-
-func dockerLabelArgs(labels map[string]string) []string {
-	keys := make([]string, 0, len(labels))
-	for key := range labels {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	args := make([]string, 0, len(labels)*2)
-	for _, key := range keys {
-		if value := labels[key]; value != "" {
-			args = append(args, "--label", key+"="+value)
-		}
-	}
-	return args
 }
 
 func exactDockerLabels(actual, expected map[string]string) bool {
@@ -509,9 +455,7 @@ func (p *LocalDockerProvider) CreateComputeAllocation(ctx context.Context, input
 			if dispatchErr := attempt.markReplayDispatch(ctx); dispatchErr != nil {
 				return ComputeAllocation{}, dispatchErr
 			}
-			args := append([]string{"network", "create", "--driver", "bridge"}, dockerLabelArgs(labels)...)
-			args = append(args, name)
-			if _, err := p.runner.Run(ctx, nil, args...); err != nil {
+			if _, err := p.docker.NetworkCreate(ctx, name, mobyclient.NetworkCreateOptions{Driver: "bridge", Labels: labels}); err != nil {
 				_ = attempt.complete(ctx, "", allocation, err)
 				return ComputeAllocation{}, err
 			}
@@ -663,7 +607,7 @@ func (p *LocalDockerProvider) DestroyComputeAllocation(ctx context.Context, allo
 				return allocation, bindingErr
 			}
 			if bound {
-				_, disconnectErr := p.runner.Run(ctx, nil, "network", "disconnect", name, p.runtimeGatewayContainer)
+				disconnectErr := p.docker.NetworkDisconnect(ctx, name, p.runtimeGatewayContainer, false)
 				gateway, gatewayExists, inspectErr = p.inspectContainer(ctx, p.runtimeGatewayContainer)
 				if inspectErr != nil || !gatewayExists {
 					return allocation, firstNonNil(inspectErr, fmt.Errorf("local_docker_runtime_gateway_identity_mismatch"))
@@ -674,7 +618,7 @@ func (p *LocalDockerProvider) DestroyComputeAllocation(ctx context.Context, allo
 				}
 			}
 		}
-		_, removeErr := p.runner.Run(ctx, nil, "network", "rm", name)
+		removeErr := p.docker.NetworkRemove(ctx, name)
 		if _, stillExists, readErr := p.inspectNetwork(ctx, name); readErr != nil || stillExists {
 			return allocation, firstNonNil(readErr, removeErr, fmt.Errorf("local_docker_compute_destroy_readback_mismatch"))
 		}
@@ -902,7 +846,7 @@ func (p *LocalDockerProvider) Readiness(ctx context.Context) (FabricReadiness, e
 	if inventoryErr != nil || closeErr != nil {
 		return FabricReadiness{}, firstNonNil(inventoryErr, closeErr)
 	}
-	_, err = p.runner.Run(ctx, nil, "info", "--format", "{{.ServerVersion}}")
+	_, err = p.docker.Info(ctx)
 	if err != nil {
 		return FabricReadiness{}, err
 	}

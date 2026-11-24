@@ -3,13 +3,12 @@
 package coordination_test
 
 import (
-	"bytes"
 	"context"
 	"io"
-	"os"
-	"os/exec"
-	"path/filepath"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	api "opl-cloud/packages/contracts/go/api"
@@ -17,49 +16,69 @@ import (
 	"opl-cloud/services/fabric/internal/fabric"
 )
 
-// dockerFixtureCallsLogPlaceholder is substituted with the quoted absolute
-// calls-log path when the scratch Docker fixture is generated.
-const dockerFixtureCallsLogPlaceholder = "__DOCKER_FIXTURE_CALLS_LOG__"
+type dockerAPIFixture struct {
+	server *httptest.Server
+	mu     sync.Mutex
+	calls  []string
+}
 
-// dockerInfoFixtureScript is a scratch stand-in for the Docker binary. It
-// answers only the provider's exact version readback, refuses every other argv
-// with exit status 1, and first appends the full argv of every invocation to
-// the calls log.
-const dockerInfoFixtureScript = `#!/bin/sh
-log="__DOCKER_FIXTURE_CALLS_LOG__"
-{
-	sep=""
-	for arg in "$@"; do
-		printf '%s%s' "$sep" "$arg"
-		sep=" "
-	done
-	printf '\n'
-} >> "$log"
-if [ "$#" -ne 3 ] || [ "$1" != "info" ] || [ "$2" != "--format" ] || [ "$3" != "{{.ServerVersion}}" ]; then
-	printf 'fixture_refused_unexpected_argv\n' >&2
-	exit 1
-fi
-printf '29.0.0-test-fixture\n'
-exit 0
-`
+// newDockerInfoAPIFixture starts an in-process Docker Engine HTTP stand-in. It
+// answers only API version negotiation (/_ping) and the provider's read-only
+// /info check, refuses every other endpoint with HTTP 500, and records every
+// request it receives.
+func newDockerInfoAPIFixture(t *testing.T) *dockerAPIFixture {
+	t.Helper()
+	fixture := &dockerAPIFixture{}
+	fixture.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fixture.mu.Lock()
+		fixture.calls = append(fixture.calls, r.Method+" "+r.URL.Path)
+		fixture.mu.Unlock()
+		switch {
+		case (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.URL.Path == "/_ping":
+			w.Header().Set("Api-Version", "1.47")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("OK"))
+		case r.Method == http.MethodGet && (r.URL.Path == "/info" || strings.HasSuffix(r.URL.Path, "/info")):
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ServerVersion":"29.0.0-test-fixture"}`))
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("fixture_refused_unexpected_request\n"))
+		}
+	}))
+	t.Cleanup(fixture.server.Close)
+	return fixture
+}
+
+func (f *dockerAPIFixture) resetCalls() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = nil
+}
+
+func (f *dockerAPIFixture) snapshotCalls() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.calls...)
+}
 
 // The real provider must reject an unsupported host before creating a network;
 // Docker Desktop's Linux daemon is not the Fabric host's project-quota backend.
 func TestLocalDispatcherRejectsUnsupportedHostQuota(t *testing.T) {
 	t.Setenv("OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON", `{"schemaVersion":1,"profileId":"profile","capabilityVersion":"v1","region":"local","accountBindings":[{"tenantId":"tenant","accountId":"account"}],"packages":[{"id":"package","name":"Package","available":true,"compute":{"id":"compute-sku","server":"2c4g","cpu":2,"memoryGb":4,"instanceType":"local-2c4g"},"storage":{"id":"storage-sku","sizeGb":10,"quotaPolicy":"linux-project"}}]}`)
 
-	scratch := t.TempDir()
-	script, callsLog := writeDockerInfoFixture(t, scratch)
-	// The provider must run this scratch fixture instead of any Docker binary.
-	t.Setenv("OPL_FABRIC_DOCKER_BINARY", script)
+	fixture := newDockerInfoAPIFixture(t)
+	// Point the Moby Go SDK client at the scratch HTTP stand-in instead of any
+	// local Docker daemon socket.
+	t.Setenv("DOCKER_HOST", fixture.server.URL)
+	t.Setenv("DOCKER_TLS_VERIFY", "")
+	t.Setenv("DOCKER_CERT_PATH", "")
 
-	// The unmeasured control phase proves the fixture fails closed on argv it
-	// was not built for; the script records that invocation too, so the calls
-	// log is reset before the one measured provider phase.
-	assertDockerFixtureRefusesUnexpectedArgv(t, script, callsLog)
-	if err := os.Truncate(callsLog, 0); err != nil {
-		t.Fatalf("reset docker fixture calls log: %v", err)
-	}
+	// The unmeasured control phase proves the fixture fails closed on endpoints
+	// it was not built for; reset recorded requests before the measured phase.
+	assertDockerFixtureRefusesUnexpectedRequest(t, fixture)
+	fixture.resetCalls()
 
 	provider := fabric.NewLocalDockerProvider()
 	service := fabric.NewService(provider)
@@ -71,63 +90,39 @@ func TestLocalDispatcherRejectsUnsupportedHostQuota(t *testing.T) {
 	if _, found := service.GetComputeAllocation(context.Background(), "quota-compute-never-created"); found {
 		t.Fatal("compute was dispatched before quota admission")
 	}
-	if call := readSingleDockerFixtureCall(t, callsLog); call != "info --format {{.ServerVersion}}" {
-		t.Fatalf("docker fixture argv=%q", call)
+	calls := fixture.snapshotCalls()
+	infoCalls := 0
+	for _, call := range calls {
+		switch {
+		case call == "GET /_ping" || call == "HEAD /_ping":
+			continue
+		case call == "GET /info" || (strings.HasPrefix(call, "GET /v") && strings.HasSuffix(call, "/info")):
+			infoCalls++
+		default:
+			t.Fatalf("unexpected docker API call=%q all=%q", call, calls)
+		}
+	}
+	if infoCalls != 1 {
+		t.Fatalf("docker fixture calls=%q, want exactly one /info call", calls)
 	}
 }
 
-// writeDockerInfoFixture writes the scratch fixture script and returns its
-// absolute path with the absolute calls log it appends to.
-func writeDockerInfoFixture(t *testing.T, scratch string) (script, callsLog string) {
+func assertDockerFixtureRefusesUnexpectedRequest(t *testing.T, fixture *dockerAPIFixture) {
 	t.Helper()
-	script = filepath.Join(scratch, "docker-fixture")
-	callsLog = filepath.Join(scratch, "docker-fixture-calls.log")
-	body := strings.ReplaceAll(dockerInfoFixtureScript, dockerFixtureCallsLogPlaceholder, dockerFixtureQuote(callsLog))
-	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
-		t.Fatalf("write docker fixture script: %v", err)
-	}
-	if err := os.Chmod(script, 0o755); err != nil {
-		t.Fatalf("make docker fixture script executable: %v", err)
-	}
-	return script, callsLog
-}
-
-// dockerFixtureQuote escapes a path for the double-quoted POSIX sh assignment
-// in the generated script so an absolute path with spaces still resolves.
-func dockerFixtureQuote(path string) string {
-	return strings.NewReplacer(`\`, `\\`, `"`, `\"`, "`", "\\`", `$`, `\$`).Replace(path)
-}
-
-// assertDockerFixtureRefusesUnexpectedArgv runs the fixture directly, without
-// Docker, and proves an argv it was not built for fails closed and is recorded.
-func assertDockerFixtureRefusesUnexpectedArgv(t *testing.T, script, callsLog string) {
-	t.Helper()
-	var stderr bytes.Buffer
-	command := exec.Command(script, "ps")
-	command.Stdout = io.Discard
-	command.Stderr = &stderr
-	if err := command.Run(); err == nil {
-		t.Fatal(`docker fixture accepted unexpected argv "ps"`)
-	}
-	if !strings.Contains(stderr.String(), "fixture_refused_unexpected_argv") {
-		t.Fatalf("docker fixture refusal stderr=%q", stderr.String())
-	}
-	if call := readSingleDockerFixtureCall(t, callsLog); call != "ps" {
-		t.Fatalf("refused docker fixture argv=%q", call)
-	}
-}
-
-// readSingleDockerFixtureCall returns the one argv line the fixture recorded;
-// a missing, empty or multi-line log fails the fixture itself.
-func readSingleDockerFixtureCall(t *testing.T, callsLog string) string {
-	t.Helper()
-	raw, err := os.ReadFile(callsLog)
+	resp, err := http.Get(fixture.server.URL + "/containers/json")
 	if err != nil {
-		t.Fatalf("read docker fixture calls: %v", err)
+		t.Fatalf("control request failed: %v", err)
 	}
-	lines := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
-	if len(lines) != 1 || strings.TrimSpace(lines[0]) == "" {
-		t.Fatalf("docker fixture calls=%q, want exactly one argv line", raw)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read control body: %v", err)
 	}
-	return lines[0]
+	if resp.StatusCode != http.StatusInternalServerError || !strings.Contains(string(body), "fixture_refused_unexpected_request") {
+		t.Fatalf("docker fixture accepted unexpected request: status=%d body=%q", resp.StatusCode, body)
+	}
+	calls := fixture.snapshotCalls()
+	if len(calls) != 1 || calls[0] != "GET /containers/json" {
+		t.Fatalf("refused docker fixture calls=%q", calls)
+	}
 }

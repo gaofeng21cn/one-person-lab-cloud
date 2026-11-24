@@ -28,6 +28,13 @@ import (
 	"testing"
 	"time"
 
+	dockercontainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/image"
+	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/volume"
+	mobyclient "github.com/moby/moby/client"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+
 	contracts "opl-cloud/packages/contracts/go"
 )
 
@@ -207,19 +214,23 @@ func loadApplicationReference(path string) (applicationReferenceMaterial, error)
 }
 
 // All daemon checks here are read-only and precede any resource/store writes.
-func validateApplicationReferenceDocker(ctx context.Context, runner dockerRunner, fixture applicationReferenceFixture) error {
+func validateApplicationReferenceDocker(ctx context.Context, docker localDockerClient, fixture applicationReferenceFixture) error {
 	images := []string{fixture.ProbeImage, fixture.CopyImage}
 	for _, component := range contracts.WorkspaceApplicationRuntimeComponents(fixture.Revision) {
 		images = append(images, component.Image)
 	}
-	for _, image := range images {
-		if _, err := runner.Run(ctx, nil, "image", "inspect", image); err != nil {
+	for _, imageRef := range images {
+		if _, err := docker.ImageInspect(ctx, imageRef, nil); err != nil {
 			return errors.New("reference_pinned_image_unavailable")
 		}
 	}
 	for _, component := range contracts.WorkspaceApplicationRuntimeComponents(fixture.Revision) {
-		platform, err := runner.Run(ctx, nil, "image", "inspect", "--format", "{{.Os}}/{{.Architecture}}", component.Image)
-		if err != nil || strings.TrimSpace(string(platform)) != fixture.Revision.Platform {
+		inspected, err := docker.ImageInspect(ctx, component.Image, nil)
+		platform := inspected.Os + "/" + inspected.Architecture
+		if inspected.Variant != "" {
+			platform += "/" + inspected.Variant
+		}
+		if err != nil || platform != fixture.Revision.Platform {
 			return errors.New("reference_component_image_platform_mismatch")
 		}
 	}
@@ -227,11 +238,13 @@ func validateApplicationReferenceDocker(ctx context.Context, runner dockerRunner
 		if source.SourceVolume == "" {
 			continue
 		}
-		if _, err := runner.Run(ctx, nil, "volume", "inspect", source.SourceVolume); err != nil {
+		if _, err := docker.VolumeInspect(ctx, source.SourceVolume); err != nil {
 			return errors.New("reference_source_volume_unavailable")
 		}
-		active, err := runner.Run(ctx, nil, "container", "ls", "--quiet", "--filter", "volume="+source.SourceVolume)
-		if err != nil || strings.TrimSpace(string(active)) != "" {
+		active, err := docker.ContainerList(ctx, mobyclient.ContainerListOptions{
+			Filters: make(mobyclient.Filters).Add("volume", source.SourceVolume),
+		})
+		if err != nil || len(active) != 0 {
 			return errors.New("reference_source_volume_active_or_unknown")
 		}
 	}
@@ -248,7 +261,7 @@ func TestApplicationReferenceRuntime(t *testing.T) {
 	fixture := material.fixture
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(fixture.TimeoutSeconds)*time.Second)
 	defer cancel()
-	runner := execDockerRunner{binary: "docker"}
+	runner := newMobyDockerClient()
 	if err := validateApplicationReferenceDocker(ctx, runner, fixture); err != nil {
 		t.Fatal(err)
 	}
@@ -376,16 +389,29 @@ func TestApplicationReferenceRuntime(t *testing.T) {
 		t.Cleanup(func() {
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
 			defer cancel()
-			_, _ = runner.Run(cleanupCtx, nil, "container", "rm", "--force", copyName)
+			_ = runner.ContainerRemove(cleanupCtx, copyName, mobyclient.ContainerRemoveOptions{Force: true})
 		})
-		sourceMount := "type=volume,source=" + source.SourceVolume + ",target=/source,readonly"
+		sourceMount := mount.Mount{Type: mount.TypeVolume, Source: source.SourceVolume, Target: "/source", ReadOnly: true}
 		if source.SourceDirectory != "" {
-			sourceMount = "type=bind,source=" + source.SourceDirectory + ",target=/source,readonly"
+			sourceMount = mount.Mount{Type: mount.TypeBind, Source: source.SourceDirectory, Target: "/source", ReadOnly: true}
 		}
-		if _, err := runner.Run(ctx, nil, "run", "--pull", "never", "--name", copyName, "--network", "none", "--label", "opl.reference.workspace="+workspaceID, "--mount", sourceMount, "--mount", "type=bind,source="+dataRoot+",target=/destination", "--entrypoint", "/bin/sh", fixture.CopyImage, "-c", `test ! -e "$1" && cp -a /source "$1"`, "reference-copy", "/destination/"+source.Name); err != nil {
+		copyCfg := &dockercontainer.Config{
+			Image:      fixture.CopyImage,
+			Labels:     map[string]string{"opl.reference.workspace": workspaceID},
+			Entrypoint: []string{"/bin/sh"},
+			Cmd:        []string{"-c", `test ! -e "$1" && cp -a /source "$1"`, "reference-copy", "/destination/" + source.Name},
+		}
+		copyHostCfg := &dockercontainer.HostConfig{
+			NetworkMode: "none",
+			Mounts: []mount.Mount{
+				sourceMount,
+				{Type: mount.TypeBind, Source: dataRoot, Target: "/destination"},
+			},
+		}
+		if _, err := provider.runForegroundContainer(ctx, copyName, copyCfg, copyHostCfg); err != nil {
 			t.Fatal("reference data copy failed")
 		}
-		if _, err := runner.Run(ctx, nil, "container", "rm", copyName); err != nil {
+		if err := runner.ContainerRemove(ctx, copyName, mobyclient.ContainerRemoveOptions{}); err != nil {
 			t.Fatal("reference copy cleanup failed")
 		}
 	}
@@ -394,7 +420,7 @@ func TestApplicationReferenceRuntime(t *testing.T) {
 	for {
 		result, err := service.CreateWorkspaceApplicationRuntime(ctx, input)
 		if err == nil && result.Status == "ready" {
-			entryURL = result.EntryURL
+			entryURL = localEntryURL(result)
 			break
 		}
 		if !errors.Is(err, ErrWorkspaceLaunchPending) {
@@ -406,8 +432,13 @@ func TestApplicationReferenceRuntime(t *testing.T) {
 				t.Logf("reference component=%s state=%s", component.Name, component.State)
 				if component.State == "failed" {
 					name, _ := localDockerApplicationComponentNameForInput(input, component.Name)
-					body, _ := runner.Run(ctx, nil, "logs", "--tail", "25", name)
-					text := string(body)
+					logStream, logErr := runner.ContainerLogs(ctx, name, mobyclient.ContainerLogsOptions{ShowStdout: true, ShowStderr: true, Tail: "25"})
+					var text string
+					if logErr == nil && logStream != nil {
+						if body, readErr := readDockerStdoutStream(logStream); readErr == nil {
+							text = string(body)
+						}
+					}
 					for _, value := range material.secrets {
 						text = strings.ReplaceAll(text, string(value), "[redacted]")
 					}
@@ -506,26 +537,29 @@ func TestApplicationReferenceValidationFreezesExternalSources(t *testing.T) {
 }
 
 type applicationReferenceReadOnlyRunner struct {
+	stubDockerClient
 	active   bool
-	commands [][]string
+	commands []string
 }
 
-func (r *applicationReferenceReadOnlyRunner) Run(_ context.Context, _ []byte, args ...string) ([]byte, error) {
-	r.commands = append(r.commands, args)
-	if args[0] == "image" && args[1] == "inspect" && len(args) > 3 && args[2] == "--format" {
-		return []byte("linux/amd64"), nil
-	}
-	if args[0] == "image" && args[1] == "inspect" || args[0] == "volume" && args[1] == "inspect" {
-		return []byte("[]"), nil
-	}
-	if args[0] == "container" && args[1] == "ls" {
-		if r.active {
-			return []byte("active-original"), nil
-		}
-		return nil, nil
-	}
-	return nil, errors.New("unexpected_mutation")
+func (r *applicationReferenceReadOnlyRunner) ImageInspect(context.Context, string, *ocispec.Platform) (image.InspectResponse, error) {
+	r.commands = append(r.commands, "ImageInspect")
+	return image.InspectResponse{Os: "linux", Architecture: "amd64"}, nil
 }
+
+func (r *applicationReferenceReadOnlyRunner) VolumeInspect(context.Context, string) (volume.Volume, error) {
+	r.commands = append(r.commands, "VolumeInspect")
+	return volume.Volume{}, nil
+}
+
+func (r *applicationReferenceReadOnlyRunner) ContainerList(context.Context, mobyclient.ContainerListOptions) ([]dockercontainer.Summary, error) {
+	r.commands = append(r.commands, "ContainerList")
+	if r.active {
+		return []dockercontainer.Summary{{ID: "active-original"}}, nil
+	}
+	return nil, nil
+}
+
 func TestApplicationReferenceValidationRejectsLiveSourceVolumes(t *testing.T) {
 	fixture := applicationReferenceFixture{Revision: applicationRevisionForTest(), ProbeImage: "probe", CopyImage: "copy", FixtureData: []applicationReferenceData{{Name: "data", SourceVolume: "cold-reference"}}}
 	runner := &applicationReferenceReadOnlyRunner{active: true}
@@ -536,8 +570,8 @@ func TestApplicationReferenceValidationRejectsLiveSourceVolumes(t *testing.T) {
 	if err := validateApplicationReferenceDocker(context.Background(), runner, fixture); err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range runner.commands {
-		if args[1] != "inspect" && args[1] != "ls" {
+	for _, command := range runner.commands {
+		if command != "ImageInspect" && command != "VolumeInspect" && command != "ContainerList" {
 			t.Fatal("prevalidation mutated daemon")
 		}
 	}

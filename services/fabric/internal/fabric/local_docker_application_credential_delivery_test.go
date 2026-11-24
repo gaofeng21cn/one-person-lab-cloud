@@ -58,12 +58,12 @@ func TestLocalDockerApplicationCredentialDeliveryUsesWorkloadIdentity(t *testing
 	if identity == nil || identity.uid != workspaceApplicationWorkloadIdentity || identity.gid != workspaceApplicationWorkloadIdentity {
 		t.Fatalf("undisclosed main component must run as the OPL workload identity: %#v", identity)
 	}
-	args, err := provider.applicationExecutionArgs(applicationComponentExecution(input.Revision, contracts.WorkspaceApplicationComponentMain), identity)
+	spec, err := provider.applicationExecutionSpec(applicationComponentExecution(input.Revision, contracts.WorkspaceApplicationComponentMain), identity)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := fmt.Sprintf("--user %d:%d", workspaceApplicationWorkloadIdentity, workspaceApplicationWorkloadIdentity); strings.Join(args, " ") != want {
-		t.Fatalf("main component execution args=%q, want %q", strings.Join(args, " "), want)
+	if want := fmt.Sprintf("%d:%d", workspaceApplicationWorkloadIdentity, workspaceApplicationWorkloadIdentity); spec.User != want || spec.Init != nil || len(spec.SecurityOpt) != 0 {
+		t.Fatalf("main component execution spec=%#v, want User=%q", spec, want)
 	}
 
 	ownership, ok := provider.workloadOwnership.(*fakeLocalDockerWorkloadOwnership)

@@ -5,254 +5,346 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
+	dockerspec "github.com/moby/docker-image-spec/specs-go/v1"
+	dockercontainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/image"
+	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/network"
+	mobyclient "github.com/moby/moby/client"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+
 	contracts "opl-cloud/packages/contracts/go"
 )
 
-// applicationRuntimeDockerRunner is a scripted docker CLI: `run` materialises
-// a running container from the command args, `container ls`/`inspect` read it
-// back, and everything else fails loudly.
+// applicationRuntimeDockerRunner is an in-memory typed localDockerClient:
+// ContainerCreate/Start materialises a running container from the typed SDK
+// config, ContainerList/Inspect read it back, and unexpected calls fail closed
+// via embedded stubDockerClient.
 type applicationRuntimeImageConfig struct {
 	Entrypoint []string
 	Cmd        []string
 }
 
-type applicationRuntimeDockerRunner struct {
-	mu                 sync.Mutex
-	containers         map[string][]byte
-	runs               [][]string
-	probes             [][]string
-	probeReady         bool
-	probeErr           error
-	images             map[string]bool
-	removedImages      []string
-	calls              [][]string
-	imageConfigs       map[string]applicationRuntimeImageConfig
-	imagePlatforms     map[string]string
-	imageInspectOutput []byte
-	imageInspectErr    error
+type recordedApplicationContainerCreate struct {
+	Name             string
+	Config           *dockercontainer.Config
+	HostConfig       *dockercontainer.HostConfig
+	NetworkingConfig *network.NetworkingConfig
+	Platform         *ocispec.Platform
 }
 
-func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args ...string) ([]byte, error) {
+type applicationRuntimeDockerCall struct {
+	Method   string
+	Target   string
+	Platform string
+}
+
+type applicationRuntimeDockerRunner struct {
+	stubDockerClient
+	mu                   sync.Mutex
+	containers           map[string]dockercontainer.InspectResponse
+	runs                 []recordedApplicationContainerCreate
+	probes               []recordedApplicationContainerCreate
+	probeReady           bool
+	probeErr             error
+	images               map[string]bool
+	removedImages        []string
+	calls                []applicationRuntimeDockerCall
+	imageConfigs         map[string]applicationRuntimeImageConfig
+	imagePlatforms       map[string]string
+	imageInspectOverride *image.InspectResponse
+	imageInspectErr      error
+}
+
+func formatOCIPlatform(p *ocispec.Platform) string {
+	if p == nil {
+		return ""
+	}
+	out := p.OS + "/" + p.Architecture
+	if p.Variant != "" {
+		out += "/" + p.Variant
+	}
+	return out
+}
+
+func (r *applicationRuntimeDockerRunner) ImagePull(_ context.Context, refStr string, options mobyclient.ImagePullOptions) (io.ReadCloser, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.calls = append(r.calls, append([]string(nil), args...))
-	switch args[0] {
-	case "pull":
-		image := args[len(args)-1]
-		if r.images == nil {
-			r.images = map[string]bool{}
-		}
-		if r.imagePlatforms == nil {
-			r.imagePlatforms = map[string]string{}
-		}
-		r.images[image] = true
-		r.imagePlatforms[image] = args[2]
-		return nil, nil
-	case "container":
-		switch args[1] {
-		case "start", "stop", "rm":
-			name := args[len(args)-1]
-			body, exists := r.containers[name]
-			if !exists {
-				return nil, fmt.Errorf("container missing: %s", name)
-			}
-			if args[1] == "rm" {
-				delete(r.containers, name)
-				delete(r.containers, "cid-"+name)
-				return nil, nil
-			}
-			var objects []map[string]any
-			if err := json.Unmarshal(body, &objects); err != nil {
-				return nil, err
-			}
-			running := args[1] == "start"
-			status := "exited"
-			if running {
-				status = "running"
-			}
-			objects[0]["State"] = map[string]any{"Status": status, "Running": running, "StartedAt": time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano)}
-			encoded, _ := json.Marshal(objects)
-			r.containers[name] = encoded
-			r.containers["cid-"+name] = encoded
-			return nil, nil
-		case "ls":
-			for _, arg := range args {
-				if strings.HasPrefix(arg, "ancestor=") {
-					image := strings.TrimPrefix(arg, "ancestor=")
-					for name, body := range r.containers {
-						if strings.HasPrefix(name, "cid-") {
-							continue
-						}
-						var containers []dockerContainerInspect
-						if json.Unmarshal(body, &containers) == nil && containers[0].Config.Image == image {
-							return []byte("cid-" + name), nil
-						}
-					}
-					return nil, nil
-				}
-			}
-			name := ""
-			for _, arg := range args {
-				if strings.HasPrefix(arg, "name=^/") {
-					name = strings.TrimSuffix(strings.TrimPrefix(arg, "name=^/"), "$")
-				}
-			}
-			if _, ok := r.containers[name]; !ok {
-				// docker ls prints nothing for a missing object; one JSON
-				// object per line for a match.
-				return nil, nil
-			}
-			return []byte(fmt.Sprintf("{\"ID\":\"cid-%s\",\"Name\":\"%s\"}", name, name)), nil
-		case "inspect":
-			name := strings.TrimPrefix(args[2], "cid-")
-			body, ok := r.containers[name]
-			if !ok {
-				return nil, fmt.Errorf("no such container: %s", name)
-			}
-			return body, nil
-		}
-	case "image":
-		image := args[len(args)-1]
-		if args[1] == "inspect" {
-			if r.imageInspectErr != nil || r.imageInspectOutput != nil {
-				return r.imageInspectOutput, r.imageInspectErr
-			}
-			if r.images[image] {
-				platform := strings.Split(r.imagePlatforms[image], "/")
-				if len(platform) < 2 {
-					platform = []string{"linux", "amd64"}
-				}
-				variant := ""
-				if len(platform) == 3 {
-					variant = platform[2]
-				}
-				return mustJSON([]any{map[string]any{"Id": "sha256:" + strings.Repeat("a", 64), "RepoDigests": []string{image}, "Os": platform[0], "Architecture": platform[1], "Variant": variant, "Config": r.imageConfigs[image]}}), nil
-			}
-			return []byte("Error response from daemon: No such image: " + image), fmt.Errorf("image absent")
-		}
-		if args[1] == "rm" {
-			delete(r.images, image)
-			r.removedImages = append(r.removedImages, image)
-			return nil, nil
-		}
-	case "run":
-		if strings.Contains(strings.Join(args, " "), "--name opl-app-probe-") {
-			r.probes = append(r.probes, args)
-			name, image := "", ""
-			labels := map[string]string{}
-			for i := 1; i+1 < len(args); i++ {
-				switch args[i] {
-				case "--name":
-					name = args[i+1]
-				case "--label":
-					key, value, _ := strings.Cut(args[i+1], "=")
-					labels[key] = value
-				case "--entrypoint":
-					image = args[i+2]
-				}
-			}
-			r.containers[name] = mustJSON([]any{map[string]any{"ID": "cid-" + name, "Name": "/" + name, "Config": map[string]any{"Image": image, "Labels": labels}, "State": map[string]any{"Running": r.probeErr != nil, "Status": "exited"}}})
-			return []byte(fmt.Sprintf("{\"ready\":%t}", r.probeReady)), r.probeErr
-		}
-		r.runs = append(r.runs, args)
-		name, image, labels := "", "", map[string]string{}
-		published := map[string]any{}
-		env := []string{}
-		user := ""
-		entrypointOverride := ""
-		var commandArgs []string
-		mounts := []map[string]any{}
-		for index := 1; index < len(args); index++ {
-			if args[index] == "-d" {
-				continue
-			}
-			if !strings.HasPrefix(args[index], "-") {
-				image = args[index]
-				commandArgs = args[index+1:]
-				break
-			}
-			switch args[index] {
-			case "--name":
-				name = args[index+1]
-			case "--label":
-				if pair := strings.SplitN(args[index+1], "=", 2); len(pair) == 2 {
-					labels[pair[0]] = pair[1]
-				}
-			case "--env":
-				env = append(env, args[index+1])
-			case "--user":
-				user = args[index+1]
-			case "--entrypoint":
-				entrypointOverride = args[index+1]
-			case "--mount":
-				mount := map[string]any{"RW": true}
-				for _, part := range strings.Split(args[index+1], ",") {
-					key, value, ok := strings.Cut(part, "=")
-					if !ok && part == "readonly" {
-						mount["RW"] = false
-					}
-					switch key {
-					case "type":
-						mount["Type"] = value
-					case "source":
-						mount["Source"] = value
-					case "target":
-						mount["Destination"] = value
-					}
-				}
-				mounts = append(mounts, mount)
-			case "-p":
-				if parts := strings.Split(args[index+1], "::"); len(parts) == 2 {
-					published[strings.TrimSuffix(parts[1], "/tcp")+"/tcp"] = []map[string]any{{"HostIP": "127.0.0.1", "HostPort": "31080"}}
-				}
-			}
-			index++
-		}
-		if name == "" {
-			return nil, fmt.Errorf("run requires --name")
-		}
-		imageConfig := r.imageConfigs[image]
-		entrypoint, cmd := imageConfig.Entrypoint, imageConfig.Cmd
-		if entrypointOverride != "" {
-			entrypoint, cmd = []string{entrypointOverride}, nil
-		}
-		if len(commandArgs) > 0 {
-			cmd = commandArgs
-		}
-		argv := append(append([]string(nil), entrypoint...), cmd...)
-		path := ""
-		var processArgs []string
-		if len(argv) > 0 {
-			path, processArgs = argv[0], argv[1:]
-		}
-		inspect := []map[string]any{{
-			"Id": "cid-" + name, "Name": "/" + name, "Path": path, "Args": processArgs,
-			"Config":          map[string]any{"Image": image, "Labels": labels, "Env": env, "User": user, "Entrypoint": entrypoint, "Cmd": cmd},
-			"Mounts":          mounts,
-			"State":           map[string]any{"Status": "running", "Running": true, "StartedAt": time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano)},
-			"NetworkSettings": map[string]any{"Ports": published},
-		}}
-		body, err := json.Marshal(inspect)
-		if err != nil {
-			return nil, err
-		}
-		r.containers[name] = body
-		r.containers["cid-"+name] = body
-		if r.images == nil {
-			r.images = map[string]bool{}
-		}
-		r.images[image] = true
-		return []byte("cid-" + name), nil
+	platStr := ""
+	if len(options.Platforms) > 0 {
+		p := options.Platforms[0]
+		platStr = formatOCIPlatform(&p)
 	}
-	return nil, fmt.Errorf("unexpected docker call: %v", args)
+	r.calls = append(r.calls, applicationRuntimeDockerCall{Method: "ImagePull", Target: refStr, Platform: platStr})
+	if r.images == nil {
+		r.images = map[string]bool{}
+	}
+	if r.imagePlatforms == nil {
+		r.imagePlatforms = map[string]string{}
+	}
+	r.images[refStr] = true
+	r.imagePlatforms[refStr] = platStr
+	return io.NopCloser(strings.NewReader("")), nil
+}
+
+func (r *applicationRuntimeDockerRunner) ImageInspect(_ context.Context, imageID string, platform *ocispec.Platform) (image.InspectResponse, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, applicationRuntimeDockerCall{Method: "ImageInspect", Target: imageID, Platform: formatOCIPlatform(platform)})
+	if r.imageInspectErr != nil || r.imageInspectOverride != nil {
+		var resp image.InspectResponse
+		if r.imageInspectOverride != nil {
+			resp = *r.imageInspectOverride
+		}
+		return resp, r.imageInspectErr
+	}
+	if r.images[imageID] {
+		parts := strings.Split(r.imagePlatforms[imageID], "/")
+		if len(parts) < 2 {
+			parts = []string{"linux", "amd64"}
+		}
+		variant := ""
+		if len(parts) == 3 {
+			variant = parts[2]
+		}
+		cfg := r.imageConfigs[imageID]
+		return image.InspectResponse{
+			ID:           "sha256:" + strings.Repeat("a", 64),
+			RepoDigests:  []string{imageID},
+			Os:           parts[0],
+			Architecture: parts[1],
+			Variant:      variant,
+			Config: &dockerspec.DockerOCIImageConfig{
+				ImageConfig: ocispec.ImageConfig{
+					Entrypoint: append([]string(nil), cfg.Entrypoint...),
+					Cmd:        append([]string(nil), cfg.Cmd...),
+				},
+			},
+		}, nil
+	}
+	return image.InspectResponse{}, fmt.Errorf("%w: No such image: %s", cerrdefs.ErrNotFound, imageID)
+}
+
+func (r *applicationRuntimeDockerRunner) ImageRemove(_ context.Context, imageID string, _ mobyclient.ImageRemoveOptions) ([]image.DeleteResponse, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, applicationRuntimeDockerCall{Method: "ImageRemove", Target: imageID})
+	delete(r.images, imageID)
+	r.removedImages = append(r.removedImages, imageID)
+	return nil, nil
+}
+
+func (r *applicationRuntimeDockerRunner) ContainerList(_ context.Context, options mobyclient.ContainerListOptions) ([]dockercontainer.Summary, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, applicationRuntimeDockerCall{Method: "ContainerList"})
+	if ancestors := dockerFilterValues(options.Filters, "ancestor"); len(ancestors) > 0 {
+		ref := ancestors[0]
+		var out []dockercontainer.Summary
+		for name, c := range r.containers {
+			if c.Config != nil && c.Config.Image == ref {
+				out = append(out, dockercontainer.Summary{ID: c.ID, Names: []string{"/" + name}})
+			}
+		}
+		return out, nil
+	}
+	if names := dockerFilterValues(options.Filters, "name"); len(names) > 0 {
+		name := strings.TrimSuffix(strings.TrimPrefix(names[0], "^/"), "$")
+		c, ok := r.containers[name]
+		if !ok {
+			return nil, nil
+		}
+		return []dockercontainer.Summary{{ID: c.ID, Names: []string{"/" + name}}}, nil
+	}
+	return nil, nil
+}
+
+func (r *applicationRuntimeDockerRunner) ContainerInspect(_ context.Context, containerID string) (dockercontainer.InspectResponse, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, applicationRuntimeDockerCall{Method: "ContainerInspect", Target: containerID})
+	name := strings.TrimPrefix(containerID, "cid-")
+	if c, ok := r.containers[name]; ok {
+		return c, nil
+	}
+	for _, c := range r.containers {
+		if c.ID == containerID {
+			return c, nil
+		}
+	}
+	return dockercontainer.InspectResponse{}, fmt.Errorf("no such container: %s", containerID)
+}
+
+func (r *applicationRuntimeDockerRunner) ContainerCreate(_ context.Context, config *dockercontainer.Config, hostConfig *dockercontainer.HostConfig, networkingConfig *network.NetworkingConfig, platform *ocispec.Platform, containerName string) (mobyclient.ContainerCreateResult, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, applicationRuntimeDockerCall{Method: "ContainerCreate", Target: containerName, Platform: formatOCIPlatform(platform)})
+	if containerName == "" {
+		return mobyclient.ContainerCreateResult{}, fmt.Errorf("create requires containerName")
+	}
+	rec := recordedApplicationContainerCreate{
+		Name:             containerName,
+		Config:           config,
+		HostConfig:       hostConfig,
+		NetworkingConfig: networkingConfig,
+		Platform:         platform,
+	}
+	if strings.HasPrefix(containerName, "opl-app-probe-") {
+		r.probes = append(r.probes, rec)
+		r.containers[containerName] = dockercontainer.InspectResponse{
+			ID:     "cid-" + containerName,
+			Name:   "/" + containerName,
+			State:  &dockercontainer.State{Running: r.probeErr != nil, Status: dockercontainer.StateExited},
+			Config: config,
+		}
+		return mobyclient.ContainerCreateResult{ID: "cid-" + containerName}, nil
+	}
+	r.runs = append(r.runs, rec)
+	imageConfig := r.imageConfigs[config.Image]
+	entrypoint, cmd := append([]string(nil), imageConfig.Entrypoint...), append([]string(nil), imageConfig.Cmd...)
+	if len(config.Entrypoint) > 0 {
+		entrypoint, cmd = append([]string(nil), config.Entrypoint...), nil
+	}
+	if len(config.Cmd) > 0 {
+		cmd = append([]string(nil), config.Cmd...)
+	}
+	argv := append(append([]string(nil), entrypoint...), cmd...)
+	path := ""
+	var processArgs []string
+	if len(argv) > 0 {
+		path, processArgs = argv[0], argv[1:]
+	}
+	var mounts []dockercontainer.MountPoint
+	published := network.PortMap{}
+	if hostConfig != nil {
+		for _, m := range hostConfig.Mounts {
+			mp := dockercontainer.MountPoint{
+				Type:        m.Type,
+				Source:      m.Source,
+				Destination: m.Target,
+				RW:          !m.ReadOnly,
+			}
+			if m.BindOptions != nil {
+				mp.Propagation = m.BindOptions.Propagation
+			}
+			mounts = append(mounts, mp)
+		}
+		for portKey := range hostConfig.PortBindings {
+			published[portKey] = []network.PortBinding{{HostIP: parseDockerHostIP("127.0.0.1"), HostPort: "31080"}}
+		}
+	}
+	labels := make(map[string]string, len(config.Labels))
+	for k, v := range config.Labels {
+		labels[k] = v
+	}
+	r.containers[containerName] = dockercontainer.InspectResponse{
+		ID:         "cid-" + containerName,
+		Name:       "/" + containerName,
+		Path:       path,
+		Args:       processArgs,
+		State:      &dockercontainer.State{Status: dockercontainer.StateCreated, Running: false},
+		HostConfig: hostConfig,
+		Config: &dockercontainer.Config{
+			Image:      config.Image,
+			Labels:     labels,
+			Env:        append([]string(nil), config.Env...),
+			User:       config.User,
+			Entrypoint: entrypoint,
+			Cmd:        cmd,
+		},
+		Mounts: mounts,
+		NetworkSettings: &dockercontainer.NetworkSettings{
+			Ports: published,
+		},
+	}
+	if r.images == nil {
+		r.images = map[string]bool{}
+	}
+	r.images[config.Image] = true
+	return mobyclient.ContainerCreateResult{ID: "cid-" + containerName}, nil
+}
+
+func (r *applicationRuntimeDockerRunner) ContainerStart(_ context.Context, containerID string, _ mobyclient.ContainerStartOptions) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, applicationRuntimeDockerCall{Method: "ContainerStart", Target: containerID})
+	name := strings.TrimPrefix(containerID, "cid-")
+	c, exists := r.containers[name]
+	if !exists {
+		return fmt.Errorf("container missing: %s", containerID)
+	}
+	if strings.HasPrefix(name, "opl-app-probe-") {
+		return r.probeErr
+	}
+	c.State = &dockercontainer.State{
+		Status:    dockercontainer.StateRunning,
+		Running:   true,
+		StartedAt: time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano),
+	}
+	r.containers[name] = c
+	return nil
+}
+
+func (r *applicationRuntimeDockerRunner) ContainerStop(_ context.Context, containerID string, _ mobyclient.ContainerStopOptions) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, applicationRuntimeDockerCall{Method: "ContainerStop", Target: containerID})
+	name := strings.TrimPrefix(containerID, "cid-")
+	c, exists := r.containers[name]
+	if !exists {
+		return fmt.Errorf("container missing: %s", containerID)
+	}
+	c.State = &dockercontainer.State{
+		Status:    dockercontainer.StateExited,
+		Running:   false,
+		StartedAt: time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano),
+	}
+	r.containers[name] = c
+	return nil
+}
+
+func (r *applicationRuntimeDockerRunner) ContainerRemove(_ context.Context, containerID string, _ mobyclient.ContainerRemoveOptions) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, applicationRuntimeDockerCall{Method: "ContainerRemove", Target: containerID})
+	name := strings.TrimPrefix(containerID, "cid-")
+	if _, exists := r.containers[name]; !exists {
+		return fmt.Errorf("container missing: %s", containerID)
+	}
+	delete(r.containers, name)
+	return nil
+}
+
+func (r *applicationRuntimeDockerRunner) ContainerWait(_ context.Context, containerID string, _ dockercontainer.WaitCondition) (<-chan dockercontainer.WaitResponse, <-chan error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, applicationRuntimeDockerCall{Method: "ContainerWait", Target: containerID})
+	statusCh := make(chan dockercontainer.WaitResponse, 1)
+	errCh := make(chan error, 1)
+	if r.probeErr != nil {
+		errCh <- r.probeErr
+		return statusCh, errCh
+	}
+	statusCh <- dockercontainer.WaitResponse{StatusCode: 0}
+	return statusCh, errCh
+}
+
+func (r *applicationRuntimeDockerRunner) ContainerLogs(_ context.Context, containerID string, _ mobyclient.ContainerLogsOptions) (io.ReadCloser, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, applicationRuntimeDockerCall{Method: "ContainerLogs", Target: containerID})
+	return encodeDockerStdoutStream([]byte(fmt.Sprintf(`{"ready":%t}`, r.probeReady))), nil
 }
 
 func (r *applicationRuntimeDockerRunner) runCount() int {
@@ -261,26 +353,27 @@ func (r *applicationRuntimeDockerRunner) runCount() int {
 	return len(r.runs)
 }
 
-func (r *applicationRuntimeDockerRunner) runArgs(index int) []string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.runs[index]
-}
-
 func (r *applicationRuntimeDockerRunner) setContainerState(name, status string, running bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	var inspect []map[string]any
-	if err := json.Unmarshal(r.containers[name], &inspect); err != nil {
-		panic(err)
+	c, ok := r.containers[name]
+	if !ok {
+		panic("container missing: " + name)
 	}
-	inspect[0]["State"] = map[string]any{"Status": status, "Running": running}
-	body, err := json.Marshal(inspect)
-	if err != nil {
-		panic(err)
+	c.State = &dockercontainer.State{Status: dockercontainer.ContainerState(status), Running: running}
+	r.containers[name] = c
+}
+
+func (r *applicationRuntimeDockerRunner) runCreateForComponent(name string) *recordedApplicationContainerCreate {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range r.runs {
+		if r.runs[i].Config != nil && r.runs[i].Config.Labels["opl.component.name"] == name {
+			rec := r.runs[i]
+			return &rec
+		}
 	}
-	r.containers[name] = body
-	r.containers["cid-"+name] = body
+	return nil
 }
 
 func applicationRuntimeProviderFixture(t *testing.T, workspaceID string) (*LocalDockerProvider, *applicationRuntimeDockerRunner, localDockerStoragePaths) {
@@ -320,7 +413,7 @@ func applicationRuntimeProviderFixture(t *testing.T, workspaceID string) (*Local
 	if err := quota.Apply(root, 7, hardLimit); err != nil {
 		t.Fatal(err)
 	}
-	runner := &applicationRuntimeDockerRunner{containers: map[string][]byte{}, probeReady: true}
+	runner := &applicationRuntimeDockerRunner{containers: map[string]dockercontainer.InspectResponse{}, probeReady: true}
 	provider := newLocalDockerProvider(LocalDockerProviderConfig{
 		GatewaySecretRoot: localDockerSecretTestRoot(t), HostStorageRoot: root, StorageQuotaBackend: localDockerStorageTestQuota(root),
 		ApplicationProbeImage: "repo.example/opl-cloud@sha256:" + strings.Repeat("c", 64),
@@ -331,6 +424,15 @@ func applicationRuntimeProviderFixture(t *testing.T, workspaceID string) (*Local
 		t.Fatal(err)
 	}
 	return provider, runner, paths
+}
+
+func hasMount(mounts []mount.Mount, mountType mount.Type, source, target string) bool {
+	for _, m := range mounts {
+		if m.Type == mountType && m.Target == target && (source == "" || m.Source == source) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestLocalDockerApplicationRuntimeDependencyRunsOwnSpec(t *testing.T) {
@@ -357,28 +459,38 @@ func TestLocalDockerApplicationRuntimeDependencyRunsOwnSpec(t *testing.T) {
 	if observation.Status != "ready" {
 		t.Fatalf("observation=%#v", observation)
 	}
-	dependencyArgs := strings.Join(runner.runArgsForComponent("retrieval"), " ")
-	for _, expected := range []string{"--entrypoint /bin/serve", "--port=9200", "--env RETRIEVAL_MODE=local",
-		"type=tmpfs,target=/cache", "--expose 9200"} {
-		if !strings.Contains(dependencyArgs, expected) {
-			t.Fatalf("dependency args missing %q: %s", expected, dependencyArgs)
+	dep := runner.runCreateForComponent("retrieval")
+	if dep == nil {
+		t.Fatal("missing retrieval container create")
+	}
+	if !reflect.DeepEqual([]string(dep.Config.Entrypoint), []string{"/bin/serve"}) ||
+		!reflect.DeepEqual([]string(dep.Config.Cmd), []string{"worker", "--port=9200"}) ||
+		dep.Config.Image != revision.Dependencies[0].Image {
+		t.Fatalf("dependency image/command boundary invalid: image=%q entrypoint=%q cmd=%q", dep.Config.Image, dep.Config.Entrypoint, dep.Config.Cmd)
+	}
+	if !slices.Contains(dep.Config.Env, "RETRIEVAL_MODE=local") {
+		t.Fatalf("dependency env missing RETRIEVAL_MODE=local: %v", dep.Config.Env)
+	}
+	if _, exposed := dep.Config.ExposedPorts[network.MustParsePort("9200/tcp")]; !exposed {
+		t.Fatalf("dependency missing exposed port 9200/tcp: %v", dep.Config.ExposedPorts)
+	}
+	if !hasMount(dep.HostConfig.Mounts, mount.TypeTmpfs, "", "/cache") {
+		t.Fatalf("dependency missing tmpfs mount /cache: %#v", dep.HostConfig.Mounts)
+	}
+	hasAlias := false
+	if dep.NetworkingConfig != nil {
+		for _, ep := range dep.NetworkingConfig.EndpointsConfig {
+			if slices.Contains(ep.Aliases, "retrieval") {
+				hasAlias = true
+			}
 		}
 	}
-	imageCount := 0
-	for _, arg := range runner.runArgsForComponent("retrieval") {
-		if arg == revision.Dependencies[0].Image {
-			imageCount++
-		}
-	}
-	if imageCount != 1 || !strings.HasSuffix(dependencyArgs, revision.Dependencies[0].Image+" worker --port=9200") {
-		t.Fatalf("dependency image/command boundary invalid: %s", dependencyArgs)
-	}
-	if !strings.Contains(dependencyArgs, "--network-alias retrieval") {
-		t.Fatalf("missing declared service alias: %s", dependencyArgs)
+	if !hasAlias {
+		t.Fatalf("missing declared service alias: %#v", dep.NetworkingConfig)
 	}
 	// 依赖不得继承主组件的挂载与入口发布
-	if strings.Contains(dependencyArgs, "target=/data") || strings.Contains(dependencyArgs, "-p ") {
-		t.Fatalf("dependency inherited main-component facts: %s", dependencyArgs)
+	if hasMount(dep.HostConfig.Mounts, mount.TypeBind, "", "/data") || len(dep.HostConfig.PortBindings) > 0 {
+		t.Fatalf("dependency inherited main-component facts: mounts=%#v ports=%#v", dep.HostConfig.Mounts, dep.HostConfig.PortBindings)
 	}
 }
 
@@ -400,15 +512,16 @@ func TestLocalDockerApplicationRuntimeEnsureCreatesDeclaredComponents(t *testing
 	if runner.runCount() != 2 {
 		t.Fatalf("run calls=%d, want one per declared component", runner.runCount())
 	}
-	mainArgs := strings.Join(runner.runArgsForComponent("main"), " ")
-	if !strings.Contains(mainArgs, "--network opl-compute-") ||
-		!strings.Contains(mainArgs, "type=bind,source="+filepath.ToSlash(filepath.Join(paths.Data, contracts.WorkspaceApplicationDataDirectory(input.DataBindingID), "data"))+",target=/data") ||
-		!strings.Contains(mainArgs, revision.Image) {
-		t.Fatalf("main run args=%s", mainArgs)
+	mainCreate := runner.runCreateForComponent("main")
+	wantDataSource := filepath.Join(paths.Data, contracts.WorkspaceApplicationDataDirectory(input.DataBindingID), "data")
+	if mainCreate == nil || !strings.HasPrefix(string(mainCreate.HostConfig.NetworkMode), "opl-compute-") ||
+		!hasMount(mainCreate.HostConfig.Mounts, mount.TypeBind, wantDataSource, "/data") ||
+		mainCreate.Config.Image != revision.Image {
+		t.Fatalf("main create=%#v", mainCreate)
 	}
-	dependencyArgs := strings.Join(runner.runArgsForComponent("retrieval"), " ")
-	if !strings.Contains(dependencyArgs, "opl-app-retrieval-") || !strings.Contains(dependencyArgs, revision.Dependencies[0].Image) {
-		t.Fatalf("dependency run args=%s", dependencyArgs)
+	depCreate := runner.runCreateForComponent("retrieval")
+	if depCreate == nil || !strings.HasPrefix(depCreate.Name, "opl-app-retrieval-") || depCreate.Config.Image != revision.Dependencies[0].Image {
+		t.Fatalf("dependency create=%#v", depCreate)
 	}
 
 	idempotent, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, ComputeAllocation{
@@ -509,9 +622,10 @@ func TestLocalDockerApplicationRuntimePublishesDeclaredPortsAndEntryURL(t *testi
 	if err != nil {
 		t.Fatalf("ensure: %v", err)
 	}
-	mainArgs := strings.Join(runner.runArgsForComponent("main"), " ")
-	if !strings.Contains(mainArgs, "-p 127.0.0.1::8080") {
-		t.Fatalf("main run args must publish the declared port: %s", mainArgs)
+	mainCreate := runner.runCreateForComponent("main")
+	bindings := mainCreate.HostConfig.PortBindings[network.MustParsePort("8080/tcp")]
+	if len(bindings) != 1 || !bindings[0].HostIP.IsValid() || bindings[0].HostIP.String() != "127.0.0.1" {
+		t.Fatalf("main create must publish the declared port: %#v", mainCreate.HostConfig.PortBindings)
 	}
 	if localEntryURL(observation) == "" || !strings.HasPrefix(localEntryURL(observation), "http://127.0.0.1:") {
 		t.Fatalf("entry URL=%q, want the published host port", localEntryURL(observation))
@@ -531,27 +645,30 @@ func TestLocalDockerApplicationRuntimeProbesMainWithoutPublishingPrivatePorts(t 
 	if err != nil || observation.Status != "pending" || localEntryURL(observation) != "" {
 		t.Fatalf("pending=%#v err=%v", observation, err)
 	}
-	main := strings.Join(runner.runArgsForComponent("main"), " ")
-	dependency := strings.Join(runner.runArgsForComponent("retrieval"), " ")
-	if strings.Contains(main, " -p ") || !strings.Contains(main, "--entrypoint /app/server") || !strings.HasSuffix(main, revision.Image+" --serve") {
-		t.Fatalf("main=%s", main)
+	mainCreate := runner.runCreateForComponent("main")
+	depCreate := runner.runCreateForComponent("retrieval")
+	if len(mainCreate.HostConfig.PortBindings) > 0 ||
+		!reflect.DeepEqual([]string(mainCreate.Config.Entrypoint), []string{"/app/server"}) ||
+		!reflect.DeepEqual([]string(mainCreate.Config.Cmd), []string{"--serve"}) {
+		t.Fatalf("main=%#v", mainCreate)
 	}
-	for _, flag := range []string{"--entrypoint", "--mount", " -p ", "--serve"} {
-		if strings.Contains(dependency, flag) {
-			t.Fatalf("main configuration leaked into dependency: %s", dependency)
-		}
+	if len(depCreate.Config.Entrypoint) > 0 || len(depCreate.Config.Cmd) > 0 || len(depCreate.HostConfig.Mounts) > 0 || len(depCreate.HostConfig.PortBindings) > 0 {
+		t.Fatalf("main configuration leaked into dependency: %#v", depCreate)
 	}
 	if len(runner.probes) != 1 {
 		t.Fatalf("probe calls=%d", len(runner.probes))
 	}
-	probe := strings.Join(runner.probes[0], " ")
-	for _, required := range []string{"--network container:cid-", "--read-only", "--cap-drop ALL", "--security-opt no-new-privileges", "--entrypoint node", provider.applicationProbeImage} {
-		if !strings.Contains(probe, required) {
-			t.Fatalf("missing %s: %s", required, probe)
-		}
+	probe := runner.probes[0]
+	if !strings.HasPrefix(string(probe.HostConfig.NetworkMode), "container:cid-") ||
+		!probe.HostConfig.ReadonlyRootfs ||
+		!slices.Contains([]string(probe.HostConfig.CapDrop), "ALL") ||
+		!slices.Contains(probe.HostConfig.SecurityOpt, "no-new-privileges") ||
+		!reflect.DeepEqual([]string(probe.Config.Entrypoint), []string{"node"}) ||
+		probe.Config.Image != provider.applicationProbeImage {
+		t.Fatalf("probe spec invalid: config=%#v hostConfig=%#v", probe.Config, probe.HostConfig)
 	}
-	if strings.Contains(probe, "--mount") || strings.Contains(probe, " -p ") {
-		t.Fatalf("probe unexpectedly exposes data or ports: %s", probe)
+	if len(probe.HostConfig.Mounts) > 0 || len(probe.HostConfig.PortBindings) > 0 {
+		t.Fatalf("probe unexpectedly exposes data or ports: %#v", probe.HostConfig)
 	}
 	runner.probeReady = true
 	ready, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input)
@@ -595,12 +712,9 @@ func TestLocalDockerApplicationRuntimeInitialDelayAndLiveEntryReadback(t *testin
 		t.Fatalf("ready=%#v err=%v probeCalls=%d", observation, err, len(runner.probes))
 	}
 	name, _ := localDockerApplicationComponentName(input.RuntimeOperationID, "main")
-	var container []map[string]any
-	if err := json.Unmarshal(runner.containers[name], &container); err != nil {
-		t.Fatal(err)
-	}
-	container[0]["Config"].(map[string]any)["Image"] = "other-image"
-	runner.containers[name], _ = json.Marshal(container)
+	c := runner.containers[name]
+	c.Config.Image = "other-image"
+	runner.containers[name] = c
 	if _, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input); err == nil {
 		t.Fatal("readback accepted different image")
 	}
@@ -620,9 +734,10 @@ func TestLocalDockerApplicationRuntimePublishesOnlySelectedEntry(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			args := strings.Join(runner.runArgsForComponent("main"), " ")
-			if strings.Contains(args, "::5353") || (entry == "" && strings.Contains(args, " -p ")) || (entry != "" && !strings.Contains(args, "::8080/tcp")) {
-				t.Fatalf("args=%s", args)
+			mainCreate := runner.runCreateForComponent("main")
+			ports := mainCreate.HostConfig.PortBindings
+			if _, hasUDP := ports[network.MustParsePort("5353/udp")]; hasUDP || (entry == "" && len(ports) > 0) || (entry != "" && len(ports[network.MustParsePort("8080/tcp")]) == 0) {
+				t.Fatalf("ports=%#v", ports)
 			}
 			if (entry == "") != (localEntryURL(observation) == "") {
 				t.Fatalf("entry=%q observation=%#v", entry, observation)
@@ -647,15 +762,9 @@ func TestLocalDockerApplicationRuntimeReadbackRejectsAccountDrift(t *testing.T) 
 				if err != nil {
 					t.Fatal(err)
 				}
-				var containers []dockerContainerInspect
-				if err := json.Unmarshal(runner.containers[name], &containers); err != nil {
-					t.Fatal(err)
-				}
-				containers[0].Config.Labels["opl.account.id"] = account
-				runner.containers[name], err = json.Marshal(containers)
-				if err != nil {
-					t.Fatal(err)
-				}
+				c := runner.containers[name]
+				c.Config.Labels["opl.account.id"] = account
+				runner.containers[name] = c
 				mutations := runner.runCount()
 				observation, err = provider.ReadWorkspaceApplicationRuntime(context.Background(), input)
 				if err == nil || err.Error() != "local_docker_application_component_conflict" || observation.Status == "ready" || runner.runCount() != mutations {
@@ -706,14 +815,14 @@ func TestLocalDockerApplicationRuntimeDependencyDeclaredHealth(t *testing.T) {
 			if len(runner.probes) != 1 {
 				t.Fatalf("dependency must probe inside container network: %d", len(runner.probes))
 			}
-			args := runner.probes[0]
+			probe := runner.probes[0]
 			var checks []contracts.WorkspaceApplicationDependencyHealthCheck
-			if err := json.Unmarshal([]byte(args[len(args)-1]), &checks); err != nil || len(checks) != 2 || checks[0].Type != "tcp" || checks[1].Path != "/health" {
+			if err := json.Unmarshal([]byte(probe.Config.Cmd[len(probe.Config.Cmd)-1]), &checks); err != nil || len(checks) != 2 || checks[0].Type != "tcp" || checks[1].Path != "/health" {
 				t.Fatalf("checks=%+v err=%v", checks, err)
 			}
 			dependencyName, _ := localDockerApplicationComponentNameForInput(input, revision.Dependencies[0].Name)
-			if !strings.Contains(strings.Join(args, " "), "--network container:cid-"+dependencyName) {
-				t.Fatalf("wrong probe network: %v", args)
+			if string(probe.HostConfig.NetworkMode) != "container:cid-"+dependencyName {
+				t.Fatalf("wrong probe network: %q", probe.HostConfig.NetworkMode)
 			}
 			if mode == "not-ready" {
 				if observation.Status != "pending" {
@@ -725,12 +834,7 @@ func TestLocalDockerApplicationRuntimeDependencyDeclaredHealth(t *testing.T) {
 				t.Fatalf("observation=%+v", observation)
 			}
 			if mode == "exited" {
-				var containers []map[string]any
-				if err := json.Unmarshal(runner.containers[dependencyName], &containers); err != nil {
-					t.Fatal(err)
-				}
-				containers[0]["State"] = map[string]any{"Running": false, "Status": "exited"}
-				runner.containers[dependencyName] = mustJSON(containers)
+				runner.setContainerState(dependencyName, "exited", false)
 				observation, err = provider.ReadWorkspaceApplicationRuntime(context.Background(), input)
 				if err != nil || observation.Status != "failed" || len(runner.probes) != 1 || observation.Components[1].LastError != "container exited" {
 					t.Fatalf("observation=%+v err=%v probes=%d", observation, err, len(runner.probes))
@@ -740,31 +844,21 @@ func TestLocalDockerApplicationRuntimeDependencyDeclaredHealth(t *testing.T) {
 	}
 }
 
-func (r *applicationRuntimeDockerRunner) runArgsForComponent(name string) []string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, args := range r.runs {
-		for _, arg := range args {
-			if arg == "opl.component.name="+name {
-				return append([]string(nil), args...)
-			}
-		}
-	}
-	return nil
-}
-
 // The local provider must bound a declared component exactly like the hosted
 // provider, including a hard memory ceiling with no swap headroom.
 func TestLocalDockerApplicationResourceArgsFollowDeclaredEnvelope(t *testing.T) {
-	if args := localDockerApplicationResourceArgs(contracts.WorkspaceApplicationCompute{}); len(args) != 0 {
-		t.Fatalf("an undeclared envelope must add no argument: %#v", args)
+	empty := &dockercontainer.HostConfig{}
+	applyLocalDockerApplicationResources(empty, contracts.WorkspaceApplicationCompute{})
+	if empty.Resources.NanoCPUs != 0 || empty.Resources.Memory != 0 || empty.Resources.MemorySwap != 0 || empty.Resources.MemoryReservation != 0 {
+		t.Fatalf("an undeclared envelope must leave resource limits zeroed: %#v", empty.Resources)
 	}
-	args := localDockerApplicationResourceArgs(contracts.WorkspaceApplicationCompute{
+	bounded := &dockercontainer.HostConfig{}
+	applyLocalDockerApplicationResources(bounded, contracts.WorkspaceApplicationCompute{
 		CPURequestMilli: 500, CPULimitMilli: 2000, MemoryRequestBytes: 2 << 30, MemoryLimitBytes: 3 << 30,
 	})
-	want := []string{"--cpus", "2", "--memory", "3221225472", "--memory-swap", "3221225472", "--memory-reservation", "2147483648"}
-	if !reflect.DeepEqual(args, want) {
-		t.Fatalf("args=%#v want %#v", args, want)
+	if bounded.Resources.NanoCPUs != 2_000_000_000 || bounded.Resources.Memory != 3<<30 ||
+		bounded.Resources.MemorySwap != 3<<30 || bounded.Resources.MemoryReservation != 2<<30 {
+		t.Fatalf("resources=%#v", bounded.Resources)
 	}
 }
 
@@ -810,13 +904,8 @@ func TestLocalDockerApplicationMainCommandPreservesImageCMD(t *testing.T) {
 			if err != nil || observation.Status != "ready" {
 				t.Fatalf("observation=%+v err=%v", observation, err)
 			}
-			runArgs := runner.runArgsForComponent("main")
-			var tail []string
-			for i, arg := range runArgs {
-				if arg == revision.Image {
-					tail = runArgs[i+1:]
-				}
-			}
+			mainCreate := runner.runCreateForComponent("main")
+			tail := []string(mainCreate.Config.Cmd)
 			wantEntrypoint := revision.Entrypoint
 			var wantTail []string
 			if len(wantEntrypoint) == 0 {
@@ -828,43 +917,37 @@ func TestLocalDockerApplicationMainCommandPreservesImageCMD(t *testing.T) {
 				t.Fatalf("docker command tail=%q want=%q", tail, wantTail)
 			}
 			name, _ := localDockerApplicationComponentNameForInput(input, "main")
-			var actual []struct {
-				Path string
-				Args []string
-			}
-			if err := json.Unmarshal(runner.containers[name], &actual); err != nil {
-				t.Fatal(err)
-			}
+			actual := runner.containers[name]
 			wantArgv := append(append([]string{}, wantEntrypoint...), test.cmd...)
-			if got := append([]string{actual[0].Path}, actual[0].Args...); !reflect.DeepEqual(got, wantArgv) {
+			if got := append([]string{actual.Path}, actual.Args...); !reflect.DeepEqual(got, wantArgv) {
 				t.Fatalf("actual argv=%q want=%q", got, wantArgv)
 			}
-			pull, inspect, run := -1, -1, -1
+			pull, inspect, create := -1, -1, -1
 			for i, call := range runner.calls {
-				if call[0] == "pull" {
+				if call.Method == "ImagePull" {
 					pull = i
-					if !reflect.DeepEqual(call, []string{"pull", "--platform", revision.Platform, revision.Image}) {
-						t.Fatalf("pull=%q", call)
+					if call.Target != revision.Image || call.Platform != revision.Platform {
+						t.Fatalf("pull=%+v", call)
 					}
 				}
-				if call[0] == "image" && call[1] == "inspect" {
+				if call.Method == "ImageInspect" {
 					if inspect == -1 {
 						inspect = i
 					}
-					if !reflect.DeepEqual(call, []string{"image", "inspect", "--platform", revision.Platform, revision.Image}) {
-						t.Fatalf("image inspect=%q", call)
+					if call.Target != revision.Image || call.Platform != revision.Platform {
+						t.Fatalf("image inspect=%+v", call)
 					}
 				}
-				if call[0] == "run" && reflect.DeepEqual(call, runArgs) {
-					run = i
+				if call.Method == "ContainerCreate" && call.Target == mainCreate.Name {
+					create = i
 				}
 			}
 			if len(revision.Entrypoint) == 0 {
-				if pull != -1 || inspect != -1 || strings.Contains(strings.Join(runArgs, " "), "--entrypoint") {
-					t.Fatalf("image defaults overridden: pull=%d inspect=%d args=%q", pull, inspect, runArgs)
+				if pull != -1 || inspect != -1 || len(mainCreate.Config.Entrypoint) != 0 {
+					t.Fatalf("image defaults overridden: pull=%d inspect=%d entrypoint=%q", pull, inspect, mainCreate.Config.Entrypoint)
 				}
-			} else if pull < 0 || inspect <= pull || run <= inspect {
-				t.Fatalf("expected pull -> inspect -> run: pull=%d inspect=%d run=%d", pull, inspect, run)
+			} else if pull < 0 || inspect <= pull || create <= inspect {
+				t.Fatalf("expected pull -> inspect -> create: pull=%d inspect=%d create=%d", pull, inspect, create)
 			}
 			if _, err := ensureApplicationCommandRuntime(p, input); err != nil || runner.runCount() != 1 {
 				t.Fatalf("replay err=%v runs=%d", err, runner.runCount())
@@ -886,14 +969,14 @@ func TestLocalDockerApplicationMainCommandKeepsDependencyArgs(t *testing.T) {
 	if _, err := ensureApplicationCommandRuntime(p, applicationRuntimeInput("dependency-command", revision)); err != nil {
 		t.Fatal(err)
 	}
-	args := runner.runArgsForComponent("retrieval")
-	wantTail := []string{revision.Dependencies[0].Image, "--dependency-tail", "worker", "--port=9200"}
-	if !reflect.DeepEqual(args[len(args)-len(wantTail):], wantTail) {
-		t.Fatalf("dependency command changed: %q", args)
+	dep := runner.runCreateForComponent("retrieval")
+	wantCmd := []string{"--dependency-tail", "worker", "--port=9200"}
+	if !reflect.DeepEqual([]string(dep.Config.Entrypoint), []string{"/dependency"}) || !reflect.DeepEqual([]string(dep.Config.Cmd), wantCmd) {
+		t.Fatalf("dependency command changed: entrypoint=%q cmd=%q", dep.Config.Entrypoint, dep.Config.Cmd)
 	}
 	for _, call := range runner.calls {
-		if (call[0] == "image" || call[0] == "pull") && call[len(call)-1] == revision.Dependencies[0].Image {
-			t.Fatalf("dependency unexpectedly resolved image CMD: %q", call)
+		if (call.Method == "ImageInspect" || call.Method == "ImagePull") && call.Target == revision.Dependencies[0].Image {
+			t.Fatalf("dependency unexpectedly resolved image CMD: %+v", call)
 		}
 	}
 }
@@ -901,41 +984,42 @@ func TestLocalDockerApplicationMainCommandKeepsDependencyArgs(t *testing.T) {
 func TestLocalDockerApplicationMainCommandRejectsImageReadFailure(t *testing.T) {
 	readFailure := errors.New("image inspect unavailable")
 	for _, test := range []struct {
-		name, raw string
-		err       error
+		name string
+		err  error
 	}{
 		{name: "inspect error", err: readFailure},
-		{name: "invalid JSON", raw: "["},
-		{name: "empty inventory", raw: "[]"},
-		{name: "null inventory", raw: "null"},
-		{name: "missing config", raw: `[{"Id":"sha256:a","RepoDigests":[],"Os":"linux","Architecture":"amd64"}]`},
-		{name: "wrong digest"}, {name: "wrong platform"}, {name: "wrong variant"},
-		{name: "string CMD"}, {name: "invalid CMD element"}, {name: "null CMD element"},
+		{name: "missing id"},
+		{name: "missing config"},
+		{name: "wrong digest"},
+		{name: "wrong platform"},
+		{name: "wrong variant"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			p, runner, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
 			revision := applicationRevisionForTest()
 			revision.Entrypoint, revision.Dependencies = []string{"/wrapper"}, nil
-			config := map[string]any{"Cmd": []string{"serve"}}
-			image := map[string]any{"Id": "sha256:" + strings.Repeat("a", 64), "RepoDigests": []string{revision.Image}, "Os": "linux", "Architecture": "amd64", "Config": config}
+			resp := &image.InspectResponse{
+				ID:           "sha256:" + strings.Repeat("a", 64),
+				RepoDigests:  []string{revision.Image},
+				Os:           "linux",
+				Architecture: "amd64",
+				Config: &dockerspec.DockerOCIImageConfig{
+					ImageConfig: ocispec.ImageConfig{Cmd: []string{"serve"}},
+				},
+			}
 			switch test.name {
+			case "missing id":
+				resp.ID = ""
+			case "missing config":
+				resp.Config = nil
 			case "wrong digest":
-				image["RepoDigests"] = []string{"other@sha256:" + strings.Repeat("a", 64)}
+				resp.RepoDigests = []string{"other@sha256:" + strings.Repeat("a", 64)}
 			case "wrong platform":
-				image["Architecture"] = "arm64"
+				resp.Architecture = "arm64"
 			case "wrong variant":
-				image["Variant"] = "v8"
-			case "string CMD":
-				config["Cmd"] = "serve"
-			case "invalid CMD element":
-				config["Cmd"] = []any{"serve", 42}
-			case "null CMD element":
-				config["Cmd"] = []any{"serve", nil}
+				resp.Variant = "v8"
 			}
-			runner.imageInspectOutput = mustJSON([]any{image})
-			if test.raw != "" {
-				runner.imageInspectOutput = []byte(test.raw)
-			}
+			runner.imageInspectOverride = resp
 			runner.imageInspectErr = test.err
 			observation, err := ensureApplicationCommandRuntime(p, applicationRuntimeInput("image-command-failure", revision))
 			if err == nil || observation.Status == "ready" || runner.runCount() != 0 {
@@ -961,24 +1045,21 @@ func TestLocalDockerApplicationMainCommandRejectsExistingArgvDrift(t *testing.T)
 					t.Fatal(err)
 				}
 				name, _ := localDockerApplicationComponentNameForInput(input, "main")
-				var containers []map[string]any
-				if err := json.Unmarshal(runner.containers[name], &containers); err != nil {
-					t.Fatal(err)
-				}
+				c := runner.containers[name]
 				switch drift {
 				case "legacy missing CMD":
-					containers[0]["Args"] = []string{"--tail"}
-					containers[0]["Config"].(map[string]any)["Cmd"] = []string{"--tail"}
+					c.Args = []string{"--tail"}
+					c.Config.Cmd = []string{"--tail"}
 				case "reordered args":
-					containers[0]["Args"] = []string{"serve", "--tail", "--http"}
+					c.Args = []string{"serve", "--tail", "--http"}
 				case "different executable":
-					containers[0]["Path"] = "/different"
+					c.Path = "/different"
 				case "extra arg":
-					containers[0]["Args"] = []string{"--tail", "serve", "--http", "extra"}
+					c.Args = []string{"--tail", "serve", "--http", "extra"}
 				case "image inspect failure":
 					runner.imageInspectErr = errors.New("image read unavailable")
 				}
-				runner.containers[name] = mustJSON(containers)
+				runner.containers[name] = c
 				callCount := len(runner.calls)
 				var observation contracts.WorkspaceApplicationRuntimeObservation
 				var err error
@@ -994,8 +1075,8 @@ func TestLocalDockerApplicationMainCommandRejectsExistingArgvDrift(t *testing.T)
 					t.Fatalf("expected command conflict: %v", err)
 				}
 				for _, call := range runner.calls[callCount:] {
-					if call[0] != "image" && call[0] != "container" || call[0] == "container" && call[1] != "ls" && call[1] != "inspect" {
-						t.Fatalf("existing container was mutated: %q", call)
+					if call.Method != "ImageInspect" && call.Method != "ContainerList" && call.Method != "ContainerInspect" {
+						t.Fatalf("existing container was mutated: %+v", call)
 					}
 				}
 			})
@@ -1006,8 +1087,13 @@ func TestLocalDockerApplicationMainCommandRejectsExistingArgvDrift(t *testing.T)
 func TestLocalDockerApplicationMainCommandAcceptsOmittedImageCMD(t *testing.T) {
 	p, runner, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
 	revision := applicationRevisionForTest()
-	raw := mustJSON([]any{map[string]any{"Id": "sha256:" + strings.Repeat("a", 64), "RepoDigests": []string{revision.Image}, "Os": "linux", "Architecture": "amd64", "Config": map[string]any{}}})
-	runner.imageInspectOutput = raw
+	runner.imageInspectOverride = &image.InspectResponse{
+		ID:           "sha256:" + strings.Repeat("a", 64),
+		RepoDigests:  []string{revision.Image},
+		Os:           "linux",
+		Architecture: "amd64",
+		Config:       &dockerspec.DockerOCIImageConfig{},
+	}
 	args, err := p.localDockerApplicationImageCommand(context.Background(), revision.Image, "linux/amd64")
 	if err != nil || len(args) != 0 {
 		t.Fatalf("args=%v err=%v", args, err)

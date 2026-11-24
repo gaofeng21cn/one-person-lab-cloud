@@ -429,7 +429,6 @@
     "OPL_FABRIC_LOCAL_DOCKER_TRUSTED_WORKSPACE_IMAGES",
     "OPL_WORKSPACE_IMAGE_RELEASES_JSON",
     "OPL_WORKSPACE_STORAGE_CLASS",
-    "OPL_FABRIC_DOCKER_BINARY",
     "OPL_CODEX_MODEL",
     "OPL_CODEX_PROVIDER_NAME",
     "OPL_CODEX_REASONING_EFFORT",
@@ -641,13 +640,13 @@
     "relatedMember": "serve",
     "outsideUnit": {
      "reason": "notStartedInsideThisUnit",
-     "reachedThrough": "the installation's own cluster, applied by the Serve owner's kubectl execution boundary",
+     "reachedThrough": "the installation's own cluster, applied by the Serve owner's k8s.io/client-go execution boundary",
      "boundaryEnv": "OPL_K8S_NAMESPACE"
     },
     "distinction": "The serve owner service is a member of this unit; the customer's Workspace application container it applies is not. The unit applies a manifest; the cluster runs the container.",
     "evidence": [
-     "services/serve/internal/delivery/execution.go:75 gives the Serve owner its cluster boundary through tkeapply.KubectlRunner and services/internal/tkeapply/kubectl.go:32 runs the external kubectl executable",
-     "services/internal/tkeapply/runtime.go:76 applies the customer's Deployment manifest and services/internal/tkeapply/runtime.go:542 builds it, so the container is created by the cluster and never started inside this unit's container"
+     "services/serve/internal/delivery/execution.go:75 gives the Serve owner its cluster boundary through tkeapply.NewClusterClient and services/internal/tkeapply/client.go creates a k8s.io/client-go clientset against the cluster API",
+     "services/internal/tkeapply/runtime.go applies the customer's typed appsv1 Deployment Server-Side Apply configuration, so the container is created by the cluster and never started inside this unit's container"
     ]
    }
   ]

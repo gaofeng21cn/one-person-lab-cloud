@@ -72,7 +72,7 @@ func configureAgentExecution(service *Service, origin RouteOrigin) error {
 				return service.frozenModelConfiguration(ctx, nextOwnerCall(command.GetContext()), command)
 			},
 			Executor: &tkeapply.Executor{
-				Kubectl: tkeapply.KubectlRunner(os.Getenv("TENCENT_DEPLOY_KUBECONFIG_REF"), namespace),
+				Client: tkeapply.NewClusterClient(os.Getenv("TENCENT_DEPLOY_KUBECONFIG_REF"), namespace),
 				// The installation's protected-compute declaration is the same fact
 				// set that bounds Fabric's provider. Serve reads it explicitly in its
 				// own source so this process's requirement stays part of the

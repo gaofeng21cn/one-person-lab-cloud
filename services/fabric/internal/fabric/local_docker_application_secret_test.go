@@ -55,36 +55,33 @@ func TestLocalDockerApplicationSecretsComponentScope(t *testing.T) {
 	if err != nil || len(files) != 1 || files["/run/secrets/database"] != filepath.Join(firstPath, "password") || metadata.SecretRef != "" {
 		t.Fatalf("main files mismatch; err=%v", err)
 	}
-	args, err := p.applicationComponentSecretArgs(input, "main", input.Revision.SecretInputs)
-	if err != nil || len(args) != 2 || strings.Contains(strings.Join(args, " "), secondPath) || strings.Contains(strings.Join(args, " "), "opl_webui") {
-		t.Fatalf("main args leaked undeclared secret; err=%v", err)
+	spec, err := p.applicationComponentSecretSpec(input, "main", input.Revision.SecretInputs)
+	if err != nil || len(spec.Mounts) != 1 || strings.Contains(spec.Mounts[0].Source, secondPath) || strings.Contains(spec.Mounts[0].Source, "opl_webui") || len(spec.Env) != 0 {
+		t.Fatalf("main spec leaked undeclared secret: %+v err=%v", spec, err)
 	}
-	args, err = p.applicationComponentSecretArgs(input, "retrieval", input.Revision.Dependencies[0].SecretInputs)
-	if err != nil || len(args) != 2 || args[0] != "--env-file" {
-		t.Fatalf("dependency args invalid; err=%v", err)
+	spec, err = p.applicationComponentSecretSpec(input, "retrieval", input.Revision.Dependencies[0].SecretInputs)
+	if err != nil || len(spec.Mounts) != 0 || spec.EnvFile == "" {
+		t.Fatalf("dependency spec invalid: %+v err=%v", spec, err)
 	}
-	if strings.Contains(strings.Join(args, " "), "search-secret") || strings.Contains(strings.Join(args, " "), "database-secret") {
-		t.Fatal("secret exposed in argv")
-	}
-	body, err := os.ReadFile(args[1])
+	body, err := os.ReadFile(spec.EnvFile)
 	if err != nil || string(body) != "SEARCH_PASSWORD=search-secret\n" {
 		t.Fatalf("envfile mismatch; err=%v", err)
 	}
-	info, err := os.Lstat(args[1])
+	info, err := os.Lstat(spec.EnvFile)
 	if err != nil || info.Mode().Perm() != 0400 {
 		t.Fatalf("envfile mode mismatch; err=%v", err)
 	}
 	// Same binding may be explicitly declared by another component, as a file.
 	declarations := []contracts.WorkspaceApplicationSecretInput{{Name: "db-password", Target: "/run/secrets/shared"}}
-	args, err = p.applicationComponentSecretArgs(input, "retrieval", declarations)
-	if err != nil || len(args) != 2 || !strings.Contains(args[1], firstPath) {
-		t.Fatalf("declared shared input missing; err=%v", err)
+	spec, err = p.applicationComponentSecretSpec(input, "retrieval", declarations)
+	if err != nil || len(spec.Mounts) != 1 || !strings.Contains(spec.Mounts[0].Source, firstPath) {
+		t.Fatalf("declared shared input missing: %+v err=%v", spec, err)
 	}
 	// Main environment inputs use the same bounded consumer without OPL injection.
 	input.Revision.SecretInputs = []contracts.WorkspaceApplicationSecretInput{{Name: "db-password", Env: "DB_PASSWORD"}}
-	args, err = p.applicationSecretMountArgs(input)
-	if err != nil || len(args) != 2 || args[0] != "--env-file" {
-		t.Fatalf("main env input failed; err=%v", err)
+	spec, err = p.applicationSecretMountSpec(input)
+	if err != nil || len(spec.Mounts) != 0 || spec.EnvFile == "" || len(spec.Env) != 1 || spec.Env[0] != "DB_PASSWORD=database-secret" {
+		t.Fatalf("main env input failed: %+v err=%v", spec, err)
 	}
 	var container dockerContainerInspect
 	container.Config.Env = []string{"DB_PASSWORD=database-secret"}
@@ -206,7 +203,16 @@ func TestLocalDockerApplicationSecretsDependencyFileRuntime(t *testing.T) {
 	if err != nil || observation.Status != "ready" {
 		t.Fatalf("ensure failed; err=%v status=%s", err, observation.Status)
 	}
-	if strings.Contains(strings.Join(runner.runArgsForComponent("main"), " "), path) || !strings.Contains(strings.Join(runner.runArgsForComponent("retrieval"), " "), "source="+filepath.Join(path, "config")) {
+	mainCreate := runner.runCreateForComponent("main")
+	depCreate := runner.runCreateForComponent("retrieval")
+	mainHasPath := false
+	for _, m := range mainCreate.HostConfig.Mounts {
+		if strings.Contains(m.Source, path) {
+			mainHasPath = true
+		}
+	}
+	depHasSecret := hasMount(depCreate.HostConfig.Mounts, "bind", filepath.Join(path, "config"), "/run/secrets/config")
+	if mainHasPath || !depHasSecret {
 		t.Fatal("component file scope violated")
 	}
 }

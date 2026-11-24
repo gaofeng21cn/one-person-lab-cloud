@@ -11,7 +11,16 @@ import (
 	"reflect"
 	"strings"
 
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/validation"
+	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
+	applymetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
+	applynetworkingv1 "k8s.io/client-go/applyconfigurations/networking/v1"
+
 	contracts "opl-cloud/packages/contracts/go"
 )
 
@@ -22,41 +31,6 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func stringValue(value any) string {
-	if text, ok := value.(string); ok {
-		return text
-	}
-	return ""
-}
-
-func number(value any) float64 {
-	switch typed := value.(type) {
-	case float64:
-		return typed
-	case int:
-		return float64(typed)
-	case int64:
-		return float64(typed)
-	default:
-		return 0
-	}
-}
-
-func nested(root map[string]any, keys ...string) any {
-	var current any = root
-	for _, key := range keys {
-		asMap, ok := current.(map[string]any)
-		if !ok {
-			if raw, ok := current.(map[string]string); ok {
-				return raw[key]
-			}
-			return nil
-		}
-		current = asMap[key]
-	}
-	return current
 }
 
 func mustJSON(value any) []byte {
@@ -123,144 +97,117 @@ func gatewaySecretName(workspaceID string) string {
 	return contracts.WorkspaceGatewaySecretRef(workspaceID)
 }
 
-func workspaceNodeTolerations(packageID string) []any {
-	return []any{
-		map[string]any{"key": "oplcloud.cn/package-id", "operator": "Equal", "value": packageID, "effect": "NoSchedule"},
+func workspaceNodeTolerations(packageID string) []*applycorev1.TolerationApplyConfiguration {
+	return []*applycorev1.TolerationApplyConfiguration{
+		applycorev1.Toleration().
+			WithKey("oplcloud.cn/package-id").
+			WithOperator(corev1.TolerationOpEqual).
+			WithValue(packageID).
+			WithEffect(corev1.TaintEffectNoSchedule),
 	}
 }
 
-func workspaceEgressRules() []any {
-	return []any{
-		map[string]any{
-			"to": []any{map[string]any{
-				"namespaceSelector": map[string]any{"matchLabels": map[string]any{"kubernetes.io/metadata.name": "kube-system"}},
-				"podSelector":       map[string]any{"matchLabels": map[string]any{"k8s-app": "kube-dns"}},
-			}},
-			"ports": []any{map[string]any{"protocol": "UDP", "port": 53}, map[string]any{"protocol": "TCP", "port": 53}},
-		},
-		map[string]any{
-			"to": []any{map[string]any{"ipBlock": map[string]any{
-				"cidr": "0.0.0.0/0", "except": []any{"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16"},
-			}}},
-			"ports": []any{map[string]any{"protocol": "TCP", "port": 443}},
-		},
-		map[string]any{
-			"to": []any{map[string]any{"ipBlock": map[string]any{
-				"cidr": "::/0", "except": []any{"::1/128", "fc00::/7", "fe80::/10"},
-			}}},
-			"ports": []any{map[string]any{"protocol": "TCP", "port": 443}},
-		},
+func workspaceEgressRules() []*applynetworkingv1.NetworkPolicyEgressRuleApplyConfiguration {
+	return []*applynetworkingv1.NetworkPolicyEgressRuleApplyConfiguration{
+		applynetworkingv1.NetworkPolicyEgressRule().
+			WithTo(
+				applynetworkingv1.NetworkPolicyPeer().
+					WithNamespaceSelector(applymetav1.LabelSelector().WithMatchLabels(map[string]string{"kubernetes.io/metadata.name": "kube-system"})).
+					WithPodSelector(applymetav1.LabelSelector().WithMatchLabels(map[string]string{"k8s-app": "kube-dns"})),
+			).
+			WithPorts(
+				applynetworkingv1.NetworkPolicyPort().WithProtocol(corev1.ProtocolUDP).WithPort(intstr.FromInt32(53)),
+				applynetworkingv1.NetworkPolicyPort().WithProtocol(corev1.ProtocolTCP).WithPort(intstr.FromInt32(53)),
+			),
+		applynetworkingv1.NetworkPolicyEgressRule().
+			WithTo(
+				applynetworkingv1.NetworkPolicyPeer().
+					WithIPBlock(applynetworkingv1.IPBlock().
+						WithCIDR("0.0.0.0/0").
+						WithExcept("0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16")),
+			).
+			WithPorts(
+				applynetworkingv1.NetworkPolicyPort().WithProtocol(corev1.ProtocolTCP).WithPort(intstr.FromInt32(443)),
+			),
+		applynetworkingv1.NetworkPolicyEgressRule().
+			WithTo(
+				applynetworkingv1.NetworkPolicyPeer().
+					WithIPBlock(applynetworkingv1.IPBlock().
+						WithCIDR("::/0").
+						WithExcept("::1/128", "fc00::/7", "fe80::/10")),
+			).
+			WithPorts(
+				applynetworkingv1.NetworkPolicyPort().WithProtocol(corev1.ProtocolTCP).WithPort(intstr.FromInt32(443)),
+			),
 	}
 }
 
-func firstContainerField(deployment map[string]any, key string) any {
-	containers, _ := nested(deployment, "spec", "template", "spec", "containers").([]any)
-	if len(containers) == 0 {
-		return nil
-	}
-	container, _ := containers[0].(map[string]any)
-	return container[key]
-}
-
-func strictKubectlItems(raw []byte) ([]any, error) {
-	var list map[string]any
-	if err := json.Unmarshal(raw, &list); err != nil || len(list) == 0 {
-		return nil, fmt.Errorf("kubernetes_response_invalid")
-	}
-	if stringValue(list["kind"]) == "List" {
-		items, ok := list["items"].([]any)
-		if !ok {
-			return nil, fmt.Errorf("kubernetes_response_invalid")
-		}
-		return items, nil
-	}
-	if stringValue(list["kind"]) == "" {
-		return nil, fmt.Errorf("kubernetes_response_invalid")
-	}
-	return []any{list}, nil
-}
-
-func resourceName(value string) string {
-	parts := strings.Split(value, "/")
-	return parts[len(parts)-1]
-}
-
-func conditionStatuses(value any) map[string]string {
-	statuses := map[string]string{}
-	conditions, _ := value.([]any)
-	for _, condition := range conditions {
-		asMap, _ := condition.(map[string]any)
-		statuses[stringValue(asMap["type"])] = stringValue(asMap["status"])
-	}
-	return statuses
-}
-
-func controllerUID(resource map[string]any, kind string) string {
-	owners, _ := nested(resource, "metadata", "ownerReferences").([]any)
-	uid := ""
-	for _, value := range owners {
-		owner, _ := value.(map[string]any)
-		if owner["controller"] != true {
+func typedControllerUID(owners []metav1.OwnerReference, kind string) types.UID {
+	var uid types.UID
+	for _, owner := range owners {
+		if owner.Controller == nil || !*owner.Controller {
 			continue
 		}
-		if uid != "" || stringValue(owner["kind"]) != kind || stringValue(owner["uid"]) == "" {
+		if uid != "" || owner.Kind != kind || owner.UID == "" {
 			return ""
 		}
-		uid = stringValue(owner["uid"])
+		uid = owner.UID
 	}
 	return uid
 }
 
-func runtimeTemplateMatches(deployment, replicaSet map[string]any) bool {
-	clone := func(resource map[string]any) map[string]any {
-		template, _ := nested(resource, "spec", "template").(map[string]any)
-		result := map[string]any{}
-		for key, value := range template {
-			result[key] = value
-		}
-		metadata, _ := result["metadata"].(map[string]any)
-		copied := map[string]any{}
-		for key, value := range metadata {
-			copied[key] = value
-		}
-		labels, _ := copied["labels"].(map[string]any)
-		labelCopy := map[string]any{}
-		for key, value := range labels {
-			if key != "pod-template-hash" {
-				labelCopy[key] = value
-			}
-		}
-		copied["labels"] = labelCopy
-		result["metadata"] = copied
-		return result
+func typedPodReady(pod *corev1.Pod) bool {
+	if pod == nil || pod.Status.Phase != corev1.PodRunning {
+		return false
 	}
-	return nested(deployment, "spec", "template") != nil && reflect.DeepEqual(clone(deployment), clone(replicaSet))
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }
 
-func podImageIDsMatch(pods []any, labelKey, labelValue, containerName, expected string) bool {
+func typedRuntimeTemplateMatches(deployment *appsv1.Deployment, replicaSet *appsv1.ReplicaSet) bool {
+	if deployment == nil || replicaSet == nil {
+		return false
+	}
+	left := deployment.Spec.Template.DeepCopy()
+	right := replicaSet.Spec.Template.DeepCopy()
+	delete(left.Labels, "pod-template-hash")
+	delete(right.Labels, "pod-template-hash")
+	if len(left.Labels) == 0 {
+		left.Labels = nil
+	}
+	if len(right.Labels) == 0 {
+		right.Labels = nil
+	}
+	return reflect.DeepEqual(left, right)
+}
+
+func typedPodImageIDsMatch(pods []*corev1.Pod, labelKey, labelValue, containerName, expected string) bool {
 	expectedDigest, ok := immutableImageDigest(expected)
 	if !ok {
 		return false
 	}
 	found := false
-	for _, item := range pods {
-		pod, _ := item.(map[string]any)
-		labels, _ := nested(pod, "metadata", "labels").(map[string]any)
-		label := stringValue(labels[labelKey])
-		if label == "" || (labelValue != "" && label != labelValue) || stringValue(nested(pod, "status", "phase")) != "Running" || conditionStatuses(nested(pod, "status", "conditions"))["Ready"] != "True" {
+	for _, pod := range pods {
+		if pod == nil {
+			continue
+		}
+		label := pod.Labels[labelKey]
+		if label == "" || (labelValue != "" && label != labelValue) || !typedPodReady(pod) {
 			continue
 		}
 		containerFound := false
-		statuses, _ := nested(pod, "status", "containerStatuses").([]any)
-		for _, item := range statuses {
-			status, _ := item.(map[string]any)
-			if stringValue(status["name"]) != containerName {
+		for _, status := range pod.Status.ContainerStatuses {
+			if status.Name != containerName {
 				continue
 			}
 			containerFound = true
 			found = true
-			actualDigest, ok := runtimeImageDigest(stringValue(status["imageID"]))
-			if status["ready"] != true || !ok || actualDigest != expectedDigest {
+			actualDigest, ok := runtimeImageDigest(status.ImageID)
+			if !status.Ready || !ok || actualDigest != expectedDigest {
 				return false
 			}
 		}

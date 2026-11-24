@@ -8,9 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/moby/moby/api/types/container"
 )
 
 type runtimeSecretArchiveEntry struct {
@@ -244,15 +247,17 @@ func TestLocalDockerRuntimeSecretArchiveFailsClosed(t *testing.T) {
 	}
 }
 
-type failingRuntimeSecretArchiveRunner struct{}
+type failingRuntimeSecretArchiveRunner struct {
+	stubDockerClient
+}
 
-func (failingRuntimeSecretArchiveRunner) Run(context.Context, []byte, ...string) ([]byte, error) {
-	return nil, errors.New("archive unavailable")
+func (failingRuntimeSecretArchiveRunner) CopyFromContainer(context.Context, string, string) (io.ReadCloser, container.PathStat, error) {
+	return nil, container.PathStat{}, errors.New("archive unavailable")
 }
 
 func TestLocalDockerRuntimeSecretArchiveReadbackFailsClosedOnDockerError(t *testing.T) {
 	t.Setenv("OPL_AIONUI_ADMIN_PASSWORD_SEED", localDockerTestWebUISeed)
-	provider := &LocalDockerProvider{runner: failingRuntimeSecretArchiveRunner{}}
+	provider := &LocalDockerProvider{docker: failingRuntimeSecretArchiveRunner{}}
 	key := []byte("runtime-secret-key")
 	digest := fmt.Sprintf("%x", sha256.Sum256(key))
 	metadata := localDockerGatewayMetadata{

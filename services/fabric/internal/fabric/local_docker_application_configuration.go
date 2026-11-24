@@ -14,17 +14,17 @@ import (
 	"syscall"
 )
 
-func applicationEnvironmentArgs(input WorkspaceApplicationRuntimeInput) []string {
+func applicationEnvironmentVars(input WorkspaceApplicationRuntimeInput) []string {
 	names := make([]string, 0, len(input.Configuration.Environment))
 	for name := range input.Configuration.Environment {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	args := make([]string, 0, len(names)*2)
+	env := make([]string, 0, len(names))
 	for _, name := range names {
-		args = append(args, "--env", name+"="+input.Configuration.Environment[name])
+		env = append(env, name+"="+input.Configuration.Environment[name])
 	}
-	return args
+	return env
 }
 
 func (p *LocalDockerProvider) applicationSecretFiles(input WorkspaceApplicationRuntimeInput) (map[string]string, localDockerGatewayMetadata, error) {
@@ -60,8 +60,8 @@ func (p *LocalDockerProvider) applicationSecretFiles(input WorkspaceApplicationR
 	return files, metadata, nil
 }
 
-func (p *LocalDockerProvider) applicationSecretMountArgs(input WorkspaceApplicationRuntimeInput) ([]string, error) {
-	return p.applicationComponentSecretArgs(input, "main", input.Revision.SecretInputs)
+func (p *LocalDockerProvider) applicationSecretMountSpec(input WorkspaceApplicationRuntimeInput) (localDockerSecretSpec, error) {
+	return p.applicationComponentSecretSpec(input, "main", input.Revision.SecretInputs)
 }
 
 func (p *LocalDockerProvider) verifyApplicationConfiguration(input WorkspaceApplicationRuntimeInput, container dockerContainerInspect) error {

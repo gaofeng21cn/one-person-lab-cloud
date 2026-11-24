@@ -1695,16 +1695,16 @@ test("the excluded customer Workspace application is created by the cluster, not
     assert.ok(member, `${exclusion.id} must be distinguished from a declared process of the unit`);
     assert.equal(member.service, "serve", "the customer workload is distinguished from the Serve owner service");
     const execution = await readFile("services/serve/internal/delivery/execution.go", "utf8");
-    assert.ok(execution.includes("tkeapply.KubectlRunner("),
-      "the Serve owner must reach the cluster through the kubectl execution boundary");
-    const kubectl = await readFile("services/internal/tkeapply/kubectl.go", "utf8");
-    assert.match(kubectl, /exec\.CommandContext\(ctx, "kubectl", base\.\.\.\)/,
-      "the cluster boundary must run an external kubectl, not start the workload in the unit");
+    assert.ok(execution.includes("tkeapply.NewClusterClient("),
+      "the Serve owner must reach the cluster through the k8s.io/client-go execution boundary");
+    const client = await readFile("services/internal/tkeapply/client.go", "utf8");
+    assert.match(client, /kubernetes\.NewForConfig\(cfg\)/,
+      "the cluster boundary must talk to the Kubernetes API via client-go, not start the workload in the unit");
+    assert.match(client, /Deployments\(c\.namespace\)\.Apply\(/,
+      "the customer workload must be applied through Kubernetes Server-Side Apply");
     const runtime = await readFile("services/internal/tkeapply/runtime.go", "utf8");
-    assert.match(runtime, /\{"apply", "-f", "-"\}/,
-      "the customer workload must be applied through kubectl");
-    assert.match(runtime, /"kind": "Deployment"/,
-      "the customer workload must be applied as a Deployment manifest the cluster creates");
+    assert.match(runtime, /applyappsv1\.Deployment\(/,
+      "the customer workload must be applied as a typed Deployment manifest the cluster creates");
     // The customer application image is an installation fact: the product image
     // builds no customer workload image.
     const dockerfile = await readFile(dockerfilePath, "utf8");

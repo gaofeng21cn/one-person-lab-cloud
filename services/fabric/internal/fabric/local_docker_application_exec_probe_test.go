@@ -13,6 +13,7 @@ import (
 )
 
 type applicationExecProbeRunner struct {
+	*applicationRuntimeDockerRunner
 	base    *applicationRuntimeDockerRunner
 	outputs []string
 	err     error
@@ -20,11 +21,8 @@ type applicationExecProbeRunner struct {
 	bounded bool
 }
 
-func (r *applicationExecProbeRunner) Run(ctx context.Context, stdin []byte, args ...string) ([]byte, error) {
-	if args[0] != "exec" {
-		return r.base.Run(ctx, stdin, args...)
-	}
-	r.calls = append(r.calls, append([]string(nil), args...))
+func (r *applicationExecProbeRunner) ContainerExec(ctx context.Context, containerID string, cmd []string, _ []byte) ([]byte, error) {
+	r.calls = append(r.calls, append([]string{containerID}, cmd...))
 	deadline, ok := ctx.Deadline()
 	r.bounded = ok && time.Until(deadline) <= 30*time.Second
 	if r.err != nil {
@@ -40,8 +38,8 @@ func (r *applicationExecProbeRunner) Run(ctx context.Context, stdin []byte, args
 func applicationExecProbeFixture(t *testing.T) (*LocalDockerProvider, *applicationExecProbeRunner, WorkspaceApplicationRuntimeInput, dockerContainerInspect) {
 	t.Helper()
 	p, base, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
-	runner := &applicationExecProbeRunner{base: base, outputs: []string{"opl-health-exit:0\n"}}
-	p.runner = runner
+	runner := &applicationExecProbeRunner{applicationRuntimeDockerRunner: base, base: base, outputs: []string{"opl-health-exit:0\n"}}
+	p.docker = runner
 	input := applicationRuntimeInput("exec-health", applicationRevisionForTest())
 	var container dockerContainerInspect
 	container.ID = "declared-component-id"
@@ -103,7 +101,7 @@ func TestLocalDockerApplicationExecProbeReadinessAndRedaction(t *testing.T) {
 				t.Fatal("exec check not bounded")
 			}
 			args := runner.calls[0]
-			if len(args) != 9 || args[0] != "exec" || args[1] != container.ID || args[2] != "/bin/sh" || args[4] != localDockerApplicationExecProbeScript || args[6] != "/bin/sh" || args[7] != "-c" || args[8] != shellHealthCheck().Command[2] {
+			if len(args) != 8 || args[0] != container.ID || args[1] != "/bin/sh" || args[3] != localDockerApplicationExecProbeScript || args[5] != "/bin/sh" || args[6] != "-c" || args[7] != shellHealthCheck().Command[2] {
 				t.Fatalf("command structure invalid: %v", args)
 			}
 			if len(runner.base.probes) != 0 {

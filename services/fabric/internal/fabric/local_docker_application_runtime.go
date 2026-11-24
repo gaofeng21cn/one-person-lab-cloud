@@ -5,13 +5,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"regexp"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	dockercontainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/network"
+	mobyclient "github.com/moby/moby/client"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	contracts "opl-cloud/packages/contracts/go"
 )
@@ -303,7 +311,7 @@ func (p *LocalDockerProvider) ensureWorkspaceApplicationComponent(
 	ctx context.Context,
 	input WorkspaceApplicationRuntimeInput,
 	compute ComputeAllocation,
-	network string,
+	networkName string,
 	storagePaths localDockerStoragePaths,
 	component contracts.WorkspaceApplicationRuntimeComponentState,
 ) (contracts.WorkspaceApplicationRuntimeComponentState, error) {
@@ -323,13 +331,29 @@ func (p *LocalDockerProvider) ensureWorkspaceApplicationComponent(
 		return localDockerApplicationComponentState(component, container), nil
 	}
 	identity := applicationComponentWorkloadIdentity(input.Revision, component.Name)
-	args := append([]string{"run", "-d", "--name", name}, dockerLabelArgs(labels)...)
-	executionArgs, err := p.applicationExecutionArgs(applicationComponentExecution(input.Revision, component.Name), identity)
+	execSpec, err := p.applicationExecutionSpec(applicationComponentExecution(input.Revision, component.Name), identity)
 	if err != nil {
 		return component, err
 	}
-	args = append(args, executionArgs...)
-	args = append(args, "--network", network, "--network-alias", component.Name, "--platform", input.Revision.Platform)
+	platform, err := parseOCIPlatform(input.Revision.Platform)
+	if err != nil {
+		return component, err
+	}
+	containerConfig := &dockercontainer.Config{
+		Image:  component.Image,
+		Labels: labels,
+		User:   execSpec.User,
+	}
+	hostConfig := &dockercontainer.HostConfig{
+		NetworkMode: dockercontainer.NetworkMode(networkName),
+		Init:        execSpec.Init,
+		SecurityOpt: execSpec.SecurityOpt,
+	}
+	networkingConfig := &network.NetworkingConfig{
+		EndpointsConfig: map[string]*network.EndpointSettings{
+			networkName: {Aliases: []string{component.Name}},
+		},
+	}
 	// A declared envelope bounds the container exactly as the Kubernetes
 	// provider bounds a pod, including a hard memory ceiling: Docker would
 	// otherwise let a component spill into swap and hide the overrun that the
@@ -342,85 +366,96 @@ func (p *LocalDockerProvider) ensureWorkspaceApplicationComponent(
 		}
 		envelope = dependency.Compute
 	}
-	args = append(args, localDockerApplicationResourceArgs(envelope)...)
+	applyLocalDockerApplicationResources(hostConfig, envelope)
 	if component.Role == contracts.WorkspaceApplicationComponentDependency {
 		dependency, depErr := dependencySpecByName(input.Revision, component.Name)
 		if depErr != nil {
 			return localDockerApplicationComponentState(component, dockerContainerInspect{}), depErr
 		}
-		depArgs, depErr := p.localDockerDependencyRunArgs(input, dependency, storagePaths)
-		if depErr != nil {
+		if depErr := p.applyLocalDockerDependencySpec(input, dependency, storagePaths, containerConfig, hostConfig); depErr != nil {
 			return localDockerApplicationComponentState(component, dockerContainerInspect{}), depErr
 		}
-		args = append(args, depArgs...)
-		secretArgs, err := p.applicationComponentSecretArgs(input, component.Name, dependency.SecretInputs)
+		secretSpec, err := p.applicationComponentSecretSpec(input, component.Name, dependency.SecretInputs)
 		if err != nil {
 			return component, err
 		}
-		args = append(args, secretArgs...)
-
+		hostConfig.Mounts = append(hostConfig.Mounts, secretSpec.Mounts...)
+		containerConfig.Env = append(containerConfig.Env, secretSpec.Env...)
 	}
 	if component.Role == contracts.WorkspaceApplicationComponentMain {
-		args = append(args, applicationEnvironmentArgs(input)...)
-		secretArgs, err := p.applicationSecretMountArgs(input)
+		containerConfig.Env = append(containerConfig.Env, applicationEnvironmentVars(input)...)
+		secretSpec, err := p.applicationSecretMountSpec(input)
 		if err != nil {
 			return component, err
 		}
-		args = append(args, secretArgs...)
+		hostConfig.Mounts = append(hostConfig.Mounts, secretSpec.Mounts...)
+		containerConfig.Env = append(containerConfig.Env, secretSpec.Env...)
 		if port := localDockerApplicationEntryPort(input.Revision); port != 0 {
-			args = append(args, "-p", p.publishHost+"::"+strconv.Itoa(port)+"/tcp")
+			portKey, portErr := network.ParsePort(strconv.Itoa(port) + "/tcp")
+			if portErr != nil {
+				return component, portErr
+			}
+			if containerConfig.ExposedPorts == nil {
+				containerConfig.ExposedPorts = network.PortSet{}
+			}
+			containerConfig.ExposedPorts[portKey] = struct{}{}
+			if hostConfig.PortBindings == nil {
+				hostConfig.PortBindings = network.PortMap{}
+			}
+			hostConfig.PortBindings[portKey] = []network.PortBinding{{HostIP: parseDockerHostIP(p.publishHost), HostPort: ""}}
 		}
-		for _, mount := range input.Revision.PersistentMounts {
-			source := localDockerApplicationPersistentSource(input, storagePaths, mount)
+		for _, m := range input.Revision.PersistentMounts {
+			source := localDockerApplicationPersistentSource(input, storagePaths, m)
 			if err := os.MkdirAll(source, 0755); err != nil {
 				return localDockerApplicationComponentState(component, dockerContainerInspect{}), err
 			}
 			// The main component's persistent data must belong to the identity it
 			// runs as, exactly as the Tencent fsGroup establishes for its volume.
-			if !mount.ReadOnly {
+			if !m.ReadOnly {
 				if err := p.workloadOwnership.Assign(source, identity.uid, identity.gid); err != nil {
 					return localDockerApplicationComponentState(component, dockerContainerInspect{}), err
 				}
 			}
-			binding := "type=bind,source=" + source + ",target=" + mount.MountPath + ",bind-propagation=rprivate"
-			if mount.ReadOnly {
-				binding += ",readonly"
-			}
-			args = append(args, "--mount", binding)
+			hostConfig.Mounts = append(hostConfig.Mounts, mount.Mount{
+				Type:        mount.TypeBind,
+				Source:      source,
+				Target:      m.MountPath,
+				ReadOnly:    m.ReadOnly,
+				BindOptions: &mount.BindOptions{Propagation: mount.PropagationRPrivate},
+			})
 		}
-		for _, mount := range input.Revision.ScratchMounts {
-			args = append(args, localDockerApplicationScratchArgs(mount, identity)...)
+		for _, m := range input.Revision.ScratchMounts {
+			applyLocalDockerApplicationScratchMount(hostConfig, m, identity)
 		}
 		if len(input.Revision.Entrypoint) > 0 {
-			args = append(args, "--entrypoint", input.Revision.Entrypoint[0])
+			// Overriding Entrypoint clears the image CMD in Docker. Pull the
+			// admitted platform before reading its defaults, then preserve CMD
+			// after the entrypoint tail.
+			pullStream, err := p.docker.ImagePull(ctx, component.Image, mobyclient.ImagePullOptions{Platforms: []ocispec.Platform{*platform}})
+			if err != nil {
+				return component, err
+			}
+			if pullStream != nil {
+				_, drainErr := io.Copy(io.Discard, pullStream)
+				closeErr := pullStream.Close()
+				if drainErr != nil || closeErr != nil {
+					return component, firstNonNil(drainErr, closeErr)
+				}
+			}
+			cmd, err := p.localDockerApplicationImageCommand(ctx, component.Image, input.Revision.Platform)
+			if err != nil {
+				return component, err
+			}
+			containerConfig.Entrypoint = []string{input.Revision.Entrypoint[0]}
+			containerConfig.Cmd = append(append([]string(nil), input.Revision.Entrypoint[1:]...), cmd...)
 		}
 	}
-	args = append(args, p.applicationConfigMountArgs(input, component.Name)...)
-	args = append(args, component.Image)
-	if component.Role == contracts.WorkspaceApplicationComponentDependency {
-		dependency, err := dependencySpecByName(input.Revision, component.Name)
-		if err != nil {
-			return component, err
-		}
-		if len(dependency.Command.Entrypoint) > 1 {
-			args = append(args, dependency.Command.Entrypoint[1:]...)
-		}
-		args = append(args, dependency.Command.Args...)
+	hostConfig.Mounts = append(hostConfig.Mounts, p.applicationConfigMounts(input, component.Name)...)
+	createdResp, err := p.docker.ContainerCreate(ctx, containerConfig, hostConfig, networkingConfig, platform, name)
+	if err == nil {
+		err = p.docker.ContainerStart(ctx, firstNonEmpty(createdResp.ID, name), mobyclient.ContainerStartOptions{})
 	}
-	if component.Role == contracts.WorkspaceApplicationComponentMain && len(input.Revision.Entrypoint) > 0 {
-		// Docker's --entrypoint clears the image CMD. Pull the admitted platform
-		// before reading its defaults, then preserve CMD after the entrypoint tail.
-		if _, err := p.runner.Run(ctx, nil, "pull", "--platform", input.Revision.Platform, component.Image); err != nil {
-			return component, err
-		}
-		cmd, err := p.localDockerApplicationImageCommand(ctx, component.Image, input.Revision.Platform)
-		if err != nil {
-			return component, err
-		}
-		args = append(args, input.Revision.Entrypoint[1:]...)
-		args = append(args, cmd...)
-	}
-	if _, err := p.runner.Run(ctx, nil, args...); err != nil {
+	if err != nil {
 		return localDockerApplicationComponentState(component, dockerContainerInspect{}), err
 	}
 	created, exists, inspectErr := p.inspectContainer(ctx, name)
@@ -432,40 +467,26 @@ func (p *LocalDockerProvider) ensureWorkspaceApplicationComponent(
 
 // localDockerApplicationImageCommand reads only the exact admitted image and
 // platform. Missing or malformed readback is not evidence of an empty CMD.
-func (p *LocalDockerProvider) localDockerApplicationImageCommand(ctx context.Context, image, platform string) ([]string, error) {
-	raw, err := p.runner.Run(ctx, nil, "image", "inspect", "--platform", platform, image)
+func (p *LocalDockerProvider) localDockerApplicationImageCommand(ctx context.Context, imageRef, platform string) ([]string, error) {
+	plat, err := parseOCIPlatform(platform)
+	if err != nil {
+		return nil, errors.New("local_docker_application_image_identity_mismatch")
+	}
+	observed, err := p.docker.ImageInspect(ctx, imageRef, plat)
 	if err != nil {
 		return nil, fmt.Errorf("local_docker_application_image_command_read_failed: %w", err)
 	}
-	var images []struct {
-		ID           string   `json:"Id"`
-		RepoDigests  []string `json:"RepoDigests"`
-		OS           string   `json:"Os"`
-		Architecture string   `json:"Architecture"`
-		Variant      string   `json:"Variant"`
-		Config       *struct {
-			Cmd []*string `json:"Cmd"`
-		} `json:"Config"`
-	}
-	if err := json.Unmarshal(raw, &images); err != nil || len(images) != 1 || images[0].ID == "" || images[0].Config == nil {
+	if observed.ID == "" || observed.Config == nil {
 		return nil, errors.New("local_docker_application_image_command_invalid")
 	}
-	observed := images[0]
-	observedPlatform := observed.OS + "/" + observed.Architecture
+	observedPlatform := observed.Os + "/" + observed.Architecture
 	if observed.Variant != "" {
 		observedPlatform += "/" + observed.Variant
 	}
-	if !slices.Contains(observed.RepoDigests, image) || observedPlatform != platform {
+	if !slices.Contains(observed.RepoDigests, imageRef) || observedPlatform != platform {
 		return nil, errors.New("local_docker_application_image_identity_mismatch")
 	}
-	cmd := make([]string, 0, len(observed.Config.Cmd))
-	for _, value := range observed.Config.Cmd {
-		if value == nil {
-			return nil, errors.New("local_docker_application_image_command_invalid")
-		}
-		cmd = append(cmd, *value)
-	}
-	return cmd, nil
+	return append([]string(nil), observed.Config.Cmd...), nil
 }
 
 func (p *LocalDockerProvider) verifyLocalDockerApplicationMainCommand(ctx context.Context, input WorkspaceApplicationRuntimeInput, container dockerContainerInspect) error {
@@ -495,64 +516,80 @@ func dependencySpecByName(revision contracts.WorkspaceApplicationRevision, name 
 	return contracts.WorkspaceApplicationDependency{}, fmt.Errorf("local_docker_application_dependency_spec_missing")
 }
 
-// localDockerApplicationResourceArgs bounds one container by its declared
-// envelope. An undeclared envelope adds no flag, so an application that states
-// nothing keeps the previous unbounded shape.
-func localDockerApplicationResourceArgs(compute contracts.WorkspaceApplicationCompute) []string {
-	args := []string{}
+// applyLocalDockerApplicationResources bounds one container by its declared
+// envelope. An undeclared envelope leaves the resource fields zeroed.
+func applyLocalDockerApplicationResources(hostConfig *dockercontainer.HostConfig, compute contracts.WorkspaceApplicationCompute) {
 	if compute.CPULimitMilli > 0 {
-		args = append(args, "--cpus", strconv.FormatFloat(float64(compute.CPULimitMilli)/1000, 'f', -1, 64))
+		hostConfig.Resources.NanoCPUs = compute.CPULimitMilli * 1_000_000
 	}
 	if compute.MemoryLimitBytes > 0 {
-		limit := strconv.FormatInt(compute.MemoryLimitBytes, 10)
-		args = append(args, "--memory", limit, "--memory-swap", limit)
+		hostConfig.Resources.Memory = compute.MemoryLimitBytes
+		hostConfig.Resources.MemorySwap = compute.MemoryLimitBytes
 	}
 	if compute.MemoryRequestBytes > 0 {
-		args = append(args, "--memory-reservation", strconv.FormatInt(compute.MemoryRequestBytes, 10))
+		hostConfig.Resources.MemoryReservation = compute.MemoryRequestBytes
 	}
-	return args
 }
 
-// localDockerDependencyRunArgs returns Docker flags only: the component caller
-// appends the image once, followed by its process arguments. Dependency flags
-// do not inherit the main component's ports, environment, or mounts.
-func (p *LocalDockerProvider) localDockerDependencyRunArgs(input WorkspaceApplicationRuntimeInput, dependency contracts.WorkspaceApplicationDependency, storagePaths localDockerStoragePaths) ([]string, error) {
+// applyLocalDockerDependencySpec populates a dependency container's typed
+// Config and HostConfig. Dependencies do not inherit the main component's
+// ports, environment, or mounts.
+func (p *LocalDockerProvider) applyLocalDockerDependencySpec(input WorkspaceApplicationRuntimeInput, dependency contracts.WorkspaceApplicationDependency, storagePaths localDockerStoragePaths, containerConfig *dockercontainer.Config, hostConfig *dockercontainer.HostConfig) error {
 	identity := applicationComponentWorkloadIdentity(input.Revision, dependency.Name)
-	args := []string{}
 	for _, port := range dependency.Ports {
 		if port.Protocol == "TCP" {
-			args = append(args, "--expose", strconv.Itoa(port.Port))
+			portKey, portErr := network.ParsePort(strconv.Itoa(port.Port) + "/tcp")
+			if portErr != nil {
+				return portErr
+			}
+			if containerConfig.ExposedPorts == nil {
+				containerConfig.ExposedPorts = network.PortSet{}
+			}
+			containerConfig.ExposedPorts[portKey] = struct{}{}
 		}
 	}
-	for name, value := range dependency.Command.Env {
-		args = append(args, "--env", name+"="+value)
+	envNames := make([]string, 0, len(dependency.Command.Env))
+	for name := range dependency.Command.Env {
+		envNames = append(envNames, name)
+	}
+	sort.Strings(envNames)
+	for _, name := range envNames {
+		containerConfig.Env = append(containerConfig.Env, name+"="+dependency.Command.Env[name])
 	}
 	if len(dependency.Command.Entrypoint) > 0 {
-		args = append(args, "--entrypoint", dependency.Command.Entrypoint[0])
+		containerConfig.Entrypoint = []string{dependency.Command.Entrypoint[0]}
+		if len(dependency.Command.Entrypoint) > 1 {
+			containerConfig.Cmd = append(containerConfig.Cmd, dependency.Command.Entrypoint[1:]...)
+		}
 	}
-	for _, mount := range dependency.PersistentMounts {
-		source := localDockerApplicationPersistentSource(input, storagePaths, contracts.WorkspaceApplicationMount{Name: mount.Name, MountPath: mount.MountPath, ReadOnly: mount.ReadOnly})
+	if len(dependency.Command.Args) > 0 {
+		containerConfig.Cmd = append(containerConfig.Cmd, dependency.Command.Args...)
+	}
+	for _, m := range dependency.PersistentMounts {
+		source := localDockerApplicationPersistentSource(input, storagePaths, contracts.WorkspaceApplicationMount{Name: m.Name, MountPath: m.MountPath, ReadOnly: m.ReadOnly})
 		if err := os.MkdirAll(source, 0755); err != nil {
-			return nil, err
+			return err
 		}
 		// A dependency that declares an identity owns the data it mounts just
 		// like the main component; an undeclared dependency keeps its image
 		// default and is not adopted.
-		if !mount.ReadOnly && identity != nil {
+		if !m.ReadOnly && identity != nil {
 			if err := p.workloadOwnership.Assign(source, identity.uid, identity.gid); err != nil {
-				return nil, err
+				return err
 			}
 		}
-		binding := "type=bind,source=" + source + ",target=" + mount.MountPath + ",bind-propagation=rprivate"
-		if mount.ReadOnly {
-			binding += ",readonly"
-		}
-		args = append(args, "--mount", binding)
+		hostConfig.Mounts = append(hostConfig.Mounts, mount.Mount{
+			Type:        mount.TypeBind,
+			Source:      source,
+			Target:      m.MountPath,
+			ReadOnly:    m.ReadOnly,
+			BindOptions: &mount.BindOptions{Propagation: mount.PropagationRPrivate},
+		})
 	}
-	for _, mount := range dependency.ScratchMounts {
-		args = append(args, localDockerApplicationScratchArgs(mount, identity)...)
+	for _, m := range dependency.ScratchMounts {
+		applyLocalDockerApplicationScratchMount(hostConfig, m, identity)
 	}
-	return args, nil
+	return nil
 }
 
 func localDockerApplicationComponentState(component contracts.WorkspaceApplicationRuntimeComponentState, container dockerContainerInspect) contracts.WorkspaceApplicationRuntimeComponentState {
@@ -678,9 +715,8 @@ func (p *LocalDockerProvider) probeLocalDockerDependencyChecks(ctx context.Conte
 		if len(check.Command) != 3 || check.Command[0] != "/bin/sh" || check.Command[1] != "-c" {
 			return false, errors.New("local_docker_application_exec_probe_unsupported")
 		}
-		args := []string{"exec", container.ID, check.Command[0], "-c", localDockerApplicationExecProbeScript, "opl-health"}
-		args = append(args, check.Command...)
-		output, runErr := p.runner.Run(probeCtx, nil, args...)
+		cmd := append([]string{check.Command[0], "-c", localDockerApplicationExecProbeScript, "opl-health"}, check.Command...)
+		output, runErr := p.docker.ContainerExec(probeCtx, container.ID, cmd, nil)
 		if runErr != nil || probeCtx.Err() != nil {
 			return false, errors.Join(errors.New("local_docker_application_exec_probe_failed"), probeCtx.Err())
 		}
@@ -721,11 +757,29 @@ func (p *LocalDockerProvider) probeLocalDockerApplicationChecks(ctx context.Cont
 	// provider is the single cleanup owner; auto-remove would keep docker run
 	// waiting for storage teardown and race a second cleanup on timeout.
 	probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	output, runErr := p.runner.Run(probeCtx, nil, "run", "--pull", "never", "--name", probeName,
-		"--network", "container:"+container.ID, "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-		"--pids-limit", "64", "--memory", "128m", "--cpus", "0.25", "--user", "65534:65534",
-		"--label", "opl.fabric.kind=application_probe", "--label", "opl.workspace.id="+input.WorkspaceID,
-		"--entrypoint", "node", p.applicationProbeImage, "--input-type=module", "-e", localDockerApplicationProbeScript, string(checks))
+	pidsLimit := int64(64)
+	probeCfg := &dockercontainer.Config{
+		Image:      p.applicationProbeImage,
+		User:       "65534:65534",
+		Entrypoint: []string{"node"},
+		Cmd:        []string{"--input-type=module", "-e", localDockerApplicationProbeScript, string(checks)},
+		Labels: map[string]string{
+			"opl.fabric.kind":  "application_probe",
+			"opl.workspace.id": input.WorkspaceID,
+		},
+	}
+	probeHostCfg := &dockercontainer.HostConfig{
+		NetworkMode:    dockercontainer.NetworkMode("container:" + container.ID),
+		ReadonlyRootfs: true,
+		CapDrop:        []string{"ALL"},
+		SecurityOpt:    []string{"no-new-privileges"},
+		Resources: dockercontainer.Resources{
+			PidsLimit: &pidsLimit,
+			Memory:    128 * 1024 * 1024,
+			NanoCPUs:  250_000_000,
+		},
+	}
+	output, runErr := p.runForegroundContainer(probeCtx, probeName, probeCfg, probeHostCfg)
 	cancel()
 	// Docker Desktop teardown has been observed taking 32.7 seconds after the
 	// probe exits successfully. Its separate one-minute cleanup budget includes
@@ -745,20 +799,47 @@ func (p *LocalDockerProvider) probeLocalDockerApplicationChecks(ctx context.Cont
 	return *result.Ready, nil
 }
 
+func (p *LocalDockerProvider) runForegroundContainer(ctx context.Context, name string, cfg *dockercontainer.Config, hostCfg *dockercontainer.HostConfig) ([]byte, error) {
+	created, err := p.docker.ContainerCreate(ctx, cfg, hostCfg, nil, nil, name)
+	if err != nil {
+		return nil, err
+	}
+	containerID := firstNonEmpty(created.ID, name)
+	if err := p.docker.ContainerStart(ctx, containerID, mobyclient.ContainerStartOptions{}); err != nil {
+		return nil, err
+	}
+	statusCh, errCh := p.docker.ContainerWait(ctx, containerID, dockercontainer.WaitConditionNotRunning)
+	select {
+	case waitErr := <-errCh:
+		if waitErr != nil {
+			return nil, waitErr
+		}
+	case status := <-statusCh:
+		if status.Error != nil && status.Error.Message != "" {
+			return nil, errors.New(status.Error.Message)
+		}
+		if status.StatusCode != 0 {
+			return nil, fmt.Errorf("container exited with status %d", status.StatusCode)
+		}
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	logs, err := p.docker.ContainerLogs(ctx, containerID, mobyclient.ContainerLogsOptions{ShowStdout: true})
+	if err != nil {
+		return nil, err
+	}
+	return readDockerStdoutStream(logs)
+}
+
 func (p *LocalDockerProvider) removeApplicationProbe(ctx context.Context, workspaceID, name string) error {
-	container, exists, err := p.inspectContainer(ctx, name)
+	containerInspect, exists, err := p.inspectContainer(ctx, name)
 	if err != nil || !exists {
 		return err
 	}
-	if container.Config.Image != p.applicationProbeImage || container.Config.Labels["opl.fabric.kind"] != "application_probe" || container.Config.Labels["opl.workspace.id"] != workspaceID {
+	if containerInspect.Config.Image != p.applicationProbeImage || containerInspect.Config.Labels["opl.fabric.kind"] != "application_probe" || containerInspect.Config.Labels["opl.workspace.id"] != workspaceID {
 		return errors.New("local_docker_application_probe_owner_mismatch")
 	}
-	args := []string{"container", "rm"}
-	if container.State.Running {
-		args = append(args, "--force")
-	}
-	args = append(args, name)
-	if _, err := p.runner.Run(ctx, nil, args...); err != nil {
+	if err := p.docker.ContainerRemove(ctx, name, mobyclient.ContainerRemoveOptions{Force: containerInspect.State.Running}); err != nil {
 		return err
 	}
 	if _, exists, err := p.inspectContainer(ctx, name); err != nil {

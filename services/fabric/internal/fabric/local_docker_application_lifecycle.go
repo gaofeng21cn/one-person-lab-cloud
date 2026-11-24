@@ -2,10 +2,13 @@ package fabric
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"slices"
+
+	cerrdefs "github.com/containerd/errdefs"
+	mobyclient "github.com/moby/moby/client"
+
 	contracts "opl-cloud/packages/contracts/go"
-	"strings"
 )
 
 func (p *LocalDockerProvider) ReadWorkspaceApplicationRuntimeLifecycle(ctx context.Context, input WorkspaceApplicationRuntimeInput) (WorkspaceApplicationRuntimeLifecycleResult, error) {
@@ -17,11 +20,11 @@ func (p *LocalDockerProvider) ReadWorkspaceApplicationRuntimeLifecycle(ctx conte
 	// still reports unexpected process exits as failures.
 	for i, component := range observation.Components {
 		name, _ := localDockerApplicationComponentNameForInput(input, component.Name)
-		container, exists, err := p.inspectContainer(ctx, name)
+		containerInspect, exists, err := p.inspectContainer(ctx, name)
 		if err != nil {
 			return WorkspaceApplicationRuntimeLifecycleResult{}, err
 		}
-		if exists && !container.State.Running && container.State.Status == "exited" {
+		if exists && !containerInspect.State.Running && containerInspect.State.Status == "exited" {
 			observation.Components[i].State = "suspended"
 			observation.Components[i].LastError = ""
 		}
@@ -57,7 +60,7 @@ func (p *LocalDockerProvider) SetWorkspaceApplicationRuntimeLifecycle(ctx contex
 	for _, componentName := range order {
 		component := states[componentName]
 		name, _ := localDockerApplicationComponentNameForInput(input, component.Name)
-		container, exists, err := p.inspectContainer(ctx, name)
+		containerInspect, exists, err := p.inspectContainer(ctx, name)
 		if err != nil {
 			return WorkspaceApplicationRuntimeLifecycleResult{}, err
 		}
@@ -66,8 +69,8 @@ func (p *LocalDockerProvider) SetWorkspaceApplicationRuntimeLifecycle(ctx contex
 		}
 		switch desired {
 		case "running":
-			if !container.State.Running && applicationComponentPrerequisitesReady(input.Revision, component.Name, states) {
-				if _, err = p.runner.Run(ctx, nil, "container", "start", name); err != nil {
+			if !containerInspect.State.Running && applicationComponentPrerequisitesReady(input.Revision, component.Name, states) {
+				if err = p.docker.ContainerStart(ctx, name, mobyclient.ContainerStartOptions{}); err != nil {
 					return WorkspaceApplicationRuntimeLifecycleResult{}, err
 				}
 			}
@@ -77,13 +80,13 @@ func (p *LocalDockerProvider) SetWorkspaceApplicationRuntimeLifecycle(ctx contex
 			}
 			states[component.Name] = state
 		case "suspended", "absent":
-			if container.State.Running {
-				if _, err = p.runner.Run(ctx, nil, "container", "stop", name); err != nil {
+			if containerInspect.State.Running {
+				if err = p.docker.ContainerStop(ctx, name, mobyclient.ContainerStopOptions{}); err != nil {
 					return WorkspaceApplicationRuntimeLifecycleResult{}, err
 				}
 			}
 			if desired == "absent" {
-				if _, err = p.runner.Run(ctx, nil, "container", "rm", name); err != nil {
+				if err = p.docker.ContainerRemove(ctx, name, mobyclient.ContainerRemoveOptions{}); err != nil {
 					return WorkspaceApplicationRuntimeLifecycleResult{}, err
 				}
 			}
@@ -121,11 +124,14 @@ func (p *LocalDockerProvider) retireWorkspaceApplicationImage(ctx context.Contex
 	if _, retained := p.trustedWorkspaceImageReferences[imageRef]; retained || imageRef == p.applicationProbeImage {
 		return result, nil
 	}
-	references, err := p.runner.Run(ctx, nil, "container", "ls", "--all", "--filter", "ancestor="+imageRef, "--format", "{{.ID}}")
+	references, err := p.docker.ContainerList(ctx, mobyclient.ContainerListOptions{
+		All:     true,
+		Filters: make(mobyclient.Filters).Add("ancestor", imageRef),
+	})
 	if err != nil {
 		return result, err
 	}
-	if len(strings.TrimSpace(string(references))) > 0 {
+	if len(references) > 0 {
 		return result, nil
 	}
 	exists, err := p.applicationImagePresent(ctx, imageRef)
@@ -136,7 +142,7 @@ func (p *LocalDockerProvider) retireWorkspaceApplicationImage(ctx context.Contex
 		result.State = "absent"
 		return result, nil
 	}
-	if _, err = p.runner.Run(ctx, nil, "image", "rm", imageRef); err != nil {
+	if _, err = p.docker.ImageRemove(ctx, imageRef, mobyclient.ImageRemoveOptions{}); err != nil {
 		return result, err
 	}
 	exists, err = p.applicationImagePresent(ctx, imageRef)
@@ -156,29 +162,18 @@ func (p *LocalDockerProvider) applicationImagePresent(ctx context.Context, image
 	}
 	// Repository-filtered image lists omit digest-only images on Docker's
 	// containerd store. Inspect the exact immutable reference instead.
-	raw, err := p.runner.Run(ctx, nil, "image", "inspect", imageRef)
+	inspected, err := p.docker.ImageInspect(ctx, imageRef, nil)
 	if err != nil {
-		for _, line := range strings.Split(string(raw), "\n") {
-			if strings.TrimSpace(line) == "Error response from daemon: No such image: "+imageRef {
-				return false, nil
-			}
+		if cerrdefs.IsNotFound(err) {
+			return false, nil
 		}
 		return false, err
 	}
-	var images []dockerApplicationImageInspect
-	if err = json.Unmarshal(raw, &images); err != nil || len(images) != 1 || images[0].ID == "" {
+	if inspected.ID == "" {
 		return false, errors.New("workspace_application_image_inventory_invalid")
 	}
-	for _, ref := range images[0].RepoDigests {
-		if ref == imageRef {
-			return true, nil
-		}
+	if slices.Contains(inspected.RepoDigests, imageRef) {
+		return true, nil
 	}
-	return false, errors.New("workspace_application_image_identity_mismatch")
-}
-
-// dockerApplicationImageInspect is the Docker API readback at this adapter.
-type dockerApplicationImageInspect struct {
-	ID          string   `json:"Id"`
-	RepoDigests []string `json:"RepoDigests"`
+	return false, errors.New("workspace_application_image_inventory_invalid")
 }

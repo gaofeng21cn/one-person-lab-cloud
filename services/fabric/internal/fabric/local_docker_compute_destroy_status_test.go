@@ -2,10 +2,13 @@ package fabric
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/api/types/system"
+	mobyclient "github.com/moby/moby/client"
 
 	contracts "opl-cloud/packages/contracts/go"
 )
@@ -14,46 +17,48 @@ import (
 // the test releases it, so one readback can observe the exact window in which a
 // dispatched destroy is still converging.
 type convergingComputeRemovalRunner struct {
+	stubDockerClient
 	network        dockerNetworkInspect
 	removalEntered chan struct{}
 	removalRelease chan struct{}
 	enteredOnce    bool
 }
 
-func (r *convergingComputeRemovalRunner) Run(_ context.Context, _ []byte, args ...string) ([]byte, error) {
-	switch {
-	case len(args) >= 1 && args[0] == "info":
-		return []byte("test-docker-version"), nil
-	case len(args) == 7 && args[0] == "network" && args[1] == "ls":
-		if r.network.ID == "" {
-			return nil, nil
-		}
-		return json.Marshal(dockerObjectInventoryRow{ID: r.network.ID, Name: r.network.Name})
-	case len(args) >= 4 && args[0] == "network" && args[1] == "create":
-		r.network = dockerNetworkInspect{ID: "network-converging-removal", Name: args[len(args)-1], Labels: map[string]string{}}
-		for index := 0; index+1 < len(args); index++ {
-			if args[index] != "--label" {
-				continue
-			}
-			key, value, found := strings.Cut(args[index+1], "=")
-			if found {
-				r.network.Labels[key] = value
-			}
-		}
-		return []byte(r.network.ID), nil
-	case len(args) == 3 && args[0] == "network" && args[1] == "inspect" && r.network.ID != "":
-		return json.Marshal([]dockerNetworkInspect{r.network})
-	case len(args) == 3 && args[0] == "network" && args[1] == "rm":
-		if !r.enteredOnce {
-			r.enteredOnce = true
-			close(r.removalEntered)
-		}
-		<-r.removalRelease
-		r.network = dockerNetworkInspect{}
-		return []byte("removed"), nil
-	default:
-		return nil, fmt.Errorf("unexpected docker call: %q", args)
+func (r *convergingComputeRemovalRunner) Info(context.Context) (system.Info, error) {
+	return system.Info{ServerVersion: "test-docker-version"}, nil
+}
+
+func (r *convergingComputeRemovalRunner) NetworkList(context.Context, mobyclient.NetworkListOptions) ([]network.Summary, error) {
+	if r.network.ID == "" {
+		return nil, nil
 	}
+	return []network.Summary{sdkNetworkSummary(r.network.ID, r.network.Name)}, nil
+}
+
+func (r *convergingComputeRemovalRunner) NetworkCreate(_ context.Context, name string, options mobyclient.NetworkCreateOptions) (mobyclient.NetworkCreateResult, error) {
+	labels := make(map[string]string, len(options.Labels))
+	for k, v := range options.Labels {
+		labels[k] = v
+	}
+	r.network = dockerNetworkInspect{ID: "network-converging-removal", Name: name, Labels: labels}
+	return mobyclient.NetworkCreateResult{ID: r.network.ID}, nil
+}
+
+func (r *convergingComputeRemovalRunner) NetworkInspect(_ context.Context, _ string, _ mobyclient.NetworkInspectOptions) (network.Inspect, error) {
+	if r.network.ID == "" {
+		return network.Inspect{}, fmt.Errorf("network not found")
+	}
+	return sdkNetworkInspect(r.network), nil
+}
+
+func (r *convergingComputeRemovalRunner) NetworkRemove(context.Context, string) error {
+	if !r.enteredOnce {
+		r.enteredOnce = true
+		close(r.removalEntered)
+	}
+	<-r.removalRelease
+	r.network = dockerNetworkInspect{}
+	return nil
 }
 
 // A local compute destroy is executed by an asynchronous worker. While the

@@ -9,6 +9,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	mobyclient "github.com/moby/moby/client"
 )
 
 const (
@@ -25,22 +27,15 @@ type localDockerRuntimeReservation struct {
 	NanoCPUs      uint64 `json:"nanoCpus"`
 	MemoryBytes   uint64 `json:"memoryBytes"`
 }
-type localDockerInfoCapacity struct {
-	NCPU     uint64 `json:"NCPU"`
-	MemTotal uint64 `json:"MemTotal"`
-}
-
 func (p *LocalDockerProvider) readDockerHostCapacity(ctx context.Context) (localDockerHostCapacity, error) {
-	body, err := p.runner.Run(ctx, nil, "info", "--format", "{{json .}}")
+	info, err := p.docker.Info(ctx)
 	if err != nil {
 		return localDockerHostCapacity{}, err
 	}
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	var info localDockerInfoCapacity
-	if err := decoder.Decode(&info); err != nil || decoder.Decode(&struct{}{}) != io.EOF || info.NCPU == 0 || info.MemTotal == 0 || info.NCPU > ^uint64(0)/uint64(localDockerNanoCPUsPerCPU) {
+	if info.NCPU <= 0 || info.MemTotal <= 0 || uint64(info.NCPU) > ^uint64(0)/uint64(localDockerNanoCPUsPerCPU) {
 		return localDockerHostCapacity{}, fmt.Errorf("local_docker_host_capacity_readback_invalid")
 	}
-	return localDockerHostCapacity{CPUs: info.NCPU, MemoryBytes: info.MemTotal}, nil
+	return localDockerHostCapacity{CPUs: uint64(info.NCPU), MemoryBytes: uint64(info.MemTotal)}, nil
 }
 func validLocalDockerRuntimeReservation(res localDockerRuntimeReservation) bool {
 	return res.SchemaVersion == localDockerRuntimeReservationSchemaVersion && res.WorkspaceID != "" && res.ResourceID != "" && res.PackageID != "" && res.NanoCPUs > 0 && res.MemoryBytes > 0
@@ -170,27 +165,26 @@ func (p *LocalDockerProvider) localDockerRuntimeCapacityAdmission(ctx context.Co
 }
 
 func (p *LocalDockerProvider) validateRuntimeReservationInventory(ctx context.Context, root *os.Root) error {
-	output, err := p.runner.Run(ctx, nil, "container", "ls", "-a", "--no-trunc", "--filter", "label=opl.fabric.kind=runtime", "--format", "{{json .}}")
+	summaries, err := p.docker.ContainerList(ctx, mobyclient.ContainerListOptions{
+		All:     true,
+		Filters: make(mobyclient.Filters).Add("label", "opl.fabric.kind=runtime"),
+	})
 	if err != nil {
 		return err
 	}
 	seen := make(map[string]struct{})
 	seenResources := make(map[string]struct{})
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		var row dockerObjectInventoryRow
-		if json.Unmarshal([]byte(line), &row) != nil || row.ID == "" || firstNonEmpty(row.Name, row.Names) == "" || row.Name != "" && row.Names != "" && row.Name != row.Names {
+	for _, summary := range summaries {
+		name, nameErr := containerSummaryName(summary)
+		if nameErr != nil || summary.ID == "" {
 			return fmt.Errorf("local_docker_runtime_reservation_inventory_invalid")
 		}
-		name := firstNonEmpty(row.Name, row.Names)
 		if _, exists := seen[name]; exists {
 			return fmt.Errorf("local_docker_runtime_reservation_inventory_invalid")
 		}
 		seen[name] = struct{}{}
 		container, exists, inspectErr := p.inspectContainer(ctx, name)
-		if inspectErr != nil || !exists || container.ID != row.ID {
+		if inspectErr != nil || !exists || container.ID != summary.ID {
 			return firstNonNil(inspectErr, fmt.Errorf(localDockerRuntimeReservationInventoryError))
 		}
 		reservation, reconcileErr := p.reconcileLocalDockerRuntimeReservation(root, container)

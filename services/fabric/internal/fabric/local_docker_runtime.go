@@ -16,6 +16,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	dockercontainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/network"
+	mobyclient "github.com/moby/moby/client"
 )
 
 const (
@@ -315,7 +320,7 @@ func (p *LocalDockerProvider) ensureRuntimeGatewayNetwork(ctx context.Context, r
 		}
 	}
 	networkName := localDockerName("opl-compute", compute.ID)
-	_, connectErr := p.runner.Run(ctx, nil, "network", "connect", networkName, p.runtimeGatewayContainer)
+	connectErr := p.docker.NetworkConnect(ctx, networkName, p.runtimeGatewayContainer, nil)
 	bound, readErr := p.runtimeGatewayNetworkStatus(ctx, runtime, compute)
 	if readErr != nil {
 		return readErr
@@ -420,7 +425,7 @@ func (p *LocalDockerProvider) RecoverWorkspaceRuntimeGatewayNetwork(ctx context.
 				return result, dispatchErr
 			}
 		}
-		_, connectErr := p.runner.Run(ctx, nil, "network", "connect", state.network.ID, state.gateway.ID)
+		connectErr := p.docker.NetworkConnect(ctx, state.network.ID, state.gateway.ID, nil)
 		state, err = p.runtimeGatewayNetworkRecoveryState(ctx, input, compute)
 		if err != nil || state.gateway.ID != result.GatewayContainerID || state.network.ID != result.NetworkID || !state.bound {
 			readErr := firstNonNil(err, connectErr, fmt.Errorf("local_docker_runtime_gateway_network_readback_mismatch"))
@@ -491,28 +496,45 @@ type dockerRuntimeMount struct {
 	Propagation string `json:"Propagation"`
 }
 
+func matchExactContainerSummary(summaries []dockercontainer.Summary, name string) (dockercontainer.Summary, bool, error) {
+	var matched []dockercontainer.Summary
+	for _, summary := range summaries {
+		actual, err := containerSummaryName(summary)
+		if err != nil || actual != name {
+			return dockercontainer.Summary{}, false, fmt.Errorf("local_docker_inventory_identity_conflict")
+		}
+		matched = append(matched, summary)
+	}
+	if len(matched) == 0 {
+		return dockercontainer.Summary{}, false, nil
+	}
+	if len(matched) != 1 {
+		return dockercontainer.Summary{}, false, fmt.Errorf("local_docker_inventory_identity_conflict")
+	}
+	return matched[0], true, nil
+}
+
 func (p *LocalDockerProvider) inspectContainer(ctx context.Context, name string) (dockerContainerInspect, bool, error) {
-	inventory, err := p.runner.Run(ctx, nil, "container", "ls", "-a", "--no-trunc", "--filter", "name=^/"+name+"$", "--format", "{{json .}}")
+	summaries, err := p.docker.ContainerList(ctx, mobyclient.ContainerListOptions{
+		All:     true,
+		Filters: make(mobyclient.Filters).Add("name", "^/"+name+"$"),
+	})
 	if err != nil {
 		return dockerContainerInspect{}, false, err
 	}
-	row, exists, err := decodeDockerObjectInventory(inventory, name)
+	summary, exists, err := matchExactContainerSummary(summaries, name)
 	if err != nil || !exists {
 		return dockerContainerInspect{}, false, err
 	}
-	output, err := p.runner.Run(ctx, nil, "container", "inspect", firstNonEmpty(row.ID, name))
+	resp, err := p.docker.ContainerInspect(ctx, firstNonEmpty(summary.ID, name))
 	if err != nil {
 		return dockerContainerInspect{}, false, err
 	}
-	var values []dockerContainerInspect
-	if json.Unmarshal(output, &values) != nil || len(values) != 1 || values[0].ID == "" || row.ID != "" && values[0].ID != row.ID {
+	inspected := dockerContainerInspectFromSDK(resp)
+	if inspected.ID == "" || (summary.ID != "" && inspected.ID != summary.ID) || inspected.Name != name {
 		return dockerContainerInspect{}, false, fmt.Errorf("local_docker_runtime_readback_invalid")
 	}
-	values[0].Name = strings.TrimPrefix(values[0].Name, "/")
-	if values[0].Name != name {
-		return dockerContainerInspect{}, false, fmt.Errorf("local_docker_runtime_readback_invalid")
-	}
-	return values[0], true, nil
+	return inspected, true, nil
 }
 
 func runtimeWritableBindPresent(container dockerContainerInspect, source, destination string) bool {
@@ -725,8 +747,13 @@ func (p *LocalDockerProvider) verifyRuntimeGatewaySecret(ctx context.Context, co
 		container.Config.Labels["opl.secret.version"] != expected.Version || container.Config.Labels["opl.secret.fingerprint"] != expected.Fingerprint {
 		return fmt.Errorf("local_docker_runtime_secret_binding_mismatch")
 	}
-	body, err := p.runner.Run(ctx, nil, "container", "cp", container.Name+":"+localDockerRuntimeSecretMountPath+"/.", "-")
+	archiveStream, _, err := p.docker.CopyFromContainer(ctx, container.Name, localDockerRuntimeSecretMountPath+"/.")
 	if err != nil {
+		return fmt.Errorf("local_docker_runtime_secret_archive_unavailable")
+	}
+	body, readErr := io.ReadAll(io.LimitReader(archiveStream, maxLocalDockerRuntimeSecretArchiveBytes+1))
+	closeErr := archiveStream.Close()
+	if readErr != nil || closeErr != nil {
 		return fmt.Errorf("local_docker_runtime_secret_archive_unavailable")
 	}
 	return validateRuntimeGatewaySecretArchive(body, expected)
@@ -740,7 +767,7 @@ func (p *LocalDockerProvider) configureRuntimeGateway(ctx context.Context, conta
 	if err != nil || len(bytes.TrimSpace(key)) == 0 {
 		return fmt.Errorf("local_docker_runtime_gateway_key_unavailable")
 	}
-	if _, err := p.runner.Run(ctx, key, "container", "exec", "-i", containerName, "opl", "system", "configure-codex", "--api-key-stdin", "--json"); err != nil {
+	if _, err := p.docker.ContainerExec(ctx, containerName, []string{"opl", "system", "configure-codex", "--api-key-stdin", "--json"}, key); err != nil {
 		return fmt.Errorf("local_docker_runtime_gateway_configuration_failed")
 	}
 	return nil
@@ -868,28 +895,68 @@ func (p *LocalDockerProvider) createWorkspaceRuntimeLocked(ctx context.Context, 
 			if dispatchErr := attempt.markReplayDispatch(ctx); dispatchErr != nil {
 				return WorkspaceRuntime{}, dispatchErr
 			}
-			args := append([]string{"run", "-d", "--name", name}, dockerLabelArgs(labels)...)
-			args = append(args,
-				"--health-cmd", localDockerRuntimeHealthCommand,
-				"--health-interval", "5s", "--health-timeout", "3s", "--health-start-period", "10s", "--health-retries", "120",
-				"--cpus", strconv.Itoa(limits.CPU),
-				"--memory", strconv.FormatInt(limits.Memory, 10), "--memory-swap", strconv.FormatInt(limits.Memory, 10),
-				"--network", localDockerName("opl-compute", computeReadback.ID),
-				"--mount", "type=bind,source="+storagePaths.Data+",target=/data,bind-propagation=rprivate",
-				"--mount", "type=bind,source="+storagePaths.Projects+",target=/projects,bind-propagation=rprivate",
-				"--mount", "type=tmpfs,target=/recovery,tmpfs-mode=0700",
-				"--mount", "type=bind,source="+secretPath+",target=/run/secrets,readonly,bind-propagation=rprivate",
-				"-p", p.publishHost+"::"+localDockerWorkspaceRuntimeWebUIPort,
-				"-e", "OPL_WEBUI_DEPLOYMENT_MODE=cloud", "-e", "OPL_WEBUI_AUTH_MODE=password", "-e", "OPL_WEBUI_USERNAME="+webuiUsername,
-				"-e", "OPL_WEBUI_PASSWORD_FILE=/run/secrets/"+localDockerWebUIPasswordFile,
-				"-e", "OPL_WEBUI_SESSION_SECRET_FILE=/run/secrets/"+localDockerWebUISessionSecretFile,
-				"-e", "OPL_WORKSPACE_ID="+input.WorkspaceID, "-e", "OPL_COMPUTE_ALLOCATION_ID="+input.ComputeID,
-				"-e", "OPL_OWNER_ACCOUNT_ID="+compute.AccountID, "-e", "DATA_DIR=/data", "-e", "AIONUI_DATA_DIR=/data",
-				"-e", "OPL_PROJECTS_DIR=/projects", "-e", "OPL_WORKSPACE_ROOT=/projects", "-e", "OPL_WEBUI_RECOVERY_DIR=/recovery",
-				"-e", "AIONUI_ALLOW_REMOTE=true", "-e", "ALLOW_REMOTE=true", "-e", "HOME=/data", "-e", "CODEX_HOME=/data/.codex",
-				input.ImageID,
-			)
-			if _, err := p.runner.Run(ctx, nil, args...); err != nil {
+			webuiPort := network.MustParsePort(localDockerWorkspaceRuntimeWebUIPort + "/tcp")
+			networkName := localDockerName("opl-compute", computeReadback.ID)
+			containerConfig := &dockercontainer.Config{
+				Image:  input.ImageID,
+				Labels: labels,
+				ExposedPorts: network.PortSet{
+					webuiPort: struct{}{},
+				},
+				Healthcheck: &dockercontainer.HealthConfig{
+					Test:        []string{"CMD-SHELL", localDockerRuntimeHealthCommand},
+					Interval:    time.Duration(localDockerRuntimeHealthInterval),
+					Timeout:     time.Duration(localDockerRuntimeHealthTimeout),
+					StartPeriod: time.Duration(localDockerRuntimeHealthStartPeriod),
+					Retries:     localDockerRuntimeHealthRetries,
+				},
+				Env: []string{
+					"OPL_WEBUI_DEPLOYMENT_MODE=cloud",
+					"OPL_WEBUI_AUTH_MODE=password",
+					"OPL_WEBUI_USERNAME=" + webuiUsername,
+					"OPL_WEBUI_PASSWORD_FILE=/run/secrets/" + localDockerWebUIPasswordFile,
+					"OPL_WEBUI_SESSION_SECRET_FILE=/run/secrets/" + localDockerWebUISessionSecretFile,
+					"OPL_WORKSPACE_ID=" + input.WorkspaceID,
+					"OPL_COMPUTE_ALLOCATION_ID=" + input.ComputeID,
+					"OPL_OWNER_ACCOUNT_ID=" + compute.AccountID,
+					"DATA_DIR=/data",
+					"AIONUI_DATA_DIR=/data",
+					"OPL_PROJECTS_DIR=/projects",
+					"OPL_WORKSPACE_ROOT=/projects",
+					"OPL_WEBUI_RECOVERY_DIR=/recovery",
+					"AIONUI_ALLOW_REMOTE=true",
+					"ALLOW_REMOTE=true",
+					"HOME=/data",
+					"CODEX_HOME=/data/.codex",
+				},
+			}
+			hostConfig := &dockercontainer.HostConfig{
+				NetworkMode: dockercontainer.NetworkMode(networkName),
+				Resources: dockercontainer.Resources{
+					NanoCPUs:   limits.NanoCPUs,
+					Memory:     limits.Memory,
+					MemorySwap: limits.Memory,
+				},
+				PortBindings: network.PortMap{
+					webuiPort: {{HostIP: parseDockerHostIP(p.publishHost), HostPort: ""}},
+				},
+				Mounts: []mount.Mount{
+					{Type: mount.TypeBind, Source: storagePaths.Data, Target: "/data", BindOptions: &mount.BindOptions{Propagation: mount.PropagationRPrivate}},
+					{Type: mount.TypeBind, Source: storagePaths.Projects, Target: "/projects", BindOptions: &mount.BindOptions{Propagation: mount.PropagationRPrivate}},
+					{Type: mount.TypeTmpfs, Target: "/recovery", TmpfsOptions: &mount.TmpfsOptions{Mode: 0700}},
+					{Type: mount.TypeBind, Source: secretPath, Target: "/run/secrets", ReadOnly: true, BindOptions: &mount.BindOptions{Propagation: mount.PropagationRPrivate}},
+				},
+			}
+			networkingConfig := &network.NetworkingConfig{
+				EndpointsConfig: map[string]*network.EndpointSettings{
+					networkName: {},
+				},
+			}
+			created, err := p.docker.ContainerCreate(ctx, containerConfig, hostConfig, networkingConfig, nil, name)
+			if err == nil {
+				err = p.docker.ContainerStart(ctx, firstNonEmpty(created.ID, name), mobyclient.ContainerStartOptions{})
+			}
+			if err != nil {
 				_, stillExists, absentErr := p.inspectContainer(ctx, name)
 				if absentErr == nil && !stillExists {
 					root, rootErr := p.openStorageRoot()
@@ -984,7 +1051,7 @@ func (p *LocalDockerProvider) RepairWorkspaceRuntime(ctx context.Context, input 
 			labels["opl.secret.ref"] != input.GatewaySecretRef || (current.OperationID != input.PreviousRuntimeOperationID && labels["opl.image.ref"] != input.ImageID) {
 			return WorkspaceRuntime{}, fmt.Errorf("local_docker_runtime_repair_ownership_mismatch")
 		}
-		if _, err := p.runner.Run(ctx, nil, "container", "rm", "-f", name); err != nil {
+		if err := p.docker.ContainerRemove(ctx, name, mobyclient.ContainerRemoveOptions{Force: true}); err != nil {
 			return WorkspaceRuntime{}, err
 		}
 	}
@@ -1285,7 +1352,7 @@ func (p *LocalDockerProvider) destroyWorkspaceRuntimeLocked(ctx context.Context,
 		if err := p.verifyRuntimeGatewaySecret(ctx, container, metadata); err != nil {
 			return result, fmt.Errorf("local_docker_runtime_destroy_ownership_mismatch")
 		}
-		if _, err := p.runner.Run(ctx, nil, "container", "rm", "-f", name); err != nil {
+		if err := p.docker.ContainerRemove(ctx, name, mobyclient.ContainerRemoveOptions{Force: true}); err != nil {
 			return result, err
 		}
 	}

@@ -2,7 +2,6 @@ package fabric
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -10,6 +9,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	dockercontainer "github.com/moby/moby/api/types/container"
+	mobyclient "github.com/moby/moby/client"
 
 	contracts "opl-cloud/packages/contracts/go"
 )
@@ -358,6 +360,7 @@ func TestD4RuntimePowerTencentDoesNotConfirmSuspensionWhileOldPodStillRuns(t *te
 }
 
 type d4PowerDocker struct {
+	stubDockerClient
 	mu            sync.Mutex
 	container     dockerContainerInspect
 	present       bool
@@ -383,39 +386,51 @@ func TestD4RuntimePowerTencentWaitsForCurrentDeploymentReadiness(t *testing.T) {
 	}
 }
 
-func (r *d4PowerDocker) Run(_ context.Context, _ []byte, args ...string) ([]byte, error) {
+func (r *d4PowerDocker) ContainerList(context.Context, mobyclient.ContainerListOptions) ([]dockercontainer.Summary, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if len(args) < 2 || args[0] != "container" {
-		return nil, fmt.Errorf("unexpected docker %v", args)
-	}
-	switch args[1] {
-	case "ls":
-		if !r.present {
-			return nil, nil
-		}
-		return json.Marshal(map[string]string{"ID": r.container.ID, "Names": strings.TrimPrefix(r.container.Name, "/")})
-	case "inspect":
-		return json.Marshal([]dockerContainerInspect{r.container})
-	case "stop", "start":
-		if args[2] != r.container.ID {
-			return nil, fmt.Errorf("wrong original container")
-		}
-		r.container.State.Running = args[1] == "start"
-		r.container.State.Status = "exited"
-		if r.container.State.Running {
-			r.container.State.Status = "running"
-			r.starts++
-		} else {
-			r.stops++
-		}
-		if r.lostResponse {
-			r.lostResponse = false
-			return nil, context.DeadlineExceeded
-		}
+	if !r.present {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("unexpected docker mutation %v", args)
+	return []dockercontainer.Summary{{ID: r.container.ID, Names: []string{"/" + strings.TrimPrefix(r.container.Name, "/")}}}, nil
+}
+
+func (r *d4PowerDocker) ContainerInspect(context.Context, string) (dockercontainer.InspectResponse, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return sdkContainerInspect(r.container), nil
+}
+
+func (r *d4PowerDocker) ContainerStart(_ context.Context, containerID string, _ mobyclient.ContainerStartOptions) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if containerID != r.container.ID {
+		return fmt.Errorf("wrong original container")
+	}
+	r.container.State.Running = true
+	r.container.State.Status = "running"
+	r.starts++
+	if r.lostResponse {
+		r.lostResponse = false
+		return context.DeadlineExceeded
+	}
+	return nil
+}
+
+func (r *d4PowerDocker) ContainerStop(_ context.Context, containerID string, _ mobyclient.ContainerStopOptions) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if containerID != r.container.ID {
+		return fmt.Errorf("wrong original container")
+	}
+	r.container.State.Running = false
+	r.container.State.Status = "exited"
+	r.stops++
+	if r.lostResponse {
+		r.lostResponse = false
+		return context.DeadlineExceeded
+	}
+	return nil
 }
 
 func TestD4RuntimePowerLocalPreservesContainerAndNeverRecreatesAbsentRuntime(t *testing.T) {

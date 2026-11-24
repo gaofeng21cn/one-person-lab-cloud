@@ -7,6 +7,8 @@ import (
 	"opl-cloud/services/internal/protectedresource"
 	"opl-cloud/services/internal/tkeapply"
 	"strconv"
+
+	mobyclient "github.com/moby/moby/client"
 )
 
 type workspaceApplicationLegacyProvider interface {
@@ -123,13 +125,13 @@ func (p *LocalDockerProvider) WorkspaceApplicationLegacyLifecycle(ctx context.Co
 		}
 		if mutate {
 			if input.DesiredState == "running" && !container.State.Running {
-				_, err = p.runner.Run(ctx, nil, "container", "start", runtime.ServiceName)
+				err = p.docker.ContainerStart(ctx, runtime.ServiceName, mobyclient.ContainerStartOptions{})
 			}
 			if input.DesiredState != "running" && container.State.Running {
-				_, err = p.runner.Run(ctx, nil, "container", "stop", runtime.ServiceName)
+				err = p.docker.ContainerStop(ctx, runtime.ServiceName, mobyclient.ContainerStopOptions{})
 			}
 			if err == nil && input.DesiredState == "absent" {
-				_, err = p.runner.Run(ctx, nil, "container", "rm", runtime.ServiceName)
+				err = p.docker.ContainerRemove(ctx, runtime.ServiceName, mobyclient.ContainerRemoveOptions{})
 			}
 			if err != nil {
 				return result, err

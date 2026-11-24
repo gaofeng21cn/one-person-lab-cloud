@@ -3,9 +3,11 @@ package tkeapply
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
+
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 
 	"opl-cloud/services/internal/protectedresource"
 )
@@ -41,23 +43,24 @@ type Installation struct {
 // infrastructure resource, and every value it schedules onto comes from the
 // confirmed placement the resources owner published.
 //
-// Kubectl and Guard are injected so the executor reaches the cluster through the
-// installation's single cluster-access boundary and refuses any mutation that
-// targets the installation's own protected compute.
+// Client and Guard are injected so the executor reaches the cluster through the
+// installation's single typed Kubernetes API boundary (k8s.io/client-go) and
+// refuses any mutation that targets the installation's own protected compute.
 type Executor struct {
 	// ImageCommand reads OCI CMD for the exact approved image/platform. Tests may
-	// inject the registry transport; production uses the installation pull Secret.
+	// inject the registry transport; production uses the installation pull Secret
+	// via go-containerregistry in memory.
 	ImageCommand func(context.Context, string, string) ([]string, error)
-
-	// RunKubectl retains an owner adapter's journal and capability boundary. When
-	// absent the injected Kubectl transport is used after the same resource guard.
-	RunKubectl func(context.Context, []string, []byte, protectedresource.Target) ([]byte, error)
+	// RegistryTransport overrides the HTTP RoundTripper used by
+	// go-containerregistry when inspecting OCI image configs. Nil uses
+	// remote.DefaultTransport.
+	RegistryTransport http.RoundTripper
 	// CredentialToken resolves legacy credential provenance at its original owner.
 	// A nil resolver retains the strict default with no historical proof.
 	CredentialToken func(context.Context, WorkspaceApplicationRuntimeInput) (string, error)
-	// Kubectl runs one kubectl invocation against the installation cluster. It is
-	// the only way this executor reaches the cluster.
-	Kubectl func(ctx context.Context, args []string, stdin []byte) ([]byte, error)
+	// Client is the single typed Kubernetes API boundary this executor uses to
+	// reach the installation cluster.
+	Client ClusterClient
 	// Guard refuses a mutation that targets the installation's protected compute.
 	Guard protectedresource.Config
 	// Installation is the installation-owned cluster configuration the workload is
@@ -78,7 +81,7 @@ func (e *Executor) Configured() error {
 }
 
 func (e *Executor) clusterAccessError() error {
-	if e == nil || e.Kubectl == nil {
+	if e == nil || e.Client == nil {
 		return errors.New("workspace application cluster access is not configured")
 	}
 	if strings.TrimSpace(e.Installation.Namespace) == "" {
@@ -104,26 +107,79 @@ func (e *Executor) applyConfigError() error {
 	return nil
 }
 
-// callKubectl runs one kubectl invocation, guarding every mutating action against
-// the installation's protected compute before it reaches the cluster. Read-only
-// actions pass through unchanged so an observation never fails on a guard that
-// only constrains mutations.
-func (e *Executor) callKubectl(ctx context.Context, args []string, stdin []byte, target protectedresource.Target) ([]byte, error) {
-	if len(args) == 0 {
-		return nil, fmt.Errorf("kubectl_action_required")
+func (e *Executor) checkMutation(target protectedresource.Target) error {
+	if err := e.clusterAccessError(); err != nil {
+		return err
 	}
+	return e.Guard.Check(target)
+}
+
+func (e *Executor) applyBundle(ctx context.Context, bundle *ApplyBundle, target protectedresource.Target) error {
+	if err := e.checkMutation(target); err != nil {
+		return err
+	}
+	return e.Client.Apply(ctx, bundle, target)
+}
+
+func (e *Executor) createSecret(ctx context.Context, secret *corev1.Secret, target protectedresource.Target) error {
+	if err := e.checkMutation(target); err != nil {
+		return err
+	}
+	return e.Client.CreateSecret(ctx, secret, target)
+}
+
+func (e *Executor) createConfigMap(ctx context.Context, configMap *corev1.ConfigMap, target protectedresource.Target) error {
+	if err := e.checkMutation(target); err != nil {
+		return err
+	}
+	return e.Client.CreateConfigMap(ctx, configMap, target)
+}
+
+func (e *Executor) scaleDeployment(ctx context.Context, name string, replicas int32, target protectedresource.Target) error {
+	if err := e.checkMutation(target); err != nil {
+		return err
+	}
+	return e.Client.ScaleDeployment(ctx, name, replicas, target)
+}
+
+func (e *Executor) deleteResources(ctx context.Context, refs []ResourceRef, target protectedresource.Target) error {
+	if err := e.checkMutation(target); err != nil {
+		return err
+	}
+	return e.Client.DeleteResources(ctx, refs, target)
+}
+
+func (e *Executor) listApplicationResources(ctx context.Context, labelSelector string) (ApplicationResourceList, error) {
+	if err := e.clusterAccessError(); err != nil {
+		return ApplicationResourceList{}, err
+	}
+	return e.Client.ListApplicationResources(ctx, labelSelector)
+}
+
+func (e *Executor) listPVCs(ctx context.Context, labelSelector string) ([]corev1.PersistentVolumeClaim, error) {
 	if err := e.clusterAccessError(); err != nil {
 		return nil, err
 	}
-	switch args[0] {
-	case "get", "wait", "logs", "describe", "version":
-	default:
-		if err := e.Guard.Check(target); err != nil {
-			return nil, err
-		}
+	return e.Client.ListPVCs(ctx, labelSelector)
+}
+
+func (e *Executor) getSecret(ctx context.Context, name string) (*corev1.Secret, error) {
+	if err := e.clusterAccessError(); err != nil {
+		return nil, err
 	}
-	if e.RunKubectl != nil {
-		return e.RunKubectl(ctx, args, stdin, target)
+	return e.Client.GetSecret(ctx, name)
+}
+
+func (e *Executor) getConfigMap(ctx context.Context, name string) (*corev1.ConfigMap, error) {
+	if err := e.clusterAccessError(); err != nil {
+		return nil, err
 	}
-	return e.Kubectl(ctx, args, stdin)
+	return e.Client.GetConfigMap(ctx, name)
+}
+
+func (e *Executor) getNetworkPolicy(ctx context.Context, name string) (*networkingv1.NetworkPolicy, error) {
+	if err := e.clusterAccessError(); err != nil {
+		return nil, err
+	}
+	return e.Client.GetNetworkPolicy(ctx, name)
 }

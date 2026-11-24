@@ -1,262 +1,318 @@
 package tkeapply
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
+	"maps"
 	"strings"
 	"testing"
+
+	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 
 	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/internal/protectedresource"
 )
 
-// The fake cluster is deliberately small but real in the one way that matters: it
-// stores exactly the objects the executor applied, and it answers the reads the
-// executor issues out of that store. A test therefore proves what the executor put
-// into the cluster, not what a fixture asserted about it.
+const testNamespace = "opl-cloud"
+
+// fakeCluster wraps a real k8s.io/client-go fake.Clientset (which natively
+// executes Server-Side Apply field tracking, label-selector List, Create, Get,
+// UpdateScale, and Delete) and simulates kube-apiserver / controller-manager
+// side effects: UID/Generation assignment, StringData->Data folding on Secrets,
+// ReplicaSet/Pod materialization, scale subresource reconciliation, and owner
+// garbage collection on Deployment deletion.
 type fakeCluster struct {
-	objects map[string]map[string]any // "Kind/name" -> object
-	pvcName string
+	clientset *fake.Clientset
+	base      ClusterClient
 }
 
 func newFakeCluster() *fakeCluster {
-	return &fakeCluster{objects: map[string]map[string]any{}}
-}
-
-func (c *fakeCluster) kubectl(_ context.Context, args []string, stdin []byte) ([]byte, error) {
-	switch {
-	case len(args) > 0 && args[0] == "apply":
-		return c.apply(stdin), nil
-	case len(args) > 0 && args[0] == "create":
-		return c.create(stdin)
-	case len(args) > 0 && args[0] == "scale":
-		return c.scale(args), nil
-	case len(args) > 0 && args[0] == "delete":
-		return c.delete(args), nil
-	case len(args) > 1 && args[0] == "get" && strings.HasPrefix(args[1], "pvc"):
-		return c.listPVC(), nil
-	case len(args) > 1 && args[0] == "get" && strings.HasPrefix(args[1], "secret/"):
-		return c.readSecret(strings.TrimPrefix(args[1], "secret/")), nil
-	case len(args) > 1 && args[0] == "get" && strings.HasPrefix(args[1], "networkpolicy/"):
-		name := strings.TrimPrefix(args[1], "networkpolicy/")
-		object, found := c.objects["NetworkPolicy/"+name]
-		if !found {
-			return nil, nil
+	cs := fake.NewClientset()
+	c := &fakeCluster{
+		clientset: cs,
+		base:      NewClientsetCluster(cs, testNamespace),
+	}
+	cs.PrependReactor("update", "deployments", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		if action.GetSubresource() != "scale" {
+			return false, nil, nil
 		}
-		return mustJSON(object), nil
-	case len(args) > 3 && args[0] == "get" && args[2] == "-l":
-		return c.list(args[3]), nil
-	}
-	return nil, fmt.Errorf("unsupported kubectl action %v", args)
-}
-
-func (c *fakeCluster) apply(stdin []byte) []byte {
-	var document map[string]any
-	if json.Unmarshal(stdin, &document) != nil {
-		return nil
-	}
-	items, _ := document["items"].([]any)
-	for _, item := range items {
-		object, _ := item.(map[string]any)
-		c.store(object)
-	}
-	return mustJSON(document)
-}
-
-func (c *fakeCluster) create(stdin []byte) ([]byte, error) {
-	var stored map[string]any
-	if json.Unmarshal(stdin, &stored) != nil || stringValue(stored["kind"]) == "" {
-		return nil, fmt.Errorf("kubernetes_response_invalid")
-	}
-	name := stringValue(nested(stored, "metadata", "name"))
-	if c.objects[stringValue(stored["kind"])+"/"+name] != nil {
-		return nil, fmt.Errorf("a resource with that name already exists")
-	}
-	c.store(stored)
-	return mustJSON(stored), nil
-}
-
-func (c *fakeCluster) scale(args []string) []byte {
-	name := strings.TrimPrefix(args[1], "deployment/")
-	replicas := number(strings.TrimPrefix(args[2], "--replicas="))
-	if object := c.objects["Deployment/"+name]; object != nil {
-		object["spec"].(map[string]any)["replicas"] = replicas
-		object["status"] = map[string]any{"observedGeneration": float64(1), "replicas": replicas, "updatedReplicas": replicas, "readyReplicas": replicas, "availableReplicas": replicas}
-		if replicas == 0 {
-			delete(c.objects, "Pod/"+name)
+		updateAction, ok := action.(k8stesting.UpdateAction)
+		if !ok {
+			return false, nil, nil
 		}
+		scale, ok := updateAction.GetObject().(*autoscalingv1.Scale)
+		if !ok {
+			return false, nil, nil
+		}
+		return true, scale, nil
+	})
+	return c
+}
+
+func (c *fakeCluster) scaleDeploymentInStore(name string, replicas int32) error {
+	ctx := context.Background()
+	dep, err := c.clientset.AppsV1().Deployments(testNamespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	dep.Spec.Replicas = &replicas
+	dep.Status = appsv1.DeploymentStatus{
+		ObservedGeneration: dep.Generation,
+		Replicas:           replicas,
+		UpdatedReplicas:    replicas,
+		ReadyReplicas:      replicas,
+		AvailableReplicas:  replicas,
+	}
+	if _, err := c.clientset.AppsV1().Deployments(testNamespace).Update(ctx, dep, metav1.UpdateOptions{}); err != nil {
+		return err
+	}
+	if replicas == 0 {
+		_ = c.clientset.CoreV1().Pods(testNamespace).Delete(ctx, name+"-7d9", metav1.DeleteOptions{})
+	} else {
+		c.materializeDeployment(ctx, dep)
 	}
 	return nil
 }
 
-func (c *fakeCluster) list(selector string) []byte {
-	keys := make([]string, 0, len(c.objects))
-	for key := range c.objects {
-		keys = append(keys, key)
+func (c *fakeCluster) Apply(ctx context.Context, bundle *ApplyBundle, target protectedresource.Target) error {
+	if err := c.base.Apply(ctx, bundle, target); err != nil {
+		return err
 	}
-	sort.Strings(keys)
-	matched, included := []any{}, map[string]bool{}
-	for _, key := range keys {
-		object := c.objects[key]
-		if included[key] || !selectorMatches(selector, stringMap(nested(object, "metadata", "labels"))) {
-			continue
+	if bundle == nil {
+		return nil
+	}
+	for _, item := range bundle.Components {
+		if item.Service != nil && item.Service.Name != nil {
+			if svc, err := c.clientset.CoreV1().Services(testNamespace).Get(ctx, *item.Service.Name, metav1.GetOptions{}); err == nil {
+				svc.UID = types.UID("uid-Service-" + svc.Name)
+				_, _ = c.clientset.CoreV1().Services(testNamespace).Update(ctx, svc, metav1.UpdateOptions{})
+			}
 		}
-		matched, included[key] = append(matched, c.materialize(object)), true
-		// A real cluster reports the objects a Deployment owns in the same read.
-		if name := stringValue(nested(object, "metadata", "name")); strings.HasPrefix(key, "Deployment/") {
-			for _, derived := range []string{"ReplicaSet/" + name, "Pod/" + name} {
-				if owned := c.objects[derived]; owned != nil && !included[derived] {
-					matched, included[derived] = append(matched, owned), true
+		if item.Deployment != nil && item.Deployment.Name != nil {
+			if dep, err := c.clientset.AppsV1().Deployments(testNamespace).Get(ctx, *item.Deployment.Name, metav1.GetOptions{}); err == nil {
+				dep.UID = types.UID("uid-Deployment-" + dep.Name)
+				dep.Generation = 1
+				replicas := int32(1)
+				if dep.Spec.Replicas != nil {
+					replicas = *dep.Spec.Replicas
+				}
+				dep.Status = appsv1.DeploymentStatus{
+					ObservedGeneration: 1,
+					Replicas:           replicas,
+					UpdatedReplicas:    1,
+					ReadyReplicas:      1,
+					AvailableReplicas:  1,
+				}
+				if updated, err := c.clientset.AppsV1().Deployments(testNamespace).Update(ctx, dep, metav1.UpdateOptions{}); err == nil {
+					c.materializeDeployment(ctx, updated)
 				}
 			}
 		}
 	}
-	return mustJSON(map[string]any{"apiVersion": "v1", "kind": "List", "items": matched})
-}
-
-// delete removes the named objects, which is how kubectl reports a retirement: the
-// objects either exist and are deleted, or the call is refused.
-func (c *fakeCluster) delete(args []string) []byte {
-	for _, target := range args[1:] {
-		if strings.HasPrefix(target, "--") {
-			continue
-		}
-		parts := strings.SplitN(target, "/", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		kind := map[string]string{"deployment": "Deployment", "service": "Service", "networkpolicy": "NetworkPolicy", "secret": "Secret", "configmap": "ConfigMap", "pvc": "PersistentVolumeClaim"}[parts[0]]
-		if kind == "" {
-			continue
-		}
-		if _, found := c.objects[kind+"/"+parts[1]]; found {
-			delete(c.objects, kind+"/"+parts[1])
-			// A real cluster garbage-collects the objects a deleted Deployment
-			// owns through ownerReferences.
-			if kind == "Deployment" {
-				delete(c.objects, "ReplicaSet/"+parts[1])
-				delete(c.objects, "Pod/"+parts[1])
+	for _, policy := range bundle.NetworkPolicies {
+		if policy != nil && policy.Name != nil {
+			if np, err := c.clientset.NetworkingV1().NetworkPolicies(testNamespace).Get(ctx, *policy.Name, metav1.GetOptions{}); err == nil {
+				np.UID = types.UID("uid-NetworkPolicy-" + np.Name)
+				_, _ = c.clientset.NetworkingV1().NetworkPolicies(testNamespace).Update(ctx, np, metav1.UpdateOptions{})
 			}
-			continue
 		}
-		return nil
 	}
 	return nil
 }
 
-func (c *fakeCluster) listPVC() []byte {
-	return mustJSON(map[string]any{"apiVersion": "v1", "kind": "List", "items": []any{c.objects["PersistentVolumeClaim/"+c.pvcName]}})
+func (c *fakeCluster) CreateSecret(ctx context.Context, secret *corev1.Secret, target protectedresource.Target) error {
+	stored := secret.DeepCopy()
+	if stored.Namespace == "" {
+		stored.Namespace = testNamespace
+	}
+	stored.UID = types.UID("uid-Secret-" + stored.Name)
+	if len(stored.StringData) > 0 {
+		if stored.Data == nil {
+			stored.Data = map[string][]byte{}
+		}
+		for k, v := range stored.StringData {
+			stored.Data[k] = []byte(v)
+		}
+		stored.StringData = nil
+	}
+	return c.base.CreateSecret(ctx, stored, target)
 }
 
-func (c *fakeCluster) readSecret(name string) []byte {
-	object := c.objects["Secret/"+name]
-	if object == nil {
-		return nil
+func (c *fakeCluster) CreateConfigMap(ctx context.Context, configMap *corev1.ConfigMap, target protectedresource.Target) error {
+	stored := configMap.DeepCopy()
+	if stored.Namespace == "" {
+		stored.Namespace = testNamespace
 	}
-	return mustJSON(object)
+	stored.UID = types.UID("uid-ConfigMap-" + stored.Name)
+	return c.base.CreateConfigMap(ctx, stored, target)
 }
 
-// store keeps the object and fills in the readback fields a real cluster would
-// report: uids, generation and the pods a running Deployment owns.
-func (c *fakeCluster) store(object map[string]any) {
-	kind, name := stringValue(object["kind"]), stringValue(nested(object, "metadata", "name"))
-	if kind == "PersistentVolumeClaim" {
-		c.pvcName = name
+func (c *fakeCluster) ScaleDeployment(ctx context.Context, name string, replicas int32, target protectedresource.Target) error {
+	if err := c.base.ScaleDeployment(ctx, name, replicas, target); err != nil {
+		return err
 	}
-	metadata := object["metadata"].(map[string]any)
-	metadata["uid"] = "uid-" + kind + "-" + name
-	if kind == "Deployment" {
-		metadata["generation"] = float64(1)
-		object["status"] = map[string]any{"observedGeneration": float64(1), "replicas": number(nested(object, "spec", "replicas")), "updatedReplicas": float64(1), "readyReplicas": float64(1), "availableReplicas": float64(1)}
-	}
-	// A Secret is declared as stringData; a real cluster returns data. The
-	// readback the executor verifies is the decoded value, so the fixture folds it
-	// the same way.
-	if strings, ok := object["stringData"].(map[string]any); ok {
-		data := map[string]any{}
-		for key, value := range strings {
-			data[key] = base64String(stringValue(value))
-		}
-		object["data"] = data
-		delete(object, "stringData")
-	}
-	c.objects[kind+"/"+name] = object
+	return c.scaleDeploymentInStore(name, replicas)
 }
 
-// materialize adds the objects a real cluster derives from a Deployment: its
-// ReplicaSet and the Pod that ReplicaSet owns.
-func (c *fakeCluster) materialize(object map[string]any) map[string]any {
-	if stringValue(object["kind"]) != "Deployment" {
-		return object
+func (c *fakeCluster) DeleteResources(ctx context.Context, refs []ResourceRef, target protectedresource.Target) error {
+	if err := c.base.DeleteResources(ctx, refs, target); err != nil {
+		return err
 	}
-	owner := stringValue(nested(object, "metadata", "uid"))
-	name := stringValue(nested(object, "metadata", "name"))
-	if c.objects["ReplicaSet/"+name] == nil {
-		template, _ := nested(object, "spec", "template").(map[string]any)
-		replicaTemplate := map[string]any{}
-		for key, value := range template {
-			replicaTemplate[key] = value
-		}
-		metadata := map[string]any{}
-		for key, value := range replicaTemplate["metadata"].(map[string]any) {
-			metadata[key] = value
-		}
-		labels := map[string]any{"pod-template-hash": "hash"}
-		for key, value := range metadata["labels"].(map[string]any) {
-			labels[key] = value
-		}
-		metadata["labels"] = labels
-		replicaTemplate["metadata"] = metadata
-		c.objects["ReplicaSet/"+name] = map[string]any{"apiVersion": "apps/v1", "kind": "ReplicaSet", "metadata": map[string]any{
-			"name": name, "uid": "uid-ReplicaSet-" + name, "labels": nested(object, "metadata", "labels"), "ownerReferences": []any{map[string]any{"kind": "Deployment", "uid": owner, "controller": true}},
-		}, "spec": map[string]any{"template": replicaTemplate}}
-		replicas := number(nested(object, "spec", "replicas"))
-		containers, _ := nested(template, "spec", "containers").([]any)
-		image := stringValue(nested(containers[0].(map[string]any), "image"))
-		if replicas > 0 {
-			c.objects["Pod/"+name] = map[string]any{"apiVersion": "v1", "kind": "Pod", "metadata": map[string]any{
-				"name": name + "-7d9", "uid": "uid-Pod-" + name, "labels": nested(replicaTemplate, "metadata", "labels"), "ownerReferences": []any{map[string]any{"kind": "ReplicaSet", "uid": "uid-ReplicaSet-" + name, "controller": true}},
-			}, "spec": map[string]any{"containers": containers, "securityContext": nested(template, "spec", "securityContext")}, "status": map[string]any{
-				"phase": "Running", "conditions": []any{map[string]any{"type": "Ready", "status": "True"}}, "containerStatuses": []any{map[string]any{"name": "app", "ready": true, "imageID": strings.Split(image, "@")[0] + "@" + strings.SplitN(image, "@", 2)[1]}},
-			}}
-		} else {
-			delete(c.objects, "Pod/"+name)
+	// Simulate Kubernetes garbage collection via ownerReferences.
+	for _, ref := range refs {
+		if strings.EqualFold(ref.Kind, "deployment") {
+			_ = c.clientset.AppsV1().ReplicaSets(testNamespace).Delete(ctx, ref.Name, metav1.DeleteOptions{})
+			_ = c.clientset.CoreV1().Pods(testNamespace).Delete(ctx, ref.Name+"-7d9", metav1.DeleteOptions{})
 		}
 	}
-	return object
+	return nil
 }
 
-func selectorMatches(selector string, labels map[string]string) bool {
-	for _, pair := range strings.Split(selector, ",") {
-		parts := strings.SplitN(pair, "=", 2)
-		if len(parts) != 2 || labels[parts[0]] != parts[1] {
-			return false
+func (c *fakeCluster) ListApplicationResources(ctx context.Context, labelSelector string) (ApplicationResourceList, error) {
+	return c.base.ListApplicationResources(ctx, labelSelector)
+}
+
+func (c *fakeCluster) ListPVCs(ctx context.Context, labelSelector string) ([]corev1.PersistentVolumeClaim, error) {
+	return c.base.ListPVCs(ctx, labelSelector)
+}
+
+func (c *fakeCluster) GetSecret(ctx context.Context, name string) (*corev1.Secret, error) {
+	return c.base.GetSecret(ctx, name)
+}
+
+func (c *fakeCluster) GetConfigMap(ctx context.Context, name string) (*corev1.ConfigMap, error) {
+	return c.base.GetConfigMap(ctx, name)
+}
+
+func (c *fakeCluster) GetNetworkPolicy(ctx context.Context, name string) (*networkingv1.NetworkPolicy, error) {
+	return c.base.GetNetworkPolicy(ctx, name)
+}
+
+func (c *fakeCluster) materializeDeployment(ctx context.Context, dep *appsv1.Deployment) {
+	name := dep.Name
+	controller := true
+	replicaTemplate := dep.Spec.Template.DeepCopy()
+	if replicaTemplate.Labels == nil {
+		replicaTemplate.Labels = map[string]string{}
+	}
+	replicaTemplate.Labels["pod-template-hash"] = "hash"
+	rs := &appsv1.ReplicaSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: testNamespace,
+			UID:       types.UID("uid-ReplicaSet-" + name),
+			Labels:    maps.Clone(dep.Labels),
+			OwnerReferences: []metav1.OwnerReference{{
+				Kind:       "Deployment",
+				UID:        dep.UID,
+				Controller: &controller,
+			}},
+		},
+		Spec: appsv1.ReplicaSetSpec{Template: *replicaTemplate},
+	}
+	if _, err := c.clientset.AppsV1().ReplicaSets(testNamespace).Update(ctx, rs, metav1.UpdateOptions{}); apierrors.IsNotFound(err) {
+		_, _ = c.clientset.AppsV1().ReplicaSets(testNamespace).Create(ctx, rs, metav1.CreateOptions{})
+	}
+	replicas := int32(1)
+	if dep.Spec.Replicas != nil {
+		replicas = *dep.Spec.Replicas
+	}
+	if replicas > 0 {
+		image := ""
+		if len(dep.Spec.Template.Spec.Containers) > 0 {
+			image = dep.Spec.Template.Spec.Containers[0].Image
 		}
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name + "-7d9",
+				Namespace: testNamespace,
+				UID:       types.UID("uid-Pod-" + name),
+				Labels:    maps.Clone(replicaTemplate.Labels),
+				OwnerReferences: []metav1.OwnerReference{{
+					Kind:       "ReplicaSet",
+					UID:        rs.UID,
+					Controller: &controller,
+				}},
+			},
+			Spec: corev1.PodSpec{
+				Containers:      append([]corev1.Container(nil), dep.Spec.Template.Spec.Containers...),
+				SecurityContext: dep.Spec.Template.Spec.SecurityContext.DeepCopy(),
+			},
+			Status: corev1.PodStatus{
+				Phase: corev1.PodRunning,
+				Conditions: []corev1.PodCondition{{
+					Type:   corev1.PodReady,
+					Status: corev1.ConditionTrue,
+				}},
+				ContainerStatuses: []corev1.ContainerStatus{{
+					Name:    "app",
+					Ready:   true,
+					ImageID: image,
+				}},
+			},
+		}
+		if _, err := c.clientset.CoreV1().Pods(testNamespace).Update(ctx, pod, metav1.UpdateOptions{}); apierrors.IsNotFound(err) {
+			_, _ = c.clientset.CoreV1().Pods(testNamespace).Create(ctx, pod, metav1.CreateOptions{})
+		}
+	} else {
+		_ = c.clientset.CoreV1().Pods(testNamespace).Delete(ctx, name+"-7d9", metav1.DeleteOptions{})
 	}
-	return true
 }
 
-func stringMap(value any) map[string]string {
-	labels, _ := value.(map[string]any)
-	result := map[string]string{}
-	for key, item := range labels {
-		result[key] = stringValue(item)
+func (c *fakeCluster) storePVC(pvc *corev1.PersistentVolumeClaim) {
+	stored := pvc.DeepCopy()
+	if stored.Namespace == "" {
+		stored.Namespace = testNamespace
 	}
-	return result
+	stored.UID = types.UID("uid-PersistentVolumeClaim-" + stored.Name)
+	_, _ = c.clientset.CoreV1().PersistentVolumeClaims(stored.Namespace).Create(context.Background(), stored, metav1.CreateOptions{})
 }
 
-func base64String(value string) string {
-	return base64.StdEncoding.EncodeToString([]byte(value))
+func (c *fakeCluster) storeSecret(secret *corev1.Secret) {
+	stored := secret.DeepCopy()
+	if stored.Namespace == "" {
+		stored.Namespace = testNamespace
+	}
+	stored.UID = types.UID("uid-Secret-" + stored.Name)
+	_, _ = c.clientset.CoreV1().Secrets(stored.Namespace).Create(context.Background(), stored, metav1.CreateOptions{})
+}
+
+func (c *fakeCluster) deployment(t *testing.T, name string) *appsv1.Deployment {
+	t.Helper()
+	dep, err := c.clientset.AppsV1().Deployments(testNamespace).Get(context.Background(), name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get deployment %s: %v", name, err)
+	}
+	return dep
+}
+
+func (c *fakeCluster) objectCount(t *testing.T) int {
+	t.Helper()
+	ctx := context.Background()
+	deps, _ := c.clientset.AppsV1().Deployments(testNamespace).List(ctx, metav1.ListOptions{})
+	rss, _ := c.clientset.AppsV1().ReplicaSets(testNamespace).List(ctx, metav1.ListOptions{})
+	pods, _ := c.clientset.CoreV1().Pods(testNamespace).List(ctx, metav1.ListOptions{})
+	svcs, _ := c.clientset.CoreV1().Services(testNamespace).List(ctx, metav1.ListOptions{})
+	nps, _ := c.clientset.NetworkingV1().NetworkPolicies(testNamespace).List(ctx, metav1.ListOptions{})
+	secs, _ := c.clientset.CoreV1().Secrets(testNamespace).List(ctx, metav1.ListOptions{})
+	cms, _ := c.clientset.CoreV1().ConfigMaps(testNamespace).List(ctx, metav1.ListOptions{})
+	pvcs, _ := c.clientset.CoreV1().PersistentVolumeClaims(testNamespace).List(ctx, metav1.ListOptions{})
+	return len(deps.Items) + len(rss.Items) + len(pods.Items) + len(svcs.Items) + len(nps.Items) + len(secs.Items) + len(cms.Items) + len(pvcs.Items)
 }
 
 // testInstallation is one installation's declared execution facts.
 func testInstallation(peers ...map[string]string) Installation {
-	return Installation{Namespace: "opl-cloud", ImagePullSecretName: "tcr-pull-secret", AdminPasswordSeed: "test-admin-password-seed-0001", ApplicationIngressPeers: peers}
+	return Installation{Namespace: testNamespace, ImagePullSecretName: "tcr-pull-secret", AdminPasswordSeed: "test-admin-password-seed-0001", ApplicationIngressPeers: peers}
 }
 
 func testPlacement() Placement {
@@ -304,20 +360,31 @@ func testGuard() protectedresource.Config {
 	}
 }
 
-func testExecutor(cluster *fakeCluster, installation Installation) *Executor {
-	return &Executor{Kubectl: cluster.kubectl, Guard: testGuard(), Installation: installation,
+func testExecutor(cluster ClusterClient, installation Installation) *Executor {
+	return &Executor{
+		Client:       cluster,
+		Guard:        testGuard(),
+		Installation: installation,
 		ImageCommand: func(context.Context, string, string) ([]string, error) { return nil, nil },
 	}
 }
 
-func pvcObject() map[string]any {
-	return map[string]any{"apiVersion": "v1", "kind": "PersistentVolumeClaim", "metadata": map[string]any{
-		"name": "pvc-1",
-		"labels": map[string]any{
-			"oplcloud.cn/storage-id": k8sCostLabelValue("volume-1"),
+func pvcObject() *corev1.PersistentVolumeClaim {
+	return &corev1.PersistentVolumeClaim{
+		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "PersistentVolumeClaim"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "pvc-1",
+			Namespace: testNamespace,
+			Labels: map[string]string{
+				"oplcloud.cn/storage-id": k8sCostLabelValue("volume-1"),
+			},
+			Annotations: map[string]string{
+				"opl_account_id":   "account-1",
+				"opl_workspace_id": "workspace-1",
+				"opl_resource_id":  "volume-1",
+			},
 		},
-		"annotations": map[string]any{"opl_account_id": "account-1", "opl_workspace_id": "workspace-1", "opl_resource_id": "volume-1"},
-	}}
+	}
 }
 
 // TestExecutorAppliesTheWorkloadOntoTheConfirmedPlacement is the decisive test of
@@ -326,10 +393,11 @@ func pvcObject() map[string]any {
 // facts, and the application's ingress admits exactly the declared peer.
 func TestExecutorAppliesTheWorkloadOntoTheConfirmedPlacement(t *testing.T) {
 	cluster := newFakeCluster()
-	cluster.store(pvcObject())
+	cluster.storePVC(pvcObject())
 	executor := testExecutor(cluster, testInstallation(map[string]string{"app.kubernetes.io/name": "opl-cloud", "app.kubernetes.io/component": "serve"}))
 
-	observation, err := executor.EnsureWorkspaceApplicationRuntime(context.Background(), testInput(t), testPlacement())
+	input := testInput(t)
+	observation, err := executor.EnsureWorkspaceApplicationRuntime(context.Background(), input, testPlacement())
 	if err != nil {
 		t.Logf("observation=%+v", observation)
 		t.Fatal(err)
@@ -337,59 +405,43 @@ func TestExecutorAppliesTheWorkloadOntoTheConfirmedPlacement(t *testing.T) {
 	if observation.Status != "ready" {
 		t.Fatalf("observation=%+v want ready", observation)
 	}
-	deployment := cluster.objects["Deployment/"+observation.Components[0].Name]
-	_ = deployment
-	var applied map[string]any
-	for key, object := range cluster.objects {
-		if strings.HasPrefix(key, "Deployment/") {
-			applied = object
-		}
+	applied := cluster.deployment(t, ComponentResourceName(input, contracts.WorkspaceApplicationComponentMain))
+	if applied.Spec.Template.Spec.NodeSelector["kubernetes.io/hostname"] != "node-1" {
+		t.Fatalf("nodeSelector does not name the confirmed node: %v", applied.Spec.Template.Spec.NodeSelector)
 	}
-	if applied == nil {
-		t.Fatal("no Deployment applied")
-	}
-	if stringValue(nested(applied, "spec", "template", "spec", "nodeSelector", "kubernetes.io/hostname")) != "node-1" {
-		t.Fatalf("nodeSelector does not name the confirmed node: %v", nested(applied, "spec", "template", "spec", "nodeSelector"))
-	}
-	tolerations, _ := nested(applied, "spec", "template", "spec", "tolerations").([]any)
-	if len(tolerations) != 1 || stringValue(nested(tolerations[0].(map[string]any), "value")) != "basic" {
+	tolerations := applied.Spec.Template.Spec.Tolerations
+	if len(tolerations) != 1 || tolerations[0].Value != "basic" {
 		t.Fatalf("tolerations do not name the confirmed prepaid package: %v", tolerations)
 	}
-	volumes, _ := nested(applied, "spec", "template", "spec", "volumes").([]any)
 	claim := ""
-	for _, item := range volumes {
-		volume, _ := item.(map[string]any)
-		if name := stringValue(nested(volume, "persistentVolumeClaim", "claimName")); name != "" {
-			claim = name
+	for _, volume := range applied.Spec.Template.Spec.Volumes {
+		if volume.PersistentVolumeClaim != nil && volume.PersistentVolumeClaim.ClaimName != "" {
+			claim = volume.PersistentVolumeClaim.ClaimName
 		}
 	}
 	if claim != "pvc-1" {
-		t.Fatalf("persistent mount does not use the confirmed storage claim: %v", volumes)
+		t.Fatalf("persistent mount does not use the confirmed storage claim: %v", applied.Spec.Template.Spec.Volumes)
 	}
-	pullSecrets, _ := nested(applied, "spec", "template", "spec", "imagePullSecrets").([]any)
-	if len(pullSecrets) != 1 || stringValue(nested(pullSecrets[0].(map[string]any), "name")) != "tcr-pull-secret" {
+	pullSecrets := applied.Spec.Template.Spec.ImagePullSecrets
+	if len(pullSecrets) != 1 || pullSecrets[0].Name != "tcr-pull-secret" {
 		t.Fatalf("imagePullSecrets do not name the installation Secret: %v", pullSecrets)
 	}
-	var policy map[string]any
-	for key, object := range cluster.objects {
-		if strings.HasPrefix(key, "NetworkPolicy/") {
-			policy = object
-		}
+	policy, err := cluster.clientset.NetworkingV1().NetworkPolicies(testNamespace).Get(context.Background(), ComponentResourceName(input, "network"), metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get networkpolicy: %v", err)
 	}
-	ingress, _ := nested(policy, "spec", "ingress").([]any)
-	if len(ingress) != 2 {
-		t.Fatalf("application ingress must admit the declared peer and its siblings: %v", ingress)
+	if len(policy.Spec.Ingress) != 2 {
+		t.Fatalf("application ingress must admit the declared peer and its siblings: %+v", policy.Spec.Ingress)
 	}
-	peer, _ := nested(ingress[0].(map[string]any), "from").([]any)
-	labels, _ := nested(peer[0].(map[string]any), "podSelector", "matchLabels").(map[string]any)
-	if stringValue(labels["app.kubernetes.io/component"]) != "serve" || stringValue(labels["app.kubernetes.io/name"]) != "opl-cloud" {
+	labels := policy.Spec.Ingress[0].From[0].PodSelector.MatchLabels
+	if labels["app.kubernetes.io/component"] != "serve" || labels["app.kubernetes.io/name"] != "opl-cloud" {
 		t.Fatalf("application ingress does not admit the installation's Serve access data plane: %v", labels)
 	}
 }
 
 func TestExecutorProgressesTheOriginalDependencyChainOnlyOnEnsure(t *testing.T) {
 	cluster := newFakeCluster()
-	cluster.store(pvcObject())
+	cluster.storePVC(pvcObject())
 	executor := testExecutor(cluster, testInstallation(map[string]string{"app.kubernetes.io/component": "serve"}))
 	input := testInput(t)
 	input.Revision.Entrypoint = []string{"/main-entry"}
@@ -405,10 +457,10 @@ func TestExecutorProgressesTheOriginalDependencyChainOnlyOnEnsure(t *testing.T) 
 				t.Fatalf("final observation=%+v err=%v", observation, err)
 			}
 			for _, component := range observation.Components {
-				deployment := cluster.objects["Deployment/"+ComponentResourceName(input, component.Name)]
+				deployment := cluster.deployment(t, ComponentResourceName(input, component.Name))
 				expected := map[string][]string{"main": {"main-default"}, "database": {"database-arg"}}[component.Name]
-				if !bytes.Equal(mustJSON(firstContainerField(deployment, "args")), mustJSON(expected)) {
-					t.Fatalf("component %s args=%v", component.Name, firstContainerField(deployment, "args"))
+				if !equalStringSlices(expected, deployment.Spec.Template.Spec.Containers[0].Args) {
+					t.Fatalf("component %s args=%v want %v", component.Name, deployment.Spec.Template.Spec.Containers[0].Args, expected)
 				}
 			}
 			continue
@@ -435,13 +487,13 @@ func TestExecutorProgressesTheOriginalDependencyChainOnlyOnEnsure(t *testing.T) 
 		}
 		// Read the settled dependencies repeatedly. No read may create the
 		// next component that was absent from the original apply.
-		objects := len(cluster.objects)
+		objects := cluster.objectCount(t)
 		for poll := 0; poll < 2; poll++ {
 			readback, err := executor.ReadWorkspaceApplicationRuntime(context.Background(), input)
 			if err != nil || readback.Status != "pending" || readback.Components[0].State != "absent" {
 				t.Fatalf("readback=%+v err=%v", readback, err)
 			}
-			if len(cluster.objects) != objects {
+			if cluster.objectCount(t) != objects {
 				t.Fatal("read created runtime objects")
 			}
 		}
@@ -450,15 +502,18 @@ func TestExecutorProgressesTheOriginalDependencyChainOnlyOnEnsure(t *testing.T) 
 
 func TestExecutorImageConflictRemainsReadableAsFailure(t *testing.T) {
 	cluster := newFakeCluster()
-	cluster.store(pvcObject())
+	cluster.storePVC(pvcObject())
 	executor := testExecutor(cluster, testInstallation(map[string]string{"app.kubernetes.io/component": "serve"}))
 	input := testInput(t)
 	if _, err := executor.EnsureWorkspaceApplicationRuntime(context.Background(), input, testPlacement()); err != nil {
 		t.Fatal(err)
 	}
-	deployment := cluster.objects["Deployment/"+ComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)]
-	containers := nested(deployment, "spec", "template", "spec", "containers").([]any)
-	containers[0].(map[string]any)["image"] = "registry.test/app@sha256:" + strings.Repeat("2", 64)
+	name := ComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)
+	dep := cluster.deployment(t, name)
+	dep.Spec.Template.Spec.Containers[0].Image = "registry.test/app@sha256:" + strings.Repeat("2", 64)
+	if _, err := cluster.clientset.AppsV1().Deployments(testNamespace).Update(context.Background(), dep, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
 	readback, err := executor.ReadWorkspaceApplicationRuntime(context.Background(), input)
 	if err != nil || readback.Status != "failed" {
 		t.Fatalf("readback=%+v err=%v", readback, err)
@@ -473,7 +528,7 @@ func TestExecutorImageConflictRemainsReadableAsFailure(t *testing.T) {
 func TestExecutorRefusesAnInstallationFactItNeeds(t *testing.T) {
 	input := testInput(t)
 	cluster := newFakeCluster()
-	cluster.store(pvcObject())
+	cluster.storePVC(pvcObject())
 
 	incomplete := testInstallation(map[string]string{"app.kubernetes.io/component": "serve"})
 	incomplete.ImagePullSecretName = ""
@@ -495,13 +550,12 @@ func TestExecutorRefusesAnInstallationFactItNeeds(t *testing.T) {
 	if _, err := executor.EnsureWorkspaceApplicationRuntime(context.Background(), input, Placement{}); !errors.Is(err, ErrPlacementUnconfirmed) {
 		t.Fatalf("an absent placement err=%v want the unconfirmed-placement refusal", err)
 	}
-	if len(cluster.objects) == 0 {
-		t.Fatal("fixture did not run")
+	deps, err := cluster.clientset.AppsV1().Deployments(testNamespace).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
 	}
-	for key := range cluster.objects {
-		if strings.HasPrefix(key, "Deployment/") {
-			t.Fatalf("a refused apply still created %s", key)
-		}
+	if len(deps.Items) != 0 {
+		t.Fatalf("a refused apply still created %d deployment(s)", len(deps.Items))
 	}
 }
 
@@ -522,7 +576,7 @@ func TestExecutorGuardRefusesTheInstallationsProtectedCompute(t *testing.T) {
 // not an available application: the workload stays pending until its pod is ready.
 func TestExecutorReportsPendingUntilEveryComponentServes(t *testing.T) {
 	cluster := newFakeCluster()
-	cluster.store(pvcObject())
+	cluster.storePVC(pvcObject())
 	input := testInput(t)
 	executor := testExecutor(cluster, testInstallation(map[string]string{"app": "opl"}))
 	if _, err := executor.EnsureWorkspaceApplicationRuntime(context.Background(), input, testPlacement()); err != nil {
@@ -530,7 +584,9 @@ func TestExecutorReportsPendingUntilEveryComponentServes(t *testing.T) {
 	}
 	// A scaled-to-zero component is not an available application.
 	name := ComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)
-	cluster.scale([]string{"scale", "deployment/" + name, "--replicas=0"})
+	if err := cluster.scaleDeploymentInStore(name, 0); err != nil {
+		t.Fatal(err)
+	}
 	observation, err := executor.ReadWorkspaceApplicationRuntime(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
@@ -544,7 +600,7 @@ func TestExecutorReportsPendingUntilEveryComponentServes(t *testing.T) {
 // fact Serve records, including a runtime that is entirely absent after retirement.
 func TestExecutorLifecycleConfirmsTheAppliedState(t *testing.T) {
 	cluster := newFakeCluster()
-	cluster.store(pvcObject())
+	cluster.storePVC(pvcObject())
 	input := testInput(t)
 	executor := testExecutor(cluster, testInstallation(map[string]string{"app": "opl"}))
 	if _, err := executor.EnsureWorkspaceApplicationRuntime(context.Background(), input, testPlacement()); err != nil {
@@ -575,7 +631,7 @@ func TestExecutorReadsTheApplicationsOwnCredential(t *testing.T) {
 	for _, gateway := range []bool{false, true} {
 		t.Run(fmt.Sprintf("gateway=%t", gateway), func(t *testing.T) {
 			cluster := newFakeCluster()
-			cluster.store(pvcObject())
+			cluster.storePVC(pvcObject())
 			input := testInput(t)
 			input.Revision.Credentials = []contracts.WorkspaceApplicationCredential{
 				{Name: "admin", Kind: contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword, Target: "/run/secrets/admin", Username: "app-admin"},
@@ -585,10 +641,20 @@ func TestExecutorReadsTheApplicationsOwnCredential(t *testing.T) {
 			if gateway {
 				input.Revision.Credentials = append(input.Revision.Credentials, contracts.WorkspaceApplicationCredential{Name: "gateway", Kind: contracts.WorkspaceApplicationCredentialGatewayKey, Target: "/run/secrets/gateway"})
 				input.SecretBindings = []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", SecretRef: contracts.WorkspaceGatewaySecretRef(input.WorkspaceID), Version: "0123456789abcdef", Key: contracts.WorkspaceApplicationGatewayKeyField}}
-				cluster.store(map[string]any{"apiVersion": "v1", "kind": "Secret", "metadata": map[string]any{
-					"name":        contracts.WorkspaceGatewaySecretRef(input.WorkspaceID),
-					"annotations": map[string]any{"oplcloud.cn/account-id": input.AccountID, "oplcloud.cn/workspace-id": input.WorkspaceID, "oplcloud.cn/secret-version": input.SecretBindings[0].Version},
-				}, "data": map[string]any{contracts.WorkspaceApplicationGatewayKeyField: base64.StdEncoding.EncodeToString([]byte("gateway-key-value"))}})
+				cluster.storeSecret(&corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      contracts.WorkspaceGatewaySecretRef(input.WorkspaceID),
+						Namespace: testNamespace,
+						Annotations: map[string]string{
+							"oplcloud.cn/account-id":     input.AccountID,
+							"oplcloud.cn/workspace-id":   input.WorkspaceID,
+							"oplcloud.cn/secret-version": input.SecretBindings[0].Version,
+						},
+					},
+					Data: map[string][]byte{
+						contracts.WorkspaceApplicationGatewayKeyField: []byte("gateway-key-value"),
+					},
+				})
 			}
 			var err error
 			input.ConfigurationDigest, err = contracts.WorkspaceApplicationConfigurationDigest(input.Configuration, input.SecretBindings, input.DataBindingID)
@@ -613,12 +679,10 @@ func TestExecutorReadsTheApplicationsOwnCredential(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				password, err := base64.StdEncoding.DecodeString(stringValue(nested(secret, "data", "admin")))
-				if err != nil || string(password) != deriveWorkspaceAdminPassword(installation.AdminPasswordSeed, input.WorkspaceID, input.Configuration.CredentialVersion) {
+				if string(secret.Data["admin"]) != deriveWorkspaceAdminPassword(installation.AdminPasswordSeed, input.WorkspaceID, input.Configuration.CredentialVersion) {
 					t.Fatal("applied password changed its frozen identity")
 				}
-				actual, err := base64.StdEncoding.DecodeString(stringValue(nested(secret, "data", "session")))
-				if err != nil || string(actual) != deriveWorkspaceSessionSecret(installation.AdminPasswordSeed, input.WorkspaceID, input.Configuration.CredentialVersion) {
+				if string(secret.Data["session"]) != deriveWorkspaceSessionSecret(installation.AdminPasswordSeed, input.WorkspaceID, input.Configuration.CredentialVersion) {
 					t.Fatal("applied session secret changed its frozen identity")
 				}
 			}
@@ -626,27 +690,35 @@ func TestExecutorReadsTheApplicationsOwnCredential(t *testing.T) {
 	}
 }
 
-func TestExecutorRetainsOwnerBoundaryWithoutRawTransportFallback(t *testing.T) {
-	cluster := newFakeCluster()
-	executor := testExecutor(cluster, testInstallation(map[string]string{"app": "serve"}))
-	boundaryFailure := errors.New("original owner journal unavailable")
-	rawCalls, applyCalls := 0, 0
-	executor.Kubectl = func(context.Context, []string, []byte) ([]byte, error) {
-		rawCalls++
-		return nil, errors.New("raw transport bypass")
+type boundaryInterceptCluster struct {
+	ClusterClient
+	onApply func(protectedresource.Target) error
+}
+
+func (b *boundaryInterceptCluster) Apply(ctx context.Context, bundle *ApplyBundle, target protectedresource.Target) error {
+	if err := b.onApply(target); err != nil {
+		return err
 	}
-	executor.RunKubectl = func(ctx context.Context, args []string, stdin []byte, target protectedresource.Target) ([]byte, error) {
-		if args[0] == "apply" {
+	return b.ClusterClient.Apply(ctx, bundle, target)
+}
+
+func TestExecutorRetainsOwnerBoundaryWithConfirmedTarget(t *testing.T) {
+	cluster := newFakeCluster()
+	boundaryFailure := errors.New("original owner journal unavailable")
+	applyCalls := 0
+	wrapped := &boundaryInterceptCluster{
+		ClusterClient: cluster,
+		onApply: func(target protectedresource.Target) error {
 			applyCalls++
 			if target.NodeName != testPlacement().ComputeNodeName {
 				t.Fatal("owner boundary lost the confirmed target")
 			}
-			return nil, boundaryFailure
-		}
-		return cluster.kubectl(ctx, args, stdin)
+			return boundaryFailure
+		},
 	}
+	executor := testExecutor(wrapped, testInstallation(map[string]string{"app": "serve"}))
 	_, err := executor.EnsureWorkspaceApplicationRuntime(context.Background(), testInput(t), testPlacement())
-	if !errors.Is(err, boundaryFailure) || rawCalls != 0 || applyCalls != 1 {
-		t.Fatalf("error=%v raw=%d owner apply=%d", err, rawCalls, applyCalls)
+	if !errors.Is(err, boundaryFailure) || applyCalls != 1 {
+		t.Fatalf("error=%v owner apply=%d", err, applyCalls)
 	}
 }
