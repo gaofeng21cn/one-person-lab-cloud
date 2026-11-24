@@ -88,6 +88,12 @@ chronological snapshots.
     runtime inventory the renewal recovery reader projects, the historical
     delete and renewal operation decoders and validators, and the shared
     application deployment worker that still writes a runtime lifecycle stay.
+  - The fresh-create side of the original Control Plane Launch is retired: the
+    descriptor, its constructors, the request-hash calculator and the preflight
+    confirmation exist only in retained test support. The Launch **executor** is
+    retained — the worker advances a non-terminal `workspace.launch.v2` operation
+    that an in-place upgrade can carry forward, and the customer-owned Key stage
+    still needs the customer's own Gateway credential.
 - **What Remains Unproven Here**: Same-Candidate paid customer purchase
   execution on Tencent/TKE, J0 READY qualification bound to the latest
   Candidate, end-to-end custom Agent Package build-to-serve production delivery,
@@ -122,3 +128,7 @@ chronological snapshots.
   recover an application runtime for a persisted delete or renewal record, so
   an accepted application suspension or recovery stays unexecuted, and no
   installed environment has adopted the withdrawal.
+  The original Launch fresh-create retirement and the
+  Launch executor retention are **source-level only**: no installed adoption, no
+  Candidate build, no Instance deployment, no production zero-new-write
+  observation and no settlement of any original refund.

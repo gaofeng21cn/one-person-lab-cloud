@@ -10,6 +10,22 @@ does not remove historical rows, workers, refunds or the retained DELETE path.
 and [its focused tests](../../services/control-plane/internal/server/workspace_launch_reconciler_test.go)
 are the current source; production execution remains Instance-owned.
 
+The fresh-create side of the original Launch is retired from production. The
+create command was withdrawn with the purchase cutover, so the descriptor, its
+constructors and the request-hash calculator no longer exist in production code;
+they survive only in the retained test support that builds a historical Launch
+record. The `requestHash` a persisted row carries is still decoded and still
+bounds the Fabric stage request hash, so the identity of an accepted purchase is
+unchanged.
+
+Same-key replay returns the persisted operation. Only the retained pending Key or
+customer-owned Key/Secret unknown branch continues it, and that branch runs with
+the customer's own Gateway credential. The Launch worker is the executor of a
+non-terminal `workspace.launch.v2` operation, and the operator recovery route
+remains the operator's command over a `manual_review` operation. See
+[Worker Recovery](#worker-recovery) for the carried-forward obligation that
+keeps the worker.
+
 ## Stage Binding
 
 Fabric exposes `/fabric/workspace-launches/preflight`, the persisted binding
@@ -100,6 +116,29 @@ claim about Tencent provisioning latency or model capacity. The former active-
 Launch admission limit and one-use Acceptance B capacity slot cannot bypass the
 HTTP fresh-intent fence. Existing obligations continue through exact original
 operation/account reads.
+
+The worker is retained because it is the executor of a non-terminal
+`workspace.launch.v2` operation. Its sweep selects `Action:
+workspace.launch.v2` with `ExcludedStatuses: [succeeded, refunded, failed]`, so
+every non-terminal operation is in scope: `pending` at any stage and
+`manual_review`. The creation writer was withdrawn before public v0.1.8, but
+v0.1.8 still registered `POST /api/workspace-launches` and
+`POST /api/workspace-launches/{id}/resume` against that same action, so an
+operation accepted before that cutover can be carried forward by an in-place
+upgrade in any non-terminal phase. The other retained commands do not cover that
+exposure: the history routes only read, and the operator recovery route only
+advances a `manual_review` operation. The scheduler cursor is process-local state
+that starts empty on every boot, so an upgrade cannot leave an accepted operation
+behind it. Removing the worker would strand a carried-forward accepted operation
+with no executor, which is the same gap the shared application deployment worker
+is retained for.
+
+The Key stage is the one state the worker cannot advance on its own.
+`CanMutateStage` rejects the Key stage unless the reconciler carries the
+operation owner's own Gateway credential, and the worker and the operator
+recovery route both reconcile with an empty credential. A customer-owned Key row
+therefore stays pending until the customer re-drives it through the customer
+route, which is why that single continuation branch is retained.
 
 The first stage dispatch persists its original key and a thirty-second lease
 before invoking the owner. Other workers leave that reservation unchanged while

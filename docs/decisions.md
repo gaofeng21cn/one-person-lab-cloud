@@ -119,6 +119,15 @@ Git log.
   application suspension or recovery that was accepted for a persisted record
   therefore stays a visible obligation instead of being silently completed or
   dropped.
+- **Retained Launch Executor**: The original Launch worker stays as the executor of
+  a non-terminal `workspace.launch.v2` operation. A fresh create is refused at the
+  route fence and new purchases belong to the Workspace owner route, so the retained
+  executor only continues an operation that was already accepted; an in-place upgrade
+  from public v0.1.8 can carry such an operation forward in any non-terminal phase and
+  no other retained command can advance it. Its customer-owned Key stage still
+  requires the customer's own Gateway credential. Removing it would strand a
+  carried-forward accepted operation with no executor — the same exposure the shared
+  application deployment worker is retained for.
 
 ## Ordinary Source Development And CI
 

@@ -103,7 +103,21 @@ reads are forbidden.
   is retired with the delete and renewal executors that were its only callers;
   its inventory reader, its historical operation decoders and validators, and
   the shared application deployment worker that still writes a runtime lifecycle
-  stay.
+  stay. The fresh-create side of the original Launch is
+  retired too: `workspaceLaunchDescriptor`, its constructors, the request-hash calculator
+  and the preflight confirmation have no production caller and now exist only in the
+  retained test support that builds a historical Launch record. The `requestHash` a
+  persisted row carries is still decoded and still bounds the Fabric stage request hash,
+  so the identity of an accepted purchase is unchanged.
+- **Retained Launch Executor**: The Launch worker is the executor of a non-terminal
+  `workspace.launch.v2` operation. An in-place upgrade from public v0.1.8 can carry an
+  operation accepted before the create cutover forward in any non-terminal phase, the
+  scheduler cursor is process-local state that starts empty on every boot, and no other
+  retained command can advance it — the history routes only read and the operator
+  recovery route only advances a `manual_review` operation. The customer-owned Key stage
+  is the one state no credential-free executor can advance, so the customer route keeps
+  its single continuation branch. See
+  [Launch recovery reference](implementation/workspace-launch-recovery.md).
 - **Preserved Historical Decoders**: `services/control-plane/internal/server/workspace_delete.go`
   and `workspace_store.go` keep read-only historical key-rotation decoding (`NewKeyID -> OldKeyID`),
   `workspace_runtime_image_history.go` keeps historical image operation decoding
