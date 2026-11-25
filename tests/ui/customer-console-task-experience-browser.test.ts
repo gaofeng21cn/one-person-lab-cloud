@@ -320,8 +320,13 @@ test("customer task pages use customer language and expose task fields", { timeo
       await keyName.waitFor({ state: "visible" });
       const filterDisclosure = page.getByRole("region", { name: "筛选与排序", exact: true });
       const filterToggle = filterDisclosure.getByRole("button", { name: /筛选与排序/ });
-      const moreActions = keySurface.locator("details.key-more-actions");
-      assert.equal(await moreActions.getAttribute("open"), null);
+      // The demo server models the retained Control Plane-only Console. The
+      // Gateway owner is the only writer of a personal Key and that
+      // installation reaches no owner, so the panel offers no management
+      // action at all and says why instead of offering a button that reaches
+      // nothing.
+      assert.equal(await keySurface.locator("details.key-more-actions").count(), 0);
+      await page.getByText("个人 API 密钥管理不可用", { exact: true }).waitFor({ state: "visible" });
 
       if (viewport.name === "mobile") {
         const keyBox = await keyName.boundingBox();
@@ -332,23 +337,10 @@ test("customer task pages use customer language and expose task fields", { timeo
         assert.equal(await page.locator(".keys-filter-disclosure__content").isVisible(), false);
       }
 
+      // The read surface is retained: the Key is listed and its secret can
+      // still be shown, because the reveal route reaches no owner either.
       await keySurface.getByRole("button", { name: "显示 API 密钥", exact: true }).waitFor({ state: "visible" });
       await keySurface.getByRole("button", { name: "使用说明", exact: true }).waitFor({ state: "visible" });
-      await moreActions.getByText("更多操作", { exact: true }).click();
-      for (const action of ["编辑", "停用", "重置配额用量", "重置消费限额用量", "删除"]) {
-        await moreActions.getByRole("button", { name: action, exact: true }).waitFor({ state: "visible" });
-      }
-      await moreActions.getByText("删除", { exact: true }).first().waitFor({ state: "visible" });
-      if (viewport.name === "mobile") {
-        const moreBox = await moreActions.locator(".key-more-actions__body").boundingBox();
-        const bottomNavBox = await page.locator(".mobile-bottom-nav").boundingBox();
-        assert.ok(moreBox && bottomNavBox, "mobile: expanded key actions and bottom navigation should have layout boxes");
-        assert.ok(
-          moreBox.y + moreBox.height <= bottomNavBox.y,
-          "mobile: expanded key actions must remain above the fixed bottom navigation"
-        );
-      }
-      await moreActions.getByText("更多操作", { exact: true }).click();
 
       if (viewport.name === "mobile") await filterToggle.click();
       const sortControl = page.locator(".keys-filters .console-field")
