@@ -17,6 +17,9 @@ Close end-to-end customer lifecycle verification for the latest Cloud Candidate 
 `opl-instance-medopl` Tencent/TKE:
 
 - Default OPL App launch (`create -> quote -> debit -> Fabric provision -> Serve delivery -> readiness -> access -> renewal -> deletion -> refund/reconcile -> Ledger receipt`), plus custom Agent Package build-to-serve E2E on TKE.
+- Verify that one customer deletion reaches confirmed CBS final release, compute
+  absence, and settlement through the installed Fabric path without an operator
+  releasing the recycled disk.
 - Invoke protected J0 READY producer against the same Candidate digest and capture Instance-side profile-digest-bound installation summary receipts.
 - Retire the remaining 11 zero-replica split Deployments on Instance only after fresh readback confirms zero active traffic.
 

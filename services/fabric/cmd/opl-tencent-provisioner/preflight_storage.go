@@ -1202,41 +1202,22 @@ func (client *tencentSDKClient) DestroyStorageVolume(request Request, env map[st
 		terminateRequestID = stringValue(terminated.Response.RequestId)
 	}
 
-	attempts := intFromEnv(env, "TENCENT_CBS_DELETE_ATTEMPTS", 30)
-	if attempts < 1 {
-		attempts = 1
+	// Return the send evidence for Fabric to journal before it observes recycle
+	// or absence. Waiting here can exhaust the caller's budget while the disk
+	// remains in TORECYCLE, leaving Fabric without the result of the send.
+	message := "Tencent CBS termination requires an owner readback."
+	if terminateErr != nil {
+		message = terminateErr.Error()
 	}
-	delayMS := nonNegativeIntFromEnv(env, "TENCENT_CBS_DELETE_DELAY_MS", 10000)
-	for attempt := 1; attempt <= attempts; attempt++ {
-		readback := client.storageVolumeReadback(request, true)
-		if readback.ProviderData == nil {
-			readback.ProviderData = map[string]string{}
-		}
-		if terminateRequestID != "" {
-			readback.ProviderData["terminateCbsRequestId"] = terminateRequestID
-		}
-		if !readback.Ok {
-			return storageDestroyResponseEvidence(readback, "terminate_attempted", 1)
-		}
-		if readback.Status == "external_deleted" && readback.CBSStatus == "NOT_FOUND" {
-			readback.ProviderRequestId = firstNonEmpty(terminateRequestID, readback.ProviderRequestId)
-			return storageDestroyResponseEvidence(readback, "absence_confirmed", 1)
-		}
-		if attempt == attempts {
-			message := "Tencent CBS is still present after TerminateDisks."
-			if terminateErr != nil {
-				message = terminateErr.Error()
-			}
-			return storageDestroyResponseEvidence(Response{
-				Ok: false, StorageVolumeId: storage.Id, CBSStatus: readback.CBSStatus, ErrorCode: "storage_volume_delete_unverified", Message: message,
-				ProviderRequestId: firstNonEmpty(terminateRequestID, readback.ProviderRequestId), ProviderData: readback.ProviderData, Retryable: true, MutationCount: 1,
-			}, "terminate_attempted", 1)
-		}
-		if delayMS > 0 {
-			time.Sleep(time.Duration(delayMS) * time.Millisecond)
-		}
-	}
-	return storageDestroyResponseEvidence(Response{Ok: false, StorageVolumeId: storage.Id, ErrorCode: "storage_volume_delete_unverified", Message: "Tencent CBS deletion did not reach an authoritative terminal state.", Retryable: true}, "terminate_attempted", 1)
+	return storageDestroyResponseEvidence(Response{
+		StorageVolumeId:   storage.Id,
+		Status:            "destroying",
+		ErrorCode:         "storage_volume_delete_unverified",
+		Message:           message,
+		Retryable:         true,
+		ProviderRequestId: terminateRequestID,
+		ProviderData:      map[string]string{"terminateCbsRequestId": terminateRequestID},
+	}, "terminate_attempted", 1)
 }
 
 func (client *tencentSDKClient) storageProviderRegionFailure(request Request) *Response {

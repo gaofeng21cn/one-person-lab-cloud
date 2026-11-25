@@ -33,6 +33,34 @@ func (p *phasedStorageDestroyProvider) ReadStorageVolumeStatus(_ context.Context
 	return cloneStorageVolume(p.readback), p.readbackErr
 }
 
+func TestStorageDestroyPersistsTencentAttemptWhenCallerCancels(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	store := &storageFinalReleaseWriteStore{OperationStore: NewMemoryOperationStore()}
+	volume := storageDestroyTestVolume("storage-attempt-cancelled")
+	appendSucceededStorageCreate(t, store, volume)
+	attempt := storageDestroyPhaseResult(volume, storageDestroyPhaseTerminateAttempted, "1", "destroying", "")
+	attempt.DestroyState = StorageDestroyStateUnconfirmedSend
+	attempt.ProviderData["terminateCbsRequestId"] = "req-cbs-terminate"
+	provider := &phasedStorageDestroyProvider{
+		destroyResult: attempt,
+		destroyErr:    errors.New("storage_volume_delete_unverified"),
+		destroyHook:   func(StorageVolume) { cancel() },
+	}
+	service := NewServiceWithOperationStore(provider, store)
+	if _, err := service.DestroyStorageVolume(ctx, volume.ID); !errors.Is(err, ErrWorkspaceLaunchPending) {
+		t.Fatalf("destroy must remain pending after the attempt: %v", err)
+	}
+	latest, found, err := store.LatestResourceOperation(t.Context(), "storage_volume", volume.ID)
+	var persisted StorageVolume
+	if err != nil || !found || latest.Status != "failed" || !decodeOperationResource(latest, &persisted) ||
+		persisted.ProviderData["storageDestroyPhase"] != storageDestroyPhaseTerminateAttempted ||
+		persisted.ProviderData["storageDestroyMutationCount"] != "1" || persisted.ProviderData["terminateCbsRequestId"] != "req-cbs-terminate" ||
+		provider.destroyCalls.Load() != 1 || provider.readbackCalls.Load() != 0 {
+		t.Fatalf("durable send evidence missing: latest=%+v persisted=%+v found=%v err=%v", latest, persisted, found, err)
+	}
+}
+
 func storageDestroyPhaseResult(volume StorageVolume, phase, mutationCount, status, cbsStatus string) StorageVolume {
 	volume = cloneStorageVolume(volume)
 	volume.Status = status

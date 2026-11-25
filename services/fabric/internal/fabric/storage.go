@@ -306,7 +306,18 @@ func (s *Service) dispatchStorageDestroy(ctx context.Context, operation FabricOp
 		// classification. That makes the same operation retryable instead of
 		// terminal, while an unverifiable or invalid provider response (which sets
 		// no classification) stays a hard failure.
-		_ = s.recordOperation(ctx, operation, "failed", volume, providerErr)
+		writeCtx := ctx
+		if volume.Provider == "tencent-tke" && volume.ProviderData["storageDestroyPhase"] == storageDestroyPhaseTerminateAttempted &&
+			volume.ProviderData["storageDestroyMutationCount"] == "1" {
+			// Once received, keep this send evidence even if its caller's budget
+			// expires. The existing destroy fence still guards every retry.
+			var cancel context.CancelFunc
+			writeCtx, cancel = context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+		}
+		if err := s.recordOperation(writeCtx, operation, "failed", volume, providerErr); err != nil {
+			return errors.Join(providerErr, err)
+		}
 		if volume.DestroyState != "" {
 			*result = volume
 			return errors.Join(ErrWorkspaceLaunchPending, providerErr)
