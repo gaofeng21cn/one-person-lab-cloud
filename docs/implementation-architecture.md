@@ -106,4 +106,12 @@ reads are forbidden.
   and `workspace_store.go` keep read-only historical key-rotation decoding (`NewKeyID -> OldKeyID`)
   and `workspace_runtime_image_history.go` keeps historical image operation decoding
   strictly as deletion/reconciliation preconditions for pre-existing Workspaces.
+- **Personal Gateway Key Writes**: `services/gateway-integration` declares and
+  implements the native personal Key create/update/reveal/revoke RPCs on
+  `GatewayProductService`, over the same delegated Sub2API authority and the same
+  `PersonalGatewayKey` projection the personal reads already use. The Tenant-managed
+  `GatewayKey` contract is separate and unchanged. The Control Plane's four
+  `/api/gateway/keys` write routes are **not** migrated onto these RPCs and still
+  call Sub2API directly; that migration, and only then the retirement of those
+  routes, is the follow-up slice.
 - **Open Extractions**: Tracked in [roadmap.md](roadmap.md#workspace-key-and-customer-read-boundaries).

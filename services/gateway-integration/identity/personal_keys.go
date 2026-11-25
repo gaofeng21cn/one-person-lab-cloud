@@ -67,38 +67,47 @@ func (s *Service) forgetDelegatedSession(ref string) {
 	}
 }
 func (s *Service) personalCredential(ctx context.Context, call *api.CallContext) (*delegatedCredential, error) {
+	_, credential, err := s.personalSession(ctx, call)
+	return credential, err
+}
+
+// personalSession resolves the caller's Cloud session together with the live
+// delegated Gateway credential that session owns. The session travels with the
+// credential because a personal Key command records its audit evidence against
+// the session's actor.
+func (s *Service) personalSession(ctx context.Context, call *api.CallContext) (*api.Session, *delegatedCredential, error) {
 	if err := peer(ctx, owneridentity.ConsoleBFF); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if call.GetSessionId() == "" {
-		return nil, status.Error(codes.Unauthenticated, "active Cloud session required")
+		return nil, nil, status.Error(codes.Unauthenticated, "active Cloud session required")
 	}
 	session, _, _, err := s.session(ctx, call.GetSessionId())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	binding, err := s.userBinding(ctx, session.GetActorId())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	key := delegatedCredentialKey{call.GetSessionId(), binding.Sub2APIUserID}
 	s.mu.Lock()
 	credential := s.delegated[key]
 	s.mu.Unlock()
 	if credential == nil || !credential.expires.After(time.Now()) {
-		return nil, reauthenticationRequired()
+		return nil, nil, reauthenticationRequired()
 	}
 	bounded, cancel := context.WithDeadline(ctx, credential.expires)
 	defer cancel()
 	_, err = s.Gateway.Read(bounded, credential.bearer, key.subject)
 	if !credential.expires.After(time.Now()) || status.Code(err) == codes.Unauthenticated {
 		s.forgetDelegatedSession(key.session)
-		return nil, reauthenticationRequired()
+		return nil, nil, reauthenticationRequired()
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return credential, nil
+	return session, credential, nil
 }
 
 // delegatedCredentialForSubject resolves a live Gateway bearer for an internal
@@ -135,40 +144,54 @@ func (s *Service) delegatedCredentialForSubject(ctx context.Context, subject str
 	}
 	return nil, reauthenticationRequired()
 }
-func (s *Service) personalRequest(ctx context.Context, credential *delegatedCredential, path string, out any) error {
+
+// personalCall performs one request against the Gateway user API with the
+// caller's delegated bearer. It is the only path that carries a personal
+// credential, so every personal read and write shares one authority, one
+// expiry check and one bounded transport.
+func (s *Service) personalCall(ctx context.Context, credential *delegatedCredential, method, path string, body any, headers map[string]string) ([]byte, error) {
 	s.mu.Lock()
 	current := s.delegated[credential.key] == credential
 	s.mu.Unlock()
 	if !current || !credential.expires.After(time.Now()) {
-		return reauthenticationRequired()
+		return nil, reauthenticationRequired()
 	}
 	bounded, cancel := context.WithDeadline(ctx, credential.expires)
 	defer cancel()
 	// Reuse the owner's bounded authenticated HTTP transport with the user's
 	// bearer. This transport never selects or refreshes a directory credential.
-	data, err := s.Gateway.adminRequest(bounded, path, nil, credential.bearer)
+	data, err := s.Gateway.requestWithMethod(bounded, method, path, body, credential.bearer, headers)
 	if !credential.expires.After(time.Now()) {
 		s.forgetDelegatedSession(credential.key.session)
-		return reauthenticationRequired()
+		return nil, reauthenticationRequired()
 	}
-	if err != nil {
-		var upstream *gatewayHTTPError
-		if errors.As(err, &upstream) {
-			switch upstream.StatusCode {
-			case http.StatusUnauthorized, http.StatusForbidden:
-				s.forgetDelegatedSession(credential.key.session)
-				return reauthenticationRequired()
-			case http.StatusNotFound:
-				return status.Error(codes.NotFound, "Gateway personal resource not found")
-			case http.StatusTooManyRequests:
-				return status.Error(codes.ResourceExhausted, "Gateway personal reads rate limited")
-			}
+	return data, err
+}
+
+// mapPersonalKeyReadError reports a refused or failed personal read. A
+// rejected credential is dropped so the next call asks for a fresh login
+// instead of reusing a credential the provider no longer accepts.
+func (s *Service) mapPersonalKeyReadError(credential *delegatedCredential, err error) error {
+	var upstream *gatewayHTTPError
+	if errors.As(err, &upstream) {
+		switch upstream.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			s.forgetDelegatedSession(credential.key.session)
+			return reauthenticationRequired()
+		case http.StatusNotFound:
+			return status.Error(codes.NotFound, "Gateway personal resource not found")
+		case http.StatusTooManyRequests:
+			return status.Error(codes.ResourceExhausted, "Gateway personal reads rate limited")
 		}
-		return status.Error(codes.Unavailable, "Gateway personal read unavailable")
 	}
-	// These user reads require an explicit success code and an actual data
-	// member. Explicit null remains decodable for the native optional rates map;
-	// each authoritative collection below must still be a JSON array.
+	return status.Error(codes.Unavailable, "Gateway personal read unavailable")
+}
+
+// personalEnvelopeData decodes the provider's {code,data} answer. A personal
+// read requires an explicit success code and an actual data member: an
+// explicit null stays decodable for the native optional rates map, and each
+// authoritative collection must still be a JSON array.
+func personalEnvelopeData(data []byte, out any) error {
 	var envelope struct {
 		Code *int            `json:"code"`
 		Data json.RawMessage `json:"data"`
@@ -177,6 +200,14 @@ func (s *Service) personalRequest(ctx context.Context, credential *delegatedCred
 		return invalidPersonalResponse()
 	}
 	return nil
+}
+
+func (s *Service) personalRequest(ctx context.Context, credential *delegatedCredential, path string, out any) error {
+	data, err := s.personalCall(ctx, credential, http.MethodGet, path, nil, nil)
+	if err != nil {
+		return s.mapPersonalKeyReadError(credential, err)
+	}
+	return personalEnvelopeData(data, out)
 }
 
 // personalKeyPayload decodes the native user DTO. It deliberately has no raw key
