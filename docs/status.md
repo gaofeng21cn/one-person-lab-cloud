@@ -22,6 +22,13 @@ chronological snapshots.
   lifecycle qualification (`p0Ready: false`). Composed backend TKE deployment has
   been verified for the installed Candidate, while formal public Release remains
   at `v0.1.8` (GitHub Releases).
+- **Fabric Provider Account Resolution**: Fabric resolves the ordering Tenant of
+  an accepted plan to the provider account that runs its package. A binding in
+  the deployment-owned provider profile names a Tenant that runs in a particular
+  account; a Tenant that no binding names runs in the profile's
+  `defaultAccountId`, so onboarding a customer needs no profile edit and no
+  restart. A profile that declares neither refuses that Tenant. The profile
+  itself stays an `opl-instance-medopl` deployment fact.
 - **Console / BFF / Control Plane Boundary**:
   - CloudIdentity routes (`/api/v2/*`) serve Workspace, Quote, Launch, Capability
     upload/build, Serve delivery, Gateway wallet/usage summary, Agent read-only

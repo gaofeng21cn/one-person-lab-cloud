@@ -22,7 +22,8 @@ type AcceptedTencentResourcePlan struct {
 // ResolveAcceptedResourcePlan maps one accepted Catalog resource plan back to the
 // provider profile entry that priced it. The accepted plan must already be a
 // prepaid monthly plan for this deployment's region; anything else, including a
-// missing tenant-account binding, fails before any capacity check or mutation.
+// tenant that neither a binding nor the installation default account covers,
+// fails before any capacity check or mutation.
 func (p *TencentProvider) ResolveAcceptedResourcePlan(tenant string, plan *api.ResourcePlanSnapshot) (AcceptedTencentResourcePlan, error) {
 	if p == nil || p.profileErr != nil || p.installationErr != nil || plan == nil {
 		return AcceptedTencentResourcePlan{}, fmt.Errorf("tencent_accepted_profile_mismatch")
@@ -71,6 +72,12 @@ func (p *TencentProvider) acceptedTencentAccount(tenant string) (string, error) 
 			return "", fmt.Errorf("tencent_account_binding_ambiguous")
 		}
 		account = binding.AccountID
+	}
+	if account == "" {
+		// A tenant that no binding names runs in the account this installation
+		// declares. The default is the installation's own provider account, so
+		// onboarding a customer never needs a profile edit and a restart.
+		account = p.profile.DefaultAccountID
 	}
 	if account == "" {
 		return "", fmt.Errorf("tencent_account_binding_required")

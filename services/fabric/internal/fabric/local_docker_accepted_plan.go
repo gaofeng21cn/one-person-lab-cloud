@@ -8,6 +8,7 @@ import (
 // AcceptedLocalResourcePlan is the exact existing provider package selected by
 // Catalog's frozen SKU pair and the deployment's explicit tenant-account binding.
 // It is a read of this provider's one profile, never a second package registry.
+// A tenant that no binding names resolves the installation's default account.
 type AcceptedLocalResourcePlan struct {
 	PackageID  string
 	AccountID  string
@@ -26,6 +27,12 @@ func (p *LocalDockerProvider) ResolveAcceptedResourcePlan(tenant string, plan *a
 			}
 			account = binding.AccountID
 		}
+	}
+	if account == "" {
+		// A tenant that no binding names runs in the account this installation
+		// declares. The default is the installation's own provider account, so
+		// onboarding a customer never needs a profile edit and a restart.
+		account = p.profile.DefaultAccountID
 	}
 	if account == "" {
 		return AcceptedLocalResourcePlan{}, fmt.Errorf("local_docker_account_binding_required")

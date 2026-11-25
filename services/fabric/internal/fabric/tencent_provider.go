@@ -70,8 +70,15 @@ type tencentProviderProfile struct {
 	Packages      []tencentPackageProfile `json:"packages"`
 	// AccountBindings bind an authorized tenant to the provider account that
 	// owns and tags its prepaid resources. They mirror the Local profile shape;
-	// an unbound tenant can never resolve an accepted plan.
+	// a tenant without a binding resolves the installation's default account.
 	AccountBindings []tencentAccountBinding `json:"accountBindings,omitempty"`
+	// DefaultAccountID is the provider account this installation runs its
+	// prepaid resources in when no binding names the tenant. It is a
+	// deployment fact carried by the same profile, never a value compiled into
+	// the code, so a new tenant never needs a profile edit. A binding that
+	// names the tenant always wins over it, and a profile that declares
+	// neither refuses the tenant.
+	DefaultAccountID string `json:"defaultAccountId,omitempty"`
 }
 
 type tencentAccountBinding struct {
@@ -329,6 +336,12 @@ func decodeTencentProviderProfile(raw []byte) (tencentProviderProfile, map[strin
 			return tencentProviderProfile{}, nil, fmt.Errorf("tencent_provider_profile_invalid")
 		}
 		seenTenants[tenant] = true
+	}
+	// The default account is read exactly as declared: an empty value declares
+	// no default, and a padded value is a malformed profile rather than a
+	// silently trimmed account.
+	if strings.TrimSpace(profile.DefaultAccountID) != profile.DefaultAccountID {
+		return tencentProviderProfile{}, nil, fmt.Errorf("tencent_provider_profile_invalid")
 	}
 	return profile, plans, nil
 }
