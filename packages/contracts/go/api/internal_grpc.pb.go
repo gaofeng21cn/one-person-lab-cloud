@@ -4456,7 +4456,7 @@ type GatewayProductServiceClient interface {
 	ListPersonalGatewayGroups(ctx context.Context, in *ListPersonalGatewayGroupsRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayGroupPage, error)
 	ListPersonalGatewayKeyUsage(ctx context.Context, in *ListPersonalGatewayKeyUsageRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayKeyUsagePage, error)
 	GetPersonalGatewayKeyUsageSummary(ctx context.Context, in *GetPersonalGatewayKeyUsageSummaryRpcRequest, opts ...grpc.CallOption) (*UsageSummary, error)
-	CreatePersonalGatewayKey(ctx context.Context, in *CreatePersonalGatewayKeyRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayKeySecret, error)
+	CreatePersonalGatewayKey(ctx context.Context, in *CreatePersonalGatewayKeyRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayKey, error)
 	UpdatePersonalGatewayKey(ctx context.Context, in *UpdatePersonalGatewayKeyRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayKey, error)
 	RevealPersonalGatewayKey(ctx context.Context, in *RevealPersonalGatewayKeyRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayKeySecret, error)
 	RevokePersonalGatewayKey(ctx context.Context, in *RevokePersonalGatewayKeyRpcRequest, opts ...grpc.CallOption) (*Operation, error)
@@ -4532,9 +4532,9 @@ func (c *gatewayProductServiceClient) GetPersonalGatewayKeyUsageSummary(ctx cont
 	return out, nil
 }
 
-func (c *gatewayProductServiceClient) CreatePersonalGatewayKey(ctx context.Context, in *CreatePersonalGatewayKeyRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayKeySecret, error) {
+func (c *gatewayProductServiceClient) CreatePersonalGatewayKey(ctx context.Context, in *CreatePersonalGatewayKeyRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayKey, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(PersonalGatewayKeySecret)
+	out := new(PersonalGatewayKey)
 	err := c.cc.Invoke(ctx, GatewayProductService_CreatePersonalGatewayKey_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -4701,7 +4701,7 @@ type GatewayProductServiceServer interface {
 	ListPersonalGatewayGroups(context.Context, *ListPersonalGatewayGroupsRpcRequest) (*PersonalGatewayGroupPage, error)
 	ListPersonalGatewayKeyUsage(context.Context, *ListPersonalGatewayKeyUsageRpcRequest) (*PersonalGatewayKeyUsagePage, error)
 	GetPersonalGatewayKeyUsageSummary(context.Context, *GetPersonalGatewayKeyUsageSummaryRpcRequest) (*UsageSummary, error)
-	CreatePersonalGatewayKey(context.Context, *CreatePersonalGatewayKeyRpcRequest) (*PersonalGatewayKeySecret, error)
+	CreatePersonalGatewayKey(context.Context, *CreatePersonalGatewayKeyRpcRequest) (*PersonalGatewayKey, error)
 	UpdatePersonalGatewayKey(context.Context, *UpdatePersonalGatewayKeyRpcRequest) (*PersonalGatewayKey, error)
 	RevealPersonalGatewayKey(context.Context, *RevealPersonalGatewayKeyRpcRequest) (*PersonalGatewayKeySecret, error)
 	RevokePersonalGatewayKey(context.Context, *RevokePersonalGatewayKeyRpcRequest) (*Operation, error)
@@ -4742,7 +4742,7 @@ func (UnimplementedGatewayProductServiceServer) ListPersonalGatewayKeyUsage(cont
 func (UnimplementedGatewayProductServiceServer) GetPersonalGatewayKeyUsageSummary(context.Context, *GetPersonalGatewayKeyUsageSummaryRpcRequest) (*UsageSummary, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPersonalGatewayKeyUsageSummary not implemented")
 }
-func (UnimplementedGatewayProductServiceServer) CreatePersonalGatewayKey(context.Context, *CreatePersonalGatewayKeyRpcRequest) (*PersonalGatewayKeySecret, error) {
+func (UnimplementedGatewayProductServiceServer) CreatePersonalGatewayKey(context.Context, *CreatePersonalGatewayKeyRpcRequest) (*PersonalGatewayKey, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreatePersonalGatewayKey not implemented")
 }
 func (UnimplementedGatewayProductServiceServer) UpdatePersonalGatewayKey(context.Context, *UpdatePersonalGatewayKeyRpcRequest) (*PersonalGatewayKey, error) {
