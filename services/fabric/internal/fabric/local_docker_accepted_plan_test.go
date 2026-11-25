@@ -43,3 +43,34 @@ func TestLocalDockerAcceptedResourcePlanExactBinding(t *testing.T) {
 		t.Fatal("ambiguous account mapping accepted")
 	}
 }
+
+// TestLocalDockerAcceptedResourcePlanUsesTheInstallationDefaultAccount proves
+// the same operator rule as the Tencent profile: a tenant that no binding names
+// runs in the account this installation declares, and the binding that names a
+// tenant still wins over it.
+func TestLocalDockerAcceptedResourcePlanUsesTheInstallationDefaultAccount(t *testing.T) {
+	profile := localDockerProviderProfile{SchemaVersion: 1, ProfileID: "profile", CapabilityVersion: "v1", Region: "local", DefaultAccountID: "host-account", AccountBindings: []localDockerAccountBinding{{TenantID: "tenant", AccountID: "legacy-account"}}, Packages: []localDockerPackageProfile{{ID: "package-is-not-the-sku", Name: "Local", Available: true, Compute: ComputePlan{ID: "compute-sku", Server: "2c4g", CPU: 2, MemoryGB: 4, InstanceType: "local-2c4g"}, Storage: localDockerStoragePlan{ID: "storage-sku", SizeGB: 10, QuotaPolicy: "linux-project"}}}}
+	raw, _ := json.Marshal(profile)
+	provider := newLocalDockerProvider(LocalDockerProviderConfig{ProviderProfileJSON: raw}, &recordingDockerRunner{})
+	plan := &api.ResourcePlanSnapshot{Provider: "local-docker", ProviderProfileId: "profile", ProviderCapabilityVersion: "v1", Region: "local", BillingMode: "LOCAL_NO_CHARGE", ProviderComputeSkuId: "compute-sku", ProviderStorageSkuId: "storage-sku", Vcpus: 2, MemoryMib: 4096, CapacityGib: 10}
+	got, err := provider.ResolveAcceptedResourcePlan("other-tenant", plan)
+	if err != nil || got.AccountID != "host-account" || got.PackageID != "package-is-not-the-sku" {
+		t.Fatalf("default account=%+v %v", got, err)
+	}
+	got, err = provider.ResolveAcceptedResourcePlan("tenant", plan)
+	if err != nil || got.AccountID != "legacy-account" {
+		t.Fatalf("exact binding=%+v %v", got, err)
+	}
+}
+
+// TestLocalDockerProviderProfileRejectsAPaddedDefaultAccount proves the
+// declared default is read exactly as the profile states it.
+func TestLocalDockerProviderProfileRejectsAPaddedDefaultAccount(t *testing.T) {
+	profile := localDockerProviderProfile{SchemaVersion: 1, ProfileID: "profile", CapabilityVersion: "v1", Region: "local", DefaultAccountID: " host-account", Packages: []localDockerPackageProfile{{ID: "package-is-not-the-sku", Name: "Local", Available: true, Compute: ComputePlan{ID: "compute-sku", Server: "2c4g", CPU: 2, MemoryGB: 4, InstanceType: "local-2c4g"}, Storage: localDockerStoragePlan{ID: "storage-sku", SizeGB: 10, QuotaPolicy: "linux-project"}}}}
+	raw, _ := json.Marshal(profile)
+	provider := newLocalDockerProvider(LocalDockerProviderConfig{ProviderProfileJSON: raw}, &recordingDockerRunner{})
+	plan := &api.ResourcePlanSnapshot{Provider: "local-docker", ProviderProfileId: "profile", ProviderCapabilityVersion: "v1", Region: "local", BillingMode: "LOCAL_NO_CHARGE", ProviderComputeSkuId: "compute-sku", ProviderStorageSkuId: "storage-sku", Vcpus: 2, MemoryMib: 4096, CapacityGib: 10}
+	if _, err := provider.ResolveAcceptedResourcePlan("tenant", plan); err == nil {
+		t.Fatal("a padded default account was accepted")
+	}
+}

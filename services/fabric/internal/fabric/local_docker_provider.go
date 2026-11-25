@@ -40,7 +40,17 @@ type localDockerProviderProfile struct {
 	ProfileID         string                      `json:"profileId,omitempty"`
 	CapabilityVersion string                      `json:"capabilityVersion,omitempty"`
 	Region            string                      `json:"region,omitempty"`
-	AccountBindings   []localDockerAccountBinding `json:"accountBindings,omitempty"`
+	// AccountBindings bind an authorized tenant to the provider account that
+	// owns and tags its resources. They mirror the Tencent profile shape; a
+	// tenant without a binding resolves the installation's default account.
+	AccountBindings []localDockerAccountBinding `json:"accountBindings,omitempty"`
+	// DefaultAccountID is the provider account this installation runs its
+	// resources in when no binding names the tenant. It is a deployment fact
+	// carried by the same profile, never a value compiled into the code, so a
+	// new tenant never needs a profile edit. A binding that names the tenant
+	// always wins over it, and a profile that declares neither refuses the
+	// tenant.
+	DefaultAccountID string `json:"defaultAccountId,omitempty"`
 }
 
 type localDockerAccountBinding struct {
@@ -178,6 +188,12 @@ func decodeLocalDockerProviderProfile(raw []byte) (localDockerProviderProfile, m
 		item.Compute.DiskGB = item.Storage.SizeGB
 		profile.Packages[index] = item
 		plans[item.ID] = item
+	}
+	// The default account is read exactly as declared: an empty value declares
+	// no default, and a padded value is a malformed profile rather than a
+	// silently trimmed account.
+	if strings.TrimSpace(profile.DefaultAccountID) != profile.DefaultAccountID {
+		return localDockerProviderProfile{}, nil, fmt.Errorf("local_docker_provider_profile_invalid")
 	}
 	return profile, plans, nil
 }
