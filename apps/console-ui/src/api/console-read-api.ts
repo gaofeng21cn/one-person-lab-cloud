@@ -192,8 +192,10 @@ type PersonalGatewayUsageReadback = Omit<GatewayUsageItem, "inputTokens" | "outp
   actualCostUSDMicros: string; durationMs?: string; firstTokenMs?: string;
 };
 type PersonalGatewayKeyUsagePageReadback = Omit<GatewayKeyUsagePageDTO, "items" | "total"> & { items: PersonalGatewayUsageReadback[]; total: string };
-// The Gateway owner answers a create or an explicit reveal with the Key and its
-// raw secret. The secret is handed back once and is never kept by the Console.
+// The Gateway owner answers an explicit reveal with the Key and its raw
+// secret. The secret is handed back once and is never kept by the Console.
+// The create answer carries the Key summary only: the plaintext never reaches
+// the browser.
 type PersonalGatewayKeySecretReadback = { key: PersonalGatewayKeyReadback; secret: string };
 // The Gateway owner answers a revoke with its own operation. The operation is
 // already terminal, because the owner confirms the Key's absence itself.
@@ -369,11 +371,11 @@ export function createGatewayKey(input: CreateGatewayKeyRequest, csrfToken: stri
   // against. This is a baked decision, not a fallback path.
   if (!cloudIdentity) return sourcePost<GatewayKeySummaryDTO>(personalGatewayKeyCreateRoute(false), input, csrfToken, idempotencyKey);
   return personalGatewayWrite(
-    () => postJson<PersonalGatewayKeySecretReadback>(personalGatewayKeyCreateRoute(true), personalGatewayCreateBody(input), csrfToken, idempotencyKey),
-    // The owner's create answer also carries the secret. The Console does not
-    // keep it: the customer takes the secret from the explicit reveal, which is
-    // the surface that hands a secret back once.
-    (value) => decodePersonalGatewayKey(value.key)
+    // The owner's create answer is the Key summary. The plaintext never crosses
+    // this boundary: the customer takes the secret from the explicit reveal,
+    // which is the surface that hands a secret back once.
+    () => postJson<PersonalGatewayKeyReadback>(personalGatewayKeyCreateRoute(true), personalGatewayCreateBody(input), csrfToken, idempotencyKey),
+    decodePersonalGatewayKey
   );
 }
 

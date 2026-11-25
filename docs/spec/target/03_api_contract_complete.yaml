@@ -3241,8 +3241,9 @@ paths:
       x-permission:
       - authenticated
       description: Creates one personal Gateway Key for the signed-in User through the Gateway owner's delegated
-        Sub2API credential. No Tenant role, target User selector, raw Key or token is accepted. The new Key's
-        secret is returned exactly once, in this answer, and is never stored by Cloud.
+        Sub2API credential. No Tenant role, target User selector, raw Key or token is accepted. The answer is the
+        new Key's summary; the Key's secret is never part of it and is handed back only by the explicit reveal,
+        once, after its audit write.
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       - $ref: '#/components/parameters/CsrfToken'
@@ -3254,11 +3255,11 @@ paths:
               $ref: '#/components/schemas/CreatePersonalGatewayKeyRequest'
       responses:
         '201':
-          description: The created personal Key and its secret, returned exactly once.
+          description: The created personal Key. The answer carries no secret.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PersonalGatewayKeySecret'
+                $ref: '#/components/schemas/PersonalGatewayKey'
         '400':
           $ref: '#/components/responses/ErrorResponse'
         '401':

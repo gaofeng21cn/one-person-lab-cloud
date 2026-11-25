@@ -57,10 +57,11 @@ func personalWriteCall(t *testing.T, call *api.CallContext) {
 	}
 }
 
-// TestPersonalGatewayKeyCreateCarriesEveryFieldAndReturnsTheSecretOnce proves
-// the create route carries the customer's whole instruction to the Gateway owner
-// and projects the owner's answer, including the secret exactly once.
-func TestPersonalGatewayKeyCreateCarriesEveryFieldAndReturnsTheSecretOnce(t *testing.T) {
+// TestPersonalGatewayKeyCreateCarriesEveryFieldAndReturnsTheKeySummaryWithoutThePlaintext
+// proves the create route carries the customer's whole instruction to the
+// Gateway owner and projects the owner's answer: the Key summary, with no
+// plaintext. The browser receives the secret only from the explicit reveal.
+func TestPersonalGatewayKeyCreateCarriesEveryFieldAndReturnsTheKeySummaryWithoutThePlaintext(t *testing.T) {
 	owner := &gatewayOwnerServer{}
 	client := dialGatewayOwner(t, owner)
 	identity := personalWriteIdentity(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEPERSONALGATEWAYKEY)
@@ -90,13 +91,13 @@ func TestPersonalGatewayKeyCreateCarriesEveryFieldAndReturnsTheSecretOnce(t *tes
 	if body.GetRateLimit5HUsdMicros() != 2_000_000 || body.GetRateLimit1DUsdMicros() != 3_000_000 || body.GetRateLimit7DUsdMicros() != 4_000_000 {
 		t.Fatalf("the owner received another rate limit: %v", body)
 	}
-	// The answer is the owner's own projection: the contract spelling, the exact
-	// money, and the secret exactly once.
+	// The answer is the owner's own Key projection: the contract spelling and
+	// the exact money. The plaintext is not in it at all.
 	answer := response.Body.String()
-	if strings.Count(answer, "raw-secret-must-never-escape") != 1 {
-		t.Fatalf("the create answer does not carry the secret exactly once: %s", answer)
+	if strings.Contains(answer, "raw-secret-must-never-escape") {
+		t.Fatalf("the create answer carries the plaintext: %s", answer)
 	}
-	for _, fact := range []string{`"secret":"raw-secret-must-never-escape"`, `"quotaUSDMicros":"1500000"`, `"rateLimit5hUSDMicros":"2000000"`, `"status":"active"`, `"kind":"general"`} {
+	for _, fact := range []string{`"quotaUSDMicros":"1500000"`, `"rateLimit5hUSDMicros":"2000000"`, `"status":"active"`, `"kind":"general"`} {
 		if !strings.Contains(answer, fact) {
 			t.Fatalf("the create answer is missing %s: %s", fact, answer)
 		}

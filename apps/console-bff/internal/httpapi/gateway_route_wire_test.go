@@ -473,13 +473,14 @@ func (s *gatewayOwnerServer) GetPersonalGatewayKeyUsageSummary(_ context.Context
 }
 
 // The four personal Key writes answer with the owner's own projection. The
-// secret is returned exactly once, by the create and by the explicit reveal.
-func (s *gatewayOwnerServer) CreatePersonalGatewayKey(_ context.Context, r *api.CreatePersonalGatewayKeyRpcRequest) (*api.PersonalGatewayKeySecret, error) {
+// secret is returned exactly once, by the explicit reveal. The create answers
+// with the Key summary: the browser never receives the plaintext.
+func (s *gatewayOwnerServer) CreatePersonalGatewayKey(_ context.Context, r *api.CreatePersonalGatewayKeyRpcRequest) (*api.PersonalGatewayKey, error) {
 	s.personalCreateRequest = r
 	if s.personalWriteErr != nil {
 		return nil, s.personalWriteErr
 	}
-	return &api.PersonalGatewayKeySecret{Key: personalOwnerKey("71", "personal key"), Secret: "raw-secret-must-never-escape"}, nil
+	return personalOwnerKey("71", "personal key"), nil
 }
 
 func (s *gatewayOwnerServer) UpdatePersonalGatewayKey(_ context.Context, r *api.UpdatePersonalGatewayKeyRpcRequest) (*api.PersonalGatewayKey, error) {

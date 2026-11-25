@@ -951,7 +951,7 @@ export interface paths {
         put?: never;
         /**
          * createPersonalGatewayKey
-         * @description Creates one personal Gateway Key for the signed-in User through the Gateway owner's delegated Sub2API credential. No Tenant role, target User selector, raw Key or token is accepted. The new Key's secret is returned exactly once, in this answer, and is never stored by Cloud.
+         * @description Creates one personal Gateway Key for the signed-in User through the Gateway owner's delegated Sub2API credential. No Tenant role, target User selector, raw Key or token is accepted. The answer is the new Key's summary; the Key's secret is never part of it and is handed back only by the explicit reveal, once, after its audit write.
          */
         post: operations["createPersonalGatewayKey"];
         delete?: never;
@@ -6630,13 +6630,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The created personal Key and its secret, returned exactly once. */
+            /** @description The created personal Key. The answer carries no secret. */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PersonalGatewayKeySecret"];
+                    "application/json": components["schemas"]["PersonalGatewayKey"];
                 };
             };
             400: components["responses"]["ErrorResponse"];

@@ -1075,6 +1075,7 @@ test("Cloud personal Key adapter preserves public money casing and read-only DTO
     const requests: string[] = [];
     let keyOverrides: Record<string, unknown> = {};
     let usageOverrides: Record<string, unknown> = {};
+    const createAnswers: string[] = [];
     let total: unknown = "1";
     let summaryCost: unknown = "7000";
     await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
@@ -1082,8 +1083,12 @@ test("Cloud personal Key adapter preserves public money casing and read-only DTO
       const path = requests.at(-1)!;
       const method = route.request().method();
       let response: unknown;
-      if (path === "/api/v2/gateway/keys" && method === "POST") response = { key: { ...canonicalKey, ...keyOverrides }, secret: "sk-cloud-personal" };
-      else if (path === "/api/v2/gateway/keys") response = { items: [{ ...canonicalKey, ...keyOverrides }], total, page: 1, pageSize: 20, pages: 1 };
+      // The create answers with the Key summary. The plaintext is never in the
+      // browser's create response; only the explicit reveal carries it.
+      if (path === "/api/v2/gateway/keys" && method === "POST") {
+        response = { ...canonicalKey, ...keyOverrides };
+        createAnswers.push(JSON.stringify(response));
+      } else if (path === "/api/v2/gateway/keys") response = { items: [{ ...canonicalKey, ...keyOverrides }], total, page: 1, pageSize: 20, pages: 1 };
       else if (path === `/api/v2/gateway/keys/${canonicalKey.id}/reveal`) response = { key: { ...canonicalKey, ...keyOverrides }, secret: "sk-cloud-personal" };
       else if (path === `/api/v2/gateway/keys/${canonicalKey.id}` && method === "DELETE") response = { operationId: "op-revoke-personal", kind: "revoke_key", status: "succeeded" };
       else if (path === `/api/v2/gateway/keys/${canonicalKey.id}`) response = { ...canonicalKey, ...keyOverrides };
@@ -1188,10 +1193,13 @@ test("Cloud personal Key adapter preserves public money casing and read-only DTO
     }
     assert.equal(created.data.id, canonicalKey.id);
     assert.equal(created.data.name, canonicalKey.name);
-    // The owner's create answer also carries the secret; the Console keeps the
-    // Key, not the secret. The explicit reveal is the surface that hands a
-    // secret back.
+    // The create answer is the Key summary. The plaintext never reached the
+    // browser's create response; the explicit reveal is the only surface that
+    // hands a secret back.
     assert.equal("value" in created.data, false);
+    assert.equal(createAnswers.length, 1);
+    assert.equal(createAnswers[0].includes("sk-cloud-personal"), false,
+      `the create response carried the plaintext: ${createAnswers[0]}`);
     assert.equal(updated.data.id, canonicalKey.id);
     assert.equal(revoked.data.operationId, "op-revoke-personal");
     assert.equal(revoked.data.status, "deleted");
