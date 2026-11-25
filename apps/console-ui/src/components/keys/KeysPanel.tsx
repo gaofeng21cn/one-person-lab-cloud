@@ -91,6 +91,18 @@ const emptyForm: KeyForm = {
   rateLimit7dUsd: "0"
 };
 
+// A failure that carries a machine code beside an English sentence was never
+// written for the customer: the sentence is the owner's or the BFF's own
+// wording. The customer console is Chinese, so a machine answer never reaches
+// the page as prose.
+function failureCode(value: unknown) {
+  const failure = value as { payload?: unknown } | null;
+  const payload = failure && typeof failure === "object" ? failure.payload : null;
+  if (!payload || typeof payload !== "object") return "";
+  const body = payload as { error?: unknown; code?: unknown };
+  return String(body.error || body.code || "");
+}
+
 function friendlyError(value: unknown) {
   const message = value instanceof Error ? value.message : String(value || "");
   if (/upstream_unavailable|failed to fetch|networkerror|gateway_key_unavailable/i.test(message)) {
@@ -99,14 +111,22 @@ function friendlyError(value: unknown) {
   if (/gateway_key_readback_unavailable/i.test(message)) return "无法确认权威回读，请刷新后再操作";
   if (/gateway_key_reserved/i.test(message)) return "工作空间系统 API 密钥不允许修改或删除";
   if (/金额格式无效|表单信息无效/.test(message)) return message;
+  if (failureCode(value)) return "请求失败，请稍后重试";
   return message && !message.includes("_") ? message : "请求失败，请稍后重试";
 }
 
-function apiErrorCode(value: unknown) {
-  const payload = value && typeof value === "object" && "payload" in value
-    ? (value as { payload?: unknown }).payload
-    : null;
-  return payload && typeof payload === "object" ? String((payload as { error?: unknown }).error || "") : "";
+// A missing personal Key is confirmed by the owner's own not-found answer.
+// Both owners answer it with HTTP 404 and a JSON error envelope: the retained
+// Control Plane names the Key, and the BFF relays the owner's not-found
+// answer. An answer that is not a JSON envelope at all — an unrouted path
+// answers in plain text — proves nothing, so it never settles a delete.
+function personalKeyAbsent(value: unknown) {
+  const failure = value as { payload?: unknown; status?: number } | null;
+  if (!failure || failure.status !== 404) return false;
+  const payload = failure.payload;
+  if (!payload || typeof payload !== "object") return false;
+  const body = payload as { error?: unknown; code?: unknown };
+  return String(body.error || body.code || "").length > 0;
 }
 
 function parseLines(value: string) {
@@ -128,6 +148,18 @@ function sameStrings(left: string[], right: string[]) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
+// The two owners publish the same amount in their own spelling: the Gateway
+// owner publishes an exact decimal string, and the retained Control Plane
+// answer publishes a JSON number. A readback comparison compares the amount,
+// never its representation, so the same quota written by either owner is the
+// same quota.
+function sameMicros(left: string | number | undefined, right: number | undefined) {
+  const amount = parseUsdMicros(left ?? 0);
+  const expected = right ?? 0;
+  if (amount === null || !Number.isSafeInteger(expected)) return false;
+  return amount === BigInt(expected);
+}
+
 function isProtectedWorkspaceKey(key: GatewayKeySummaryDTO) {
   return key.kind === "workspace";
 }
@@ -145,10 +177,10 @@ function keyMatchesCreate(key: GatewayKeySummaryDTO, input: CreateGatewayKeyRequ
     && key.groupId === input.groupId
     && sameStrings(key.ipWhitelist, input.ipWhitelist || [])
     && sameStrings(key.ipBlacklist, input.ipBlacklist || [])
-    && key.quotaUsdMicros === input.quotaUsdMicros
-    && key.rateLimit5hUsdMicros === (input.rateLimit5hUsdMicros || 0)
-    && key.rateLimit1dUsdMicros === (input.rateLimit1dUsdMicros || 0)
-    && key.rateLimit7dUsdMicros === (input.rateLimit7dUsdMicros || 0);
+    && sameMicros(key.quotaUsdMicros, input.quotaUsdMicros)
+    && sameMicros(key.rateLimit5hUsdMicros, input.rateLimit5hUsdMicros || 0)
+    && sameMicros(key.rateLimit1dUsdMicros, input.rateLimit1dUsdMicros || 0)
+    && sameMicros(key.rateLimit7dUsdMicros, input.rateLimit7dUsdMicros || 0);
 }
 
 function keyMatchesUpdate(key: GatewayKeySummaryDTO, input: UpdateGatewayKeyRequest) {
@@ -156,14 +188,14 @@ function keyMatchesUpdate(key: GatewayKeySummaryDTO, input: UpdateGatewayKeyRequ
   if (input.groupId !== undefined && key.groupId !== input.groupId) return false;
   if (input.ipWhitelist !== undefined && !sameStrings(key.ipWhitelist, input.ipWhitelist)) return false;
   if (input.ipBlacklist !== undefined && !sameStrings(key.ipBlacklist, input.ipBlacklist)) return false;
-  if (input.quotaUsdMicros !== undefined && key.quotaUsdMicros !== input.quotaUsdMicros) return false;
-  if (input.rateLimit5hUsdMicros !== undefined && key.rateLimit5hUsdMicros !== input.rateLimit5hUsdMicros) return false;
-  if (input.rateLimit1dUsdMicros !== undefined && key.rateLimit1dUsdMicros !== input.rateLimit1dUsdMicros) return false;
-  if (input.rateLimit7dUsdMicros !== undefined && key.rateLimit7dUsdMicros !== input.rateLimit7dUsdMicros) return false;
+  if (input.quotaUsdMicros !== undefined && !sameMicros(key.quotaUsdMicros, input.quotaUsdMicros)) return false;
+  if (input.rateLimit5hUsdMicros !== undefined && !sameMicros(key.rateLimit5hUsdMicros, input.rateLimit5hUsdMicros)) return false;
+  if (input.rateLimit1dUsdMicros !== undefined && !sameMicros(key.rateLimit1dUsdMicros, input.rateLimit1dUsdMicros)) return false;
+  if (input.rateLimit7dUsdMicros !== undefined && !sameMicros(key.rateLimit7dUsdMicros, input.rateLimit7dUsdMicros)) return false;
   if (input.expiresAt !== undefined && key.expiresAt !== (input.expiresAt ? new Date(input.expiresAt).toISOString() : null)) return false;
   if (input.enabled !== undefined && key.status !== (input.enabled ? "active" : "disabled")) return false;
-  if (input.resetQuota && key.quotaUsedUsdMicros !== 0) return false;
-  if (input.resetRateLimitUsage && (key.usage5hUsdMicros !== 0 || key.usage1dUsdMicros !== 0 || key.usage7dUsdMicros !== 0)) return false;
+  if (input.resetQuota && !sameMicros(key.quotaUsedUsdMicros, 0)) return false;
+  if (input.resetRateLimitUsage && (!sameMicros(key.usage5hUsdMicros, 0) || !sameMicros(key.usage1dUsdMicros, 0) || !sameMicros(key.usage7dUsdMicros, 0))) return false;
   return true;
 }
 
@@ -197,6 +229,10 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
   const [error, setError] = useState("");
   const [referenceError, setReferenceError] = useState("");
   const [notice, setNotice] = useState("");
+  // The notice carries its own tone. A finished action and a half-finished
+  // one are different facts: a created Key whose plaintext was not retrieved
+  // is neither a completed action nor an unconfirmed one.
+  const [noticeTone, setNoticeTone] = useState<"success" | "warning">("success");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog>("");
   const [editingKey, setEditingKey] = useState<GatewayKeySummaryDTO | null>(null);
@@ -285,6 +321,7 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
     setError("");
     setReferenceError("");
     setNotice("");
+    setNoticeTone("success");
     setFiltersOpen(false);
     setDialog("");
     setEditingKey(null);
@@ -309,6 +346,7 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
     if (!value) return;
     try {
       await navigator.clipboard.writeText(value);
+      setNoticeTone("success");
       setNotice(success);
     } catch {
       setError("复制失败，请手动选择内容");
@@ -390,6 +428,13 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
       if (!result.available || result.data.id !== key.id || !result.data.value) throw new Error("gateway_key_unavailable");
       setRevealed(result.data);
       armSecretTimer();
+      // A retry that finally returns the plaintext closes the half-finished
+      // create the customer was told about. The notice must not keep saying
+      // the plaintext was not retrieved once it was.
+      if (noticeTone === "warning") {
+        setNoticeTone("success");
+        setNotice("已取回完整 API 密钥，请立即复制；完整密钥将在 60 秒后隐藏");
+      }
       return result.data;
     } catch (value) {
       if (requestIsCurrent(session, token)) setError(friendlyError(value));
@@ -416,6 +461,7 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
     if (!requestIsCurrent(session, token)) return false;
     if (!readback.available || readback.data.id !== key.id || !keyMatchesUpdate(readback.data, input)) throw new Error("gateway_key_readback_unavailable");
     updateIntents.current.delete(key.id);
+    setNoticeTone("success");
     setNotice(message);
     setDialog("");
     await loadKeys(query);
@@ -465,11 +511,22 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
       setDialog("");
       await loadKeys({ ...query, page: 1 });
       if (!requestIsCurrent(session, token)) return;
-      const secret = await revealGatewayKey(created.data.id, token);
+      // The reveal is a second answer, not part of the create answer. The
+      // Key above is already confirmed by the owner's readback, so a failed
+      // reveal never means "nothing happened": only the plaintext is missing,
+      // and the plaintext is the one fact the customer cannot infer from the
+      // key list. The two facts are reported separately, so a failed reveal
+      // never collapses into the generic "not confirmed" error.
+      const secret = await revealGatewayKey(created.data.id, token).catch(() => null);
       if (!requestIsCurrent(session, token)) return;
-      if (!secret.available || secret.data.id !== created.data.id || !secret.data.value) throw new Error("gateway_key_unavailable");
+      if (!secret || !secret.available || secret.data.id !== created.data.id || !secret.data.value) {
+        setNoticeTone("warning");
+        setNotice(`API 密钥「${created.data.name}」已创建，但完整密钥未取回。已创建的事实已经权威回读确认；请在列表中点击「显示 API 密钥」重新取回，若仍无法取回，请删除该密钥后重新创建。`);
+        return;
+      }
       setRevealed(secret.data);
       armSecretTimer();
+      setNoticeTone("success");
       setNotice("API 密钥已创建，请立即复制；完整密钥将在 60 秒后隐藏");
     } catch (value) {
       if (requestIsCurrent(session, token)) setError(friendlyError(value));
@@ -504,12 +561,13 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
         if (!readback.available) throw new Error("gateway_key_readback_unavailable");
       } catch (value) {
         if (!requestIsCurrent(session, token)) return;
-        confirmedMissing = apiErrorCode(value) === "gateway_key_not_found";
+        confirmedMissing = personalKeyAbsent(value);
         if (!confirmedMissing && !commandError) commandError = value;
       }
       if (!confirmedMissing) throw commandError || new Error("gateway_key_readback_unavailable");
       deleteIntents.current.delete(key.id);
       if (revealed?.id === key.id) clearSecret();
+      setNoticeTone("success");
       setNotice("API 密钥已删除");
       setDialog("");
       setPendingDelete(null);
@@ -700,7 +758,7 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
       {groupsSource?.status === "unavailable" ? <Alert color="warning" description="暂时无法读取服务分组，已暂停创建和调整，可刷新后重试。" title="服务配置暂不可用" /> : null}
       {endpointSource?.status === "unavailable" ? <Alert color="warning" description="暂时无法读取 API 地址，请稍后重试。" title="API 地址暂不可用" /> : null}
       {source?.status === "unavailable" || groupsSource?.status === "unavailable" || endpointSource?.status === "unavailable" ? <details className="keys-source-technical-details"><summary>技术详情</summary><dl className="data-list"><div><dt>keys source reason</dt><dd><code>{source?.status === "unavailable" ? source.reasonCode : "-"}</code></dd></div><div><dt>groups source reason</dt><dd><code>{groupsSource?.status === "unavailable" ? groupsSource.reasonCode : "-"}</code></dd></div><div><dt>endpoint source reason</dt><dd><code>{endpointSource?.status === "unavailable" ? endpointSource.reasonCode : "-"}</code></dd></div></dl></details> : null}
-      {notice ? <Alert color="success" description={notice} title="操作完成" /> : null}
+      {notice ? <Alert color={noticeTone === "warning" ? "warning" : "success"} description={notice} title={noticeTone === "warning" ? "密钥已创建，明文未取回" : "操作完成"} /> : null}
       {error ? <Alert actions={<Button onClick={() => void refreshAll()} size="sm" variant="ghost">刷新确认</Button>} color="danger" description={error} title="操作未确认" /> : null}
 
       <section className={`keys-filter-disclosure${filtersOpen ? " is-open" : ""}`} aria-label="筛选与排序">
