@@ -91,7 +91,7 @@ async function startCloudConsoleDemo() {
   }
 }
 
-async function routeGatewayOwner(page: Page, answers: { revealFails: boolean }) {
+async function routeGatewayOwner(page: Page, answers: { revealFails: boolean; revoked: boolean }) {
   const requests: string[] = [];
   let key = storedKey({});
   await page.route("**/api/v2/**", async (route) => {
@@ -113,13 +113,22 @@ async function routeGatewayOwner(page: Page, answers: { revealFails: boolean }) 
       return route.fulfill({ status: 201, json: key });
     }
     if (path === `/api/v2/gateway/keys/${ownerKey.id}` && request.method() === "GET") {
+      if (answers.revoked) {
+        // The owner's own not-found answer, relayed by the BFF in the shape
+        // its contract declares: a code, a message and the request id.
+        return route.fulfill({ status: 404, json: { code: "NOT_FOUND", message: "publisher request could not be completed", requestId: "request-1" } });
+      }
       return route.fulfill({ json: key });
+    }
+    if (path === `/api/v2/gateway/keys/${ownerKey.id}` && request.method() === "DELETE") {
+      answers.revoked = true;
+      return route.fulfill({ json: { operationId: ownerKey.id, kind: "revoke_key", status: "succeeded", stage: "succeeded", requestId: "request-1", createdAt: "2026-11-25T00:00:00.000Z", updatedAt: "2026-11-25T00:00:00.000Z" } });
     }
     if (path === `/api/v2/gateway/keys/${ownerKey.id}/reveal` && request.method() === "POST") {
       if (answers.revealFails) {
-        // The BFF relays an owner failure with its own machine code and an
-        // English sentence that was never written for the customer.
-        return route.fulfill({ status: 503, json: { ok: false, error: "owner_request_failed", safeMessage: "publisher request could not be completed" } });
+        // The BFF relays an owner failure with its own contract error. The
+        // sentence in it was never written for the customer.
+        return route.fulfill({ status: 503, json: { code: "DEPENDENCY_UNAVAILABLE", message: "publisher request could not be completed", requestId: "request-1" } });
       }
       return route.fulfill({ json: { key, secret: "sk-browser-plaintext" } });
     }
@@ -147,7 +156,7 @@ test("a created personal Key whose plaintext was not retrieved is reported as a 
   const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    const requests = await routeGatewayOwner(page, { revealFails: true });
+    const requests = await routeGatewayOwner(page, { revealFails: true, revoked: false });
     await openKeyPanel(page, demo.origin);
     await createKey(page, "Browser Personal Key");
 
@@ -174,7 +183,7 @@ test("a created personal Key whose plaintext was retrieved is reported as a fini
   const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    await routeGatewayOwner(page, { revealFails: false });
+    await routeGatewayOwner(page, { revealFails: false, revoked: false });
     await openKeyPanel(page, demo.origin);
     await createKey(page, "Browser Personal Key");
 
@@ -183,6 +192,31 @@ test("a created personal Key whose plaintext was retrieved is reported as a fini
     // The plaintext reached the customer, so the half-finished answer is absent.
     assert.equal(await page.getByText("密钥已创建，明文未取回", { exact: true }).count(), 0);
     await page.locator(".keys-secret").getByText("sk-browser-plaintext", { exact: true }).waitFor({ state: "visible" });
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("a revoked personal Key is confirmed by the owner's own not-found answer", { timeout: 60_000 }, async () => {
+  const demo = await startCloudConsoleDemo();
+  const browser = await launchBrowser({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    const requests = await routeGatewayOwner(page, { revealFails: false, revoked: false });
+    await openKeyPanel(page, demo.origin);
+    const row = page.locator(".keys-table tbody tr").filter({ hasText: "Browser Personal Key" }).first();
+    await row.waitFor({ state: "visible" });
+    await row.locator("details.key-more-actions").getByText("更多操作", { exact: true }).click();
+    await row.getByRole("button", { name: "删除", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "删除 API 密钥" });
+    await dialog.getByRole("button", { name: "删除", exact: true }).click();
+
+    // The revoke succeeded and the owner's readback says the Key is gone, so
+    // the delete settles instead of reporting an unconfirmed action.
+    await page.getByText("API 密钥已删除", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.getByText("操作未确认", { exact: true }).count(), 0);
+    assert.ok(requests.includes(`DELETE /api/v2/gateway/keys/${ownerKey.id}`), requests.join(", "));
   } finally {
     await browser.close();
     await demo.close();
