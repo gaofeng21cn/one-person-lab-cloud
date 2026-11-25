@@ -48,8 +48,10 @@ func operationOwnerAudience(owner api.OwnerEnum) bool {
 	return ok && owner != api.OwnerEnum_OWNER_ENUM_UNSPECIFIED
 }
 
-// personalGatewayAction identifies reads bound to the live User, including a
-// User without a Tenant. The exact audience, resource and scope are still checked.
+// personalGatewayAction identifies the personal Gateway Key surface bound to the
+// live User, including a User without a Tenant: the reads over the caller's own
+// Keys and the writes over those same Keys. The exact audience, resource and
+// scope are still checked.
 func personalGatewayAction(action api.AuthorizationActionEnum) bool {
 	switch action {
 	case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET,
@@ -58,7 +60,11 @@ func personalGatewayAction(action api.AuthorizationActionEnum) bool {
 		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPERSONALGATEWAYKEY,
 		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYGROUPS,
 		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPERSONALGATEWAYKEYUSAGE,
-		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPERSONALGATEWAYKEYUSAGESUMMARY:
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPERSONALGATEWAYKEYUSAGESUMMARY,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEPERSONALGATEWAYKEY,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATEPERSONALGATEWAYKEY,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVEALPERSONALGATEWAYKEY,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVOKEPERSONALGATEWAYKEY:
 		return true
 	default:
 		return false
@@ -103,10 +109,10 @@ func (s *Service) AuthorizeAction(ctx context.Context, r *api.AuthorizationReque
 		return nil, denied()
 	}
 	if personalGatewayAction(r.Action) {
-		// These are the live User's own Gateway reads, independent of Tenant
+		// These are the live User's own Gateway actions, independent of Tenant
 		// membership. Scope/resource still bind this exact session and cannot
 		// select another Tenant, payer or User. Gateway resolves the persisted
-		// User-to-Sub2API binding again before serving the read.
+		// User-to-Sub2API binding again before serving the read or the write.
 		if r.AudienceOwner != api.OwnerEnum_OWNER_ENUM_GATEWAY || r.Resource.GetKind() != api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT || r.Resource.GetId() != session.GetTenantId() || !scopeMatchesSession(session, r.Scope) {
 			return nil, denied()
 		}

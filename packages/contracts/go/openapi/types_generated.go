@@ -108,6 +108,7 @@ const (
 	AuthorizationActionCreateGatewayKey                      AuthorizationAction = "createGatewayKey"
 	AuthorizationActionCreateNamespace                       AuthorizationAction = "createNamespace"
 	AuthorizationActionCreatePackage                         AuthorizationAction = "createPackage"
+	AuthorizationActionCreatePersonalGatewayKey              AuthorizationAction = "createPersonalGatewayKey"
 	AuthorizationActionCreatePricePolicyVersion              AuthorizationAction = "createPricePolicyVersion"
 	AuthorizationActionCreatePublisherNamespace              AuthorizationAction = "createPublisherNamespace"
 	AuthorizationActionCreateQuote                           AuthorizationAction = "createQuote"
@@ -234,9 +235,11 @@ const (
 	AuthorizationActionRetireRuntime                         AuthorizationAction = "retireRuntime"
 	AuthorizationActionRetryBuild                            AuthorizationAction = "retryBuild"
 	AuthorizationActionRevealGatewayKey                      AuthorizationAction = "revealGatewayKey"
+	AuthorizationActionRevealPersonalGatewayKey              AuthorizationAction = "revealPersonalGatewayKey"
 	AuthorizationActionRevealWorkspaceApplicationCredentials AuthorizationAction = "revealWorkspaceApplicationCredentials"
 	AuthorizationActionRevokeGatewayKey                      AuthorizationAction = "revokeGatewayKey"
 	AuthorizationActionRevokeInvitation                      AuthorizationAction = "revokeInvitation"
+	AuthorizationActionRevokePersonalGatewayKey              AuthorizationAction = "revokePersonalGatewayKey"
 	AuthorizationActionRevokePublisherNamespace              AuthorizationAction = "revokePublisherNamespace"
 	AuthorizationActionRollbackRoute                         AuthorizationAction = "rollbackRoute"
 	AuthorizationActionRollbackWorkspace                     AuthorizationAction = "rollbackWorkspace"
@@ -249,6 +252,7 @@ const (
 	AuthorizationActionUpdateMemberRole                      AuthorizationAction = "updateMemberRole"
 	AuthorizationActionUpdateNamespace                       AuthorizationAction = "updateNamespace"
 	AuthorizationActionUpdatePackage                         AuthorizationAction = "updatePackage"
+	AuthorizationActionUpdatePersonalGatewayKey              AuthorizationAction = "updatePersonalGatewayKey"
 	AuthorizationActionUpdateRenewalSettings                 AuthorizationAction = "updateRenewalSettings"
 	AuthorizationActionUpdateWorkspaceModels                 AuthorizationAction = "updateWorkspaceModels"
 	AuthorizationActionUpdateWorkspaceVersion                AuthorizationAction = "updateWorkspaceVersion"
@@ -304,6 +308,8 @@ func (e AuthorizationAction) Valid() bool {
 	case AuthorizationActionCreateNamespace:
 		return true
 	case AuthorizationActionCreatePackage:
+		return true
+	case AuthorizationActionCreatePersonalGatewayKey:
 		return true
 	case AuthorizationActionCreatePricePolicyVersion:
 		return true
@@ -557,11 +563,15 @@ func (e AuthorizationAction) Valid() bool {
 		return true
 	case AuthorizationActionRevealGatewayKey:
 		return true
+	case AuthorizationActionRevealPersonalGatewayKey:
+		return true
 	case AuthorizationActionRevealWorkspaceApplicationCredentials:
 		return true
 	case AuthorizationActionRevokeGatewayKey:
 		return true
 	case AuthorizationActionRevokeInvitation:
+		return true
+	case AuthorizationActionRevokePersonalGatewayKey:
 		return true
 	case AuthorizationActionRevokePublisherNamespace:
 		return true
@@ -586,6 +596,8 @@ func (e AuthorizationAction) Valid() bool {
 	case AuthorizationActionUpdateNamespace:
 		return true
 	case AuthorizationActionUpdatePackage:
+		return true
+	case AuthorizationActionUpdatePersonalGatewayKey:
 		return true
 	case AuthorizationActionUpdateRenewalSettings:
 		return true
@@ -5297,6 +5309,27 @@ type CreatePackageRequest struct {
 	NamespaceId OpaqueId `json:"namespaceId"`
 }
 
+// CreatePersonalGatewayKeyRequest The command that creates one personal Gateway Key for the signed-in User. The address lists are replaced by the created Key, and the money fields are exact USD micros.
+type CreatePersonalGatewayKeyRequest struct {
+	ExpiresInDays *int      `json:"expiresInDays,omitempty"`
+	GroupId       string    `json:"groupId"`
+	IpBlacklist   *[]string `json:"ipBlacklist,omitempty"`
+	IpWhitelist   *[]string `json:"ipWhitelist,omitempty"`
+	Name          string    `json:"name"`
+
+	// QuotaUSDMicros 微美元非负int64，JSON十进制字符串，范围0..9223372036854775807；禁止浮点/前导零。
+	QuotaUSDMicros USDMicros `json:"quotaUSDMicros"`
+
+	// RateLimit1dUSDMicros 微美元非负int64，JSON十进制字符串，范围0..9223372036854775807；禁止浮点/前导零。
+	RateLimit1dUSDMicros *USDMicros `json:"rateLimit1dUSDMicros,omitempty"`
+
+	// RateLimit5hUSDMicros 微美元非负int64，JSON十进制字符串，范围0..9223372036854775807；禁止浮点/前导零。
+	RateLimit5hUSDMicros *USDMicros `json:"rateLimit5hUSDMicros,omitempty"`
+
+	// RateLimit7dUSDMicros 微美元非负int64，JSON十进制字符串，范围0..9223372036854775807；禁止浮点/前导零。
+	RateLimit7dUSDMicros *USDMicros `json:"rateLimit7dUSDMicros,omitempty"`
+}
+
 // CreatePricePolicyRequest  精确绑定computePlanId/storagePlanId组合；同pair+validFrom唯一；取validFrom<=now最大的版本后检查该版本validUntil，若过期则POLICY_UNCONFIGURED且不回落旧版，不以最新价格覆盖旧报价。先创建资源计划再创建价格，未定价不能报价。 固定已批准D17政策；旧基础退款policy和历史义务保持原样。
 type CreatePricePolicyRequest struct {
 	// ComputeMonthlyUSDMicros 微美元非负int64，JSON十进制字符串，范围0..9223372036854775807；禁止浮点/前导零。
@@ -6383,7 +6416,7 @@ type PersonalGatewayKey struct {
 	CreatedAt          *time.Time `json:"createdAt,omitempty"`
 	CurrentConcurrency int        `json:"currentConcurrency"`
 
-	// Deletable False for the read-only Cloud personal Key surface.
+	// Deletable True for a personal Key the customer may revoke from the Cloud personal Key surface, false for the Workspace's own managed Key.
 	Deletable bool       `json:"deletable"`
 	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
 	GroupId   *string    `json:"groupId,omitempty"`
@@ -6396,7 +6429,7 @@ type PersonalGatewayKey struct {
 	LastUsedAt  *time.Time             `json:"lastUsedAt,omitempty"`
 	LastUsedIp  *string                `json:"lastUsedIp,omitempty"`
 
-	// Manageable False for the read-only Cloud personal Key surface.
+	// Manageable True for a personal Key the customer manages from the Cloud personal Key surface, false for the Workspace's own managed Key.
 	Manageable bool   `json:"manageable"`
 	Name       string `json:"name"`
 
@@ -6442,6 +6475,18 @@ type PersonalGatewayKeyPage struct {
 
 	// Total 非负int64的JSON十进制字符串，范围0..9223372036854775807；无前导零，不经JavaScript Number转换。
 	Total NonnegativeInt64 `json:"total"`
+}
+
+// PersonalGatewayKeySecret One personal Gateway Key and its raw secret. The secret is returned exactly once, by the create or the explicit reveal, and Cloud never stores it.
+type PersonalGatewayKeySecret struct {
+	// Key A redacted native Sub2API Key belonging to the signed-in User; no Tenant membership is required. Not a Tenant-managed binding DTO.
+	Key    PersonalGatewayKey `json:"key"`
+	Secret string             `json:"secret"`
+}
+
+// PersonalGatewayKeyStringList One address list of a personal Gateway Key. A present list replaces the Key's list, including the empty list, which clears it; an absent list leaves the Key's list unchanged.
+type PersonalGatewayKeyStringList struct {
+	Values []string `json:"values"`
 }
 
 // PersonalGatewayKeyUsage defines model for PersonalGatewayKeyUsage.
@@ -7945,6 +7990,35 @@ type UpdatePackageRequest struct {
 	NamespaceId OpaqueId `json:"namespaceId"`
 }
 
+// UpdatePersonalGatewayKeyRequest The command that changes one personal Gateway Key the signed-in User owns. An absent property leaves that fact unchanged. expiresAt sets an absolute expiry and clearExpiresAt removes an existing one; the two are exclusive, and a request that carries both is refused.
+type UpdatePersonalGatewayKeyRequest struct {
+	ClearExpiresAt *bool      `json:"clearExpiresAt,omitempty"`
+	Enabled        *bool      `json:"enabled,omitempty"`
+	ExpiresAt      *time.Time `json:"expiresAt,omitempty"`
+	GroupId        *string    `json:"groupId,omitempty"`
+
+	// IpBlacklist One address list of a personal Gateway Key. A present list replaces the Key's list, including the empty list, which clears it; an absent list leaves the Key's list unchanged.
+	IpBlacklist *PersonalGatewayKeyStringList `json:"ipBlacklist,omitempty"`
+
+	// IpWhitelist One address list of a personal Gateway Key. A present list replaces the Key's list, including the empty list, which clears it; an absent list leaves the Key's list unchanged.
+	IpWhitelist *PersonalGatewayKeyStringList `json:"ipWhitelist,omitempty"`
+	Name        *string                       `json:"name,omitempty"`
+
+	// QuotaUSDMicros 微美元非负int64，JSON十进制字符串，范围0..9223372036854775807；禁止浮点/前导零。
+	QuotaUSDMicros *USDMicros `json:"quotaUSDMicros,omitempty"`
+
+	// RateLimit1dUSDMicros 微美元非负int64，JSON十进制字符串，范围0..9223372036854775807；禁止浮点/前导零。
+	RateLimit1dUSDMicros *USDMicros `json:"rateLimit1dUSDMicros,omitempty"`
+
+	// RateLimit5hUSDMicros 微美元非负int64，JSON十进制字符串，范围0..9223372036854775807；禁止浮点/前导零。
+	RateLimit5hUSDMicros *USDMicros `json:"rateLimit5hUSDMicros,omitempty"`
+
+	// RateLimit7dUSDMicros 微美元非负int64，JSON十进制字符串，范围0..9223372036854775807；禁止浮点/前导零。
+	RateLimit7dUSDMicros *USDMicros `json:"rateLimit7dUSDMicros,omitempty"`
+	ResetQuota           *bool      `json:"resetQuota,omitempty"`
+	ResetRateLimitUsage  *bool      `json:"resetRateLimitUsage,omitempty"`
+}
+
 // UpdateRenewalSettingsRequest 启用需当前价格/续期政策与用户明确同意快照；关闭阻止未发出扣费的未来自动周期。已确认/unknown原单只能继续精确读回，不撤回已发生支付、不盲退款。修改成功前保留原幂等身份，CloudIdentity每次automatic debit须typed读取当前consent。
 type UpdateRenewalSettingsRequest struct {
 	AutomaticRenewalConsent *UpdateRenewalSettingsRequestAutomaticRenewalConsent `json:"automaticRenewalConsent,omitempty"`
@@ -9179,6 +9253,42 @@ type ListPersonalGatewayKeysParamsSortBy string
 // ListPersonalGatewayKeysParamsSortOrder defines parameters for ListPersonalGatewayKeys.
 type ListPersonalGatewayKeysParamsSortOrder string
 
+// CreatePersonalGatewayKeyParams defines parameters for CreatePersonalGatewayKey.
+type CreatePersonalGatewayKeyParams struct {
+	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+
+	// XCSRFToken 匹配同源session并校验Origin。
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
+// RevokePersonalGatewayKeyParams defines parameters for RevokePersonalGatewayKey.
+type RevokePersonalGatewayKeyParams struct {
+	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+
+	// XCSRFToken 匹配同源session并校验Origin。
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
+// UpdatePersonalGatewayKeyParams defines parameters for UpdatePersonalGatewayKey.
+type UpdatePersonalGatewayKeyParams struct {
+	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+
+	// XCSRFToken 匹配同源session并校验Origin。
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
+// RevealPersonalGatewayKeyParams defines parameters for RevealPersonalGatewayKey.
+type RevealPersonalGatewayKeyParams struct {
+	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+
+	// XCSRFToken 匹配同源session并校验Origin。
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
 // ListPersonalGatewayKeyUsageParams defines parameters for ListPersonalGatewayKeyUsage.
 type ListPersonalGatewayKeyUsageParams struct {
 	Page     *int                                    `form:"page,omitempty" json:"page,omitempty"`
@@ -9601,6 +9711,12 @@ type CreateBuildJSONRequestBody = CreateBuildRequest
 
 // CreateGatewayKeyJSONRequestBody defines body for CreateGatewayKey for application/json ContentType.
 type CreateGatewayKeyJSONRequestBody = CreateGatewayKeyRequest
+
+// CreatePersonalGatewayKeyJSONRequestBody defines body for CreatePersonalGatewayKey for application/json ContentType.
+type CreatePersonalGatewayKeyJSONRequestBody = CreatePersonalGatewayKeyRequest
+
+// UpdatePersonalGatewayKeyJSONRequestBody defines body for UpdatePersonalGatewayKey for application/json ContentType.
+type UpdatePersonalGatewayKeyJSONRequestBody = UpdatePersonalGatewayKeyRequest
 
 // CreateNamespaceJSONRequestBody defines body for CreateNamespace for application/json ContentType.
 type CreateNamespaceJSONRequestBody = NamespaceWriteRequest

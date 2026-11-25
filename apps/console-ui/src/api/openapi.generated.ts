@@ -949,7 +949,11 @@ export interface paths {
          */
         get: operations["listPersonalGatewayKeys"];
         put?: never;
-        post?: never;
+        /**
+         * createPersonalGatewayKey
+         * @description Creates one personal Gateway Key for the signed-in User through the Gateway owner's delegated Sub2API credential. No Tenant role, target User selector, raw Key or token is accepted. The answer is the new Key's summary; the Key's secret is never part of it and is handed back only by the explicit reveal, once, after its audit write.
+         */
+        post: operations["createPersonalGatewayKey"];
         delete?: never;
         options?: never;
         head?: never;
@@ -970,6 +974,34 @@ export interface paths {
         get: operations["getPersonalGatewayKey"];
         put?: never;
         post?: never;
+        /**
+         * revokePersonalGatewayKey
+         * @description Revokes one personal Gateway Key the signed-in User owns, through the Gateway owner's delegated Sub2API credential. The revoke is idempotent, because a Key the provider no longer holds is already revoked. A provider failure never reports success.
+         */
+        delete: operations["revokePersonalGatewayKey"];
+        options?: never;
+        head?: never;
+        /**
+         * updatePersonalGatewayKey
+         * @description Changes one personal Gateway Key the signed-in User owns, through the Gateway owner's delegated Sub2API credential. A Workspace-managed Key is not a personal Key and is refused. An absent field leaves the fact unchanged; an address list replaces the Key's list; clearExpiresAt removes an existing expiry and is exclusive with expiresAt.
+         */
+        patch: operations["updatePersonalGatewayKey"];
+        trace?: never;
+    };
+    "/api/v2/gateway/keys/{keyId}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * revealPersonalGatewayKey
+         * @description Returns one personal Gateway Key's secret to its owner, through the Gateway owner's delegated Sub2API credential. The secret is returned exactly once, in this answer, and is never stored by Cloud. A Workspace-managed Key is not a personal Key and is refused.
+         */
+        post: operations["revealPersonalGatewayKey"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3067,9 +3099,9 @@ export interface components {
             status: "active" | "disabled" | "quota_exhausted" | "expired";
             /** @enum {string} */
             kind: "general" | "workspace";
-            /** @description False for the read-only Cloud personal Key surface. */
+            /** @description True for a personal Key the customer manages from the Cloud personal Key surface, false for the Workspace's own managed Key. */
             manageable: boolean;
-            /** @description False for the read-only Cloud personal Key surface. */
+            /** @description True for a personal Key the customer may revoke from the Cloud personal Key surface, false for the Workspace's own managed Key. */
             deletable: boolean;
             ipWhitelist: string[];
             ipBlacklist: string[];
@@ -3098,6 +3130,44 @@ export interface components {
             page: number;
             pageSize: number;
             pages: number;
+        };
+        /** @description One personal Gateway Key and its raw secret. The secret is returned exactly once, by the create or the explicit reveal, and Cloud never stores it. */
+        PersonalGatewayKeySecret: {
+            key: components["schemas"]["PersonalGatewayKey"];
+            secret: string;
+        };
+        /** @description One address list of a personal Gateway Key. A present list replaces the Key's list, including the empty list, which clears it; an absent list leaves the Key's list unchanged. */
+        PersonalGatewayKeyStringList: {
+            values: string[];
+        };
+        /** @description The command that creates one personal Gateway Key for the signed-in User. The address lists are replaced by the created Key, and the money fields are exact USD micros. */
+        CreatePersonalGatewayKeyRequest: {
+            name: string;
+            groupId: string;
+            ipWhitelist?: string[];
+            ipBlacklist?: string[];
+            quotaUSDMicros: components["schemas"]["USDMicros"];
+            expiresInDays?: number;
+            rateLimit5hUSDMicros?: components["schemas"]["USDMicros"];
+            rateLimit1dUSDMicros?: components["schemas"]["USDMicros"];
+            rateLimit7dUSDMicros?: components["schemas"]["USDMicros"];
+        };
+        /** @description The command that changes one personal Gateway Key the signed-in User owns. An absent property leaves that fact unchanged. expiresAt sets an absolute expiry and clearExpiresAt removes an existing one; the two are exclusive, and a request that carries both is refused. */
+        UpdatePersonalGatewayKeyRequest: {
+            name?: string;
+            groupId?: string;
+            ipWhitelist?: components["schemas"]["PersonalGatewayKeyStringList"];
+            ipBlacklist?: components["schemas"]["PersonalGatewayKeyStringList"];
+            quotaUSDMicros?: components["schemas"]["USDMicros"];
+            /** Format: date-time */
+            expiresAt?: string;
+            rateLimit5hUSDMicros?: components["schemas"]["USDMicros"];
+            rateLimit1dUSDMicros?: components["schemas"]["USDMicros"];
+            rateLimit7dUSDMicros?: components["schemas"]["USDMicros"];
+            resetQuota?: boolean;
+            resetRateLimitUsage?: boolean;
+            enabled?: boolean;
+            clearExpiresAt?: boolean;
         };
         PersonalGatewayGroup: {
             id: components["schemas"]["OpaqueId"];
@@ -3626,7 +3696,7 @@ export interface components {
             pageSize: number;
         };
         /** @enum {string} */
-        AuthorizationAction: "acceptInvitation" | "acquireReference" | "activateRoute" | "adoptWorkspace" | "appendPlanChangeEvidence" | "appendReceipt" | "archiveNamespace" | "archivePackage" | "bindManagedSecret" | "bindReference" | "bindTenantWallet" | "cancelAcceptedObligation" | "cancelPlanChange" | "chargeAcceptedObligation" | "chargePlanChangeSupplement" | "claimNextPeriodObligation" | "closeoutAcceptedObligation" | "completeAcceptedObligation" | "completeUpload" | "createBuild" | "createComputePlan" | "createGatewayKey" | "createNamespace" | "createPackage" | "createPricePolicyVersion" | "createPublisherNamespace" | "createQuote" | "createRefundPolicyVersion" | "createRetentionPolicyVersion" | "createStoragePlan" | "createTenant" | "createUpload" | "createUploadPart" | "createWorkspace" | "deleteAcceptedResources" | "deleteCapabilityVersion" | "deleteTenant" | "deleteWorkspace" | "executeScheduledPlanChange" | "fenceRouteEpoch" | "getAdminTenant" | "getBuild" | "getBuildRuntimePolicy" | "getCapabilityVersion" | "getDeployment" | "getLoginContext" | "getOperation" | "getPackage" | "getPackageVersion" | "getPlanChange" | "getQuote" | "getReceipt" | "getWorkspaceFinancialReceipt" | "getSession" | "getSelfUserExternalBinding" | "getSubscription" | "getTenant" | "getTenantAssetCustody" | "getTenantLifecycleOperation" | "getTenantWallet" | "getUpload" | "getWallet" | "getWorkspace" | "getWorkspaceAccess" | "getWorkspaceDeletion" | "getWorkspaceModels" | "inviteMember" | "issueAcceptedOperationGrant" | "listAdminOperations" | "listAuditEvents" | "listBuildLogs" | "listBuilds" | "listCapabilityVersions" | "listComputePlans" | "listDeployments" | "listGatewayKeys" | "listInvitations" | "listMembers" | "listModels" | "listNamespaces" | "listPackageVersions" | "listPackages" | "listPlanChanges" | "listPricePolicyVersions" | "listPublisherNamespaces" | "listQualifications" | "listReceipts" | "listRechargeRecords" | "listRefundPolicyVersions" | "listRetentionPolicyVersions" | "listRuntimeVersions" | "listStoragePlans" | "listTenants" | "getUsageSummary" | "listUsage" | "listWebuiVersions" | "listWorkspaceTransactions" | "getWorkspaceTransactionTrend" | "listWorkspaces" | "listOperatorWorkspaces" | "getOperatorWorkspace" | "readOperatorResources" | "listOperatorDeployments" | "getOperatorWorkspaceAccess" | "login" | "logout" | "observeResources" | "observeRoute" | "provisionAcceptedResources" | "publishOfficialPackage" | "readApplicationCredentials" | "readApprovedPlanTransition" | "readArtifact" | "readAuthorizationContext" | "readClaimUsage" | "readNextPeriodObligation" | "readOwnerCommit" | "readRenewalConsent" | "readSubscriptionPlanState" | "readWalletAction" | "reconcileOperation" | "reenableTenant" | "refundConfirmedDeletion" | "refundPlanChangeCompensation" | "refundSupplementOnDeletion" | "registerRuntimeVersion" | "registerWebuiVersion" | "releaseReference" | "removeMember" | "renewAcceptedResources" | "renewWorkspace" | "reserveRuntime" | "resizeAcceptedResources" | "resizeWorkspace" | "resolveBuildInput" | "resolvePublisherContract" | "restoreTenant" | "resumeTenantWorkspaces" | "retireRuntime" | "retryBuild" | "revealGatewayKey" | "revealWorkspaceApplicationCredentials" | "revokeGatewayKey" | "revokeInvitation" | "revokePublisherNamespace" | "rollbackRoute" | "rollbackWorkspace" | "setBuildRuntimePolicy" | "setComputePlanAvailability" | "setRuntimeVersionStatus" | "setStoragePlanAvailability" | "setWebuiVersionStatus" | "suspendTenant" | "updateMemberRole" | "updateNamespace" | "updatePackage" | "updateRenewalSettings" | "updateWorkspaceModels" | "updateWorkspaceVersion" | "readExecutionPlan" | "restoreAfterResourceChange" | "debitScheduledPeriod" | "readPlanChangeFailure" | "listPersonalGatewayKeys" | "getPersonalGatewayKey" | "listPersonalGatewayGroups" | "listPersonalGatewayKeyUsage" | "getPersonalGatewayKeyUsageSummary";
+        AuthorizationAction: "acceptInvitation" | "acquireReference" | "activateRoute" | "adoptWorkspace" | "appendPlanChangeEvidence" | "appendReceipt" | "archiveNamespace" | "archivePackage" | "bindManagedSecret" | "bindReference" | "bindTenantWallet" | "cancelAcceptedObligation" | "cancelPlanChange" | "chargeAcceptedObligation" | "chargePlanChangeSupplement" | "claimNextPeriodObligation" | "closeoutAcceptedObligation" | "completeAcceptedObligation" | "completeUpload" | "createBuild" | "createComputePlan" | "createGatewayKey" | "createNamespace" | "createPackage" | "createPricePolicyVersion" | "createPublisherNamespace" | "createQuote" | "createRefundPolicyVersion" | "createRetentionPolicyVersion" | "createStoragePlan" | "createTenant" | "createUpload" | "createUploadPart" | "createWorkspace" | "deleteAcceptedResources" | "deleteCapabilityVersion" | "deleteTenant" | "deleteWorkspace" | "executeScheduledPlanChange" | "fenceRouteEpoch" | "getAdminTenant" | "getBuild" | "getBuildRuntimePolicy" | "getCapabilityVersion" | "getDeployment" | "getLoginContext" | "getOperation" | "getPackage" | "getPackageVersion" | "getPlanChange" | "getQuote" | "getReceipt" | "getWorkspaceFinancialReceipt" | "getSession" | "getSelfUserExternalBinding" | "getSubscription" | "getTenant" | "getTenantAssetCustody" | "getTenantLifecycleOperation" | "getTenantWallet" | "getUpload" | "getWallet" | "getWorkspace" | "getWorkspaceAccess" | "getWorkspaceDeletion" | "getWorkspaceModels" | "inviteMember" | "issueAcceptedOperationGrant" | "listAdminOperations" | "listAuditEvents" | "listBuildLogs" | "listBuilds" | "listCapabilityVersions" | "listComputePlans" | "listDeployments" | "listGatewayKeys" | "listInvitations" | "listMembers" | "listModels" | "listNamespaces" | "listPackageVersions" | "listPackages" | "listPlanChanges" | "listPricePolicyVersions" | "listPublisherNamespaces" | "listQualifications" | "listReceipts" | "listRechargeRecords" | "listRefundPolicyVersions" | "listRetentionPolicyVersions" | "listRuntimeVersions" | "listStoragePlans" | "listTenants" | "getUsageSummary" | "listUsage" | "listWebuiVersions" | "listWorkspaceTransactions" | "getWorkspaceTransactionTrend" | "listWorkspaces" | "listOperatorWorkspaces" | "getOperatorWorkspace" | "readOperatorResources" | "listOperatorDeployments" | "getOperatorWorkspaceAccess" | "login" | "logout" | "observeResources" | "observeRoute" | "provisionAcceptedResources" | "publishOfficialPackage" | "readApplicationCredentials" | "readApprovedPlanTransition" | "readArtifact" | "readAuthorizationContext" | "readClaimUsage" | "readNextPeriodObligation" | "readOwnerCommit" | "readRenewalConsent" | "readSubscriptionPlanState" | "readWalletAction" | "reconcileOperation" | "reenableTenant" | "refundConfirmedDeletion" | "refundPlanChangeCompensation" | "refundSupplementOnDeletion" | "registerRuntimeVersion" | "registerWebuiVersion" | "releaseReference" | "removeMember" | "renewAcceptedResources" | "renewWorkspace" | "reserveRuntime" | "resizeAcceptedResources" | "resizeWorkspace" | "resolveBuildInput" | "resolvePublisherContract" | "restoreTenant" | "resumeTenantWorkspaces" | "retireRuntime" | "retryBuild" | "revealGatewayKey" | "revealWorkspaceApplicationCredentials" | "revokeGatewayKey" | "revokeInvitation" | "revokePublisherNamespace" | "rollbackRoute" | "rollbackWorkspace" | "setBuildRuntimePolicy" | "setComputePlanAvailability" | "setRuntimeVersionStatus" | "setStoragePlanAvailability" | "setWebuiVersionStatus" | "suspendTenant" | "updateMemberRole" | "updateNamespace" | "updatePackage" | "updateRenewalSettings" | "updateWorkspaceModels" | "updateWorkspaceVersion" | "readExecutionPlan" | "restoreAfterResourceChange" | "debitScheduledPeriod" | "readPlanChangeFailure" | "listPersonalGatewayKeys" | "getPersonalGatewayKey" | "listPersonalGatewayGroups" | "listPersonalGatewayKeyUsage" | "getPersonalGatewayKeyUsageSummary" | "createPersonalGatewayKey" | "updatePersonalGatewayKey" | "revealPersonalGatewayKey" | "revokePersonalGatewayKey";
         /** @enum {string} */
         ServiceIdentity: "console_bff" | "capability" | "build" | "workspace" | "runtime_control" | "fabric" | "gateway_integration" | "resource_catalog" | "ledger";
         WorkspaceApplicationExecution: {
@@ -6542,6 +6612,43 @@ export interface operations {
             503: components["responses"]["ErrorResponse"];
         };
     };
+    createPersonalGatewayKey: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description 匹配同源session并校验Origin。 */
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePersonalGatewayKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description The created personal Key. The answer carries no secret. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalGatewayKey"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
+            422: components["responses"]["ErrorResponse"];
+            429: components["responses"]["ErrorResponse"];
+            503: components["responses"]["ErrorResponse"];
+        };
+    };
     getPersonalGatewayKey: {
         parameters: {
             query?: never;
@@ -6566,6 +6673,115 @@ export interface operations {
             401: components["responses"]["ErrorResponse"];
             403: components["responses"]["ErrorResponse"];
             404: components["responses"]["ErrorResponse"];
+            429: components["responses"]["ErrorResponse"];
+            503: components["responses"]["ErrorResponse"];
+        };
+    };
+    revokePersonalGatewayKey: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description 匹配同源session并校验Origin。 */
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path: {
+                keyId: components["schemas"]["OpaqueId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The confirmed revoke operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
+            422: components["responses"]["ErrorResponse"];
+            429: components["responses"]["ErrorResponse"];
+            503: components["responses"]["ErrorResponse"];
+        };
+    };
+    updatePersonalGatewayKey: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description 匹配同源session并校验Origin。 */
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path: {
+                keyId: components["schemas"]["OpaqueId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePersonalGatewayKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description The confirmed personal Key readback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalGatewayKey"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
+            422: components["responses"]["ErrorResponse"];
+            429: components["responses"]["ErrorResponse"];
+            503: components["responses"]["ErrorResponse"];
+        };
+    };
+    revealPersonalGatewayKey: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description 匹配同源session并校验Origin。 */
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path: {
+                keyId: components["schemas"]["OpaqueId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The personal Key and its secret, returned exactly once. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalGatewayKeySecret"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
+            422: components["responses"]["ErrorResponse"];
             429: components["responses"]["ErrorResponse"];
             503: components["responses"]["ErrorResponse"];
         };

@@ -52,6 +52,12 @@ func TestPersonalKeyListUsesDelegatedUserAndReturnsRedactedFacts(t *testing.T) {
 	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].GetQuotaUsdMicros() != 1000001 || page.Items[0].GetKind() != api.PersonalGatewayKeyKindEnum_PERSONAL_GATEWAY_KEY_KIND_ENUM_GENERAL || page.Items[0].GetStatus() != api.PersonalGatewayKeyStatusEnum_PERSONAL_GATEWAY_KEY_STATUS_ENUM_DISABLED || page.Items[0].GroupId != nil {
 		t.Fatalf("incorrect key facts: %v", page)
 	}
+	// A personal Key the customer owns is manageable and revocable from the Cloud
+	// personal Key surface. The Workspace's own managed Key is the only one that
+	// is not, and that rule lives with the owner that owns the binding.
+	if !page.Items[0].GetManageable() || !page.Items[0].GetDeletable() {
+		t.Fatalf("a general personal key is not manageable: %v", page.Items[0])
+	}
 	wire, err := publicjson.Marshal(page)
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +70,7 @@ func TestPersonalKeyListUsesDelegatedUserAndReturnsRedactedFacts(t *testing.T) {
 	if _, ok := key["key"]; ok {
 		t.Fatal("raw key escaped")
 	}
-	if key["status"] != "disabled" || key["groupId"] != nil || key["quotaUSDMicros"] != "1000001" || key["rateLimit5hUSDMicros"] != "2500000" || key["usage5hUSDMicros"] != "1" || key["manageable"] != false || key["deletable"] != false {
+	if key["status"] != "disabled" || key["groupId"] != nil || key["quotaUSDMicros"] != "1000001" || key["rateLimit5hUSDMicros"] != "2500000" || key["usage5hUSDMicros"] != "1" || key["manageable"] != true || key["deletable"] != true {
 		t.Fatalf("incorrect wire facts: %s", wire)
 	}
 }

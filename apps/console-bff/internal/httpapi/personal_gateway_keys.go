@@ -165,4 +165,33 @@ func (s *Server) registerPersonalGatewayKeyRoutes(mux *http.ServeMux, gateway ap
 		}
 		return gateway.GetPersonalGatewayKeyUsageSummary(r.Context(), &api.GetPersonalGatewayKeyUsageSummaryRpcRequest{Context: c, KeyId: r.PathValue("keyId"), Period: period})
 	})
+	// The personal Key writes travel the same owner path as the reads above. The
+	// route carries the caller's instruction and projects the owner's answer; it
+	// never recomputes a limit, re-derives a rate or keeps a second copy of the
+	// Key. The caller's own idempotency key reaches the owner in the CallContext
+	// the shared write guard already filled.
+	s.publisherRoute(mux, "POST /api/v2/gateway/keys", owneridentity.Gateway, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEPERSONALGATEWAYKEY, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", func() proto.Message { return &api.CreatePersonalGatewayKeyRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		if err := requireGateway(gateway); err != nil {
+			return nil, err
+		}
+		return gateway.CreatePersonalGatewayKey(r.Context(), &api.CreatePersonalGatewayKeyRpcRequest{Context: c, Body: body.(*api.CreatePersonalGatewayKeyRequest)})
+	})
+	s.publisherRoute(mux, "PATCH /api/v2/gateway/keys/{keyId}", owneridentity.Gateway, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATEPERSONALGATEWAYKEY, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", func() proto.Message { return &api.UpdatePersonalGatewayKeyRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		if err := requireGateway(gateway); err != nil {
+			return nil, err
+		}
+		return gateway.UpdatePersonalGatewayKey(r.Context(), &api.UpdatePersonalGatewayKeyRpcRequest{Context: c, KeyId: r.PathValue("keyId"), Body: body.(*api.UpdatePersonalGatewayKeyRequest)})
+	})
+	s.publisherRoute(mux, "DELETE /api/v2/gateway/keys/{keyId}", owneridentity.Gateway, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVOKEPERSONALGATEWAYKEY, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", nil, func(r *http.Request, c *api.CallContext, _ proto.Message) (proto.Message, error) {
+		if err := requireGateway(gateway); err != nil {
+			return nil, err
+		}
+		return gateway.RevokePersonalGatewayKey(r.Context(), &api.RevokePersonalGatewayKeyRpcRequest{Context: c, KeyId: r.PathValue("keyId")})
+	})
+	s.publisherRoute(mux, "POST /api/v2/gateway/keys/{keyId}/reveal", owneridentity.Gateway, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVEALPERSONALGATEWAYKEY, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", nil, func(r *http.Request, c *api.CallContext, _ proto.Message) (proto.Message, error) {
+		if err := requireGateway(gateway); err != nil {
+			return nil, err
+		}
+		return gateway.RevealPersonalGatewayKey(r.Context(), &api.RevealPersonalGatewayKeyRpcRequest{Context: c, KeyId: r.PathValue("keyId")})
+	})
 }
