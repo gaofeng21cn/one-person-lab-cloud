@@ -1064,7 +1064,7 @@ const canonicalKey = {
     createdAt: "2026-10-16T00:00:00Z"
   };
 
-test("Cloud personal Key adapter preserves public money casing and read-only DTO semantics", { timeout: 60_000 }, async () => {
+test("Cloud personal Key adapter preserves public money casing and the owner's management facts", { timeout: 60_000 }, async () => {
   const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
   process.env.VITE_CONSOLE_IDENTITY = "cloud";
   const demo = await startConsoleDemoServer({ port: 0, log: false });
@@ -1214,7 +1214,7 @@ test("Cloud personal Key adapter preserves public money casing and read-only DTO
   }
 });
 
-test("Cloud Key credential reauthentication preserves session and wallet and exposes read-only capability", { timeout: 60_000 }, async () => {
+test("Cloud Key credential reauthentication preserves session and wallet and exposes the personal Key management capability", { timeout: 60_000 }, async () => {
   const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
   process.env.VITE_CONSOLE_IDENTITY = "cloud";
   const demo = await startConsoleDemoServer({ port: 0, log: false });
@@ -1245,8 +1245,10 @@ test("Cloud Key credential reauthentication preserves session and wallet and exp
     await page.getByText("API 密钥访问需要重新登录", { exact: true }).waitFor({ state: "visible", timeout: 5000 });
     const login = page.getByRole("link", { name: "重新登录", exact: true });
     assert.equal(await login.getAttribute("href"), "/login?redirect=%2Fconsole%2Fapi%2Fkeys");
-    await page.getByText("当前仅支持查看 API 密钥与用量，创建、修改、删除和显示完整密钥暂不可用。", { exact: true }).waitFor();
-    assert.equal(await page.getByRole("button", { name: "创建 API 密钥", exact: true }).count(), 0);
+    // The Cloud identity reaches the Gateway owner through the BFF, so it no
+    // longer answers with a read-only notice and it offers the create action.
+    assert.equal(await page.getByText("当前仅支持查看 API 密钥与用量，创建、修改、删除和显示完整密钥暂不可用。", { exact: true }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "创建 API 密钥", exact: true }).count(), 1);
     const priorSessionReads = sessionReads;
     const sessionAndWallet = await page.evaluate(async () => {
       const auth = await import("/apps/console-ui/src/api/auth-api.ts");
@@ -1262,8 +1264,16 @@ test("Cloud Key credential reauthentication preserves session and wallet and exp
     await page.getByRole("button", { name: "刷新 API 密钥", exact: true }).click();
     await page.locator(".keys-table").getByText(canonicalKey.name, { exact: true }).waitFor();
     assert.equal(await page.getByText("API 密钥访问需要重新登录", { exact: true }).count(), 0);
-    for (const name of ["显示 API 密钥", "使用说明", "创建 API 密钥", "编辑", "启用", "停用", "重置配额用量", "重置消费限额用量", "删除"]) {
-      assert.equal(await page.getByRole("button", { name, exact: true }).count(), 0, `${name} is unavailable in Cloud`);
+    for (const name of ["显示 API 密钥", "使用说明", "创建 API 密钥"]) {
+      assert.equal(await page.getByRole("button", { name, exact: true }).count(), 1, `${name} is unavailable in Cloud`);
+    }
+    // The management actions are offered, and the owner's own answer decides
+    // whether they are enabled: this Key came back as not manageable.
+    await page.locator(".key-more-actions summary").first().click();
+    for (const name of ["编辑", "停用", "重置配额用量", "重置消费限额用量", "删除"]) {
+      const action = page.getByRole("button", { name, exact: true });
+      assert.equal(await action.count(), 1, `${name} is unavailable in Cloud`);
+      assert.equal(await action.isDisabled(), true, `${name} ignores the owner's manageable fact`);
     }
     await page.locator(".keys-table").getByText("$9,223,372,036,854.78", { exact: true }).waitFor();
     await page.locator(".keys-table").getByText("已用 $9,007,199,254.74", { exact: true }).waitFor();
