@@ -421,6 +421,27 @@ func terminalWorkspaceRenewal(operation workspaceRenewalOperation) bool {
 	return financialTerminal && (operation.ExpiryStatus == "" || operation.ExpiryPhase == "complete")
 }
 
+// workspaceRenewalStage projects the durable renewal operation onto the
+// published renewal stage. The projection names the phase that still needs
+// work and it tells a completed expiry apart from an open renewal, so a
+// settlement census never has to interpret the operation's internal encoding.
+func workspaceRenewalStage(operation workspaceRenewalOperation) string {
+	switch {
+	case operation.Status == "manual_review":
+		return contracts.WorkspaceRenewalStageManualReview
+	case operation.ExpiryStatus != "" && operation.ExpiryPhase == "complete":
+		return contracts.WorkspaceRenewalStageExpiryComplete
+	case operation.ExpiryStatus != "":
+		return contracts.WorkspaceRenewalStageExpiryPending
+	case operation.Status == "cancelled":
+		return contracts.WorkspaceRenewalStageCancelled
+	case terminalWorkspaceRenewal(operation):
+		return contracts.WorkspaceRenewalStageSettled
+	default:
+		return contracts.WorkspaceRenewalStageFinancialPending
+	}
+}
+
 func workspaceRenewalFinancialRecoveryRequired(operation workspaceRenewalOperation) bool {
 	return operation.Status == "manual_review" || operation.ChargeAttempted || operation.ChargeConfirmation != nil ||
 		operation.RefundAttempted || operation.RefundConfirmation != nil || operation.EntitlementCommitted

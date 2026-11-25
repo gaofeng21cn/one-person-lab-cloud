@@ -30,6 +30,16 @@ type operatorRuntimeObservation struct {
 	DeleteLastReadbackAt string `json:"deleteLastReadbackAt,omitempty"`
 	DeleteNextRetryAt    string `json:"deleteNextRetryAt,omitempty"`
 	DeleteReceiptID      string `json:"deleteReceiptId,omitempty"`
+	// Renewal progress, published from the persisted renewal operation that
+	// covers the Workspace's current paid period. The settlement census reads
+	// the same durable phase the renewal executor advances, so it can tell a
+	// completed expiry from a renewal that still needs work without
+	// interpreting the operation's internal encoding.
+	RenewalStage           string `json:"renewalStage,omitempty"`
+	RenewalStatus          string `json:"renewalStatus,omitempty"`
+	RenewalReasonCode      string `json:"renewalReasonCode,omitempty"`
+	RenewalReceiptID       string `json:"renewalReceiptId,omitempty"`
+	RenewalExpiryReceiptID string `json:"renewalExpiryReceiptId,omitempty"`
 }
 
 type operatorRuntimeObservations struct {
@@ -108,6 +118,7 @@ func (app *controlPlaneServer) operatorRuntimeObservations(ctx context.Context, 
 		}
 		item.BusinessState = firstNonEmpty(stringValue(workspace["state"]), stringValue(workspace["status"]))
 		item.DeleteStage, item.DeletePageState, item.DeleteReasonCode, item.DeleteLastReadbackAt, item.DeleteNextRetryAt, item.DeleteReceiptID = operatorRuntimeDeleteProgress(byWorkspace[observation.WorkspaceID])
+		item.RenewalStage, item.RenewalStatus, item.RenewalReasonCode, item.RenewalReceiptID, item.RenewalExpiryReceiptID = operatorRuntimeRenewalProgress(workspace, byWorkspace[observation.WorkspaceID])
 		accountID := firstNonEmpty(stringValue(workspace["ownerAccountId"]), stringValue(workspace["accountId"]))
 		switch {
 		case observation.Ownership == contracts.RuntimeOwnershipConflict:
@@ -130,6 +141,7 @@ func (app *controlPlaneServer) operatorRuntimeObservations(ctx context.Context, 
 		}
 		item := operatorRuntimeObservation{ObservedState: contracts.ResourceObservedAbsent, WorkspaceID: id, RuntimeID: stringValue(workspace["runtimeId"]), BusinessState: firstNonEmpty(stringValue(workspace["state"]), stringValue(workspace["status"]))}
 		item.DeleteStage, item.DeletePageState, item.DeleteReasonCode, item.DeleteLastReadbackAt, item.DeleteNextRetryAt, item.DeleteReceiptID = operatorRuntimeDeleteProgress(byWorkspace[id])
+		item.RenewalStage, item.RenewalStatus, item.RenewalReasonCode, item.RenewalReceiptID, item.RenewalExpiryReceiptID = operatorRuntimeRenewalProgress(workspace, byWorkspace[id])
 		item.Status, item.ReasonCode = operatorRuntimeState(workspace, byWorkspace[id], nil, now)
 		appendItem(item)
 	}
@@ -255,6 +267,35 @@ func operatorRuntimeDeleteProgress(operations []map[string]any) (stage, pageStat
 			workspaceDeleteLastReadbackAt(operation), nextRetryAt, operation.DeletionReceiptID
 	}
 	return "", "", "", "", "", ""
+}
+
+// operatorRuntimeRenewalProgress publishes the persisted renewal progress of one
+// Workspace. It projects the durable renewal operation that covers the
+// Workspace's current paid period, so an observer can tell a completed expiry
+// from a renewal that still needs work instead of collapsing both into one
+// generic reason. An operation that does not cover the current paid period
+// belongs to an earlier period and is not this Workspace's current renewal.
+func operatorRuntimeRenewalProgress(workspace map[string]any, operations []map[string]any) (stage, status, reasonCode, receiptID, expiryReceiptID string) {
+	paidThrough, err := time.Parse(time.RFC3339, stringValue(workspace["paidThrough"]))
+	if err != nil {
+		return "", "", "", "", ""
+	}
+	workspaceID := stringValue(workspace["id"])
+	for _, row := range operations {
+		if stringValue(row["action"]) != "workspace.renewal" || stringValue(row["workspaceId"]) != workspaceID {
+			continue
+		}
+		operation, err := decodeWorkspaceRenewalOperation(row)
+		if err != nil {
+			return "", "", "workspace_renewal_state_invalid", "", ""
+		}
+		covered, err := time.Parse(time.RFC3339, operation.PaidThrough)
+		if err != nil || !covered.Equal(paidThrough) {
+			continue
+		}
+		return workspaceRenewalStage(operation), operation.Status, operation.ErrorCode, operation.ReceiptID, operation.ExpiryReceiptID
+	}
+	return "", "", "", "", ""
 }
 
 func operatorRuntimeTransitionPending(workspace map[string]any, operations []map[string]any) bool {

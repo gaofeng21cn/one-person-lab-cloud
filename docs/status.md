@@ -49,9 +49,14 @@ chronological snapshots.
     [Launch executor](implementation/workspace-launch-recovery.md) continues
     accepted operations carried forward from before the purchase cutover.
   - A current-owner API observation established that retained lifecycle
-    operations can be enumerated. Its coverage was partial, and operation
-    identities and terminal phases still need a complete readback for the
-    deletion, refund, and renewal retirement evidence tracked in the roadmap.
+    operations can be enumerated. The Control Plane's operator runtime
+    observation now publishes the durable phase of the renewal operation that
+    covers a Workspace's current paid period, so a completed expiry is
+    distinguishable from a renewal that still needs work
+    (`packages/contracts/go/workspace_renewal.go`). Its coverage was still
+    partial: the observation has to be run again, and the deletion and refund
+    obligations still need a complete readback for the retirement evidence
+    tracked in the roadmap.
 - **Retained Application Deployment**: The shared Control Plane worker advances
   accepted `workspace.application.deploy` children through predecessor
   suspension, activation and receipt. The source qualification covers retained
