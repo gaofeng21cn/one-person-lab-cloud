@@ -188,10 +188,10 @@ func (p *workspaceRecycledStorageProvider) DestroyStorageVolume(_ context.Contex
 		volume.ProviderData["status"], volume.ProviderData["cbsStatus"] = "external_deleted", "NOT_FOUND"
 		return volume, nil
 	}
-	volume.Status, volume.CBSStatus, volume.DestroyState = "destroying", "TORECYCLE", "unconfirmed_send"
+	volume.Status, volume.CBSStatus, volume.DestroyState = "destroying", "", "unconfirmed_send"
 	volume.ProviderData["storageDestroyPhase"] = "terminate_attempted"
 	volume.ProviderData["storageDestroyMutationCount"] = "1"
-	return volume, errors.New("CBS remains in recycle state")
+	return volume, errors.New("CBS termination requires an owner readback")
 }
 
 func (p *workspaceRecycledStorageProvider) ReadStorageVolumeStatus(_ context.Context, volume fabric.StorageVolume) (fabric.StorageVolume, error) {
@@ -204,7 +204,6 @@ func (p *workspaceRecycledStorageProvider) ReadStorageVolumeStatus(_ context.Con
 	volume.BindingPresent = &present
 	volume.ProviderData["storageVolumeId"] = volume.ProviderResourceID
 	volume.ProviderData["describeCbsRequestId"] = "fresh-cbs-readback"
-	volume.ProviderData["storageDestroyMutationCount"] = "1"
 	if p.absent {
 		volume.Status, volume.CBSStatus = "external_deleted", "NOT_FOUND"
 		volume.ProviderData["status"], volume.ProviderData["cbsStatus"] = "external_deleted", "NOT_FOUND"
@@ -213,7 +212,6 @@ func (p *workspaceRecycledStorageProvider) ReadStorageVolumeStatus(_ context.Con
 		volume.Status, volume.CBSStatus = "pending", "TORECYCLE"
 		volume.ProviderData["status"] = "pending"
 		volume.ProviderData["cbsStatus"] = "TORECYCLE"
-		volume.ProviderData["storageDestroyPhase"] = "terminate_attempted"
 	}
 	return volume, nil
 }

@@ -4022,28 +4022,43 @@ func assertExactCBSDescribeRequests(t *testing.T, api *fakeNativeCbsAPI, expecte
 
 func TestTencentSDKDestroyStorageVolumeTerminatesExactUnattachedCBS(t *testing.T) {
 	api := &fakeNativeCbsAPI{diskState: "UNATTACHED"}
-	response := (&tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: api}).DestroyStorageVolume(destroyStorageRequest(), map[string]string{
-		"TENCENT_CBS_DELETE_ATTEMPTS": "1", "TENCENT_CBS_DELETE_DELAY_MS": "0",
-	})
+	response := (&tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: api}).DestroyStorageVolume(destroyStorageRequest(), nil)
 
-	if !response.Ok || response.Status != "external_deleted" || response.CBSStatus != "NOT_FOUND" || response.StorageVolumeId != "disk-storage-alpha" || response.MutationCount != 1 ||
-		response.ProviderData["status"] != "external_deleted" || response.ProviderData["storageDestroyPhase"] != "absence_confirmed" || response.ProviderData["storageDestroyMutationCount"] != "1" {
+	if response.Ok || !response.Retryable || response.Status != "destroying" || response.CBSStatus != "" || response.StorageVolumeId != "disk-storage-alpha" || response.MutationCount != 1 ||
+		response.ProviderData["storageDestroyPhase"] != "terminate_attempted" || response.ProviderData["storageDestroyMutationCount"] != "1" {
 		t.Fatalf("destroy response=%#v", response)
 	}
 	if len(api.terminateDisksRequests) != 1 || len(api.terminateDisksRequests[0].DiskIds) != 1 || stringValue(api.terminateDisksRequests[0].DiskIds[0]) != "disk-storage-alpha" || api.terminateDisksRequests[0].DeleteSnapshot != nil {
 		t.Fatalf("TerminateDisks request=%#v", api.terminateDisksRequests)
 	}
-	if len(api.describeDisksRequests) != 2 || response.ProviderData["terminateCbsRequestId"] != "req-terminate-cbs" || response.ProviderData["describeCbsRequestId"] == "" {
-		t.Fatalf("authoritative delete evidence missing: response=%#v describes=%d", response, len(api.describeDisksRequests))
+	if response.ProviderRequestId != "req-terminate-cbs" || response.ProviderData["terminateCbsRequestId"] != "req-terminate-cbs" || response.ProviderData["describeCbsRequestId"] != "" {
+		t.Fatalf("expected send evidence only: response=%#v", response)
 	}
+	assertExactCBSDescribeRequests(t, api, 1)
+}
+
+func TestTencentSDKDestroyStorageVolumeReturnsAttemptBeforeRecycledReadback(t *testing.T) {
+	api := &fakeNativeCbsAPI{diskStates: []string{"UNATTACHED", "TORECYCLE"}, retainTerminatedDisk: true}
+	client := &tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: api}
+	request := destroyStorageRequest()
+	response := client.DestroyStorageVolume(request, nil)
+	if response.Ok || response.MutationCount != 1 || response.ProviderData["storageDestroyPhase"] != "terminate_attempted" ||
+		response.ProviderData["terminateCbsRequestId"] != "req-terminate-cbs" || len(api.terminateDisksRequests) != 1 {
+		t.Fatalf("first destroy must return its send evidence while release is pending: %#v", response)
+	}
+	assertExactCBSDescribeRequests(t, api, 1)
+	request.Action = "read_storage_for_delete"
+	observed := client.SyncStorageVolume(request, nil)
+	if !observed.Ok || observed.CBSStatus != "TORECYCLE" || len(api.terminateDisksRequests) != 1 {
+		t.Fatalf("owner readback must observe the recycled original without resending: %#v", observed)
+	}
+	assertExactCBSDescribeRequests(t, api, 2)
 }
 
 func TestTencentSDKDestroyStorageVolumeAcceptsManualRenewWithoutNotification(t *testing.T) {
 	api := &fakeNativeCbsAPI{diskState: "UNATTACHED", renewFlag: "DISABLE_NOTIFY_AND_MANUAL_RENEW"}
-	response := (&tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: api}).DestroyStorageVolume(destroyStorageRequest(), map[string]string{
-		"TENCENT_CBS_DELETE_ATTEMPTS": "1", "TENCENT_CBS_DELETE_DELAY_MS": "0",
-	})
-	if !response.Ok || response.Status != "external_deleted" || response.MutationCount != 1 || len(api.terminateDisksRequests) != 1 {
+	response := (&tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: api}).DestroyStorageVolume(destroyStorageRequest(), nil)
+	if response.Ok || response.Status != "destroying" || response.MutationCount != 1 || len(api.terminateDisksRequests) != 1 {
 		t.Fatalf("same-disk manual-renew delete response=%#v mutations=%d", response, len(api.terminateDisksRequests))
 	}
 }
@@ -4125,15 +4140,14 @@ func TestTencentSDKDestroyStorageVolumeWaitsForExactCBSDetachBeforeTermination(t
 	api := &fakeNativeCbsAPI{diskStates: []string{"ATTACHED", "UNATTACHED"}}
 	response := (&tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: api}).DestroyStorageVolume(destroyStorageRequest(), map[string]string{
 		"TENCENT_CBS_DETACH_ATTEMPTS": "2", "TENCENT_CBS_DETACH_DELAY_MS": "0",
-		"TENCENT_CBS_DELETE_ATTEMPTS": "1", "TENCENT_CBS_DELETE_DELAY_MS": "0",
 	})
-	if !response.Ok || response.Status != "external_deleted" || response.CBSStatus != "NOT_FOUND" {
+	if response.Ok || response.Status != "destroying" || response.ProviderData["storageDestroyPhase"] != "terminate_attempted" {
 		t.Fatalf("detach convergence response=%#v", response)
 	}
-	if len(api.terminateDisksRequests) != 1 || len(api.describeDisksRequests) != 3 {
+	if len(api.terminateDisksRequests) != 1 {
 		t.Fatalf("describes=%d mutations=%d", len(api.describeDisksRequests), len(api.terminateDisksRequests))
 	}
-	assertExactCBSDescribeRequests(t, api, 3)
+	assertExactCBSDescribeRequests(t, api, 2)
 }
 
 func TestTencentSDKDestroyStorageVolumeDetachTimeoutIsRetryableWithoutTermination(t *testing.T) {
@@ -4174,12 +4188,16 @@ func TestTencentSDKDestroyStorageVolumeRejectsUnknownDetachStateWithoutTerminati
 
 func TestTencentSDKDestroyStorageVolumeAcceptsResponseLossOnlyAfterAbsence(t *testing.T) {
 	api := &fakeNativeCbsAPI{diskState: "UNATTACHED", terminateErr: errors.New("response lost")}
-	response := (&tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: api}).DestroyStorageVolume(destroyStorageRequest(), map[string]string{
-		"TENCENT_CBS_DELETE_ATTEMPTS": "1", "TENCENT_CBS_DELETE_DELAY_MS": "0",
-	})
-	if !response.Ok || response.Status != "external_deleted" || response.CBSStatus != "NOT_FOUND" || response.ProviderData["status"] != "external_deleted" ||
-		response.ProviderData["storageDestroyPhase"] != "absence_confirmed" || response.ProviderData["storageDestroyMutationCount"] != "1" || len(api.terminateDisksRequests) != 1 {
-		t.Fatalf("response loss followed by absence must succeed: %#v", response)
+	client := &tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: api}
+	request := destroyStorageRequest()
+	response := client.DestroyStorageVolume(request, nil)
+	if response.Ok || response.ProviderRequestId != "" || response.ProviderData["terminateCbsRequestId"] != "" || response.ProviderData["storageDestroyPhase"] != "terminate_attempted" {
+		t.Fatalf("lost response must retain an attempt without inventing an acknowledgment: %#v", response)
+	}
+	request.Action = "read_storage_for_delete"
+	observed := client.SyncStorageVolume(request, nil)
+	if !observed.Ok || observed.Status != "external_deleted" || observed.CBSStatus != "NOT_FOUND" || observed.ProviderData["storageDestroyPhase"] != "absence_confirmed" || len(api.terminateDisksRequests) != 1 {
+		t.Fatalf("response loss followed by authoritative absence must converge: %#v", observed)
 	}
 }
 
@@ -4189,17 +4207,22 @@ func TestTencentSDKDestroyStorageVolumeFailsClosedWithoutAuthoritativeAbsence(t 
 		api      *fakeNativeCbsAPI
 		wantCode contracts.ErrorCode
 	}{
-		{name: "still present", api: &fakeNativeCbsAPI{diskState: "UNATTACHED", retainTerminatedDisk: true}, wantCode: "storage_volume_delete_unverified"},
+		{name: "still present", api: &fakeNativeCbsAPI{diskState: "UNATTACHED", retainTerminatedDisk: true}},
 		{name: "malformed readback", api: &fakeNativeCbsAPI{diskState: "UNATTACHED", malformedAfterTerminate: true}, wantCode: errCBSCardinalityMismatch},
 		{name: "describe error", api: &fakeNativeCbsAPI{diskState: "UNATTACHED", describeErrAfterTerminate: errors.New("describe unavailable")}, wantCode: "tencent_describe_cbs_failed"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			response := (&tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: test.api}).DestroyStorageVolume(destroyStorageRequest(), map[string]string{
-				"TENCENT_CBS_DELETE_ATTEMPTS": "1", "TENCENT_CBS_DELETE_DELAY_MS": "0",
-			})
-			if response.Ok || contracts.ErrorCode(response.ErrorCode) != test.wantCode || response.MutationCount != 1 || response.ProviderData["storageDestroyPhase"] != "terminate_attempted" ||
-				response.ProviderData["storageDestroyMutationCount"] != "1" || len(test.api.terminateDisksRequests) != 1 {
-				t.Fatalf("delete must fail closed: %#v", response)
+			client := &tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: test.api}
+			request := destroyStorageRequest()
+			response := client.DestroyStorageVolume(request, nil)
+			if response.Ok || response.MutationCount != 1 || response.ProviderData["storageDestroyPhase"] != "terminate_attempted" {
+				t.Fatalf("an attempted send must remain pending: %#v", response)
+			}
+			request.Action = "read_storage_for_delete"
+			observed := client.SyncStorageVolume(request, nil)
+			if contracts.ErrorCode(observed.ErrorCode) != test.wantCode || observed.Ok != (test.wantCode == "") || observed.CBSStatus == "NOT_FOUND" ||
+				observed.ProviderData["storageDestroyPhase"] == "absence_confirmed" || len(test.api.terminateDisksRequests) != 1 {
+				t.Fatalf("unproven absence must not close deletion or resend: %#v", observed)
 			}
 		})
 	}

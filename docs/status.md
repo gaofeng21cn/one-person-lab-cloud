@@ -63,6 +63,10 @@ chronological snapshots.
   accepted `workspace.application.deploy` children through predecessor
   suspension, activation and receipt. The source qualification covers retained
   v0.1.8 fixtures, response loss and restart against the same database.
+- **Paid TKE Deletion Recovery**: The November 25, 2026 production readback
+  confirmed resource and data deletion, Key closeout, the Ledger deletion
+  receipt, and the original-charge refund on the same deletion operation after
+  an operator released its recycled CBS. See Instance readback run `45639384732`.
 - **What Remains Unproven Here**: Same-Candidate paid customer purchase
   execution on Tencent/TKE, J0 READY qualification bound to the latest
   Candidate, end-to-end custom Agent Package build-to-serve production delivery,
