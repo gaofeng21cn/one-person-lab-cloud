@@ -3230,6 +3230,52 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
         '503':
           $ref: '#/components/responses/ErrorResponse'
+    post:
+      operationId: createPersonalGatewayKey
+      summary: createPersonalGatewayKey
+      tags:
+      - gateway
+      x-feature-id:
+      - F14
+      x-owner: gateway
+      x-permission:
+      - authenticated
+      description: Creates one personal Gateway Key for the signed-in User through the Gateway owner's delegated
+        Sub2API credential. No Tenant role, target User selector, raw Key or token is accepted. The answer is the
+        new Key's summary; the Key's secret is never part of it and is handed back only by the explicit reveal,
+        once, after its audit write.
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePersonalGatewayKeyRequest'
+      responses:
+        '201':
+          description: The created personal Key. The answer carries no secret.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonalGatewayKey'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
   /api/v2/gateway/keys/{keyId}:
     get:
       operationId: getPersonalGatewayKey
@@ -3264,6 +3310,146 @@ paths:
         '403':
           $ref: '#/components/responses/ErrorResponse'
         '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+    patch:
+      operationId: updatePersonalGatewayKey
+      summary: updatePersonalGatewayKey
+      tags:
+      - gateway
+      x-feature-id:
+      - F14
+      x-owner: gateway
+      x-permission:
+      - authenticated
+      description: Changes one personal Gateway Key the signed-in User owns, through the Gateway owner's delegated
+        Sub2API credential. A Workspace-managed Key is not a personal Key and is refused. An absent field leaves the
+        fact unchanged; an address list replaces the Key's list; clearExpiresAt removes an existing expiry and is
+        exclusive with expiresAt.
+      parameters:
+      - name: keyId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePersonalGatewayKeyRequest'
+      responses:
+        '200':
+          description: The confirmed personal Key readback.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonalGatewayKey'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+    delete:
+      operationId: revokePersonalGatewayKey
+      summary: revokePersonalGatewayKey
+      tags:
+      - gateway
+      x-feature-id:
+      - F14
+      x-owner: gateway
+      x-permission:
+      - authenticated
+      description: Revokes one personal Gateway Key the signed-in User owns, through the Gateway owner's delegated
+        Sub2API credential. The revoke is idempotent, because a Key the provider no longer holds is already revoked.
+        A provider failure never reports success.
+      parameters:
+      - name: keyId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '200':
+          description: The confirmed revoke operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Operation'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v2/gateway/keys/{keyId}/reveal:
+    post:
+      operationId: revealPersonalGatewayKey
+      summary: revealPersonalGatewayKey
+      tags:
+      - gateway
+      x-feature-id:
+      - F14
+      x-owner: gateway
+      x-permission:
+      - authenticated
+      description: Returns one personal Gateway Key's secret to its owner, through the Gateway owner's delegated
+        Sub2API credential. The secret is returned exactly once, in this answer, and is never stored by Cloud. A
+        Workspace-managed Key is not a personal Key and is refused.
+      parameters:
+      - name: keyId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '200':
+          description: The personal Key and its secret, returned exactly once.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonalGatewayKeySecret'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '422':
           $ref: '#/components/responses/ErrorResponse'
         '429':
           $ref: '#/components/responses/ErrorResponse'
@@ -9940,10 +10126,10 @@ components:
           - workspace
         manageable:
           type: boolean
-          description: False for the read-only Cloud personal Key surface.
+          description: True for a personal Key the customer manages from the Cloud personal Key surface, false for the Workspace's own managed Key.
         deletable:
           type: boolean
-          description: False for the read-only Cloud personal Key surface.
+          description: True for a personal Key the customer may revoke from the Cloud personal Key surface, false for the Workspace's own managed Key.
         ipWhitelist:
           type: array
           items:
@@ -10031,6 +10217,104 @@ components:
       - page
       - pageSize
       - pages
+    PersonalGatewayKeySecret:
+      type: object
+      additionalProperties: false
+      properties:
+        key:
+          $ref: '#/components/schemas/PersonalGatewayKey'
+        secret:
+          type: string
+      required:
+      - key
+      - secret
+      description: One personal Gateway Key and its raw secret. The secret is returned exactly once, by the create
+        or the explicit reveal, and Cloud never stores it.
+    PersonalGatewayKeyStringList:
+      type: object
+      additionalProperties: false
+      properties:
+        values:
+          type: array
+          items:
+            type: string
+      required:
+      - values
+      description: One address list of a personal Gateway Key. A present list replaces the Key's list, including
+        the empty list, which clears it; an absent list leaves the Key's list unchanged.
+    CreatePersonalGatewayKeyRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        groupId:
+          type: string
+          pattern: ^(0|[1-9][0-9]*)$
+        ipWhitelist:
+          type: array
+          items:
+            type: string
+        ipBlacklist:
+          type: array
+          items:
+            type: string
+        quotaUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        expiresInDays:
+          type: integer
+          minimum: 1
+        rateLimit5hUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        rateLimit1dUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        rateLimit7dUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+      required:
+      - name
+      - groupId
+      - quotaUSDMicros
+      description: The command that creates one personal Gateway Key for the signed-in User. The address lists are
+        replaced by the created Key, and the money fields are exact USD micros.
+    UpdatePersonalGatewayKeyRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        groupId:
+          type: string
+          pattern: ^(0|[1-9][0-9]*)$
+        ipWhitelist:
+          $ref: '#/components/schemas/PersonalGatewayKeyStringList'
+        ipBlacklist:
+          $ref: '#/components/schemas/PersonalGatewayKeyStringList'
+        quotaUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        expiresAt:
+          type: string
+          format: date-time
+        rateLimit5hUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        rateLimit1dUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        rateLimit7dUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        resetQuota:
+          type: boolean
+        resetRateLimitUsage:
+          type: boolean
+        enabled:
+          type: boolean
+        clearExpiresAt:
+          type: boolean
+      description: The command that changes one personal Gateway Key the signed-in User owns. An absent property
+        leaves that fact unchanged. expiresAt sets an absolute expiry and clearExpiresAt removes an existing one;
+        the two are exclusive, and a request that carries both is refused.
     PersonalGatewayGroup:
       type: object
       additionalProperties: false
@@ -11931,6 +12215,10 @@ components:
       - listPersonalGatewayGroups
       - listPersonalGatewayKeyUsage
       - getPersonalGatewayKeyUsageSummary
+      - createPersonalGatewayKey
+      - updatePersonalGatewayKey
+      - revealPersonalGatewayKey
+      - revokePersonalGatewayKey
     ServiceIdentity:
       type: string
       enum:

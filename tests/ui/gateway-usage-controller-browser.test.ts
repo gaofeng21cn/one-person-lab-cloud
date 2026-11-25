@@ -1064,7 +1064,7 @@ const canonicalKey = {
     createdAt: "2026-10-16T00:00:00Z"
   };
 
-test("Cloud personal Key adapter preserves public money casing and read-only DTO semantics", { timeout: 60_000 }, async () => {
+test("Cloud personal Key adapter preserves public money casing and the owner's management facts", { timeout: 60_000 }, async () => {
   const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
   process.env.VITE_CONSOLE_IDENTITY = "cloud";
   const demo = await startConsoleDemoServer({ port: 0, log: false });
@@ -1075,13 +1075,22 @@ test("Cloud personal Key adapter preserves public money casing and read-only DTO
     const requests: string[] = [];
     let keyOverrides: Record<string, unknown> = {};
     let usageOverrides: Record<string, unknown> = {};
+    const createAnswers: string[] = [];
     let total: unknown = "1";
     let summaryCost: unknown = "7000";
     await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
       requests.push(new URL(route.request().url()).pathname);
       const path = requests.at(-1)!;
+      const method = route.request().method();
       let response: unknown;
-      if (path === "/api/v2/gateway/keys") response = { items: [{ ...canonicalKey, ...keyOverrides }], total, page: 1, pageSize: 20, pages: 1 };
+      // The create answers with the Key summary. The plaintext is never in the
+      // browser's create response; only the explicit reveal carries it.
+      if (path === "/api/v2/gateway/keys" && method === "POST") {
+        response = { ...canonicalKey, ...keyOverrides };
+        createAnswers.push(JSON.stringify(response));
+      } else if (path === "/api/v2/gateway/keys") response = { items: [{ ...canonicalKey, ...keyOverrides }], total, page: 1, pageSize: 20, pages: 1 };
+      else if (path === `/api/v2/gateway/keys/${canonicalKey.id}/reveal`) response = { key: { ...canonicalKey, ...keyOverrides }, secret: "sk-cloud-personal" };
+      else if (path === `/api/v2/gateway/keys/${canonicalKey.id}` && method === "DELETE") response = { operationId: "op-revoke-personal", kind: "revoke_key", status: "succeeded" };
       else if (path === `/api/v2/gateway/keys/${canonicalKey.id}`) response = { ...canonicalKey, ...keyOverrides };
       else if (path === "/api/v2/gateway/groups") response = { items: [{ id: "3", name: "Zero multiplier", description: "", platform: "openai", rateMultiplier: 0, subscriptionType: "standard", status: "active" }], total: 1 };
       else if (path.endsWith("/usage-summary")) response = { totalRequests: "7", totalInputTokens: "70", totalOutputTokens: "14", totalTokens: "84", totalActualCostUSDMicros: summaryCost };
@@ -1163,17 +1172,39 @@ test("Cloud personal Key adapter preserves public money casing and read-only DTO
       return Promise.all([api.getGatewayKeys(), api.getGatewayKeyUsage(id)].map((read) => read.then(() => "accepted", (error) => error.message)));
     }, canonicalKey.id);
     assert.deepEqual(totalErrors, ["unsafe_personal_gateway_integer", "unsafe_personal_gateway_integer"]);
+    // Under the cloud identity the four personal Key commands now reach the
+    // Gateway owner through the BFF. The Console no longer refuses them locally,
+    // so each one issues exactly one request against the owner's route.
     const beforeCommands = requests.length;
     const commands = await page.evaluate(async (id) => {
       const api = await import("/apps/console-ui/src/api/console-read-api.ts");
       return Promise.all([api.createGatewayKey({ name: "unsupported", groupId: "3", quotaUsdMicros: 0 }, "csrf", "intent"),
         api.updateGatewayKey(id, { enabled: false }, "csrf", "intent"), api.deleteGatewayKey(id, "csrf", "intent"), api.revealGatewayKey(id, "csrf")]);
     }, canonicalKey.id);
-    assert.equal(requests.length, beforeCommands);
-    for (const result of commands) {
-      assert.equal(result.source, "gateway"); assert.equal(result.available, false);
-      assert.equal(!result.available && result.reasonCode, "gateway_key_capability_unavailable");
+    assert.deepEqual(requests.slice(beforeCommands).sort(), [
+      "/api/v2/gateway/keys",
+      `/api/v2/gateway/keys/${canonicalKey.id}`,
+      `/api/v2/gateway/keys/${canonicalKey.id}`,
+      `/api/v2/gateway/keys/${canonicalKey.id}/reveal`
+    ].sort());
+    const [created, updated, revoked, revealed] = commands;
+    for (const result of [created, updated, revoked, revealed]) {
+      assert.equal(result.source, "gateway"); assert.equal(result.available, true);
     }
+    assert.equal(created.data.id, canonicalKey.id);
+    assert.equal(created.data.name, canonicalKey.name);
+    // The create answer is the Key summary. The plaintext never reached the
+    // browser's create response; the explicit reveal is the only surface that
+    // hands a secret back.
+    assert.equal("value" in created.data, false);
+    assert.equal(createAnswers.length, 1);
+    assert.equal(createAnswers[0].includes("sk-cloud-personal"), false,
+      `the create response carried the plaintext: ${createAnswers[0]}`);
+    assert.equal(updated.data.id, canonicalKey.id);
+    assert.equal(revoked.data.operationId, "op-revoke-personal");
+    assert.equal(revoked.data.status, "deleted");
+    assert.equal(revealed.data.id, canonicalKey.id);
+    assert.equal(revealed.data.value, "sk-cloud-personal");
 
   } finally {
     await browser.close();
@@ -1183,7 +1214,7 @@ test("Cloud personal Key adapter preserves public money casing and read-only DTO
   }
 });
 
-test("Cloud Key credential reauthentication preserves session and wallet and exposes read-only capability", { timeout: 60_000 }, async () => {
+test("Cloud Key credential reauthentication preserves session and wallet and exposes the personal Key management capability", { timeout: 60_000 }, async () => {
   const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
   process.env.VITE_CONSOLE_IDENTITY = "cloud";
   const demo = await startConsoleDemoServer({ port: 0, log: false });
@@ -1214,8 +1245,10 @@ test("Cloud Key credential reauthentication preserves session and wallet and exp
     await page.getByText("API 密钥访问需要重新登录", { exact: true }).waitFor({ state: "visible", timeout: 5000 });
     const login = page.getByRole("link", { name: "重新登录", exact: true });
     assert.equal(await login.getAttribute("href"), "/login?redirect=%2Fconsole%2Fapi%2Fkeys");
-    await page.getByText("当前仅支持查看 API 密钥与用量，创建、修改、删除和显示完整密钥暂不可用。", { exact: true }).waitFor();
-    assert.equal(await page.getByRole("button", { name: "创建 API 密钥", exact: true }).count(), 0);
+    // The Cloud identity reaches the Gateway owner through the BFF, so it no
+    // longer answers with a read-only notice and it offers the create action.
+    assert.equal(await page.getByText("当前仅支持查看 API 密钥与用量，创建、修改、删除和显示完整密钥暂不可用。", { exact: true }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "创建 API 密钥", exact: true }).count(), 1);
     const priorSessionReads = sessionReads;
     const sessionAndWallet = await page.evaluate(async () => {
       const auth = await import("/apps/console-ui/src/api/auth-api.ts");
@@ -1231,8 +1264,16 @@ test("Cloud Key credential reauthentication preserves session and wallet and exp
     await page.getByRole("button", { name: "刷新 API 密钥", exact: true }).click();
     await page.locator(".keys-table").getByText(canonicalKey.name, { exact: true }).waitFor();
     assert.equal(await page.getByText("API 密钥访问需要重新登录", { exact: true }).count(), 0);
-    for (const name of ["显示 API 密钥", "使用说明", "创建 API 密钥", "编辑", "启用", "停用", "重置配额用量", "重置消费限额用量", "删除"]) {
-      assert.equal(await page.getByRole("button", { name, exact: true }).count(), 0, `${name} is unavailable in Cloud`);
+    for (const name of ["显示 API 密钥", "使用说明", "创建 API 密钥"]) {
+      assert.equal(await page.getByRole("button", { name, exact: true }).count(), 1, `${name} is unavailable in Cloud`);
+    }
+    // The management actions are offered, and the owner's own answer decides
+    // whether they are enabled: this Key came back as not manageable.
+    await page.locator(".key-more-actions summary").first().click();
+    for (const name of ["编辑", "停用", "重置配额用量", "重置消费限额用量", "删除"]) {
+      const action = page.getByRole("button", { name, exact: true });
+      assert.equal(await action.count(), 1, `${name} is unavailable in Cloud`);
+      assert.equal(await action.isDisabled(), true, `${name} ignores the owner's manageable fact`);
     }
     await page.locator(".keys-table").getByText("$9,223,372,036,854.78", { exact: true }).waitFor();
     await page.locator(".keys-table").getByText("已用 $9,007,199,254.74", { exact: true }).waitFor();

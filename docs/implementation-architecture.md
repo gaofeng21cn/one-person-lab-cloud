@@ -41,6 +41,15 @@ translating cookies or minting renewable PATs.
 `legacy`) checked by response `source` tags (`gateway`, `sub2api`, `control_plane`,
 `ledger`, `workspace`). There is no cross-identity silent fallback.
 
+The personal Gateway Key management actions are the customer's in every baked
+identity: the Gateway owner decides whether a Key may be managed (the Workspace's
+own managed Key is neither manageable nor revocable), and the Console offers
+create, edit, revoke and reveal against the owner through the Console BFF. The
+Control Plane's personal Key write routes are retired, so it is no longer a
+second writer of a personal Key; its reads and its reveal route stay, and a
+retained Control Plane installation reports personal Key management as
+unavailable.
+
 ### Console Browser Lifecycle
 
 See [Console Browser Lifecycle](implementation/console.md) for route/hook
@@ -106,4 +115,14 @@ reads are forbidden.
   and `workspace_store.go` keep read-only historical key-rotation decoding (`NewKeyID -> OldKeyID`)
   and `workspace_runtime_image_history.go` keeps historical image operation decoding
   strictly as deletion/reconciliation preconditions for pre-existing Workspaces.
+- **Personal Gateway Key Writes**: `services/gateway-integration` declares and
+  implements the native personal Key create/update/reveal/revoke RPCs on
+  `GatewayProductService`, over the same delegated Sub2API authority and the same
+  `PersonalGatewayKey` projection the personal reads already use. The Tenant-managed
+  `GatewayKey` contract is separate and unchanged. `apps/console-bff` exposes the four
+  personal-Key write routes over those RPCs, and the Console's cloud-identity path
+  calls them instead of refusing the capability. The Control Plane's four
+  `/api/gateway/keys` write routes are **not** migrated onto these RPCs and still
+  call Sub2API directly; that migration, and only then the retirement of those
+  routes, is the follow-up slice.
 - **Open Extractions**: Tracked in [roadmap.md](roadmap.md#workspace-key-and-customer-read-boundaries).

@@ -82,7 +82,6 @@ type Sub2APIPublicEndpointClient interface {
 type Sub2APIUserKeyMutationClient interface {
 	CreateUserKey(context.Context, SessionDelegatedCredential, int64, Sub2APICreateKeyInput, string) (Sub2APIWorkspaceKey, error)
 	UpdateUserKey(context.Context, SessionDelegatedCredential, int64, int64, Sub2APIUpdateKeyInput) (Sub2APIWorkspaceKey, error)
-	DeleteUserKey(context.Context, SessionDelegatedCredential, int64, int64) error
 }
 
 type Sub2APIIdempotentUserKeyDeleteClient interface {
@@ -1591,10 +1590,6 @@ func (c *Sub2APIHTTPClient) UpdateUserKey(ctx context.Context, credential Sessio
 		return Sub2APIWorkspaceKey{}, normalizeSub2APIKeyError(err)
 	}
 	return decodeSub2APIUserKey(body, userID, keyID)
-}
-
-func (c *Sub2APIHTTPClient) DeleteUserKey(ctx context.Context, credential SessionDelegatedCredential, userID, keyID int64) error {
-	return c.DeleteUserKeyIdempotent(ctx, credential, userID, keyID, "")
 }
 
 func (c *Sub2APIHTTPClient) DeleteUserKeyIdempotent(ctx context.Context, credential SessionDelegatedCredential, userID, keyID int64, idempotencyKey string) error {

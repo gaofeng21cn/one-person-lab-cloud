@@ -100,14 +100,6 @@ function sourcePost<T>(path: string, body: unknown, csrfToken: string, idempoten
   return sourceWrite<T>(() => postJson<unknown>(path, body, csrfToken, idempotencyKey));
 }
 
-function sourcePatch<T>(path: string, body: unknown, csrfToken: string, idempotencyKey: string): Promise<SourceEnvelope<T>> {
-  return sourceWrite<T>(() => patchJson<unknown>(path, body, csrfToken, idempotencyKey));
-}
-
-function sourceDelete<T>(path: string, csrfToken: string, idempotencyKey: string): Promise<SourceEnvelope<T>> {
-  return sourceWrite<T>(() => deleteJson<unknown>(path, csrfToken, idempotencyKey));
-}
-
 // The baked console identity decides which owner answers the wallet. Exported so
 // both decisions are pinned by tests instead of only by the build environment.
 export function walletReadRoute(cloud: boolean): "/api/v2/wallet" | "/api/gateway/wallet" {
@@ -124,6 +116,30 @@ export function billingReadRoute(cloud: boolean): "/api/v2/legacy-billing" | "/a
 
 export function announcementReadRoute(cloud: boolean): "/api/v2/announcements" | "/api/announcements" {
   return cloud ? "/api/v2/announcements" : "/api/announcements";
+}
+
+// The personal Gateway Key writes have exactly one owner: the Gateway owner,
+// reached through the Console BFF. The Control Plane's own write routes are
+// retired, so no baked identity reaches a second writer.
+export function personalGatewayKeyCreateRoute(): "/api/v2/gateway/keys" {
+  return "/api/v2/gateway/keys";
+}
+
+// The update and the revoke address the same Key, so they share one path and
+// differ by their method.
+export function personalGatewayKeyUpdateRoute(keyId: string): string {
+  return `/api/v2/gateway/keys/${encodeURIComponent(keyId)}`;
+}
+
+export function personalGatewayKeyRevokeRoute(keyId: string): string {
+  return `/api/v2/gateway/keys/${encodeURIComponent(keyId)}`;
+}
+
+// The reveal stays on the Control Plane too: a non-browser consumer still
+// reveals a Key there, and the Workspace's own Key is revealed from that
+// surface as well.
+export function personalGatewayKeyRevealRoute(cloud: boolean, keyId: string): string {
+  return `${cloud ? "/api/v2" : "/api"}/gateway/keys/${encodeURIComponent(keyId)}/reveal`;
 }
 
 // A valid readback is a nonnegative balance, including the zero a charge leaves
@@ -170,6 +186,16 @@ type PersonalGatewayUsageReadback = Omit<GatewayUsageItem, "inputTokens" | "outp
   actualCostUSDMicros: string; durationMs?: string; firstTokenMs?: string;
 };
 type PersonalGatewayKeyUsagePageReadback = Omit<GatewayKeyUsagePageDTO, "items" | "total"> & { items: PersonalGatewayUsageReadback[]; total: string };
+// The Gateway owner answers an explicit reveal with the Key and its raw
+// secret. The secret is handed back once and is never kept by the Console.
+// The create answer carries the Key summary only: the plaintext never reaches
+// the browser.
+type PersonalGatewayKeySecretReadback = { key: PersonalGatewayKeyReadback; secret: string };
+// The Gateway owner answers a revoke with its own operation. The operation is
+// already terminal, because the owner confirms the Key's absence itself.
+type PersonalGatewayOperationReadback = {
+  operationId: string; kind: string; status: string; stage?: string; requestId?: string; createdAt?: string; updatedAt?: string;
+};
 
 function personalGatewayNumber(value: unknown): number {
   if (typeof value !== "string" || !/^(0|[1-9][0-9]*)$/.test(value)) throw new Error("invalid_personal_gateway_integer");
@@ -208,6 +234,90 @@ async function personalGatewayGet<Wire, Data>(path: string, decode: (value: Wire
 
 function personalGatewayUnavailable(reasonCode: string): UnavailableSource {
   return { source: "gateway", available: false, status: "unavailable", fetchedAt: new Date().toISOString(), reasonCode };
+}
+
+// personalGatewayWrite carries one personal Key command to the Gateway owner and
+// projects the owner's answer. It is the write counterpart of personalGatewayGet:
+// the route is the owner's, the state is the owner's, and a failed command never
+// becomes an available envelope.
+async function personalGatewayWrite<Wire, Data>(request: () => Promise<Wire>, decode: (value: Wire) => Data): Promise<SourceEnvelope<Data>> {
+  const data = decode(await request());
+  return { source: "gateway", available: true, status: "available", fetchedAt: new Date().toISOString(), data };
+}
+
+// personalGatewayRequestMoney renders one exact USD micros amount as the decimal
+// string the personal Gateway contract publishes. The amount is a safe integer,
+// so the rendering never loses a digit.
+function personalGatewayRequestMoney(value: number): string {
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error("invalid_personal_gateway_money");
+  return String(value);
+}
+
+// personalGatewayCreateBody is the create command in the personal Gateway
+// contract's own spelling: the money is an exact decimal string and the address
+// lists are plain lists.
+export function personalGatewayCreateBody(input: CreateGatewayKeyRequest): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    name: input.name,
+    groupId: input.groupId,
+    quotaUSDMicros: personalGatewayRequestMoney(input.quotaUsdMicros)
+  };
+  if (input.ipWhitelist) body.ipWhitelist = input.ipWhitelist;
+  if (input.ipBlacklist) body.ipBlacklist = input.ipBlacklist;
+  if (input.expiresInDays !== undefined) body.expiresInDays = input.expiresInDays;
+  if (input.rateLimit5hUsdMicros !== undefined) body.rateLimit5hUSDMicros = personalGatewayRequestMoney(input.rateLimit5hUsdMicros);
+  if (input.rateLimit1dUsdMicros !== undefined) body.rateLimit1dUSDMicros = personalGatewayRequestMoney(input.rateLimit1dUsdMicros);
+  if (input.rateLimit7dUsdMicros !== undefined) body.rateLimit7dUSDMicros = personalGatewayRequestMoney(input.rateLimit7dUsdMicros);
+  return body;
+}
+
+// personalGatewayUpdateBody is the update command in the personal Gateway
+// contract's own spelling. An absent property leaves that fact unchanged, an
+// address list replaces the Key's list, and an empty expiry is stated as the
+// explicit instruction to clear it.
+export function personalGatewayUpdateBody(input: UpdateGatewayKeyRequest): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  if (input.name !== undefined) body.name = input.name;
+  if (input.groupId !== undefined) body.groupId = input.groupId;
+  if (input.ipWhitelist !== undefined) body.ipWhitelist = { values: input.ipWhitelist };
+  if (input.ipBlacklist !== undefined) body.ipBlacklist = { values: input.ipBlacklist };
+  if (input.quotaUsdMicros !== undefined) body.quotaUSDMicros = personalGatewayRequestMoney(input.quotaUsdMicros);
+  if (input.expiresAt !== undefined) {
+    if (input.expiresAt) body.expiresAt = new Date(input.expiresAt).toISOString();
+    else body.clearExpiresAt = true;
+  }
+  if (input.rateLimit5hUsdMicros !== undefined) body.rateLimit5hUSDMicros = personalGatewayRequestMoney(input.rateLimit5hUsdMicros);
+  if (input.rateLimit1dUsdMicros !== undefined) body.rateLimit1dUSDMicros = personalGatewayRequestMoney(input.rateLimit1dUsdMicros);
+  if (input.rateLimit7dUsdMicros !== undefined) body.rateLimit7dUSDMicros = personalGatewayRequestMoney(input.rateLimit7dUsdMicros);
+  if (input.resetQuota !== undefined) body.resetQuota = input.resetQuota;
+  if (input.resetRateLimitUsage !== undefined) body.resetRateLimitUsage = input.resetRateLimitUsage;
+  if (input.enabled !== undefined) body.enabled = input.enabled;
+  return body;
+}
+
+// decodePersonalGatewayKeySecret projects the owner's create or reveal answer
+// into the Console's secret vocabulary. The secret is carried as it is and is
+// never retained beyond this answer.
+export function decodePersonalGatewayKeySecret(value: PersonalGatewayKeySecretReadback): GatewayKeySecretDTO {
+  const key = decodePersonalGatewayKey(value.key);
+  if (typeof value.secret !== "string" || !value.secret) throw new Error("invalid_personal_gateway_secret");
+  return { id: key.id, name: key.name, status: key.status, value: value.secret };
+}
+
+// decodePersonalGatewayKeyOperation projects the owner's terminal revoke operation
+// into the Console's delete vocabulary. The owner confirmed the Key's absence
+// itself, so the delete is the reported outcome and not the Console's guess.
+export function decodePersonalGatewayKeyOperation(value: PersonalGatewayOperationReadback): OperationStatusDTO {
+  if (typeof value.operationId !== "string" || !value.operationId || value.kind !== "revoke_key" || value.status !== "succeeded") {
+    throw new Error("invalid_personal_gateway_operation");
+  }
+  return {
+    operationId: value.operationId,
+    status: "deleted",
+    ...(value.stage ? { phase: value.stage } : {}),
+    ...(value.createdAt ? { createdAt: value.createdAt } : {}),
+    ...(value.updatedAt ? { updatedAt: value.updatedAt } : {})
+  };
 }
 
 export function gatewayKeyReadFailure(error: unknown): UnavailableSource {
@@ -249,18 +359,33 @@ export function getGatewayKey(keyId: string, signal?: AbortSignal): Promise<Sour
 }
 
 export function createGatewayKey(input: CreateGatewayKeyRequest, csrfToken: string, idempotencyKey: string): Promise<SourceEnvelope<GatewayKeySummaryDTO>> {
-  if (cloudIdentity) return Promise.resolve(personalGatewayUnavailable("gateway_key_capability_unavailable"));
-  return sourcePost<GatewayKeySummaryDTO>("/api/gateway/keys", input, csrfToken, idempotencyKey);
+  // The Gateway owner owns the personal Key write. A retained Control Plane
+  // installation reaches no owner, so it reports the capability as unavailable
+  // instead of writing a second Key behind the owner's back.
+  if (!cloudIdentity) return Promise.resolve(personalGatewayUnavailable("gateway_key_management_unavailable"));
+  return personalGatewayWrite(
+    // The owner's create answer is the Key summary. The plaintext never crosses
+    // this boundary: the customer takes the secret from the explicit reveal,
+    // which is the surface that hands a secret back once.
+    () => postJson<PersonalGatewayKeyReadback>(personalGatewayKeyCreateRoute(), personalGatewayCreateBody(input), csrfToken, idempotencyKey),
+    decodePersonalGatewayKey
+  );
 }
 
 export function updateGatewayKey(keyId: string, input: UpdateGatewayKeyRequest, csrfToken: string, idempotencyKey: string): Promise<SourceEnvelope<GatewayKeySummaryDTO>> {
-  if (cloudIdentity) return Promise.resolve(personalGatewayUnavailable("gateway_key_capability_unavailable"));
-  return sourcePatch<GatewayKeySummaryDTO>(`/api/gateway/keys/${encodeURIComponent(keyId)}`, input, csrfToken, idempotencyKey);
+  if (!cloudIdentity) return Promise.resolve(personalGatewayUnavailable("gateway_key_management_unavailable"));
+  return personalGatewayWrite(
+    () => patchJson<PersonalGatewayKeyReadback>(personalGatewayKeyUpdateRoute(keyId), personalGatewayUpdateBody(input), csrfToken, idempotencyKey),
+    decodePersonalGatewayKey
+  );
 }
 
 export function deleteGatewayKey(keyId: string, csrfToken: string, idempotencyKey: string): Promise<SourceEnvelope<OperationStatusDTO>> {
-  if (cloudIdentity) return Promise.resolve(personalGatewayUnavailable("gateway_key_capability_unavailable"));
-  return sourceDelete<OperationStatusDTO>(`/api/gateway/keys/${encodeURIComponent(keyId)}`, csrfToken, idempotencyKey);
+  if (!cloudIdentity) return Promise.resolve(personalGatewayUnavailable("gateway_key_management_unavailable"));
+  return personalGatewayWrite(
+    () => deleteJson<PersonalGatewayOperationReadback>(personalGatewayKeyRevokeRoute(keyId), csrfToken, idempotencyKey),
+    decodePersonalGatewayKeyOperation
+  );
 }
 
 export function getGatewayBalanceHistory(page = 1, pageSize = 20, signal?: AbortSignal): Promise<SourceEnvelope<GatewayBalanceHistoryPageDTO>> {
@@ -269,8 +394,14 @@ export function getGatewayBalanceHistory(page = 1, pageSize = 20, signal?: Abort
 }
 
 export function revealGatewayKey(keyId: string, csrfToken: string): Promise<SourceEnvelope<GatewayKeySecretDTO>> {
-  if (cloudIdentity) return Promise.resolve(personalGatewayUnavailable("gateway_key_capability_unavailable"));
-  return sourcePost<GatewayKeySecretDTO>(`/api/gateway/keys/${encodeURIComponent(keyId)}/reveal`, {}, csrfToken);
+  if (!cloudIdentity) return sourcePost<GatewayKeySecretDTO>(personalGatewayKeyRevealRoute(false, keyId), {}, csrfToken);
+  // The BFF guards every write with the caller's own idempotency key, and the
+  // retained route never carried one. A reveal asks the owner again for the
+  // secret, so a fresh key names this one reveal.
+  return personalGatewayWrite(
+    () => postJson<PersonalGatewayKeySecretReadback>(personalGatewayKeyRevealRoute(true, keyId), {}, csrfToken, crypto.randomUUID()),
+    decodePersonalGatewayKeySecret
+  );
 }
 
 export function getGatewayKeyUsage(keyId: string, page = 1, pageSize = 20, period: GatewayUsagePeriod = "month", signal?: AbortSignal): Promise<SourceEnvelope<GatewayKeyUsagePageDTO>> {

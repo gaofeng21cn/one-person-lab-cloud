@@ -616,18 +616,6 @@ func TestUserKeyParityCreateAndUpdatePayloads(t *testing.T) {
 	}
 }
 
-func TestUserKeyDelete(t *testing.T) {
-	client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodDelete || r.URL.Path != "/api/v1/keys/17" || r.Header.Get("Authorization") != "Bearer delegated-user-token" {
-			t.Fatalf("unexpected delegated delete: %s %s auth=%q", r.Method, r.URL.Path, r.Header.Get("Authorization"))
-		}
-		w.WriteHeader(http.StatusNoContent)
-	}, time.Second)
-	if err := client.DeleteUserKey(context.Background(), SessionDelegatedCredential{Bearer: "delegated-user-token"}, 41, 17); err != nil {
-		t.Fatalf("delete key: %v", err)
-	}
-}
-
 func TestIdempotentUserKeyDeletePreservesExactOperationHeader(t *testing.T) {
 	client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete || r.URL.Path != "/api/v1/keys/17" ||

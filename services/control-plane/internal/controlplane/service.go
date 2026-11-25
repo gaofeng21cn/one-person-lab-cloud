@@ -109,14 +109,6 @@ func (s *Service) UpdateGatewayUserKey(ctx context.Context, credential clients.S
 	return client.UpdateUserKey(ctx, credential, userID, keyID, input)
 }
 
-func (s *Service) DeleteGatewayUserKey(ctx context.Context, credential clients.SessionDelegatedCredential, userID, keyID int64) error {
-	client, ok := s.sub2API.(clients.Sub2APIUserKeyMutationClient)
-	if !ok {
-		return errors.New("sub2api_user_key_unavailable")
-	}
-	return client.DeleteUserKey(ctx, credential, userID, keyID)
-}
-
 func (s *Service) Sub2APIUser(ctx context.Context, userID int64) (clients.Sub2APIIdentity, error) {
 	client, ok := s.sub2API.(clients.Sub2APIUserReadClient)
 	if !ok {

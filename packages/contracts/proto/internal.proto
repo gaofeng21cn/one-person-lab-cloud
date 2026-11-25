@@ -2351,6 +2351,10 @@ service GatewayProductService {
  rpc ListPersonalGatewayGroups(ListPersonalGatewayGroupsRpcRequest) returns (PersonalGatewayGroupPage);
  rpc ListPersonalGatewayKeyUsage(ListPersonalGatewayKeyUsageRpcRequest) returns (PersonalGatewayKeyUsagePage);
  rpc GetPersonalGatewayKeyUsageSummary(GetPersonalGatewayKeyUsageSummaryRpcRequest) returns (UsageSummary);
+ rpc CreatePersonalGatewayKey(CreatePersonalGatewayKeyRpcRequest) returns (PersonalGatewayKey);
+ rpc UpdatePersonalGatewayKey(UpdatePersonalGatewayKeyRpcRequest) returns (PersonalGatewayKey);
+ rpc RevealPersonalGatewayKey(RevealPersonalGatewayKeyRpcRequest) returns (PersonalGatewayKeySecret);
+ rpc RevokePersonalGatewayKey(RevokePersonalGatewayKeyRpcRequest) returns (Operation);
 
  rpc ListWorkspaceTransactions(ListWorkspaceTransactionsRpcRequest) returns (WalletOperationPage);
  rpc GetWorkspaceTransactionTrend(GetWorkspaceTransactionTrendRpcRequest) returns (WorkspaceTransactionTrend);
@@ -3465,6 +3469,10 @@ AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES = 153;
  AUTHORIZATION_ACTION_ENUM_LISTOPERATORDEPLOYMENTS = 166;
  AUTHORIZATION_ACTION_ENUM_GETOPERATORWORKSPACEACCESS = 167;
  AUTHORIZATION_ACTION_ENUM_GETTENANTWALLET = 168;
+ AUTHORIZATION_ACTION_ENUM_CREATEPERSONALGATEWAYKEY = 169;
+ AUTHORIZATION_ACTION_ENUM_UPDATEPERSONALGATEWAYKEY = 170;
+ AUTHORIZATION_ACTION_ENUM_REVEALPERSONALGATEWAYKEY = 171;
+ AUTHORIZATION_ACTION_ENUM_REVOKEPERSONALGATEWAYKEY = 172;
 }
 
 enum ServiceIdentityEnum {
@@ -4666,6 +4674,68 @@ message GetPersonalGatewayKeyUsageSummaryRpcRequest {
  CallContext context = 1;
  string key_id = 2;
  string period = 3;
+}
+// Personal Gateway Key writes use the same delegated Sub2API authority as the
+// personal reads above. The write field set is the personal key's own set, so
+// the Tenant-managed GatewayKey contract is never redefined by it. A created
+// or revealed key carries its secret exactly once; the ordinary personal
+// projection never carries a secret.
+message PersonalGatewayKeySecret {
+ PersonalGatewayKey key = 1;
+ string secret = 2;
+}
+// A present list replaces the key's list; an absent list leaves it unchanged.
+// The wrapper exists because an empty list is a real instruction that clears
+// the list, which a repeated field alone cannot express.
+message PersonalGatewayKeyStringList {
+ repeated string values = 1;
+}
+message CreatePersonalGatewayKeyRequest {
+ string name = 1;
+ string group_id = 2;
+ repeated string ip_whitelist = 3;
+ repeated string ip_blacklist = 4;
+ int64 quota_usd_micros = 5;
+ optional int32 expires_in_days = 6;
+ int64 rate_limit5h_usd_micros = 7;
+ int64 rate_limit1d_usd_micros = 8;
+ int64 rate_limit7d_usd_micros = 9;
+}
+message UpdatePersonalGatewayKeyRequest {
+ optional string name = 1;
+ optional string group_id = 2;
+ optional PersonalGatewayKeyStringList ip_whitelist = 3;
+ optional PersonalGatewayKeyStringList ip_blacklist = 4;
+ optional int64 quota_usd_micros = 5;
+ optional google.protobuf.Timestamp expires_at = 6;
+ optional int64 rate_limit5h_usd_micros = 7;
+ optional int64 rate_limit1d_usd_micros = 8;
+ optional int64 rate_limit7d_usd_micros = 9;
+ optional bool reset_quota = 10;
+ optional bool reset_rate_limit_usage = 11;
+ optional bool enabled = 12;
+ // Clearing an existing expiry is an instruction in its own right, so it is
+ // stated explicitly instead of being carried by an absent or empty instant.
+ // expires_at sets an absolute instant; clear_expires_at removes the expiry.
+ // The two are exclusive: a request that carries both is refused.
+ optional bool clear_expires_at = 13;
+}
+message CreatePersonalGatewayKeyRpcRequest {
+ CallContext context = 1;
+ CreatePersonalGatewayKeyRequest body = 2;
+}
+message UpdatePersonalGatewayKeyRpcRequest {
+ CallContext context = 1;
+ string key_id = 2;
+ UpdatePersonalGatewayKeyRequest body = 3;
+}
+message RevealPersonalGatewayKeyRpcRequest {
+ CallContext context = 1;
+ string key_id = 2;
+}
+message RevokePersonalGatewayKeyRpcRequest {
+ CallContext context = 1;
+ string key_id = 2;
 }
 enum PersonalGatewayKeyStatusEnum {
  PERSONAL_GATEWAY_KEY_STATUS_ENUM_UNSPECIFIED = 0;

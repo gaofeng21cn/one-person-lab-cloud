@@ -28,6 +28,16 @@ chronological snapshots.
     MCP (`/api/v2/mcp`), quote review and Gateway session-backed customer
     reads (announcements and legacy personal billing through authenticated
     Control Plane bridges).
+  - The Cloud personal Gateway Key surface is writable: the Gateway owner
+    reports a personal Key as manageable and revocable (the Workspace's own
+    managed Key is neither), and the Console offers create, edit, revoke and
+    reveal against the BFF. The Control Plane's own `/api/gateway/keys` write
+    routes are retired — the Control Plane is no longer a second writer of a
+    personal Key — while its personal Key reads and its reveal route stay,
+    because a non-browser consumer still reads them and the Workspace's own Key
+    is revealed from that surface. A retained Control Plane installation
+    therefore reports personal Key management as unavailable instead of writing
+    a second Key behind the owner's back.
   - Control Plane image-replacement creation/preview/worker commands and admin
     activation endpoints are retired; only the operator image-policy GET
     (`GET /api/operator/workspace-runtime-image-policy`), Fabric image
