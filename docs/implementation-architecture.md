@@ -44,9 +44,11 @@ translating cookies or minting renewable PATs.
 The personal Gateway Key management actions are the customer's in every baked
 identity: the Gateway owner decides whether a Key may be managed (the Workspace's
 own managed Key is neither manageable nor revocable), and the Console offers
-create, edit, revoke and reveal against the owner — the cloud identity through
-the Console BFF, the retained Control Plane identity through the Control Plane's
-own routes while those routes still exist.
+create, edit, revoke and reveal against the owner through the Console BFF. The
+Control Plane's personal Key write routes are retired, so it is no longer a
+second writer of a personal Key; its reads and its reveal route stay, and a
+retained Control Plane installation reports personal Key management as
+unavailable.
 
 ### Console Browser Lifecycle
 

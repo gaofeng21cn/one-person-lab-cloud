@@ -58,9 +58,10 @@ Plane / delegated process-local custody onto canonical domain owners:
    - The key CRUD half has moved for the published Console: the Gateway owner
      owns the personal Key create/update/reveal/revoke capability and the Console
      reaches it through the Console BFF. The legacy `/api/*` write panels are
-     retired in the follow-up slice, together with the retained Control Plane
-     Console build's call to them; the Control Plane's read and reveal routes
-     stay, because a non-browser consumer still reads them.
+     retired with them, together with the retained Control Plane Console build's
+     call to them; the Control Plane's read and reveal routes stay, because a
+     non-browser consumer still reads them and the Workspace's own Key is
+     revealed from that surface.
 2. **Billing & Announcements Extraction**: Retire retained Control Plane
    bridges (`/internal/cloud/legacy-billing/*`, `/internal/cloud/announcements`)
    once Cloud Ledger and Announcement owners serve authenticated CloudIdentity

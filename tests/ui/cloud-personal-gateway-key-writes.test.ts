@@ -21,25 +21,19 @@ import { cloudIdentity } from "../../apps/console-ui/src/app/console-identity.ts
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 
-// The four personal Key writes are the same decision as the personal reads: the
-// baked identity selects the owner. A cloud build asks the Gateway owner through
-// the BFF; a retained build keeps the Control Plane route it authenticated
-// against. Neither identity falls back to the other's route.
-test("the personal Gateway Key writes follow the baked identity", () => {
-  assert.equal(personalGatewayKeyCreateRoute(true), "/api/v2/gateway/keys");
-  assert.equal(personalGatewayKeyUpdateRoute(true, "71"), "/api/v2/gateway/keys/71");
-  assert.equal(personalGatewayKeyRevokeRoute(true, "71"), "/api/v2/gateway/keys/71");
+// The personal Key writes have exactly one owner: the Gateway owner, reached
+// through the Console BFF. The Control Plane's own write routes are retired, so
+// no identity reaches a second writer. The reveal keeps its Control Plane
+// route, because the Workspace's own Key is revealed from that surface too.
+test("the personal Gateway Key writes address the Gateway owner only", () => {
+  assert.equal(personalGatewayKeyCreateRoute(), "/api/v2/gateway/keys");
+  assert.equal(personalGatewayKeyUpdateRoute("71"), "/api/v2/gateway/keys/71");
+  assert.equal(personalGatewayKeyRevokeRoute("71"), "/api/v2/gateway/keys/71");
   assert.equal(personalGatewayKeyRevealRoute(true, "71"), "/api/v2/gateway/keys/71/reveal");
 
-  assert.equal(personalGatewayKeyCreateRoute(false), "/api/gateway/keys");
-  assert.equal(personalGatewayKeyUpdateRoute(false, "71"), "/api/gateway/keys/71");
-  assert.equal(personalGatewayKeyRevokeRoute(false, "71"), "/api/gateway/keys/71");
   assert.equal(personalGatewayKeyRevealRoute(false, "71"), "/api/gateway/keys/71/reveal");
 
-  for (const choose of [personalGatewayKeyCreateRoute, personalGatewayKeyUpdateRoute, personalGatewayKeyRevokeRoute, personalGatewayKeyRevealRoute]) {
-    assert.notEqual(choose(true, "71"), choose(false, "71"), `${choose.name} must follow the baked identity`);
-  }
-  for (const route of [personalGatewayKeyCreateRoute(true), personalGatewayKeyUpdateRoute(true, "71"), personalGatewayKeyRevokeRoute(true, "71"), personalGatewayKeyRevealRoute(true, "71")]) {
+  for (const route of [personalGatewayKeyCreateRoute(), personalGatewayKeyUpdateRoute("71"), personalGatewayKeyRevokeRoute("71"), personalGatewayKeyRevealRoute(true, "71")]) {
     assert.match(route, /^\/api\/v2\//);
   }
 });
@@ -153,7 +147,11 @@ test("the personal Gateway Key revoke projection reports the owner's terminal op
   assert.throws(() => decodePersonalGatewayKeyOperation({ operationId: "71", kind: "revoke_key", status: "accepted" }), /invalid_personal_gateway_operation/);
 });
 
-test("the retained identity keeps the Control Plane write routes it authenticated against", async () => {
+// The Control Plane is no longer a writer of a personal Key. A retained
+// installation that reaches no owner reports the capability as unavailable and
+// asks nothing of anybody, instead of writing a second Key behind the owner's
+// back. Its reveal still reaches the retained Control Plane route.
+test("the retained identity writes no personal Key and still reveals one", async () => {
   const requested: Array<{ path: string; method: string; idempotency: string | null }> = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
@@ -171,20 +169,24 @@ test("the retained identity keeps the Control Plane write routes it authenticate
     }), { status: 200, headers: { "content-type": "application/json" } });
   }) as typeof fetch;
 
-  await createGatewayKey({ name: "personal key", groupId: "4", quotaUsdMicros: 0 }, "csrf-1", "create-1");
-  await updateGatewayKey("71", { quotaUsdMicros: 1 }, "csrf-1", "update-1");
-  await deleteGatewayKey("71", "csrf-1", "delete-1");
-  await revealGatewayKey("71", "csrf-1");
+  const created = await createGatewayKey({ name: "personal key", groupId: "4", quotaUsdMicros: 0 }, "csrf-1", "create-1");
+  const updated = await updateGatewayKey("71", { quotaUsdMicros: 1 }, "csrf-1", "update-1");
+  const revoked = await deleteGatewayKey("71", "csrf-1", "delete-1");
+  const revealed = await revealGatewayKey("71", "csrf-1");
 
+  assert.equal(created.available, false);
+  assert.equal(created.reasonCode, "gateway_key_management_unavailable");
+  assert.equal(updated.available, false);
+  assert.equal(updated.reasonCode, "gateway_key_management_unavailable");
+  assert.equal(revoked.available, false);
+  assert.equal(revoked.reasonCode, "gateway_key_management_unavailable");
+  // The reveal is still the retained Control Plane surface.
+  assert.equal(revealed.available, true);
   assert.deepEqual(requested.map((row) => `${row.method} ${row.path}`), [
-    "POST /api/gateway/keys",
-    "PATCH /api/gateway/keys/71",
-    "DELETE /api/gateway/keys/71",
     "POST /api/gateway/keys/71/reveal"
   ]);
   // The retained reveal never carried an idempotency key and still does not.
-  assert.equal(requested[3].idempotency, null);
-  assert.equal(requested[0].idempotency, "create-1");
+  assert.equal(requested[0].idempotency, null);
 });
 
 // The refusal the cloud build used to answer is gone: the cloud path asks the
@@ -200,9 +202,9 @@ test("the cloud identity no longer refuses the personal Gateway Key writes", () 
   // Each of the four writes asks the owner through the BFF under the cloud
   // identity, and keeps the retained Control Plane route otherwise.
   for (const route of [
-    "personalGatewayKeyCreateRoute(true)",
-    "personalGatewayKeyUpdateRoute(true, keyId)",
-    "personalGatewayKeyRevokeRoute(true, keyId)",
+    "personalGatewayKeyCreateRoute()",
+    "personalGatewayKeyUpdateRoute(keyId)",
+    "personalGatewayKeyRevokeRoute(keyId)",
     "personalGatewayKeyRevealRoute(true, keyId)"
   ]) {
     assert.ok(readApi.includes(route), `the cloud write path never reaches ${route}`);

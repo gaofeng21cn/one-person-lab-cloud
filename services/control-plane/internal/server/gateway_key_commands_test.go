@@ -19,17 +19,10 @@ type gatewayKeyCommandClient struct {
 	*customerFactsSub2API
 	keys                   map[int64]clients.Sub2APIWorkspaceKey
 	credentials            []clients.SessionDelegatedCredential
-	createInputs           []clients.Sub2APICreateKeyInput
-	createKeys             []string
-	createCalls            int
 	updateInputs           []clients.Sub2APIUpdateKeyInput
 	updateCalls            int
 	updateErr              error
 	updateFailsBeforeWrite bool
-	deleted                []int64
-	deleteCalls            int
-	deleteErr              error
-	deleteFailsBeforeWrite bool
 	userKeyReadIDs         []int64
 	userKeyErr             error
 	postUpdateQuotaUsed    int64
@@ -90,9 +83,6 @@ func (c *gatewayKeyCommandClient) CreateUserKey(_ context.Context, credential cl
 	if err := c.rememberCredential(credential); err != nil {
 		return clients.Sub2APIWorkspaceKey{}, err
 	}
-	c.createInputs = append(c.createInputs, input)
-	c.createKeys = append(c.createKeys, idempotencyKey)
-	c.createCalls++
 	expiresAt := time.Date(2026, 8, 18, 1, 2, 3, 0, time.UTC)
 	groupID := input.GroupID
 	key := clients.Sub2APIWorkspaceKey{
@@ -175,23 +165,6 @@ func (c *gatewayKeyCommandClient) UpdateUserKey(_ context.Context, credential cl
 	return key, nil
 }
 
-func (c *gatewayKeyCommandClient) DeleteUserKey(_ context.Context, credential clients.SessionDelegatedCredential, userID, keyID int64) error {
-	if err := c.rememberCredential(credential); err != nil {
-		return err
-	}
-	key, ok := c.keys[keyID]
-	if !ok || key.UserID != userID {
-		return clients.ErrSub2APIKeyNotFound
-	}
-	c.deleteCalls++
-	if c.deleteErr != nil && c.deleteFailsBeforeWrite {
-		return c.deleteErr
-	}
-	c.deleted = append(c.deleted, keyID)
-	delete(c.keys, keyID)
-	return c.deleteErr
-}
-
 func newGatewayKeyCommandFixture(t *testing.T) (http.Handler, *gatewayKeyCommandClient, *memoryTableStore, *httptest.ResponseRecorder) {
 	t.Helper()
 	store := newMemoryTableStore()
@@ -232,44 +205,11 @@ func TestGatewayPublicEndpointUsesConfiguredSub2API(t *testing.T) {
 	}
 }
 
-func TestGatewayGeneralKeyAcceptsSub2APIParityFields(t *testing.T) {
-	server, _, _, session := newGatewayKeyCommandFixture(t)
-	created := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/gateway/keys", `{
-		"name":"parity-key",
-		"groupId":"7",
-		"ipWhitelist":["203.0.113.10"],
-		"ipBlacklist":["198.51.100.0/24"],
-		"quotaUsdMicros":1250000,
-		"expiresInDays":30,
-		"rateLimit5hUsdMicros":5000000,
-		"rateLimit1dUsdMicros":10000000,
-		"rateLimit7dUsdMicros":20000000
-	}`, "create-parity-key-once")
-	if created.Code != http.StatusCreated {
-		t.Fatalf("parity create = %d: %s", created.Code, created.Body.String())
-	}
-	keyID := stringValue(mapField(decodeSourceEnvelope(t, created), "data")["id"])
-	updated := requestWithMutationKeyForTest(t, server, session, http.MethodPatch, "/api/gateway/keys/"+keyID, `{
-		"name":"parity-key-edited",
-		"groupId":"8",
-		"enabled":false,
-		"ipWhitelist":[],
-		"ipBlacklist":["192.0.2.0/24"],
-		"quotaUsdMicros":2500000,
-		"expiresAt":"2026-09-18T01:02:03Z",
-		"rateLimit5hUsdMicros":0,
-		"rateLimit1dUsdMicros":12000000,
-		"rateLimit7dUsdMicros":24000000,
-		"resetQuota":true,
-		"resetRateLimitUsage":true
-	}`, "update-parity-key-once")
-	if updated.Code != http.StatusOK {
-		t.Fatalf("parity update = %d: %s", updated.Code, updated.Body.String())
-	}
-}
-
-func TestGatewayGeneralKey(t *testing.T) {
-	server, client, store, session := newGatewayKeyCommandFixture(t)
+// The retained personal Gateway Key read surface still protects the Workspace's
+// own Key and still projects the general Key's fields. The personal Key writes
+// left the Control Plane, so this case covers only what stayed.
+func TestGatewayKeyListProjectionProtectsWorkspaceKeys(t *testing.T) {
+	server, client, _, session := newGatewayKeyCommandFixture(t)
 	listed := requestWithSession(t, server, session, http.MethodGet, "/api/gateway/keys", "")
 	if listed.Code != http.StatusOK || strings.Contains(listed.Body.String(), "key-secret") {
 		t.Fatalf("list status = %d: %s", listed.Code, listed.Body.String())
@@ -284,87 +224,10 @@ func TestGatewayGeneralKey(t *testing.T) {
 			t.Fatalf("general key projection = %#v", key)
 		}
 	}
-
-	created := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/gateway/keys", `{"name":"new-general","groupId":"7","quotaUsdMicros":1250000,"expiresInDays":30}`, "create-general-once")
-	if created.Code != http.StatusCreated || strings.Contains(created.Body.String(), "created-key-secret") {
-		t.Fatalf("create status = %d: %s", created.Code, created.Body.String())
-	}
-	createdData := mapField(decodeSourceEnvelope(t, created), "data")
-	if createdData["id"] != "19" || createdData["expiresAt"] != "2026-08-18T01:02:03Z" || len(client.createInputs) != 1 || client.createKeys[0] != "create-general-once" {
-		t.Fatalf("created data=%#v inputs=%#v keys=%#v", createdData, client.createInputs, client.createKeys)
-	}
-
-	updated := requestWithMutationKeyForTest(t, server, session, http.MethodPatch, "/api/gateway/keys/19", `{"enabled":false}`, "disable-general-once")
-	if updated.Code != http.StatusOK || mapField(decodeSourceEnvelope(t, updated), "data")["status"] != "disabled" || len(client.updateInputs) != 1 {
-		t.Fatalf("update status = %d inputs=%#v: %s", updated.Code, client.updateInputs, updated.Body.String())
-	}
-	deleted := requestWithMutationKeyForTest(t, server, session, http.MethodDelete, "/api/gateway/keys/19", `{}`, "delete-general-once")
-	if deleted.Code != http.StatusOK || len(client.deleted) != 1 || client.deleted[0] != 19 {
-		t.Fatalf("delete status = %d deleted=%#v: %s", deleted.Code, client.deleted, deleted.Body.String())
-	}
-
-	for _, operation := range store.runtimeOps {
-		encoded, _ := json.Marshal(operation)
-		if strings.Contains(string(encoded), "key-secret") || strings.Contains(string(encoded), "delegated-user-token") {
-			t.Fatalf("operation leaked secret: %s", encoded)
-		}
-	}
-	for _, audit := range store.auditEvents {
-		encoded, _ := json.Marshal(audit)
-		if strings.Contains(string(encoded), "key-secret") || strings.Contains(string(encoded), "delegated-user-token") {
-			t.Fatalf("audit leaked secret: %s", encoded)
-		}
-	}
 	for _, credential := range client.credentials {
 		if credential.Bearer != "test-user-delegated-token" {
 			t.Fatalf("wrong delegated credential: %#v", credential)
 		}
-	}
-}
-
-func TestGatewayGeneralKeyReplayConvergence(t *testing.T) {
-	server, client, store, session := newGatewayKeyCommandFixture(t)
-	create := func(body string) *httptest.ResponseRecorder {
-		return requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/gateway/keys", body, "create-replay")
-	}
-	if first := create(`{"name":"replay-key","groupId":"7","quotaUsdMicros":1250000}`); first.Code != http.StatusCreated {
-		t.Fatalf("first create = %d: %s", first.Code, first.Body.String())
-	}
-	if replay := create(`{"name":"replay-key","groupId":"7","quotaUsdMicros":1250000}`); replay.Code != http.StatusOK || client.createCalls != 1 {
-		t.Fatalf("create replay = %d calls=%d: %s", replay.Code, client.createCalls, replay.Body.String())
-	}
-	if conflict := create(`{"name":"different-key","groupId":"7","quotaUsdMicros":1250000}`); conflict.Code != http.StatusConflict || client.createCalls != 1 {
-		t.Fatalf("create conflict = %d calls=%d: %s", conflict.Code, client.createCalls, conflict.Body.String())
-	}
-
-	client.updateErr = errors.New("response lost after update")
-	updated := requestWithMutationKeyForTest(t, server, session, http.MethodPatch, "/api/gateway/keys/19", `{"enabled":false}`, "update-response-loss")
-	if updated.Code != http.StatusOK || client.updateCalls != 1 || client.keys[19].Status != "disabled" {
-		t.Fatalf("lost update response = %d calls=%d key=%#v: %s", updated.Code, client.updateCalls, client.keys[19], updated.Body.String())
-	}
-	client.updateErr, client.updateFailsBeforeWrite = errors.New("response lost before update"), true
-	unknown := requestWithMutationKeyForTest(t, server, session, http.MethodPatch, "/api/gateway/keys/19", `{"enabled":true}`, "update-unknown")
-	if unknown.Code != http.StatusBadGateway || client.updateCalls != 2 {
-		t.Fatalf("unknown update = %d calls=%d: %s", unknown.Code, client.updateCalls, unknown.Body.String())
-	}
-	replayedUnknown := requestWithMutationKeyForTest(t, server, session, http.MethodPatch, "/api/gateway/keys/19", `{"enabled":true}`, "update-unknown")
-	if replayedUnknown.Code != http.StatusBadGateway || client.updateCalls != 2 {
-		t.Fatalf("unknown update replay rewrote upstream = %d calls=%d: %s", replayedUnknown.Code, client.updateCalls, replayedUnknown.Body.String())
-	}
-
-	client.deleteErr, client.deleteFailsBeforeWrite = errors.New("response lost after delete"), false
-	deleted := requestWithMutationKeyForTest(t, server, session, http.MethodDelete, "/api/gateway/keys/19", `{}`, "delete-response-loss")
-	if deleted.Code != http.StatusOK || client.deleteCalls != 1 {
-		t.Fatalf("lost delete response = %d calls=%d: %s", deleted.Code, client.deleteCalls, deleted.Body.String())
-	}
-	restarted, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, &fakeFabricClient{}, client), store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	restartedSession := loginForTest(t, restarted, "gateway-owner@example.com", "CorrectHorseBatteryStaple!")
-	replayDelete := requestWithMutationKeyForTest(t, restarted, restartedSession, http.MethodDelete, "/api/gateway/keys/19", `{}`, "delete-response-loss")
-	if replayDelete.Code != http.StatusOK || client.deleteCalls != 1 {
-		t.Fatalf("delete restart replay = %d calls=%d: %s", replayDelete.Code, client.deleteCalls, replayDelete.Body.String())
 	}
 }
 
@@ -374,16 +237,14 @@ func TestGatewayKeyOwnership(t *testing.T) {
 		{http.MethodGet, "/api/gateway/keys/18", ""},
 		{http.MethodPost, "/api/gateway/keys/18/reveal", `{}`},
 		{http.MethodGet, "/api/gateway/keys/18/usage", ""},
-		{http.MethodPatch, "/api/gateway/keys/18", `{"enabled":false}`},
-		{http.MethodDelete, "/api/gateway/keys/18", `{}`},
 	} {
 		response := requestWithMutationKeyForTest(t, server, session, request.method, request.path+"?accountId=acct-other&user_id=42&api_key_id=18", request.body, "ownership-"+strconv.Itoa(len(client.userKeyReadIDs)))
 		if response.Code != http.StatusNotFound || strings.Contains(response.Body.String(), "other-user") {
 			t.Fatalf("cross-account %s %s = %d: %s", request.method, request.path, response.Code, response.Body.String())
 		}
 	}
-	if len(client.updateInputs) != 0 || len(client.deleted) != 0 || client.usageQuery.UserID != 0 {
-		t.Fatalf("cross-account request reached mutation/usage: updates=%#v deletes=%#v usage=%#v", client.updateInputs, client.deleted, client.usageQuery)
+	if len(client.updateInputs) != 0 || client.usageQuery.UserID != 0 {
+		t.Fatalf("cross-account request reached mutation/usage: updates=%#v usage=%#v", client.updateInputs, client.usageQuery)
 	}
 }
 

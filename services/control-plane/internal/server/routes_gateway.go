@@ -1,13 +1,10 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
-	"net/netip"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -95,15 +92,6 @@ func registerGatewayRoutes(mux *http.ServeMux, app *controlPlaneServer, service 
 	mux.HandleFunc("GET /api/gateway/keys/{keyId}", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
 		app.gatewayKey(w, r, service)
 	}))
-	mux.HandleFunc("POST /api/gateway/keys", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
-		app.createGatewayKey(w, r, service)
-	}))
-	mux.HandleFunc("PATCH /api/gateway/keys/{keyId}", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
-		app.updateGatewayKey(w, r, service)
-	}))
-	mux.HandleFunc("DELETE /api/gateway/keys/{keyId}", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
-		app.deleteGatewayKey(w, r, service)
-	}))
 	mux.HandleFunc("POST /api/gateway/keys/{keyId}/reveal", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
 		app.revealGatewayKey(w, r, service)
 	}))
@@ -130,33 +118,6 @@ func registerGatewayRoutes(mux *http.ServeMux, app *controlPlaneServer, service 
 	}))
 }
 
-type createGatewayKeyRequest struct {
-	Name                 string   `json:"name"`
-	GroupID              string   `json:"groupId"`
-	IPWhitelist          []string `json:"ipWhitelist,omitempty"`
-	IPBlacklist          []string `json:"ipBlacklist,omitempty"`
-	QuotaUSDMicros       int64    `json:"quotaUsdMicros"`
-	ExpiresInDays        *int     `json:"expiresInDays,omitempty"`
-	RateLimit5hUSDMicros int64    `json:"rateLimit5hUsdMicros,omitempty"`
-	RateLimit1dUSDMicros int64    `json:"rateLimit1dUsdMicros,omitempty"`
-	RateLimit7dUSDMicros int64    `json:"rateLimit7dUsdMicros,omitempty"`
-}
-
-type updateGatewayKeyRequest struct {
-	Name                 *string   `json:"name,omitempty"`
-	GroupID              *string   `json:"groupId,omitempty"`
-	IPWhitelist          *[]string `json:"ipWhitelist,omitempty"`
-	IPBlacklist          *[]string `json:"ipBlacklist,omitempty"`
-	QuotaUSDMicros       *int64    `json:"quotaUsdMicros,omitempty"`
-	ExpiresAt            *string   `json:"expiresAt,omitempty"`
-	RateLimit5hUSDMicros *int64    `json:"rateLimit5hUsdMicros,omitempty"`
-	RateLimit1dUSDMicros *int64    `json:"rateLimit1dUsdMicros,omitempty"`
-	RateLimit7dUSDMicros *int64    `json:"rateLimit7dUsdMicros,omitempty"`
-	ResetQuota           *bool     `json:"resetQuota,omitempty"`
-	ResetRateLimitUsage  *bool     `json:"resetRateLimitUsage,omitempty"`
-	Enabled              *bool     `json:"enabled,omitempty"`
-}
-
 type gatewayKeyCommandEvidence struct {
 	ID                   int64    `json:"id"`
 	Name                 string   `json:"name,omitempty"`
@@ -169,13 +130,6 @@ type gatewayKeyCommandEvidence struct {
 	RateLimit1dUSDMicros int64    `json:"rateLimit1dUsdMicros,omitempty"`
 	RateLimit7dUSDMicros int64    `json:"rateLimit7dUsdMicros,omitempty"`
 	ExpiresAt            string   `json:"expiresAt,omitempty"`
-}
-
-type gatewayKeyCommandResult struct {
-	RequestHash  string                     `json:"requestHash"`
-	KeyID        int64                      `json:"keyId,omitempty"`
-	TargetStatus string                     `json:"targetStatus"`
-	Readback     *gatewayKeyCommandEvidence `json:"readback,omitempty"`
 }
 
 func (app *controlPlaneServer) gatewayKey(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
@@ -193,341 +147,6 @@ func (app *controlPlaneServer) gatewayKey(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeSourceEnvelope(w, http.StatusOK, "sub2api", "available", gatewayKeySummary(key))
-}
-
-func (app *controlPlaneServer) createGatewayKey(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
-	user, userID, credential, ok := app.gatewayUserContext(w, r)
-	if !ok {
-		return
-	}
-	idempotencyKey, ok := requiredMutationKey(w, r)
-	if !ok {
-		return
-	}
-	var input createGatewayKeyRequest
-	if decodeStrictGatewayRequest(r, &input) != nil {
-		writeError(w, http.StatusBadRequest, "invalid_gateway_key_request")
-		return
-	}
-	input.Name = strings.TrimSpace(input.Name)
-	groupID, groupOK := positiveGatewayGroupID(input.GroupID)
-	input.GroupID = strconv.FormatInt(groupID, 10)
-	input.IPWhitelist, ok = normalizeGatewayIPList(input.IPWhitelist)
-	if !ok {
-		writeError(w, http.StatusBadRequest, "invalid_gateway_key_request")
-		return
-	}
-	input.IPBlacklist, ok = normalizeGatewayIPList(input.IPBlacklist)
-	if !ok || !groupOK || input.Name == "" || len([]rune(input.Name)) > 100 || reservedWorkspaceKeyName(input.Name) || input.QuotaUSDMicros < 0 || input.RateLimit5hUSDMicros < 0 || input.RateLimit1dUSDMicros < 0 || input.RateLimit7dUSDMicros < 0 || input.ExpiresInDays != nil && *input.ExpiresInDays <= 0 {
-		writeError(w, http.StatusBadRequest, "invalid_gateway_key_request")
-		return
-	}
-	accountID := stringValue(user["accountId"])
-	operationID := "gateway-key-create-" + stableID(accountID, idempotencyKey)[:18]
-	requestHash := gatewayKeyRequestHash("gateway-key-create-v2", accountID, "", input)
-	result := gatewayKeyCommandResult{RequestHash: requestHash, TargetStatus: "active"}
-	unlock := app.lockResource("gateway_key_command", operationID)
-	defer unlock()
-
-	existing, found, err := app.gatewayKeyCommand(r.Context(), operationID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "state_read_failed")
-		return
-	}
-	if found {
-		if existing.RequestHash != requestHash {
-			writeError(w, http.StatusConflict, "idempotency_conflict")
-			return
-		}
-		result = existing
-		if result.KeyID > 0 {
-			if key, readErr := service.GatewayUserKey(r.Context(), credential, userID, result.KeyID); readErr == nil && gatewayKeyCreateMatches(key, input, groupID) {
-				result.Readback = gatewayKeyEvidence(key)
-				if !app.completeGatewayKeyCommand(r, operationID, accountID, operationID, "gateway.key_create", result) {
-					writeError(w, http.StatusInternalServerError, "state_persist_failed")
-					return
-				}
-				writeSourceEnvelope(w, http.StatusOK, "sub2api", "available", gatewayKeySummary(key))
-				return
-			}
-		}
-	}
-	if err := app.saveGatewayKeyCommand(r.Context(), operationID, accountID, operationID, "gateway.key_create", "started", result); err != nil {
-		writeError(w, http.StatusInternalServerError, "state_persist_failed")
-		return
-	}
-	key, err := service.CreateGatewayUserKey(r.Context(), credential, userID, clients.Sub2APICreateKeyInput{
-		Name: input.Name, GroupID: groupID, IPWhitelist: input.IPWhitelist, IPBlacklist: input.IPBlacklist,
-		QuotaUSDMicros: input.QuotaUSDMicros, ExpiresInDays: input.ExpiresInDays,
-		RateLimit5hUSDMicros: input.RateLimit5hUSDMicros, RateLimit1dUSDMicros: input.RateLimit1dUSDMicros,
-		RateLimit7dUSDMicros: input.RateLimit7dUSDMicros,
-	}, idempotencyKey)
-	if err != nil {
-		_ = app.saveGatewayKeyCommand(r.Context(), operationID, accountID, operationID, "gateway.key_create", "manual_review", result)
-		writeGatewaySourceError(w, err)
-		return
-	}
-	result.KeyID = key.ID
-	key, err = service.GatewayUserKey(r.Context(), credential, userID, key.ID)
-	if err != nil || !gatewayKeyCreateMatches(key, input, groupID) {
-		_ = app.saveGatewayKeyCommand(r.Context(), operationID, accountID, operationID, "gateway.key_create", "manual_review", result)
-		writeSourceEnvelope(w, http.StatusBadGateway, "sub2api", "unavailable", nil)
-		return
-	}
-	result.Readback = gatewayKeyEvidence(key)
-	if !app.completeGatewayKeyCommand(r, operationID, accountID, operationID, "gateway.key_create", result) {
-		writeError(w, http.StatusInternalServerError, "state_persist_failed")
-		return
-	}
-	writeSourceEnvelope(w, http.StatusCreated, "sub2api", "available", gatewayKeySummary(key))
-}
-
-func (app *controlPlaneServer) updateGatewayKey(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
-	user, userID, credential, ok := app.gatewayUserContext(w, r)
-	if !ok {
-		return
-	}
-	keyID, ok := gatewayKeyID(w, r)
-	if !ok {
-		return
-	}
-	current, err := service.GatewayUserKey(r.Context(), credential, userID, keyID)
-	if err != nil {
-		writeGatewayUserKeyError(w, err)
-		return
-	}
-	if reservedWorkspaceKeyName(current.Name) {
-		writeError(w, http.StatusConflict, "gateway_key_reserved")
-		return
-	}
-	idempotencyKey, ok := requiredMutationKey(w, r)
-	if !ok {
-		return
-	}
-	var input updateGatewayKeyRequest
-	if decodeStrictGatewayRequest(r, &input) != nil || gatewayKeyUpdateEmpty(input) {
-		writeError(w, http.StatusBadRequest, "invalid_gateway_key_request")
-		return
-	}
-	if input.Name != nil {
-		name := strings.TrimSpace(*input.Name)
-		if name == "" || len([]rune(name)) > 100 || reservedWorkspaceKeyName(name) {
-			writeError(w, http.StatusBadRequest, "invalid_gateway_key_request")
-			return
-		}
-		input.Name = &name
-	}
-	if input.QuotaUSDMicros != nil && *input.QuotaUSDMicros < 0 {
-		writeError(w, http.StatusBadRequest, "invalid_gateway_key_request")
-		return
-	}
-	var groupID *int64
-	if input.GroupID != nil {
-		parsed, valid := positiveGatewayGroupID(*input.GroupID)
-		if !valid {
-			writeError(w, http.StatusBadRequest, "invalid_gateway_key_request")
-			return
-		}
-		canonical := strconv.FormatInt(parsed, 10)
-		input.GroupID, groupID = &canonical, &parsed
-	}
-	for _, list := range []*[]string{input.IPWhitelist, input.IPBlacklist} {
-		if list == nil {
-			continue
-		}
-		normalized, valid := normalizeGatewayIPList(*list)
-		if !valid {
-			writeError(w, http.StatusBadRequest, "invalid_gateway_key_request")
-			return
-		}
-		*list = normalized
-	}
-	if input.ExpiresAt != nil {
-		value := strings.TrimSpace(*input.ExpiresAt)
-		if value != "" {
-			parsed, err := time.Parse(time.RFC3339, value)
-			if err != nil {
-				writeError(w, http.StatusBadRequest, "invalid_gateway_key_request")
-				return
-			}
-			value = parsed.UTC().Format(time.RFC3339Nano)
-		}
-		input.ExpiresAt = &value
-	}
-	for _, value := range []*int64{input.RateLimit5hUSDMicros, input.RateLimit1dUSDMicros, input.RateLimit7dUSDMicros} {
-		if value != nil && *value < 0 {
-			writeError(w, http.StatusBadRequest, "invalid_gateway_key_request")
-			return
-		}
-	}
-	target := current
-	if input.Name != nil {
-		target.Name = *input.Name
-	}
-	if input.QuotaUSDMicros != nil {
-		target.QuotaUSDMicros = *input.QuotaUSDMicros
-	}
-	if groupID != nil {
-		target.GroupID = groupID
-	}
-	if input.IPWhitelist != nil {
-		target.IPWhitelist = append([]string(nil), (*input.IPWhitelist)...)
-	}
-	if input.IPBlacklist != nil {
-		target.IPBlacklist = append([]string(nil), (*input.IPBlacklist)...)
-	}
-	if input.ExpiresAt != nil {
-		target.ExpiresAt = nil
-		if *input.ExpiresAt != "" {
-			parsed, _ := time.Parse(time.RFC3339Nano, *input.ExpiresAt)
-			target.ExpiresAt = &parsed
-		}
-	}
-	if input.RateLimit5hUSDMicros != nil {
-		target.RateLimit5hUSDMicros = *input.RateLimit5hUSDMicros
-	}
-	if input.RateLimit1dUSDMicros != nil {
-		target.RateLimit1dUSDMicros = *input.RateLimit1dUSDMicros
-	}
-	if input.RateLimit7dUSDMicros != nil {
-		target.RateLimit7dUSDMicros = *input.RateLimit7dUSDMicros
-	}
-	if input.ResetQuota != nil && *input.ResetQuota {
-		target.QuotaUsedUSDMicros = 0
-	}
-	if input.ResetRateLimitUsage != nil && *input.ResetRateLimitUsage {
-		target.Usage5hUSDMicros, target.Usage1dUSDMicros, target.Usage7dUSDMicros = 0, 0, 0
-	}
-	if input.Enabled != nil {
-		target.Status = "disabled"
-		if *input.Enabled {
-			target.Status = "active"
-		}
-	}
-	accountID := stringValue(user["accountId"])
-	resourceID := strconv.FormatInt(keyID, 10)
-	operationID := "gateway-key-update-" + stableID(accountID, idempotencyKey)[:18]
-	requestHash := gatewayKeyRequestHash("gateway-key-update-v2", accountID, resourceID, input)
-	result := gatewayKeyCommandResult{RequestHash: requestHash, KeyID: keyID, TargetStatus: target.Status}
-	unlock := app.lockResource("gateway_key_command", operationID)
-	defer unlock()
-
-	if existing, found, readErr := app.gatewayKeyCommand(r.Context(), operationID); readErr != nil {
-		writeError(w, http.StatusInternalServerError, "state_read_failed")
-		return
-	} else if found {
-		if existing.RequestHash != requestHash {
-			writeError(w, http.StatusConflict, "idempotency_conflict")
-			return
-		}
-		readback, readErr := service.GatewayUserKey(r.Context(), credential, userID, keyID)
-		if readErr != nil || !gatewayKeyTargetMatches(readback, target) {
-			writeSourceEnvelope(w, http.StatusBadGateway, "sub2api", "unavailable", nil)
-			return
-		}
-		existing.Readback = gatewayKeyEvidence(readback)
-		if !app.completeGatewayKeyCommand(r, operationID, accountID, resourceID, "gateway.key_update", existing) {
-			writeError(w, http.StatusInternalServerError, "state_persist_failed")
-			return
-		}
-		writeSourceEnvelope(w, http.StatusOK, "sub2api", "available", gatewayKeySummary(readback))
-		return
-	}
-	if err := app.saveGatewayKeyCommand(r.Context(), operationID, accountID, resourceID, "gateway.key_update", "started", result); err != nil {
-		writeError(w, http.StatusInternalServerError, "state_persist_failed")
-		return
-	}
-	_, writeErr := service.UpdateGatewayUserKey(r.Context(), credential, userID, keyID, clients.Sub2APIUpdateKeyInput{
-		Name: input.Name, GroupID: groupID, IPWhitelist: input.IPWhitelist, IPBlacklist: input.IPBlacklist,
-		QuotaUSDMicros: input.QuotaUSDMicros, ExpiresAt: input.ExpiresAt, RateLimit5hUSDMicros: input.RateLimit5hUSDMicros,
-		RateLimit1dUSDMicros: input.RateLimit1dUSDMicros, RateLimit7dUSDMicros: input.RateLimit7dUSDMicros,
-		ResetQuota: input.ResetQuota, ResetRateLimitUsage: input.ResetRateLimitUsage, Enabled: input.Enabled,
-	})
-	readback, readErr := service.GatewayUserKey(r.Context(), credential, userID, keyID)
-	if readErr != nil || !gatewayKeyTargetMatches(readback, target) {
-		_ = app.saveGatewayKeyCommand(r.Context(), operationID, accountID, resourceID, "gateway.key_update", "manual_review", result)
-		if writeErr != nil {
-			writeGatewaySourceError(w, writeErr)
-		} else {
-			writeSourceEnvelope(w, http.StatusBadGateway, "sub2api", "unavailable", nil)
-		}
-		return
-	}
-	result.Readback = gatewayKeyEvidence(readback)
-	if !app.completeGatewayKeyCommand(r, operationID, accountID, resourceID, "gateway.key_update", result) {
-		writeError(w, http.StatusInternalServerError, "state_persist_failed")
-		return
-	}
-	writeSourceEnvelope(w, http.StatusOK, "sub2api", "available", gatewayKeySummary(readback))
-}
-
-func (app *controlPlaneServer) deleteGatewayKey(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
-	user, userID, credential, ok := app.gatewayUserContext(w, r)
-	if !ok {
-		return
-	}
-	keyID, ok := gatewayKeyID(w, r)
-	if !ok {
-		return
-	}
-	idempotencyKey, ok := requiredMutationKey(w, r)
-	if !ok {
-		return
-	}
-	accountID, resourceID := stringValue(user["accountId"]), strconv.FormatInt(keyID, 10)
-	operationID := "gateway-key-delete-" + stableID(accountID, idempotencyKey)[:18]
-	result := gatewayKeyCommandResult{RequestHash: stableID("gateway-key-delete-v1", accountID, resourceID), KeyID: keyID, TargetStatus: "deleted"}
-	unlock := app.lockResource("gateway_key_command", operationID)
-	defer unlock()
-	if existing, found, readErr := app.gatewayKeyCommand(r.Context(), operationID); readErr != nil {
-		writeError(w, http.StatusInternalServerError, "state_read_failed")
-		return
-	} else if found {
-		if existing.RequestHash != result.RequestHash {
-			writeError(w, http.StatusConflict, "idempotency_conflict")
-			return
-		}
-		_, readErr := service.GatewayUserKey(r.Context(), credential, userID, keyID)
-		if !errors.Is(readErr, clients.ErrSub2APIKeyNotFound) {
-			writeSourceEnvelope(w, http.StatusBadGateway, "sub2api", "unavailable", nil)
-			return
-		}
-		if !app.completeGatewayKeyCommand(r, operationID, accountID, resourceID, "gateway.key_delete", existing) {
-			writeError(w, http.StatusInternalServerError, "state_persist_failed")
-			return
-		}
-		writeSourceEnvelope(w, http.StatusOK, "sub2api", "available", gatewayKeyDeletedResponse(operationID, keyID))
-		return
-	}
-	current, err := service.GatewayUserKey(r.Context(), credential, userID, keyID)
-	if err != nil {
-		writeGatewayUserKeyError(w, err)
-		return
-	}
-	if reservedWorkspaceKeyName(current.Name) {
-		writeError(w, http.StatusConflict, "gateway_key_reserved")
-		return
-	}
-	if err := app.saveGatewayKeyCommand(r.Context(), operationID, accountID, resourceID, "gateway.key_delete", "started", result); err != nil {
-		writeError(w, http.StatusInternalServerError, "state_persist_failed")
-		return
-	}
-	writeErr := service.DeleteGatewayUserKey(r.Context(), credential, userID, keyID)
-	_, readErr := service.GatewayUserKey(r.Context(), credential, userID, keyID)
-	if !errors.Is(readErr, clients.ErrSub2APIKeyNotFound) {
-		_ = app.saveGatewayKeyCommand(r.Context(), operationID, accountID, resourceID, "gateway.key_delete", "manual_review", result)
-		if writeErr != nil {
-			writeGatewaySourceError(w, writeErr)
-		} else {
-			writeSourceEnvelope(w, http.StatusBadGateway, "sub2api", "unavailable", nil)
-		}
-		return
-	}
-	if !app.completeGatewayKeyCommand(r, operationID, accountID, resourceID, "gateway.key_delete", result) {
-		writeError(w, http.StatusInternalServerError, "state_persist_failed")
-		return
-	}
-	writeSourceEnvelope(w, http.StatusOK, "sub2api", "available", gatewayKeyDeletedResponse(operationID, keyID))
 }
 
 func (app *controlPlaneServer) revealGatewayKey(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
@@ -687,76 +306,9 @@ func gatewayKeyEvidence(key clients.Sub2APIWorkspaceKey) *gatewayKeyCommandEvide
 	return evidence
 }
 
-func gatewayKeyTargetMatches(got, want clients.Sub2APIWorkspaceKey) bool {
-	return got.ID == want.ID && got.UserID == want.UserID && got.Name == want.Name && got.Status == want.Status && sameGatewayGroup(got.GroupID, want.GroupID) &&
-		slices.Equal(got.IPWhitelist, want.IPWhitelist) && slices.Equal(got.IPBlacklist, want.IPBlacklist) &&
-		got.QuotaUSDMicros == want.QuotaUSDMicros && got.QuotaUsedUSDMicros == want.QuotaUsedUSDMicros &&
-		got.RateLimit5hUSDMicros == want.RateLimit5hUSDMicros && got.RateLimit1dUSDMicros == want.RateLimit1dUSDMicros &&
-		got.RateLimit7dUSDMicros == want.RateLimit7dUSDMicros && got.Usage5hUSDMicros == want.Usage5hUSDMicros &&
-		got.Usage1dUSDMicros == want.Usage1dUSDMicros && got.Usage7dUSDMicros == want.Usage7dUSDMicros && sameGatewayTime(got.ExpiresAt, want.ExpiresAt)
-}
-
-func gatewayKeyCreateMatches(key clients.Sub2APIWorkspaceKey, input createGatewayKeyRequest, groupID int64) bool {
-	return key.Name == input.Name && key.Status == "active" && key.GroupID != nil && *key.GroupID == groupID &&
-		slices.Equal(key.IPWhitelist, input.IPWhitelist) && slices.Equal(key.IPBlacklist, input.IPBlacklist) &&
-		key.QuotaUSDMicros == input.QuotaUSDMicros && key.RateLimit5hUSDMicros == input.RateLimit5hUSDMicros &&
-		key.RateLimit1dUSDMicros == input.RateLimit1dUSDMicros && key.RateLimit7dUSDMicros == input.RateLimit7dUSDMicros &&
-		(input.ExpiresInDays == nil || key.ExpiresAt != nil)
-}
-
-func sameGatewayGroup(left, right *int64) bool {
-	return left == nil && right == nil || left != nil && right != nil && *left == *right
-}
-
-func sameGatewayTime(left, right *time.Time) bool {
-	return left == nil && right == nil || left != nil && right != nil && left.Equal(*right)
-}
-
 func gatewayKeyRequestHash(domain, accountID, resourceID string, input any) string {
 	payload, _ := json.Marshal(input)
 	return stableID(domain, accountID, resourceID, string(payload))
-}
-
-func gatewayKeyUpdateEmpty(input updateGatewayKeyRequest) bool {
-	return input.Name == nil && input.GroupID == nil && input.IPWhitelist == nil && input.IPBlacklist == nil && input.QuotaUSDMicros == nil &&
-		input.ExpiresAt == nil && input.RateLimit5hUSDMicros == nil && input.RateLimit1dUSDMicros == nil && input.RateLimit7dUSDMicros == nil &&
-		input.ResetQuota == nil && input.ResetRateLimitUsage == nil && input.Enabled == nil
-}
-
-func positiveGatewayGroupID(raw string) (int64, bool) {
-	value, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
-	return value, err == nil && value > 0 && strconv.FormatInt(value, 10) == strings.TrimSpace(raw)
-}
-
-func normalizeGatewayIPList(values []string) ([]string, bool) {
-	if len(values) > 100 {
-		return nil, false
-	}
-	normalized := make([]string, 0, len(values))
-	seen := make(map[string]struct{}, len(values))
-	for _, raw := range values {
-		value := strings.TrimSpace(raw)
-		if value == "" {
-			return nil, false
-		}
-		if address, err := netip.ParseAddr(value); err == nil {
-			value = address.String()
-		} else if prefix, err := netip.ParsePrefix(value); err == nil {
-			value = prefix.Masked().String()
-		} else {
-			return nil, false
-		}
-		if _, duplicate := seen[value]; duplicate {
-			continue
-		}
-		seen[value] = struct{}{}
-		normalized = append(normalized, value)
-	}
-	return normalized, true
-}
-
-func gatewayKeyDeletedResponse(operationID string, keyID int64) map[string]any {
-	return map[string]any{"operationId": operationID, "keyId": strconv.FormatInt(keyID, 10), "status": "deleted"}
 }
 
 func reservedWorkspaceKeyName(name string) bool {
@@ -925,46 +477,6 @@ func writeGatewayUsageStats(w http.ResponseWriter, stats clients.Sub2APIUsageSta
 		"totalOutputTokens": stats.TotalOutputTokens, "totalTokens": stats.TotalTokens,
 		"totalActualCostUsdMicros": stats.TotalActualCostUSDMicros,
 	})
-}
-
-func (app *controlPlaneServer) gatewayKeyCommand(ctx context.Context, operationID string) (gatewayKeyCommandResult, bool, error) {
-	row, found, err := app.tables.GetRuntimeOperation(ctx, operationID)
-	if err != nil {
-		return gatewayKeyCommandResult{}, false, err
-	}
-	if !found {
-		return gatewayKeyCommandResult{}, false, nil
-	}
-	var result gatewayKeyCommandResult
-	if json.Unmarshal([]byte(stringValue(row["result"])), &result) != nil || result.RequestHash == "" || result.TargetStatus == "" {
-		return gatewayKeyCommandResult{}, false, errors.New("invalid gateway key operation")
-	}
-	return result, true, nil
-}
-
-func (app *controlPlaneServer) saveGatewayKeyCommand(ctx context.Context, operationID, accountID, resourceID, action, status string, result gatewayKeyCommandResult) error {
-	encoded, err := json.Marshal(result)
-	if err != nil {
-		return err
-	}
-	return app.tables.SaveRuntimeOperation(ctx, map[string]any{
-		"id": operationID, "operationId": operationID, "accountId": accountID, "resourceId": resourceID,
-		"resourceKind": "gateway_key", "action": action, "provider": "sub2api", "status": status,
-		"result": string(encoded), "createdAt": time.Now().UTC().Format(time.RFC3339Nano),
-	})
-}
-
-func (app *controlPlaneServer) completeGatewayKeyCommand(r *http.Request, operationID, accountID, resourceID, action string, result gatewayKeyCommandResult) bool {
-	after := any(map[string]any{"keyId": strconv.FormatInt(result.KeyID, 10), "status": result.TargetStatus})
-	if result.Readback != nil {
-		after = result.Readback
-	}
-	event := app.auditEvent(r, action, "gateway_key", resourceID, accountID, nil, after, "succeeded")
-	event["id"] = "audit-" + stableID(action, operationID)[:12]
-	if err := app.tables.SaveAuditEvent(r.Context(), event); err != nil {
-		return false
-	}
-	return app.saveGatewayKeyCommand(r.Context(), operationID, accountID, resourceID, action, "succeeded", result) == nil
 }
 
 func writeGatewayUserKeyError(w http.ResponseWriter, err error) {

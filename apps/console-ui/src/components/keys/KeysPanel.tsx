@@ -42,6 +42,7 @@ import type {
 } from "../../api/dtos.ts";
 import { formatWorkspaceBudgetUsdInput as formatUsdInput } from "../../app/workspace-experience-model.ts";
 import { formatDate, formatUsdMicros, parseUsdMicros } from "../../console-model.ts";
+import { cloudIdentity } from "../../app/console-identity.ts";
 import { GatewayKeyReauthentication } from "./GatewayKeyReauthentication.tsx";
 import { SourceState } from "../source/SourceState.tsx";
 import { Alert, Badge, Button, Field, Modal, Select, Tooltip } from "../ui/index.ts";
@@ -133,11 +134,13 @@ function isProtectedWorkspaceKey(key: GatewayKeySummaryDTO) {
 }
 
 function canManage(key: GatewayKeySummaryDTO) {
-  return key.manageable && !isProtectedWorkspaceKey(key);
+  // The Gateway owner is the only writer of a personal Key. A retained Control
+  // Plane installation reaches no owner, so it offers no management action.
+  return cloudIdentity && key.manageable && !isProtectedWorkspaceKey(key);
 }
 
 function canDelete(key: GatewayKeySummaryDTO) {
-  return key.deletable && !isProtectedWorkspaceKey(key);
+  return cloudIdentity && key.deletable && !isProtectedWorkspaceKey(key);
 }
 
 function keyMatchesCreate(key: GatewayKeySummaryDTO, input: CreateGatewayKeyRequest) {
@@ -574,8 +577,9 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
             <Button aria-label="使用说明" disabled={busy} onClick={() => void openUse(key)} size="sm" uniform variant="ghost"><BookOpen aria-hidden="true" size={16} /></Button>
           </Tooltip>
         </div>
-        <details className="key-more-actions">
-          <summary>更多操作</summary>
+        {cloudIdentity ? (
+          <details className="key-more-actions">
+            <summary>更多操作</summary>
           <div className="key-more-actions__body">
             <div className="key-more-actions__group">
               <span>管理</span>
@@ -602,7 +606,8 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
               </Tooltip>
             </div>
           </div>
-        </details>
+          </details>
+        ) : null}
       </div>
     );
   };
@@ -689,12 +694,15 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
               <RefreshCw aria-hidden="true" size={16} />
             </Button>
           </Tooltip>
-          <Button color="primary" disabled={!groups.length || !csrfToken} onClick={openCreate} size="sm">
-            <Plus aria-hidden="true" size={16} />创建 API 密钥
-          </Button>
+          {cloudIdentity ? (
+            <Button color="primary" disabled={!groups.length || !csrfToken} onClick={openCreate} size="sm">
+              <Plus aria-hidden="true" size={16} />创建 API 密钥
+            </Button>
+          ) : null}
         </div>
       </header>
 
+      {!cloudIdentity ? <Alert color="info" title="个人 API 密钥管理不可用" description="个人 API 密钥的创建、修改与删除由 Gateway 所有者承担；当前安装未接入该所有者，此处仅支持查看与显示完整密钥。" /> : null}
       {[source, groupsSource].some((value) => value?.available === false && value.reasonCode === "REAUTHENTICATION_REQUIRED") ? <GatewayKeyReauthentication /> : null}
       {referenceError ? <Alert actions={<Button onClick={() => void loadReferenceData()} size="sm" variant="ghost">重试</Button>} color="warning" description={referenceError} title="参考配置部分不可用" /> : null}
       {groupsSource?.status === "unavailable" ? <Alert color="warning" description="暂时无法读取服务分组，已暂停创建和调整，可刷新后重试。" title="服务配置暂不可用" /> : null}

@@ -100,14 +100,6 @@ function sourcePost<T>(path: string, body: unknown, csrfToken: string, idempoten
   return sourceWrite<T>(() => postJson<unknown>(path, body, csrfToken, idempotencyKey));
 }
 
-function sourcePatch<T>(path: string, body: unknown, csrfToken: string, idempotencyKey: string): Promise<SourceEnvelope<T>> {
-  return sourceWrite<T>(() => patchJson<unknown>(path, body, csrfToken, idempotencyKey));
-}
-
-function sourceDelete<T>(path: string, csrfToken: string, idempotencyKey: string): Promise<SourceEnvelope<T>> {
-  return sourceWrite<T>(() => deleteJson<unknown>(path, csrfToken, idempotencyKey));
-}
-
 // The baked console identity decides which owner answers the wallet. Exported so
 // both decisions are pinned by tests instead of only by the build environment.
 export function walletReadRoute(cloud: boolean): "/api/v2/wallet" | "/api/gateway/wallet" {
@@ -126,24 +118,26 @@ export function announcementReadRoute(cloud: boolean): "/api/v2/announcements" |
   return cloud ? "/api/v2/announcements" : "/api/announcements";
 }
 
-// The personal Gateway Key writes follow the baked identity, exactly like the
-// personal reads above: a cloud build asks the Gateway owner through the BFF, and
-// a retained build keeps the Control Plane route it authenticated against. This
-// is a baked decision, not a fallback path.
-export function personalGatewayKeyCreateRoute(cloud: boolean): "/api/v2/gateway/keys" | "/api/gateway/keys" {
-  return cloud ? "/api/v2/gateway/keys" : "/api/gateway/keys";
+// The personal Gateway Key writes have exactly one owner: the Gateway owner,
+// reached through the Console BFF. The Control Plane's own write routes are
+// retired, so no baked identity reaches a second writer.
+export function personalGatewayKeyCreateRoute(): "/api/v2/gateway/keys" {
+  return "/api/v2/gateway/keys";
 }
 
 // The update and the revoke address the same Key, so they share one path and
 // differ by their method.
-export function personalGatewayKeyUpdateRoute(cloud: boolean, keyId: string): string {
-  return `${cloud ? "/api/v2" : "/api"}/gateway/keys/${encodeURIComponent(keyId)}`;
+export function personalGatewayKeyUpdateRoute(keyId: string): string {
+  return `/api/v2/gateway/keys/${encodeURIComponent(keyId)}`;
 }
 
-export function personalGatewayKeyRevokeRoute(cloud: boolean, keyId: string): string {
-  return `${cloud ? "/api/v2" : "/api"}/gateway/keys/${encodeURIComponent(keyId)}`;
+export function personalGatewayKeyRevokeRoute(keyId: string): string {
+  return `/api/v2/gateway/keys/${encodeURIComponent(keyId)}`;
 }
 
+// The reveal stays on the Control Plane too: a non-browser consumer still
+// reveals a Key there, and the Workspace's own Key is revealed from that
+// surface as well.
 export function personalGatewayKeyRevealRoute(cloud: boolean, keyId: string): string {
   return `${cloud ? "/api/v2" : "/api"}/gateway/keys/${encodeURIComponent(keyId)}/reveal`;
 }
@@ -365,32 +359,31 @@ export function getGatewayKey(keyId: string, signal?: AbortSignal): Promise<Sour
 }
 
 export function createGatewayKey(input: CreateGatewayKeyRequest, csrfToken: string, idempotencyKey: string): Promise<SourceEnvelope<GatewayKeySummaryDTO>> {
-  // The baked identity decides the owner. A cloud build asks the Gateway owner
-  // through the BFF, so the Key is created by the owner that owns Gateway Key
-  // mappings; a retained build keeps the Control Plane route it authenticated
-  // against. This is a baked decision, not a fallback path.
-  if (!cloudIdentity) return sourcePost<GatewayKeySummaryDTO>(personalGatewayKeyCreateRoute(false), input, csrfToken, idempotencyKey);
+  // The Gateway owner owns the personal Key write. A retained Control Plane
+  // installation reaches no owner, so it reports the capability as unavailable
+  // instead of writing a second Key behind the owner's back.
+  if (!cloudIdentity) return Promise.resolve(personalGatewayUnavailable("gateway_key_management_unavailable"));
   return personalGatewayWrite(
     // The owner's create answer is the Key summary. The plaintext never crosses
     // this boundary: the customer takes the secret from the explicit reveal,
     // which is the surface that hands a secret back once.
-    () => postJson<PersonalGatewayKeyReadback>(personalGatewayKeyCreateRoute(true), personalGatewayCreateBody(input), csrfToken, idempotencyKey),
+    () => postJson<PersonalGatewayKeyReadback>(personalGatewayKeyCreateRoute(), personalGatewayCreateBody(input), csrfToken, idempotencyKey),
     decodePersonalGatewayKey
   );
 }
 
 export function updateGatewayKey(keyId: string, input: UpdateGatewayKeyRequest, csrfToken: string, idempotencyKey: string): Promise<SourceEnvelope<GatewayKeySummaryDTO>> {
-  if (!cloudIdentity) return sourcePatch<GatewayKeySummaryDTO>(personalGatewayKeyUpdateRoute(false, keyId), input, csrfToken, idempotencyKey);
+  if (!cloudIdentity) return Promise.resolve(personalGatewayUnavailable("gateway_key_management_unavailable"));
   return personalGatewayWrite(
-    () => patchJson<PersonalGatewayKeyReadback>(personalGatewayKeyUpdateRoute(true, keyId), personalGatewayUpdateBody(input), csrfToken, idempotencyKey),
+    () => patchJson<PersonalGatewayKeyReadback>(personalGatewayKeyUpdateRoute(keyId), personalGatewayUpdateBody(input), csrfToken, idempotencyKey),
     decodePersonalGatewayKey
   );
 }
 
 export function deleteGatewayKey(keyId: string, csrfToken: string, idempotencyKey: string): Promise<SourceEnvelope<OperationStatusDTO>> {
-  if (!cloudIdentity) return sourceDelete<OperationStatusDTO>(personalGatewayKeyRevokeRoute(false, keyId), csrfToken, idempotencyKey);
+  if (!cloudIdentity) return Promise.resolve(personalGatewayUnavailable("gateway_key_management_unavailable"));
   return personalGatewayWrite(
-    () => deleteJson<PersonalGatewayOperationReadback>(personalGatewayKeyRevokeRoute(true, keyId), csrfToken, idempotencyKey),
+    () => deleteJson<PersonalGatewayOperationReadback>(personalGatewayKeyRevokeRoute(keyId), csrfToken, idempotencyKey),
     decodePersonalGatewayKeyOperation
   );
 }
