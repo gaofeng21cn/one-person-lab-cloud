@@ -51483,14 +51483,14 @@ const file_internal_proto_rawDesc = "" +
 	"\x16UpdateWorkspaceVersion\x12/.opl.cloud.api.UpdateWorkspaceVersionRpcRequest\x1a\x18.opl.cloud.api.Operation\x12Y\n" +
 	"\x11RollbackWorkspace\x12*.opl.cloud.api.RollbackWorkspaceRpcRequest\x1a\x18.opl.cloud.api.Operation\x12a\n" +
 	"\x12GetWorkspaceAccess\x12+.opl.cloud.api.GetWorkspaceAccessRpcRequest\x1a\x1e.opl.cloud.api.WorkspaceAccess\x12i\n" +
-	"\x1aGetOperatorWorkspaceAccess\x12+.opl.cloud.api.GetWorkspaceAccessRpcRequest\x1a\x1e.opl.cloud.api.WorkspaceAccess2\x9d\x11\n" +
+	"\x1aGetOperatorWorkspaceAccess\x12+.opl.cloud.api.GetWorkspaceAccessRpcRequest\x1a\x1e.opl.cloud.api.WorkspaceAccess2\x97\x11\n" +
 	"\x15GatewayProductService\x12r\n" +
 	"\x17ListPersonalGatewayKeys\x120.opl.cloud.api.ListPersonalGatewayKeysRpcRequest\x1a%.opl.cloud.api.PersonalGatewayKeyPage\x12j\n" +
 	"\x15GetPersonalGatewayKey\x12..opl.cloud.api.GetPersonalGatewayKeyRpcRequest\x1a!.opl.cloud.api.PersonalGatewayKey\x12x\n" +
 	"\x19ListPersonalGatewayGroups\x122.opl.cloud.api.ListPersonalGatewayGroupsRpcRequest\x1a'.opl.cloud.api.PersonalGatewayGroupPage\x12\x7f\n" +
 	"\x1bListPersonalGatewayKeyUsage\x124.opl.cloud.api.ListPersonalGatewayKeyUsageRpcRequest\x1a*.opl.cloud.api.PersonalGatewayKeyUsagePage\x12|\n" +
-	"!GetPersonalGatewayKeyUsageSummary\x12:.opl.cloud.api.GetPersonalGatewayKeyUsageSummaryRpcRequest\x1a\x1b.opl.cloud.api.UsageSummary\x12v\n" +
-	"\x18CreatePersonalGatewayKey\x121.opl.cloud.api.CreatePersonalGatewayKeyRpcRequest\x1a'.opl.cloud.api.PersonalGatewayKeySecret\x12p\n" +
+	"!GetPersonalGatewayKeyUsageSummary\x12:.opl.cloud.api.GetPersonalGatewayKeyUsageSummaryRpcRequest\x1a\x1b.opl.cloud.api.UsageSummary\x12p\n" +
+	"\x18CreatePersonalGatewayKey\x121.opl.cloud.api.CreatePersonalGatewayKeyRpcRequest\x1a!.opl.cloud.api.PersonalGatewayKey\x12p\n" +
 	"\x18UpdatePersonalGatewayKey\x121.opl.cloud.api.UpdatePersonalGatewayKeyRpcRequest\x1a!.opl.cloud.api.PersonalGatewayKey\x12v\n" +
 	"\x18RevealPersonalGatewayKey\x121.opl.cloud.api.RevealPersonalGatewayKeyRpcRequest\x1a'.opl.cloud.api.PersonalGatewayKeySecret\x12g\n" +
 	"\x18RevokePersonalGatewayKey\x121.opl.cloud.api.RevokePersonalGatewayKeyRpcRequest\x1a\x18.opl.cloud.api.Operation\x12s\n" +
@@ -53488,7 +53488,7 @@ var file_internal_proto_depIdxs = []int32{
 	620,  // 1202: opl.cloud.api.GatewayProductService.ListPersonalGatewayGroups:output_type -> opl.cloud.api.PersonalGatewayGroupPage
 	622,  // 1203: opl.cloud.api.GatewayProductService.ListPersonalGatewayKeyUsage:output_type -> opl.cloud.api.PersonalGatewayKeyUsagePage
 	295,  // 1204: opl.cloud.api.GatewayProductService.GetPersonalGatewayKeyUsageSummary:output_type -> opl.cloud.api.UsageSummary
-	628,  // 1205: opl.cloud.api.GatewayProductService.CreatePersonalGatewayKey:output_type -> opl.cloud.api.PersonalGatewayKeySecret
+	617,  // 1205: opl.cloud.api.GatewayProductService.CreatePersonalGatewayKey:output_type -> opl.cloud.api.PersonalGatewayKey
 	617,  // 1206: opl.cloud.api.GatewayProductService.UpdatePersonalGatewayKey:output_type -> opl.cloud.api.PersonalGatewayKey
 	628,  // 1207: opl.cloud.api.GatewayProductService.RevealPersonalGatewayKey:output_type -> opl.cloud.api.PersonalGatewayKeySecret
 	194,  // 1208: opl.cloud.api.GatewayProductService.RevokePersonalGatewayKey:output_type -> opl.cloud.api.Operation

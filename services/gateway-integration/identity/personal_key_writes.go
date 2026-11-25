@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	api "opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/owneridentity"
 )
 
 const (
@@ -163,10 +164,15 @@ func (s *Service) recordPersonalKeyAudit(ctx context.Context, session *api.Sessi
 }
 
 // CreatePersonalGatewayKey creates one personal Gateway Key for the caller's
-// own account and returns its secret exactly once. Sub2API remains the truth
-// for the Key, its Group and its limits; this owner carries the command and
+// own account and returns the new Key's summary. Sub2API remains the truth for
+// the Key, its Group and its limits; this owner carries the command and
 // confirms the provider's own readback before it reports the new Key.
-func (s *Service) CreatePersonalGatewayKey(ctx context.Context, r *api.CreatePersonalGatewayKeyRpcRequest) (*api.PersonalGatewayKeySecret, error) {
+//
+// The answer carries no plaintext. The provider's create answer does carry
+// the secret, and this owner discards it at the boundary: the customer takes
+// the secret from the explicit reveal command, which audits before the secret
+// leaves.
+func (s *Service) CreatePersonalGatewayKey(ctx context.Context, r *api.CreatePersonalGatewayKeyRpcRequest) (*api.PersonalGatewayKey, error) {
 	body := r.GetBody()
 	name := strings.TrimSpace(body.GetName())
 	if name == "" || utf8.RuneCountInString(name) > personalKeyNameLimit || reservedPersonalKeyName(name) {
@@ -232,8 +238,38 @@ func (s *Service) CreatePersonalGatewayKey(ctx context.Context, r *api.CreatePer
 		}
 		request[field] = encoded
 	}
+	// The command is registered before the provider write. A retry of the same
+	// command replays the recorded answer instead of minting a second Key, and a
+	// different request under the same idempotency key is refused.
+	reservation := PersonalKeyCommandReservation{
+		ActorID:            session.GetActorId(),
+		ProviderSubject:    credential.key.subject,
+		OperationName:      personalKeyCreateOperation,
+		IdempotencyKey:     idempotencyKey,
+		CommandFingerprint: personalKeyCommandFingerprint(personalKeyCreateOperation, session.GetActorId(), credential.key.subject, "", request),
+		ResourceID:         "personal_key_create:" + session.GetActorId(),
+	}
+	record, existing, err := s.GatewayStore.ReservePersonalKeyCommand(ctx, reservation)
+	if errors.Is(err, ErrPersonalKeyCommandConflict) {
+		return nil, owneridentity.WithErrorCode(status.Error(codes.AlreadyExists, "idempotency key reused with a different personal Gateway key command"), api.ErrorCodeEnum_ERROR_CODE_ENUM_IDEMPOTENCY_CONFLICT)
+	}
+	if err != nil {
+		return nil, status.Error(codes.Unavailable, "the personal Gateway key command registration is unavailable")
+	}
+	if existing {
+		answer := &api.PersonalGatewayKey{}
+		if err := personalKeyCommandAnswer(record, answer); err != nil {
+			return nil, err
+		}
+		return answer, nil
+	}
 	data, err := s.personalEnvelope(ctx, credential, http.MethodPost, "/api/v1/keys", request, map[string]string{"Idempotency-Key": idempotencyKey})
 	if err != nil {
+		// A definite refusal settles the command. An unconfirmed outcome leaves it
+		// pending, so no second Key is minted for one accepted command.
+		if definitePersonalKeyRefusal(err) {
+			refusePersonalKeyCommand(ctx, s, reservation, err)
+		}
 		return nil, err
 	}
 	if len(data) == 0 {
@@ -243,7 +279,7 @@ func (s *Service) CreatePersonalGatewayKey(ctx context.Context, r *api.CreatePer
 	if json.Unmarshal(data, &created) != nil {
 		return nil, invalidPersonalWriteResponse()
 	}
-	if created.ID <= 0 || strconv.FormatInt(created.UserID, 10) != credential.key.subject || strings.TrimSpace(created.Key) == "" {
+	if created.ID <= 0 || strconv.FormatInt(created.UserID, 10) != credential.key.subject {
 		return nil, invalidPersonalWriteResponse()
 	}
 	key, err := s.readPersonalKey(ctx, credential, strconv.FormatInt(created.ID, 10))
@@ -256,7 +292,10 @@ func (s *Service) CreatePersonalGatewayKey(ctx context.Context, r *api.CreatePer
 	if err = s.recordPersonalKeyAudit(ctx, session, "gateway.personal_key_create", key.GetId(), r.GetContext().GetRequestId(), map[string]any{"name": name, "groupId": strconv.FormatInt(groupID, 10)}, "confirmed"); err != nil {
 		return nil, err
 	}
-	return &api.PersonalGatewayKeySecret{Key: key, Secret: created.Key}, nil
+	if err = settlePersonalKeyCommand(ctx, s, reservation, key, key.GetId()); err != nil {
+		return nil, err
+	}
+	return key, nil
 }
 
 // personalKeyCreateConfirmed checks the provider's own readback against the
@@ -491,18 +530,77 @@ func (s *Service) UpdatePersonalGatewayKey(ctx context.Context, r *api.UpdatePer
 	if err != nil {
 		return nil, err
 	}
+	// An update that names nothing is refused at the owner boundary. A provider
+	// write with no instruction would still reset nothing, but it would answer
+	// a command the caller never stated.
+	if len(request) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "a personal Gateway key update requires at least one field")
+	}
+	idempotencyKey := strings.TrimSpace(r.GetContext().GetIdempotencyKey())
+	if idempotencyKey == "" {
+		return nil, status.Error(codes.InvalidArgument, "an idempotency key is required")
+	}
 	session, credential, err := s.personalSession(ctx, r.GetContext())
 	if err != nil {
 		return nil, err
+	}
+	// The command is registered before the provider write. A retry replays the
+	// recorded answer, so an update that resets the Key's usage is never sent to
+	// the provider twice and never clears the usage that accrued after the first
+	// request.
+	reservation := PersonalKeyCommandReservation{
+		ActorID:            session.GetActorId(),
+		ProviderSubject:    credential.key.subject,
+		OperationName:      personalKeyUpdateOperation,
+		IdempotencyKey:     idempotencyKey,
+		CommandFingerprint: personalKeyCommandFingerprint(personalKeyUpdateOperation, session.GetActorId(), credential.key.subject, id, request),
+		ResourceID:         id,
+	}
+	record, existing, err := s.GatewayStore.ReservePersonalKeyCommand(ctx, reservation)
+	if errors.Is(err, ErrPersonalKeyCommandConflict) {
+		return nil, owneridentity.WithErrorCode(status.Error(codes.AlreadyExists, "idempotency key reused with a different personal Gateway key command"), api.ErrorCodeEnum_ERROR_CODE_ENUM_IDEMPOTENCY_CONFLICT)
+	}
+	if err != nil {
+		return nil, status.Error(codes.Unavailable, "the personal Gateway key command registration is unavailable")
+	}
+	if existing {
+		if personalKeyCommandPending(record) {
+			// The provider write's outcome was never confirmed. A usage reset
+			// cannot be read back - the usage that accrued after the first
+			// request is indistinguishable from a usage that was never reset - so
+			// such a command stays unresolved and is never dispatched again.
+			if personalKeyCommandUsageReset(request) {
+				return nil, status.Error(codes.Unavailable, "the personal Gateway key command outcome is unknown")
+			}
+			// Otherwise the owner's own readback is the evidence that settles it:
+			// a Key whose configuration matches was updated.
+			current, readErr := s.readPersonalKey(ctx, credential, id)
+			if readErr != nil || !personalKeyUpdateConfirmed(current, expected) {
+				return nil, status.Error(codes.Unavailable, "the personal Gateway key command outcome is unknown")
+			}
+			if err = settlePersonalKeyCommand(ctx, s, reservation, current, id); err != nil {
+				return nil, err
+			}
+			return current, nil
+		}
+		answer := &api.PersonalGatewayKey{}
+		if err := personalKeyCommandAnswer(record, answer); err != nil {
+			return nil, err
+		}
+		return answer, nil
 	}
 	current, err := s.readPersonalKey(ctx, credential, id)
 	if err != nil {
 		return nil, err
 	}
 	if current.GetKind() == api.PersonalGatewayKeyKindEnum_PERSONAL_GATEWAY_KEY_KIND_ENUM_WORKSPACE {
+		refusePersonalKeyCommand(ctx, s, reservation, status.Error(codes.FailedPrecondition, "the Gateway key is managed by a Workspace"))
 		return nil, status.Error(codes.FailedPrecondition, "the Gateway key is managed by a Workspace")
 	}
 	if _, err = s.personalEnvelope(ctx, credential, http.MethodPut, "/api/v1/keys/"+id, request, nil); err != nil {
+		if definitePersonalKeyRefusal(err) {
+			refusePersonalKeyCommand(ctx, s, reservation, err)
+		}
 		return nil, err
 	}
 	updated, err := s.readPersonalKey(ctx, credential, id)
@@ -513,6 +611,9 @@ func (s *Service) UpdatePersonalGatewayKey(ctx context.Context, r *api.UpdatePer
 		return nil, status.Error(codes.Unavailable, "the updated Gateway personal key does not match the request")
 	}
 	if err = s.recordPersonalKeyAudit(ctx, session, "gateway.personal_key_update", id, r.GetContext().GetRequestId(), map[string]any{"fields": expected.details}, "confirmed"); err != nil {
+		return nil, err
+	}
+	if err = settlePersonalKeyCommand(ctx, s, reservation, updated, id); err != nil {
 		return nil, err
 	}
 	return updated, nil
@@ -563,33 +664,92 @@ func (s *Service) RevokePersonalGatewayKey(ctx context.Context, r *api.RevokePer
 	if err != nil {
 		return nil, err
 	}
+	idempotencyKey := strings.TrimSpace(r.GetContext().GetIdempotencyKey())
+	if idempotencyKey == "" {
+		return nil, status.Error(codes.InvalidArgument, "an idempotency key is required")
+	}
 	session, credential, err := s.personalSession(ctx, r.GetContext())
 	if err != nil {
 		return nil, err
+	}
+	// The command is registered before the provider write. A repeated revoke
+	// replays the recorded answer instead of writing to the provider again.
+	reservation := PersonalKeyCommandReservation{
+		ActorID:            session.GetActorId(),
+		ProviderSubject:    credential.key.subject,
+		OperationName:      personalKeyRevokeOperation,
+		IdempotencyKey:     idempotencyKey,
+		CommandFingerprint: personalKeyCommandFingerprint(personalKeyRevokeOperation, session.GetActorId(), credential.key.subject, id, nil),
+		ResourceID:         id,
+	}
+	record, existing, err := s.GatewayStore.ReservePersonalKeyCommand(ctx, reservation)
+	if errors.Is(err, ErrPersonalKeyCommandConflict) {
+		return nil, owneridentity.WithErrorCode(status.Error(codes.AlreadyExists, "idempotency key reused with a different personal Gateway key command"), api.ErrorCodeEnum_ERROR_CODE_ENUM_IDEMPOTENCY_CONFLICT)
+	}
+	if err != nil {
+		return nil, status.Error(codes.Unavailable, "the personal Gateway key command registration is unavailable")
+	}
+	if existing {
+		if personalKeyCommandPending(record) {
+			// The provider write's outcome was never confirmed. A Key the provider
+			// no longer holds was revoked, so the owner's readback settles the
+			// command; a Key it still holds leaves the command unresolved, and it
+			// is never dispatched a second time.
+			if _, readErr := s.readPersonalKey(ctx, credential, id); readErr == nil || status.Code(readErr) != codes.NotFound {
+				return nil, status.Error(codes.Unavailable, "the personal Gateway key command outcome is unknown")
+			}
+			return s.confirmPersonalKeyRevoke(ctx, session, r.GetContext().GetRequestId(), id, reservation, "revoked")
+		}
+		answer := &api.Operation{}
+		if err := personalKeyCommandAnswer(record, answer); err != nil {
+			return nil, err
+		}
+		return answer, nil
 	}
 	current, err := s.readPersonalKey(ctx, credential, id)
 	if err != nil {
 		if status.Code(err) != codes.NotFound {
 			return nil, err
 		}
-		return s.revokedPersonalKey(ctx, session, r.GetContext().GetRequestId(), id, "already absent")
+		return s.confirmPersonalKeyRevoke(ctx, session, r.GetContext().GetRequestId(), id, reservation, "already absent")
 	}
 	if current.GetKind() == api.PersonalGatewayKeyKindEnum_PERSONAL_GATEWAY_KEY_KIND_ENUM_WORKSPACE {
+		refusePersonalKeyCommand(ctx, s, reservation, status.Error(codes.FailedPrecondition, "the Gateway key is managed by a Workspace"))
 		return nil, status.Error(codes.FailedPrecondition, "the Gateway key is managed by a Workspace")
 	}
 	if _, err = s.personalEnvelope(ctx, credential, http.MethodDelete, "/api/v1/keys/"+id, nil, nil); err != nil {
 		if status.Code(err) != codes.NotFound {
+			if definitePersonalKeyRefusal(err) {
+				refusePersonalKeyCommand(ctx, s, reservation, err)
+			}
 			return nil, err
 		}
 		// The provider refused the delete. The revoke is only satisfied when the
 		// provider's own readback proves the Key is gone.
 	}
 	if _, err = s.readPersonalKey(ctx, credential, id); err == nil {
+		// The provider still holds the Key, so the revoke did not take effect.
+		refusePersonalKeyCommand(ctx, s, reservation, status.Error(codes.Unavailable, "the Gateway personal key revocation is unconfirmed"))
 		return nil, status.Error(codes.Unavailable, "the Gateway personal key revocation is unconfirmed")
 	} else if status.Code(err) != codes.NotFound {
+		// The readback itself did not settle the outcome. The command stays
+		// pending: it is never dispatched a second time.
 		return nil, status.Error(codes.Unavailable, "the Gateway personal key revocation is unconfirmed")
 	}
-	return s.revokedPersonalKey(ctx, session, r.GetContext().GetRequestId(), id, "revoked")
+	return s.confirmPersonalKeyRevoke(ctx, session, r.GetContext().GetRequestId(), id, reservation, "revoked")
+}
+
+// confirmPersonalKeyRevoke records the revoke evidence, settles the original
+// command with its terminal answer and returns the operation that describes it.
+func (s *Service) confirmPersonalKeyRevoke(ctx context.Context, session *api.Session, requestID, id string, reservation PersonalKeyCommandReservation, outcome string) (*api.Operation, error) {
+	operation, err := s.revokedPersonalKey(ctx, session, requestID, id, outcome)
+	if err != nil {
+		return nil, err
+	}
+	if err = settlePersonalKeyCommand(ctx, s, reservation, operation, id); err != nil {
+		return nil, err
+	}
+	return operation, nil
 }
 
 // revokedPersonalKey records the revoke evidence and answers with the

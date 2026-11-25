@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"opl-cloud/services/gateway-integration/identity"
+	"strings"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	api "opl-cloud/packages/contracts/go/api"
 )
@@ -70,7 +73,7 @@ func personalKeyAuditRows(t *testing.T, service *identity.Service) []string {
 	return out
 }
 
-func TestPersonalKeyCreateCarriesEveryFieldAndReturnsTheSecretOnce(t *testing.T) {
+func TestPersonalKeyCreateCarriesEveryFieldAndReturnsTheKeySummaryWithoutThePlaintext(t *testing.T) {
 	var request map[string]json.RawMessage
 	var idempotency string
 	client, tenant, service := gatewayProductSystemWithUpstream(t, func(w http.ResponseWriter, r *http.Request) bool {
@@ -93,7 +96,7 @@ func TestPersonalKeyCreateCarriesEveryFieldAndReturnsTheSecretOnce(t *testing.T)
 		return true
 	})
 	call := personalWriteCall(t, tenant, service, "personal-key-create-1")
-	secret, err := client.CreatePersonalGatewayKey(t.Context(), &api.CreatePersonalGatewayKeyRpcRequest{Context: call, Body: &api.CreatePersonalGatewayKeyRequest{
+	key, err := client.CreatePersonalGatewayKey(t.Context(), &api.CreatePersonalGatewayKeyRpcRequest{Context: call, Body: &api.CreatePersonalGatewayKeyRequest{
 		Name: "personal key", GroupId: "4", IpWhitelist: []string{"10.0.0.0/8"}, IpBlacklist: []string{"192.168.1.1"},
 		QuotaUsdMicros: 1_500_000, ExpiresInDays: proto.Int32(30),
 		RateLimit5HUsdMicros: 2_000_000, RateLimit1DUsdMicros: 3_000_000, RateLimit7DUsdMicros: 4_000_000,
@@ -118,10 +121,16 @@ func TestPersonalKeyCreateCarriesEveryFieldAndReturnsTheSecretOnce(t *testing.T)
 			t.Fatalf("the provider received %s=%s, want %s", name, got, want)
 		}
 	}
-	if secret.GetSecret() != "raw-secret-must-never-escape" {
-		t.Fatalf("the create answer carries no secret: %v", secret)
+	// The create answer is the Key summary. The provider's plaintext reached
+	// this owner and never leaves it: the customer takes the secret from the
+	// explicit reveal, which audits before the secret leaves.
+	wire, err := protojson.Marshal(key)
+	if err != nil {
+		t.Fatal(err)
 	}
-	key := secret.GetKey()
+	if strings.Contains(string(wire), "raw-secret-must-never-escape") {
+		t.Fatalf("the create answer carries the provider's plaintext: %s", wire)
+	}
 	if key.GetId() != "71" || key.GetName() != "personal key" || key.GetGroupId() != "4" || key.GetQuotaUsdMicros() != 1_500_000 || key.GetRateLimit5HUsdMicros() != 2_000_000 || key.GetRateLimit1DUsdMicros() != 3_000_000 || key.GetRateLimit7DUsdMicros() != 4_000_000 || key.GetStatus() != api.PersonalGatewayKeyStatusEnum_PERSONAL_GATEWAY_KEY_STATUS_ENUM_ACTIVE {
 		t.Fatalf("the created key projection is wrong: %v", key)
 	}
@@ -291,8 +300,14 @@ func TestPersonalKeyRevokeConfirmsAbsenceAndIsIdempotent(t *testing.T) {
 	if again.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
 		t.Fatalf("the repeated revoke did not succeed: %v", again)
 	}
-	if rows := personalKeyAuditRows(t, service); len(rows) != 2 {
-		t.Fatalf("the revoke left no audit evidence: %v", rows)
+	if again.GetOperationId() != operation.GetOperationId() {
+		t.Fatalf("the repeated revoke answered a different command: %v vs %v", again, operation)
+	}
+	// The repeated revoke replays the recorded command, so the accepted command
+	// keeps exactly one audit row. A second revoke under a different command
+	// identity is a second command and carries its own evidence.
+	if rows := personalKeyAuditRows(t, service); len(rows) != 1 || rows[0] != "gateway.personal_key_revoke 71 confirmed" {
+		t.Fatalf("the revoke left wrong audit evidence: %v", rows)
 	}
 }
 
@@ -369,17 +384,245 @@ func TestPersonalKeyProviderFailureNeverReportsSuccess(t *testing.T) {
 		return true
 	})
 	call := personalWriteCall(t, tenant, service, "personal-key-create-2")
-	secret, err := client.CreatePersonalGatewayKey(t.Context(), &api.CreatePersonalGatewayKeyRpcRequest{Context: call, Body: &api.CreatePersonalGatewayKeyRequest{Name: "personal key", GroupId: "4"}})
+	key, err := client.CreatePersonalGatewayKey(t.Context(), &api.CreatePersonalGatewayKeyRpcRequest{Context: call, Body: &api.CreatePersonalGatewayKeyRequest{Name: "personal key", GroupId: "4"}})
 	if err == nil {
-		t.Fatalf("a failed provider call reported success: %v", secret)
-	}
-	if secret.GetSecret() != "" {
-		t.Fatalf("a failed provider call leaked a secret: %v", secret)
+		t.Fatalf("a failed provider call reported success: %v", key)
 	}
 	if status.Code(err) != codes.Unavailable {
 		t.Fatalf("a failed provider call reported %v", err)
 	}
 	if rows := personalKeyAuditRows(t, service); len(rows) != 0 {
 		t.Fatalf("a failed provider call left audit evidence: %v", rows)
+	}
+}
+
+// TestPersonalKeyCreateRetryAfterAnInterruptedProviderAnswerNeverMintsASecondKey
+// proves the owner's own command reservation: the provider accepted the create
+// but its answer never arrived whole, so the command stays pending and the
+// retry never reaches the provider a second time.
+func TestPersonalKeyCreateRetryAfterAnInterruptedProviderAnswerNeverMintsASecondKey(t *testing.T) {
+	creates := 0
+	client, tenant, service := gatewayProductSystemWithUpstream(t, func(w http.ResponseWriter, r *http.Request) bool {
+		if r.URL.Path != "/api/v1/keys" && r.URL.Path != "/api/v1/keys/71" {
+			return false
+		}
+		if r.Header.Get("Authorization") != "Bearer user-token" {
+			w.WriteHeader(401)
+			return true
+		}
+		if r.Method == http.MethodPost {
+			creates++
+			// The provider issued the Key and its answer was cut off.
+			_, _ = w.Write([]byte(`{"code":0,"data":{"id":71,`))
+			return true
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": personalWrittenKey(nil)})
+		return true
+	})
+	call := personalWriteCall(t, tenant, service, "personal-key-create-interrupted")
+	body := &api.CreatePersonalGatewayKeyRequest{Name: "personal key", GroupId: "4", QuotaUsdMicros: 1_500_000}
+	if _, err := client.CreatePersonalGatewayKey(t.Context(), &api.CreatePersonalGatewayKeyRpcRequest{Context: call, Body: body}); status.Code(err) != codes.Unavailable {
+		t.Fatalf("an interrupted provider answer was accepted: %v", err)
+	}
+	if creates != 1 {
+		t.Fatalf("the provider was asked to create %d keys", creates)
+	}
+	// The retry replays the recorded command. It never reaches the provider,
+	// because a second create would mint a second Key for one accepted command.
+	if _, err := client.CreatePersonalGatewayKey(t.Context(), &api.CreatePersonalGatewayKeyRpcRequest{Context: call, Body: body}); status.Code(err) != codes.Unavailable {
+		t.Fatalf("an unresolved command was answered: %v", err)
+	}
+	if creates != 1 {
+		t.Fatalf("the retry minted a second key: %d creates", creates)
+	}
+	if rows := personalKeyAuditRows(t, service); len(rows) != 0 {
+		t.Fatalf("an unresolved create left audit evidence: %v", rows)
+	}
+}
+
+// TestPersonalKeyUpdateRetryWithNewlyAccruedUsageNeverResetsItAgain proves the
+// owner's command reservation on the write the owner named: a retry of an
+// update that resets the Key's usage must not clear the usage that accrued
+// after the first request.
+func TestPersonalKeyUpdateRetryWithNewlyAccruedUsageNeverResetsItAgain(t *testing.T) {
+	usage := "0.250000"
+	resets := 0
+	client, tenant, service := gatewayProductSystemWithUpstream(t, func(w http.ResponseWriter, r *http.Request) bool {
+		if r.URL.Path != "/api/v1/keys/71" {
+			return false
+		}
+		if r.Header.Get("Authorization") != "Bearer user-token" {
+			w.WriteHeader(401)
+			return true
+		}
+		if r.Method == http.MethodPut {
+			var body map[string]json.RawMessage
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+				w.WriteHeader(400)
+				return true
+			}
+			if _, ok := body["reset_quota"]; ok {
+				resets++
+				usage = "0.000000"
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": personalWrittenKey(map[string]any{"quota_used": usage})})
+		return true
+	})
+	call := personalWriteCall(t, tenant, service, "personal-key-update-reset")
+	body := &api.UpdatePersonalGatewayKeyRequest{QuotaUsdMicros: proto.Int64(1_500_000), ResetQuota: proto.Bool(true)}
+	first, err := client.UpdatePersonalGatewayKey(t.Context(), &api.UpdatePersonalGatewayKeyRpcRequest{Context: call, KeyId: "71", Body: body})
+	if err != nil {
+		t.Fatalf("personal key update: %v", err)
+	}
+	if resets != 1 {
+		t.Fatalf("the provider reset the usage %d times", resets)
+	}
+	// The Key spends after the first request.
+	usage = "0.750000"
+	// The retry replays the recorded answer. The provider is never asked again,
+	// so the usage that accrued after the first request is not cleared.
+	replayed, err := client.UpdatePersonalGatewayKey(t.Context(), &api.UpdatePersonalGatewayKeyRpcRequest{Context: call, KeyId: "71", Body: body})
+	if err != nil {
+		t.Fatalf("the retry of a settled command failed: %v", err)
+	}
+	if resets != 1 {
+		t.Fatalf("the retry reset the usage again: %d resets", resets)
+	}
+	if usage != "0.750000" {
+		t.Fatalf("the retry cleared the accrued usage: %s", usage)
+	}
+	if replayed.GetQuotaUsdMicros() != first.GetQuotaUsdMicros() || replayed.GetName() != first.GetName() || replayed.GetStatus() != first.GetStatus() {
+		t.Fatalf("the retry did not replay the recorded answer: %v vs %v", replayed, first)
+	}
+}
+
+// TestPersonalKeyRepeatedRevokeReplaysTheRecordedOperation proves the owner's
+// command reservation on a repeated revoke: the provider is asked to delete
+// the Key once, and the second command replays the recorded terminal answer.
+func TestPersonalKeyRepeatedRevokeReplaysTheRecordedOperation(t *testing.T) {
+	deletes := 0
+	absent := false
+	client, tenant, service := gatewayProductSystemWithUpstream(t, func(w http.ResponseWriter, r *http.Request) bool {
+		if r.URL.Path != "/api/v1/keys/71" {
+			return false
+		}
+		if r.Header.Get("Authorization") != "Bearer user-token" {
+			w.WriteHeader(401)
+			return true
+		}
+		if r.Method == http.MethodDelete {
+			deletes++
+			absent = true
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"id": 71}})
+			return true
+		}
+		if absent {
+			w.WriteHeader(404)
+			return true
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": personalWrittenKey(nil)})
+		return true
+	})
+	call := personalWriteCall(t, tenant, service, "personal-key-revoke-replay")
+	first, err := client.RevokePersonalGatewayKey(t.Context(), &api.RevokePersonalGatewayKeyRpcRequest{Context: call, KeyId: "71"})
+	if err != nil {
+		t.Fatalf("personal key revoke: %v", err)
+	}
+	if deletes != 1 {
+		t.Fatalf("the provider was asked to delete %d times", deletes)
+	}
+	second, err := client.RevokePersonalGatewayKey(t.Context(), &api.RevokePersonalGatewayKeyRpcRequest{Context: call, KeyId: "71"})
+	if err != nil {
+		t.Fatalf("the repeated revoke failed: %v", err)
+	}
+	if deletes != 1 {
+		t.Fatalf("the repeated revoke reached the provider: %d deletes", deletes)
+	}
+	if second.GetOperationId() != first.GetOperationId() || second.GetStatus() != first.GetStatus() {
+		t.Fatalf("the repeated revoke did not replay the recorded answer: %v vs %v", second, first)
+	}
+}
+
+// TestPersonalKeyUpdateRejectsAnEmptyPayload proves the owner refuses an
+// update that names nothing, before it reaches the provider.
+func TestPersonalKeyUpdateRejectsAnEmptyPayload(t *testing.T) {
+	requests := 0
+	client, tenant, service := gatewayProductSystemWithUpstream(t, func(w http.ResponseWriter, r *http.Request) bool {
+		if r.URL.Path != "/api/v1/keys/71" {
+			return false
+		}
+		requests++
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": personalWrittenKey(nil)})
+		return true
+	})
+	call := personalWriteCall(t, tenant, service, "personal-key-update-empty")
+	if _, err := client.UpdatePersonalGatewayKey(t.Context(), &api.UpdatePersonalGatewayKeyRpcRequest{Context: call, KeyId: "71", Body: &api.UpdatePersonalGatewayKeyRequest{}}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("an empty update payload was accepted: %v", err)
+	}
+	if requests != 0 {
+		t.Fatalf("an empty update reached the provider: %d requests", requests)
+	}
+	if rows := personalKeyAuditRows(t, service); len(rows) != 0 {
+		t.Fatalf("a refused update left audit evidence: %v", rows)
+	}
+}
+
+// TestPersonalKeyCommandRefusesAnotherRequestUnderTheSameIdempotencyKey
+// proves that one command identity is never reinterpreted as another command.
+func TestPersonalKeyCommandRefusesAnotherRequestUnderTheSameIdempotencyKey(t *testing.T) {
+	creates := 0
+	client, tenant, service := gatewayProductSystemWithUpstream(t, func(w http.ResponseWriter, r *http.Request) bool {
+		if r.URL.Path != "/api/v1/keys" && r.URL.Path != "/api/v1/keys/71" {
+			return false
+		}
+		if r.Header.Get("Authorization") != "Bearer user-token" {
+			w.WriteHeader(401)
+			return true
+		}
+		if r.Method == http.MethodPost {
+			creates++
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": personalWrittenKey(nil)})
+		return true
+	})
+	call := personalWriteCall(t, tenant, service, "personal-key-create-conflict")
+	first := &api.CreatePersonalGatewayKeyRequest{
+		Name: "personal key", GroupId: "4", IpWhitelist: []string{"10.0.0.0/8"}, IpBlacklist: []string{"192.168.1.1"},
+		QuotaUsdMicros: 1_500_000, ExpiresInDays: proto.Int32(30),
+		RateLimit5HUsdMicros: 2_000_000, RateLimit1DUsdMicros: 3_000_000, RateLimit7DUsdMicros: 4_000_000,
+	}
+	if _, err := client.CreatePersonalGatewayKey(t.Context(), &api.CreatePersonalGatewayKeyRpcRequest{Context: call, Body: first}); err != nil {
+		t.Fatalf("personal key create: %v", err)
+	}
+	second := &api.CreatePersonalGatewayKeyRequest{
+		Name: "another personal key", GroupId: "4", IpWhitelist: []string{"10.0.0.0/8"}, IpBlacklist: []string{"192.168.1.1"},
+		QuotaUsdMicros: 1_500_000, ExpiresInDays: proto.Int32(30),
+		RateLimit5HUsdMicros: 2_000_000, RateLimit1DUsdMicros: 3_000_000, RateLimit7DUsdMicros: 4_000_000,
+	}
+	if _, err := client.CreatePersonalGatewayKey(t.Context(), &api.CreatePersonalGatewayKeyRpcRequest{Context: call, Body: second}); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("a reused idempotency key with another request was accepted: %v", err)
+	}
+	if creates != 1 {
+		t.Fatalf("the refused command reached the provider: %d creates", creates)
+	}
+}
+
+// TestPersonalKeyWriteWithAnExpiredDelegatedCredentialRequiresReauthentication
+// proves that the write path keeps the existing reauthentication response: an
+// expired delegated credential is refused before any provider write, and the
+// Cloud session itself survives.
+func TestPersonalKeyWriteWithAnExpiredDelegatedCredentialRequiresReauthentication(t *testing.T) {
+	client, tenant, _, _ := personalCredentialSystem(t, "user-token", 3)
+	raw, session := login(t, tenant)
+	call := memberCall(session, raw, "personal-key-write-expired")
+	timer := time.NewTimer(4 * time.Second)
+	defer timer.Stop()
+	<-timer.C
+	_, err := client.CreatePersonalGatewayKey(t.Context(), &api.CreatePersonalGatewayKeyRpcRequest{Context: call, Body: &api.CreatePersonalGatewayKeyRequest{Name: "personal key", GroupId: "4"}})
+	requireReauthentication(t, err)
+	if _, err = tenant.GetSession(t.Context(), &api.GetSessionRpcRequest{Context: &api.CallContext{SessionId: proto.String(raw)}}); err != nil {
+		t.Fatalf("an expired credential revoked the Cloud session: %v", err)
 	}
 }

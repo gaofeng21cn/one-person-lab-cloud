@@ -2351,7 +2351,7 @@ service GatewayProductService {
  rpc ListPersonalGatewayGroups(ListPersonalGatewayGroupsRpcRequest) returns (PersonalGatewayGroupPage);
  rpc ListPersonalGatewayKeyUsage(ListPersonalGatewayKeyUsageRpcRequest) returns (PersonalGatewayKeyUsagePage);
  rpc GetPersonalGatewayKeyUsageSummary(GetPersonalGatewayKeyUsageSummaryRpcRequest) returns (UsageSummary);
- rpc CreatePersonalGatewayKey(CreatePersonalGatewayKeyRpcRequest) returns (PersonalGatewayKeySecret);
+ rpc CreatePersonalGatewayKey(CreatePersonalGatewayKeyRpcRequest) returns (PersonalGatewayKey);
  rpc UpdatePersonalGatewayKey(UpdatePersonalGatewayKeyRpcRequest) returns (PersonalGatewayKey);
  rpc RevealPersonalGatewayKey(RevealPersonalGatewayKeyRpcRequest) returns (PersonalGatewayKeySecret);
  rpc RevokePersonalGatewayKey(RevokePersonalGatewayKeyRpcRequest) returns (Operation);
