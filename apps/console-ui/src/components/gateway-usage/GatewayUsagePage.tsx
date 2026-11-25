@@ -9,7 +9,6 @@ import {
 import { useEffect, useId, useState, type FormEvent } from "react";
 
 import type { GatewayUsageController } from "../../app/console-controller-types.ts";
-import { cloudIdentity } from "../../app/console-identity.ts";
 import { GatewayKeyReauthentication } from "../keys/GatewayKeyReauthentication.tsx";
 import { presentGatewayKeyStatus } from "../../app/customer-experience-model.ts";
 import type { GatewayKeySummaryDTO, GatewayUsageItem, GatewayUsagePeriod } from "../../api/dtos.ts";
@@ -222,7 +221,7 @@ export function GatewayUsagePage({ controller, onCopyRequestId, onOpenKeys }: Ga
     if (!selectedKey) {
       if (reauthenticationRequired) return null;
       if (controller.keys.loading || !controller.keys.value) return <div className="source-loading gateway-usage-selection-state" aria-live="polite"><span className="spinner" />正在读取 API 密钥</div>;
-      if (controller.keys.value.status === "empty") return <div className="source-empty gateway-usage-selection-state"><h3>暂无 API 密钥</h3><p>{cloudIdentity ? "当前账户暂无 API 密钥，可在 API 密钥页面查看读取状态。" : "创建 API 密钥后即可查看用量。"}</p><Button onClick={onOpenKeys} size="sm" variant="outline">前往 API 密钥</Button></div>;
+      if (controller.keys.value.status === "empty") return <div className="source-empty gateway-usage-selection-state"><h3>暂无 API 密钥</h3><p>创建 API 密钥后即可查看用量。</p><Button onClick={onOpenKeys} size="sm" variant="outline">前往 API 密钥</Button></div>;
       return <div className="gateway-usage-selection-state"><SourceState error={controller.keys.error} errorDescription="暂时无法读取 API 密钥，请稍后重试。" onRetry={() => void controller.refresh()} source={controller.keys.value} unavailableDescription="暂时无法读取 API 密钥，请稍后重试。" unavailableTitle="API 密钥暂不可用">{() => null}</SourceState></div>;
     }
 

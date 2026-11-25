@@ -212,3 +212,25 @@ test("the cloud identity no longer refuses the personal Gateway Key writes", () 
 test("the Node lane is the retained identity, so the cloud route test does not depend on the environment", () => {
   assert.equal(cloudIdentity, false);
 });
+
+// The published Console reaches the Gateway owner through the BFF, so the
+// personal Key management actions are the customer's in every baked identity.
+// The owner decides which Key may be managed; the Console never withholds the
+// action because of the identity it was built with.
+test("the personal Key management actions are not withheld from the cloud identity", () => {
+  const keysPanel = readFileSync(
+    new URL("../../apps/console-ui/src/components/keys/KeysPanel.tsx", import.meta.url),
+    "utf8"
+  );
+
+  assert.equal(keysPanel.includes("仅供查看"), false,
+    "the cloud identity still answers with a read-only personal Key surface");
+  assert.equal(keysPanel.includes("API 密钥仅供查看"), false,
+    "the cloud identity still shows the read-only personal Key notice");
+  assert.equal(keysPanel.includes("!cloudIdentity &&"), false,
+    "the personal Key management actions are still gated on the baked identity");
+  // The owner owns the fact that decides whether a Key may be managed, and the
+  // Console asks it.
+  assert.ok(keysPanel.includes("key.manageable"), "the Console ignores the owner's manageable fact");
+  assert.ok(keysPanel.includes("key.deletable"), "the Console ignores the owner's deletable fact");
+});

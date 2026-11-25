@@ -6416,7 +6416,7 @@ type PersonalGatewayKey struct {
 	CreatedAt          *time.Time `json:"createdAt,omitempty"`
 	CurrentConcurrency int        `json:"currentConcurrency"`
 
-	// Deletable False for the read-only Cloud personal Key surface.
+	// Deletable True for a personal Key the customer may revoke from the Cloud personal Key surface, false for the Workspace's own managed Key.
 	Deletable bool       `json:"deletable"`
 	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
 	GroupId   *string    `json:"groupId,omitempty"`
@@ -6429,7 +6429,7 @@ type PersonalGatewayKey struct {
 	LastUsedAt  *time.Time             `json:"lastUsedAt,omitempty"`
 	LastUsedIp  *string                `json:"lastUsedIp,omitempty"`
 
-	// Manageable False for the read-only Cloud personal Key surface.
+	// Manageable True for a personal Key the customer manages from the Cloud personal Key surface, false for the Workspace's own managed Key.
 	Manageable bool   `json:"manageable"`
 	Name       string `json:"name"`
 

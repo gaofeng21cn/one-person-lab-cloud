@@ -41,6 +41,13 @@ translating cookies or minting renewable PATs.
 `legacy`) checked by response `source` tags (`gateway`, `sub2api`, `control_plane`,
 `ledger`, `workspace`). There is no cross-identity silent fallback.
 
+The personal Gateway Key management actions are the customer's in every baked
+identity: the Gateway owner decides whether a Key may be managed (the Workspace's
+own managed Key is neither manageable nor revocable), and the Console offers
+create, edit, revoke and reveal against the owner — the cloud identity through
+the Console BFF, the retained Control Plane identity through the Control Plane's
+own routes while those routes still exist.
+
 ### Console Browser Lifecycle
 
 See [Console Browser Lifecycle](implementation/console.md) for route/hook

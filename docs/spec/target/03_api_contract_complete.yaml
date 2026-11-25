@@ -10126,10 +10126,10 @@ components:
           - workspace
         manageable:
           type: boolean
-          description: False for the read-only Cloud personal Key surface.
+          description: True for a personal Key the customer manages from the Cloud personal Key surface, false for the Workspace's own managed Key.
         deletable:
           type: boolean
-          description: False for the read-only Cloud personal Key surface.
+          description: True for a personal Key the customer may revoke from the Cloud personal Key surface, false for the Workspace's own managed Key.
         ipWhitelist:
           type: array
           items:

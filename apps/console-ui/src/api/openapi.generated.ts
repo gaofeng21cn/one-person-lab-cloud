@@ -3099,9 +3099,9 @@ export interface components {
             status: "active" | "disabled" | "quota_exhausted" | "expired";
             /** @enum {string} */
             kind: "general" | "workspace";
-            /** @description False for the read-only Cloud personal Key surface. */
+            /** @description True for a personal Key the customer manages from the Cloud personal Key surface, false for the Workspace's own managed Key. */
             manageable: boolean;
-            /** @description False for the read-only Cloud personal Key surface. */
+            /** @description True for a personal Key the customer may revoke from the Cloud personal Key surface, false for the Workspace's own managed Key. */
             deletable: boolean;
             ipWhitelist: string[];
             ipBlacklist: string[];

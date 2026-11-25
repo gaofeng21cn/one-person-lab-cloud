@@ -257,7 +257,7 @@ func (s *Service) personalKey(ctx context.Context, item personalKeyPayload, subj
 	if state == 0 {
 		return nil, invalidPersonalResponse()
 	}
-	out := &api.PersonalGatewayKey{Id: strconv.FormatInt(item.ID, 10), Name: item.Name, Status: state, Kind: api.PersonalGatewayKeyKindEnum_PERSONAL_GATEWAY_KEY_KIND_ENUM_GENERAL, IpWhitelist: item.IPWhitelist, IpBlacklist: item.IPBlacklist, CurrentConcurrency: item.CurrentConcurrency, LastUsedIp: item.LastUsedIP}
+	out := &api.PersonalGatewayKey{Id: strconv.FormatInt(item.ID, 10), Name: item.Name, Status: state, Kind: api.PersonalGatewayKeyKindEnum_PERSONAL_GATEWAY_KEY_KIND_ENUM_GENERAL, Manageable: true, Deletable: true, IpWhitelist: item.IPWhitelist, IpBlacklist: item.IPBlacklist, CurrentConcurrency: item.CurrentConcurrency, LastUsedIp: item.LastUsedIP}
 	if item.GroupID != nil {
 		id := strconv.FormatInt(*item.GroupID, 10)
 		out.GroupId = &id
@@ -292,6 +292,10 @@ func (s *Service) personalKey(ctx context.Context, item personalKeyPayload, subj
 	}
 	if managed {
 		out.Kind = api.PersonalGatewayKeyKindEnum_PERSONAL_GATEWAY_KEY_KIND_ENUM_WORKSPACE
+		// The Workspace's own Key is created and rotated by the Workspace owner,
+		// never by the customer from the personal Key surface.
+		out.Manageable = false
+		out.Deletable = false
 	}
 	return out, nil
 }

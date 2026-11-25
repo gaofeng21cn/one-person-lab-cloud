@@ -42,7 +42,6 @@ import type {
 } from "../../api/dtos.ts";
 import { formatWorkspaceBudgetUsdInput as formatUsdInput } from "../../app/workspace-experience-model.ts";
 import { formatDate, formatUsdMicros, parseUsdMicros } from "../../console-model.ts";
-import { cloudIdentity } from "../../app/console-identity.ts";
 import { GatewayKeyReauthentication } from "./GatewayKeyReauthentication.tsx";
 import { SourceState } from "../source/SourceState.tsx";
 import { Alert, Badge, Button, Field, Modal, Select, Tooltip } from "../ui/index.ts";
@@ -134,11 +133,11 @@ function isProtectedWorkspaceKey(key: GatewayKeySummaryDTO) {
 }
 
 function canManage(key: GatewayKeySummaryDTO) {
-  return !cloudIdentity && key.manageable && !isProtectedWorkspaceKey(key);
+  return key.manageable && !isProtectedWorkspaceKey(key);
 }
 
 function canDelete(key: GatewayKeySummaryDTO) {
-  return !cloudIdentity && key.deletable && !isProtectedWorkspaceKey(key);
+  return key.deletable && !isProtectedWorkspaceKey(key);
 }
 
 function keyMatchesCreate(key: GatewayKeySummaryDTO, input: CreateGatewayKeyRequest) {
@@ -562,7 +561,6 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
   );
 
   const renderKeyActions = (key: GatewayKeySummaryDTO, className = "keys-row-actions") => {
-    if (cloudIdentity) return <span>仅支持查看</span>;
     const manageable = canManage(key);
     return (
       <div className={className}>
@@ -691,16 +689,15 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
               <RefreshCw aria-hidden="true" size={16} />
             </Button>
           </Tooltip>
-          {!cloudIdentity ? <Button color="primary" disabled={!groups.length || !csrfToken} onClick={openCreate} size="sm">
+          <Button color="primary" disabled={!groups.length || !csrfToken} onClick={openCreate} size="sm">
             <Plus aria-hidden="true" size={16} />创建 API 密钥
-          </Button> : null}
+          </Button>
         </div>
       </header>
 
-      {cloudIdentity ? <Alert color="info" title="API 密钥仅供查看" description="当前仅支持查看 API 密钥与用量，创建、修改、删除和显示完整密钥暂不可用。" /> : null}
       {[source, groupsSource].some((value) => value?.available === false && value.reasonCode === "REAUTHENTICATION_REQUIRED") ? <GatewayKeyReauthentication /> : null}
       {referenceError ? <Alert actions={<Button onClick={() => void loadReferenceData()} size="sm" variant="ghost">重试</Button>} color="warning" description={referenceError} title="参考配置部分不可用" /> : null}
-      {groupsSource?.status === "unavailable" ? <Alert color="warning" description={cloudIdentity ? "暂时无法读取服务分组，可刷新后重试。" : "暂时无法读取服务配置，已暂停创建和调整。"} title="服务配置暂不可用" /> : null}
+      {groupsSource?.status === "unavailable" ? <Alert color="warning" description="暂时无法读取服务分组，已暂停创建和调整，可刷新后重试。" title="服务配置暂不可用" /> : null}
       {endpointSource?.status === "unavailable" ? <Alert color="warning" description="暂时无法读取 API 地址，请稍后重试。" title="API 地址暂不可用" /> : null}
       {source?.status === "unavailable" || groupsSource?.status === "unavailable" || endpointSource?.status === "unavailable" ? <details className="keys-source-technical-details"><summary>技术详情</summary><dl className="data-list"><div><dt>keys source reason</dt><dd><code>{source?.status === "unavailable" ? source.reasonCode : "-"}</code></dd></div><div><dt>groups source reason</dt><dd><code>{groupsSource?.status === "unavailable" ? groupsSource.reasonCode : "-"}</code></dd></div><div><dt>endpoint source reason</dt><dd><code>{endpointSource?.status === "unavailable" ? endpointSource.reasonCode : "-"}</code></dd></div></dl></details> : null}
       {notice ? <Alert color="success" description={notice} title="操作完成" /> : null}
@@ -739,7 +736,7 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
       <div className="keys-results">
         <SourceState
           empty={source?.status === "empty"}
-          emptyDescription={cloudIdentity ? "当前账户暂无 API 密钥。" : "创建 API 密钥后即可调用服务。"}
+          emptyDescription="创建 API 密钥后即可调用服务。"
           error={error && !source ? error : ""}
           errorDescription="暂时无法读取 API 密钥，请稍后重试。"
           loading={loading}
