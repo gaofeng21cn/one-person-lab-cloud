@@ -210,18 +210,18 @@ test("expired customers explicitly renew after funding and reopen the original r
       await plan.getByRole("button", { name: "续费并恢复", exact: true }).waitFor({ state: "visible" });
       assert.equal(writes, 0, "funding and eligibility reads do not authorize a renewal");
       assert.equal(await page.getByRole("button", { name: "打开工作空间", exact: true }).isDisabled(), true);
-      page.once("dialog", (dialog) => {
-        assert.match(dialog.message(), /\$52\.58/);
-        assert.match(dialog.message(), /开启后续自动续费/);
-        void dialog.accept();
-      });
       await plan.getByRole("button", { name: "续费并恢复", exact: true }).click();
+      const firstConfirmDialog = page.getByRole("dialog", { name: "续费并恢复工作空间" });
+      await firstConfirmDialog.waitFor({ state: "visible" });
+      assert.match(await firstConfirmDialog.innerText(), /\$52\.58/);
+      assert.match(await firstConfirmDialog.innerText(), /开启后续自动续费/);
+      await firstConfirmDialog.getByRole("button", { name: "确认续费", exact: true }).click();
       await plan.getByText("续费结果待确认", { exact: true }).waitFor({ state: "visible" });
       assert.equal(writes, 1);
       await plan.getByRole("button", { name: "刷新续费条件", exact: true }).click();
       await plan.getByText("续费结果待确认", { exact: true }).waitFor({ state: "hidden" });
-      page.once("dialog", (dialog) => { void dialog.accept(); });
       await plan.getByRole("button", { name: "续费并恢复", exact: true }).click();
+      await page.getByRole("dialog", { name: "续费并恢复工作空间" }).getByRole("button", { name: "确认续费", exact: true }).click();
       await plan.getByText("续费结果待确认", { exact: true }).waitFor({ state: "visible" });
       assert.equal(writes, 2);
       assert.equal(recoveryKeys[1], recoveryKeys[0], "unknown recovery retains its original intent even when auto-renew was already true");

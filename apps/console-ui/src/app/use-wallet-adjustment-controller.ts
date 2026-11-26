@@ -11,6 +11,7 @@ import type {
   WalletAdjustmentRequest
 } from "../api/dtos.ts";
 import type { WalletAdjustmentController } from "./console-controller-types.ts";
+import { requestConfirm, requestPrompt } from "../components/ui/ConfirmDialog.tsx";
 import {
   resolveWalletAdjustmentIntent,
   walletRecoveryIdempotencyKey,
@@ -74,7 +75,14 @@ export function useWalletAdjustmentController({
     if (!session || busy || !input.amountUsd || !input.reason.trim()) return null;
     // API 合同要求请求体携带 confirmationAccountId；由控制器自动填入，用户无需手抄。
     const authoritativeInput: WalletAdjustmentRequest = { ...input, confirmationAccountId: accountId };
-    if (!window.confirm(`确认对账户 ${accountId} 执行${({ recharge: "充值", debit: "扣减", business_refund: "业务退款" } as Record<string, string>)[input.kind] || "余额操作"}？提交后会写入客户账户并保留操作记录。`)) return null;
+    const actionLabel = ({ recharge: "充值", debit: "扣减", business_refund: "业务退款" } as Record<string, string>)[input.kind] || "余额操作";
+    const confirmed = await requestConfirm({
+      title: `确认${actionLabel}`,
+      description: `确认对账户 ${accountId} 执行${actionLabel}？提交后会写入客户账户并保留操作记录。`,
+      confirmLabel: `确认${actionLabel}`,
+      tone: input.kind === "debit" ? "danger" : "primary"
+    });
+    if (!confirmed) return null;
     const requestStillCurrent = currentMutationRequest();
     const userId = session.user.id;
     const csrfToken = session.csrfToken;
@@ -133,7 +141,13 @@ export function useWalletAdjustmentController({
     const userId = session.user.id;
     const csrfToken = session.csrfToken;
     if (!recoveryIntent.current || recoveryIntent.current.operationId !== currentOperation.operationId) {
-      const evidenceRef = (window.prompt("请输入 case-YYYYMMDD-xxx 证据引用") || "").trim();
+      const evidenceRef = (await requestPrompt({
+        title: "恢复余额操作",
+        description: "请提供本次人工核对对应的工单或证据编号，提交后将尝试恢复原余额操作。",
+        label: "证据引用",
+        placeholder: "case-YYYYMMDD-xxx",
+        confirmLabel: "确认恢复"
+      }) || "").trim();
       if (!evidenceRef) return;
       recoveryIntent.current = {
         operationId: currentOperation.operationId,

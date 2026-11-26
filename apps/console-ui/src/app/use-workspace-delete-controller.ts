@@ -9,6 +9,7 @@ import {
   workspaceDeleteIdempotencyKey
 } from "../api/workspaces-api.ts";
 import { cloudIdentity } from "./console-identity.ts";
+import { requestConfirm } from "../components/ui/ConfirmDialog.tsx";
 import {
   isWorkspaceDeleteNotFound,
   resolveWorkspaceDeleteIntent,
@@ -181,7 +182,16 @@ export function useWorkspaceDeleteController({
     const refundNotice = cloudIdentity
       ? "资源删除与退款分别确认；符合原单退款政策时自动处理，退款结果以原单回读为准。"
       : "删除和退款是独立操作；删除完成不代表退款完成，退款结果以原单回读为准。";
-    if (!window.confirm(`确认删除工作空间“${workspace.name || workspace.id}”？请先自行下载需要的数据。删除后数据无法恢复，关闭页面后仍会继续处理。${refundNotice}`)) return;
+    const confirmed = await requestConfirm({
+      title: `删除工作空间“${workspace.name || workspace.id}”`,
+      description: `请先自行下载需要的数据。删除后数据无法恢复，关闭页面后仍会继续处理。${refundNotice}`,
+      confirmLabel: "确认删除",
+      tone: "danger",
+      requireText: cloudIdentity && workspace.name?.trim()
+        ? { label: `请输入工作空间名称“${workspace.name.trim()}”以确认删除`, expected: workspace.name.trim(), placeholder: workspace.name.trim() }
+        : undefined
+    });
+    if (!confirmed) return;
 
     const requestStillCurrent = currentMutationRequest();
     const userId = session.user.id;

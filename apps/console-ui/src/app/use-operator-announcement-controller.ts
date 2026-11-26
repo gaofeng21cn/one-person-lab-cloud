@@ -14,6 +14,7 @@ import type {
   SourceEnvelope
 } from "../api/dtos.ts";
 import { authorizationFailureState } from "./authorization-error.ts";
+import { requestConfirm } from "../components/ui/ConfirmDialog.tsx";
 import type { OperatorAnnouncementController, RemoteState } from "./console-controller-types.ts";
 import {
   announcementProjectionMatches,
@@ -208,7 +209,13 @@ export function useOperatorAnnouncementController({
   const publish = useCallback(async (announcementId: string) => {
     const session = currentSession();
     const announcement = currentAnnouncement(announcementId);
-    if (!session || !activeRef.current || !announcement || !window.confirm("确认发布公告？")) return;
+    if (!session || !activeRef.current || !announcement) return;
+    const confirmed = await requestConfirm({
+      title: "发布公告",
+      description: "确认发布该公告？发布后将对符合条件的客户展示。",
+      confirmLabel: "确认发布"
+    });
+    if (!confirmed) return;
     const claim = claimAnnouncement(announcementId);
     if (!claim) return;
     const intent = resolveAnnouncementPublishIntent(
@@ -247,7 +254,14 @@ export function useOperatorAnnouncementController({
   const withdraw = useCallback(async (announcementId: string) => {
     const session = currentSession();
     const announcement = currentAnnouncement(announcementId);
-    if (!session || !activeRef.current || !announcement || !window.confirm("确认撤下公告？")) return;
+    if (!session || !activeRef.current || !announcement) return;
+    const confirmed = await requestConfirm({
+      title: "撤下公告",
+      description: "确认撤下该公告？撤下后将不再向客户展示。",
+      confirmLabel: "确认撤下",
+      tone: "danger"
+    });
+    if (!confirmed) return;
     const claim = claimAnnouncement(announcementId);
     if (!claim) return;
     const intent = withdrawIntents.current.get(announcementId) ?? {
