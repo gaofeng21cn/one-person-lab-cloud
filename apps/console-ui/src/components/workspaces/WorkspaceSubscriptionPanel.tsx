@@ -1,5 +1,6 @@
 import type { AuthSession } from "../../api/dtos.ts";
 import { formatWorkspaceTransactionAmount } from "../../app/workspace-experience-model.ts";
+import { useWorkspaceManualRenewal } from "../../app/use-workspace-manual-renewal.ts";
 import { useWorkspaceSubscription } from "../../app/use-workspace-subscription.ts";
 import { useWorkspaceSubscriptionPlans, type WorkspaceSubscriptionPlans } from "../../app/use-workspace-subscription-plans.ts";
 import { formatDate } from "../../console-model.ts";
@@ -41,6 +42,13 @@ export function WorkspaceSubscriptionPanel({ session, workspace, layout = "detai
   const read = useWorkspaceSubscription(session, workspace.id);
   const ownPlans = useWorkspaceSubscriptionPlans(session, plans === undefined);
   const catalog = plans ?? ownPlans;
+  const renewal = useWorkspaceManualRenewal({
+    session,
+    workspaceId: workspace.id,
+    computePlanId: workspace.computePlanId,
+    storagePlanId: workspace.storagePlanId,
+    onRenewed: read.refresh
+  });
   let content;
   if (read.status === "loading") content = <p role="status">正在读取订阅…</p>;
   else if (read.status === "unauthenticated") content = <p role="status">请先登录后查看订阅。</p>;
@@ -58,6 +66,12 @@ export function WorkspaceSubscriptionPanel({ session, workspace, layout = "detai
         <div><dt>订阅状态</dt><dd>{statusLabels[subscription.status]}</dd></div>
         <div><dt>续费方式</dt><dd>{renewalLabels[subscription.renewalMode]}</dd></div>
       </dl>
+      {subscription.status === "active" && subscription.renewalMode === "manual" && workspace.computePlanId && workspace.storagePlanId ? (
+        <div className="workspace-actions">
+          <Button color="primary" disabled={renewal.busy} onClick={() => void renewal.start()} size="sm">立即续费</Button>
+        </div>
+      ) : null}
+      {renewal.message ? <p role="status">{renewal.message}</p> : null}
       {catalog.compute.status === "unavailable" || catalog.storage.status === "unavailable" ? <div className="workspace-actions"><Button onClick={catalog.refresh} size="sm" variant="outline">重试套餐信息</Button></div> : null}
       <details className="workspace-technical-details workspace-subscription-details">
         <summary>订阅技术详情</summary>
