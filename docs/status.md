@@ -119,6 +119,21 @@ chronological snapshots.
   confirmed resource and data deletion, Key closeout, the Ledger deletion
   receipt, and the original-charge refund on the same deletion operation after
   an operator released its recycled CBS. See Instance readback run `45639384732`.
+- **Manual Workspace Renewal At The Workspace Owner**: The Workspace owner accepts
+  one manual renewal of a paid Workspace and carries it as its own accepted
+  obligation: it asks the identity owner for the renewal grant, accepts the
+  renewal offer, observes the resources the renewal would extend, charges the
+  customer exactly once, asks the Fabric owner to extend the prepaid deadline of
+  those resources, and records the renewed paid period. The renewed period
+  continues the confirmed paid-through, so the customer keeps the days it
+  already paid for and receives a full month on top of them. A renewal whose
+  paid term has ended, whose Workspace is not active, whose provider resources
+  are gone, or whose paid month this subscription already confirmed is refused
+  before any charge, so a customer is never charged for a renewal that cannot be
+  delivered. The provider is extended only after the Ledger confirms the charge
+  of that exact renewal; a pending provider keeps the renewal pending instead of
+  recording a period nobody paid for. The Console entry that reaches this
+  renewal belongs to the BFF and Console and is not implemented here.
 - **What Remains Unproven Here**: Same-Candidate paid customer purchase
   execution on Tencent/TKE, J0 READY qualification bound to the latest
   Candidate, end-to-end custom Agent Package build-to-serve production delivery,

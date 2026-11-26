@@ -315,12 +315,22 @@ func (s *Service) ReadOwnerCommit(ctx context.Context, r *api.ReadOwnerCommitReq
 		// original launch/charge it froze and the delete action it accepted.
 		return deletionEvidence(op)
 	}
+	if op.Kind == renewalKind {
+		// A renewal is its own accepted commit: the offer it accepted and the
+		// renewal action it committed.
+		return renewalEvidence(op)
+	}
 	if op.Kind != "create_workspace" {
 		return nil, status.Error(codes.FailedPrecondition, "Workspace commit identity mismatch")
 	}
 	return evidence(op)
 }
 func evidence(op ownerstore.Operation) (*api.OwnerCommitEvidence, error) {
+	if op.Kind == renewalKind {
+		// A renewal is its own accepted obligation, so the funding evidence it
+		// records names the renewal action and not the launch.
+		return renewalEvidence(op)
+	}
 	a, _, err := decodeOrder(op)
 	if err != nil {
 		return nil, err
