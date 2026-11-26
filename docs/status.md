@@ -71,6 +71,14 @@ chronological snapshots.
     operations can be enumerated. Its coverage was partial, and operation
     identities and terminal phases still need a complete readback for the
     deletion, refund, and renewal retirement evidence tracked in the roadmap.
+- **Renewal Pricing At The Catalog Owner**: The Resource Catalog prices one
+  manual renewal offer: it binds the Workspace the renewal continues, keeps that
+  Workspace's application and models untouched, prices the effective price
+  version of the Workspace's own plan pair, and refuses an offer whose plan was
+  revoked. A deprecated plan stays renewable so a customer who already paid for
+  it is not stranded. The renewal itself — the charge, the renewed paid period,
+  the provider's prepaid month and the recovery of a stopped Workspace — belongs
+  to the Workspace owner and is not implemented here.
 - **Retained Application Deployment**: The shared Control Plane worker advances
   accepted `workspace.application.deploy` children through predecessor
   suspension, activation and receipt. The source qualification covers retained
