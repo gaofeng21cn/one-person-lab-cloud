@@ -258,6 +258,13 @@ func (s *Server) registerPublisherRoutes(mux *http.ServeMux) {
 	s.publisherRoute(mux, "GET /api/v2/builds/{buildId}", owneridentity.Build, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETBUILD, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_BUILD, "buildId", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.build.GetBuild(r.Context(), &api.GetBuildRpcRequest{Context: c, BuildId: r.PathValue("buildId")})
 	})
+	// The structured build log is the only answer that says why a build stopped.
+	// The contract already declares this route and its success status; the BFF
+	// forwards the publisher's read to the Build owner with the paging filters
+	// the owner understands, and publishes the owner's own page unchanged.
+	s.publisherRoute(mux, "GET /api/v2/builds/{buildId}/logs", owneridentity.Build, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTBUILDLOGS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_BUILD, "buildId", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		return s.build.ListBuildLogs(r.Context(), &api.ListBuildLogsRpcRequest{Context: c, BuildId: r.PathValue("buildId"), QueryCursor: optionalQuery(r, "cursor"), QueryLimit: optionalLimit(r)})
+	})
 	s.publisherRoute(mux, "GET /api/v2/capability-versions/{capabilityVersionId}", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, "capabilityVersionId", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.capability.GetCapabilityVersion(r.Context(), &api.GetCapabilityVersionRpcRequest{Context: c, CapabilityVersionId: r.PathValue("capabilityVersionId")})
 	})
