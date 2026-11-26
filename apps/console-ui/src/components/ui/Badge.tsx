@@ -2,6 +2,6 @@ import { Badge as AppsBadge, type BadgeProps as AppsBadgeProps } from "@openai/a
 
 export type BadgeProps = AppsBadgeProps;
 
-export function Badge({ pill = false, ...props }: BadgeProps) {
-  return <AppsBadge {...props} pill={pill} />;
+export function Badge({ className, pill = false, ...props }: BadgeProps) {
+  return <AppsBadge {...props} className={className ? `ui-badge ${className}` : "ui-badge"} pill={pill} />;
 }

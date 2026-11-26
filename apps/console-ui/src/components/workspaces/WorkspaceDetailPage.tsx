@@ -5,8 +5,9 @@ import type { WorkspaceSecretController } from "../../app/console-controller-typ
 import type { ConsoleController } from "../../app/use-console-controller.ts";
 import {
   formatWorkspaceBudgetUsdInput, parseWorkspaceBudgetUsdInput,
-  presentWorkspaceApplicationBinding, presentWorkspaceApplicationInstallation, presentWorkspaceBudget,
-  presentWorkspaceDeliveryModel, presentWorkspaceLifecycle, presentWorkspaceRecovery, presentWorkspaceRenewal, presentWorkspaceRuntime
+  presentWorkspaceApplicationAvailability, presentWorkspaceApplicationBinding, presentWorkspaceApplicationInstallation, presentWorkspaceBudget,
+  presentWorkspaceDeliveryModel, presentWorkspaceLifecycle, presentWorkspaceRecovery, presentWorkspaceRenewal,
+  presentWorkspaceResourceReadiness, presentWorkspaceRuntime
 } from "../../app/workspace-experience-model.ts";
 import { presentWorkspaceDelete, presentWorkspaceDeleteReason } from "../../app/workspace-delete-controller-model.ts";
 import type { WorkspaceDTO, WorkspaceGatewayBudgetDTO, WorkspaceGatewayBudgetUpdateRequest, WorkspaceRuntimeDTO } from "../../api/dtos.ts";
@@ -185,8 +186,7 @@ function WorkspaceTechnicalDetails({ controller, detail, runtime }: {
         {runtime?.checks.length ? <ul>{runtime.checks.map((check) => <li key={check.name}><code>{check.name}</code><span>{check.ok ? "true" : "false"}</span></li>)}</ul> : <p>暂无检查记录</p>}
       </div>
       {cloudIdentity ? <div className="workspace-delivery-details" data-agent-delivery>
-        <h3>交付链</h3>
-        <p>按负责服务展示当前工作空间的智能体交付读回。</p>
+        <h3>交付状态</h3>
         <dl className="data-list"><AgentDeliveryPanel workspaceId={detail.id} /></dl>
       </div> : null}
     </div>
@@ -222,7 +222,7 @@ function WorkspaceOwnerDetailPage({ controller }: { controller: WorkspaceDetailC
     <section className="workspace-detail-page" data-slide="C-WS-05">
       <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />工作空间列表</Button>
       <div className="workspace-detail-content">
-        <section className="panel workspace-identity-panel"><div className="workspace-heading"><div><h2>{detail.name || "未命名工作空间"}</h2><div className={`workspace-availability workspace-availability--${lifecycle.known ? lifecycle.kind : "pending"}`}><strong>{lifecycle.label}</strong><span>{accessUrl ? "该工作空间已发布访问入口，可直接打开。" : "访问入口尚未就绪，稍后刷新查看。"}</span></div></div><div className="workspace-entry-actions"><Button color="primary" disabled={!accessUrl} onClick={() => accessUrl && window.open(accessUrl, "_blank", "noopener,noreferrer")}>打开工作空间<ExternalLink aria-hidden size={16} /></Button><Button onClick={() => controller.navigate(`/console/workspaces/${encodeURIComponent(detail.id)}/models`)} variant="outline">模型配置</Button><Button onClick={() => void controller.refreshCurrentPage()} variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div></div><dl className="workspace-primary-facts"><div><dt>交付模式</dt><dd>{presentWorkspaceDeliveryModel(detail.deliveryModel)}</dd></div><div><dt>资源就绪</dt><dd>{detail.resourceReadiness || "暂不可用"}</dd></div><div><dt>应用可用</dt><dd>{detail.applicationAvailability || "暂不可用"}</dd></div><div><dt>权益截止</dt><dd>{formatDate(detail.paidThrough)}</dd></div></dl></section>
+        <section className="panel workspace-identity-panel"><div className="workspace-heading"><div><h2>{detail.name || "未命名工作空间"}</h2><div className={`workspace-availability workspace-availability--${lifecycle.known ? lifecycle.kind : "pending"}`}><strong>{lifecycle.label}</strong><span>{accessUrl ? "已就绪，可直接打开。" : "入口准备中，请稍后刷新。"}</span></div></div><div className="workspace-entry-actions"><Button color="primary" disabled={!accessUrl} onClick={() => accessUrl && window.open(accessUrl, "_blank", "noopener,noreferrer")}>打开工作空间<ExternalLink aria-hidden size={16} /></Button><Button onClick={() => controller.navigate(`/console/workspaces/${encodeURIComponent(detail.id)}/models`)} variant="outline">模型配置</Button><Button onClick={() => void controller.refreshCurrentPage()} variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div></div><dl className="workspace-primary-facts"><div><dt>交付模式</dt><dd>{presentWorkspaceDeliveryModel(detail.deliveryModel)}</dd></div><div><dt>资源就绪</dt><dd>{presentWorkspaceResourceReadiness(detail.resourceReadiness)}</dd></div><div><dt>应用可用</dt><dd>{presentWorkspaceApplicationAvailability(detail.applicationAvailability)}</dd></div><div><dt>权益截止</dt><dd>{formatDate(detail.paidThrough)}</dd></div></dl></section>
         <WorkspaceSubscriptionPanel session={controller.session} workspace={detail} />
         <WorkspaceApplicationCredentialsPanel session={controller.session} workspaceId={detail.id} />
         {controller.session && detail.state === "active" ? <NativeDefaultAppUpgrade actorId={controller.session.user.id} csrfToken={controller.session.csrfToken} onUpgraded={controller.refreshCurrentPage} workspaceId={detail.id} /> : null}
@@ -238,8 +238,7 @@ function WorkspaceOwnerDetailPage({ controller }: { controller: WorkspaceDetailC
             <div><dt>access URL</dt><dd>{accessUrl ? <a href={accessUrl} rel="noreferrer" target="_blank"><code>{accessUrl}</code><ExternalLink aria-hidden size={14} /></a> : "-"}</dd></div>
           </dl>
           <div className="workspace-delivery-details" data-agent-delivery>
-            <h3>交付链</h3>
-            <p>按负责服务展示当前智能体交付读回。</p>
+            <h3>交付状态</h3>
             <dl className="data-list"><AgentDeliveryPanel workspaceId={detail.id} /></dl>
           </div>
         </div></details></section>

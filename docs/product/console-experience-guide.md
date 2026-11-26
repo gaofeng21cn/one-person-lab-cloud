@@ -108,6 +108,31 @@ with current content, brand, accessibility, devices, and user workflows. A
 product-level update is needed only when the user outcome, authority boundary,
 or durable experience principle changes.
 
+## UI/UX SSOT Standards
+
+To prevent visual, component and copy drift across contributors and sessions,
+`apps/console-ui` enforces four single-source rules:
+
+1. **Design Token SSOT**: `apps/console-ui/src/components/ui/tokens.css` is the
+   sole `:root` CSS custom-property sheet. `styles.css` and page stylesheets
+   consume tokens from `tokens.css` and never add competing `:root` token
+   blocks or brittle hashed SDK class selectors (e.g. `[class*="_Badge_..."]`).
+2. **UI Primitive SSOT**: All customer and operator pages (including Agent
+   directory and Publisher) compose primitives from
+   `apps/console-ui/src/components/ui/` (`Button`, `Field`, `Select`, `Modal`,
+   `Badge`, `Alert`, `SegmentedControl`). Destructive or financial
+   confirmations use `Modal`, never native `window.confirm` or `window.prompt`.
+3. **Status & Glossary Presenter SSOT**: Customer-facing lifecycle, readiness,
+   availability and agent/build statuses are translated exclusively in
+   `customer-experience-model.ts` and `workspace-experience-model.ts`. Standard
+   Chinese product terms stay uniform: `工作空间` (not `Workspace`), `智能体`
+   (not `Package`), `API 密钥` (not `API Key`).
+4. **Concise Task-First Copy (No Manuals)**: Keep headings, subtitles and empty
+   states short and action-oriented. Never place architecture disclaimers,
+   internal service names (`Control Plane`, `Capability owner readback`,
+   `Runtime Control`, `defaultForNewBuilds`, `OCI 字节销毁`, `Session`,
+   `operator`, `Docker`), raw English enums or fabricated ETAs in customer UI.
+
 ## Capability And Currentness
 
 Functional module documents describe intended user capabilities. Source and

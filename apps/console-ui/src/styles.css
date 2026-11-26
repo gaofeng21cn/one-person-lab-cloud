@@ -20,14 +20,12 @@
   margin-top: 16px;
 }
 
-:root {
-  color: #142536;
-  background: #f7fafc;
+html {
+  color: var(--ink);
+  background: var(--canvas);
   font-family: var(--font-sans);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --red: #cf222e;
-  --orange: #d87536;
 }
 
 * {
@@ -3592,7 +3590,7 @@ tbody tr:last-child td {
   font-size: 15px;
 }
 
-.workspace-plan-option__identity > span > [class*="_Badge_"] {
+.workspace-plan-option__identity > span > .ui-badge {
   flex: 0 0 auto;
 }
 
@@ -4023,15 +4021,7 @@ tbody tr:last-child td {
   }
 }
 
-/* Base Console visual mapping. */
-:root {
-  --amber: #d87536;
-  --amber-soft: #f7ead8;
-  --teal: #157b76;
-  --paper: #f7fafc;
-  --shadow-soft: 0 8px 24px #173a5517;
-}
-
+/* Base Console visual mapping (tokens owned by components/ui/tokens.css). */
 body,
 .app-shell {
   background: var(--canvas);
@@ -5915,29 +5905,6 @@ select:focus-visible,
   .mobile-key-card__wide {
     grid-column: auto;
   }
-}
-
-/* Console base theme. */
-:root {
-  --action: #0f766e;
-  --action-hover: #115e59;
-  --action-soft: #f0fdfa;
-  --canvas: #f6f8fa;
-  --sidebar-surface: #f7fafc;
-  --surface: #ffffff;
-  --soft: #f7fafc;
-  --ink: #142536;
-  --muted: #617487;
-  --line: #d9e3eb;
-  --blue: var(--action);
-  --blue-dark: var(--action-hover);
-  --cobalt: var(--action);
-  --cobalt-dark: var(--action-hover);
-  --cobalt-soft: var(--action-soft);
-  --green: #157b76;
-  --green-soft: #e8f4ed;
-  --navy: #ffffff;
-  --navy-line: var(--line);
 }
 
 /*

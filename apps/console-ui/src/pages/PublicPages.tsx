@@ -22,7 +22,7 @@ export function PublicHome({ controller }: { controller: ConsoleController }) {
             </div>
           </div>
           <p className="access-tagline">让你的 One Person Lab 在云端继续工作</p>
-          <p className="access-lede">登录后，你可以管理多个在线 Workspace，查看 AI API 的用量与费用，并掌握账户余额和账单。</p>
+          <p className="access-lede">登录后，你可以管理多个在线工作空间，查看 AI API 用量与费用，并掌握账户余额和账单。</p>
           <div className="access-actions">
             <Button color="primary" onClick={() => controller.navigate("/login")}>登录 OPL Cloud<ArrowRight aria-hidden size={17} /></Button>
           </div>
@@ -31,9 +31,9 @@ export function PublicHome({ controller }: { controller: ConsoleController }) {
           <img alt="OPL Cloud 把本地项目、在线工作空间、AI 接入与账单连接为一条工作链" src="/opl-cloud-overview.jpg" loading="lazy" />
         </figure>
         <ul aria-label="产品能力" className="access-features">
-          <li><Cloud aria-hidden size={22} /><div><strong>在线 Workspace</strong><span>打开和管理你的云端工作空间。</span></div></li>
+          <li><Cloud aria-hidden size={22} /><div><strong>在线工作空间</strong><span>打开和管理你的云端工作空间。</span></div></li>
           <li><KeyRound aria-hidden size={22} /><div><strong>AI API</strong><span>管理密钥，查看使用记录与费用。</span></div></li>
-          <li><ReceiptText aria-hidden size={22} /><div><strong>余额与账单</strong><span>掌握账户余额、Workspace 月费和 API 消费。</span></div></li>
+          <li><ReceiptText aria-hidden size={22} /><div><strong>余额与账单</strong><span>掌握账户余额、工作空间月费和 API 消费。</span></div></li>
         </ul>
       </main>
     </div>
@@ -52,7 +52,7 @@ export function LoginPage({ controller }: { controller: ConsoleController }) {
     <main className="login-page">
       <button className="back-button" onClick={() => controller.navigate("/")}><ArrowLeft aria-hidden size={17} />返回</button>
       <section className="login-panel" aria-labelledby="login-heading">
-        <div className="login-brand"><img alt="OPL Cloud" src="/opl-app-icon.png" /><div><strong id="login-heading">登录 OPL Cloud</strong><span>使用管理员为你开通的账户</span></div></div>
+        <div className="login-brand"><img alt="OPL Cloud" src="/opl-app-icon.png" /><div><strong id="login-heading">登录 OPL Cloud</strong><span>使用管理员开通的账户登录；如需开户或充值请联系管理员</span></div></div>
         <form onSubmit={submit}>
           <Field autoComplete="email" label="邮箱" onChange={(event) => setEmail(event.currentTarget.value)} required type="email" value={email} />
           <Field autoComplete="current-password" label="密码" onChange={(event) => setPassword(event.currentTarget.value)} required type="password" value={password} />
@@ -70,7 +70,7 @@ export function SessionRecovery({ controller }: { controller: ConsoleController 
     <main className="message-page">
       {failed ? <AlertCircle aria-hidden size={28} /> : <span className="spinner" />}
       <h1>{failed ? "无法恢复登录" : "正在恢复登录"}</h1>
-      <p>{failed ? controller.authError || "身份服务暂不可用。" : "正在从 Control Plane 读取当前 Session。"}</p>
+      <p>{failed ? controller.authError || "身份服务暂不可用。" : "正在确认当前登录状态…"}</p>
       {failed ? <Button onClick={() => controller.navigate("/login")} variant="outline">重新登录</Button> : null}
     </main>
   );
@@ -82,7 +82,7 @@ export function LogoutRecovery({ controller }: { controller: ConsoleController }
     <main className="message-page" data-auth-state={controller.authStatus}>
       {unconfirmed ? <AlertCircle aria-hidden size={28} /> : <span className="spinner" />}
       <h1>{unconfirmed ? "退出未确认" : "正在安全退出"}</h1>
-      <p>{unconfirmed ? controller.authError : "正在确认服务器 Session 已撤销。"}</p>
+      <p>{unconfirmed ? controller.authError : "正在确认退出登录…"}</p>
       {unconfirmed ? <Button onClick={() => void controller.signOut()} variant="outline"><RefreshCw aria-hidden size={16} />重试退出</Button> : null}
     </main>
   );
@@ -93,7 +93,7 @@ export function ForbiddenPage({ controller }: { controller: ConsoleController })
     <main className="message-page">
       <LockKeyhole aria-hidden size={28} />
       <h1>无权访问</h1>
-      <p>当前 Session 没有 operator 权限。</p>
+      <p>当前账户没有管理权限。</p>
       <Button onClick={() => controller.navigate("/console/overview")} variant="outline">返回概览</Button>
     </main>
   );

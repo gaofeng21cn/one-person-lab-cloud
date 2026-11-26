@@ -190,7 +190,7 @@ for (const identity of ["legacy", "cloud"] as const) {
         const publisherFacts = (await publisherDetails.textContent()) || "";
         assert.match(publisherFacts, /Fixture Runtime · 1\.0\.0 · sha256:a{64}/);
         assert.doesNotMatch(publisherFacts, /Newest catalog row/);
-        assert.match(publisherFacts, /Agent WebUI[\s\S]*暂不可用/);
+        assert.match(publisherFacts, /交互界面[\s\S]*暂不可用/);
         assert.ok(v2Requests.includes("/api/v2/namespaces"));
         assert.ok(v2Requests.includes("/api/v2/catalog/runtime-versions"));
         assert.ok(v2Requests.includes("/api/v2/catalog/build-policy"));
