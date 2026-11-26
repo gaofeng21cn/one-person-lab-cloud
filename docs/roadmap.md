@@ -71,6 +71,16 @@ open:
 - The Console offers the renewal, shows the price and shows the renewed
   paid-through.
 
+### Generic Agent WebUI Console And Model Links
+
+The generic Agent WebUI guides customers when model access is missing or a
+session expires, and renders console/model links only if the Runtime explicitly
+publishes an absolute `consoleUrl` (plus `workspaceId` for the direct model
+configuration path). Because the Console and Workspace entry run on separate
+hosts by installation contract and the Runtime does not yet publish those
+fields, closing direct cross-host navigation requires one named upstream fact
+rather than a guessed relative URL.
+
 ## Workspace Key And Customer Read Boundaries
 
 Complete migration of remaining transitional customer reads off legacy Control
