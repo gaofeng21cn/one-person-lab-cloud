@@ -185,7 +185,7 @@ for (const identity of ["legacy", "cloud"] as const) {
         assert.equal(await publisherDetails.count(), 1);
         assert.equal(await publisherDetails.evaluate((element: HTMLDetailsElement) => element.open), false);
         await publisher.getByRole("status").filter({ hasText: "暂时无法开始构建" }).first().waitFor({ state: "visible" });
-        assert.equal(await page.getByRole("button", { name: "上传并构建 / 继续上传" }).isDisabled(), true);
+        assert.equal(await page.getByRole("button", { name: "上传并构建" }).isDisabled(), true);
         await publisherDetails.locator("summary").click();
         const publisherFacts = (await publisherDetails.textContent()) || "";
         assert.match(publisherFacts, /Fixture Runtime · 1\.0\.0 · sha256:a{64}/);
@@ -494,8 +494,42 @@ test("lost create response reloads into the original idempotent Workspace reques
   }
 });
 
-test("Workspace detail prioritizes authoritative availability and entry while keeping policy and evidence disclosed", { timeout: 60_000 }, verifyWorkspaceDetailExperience);
+test("the workspace page opens the agent the publisher just built", { timeout: 60_000 }, async () => {
+  const demo = await startCloudConsoleDemo();
+  const browser = await launchBrowser({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: viewports[0] });
+    await page.route("**/api/v2/**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === "/api/v2/auth/session") return route.fulfill({ json: { actorId: "user-customer", tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
+      if (path === "/api/v2/capability-versions") return route.fulfill({ json: { items: [
+        { id: "cap-other", versionLabel: "Other Agent", status: "ready", provenance: "build", modelRequirements: [] },
+        { id: "cap-built", versionLabel: "Built Agent", status: "ready", provenance: "build", modelRequirements: [] }
+      ] } });
+      if (path === "/api/v2/catalog/runtime-versions") return route.fulfill({ json: { items: [{ id: "runtime-1", name: "Default App", versionLabel: "App 1.0", artifactDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", status: "approved", defaultForNewBuilds: true }] } });
+      if (path === "/api/v2/catalog/compute-plans") return route.fulfill({ json: { items: [{ id: "compute-1", name: "Compute", vcpus: 2, memoryMiB: 1024, availability: "available", billingMode: "prepaid_monthly", workspaceOffers: [{ storagePlanId: "storage-1", storageName: "Storage", storageCapacityGiB: 10, pricePolicyVersionId: "p", monthlyUSDMicros: "1" }] } satisfies ComputePlanDTO] } });
+      if (path === "/api/v2/catalog/models") return route.fulfill({ json: { items: [{ id: "model-1", name: "Model", capabilities: [], available: true }] } });
+      if (path === "/api/v2/tenant/wallet") return route.fulfill({ json: { source: "gateway", status: "available", balanceUSDMicros: "100000000", currency: "USD", fetchedAt: "2026-09-27T00:00:00Z" } });
+      return route.fulfill({ status: 404, json: { error: "unexpected_v2_route" } });
+    });
+    await loginCloudFixture(page, demo.origin);
+    // The publisher sends the customer here with the version it just built.
+    await page.goto(`${demo.origin}/console/workspaces/new?agent=cap-built`, { waitUntil: "networkidle" });
+    const versions = page.getByLabel("智能体版本");
+    await versions.waitFor({ state: "visible" });
+    assert.equal(await versions.inputValue(), "cap-built", "the requested agent version is the selected one");
+    assert.equal(await page.getByRole("radio", { name: "已构建智能体" }).isChecked(), true, "the agent surface is the one on screen");
+    // An unknown version selects nothing and keeps the default surface.
+    await page.goto(`${demo.origin}/console/workspaces/new?agent=cap-missing`, { waitUntil: "networkidle" });
+    await page.getByRole("radio", { name: "OPL App" }).waitFor({ state: "visible" });
+    assert.equal(await page.getByRole("radio", { name: "OPL App" }).isChecked(), true, "an unknown agent request never switches the surface");
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
 
+test("Workspace detail prioritizes authoritative availability and entry while keeping policy and evidence disclosed", { timeout: 60_000 }, verifyWorkspaceDetailExperience);
 test("Historical installation stays read-only while current application entry and credentials follow declared capabilities", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await launchBrowser({ headless: true });

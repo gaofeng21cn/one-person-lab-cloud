@@ -74,6 +74,11 @@ chronological snapshots.
   confirmed resource and data deletion, Key closeout, the Ledger deletion
   receipt, and the original-charge refund on the same deletion operation after
   an operator released its recycled CBS. See Instance readback run `45639384732`.
+- **Publisher To Workspace Handoff**: A publisher whose build produced a ready
+  agent version can open a workspace with that exact version: the upload page
+  offers the entry, and the workspace page selects the requested version and
+  the agent surface only while the Capability owner still publishes that
+  version as ready. An unknown version leaves the default surface untouched.
 - **What Remains Unproven Here**: Same-Candidate paid customer purchase
   execution on Tencent/TKE, J0 READY qualification bound to the latest
   Candidate, end-to-end custom Agent Package build-to-serve production delivery,

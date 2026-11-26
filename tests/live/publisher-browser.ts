@@ -67,7 +67,7 @@ try {
   const completion = page.waitForResponse((response) => response.request().method() === "POST" && /\/api\/v2\/uploads\/[^/]+\/complete$/.test(new URL(response.url()).pathname));
   const packageReadback = page.waitForResponse((response) => response.request().method() === "GET" && /\/api\/v2\/package-versions\/[^/]+$/.test(new URL(response.url()).pathname));
   const buildRequest = page.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname === "/api/v2/builds");
-  await page.getByRole("button", { name: "上传并构建 / 继续上传", exact: true }).click();
+  await page.getByRole("button", { name: "上传并构建", exact: true }).click();
   const completionResponse = await completion;
   const operation: WorkspaceOwnerOperationDTO = await completionResponse.json();
   assert.ok(operation.operationId);

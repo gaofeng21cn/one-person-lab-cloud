@@ -126,6 +126,17 @@ function operationIsTerminal(operation: WorkspaceOwnerOperationDTO): boolean {
   return ["succeeded", "failed", "needs_attention", "cancelled"].includes(operation.status);
 }
 
+// The publisher sends the customer to this page with the agent version it just
+// built. The request names one exact version; the page selects it only when
+// the owner still publishes it as ready.
+function requestedAgentCapabilityVersionId(): string {
+  try {
+    return new URLSearchParams(window.location.search).get("agent")?.trim() || "";
+  } catch {
+    return "";
+  }
+}
+
 function selectionList(requirements: CapabilityVersionDTO["modelRequirements"], selections: Record<string, string>) {
   return requirements.flatMap((requirement) => {
     const modelId = selections[requirement.slot];
@@ -236,7 +247,14 @@ export function useWorkspaceLaunchController({
         if (!current()) return;
         const available = versions.filter((v) => v.status === "ready");
         setAgentCapabilityVersions(available);
-        setAgentCapabilityVersionIdState((id) => available.some((v) => v.id === id) ? id : (available[0]?.id ?? ""));
+        // A publisher who just built an agent sends the customer here with the
+        // exact version to open. That request selects this version and the
+        // agent surface; an unknown version selects nothing and leaves the
+        // default surface alone.
+        const requested = requestedAgentCapabilityVersionId();
+        const requestedIsAvailable = requested !== "" && available.some((v) => v.id === requested);
+        setAgentCapabilityVersionIdState((id) => requestedIsAvailable ? requested : (available.some((v) => v.id === id) ? id : (available[0]?.id ?? "")));
+        if (requestedIsAvailable) setAgentApplicationKindState("agent");
       }).catch((error) => failed("agent", error)).finally(() => finished("agent")),
       listApprovedRuntimeVersions().then((releases) => {
         if (!current()) return;

@@ -132,7 +132,7 @@ test("Publisher requires successful complete and exact uploaded readback before 
         await page.getByLabel("ZIP 文件").setInputFiles({ name: "package.zip", mimeType: "application/zip", buffer: archive });
         assert.equal(await page.getByLabel("Runtime Release", { exact: true }).count(), 0);
         assert.equal(await page.getByLabel("WebUI", { exact: true }).count(), 0);
-        const submit = page.getByRole("button", { name: "上传并构建 / 继续上传", exact: true });
+        const submit = page.getByRole("button", { name: "上传并构建", exact: true });
         await submit.click();
         if (options.held) {
           await completeEntered.promise;
@@ -172,6 +172,12 @@ test("Publisher requires successful complete and exact uploaded readback before 
           const bytes = archive.subarray(offset, offset + 16);
           return { partNumber: index + 1, etag: `part-${index + 1}`, sizeBytes: String(bytes.length), sha256: sha256(bytes) };
         }) });
+        if (succeeds) {
+          // The publisher's next step is opening a workspace with the agent it
+          // just built: the entry carries that exact version.
+          await page.getByRole("button", { name: "使用此智能体创建工作空间", exact: true }).click();
+          await page.waitForURL((url) => url.pathname === "/console/workspaces/new" && url.searchParams.get("agent") === "capv-upload");
+        }
         return { events, builds, versionReads };
       } finally {
         completeResponse.release(); versionResponse.release(); buildResponse.release();

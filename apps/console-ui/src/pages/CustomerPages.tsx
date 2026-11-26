@@ -354,7 +354,7 @@ function AnnouncementsPage({ controller }: { controller: ConsoleController }) {
 export function CustomerPages({ controller, route }: { controller: ConsoleController; route: CustomerConsoleRoute }) {
   switch (route.kind) {
     case "customer.publisher":
-      return <PublisherPage key={controller.session?.user.id} />;
+      return <PublisherPage key={controller.session?.user.id} navigate={controller.navigate} />;
     case "customer.agents":
     case "customer.agent-detail":
       return <AgentPages controller={controller} route={route} />;

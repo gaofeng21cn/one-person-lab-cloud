@@ -266,7 +266,7 @@ test("Publisher presents one customer task with the owner facts behind technical
     await blocked.first().waitFor({ state: "visible" });
     assert.equal(await page.getByText("正在读取平台默认输入…", { exact: true }).count(), 0, "loading and unavailable states must not coexist");
 
-    const submit = page.getByRole("button", { name: "上传并构建 / 继续上传" });
+    const submit = page.getByRole("button", { name: "上传并构建" });
     assert.equal(await submit.isDisabled(), true);
     assert.equal(commands.length, 0);
 

@@ -76,7 +76,7 @@ async function pages(path: string, signal: AbortSignal): Promise<Entry[]> {
   return entries;
 }
 
-export function PublisherPage() {
+export function PublisherPage({ navigate }: { navigate: (path: string) => void }) {
   const [session, setSession] = useState<Session | null>(null);
   const [namespaces, setNamespaces] = useState<Entry[]>([]);
   const [packages, setPackages] = useState<Entry[]>([]);
@@ -93,6 +93,7 @@ export function PublisherPage() {
   const [build, setBuild] = useState<Build | null>(null);
   const [version, setVersion] = useState<Version | null>(null);
   const [packageVersion, setPackageVersion] = useState<PackageVersion | null>(null);
+  const [uploadSessionId, setUploadSessionId] = useState("");
   const work = useRef<Work | null>(null);
   const execution = useRef<AbortController | null>(null);
   const storageKey = (s: Session) => `opl-publisher:${s.actorId}:${s.tenantId || "platform"}`;
@@ -111,6 +112,7 @@ export function PublisherPage() {
         if (abort.signal.aborted) return;
         setSession(active); setNamespaces(ns); setNamespaceId(ns[0]?.id || "");
         try { work.current = JSON.parse(sessionStorage.getItem(storageKey(active)) || "null") as Work | null; } catch { work.current = null; }
+        setUploadSessionId(work.current?.uploadId || "");
         const selected = work.current?.selection;
         if (selected) {
           setNamespaceId(selected.namespaceId); setNamespaceName(selected.namespaceName);
@@ -193,6 +195,7 @@ export function PublisherPage() {
         upload = decodeUpload(await command<UploadWire>(`/packages/${encodeURIComponent(current.packageId)}/uploads`, { versionLabel, fileName: file.name, sizeBytes: String(file.size), sha256: hash }, "upload"));
         current.uploadId = upload.id; current.packageVersionId = upload.packageVersionId; save(active, current);
       }
+      setUploadSessionId(current.uploadId || "");
       if (!upload.packageVersionId || upload.packageVersionId !== current.packageVersionId) throw new Error("上传会话与本次 Package 版本不一致，未开始构建。");
       const parts: Part[] = [];
       if (!(upload.partSizeBytes > 0)) throw new Error("上传服务没有返回有效分片大小。");
@@ -240,9 +243,10 @@ export function PublisherPage() {
         {!packageId && <label>Package 名称<input value={packageName} onChange={(e) => setPackageName(e.target.value)} required /></label>}
         <label>版本名称<input value={versionLabel} onChange={(e) => setVersionLabel(e.target.value)} placeholder="例如 0.1.0" required /></label>
         <label>ZIP 文件<input type="file" accept=".zip,application/zip" onChange={(e) => setFile(e.target.files?.[0] || null)} required /></label>
-        <Button type="submit" disabled={!canSubmit}>上传并构建 / 继续上传</Button>
+        <Button type="submit" disabled={!canSubmit}>上传并构建</Button>
       </fieldset>
     </form>
+    {uploadSessionId && <p role="status">本次 Package 已有上传记录，将跳过已上传的分片并继续构建。</p>}
     {message && <p role="status">{message}</p>}
     {loadingDefaults && <p role="status">正在读取平台默认输入…</p>}
     {defaults && !defaultsReady && <p role="status">{blockedSentence(defaults.reasons)}</p>}
@@ -252,7 +256,7 @@ export function PublisherPage() {
       <p>{build.status === "succeeded" ? "构建完成，应用镜像已生成。" : "正在处理本次构建；可继续上传或刷新状态。"}</p>
       <Button disabled={busy} variant="outline" onClick={() => void run(true)}>刷新构建状态</Button>
     </section>}
-    {version && <section aria-label="已就绪版本"><h3>版本已就绪</h3><p>{version.id}</p><p>该版本与本次构建结果一致，可在工作空间中使用。</p></section>}
+    {version && <section aria-label="已就绪版本"><h3>版本已就绪</h3><p>{version.id}</p><p>该版本与本次构建结果一致，可在工作空间中使用。</p><Button onClick={() => navigate(`/console/workspaces/new?agent=${encodeURIComponent(version.id)}`)}>使用此智能体创建工作空间</Button></section>}
     <details className="publisher-technical-details">
       <summary>技术详情</summary>
       <div className="publisher-technical-details__body">
