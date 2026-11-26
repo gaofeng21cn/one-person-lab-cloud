@@ -23,24 +23,28 @@ let consoleBaseUrl = "";
 let workspaceId = "";
 let history = [];
 
+// The Console and the Workspace entry live on separate hosts by installation
+// contract. Only render console/model links when the Runtime explicitly
+// publishes an absolute consoleUrl; never guess a same-host /console path.
 function resolveConsoleBase(identity) {
-  const params = new URLSearchParams(window.location.search);
-  const candidate = identity?.consoleUrl || params.get("console") || "";
+  const candidate = typeof identity?.consoleUrl === "string" ? identity.consoleUrl.trim() : "";
   if (candidate && /^https?:\/\//i.test(candidate)) return candidate.replace(/\/+$/, "");
   return "";
 }
 
 function consolePath(path) {
-  return consoleBaseUrl ? `${consoleBaseUrl}${path}` : path;
+  return consoleBaseUrl ? `${consoleBaseUrl}${path}` : "";
 }
 
 function modelsConfigUrl() {
+  if (!consoleBaseUrl) return "";
   return workspaceId
     ? consolePath(`/console/workspaces/${encodeURIComponent(workspaceId)}/models`)
     : consolePath("/console/workspaces");
 }
 
 function workspaceDetailUrl() {
+  if (!consoleBaseUrl) return "";
   return workspaceId
     ? consolePath(`/console/workspaces/${encodeURIComponent(workspaceId)}`)
     : consolePath("/console/workspaces");
@@ -98,10 +102,12 @@ function showGuidance({ title, description, tone = "warning", actions = [] }) {
     if (action.href) {
       const link = document.createElement("a");
       link.href = action.href;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
       link.className = action.primary ? "btn-primary" : "btn-link";
       link.textContent = action.label;
       actionWrap.append(link);
-    } else {
+    } else if (!action.hrefOnly) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = action.primary ? "btn-primary" : "btn-secondary";
@@ -323,14 +329,14 @@ function formatErrorForUser(error) {
 function renderAuthExpiredGuidance() {
   setStatus("登录已失效", "error");
   hint.textContent = "请刷新或返回控制台重试。";
+  const actions = [{ label: "刷新页面", primary: true, onClick: () => window.location.reload() }];
+  const backUrl = workspaceDetailUrl();
+  if (backUrl) actions.push({ label: "返回控制台", href: backUrl });
   showGuidance({
     title: "登录状态已失效",
     description: "会话已过期，请刷新页面或返回控制台重新进入。",
     tone: "danger",
-    actions: [
-      { label: "刷新页面", primary: true, onClick: () => window.location.reload() },
-      { label: "返回控制台", href: workspaceDetailUrl() }
-    ]
+    actions
   });
 }
 
@@ -339,12 +345,14 @@ async function load() {
   setStatus("正在连接…");
   hint.textContent = "正在检查运行状态…";
   try {
-    const params = new URLSearchParams(window.location.search);
     const identity = await json("/api/auth/user");
     csrfToken = typeof identity?.csrfToken === "string" ? identity.csrfToken : null;
     consoleBaseUrl = resolveConsoleBase(identity);
-    workspaceId = String(identity?.workspaceId || params.get("workspaceId") || "").trim();
-    consoleLink.href = workspaceDetailUrl();
+    workspaceId = typeof identity?.workspaceId === "string" ? identity.workspaceId.trim() : "";
+    const detailUrl = workspaceDetailUrl();
+    consoleLink.hidden = !detailUrl;
+    if (detailUrl) consoleLink.href = detailUrl;
+    else consoleLink.removeAttribute("href");
     if (identity?.workspaceName) {
       workspaceTitle.textContent = identity.workspaceName;
       workspaceTitle.dataset.locked = "true";
@@ -374,14 +382,15 @@ async function load() {
     } else {
       hint.textContent = "请先配置模型";
       setStatus("需配置模型", "warning");
+      const configUrl = modelsConfigUrl();
+      const actions = [];
+      if (configUrl) actions.push({ label: "前往控制台配置模型", primary: true, href: configUrl });
+      actions.push({ label: "刷新状态", primary: !configUrl, onClick: () => void load() });
       showGuidance({
         title: "尚未配置可用模型",
         description: "请先在控制台配置可用模型，完成后刷新本页即可开始对话。",
         tone: "warning",
-        actions: [
-          { label: "前往控制台配置模型", primary: true, href: modelsConfigUrl() },
-          { label: "刷新状态", onClick: () => void load() }
-        ]
+        actions
       });
     }
 
@@ -400,16 +409,16 @@ async function load() {
     }
     setStatus("服务暂不可用", "error");
     hint.textContent = "暂时无法连接，请重试。";
+    const actions = [{ label: "重新连接", primary: true, onClick: () => void load() }];
+    const backUrl = workspaceDetailUrl();
+    if (backUrl) actions.push({ label: "返回控制台", href: backUrl });
     showGuidance({
       title: "暂时无法连接工作空间",
       description: error?.message && !/^HTTP \d+$/.test(error.message)
         ? error.message
         : "暂时无法连接，请稍后重试或返回控制台查看状态。",
       tone: "danger",
-      actions: [
-        { label: "重新连接", primary: true, onClick: () => void load() },
-        { label: "返回控制台", href: workspaceDetailUrl() }
-      ]
+      actions
     });
   }
 }

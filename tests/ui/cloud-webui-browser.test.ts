@@ -147,19 +147,16 @@ test("Cloud Agent keeps the current turn locked until the Runtime completes it",
   }
 });
 
-test("Cloud Agent with missing model access never sends a message and links to model config", { timeout: 30_000 }, async () => {
-  const server = await startAgentWebuiServer(runtimeState(false), {
-    authBody: { csrfToken: "local-csrf", workspaceId: "ws-42", workspaceName: "研究助手空间" }
-  });
+test("Cloud Agent with missing model access never sends a message and never guesses console URLs", { timeout: 30_000 }, async () => {
+  const server = await startAgentWebuiServer(runtimeState(false));
   const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await page.goto(`${server.origin}/`);
     await page.getByText("需配置模型", { exact: true }).waitFor();
     await page.getByText("尚未配置可用模型", { exact: true }).waitFor();
-    assert.equal(await page.getByRole("heading", { name: "研究助手空间", exact: true }).isVisible(), true);
-    const configLink = page.getByRole("link", { name: "前往控制台配置模型", exact: true });
-    assert.equal(await configLink.getAttribute("href"), "/console/workspaces/ws-42/models");
+    assert.equal(await page.getByRole("link", { name: "前往控制台配置模型", exact: true }).count(), 0, "must not guess same-host /console URL when Runtime omits consoleUrl");
+    assert.equal(await page.getByRole("link", { name: "返回控制台", exact: true }).count(), 0);
     const prompt = page.getByLabel("输入任务", { exact: true });
     assert.equal(await page.getByLabel("智能体", { exact: true }).isEnabled(), true);
     assert.equal(await prompt.isDisabled(), true);
@@ -173,6 +170,22 @@ test("Cloud Agent with missing model access never sends a message and links to m
   } finally {
     await server.close();
     await browser.close();
+  }
+
+  const linkedServer = await startAgentWebuiServer(runtimeState(false), {
+    authBody: { csrfToken: "local-csrf", consoleUrl: "https://console.example.test", workspaceId: "ws-42", workspaceName: "研究助手空间" }
+  });
+  const linkedBrowser = await launchBrowser({ headless: true });
+  try {
+    const page = await linkedBrowser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.goto(`${linkedServer.origin}/`);
+    await page.getByText("尚未配置可用模型", { exact: true }).waitFor();
+    assert.equal(await page.getByRole("heading", { name: "研究助手空间", exact: true }).isVisible(), true);
+    assert.equal(await page.getByRole("link", { name: "前往控制台配置模型", exact: true }).getAttribute("href"), "https://console.example.test/console/workspaces/ws-42/models");
+    assert.equal(await page.getByRole("link", { name: "返回控制台", exact: true }).getAttribute("href"), "https://console.example.test/console/workspaces/ws-42");
+  } finally {
+    await linkedServer.close();
+    await linkedBrowser.close();
   }
 });
 
