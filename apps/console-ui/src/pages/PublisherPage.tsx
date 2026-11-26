@@ -231,7 +231,7 @@ export function PublisherPage() {
     ? `${input.name || label} · ${input.versionLabel || "未标注版本"} · ${input.artifactDigest}`
     : "暂不可用";
   return <section className="panel publisher-page">
-    <div className="panel-title"><div><h2>上传智能体</h2><p>上传标准 Agent Package 并填写名称与版本；运行底座与界面版本由平台生效默认在受理构建时确定。</p></div></div>
+    <div className="panel-title"><div><h2>上传智能体</h2><p>上传智能体 ZIP 包并填写名称与版本，系统将自动完成构建。</p></div></div>
     <form onSubmit={(e) => { e.preventDefault(); void run(); }}>
       <fieldset disabled={busy || !session}>
         <label>命名空间<select aria-label="命名空间" value={namespaceId} onChange={(e) => setNamespaceId(e.target.value)}><option value="">新建命名空间</option>{namespaces.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
@@ -256,12 +256,12 @@ export function PublisherPage() {
     <details className="publisher-technical-details">
       <summary>技术详情</summary>
       <div className="publisher-technical-details__body">
-        <section aria-label="平台生效默认（owner readback）">
-          <h3>平台生效默认</h3>
+        <section aria-label="平台默认构建配置">
+          <h3>平台默认构建配置</h3>
           <dl>
-            <dt>Runtime Release</dt><dd><code>{readback(defaults?.runtime, "默认运行底座")}</code></dd>
-            <dt>Agent WebUI</dt><dd><code>{readback(defaults?.webui, "默认界面")}</code></dd>
-            <dt>来源</dt><dd><code>Runtime Control 生效策略（defaultForNewBuilds）· 构建受理时冻结</code></dd>
+            <dt>运行底座</dt><dd><code>{readback(defaults?.runtime, "默认运行底座")}</code></dd>
+            <dt>交互界面</dt><dd><code>{readback(defaults?.webui, "默认界面")}</code></dd>
+            <dt>配置来源</dt><dd><code>平台默认构建策略</code></dd>
           </dl>
         </section>
         {build && <section aria-label="构建结果"><h3>构建记录</h3><dl><dt>构建</dt><dd>{build.id}</dd><dt>状态</dt><dd>{stageLabel[build.status] || build.status}</dd><dt>Package ref</dt><dd><code>{build.packageVersionId || work.current?.packageVersionId || "暂不可用"}</code></dd><dt>Runtime Release ref</dt><dd><code>{build.runtimeVersionId || "暂不可用"}</code></dd><dt>WebUI ref</dt><dd><code>{build.webuiVersionId || "暂不可用"}</code></dd>{build.artifactDigest && <><dt>OCI digest（Build owner）</dt><dd><code>{build.artifactDigest}</code></dd></>}</dl></section>}

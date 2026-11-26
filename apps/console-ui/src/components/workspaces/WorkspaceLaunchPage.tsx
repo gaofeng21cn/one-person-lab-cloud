@@ -9,7 +9,8 @@ import { cloudIdentity } from "../../app/console-identity.ts";
 import { isAgentLaunchSurface } from "../../app/workspace-launch-controller-model.ts";
 import type { AgentWorkspaceLaunchController } from "../../app/use-workspace-launch-controller.ts";
 import {
-  presentWorkspaceApplicationInstallation, presentWorkspaceLaunch, presentWorkspaceLaunchStage
+  presentWorkspaceApplicationAvailability, presentWorkspaceApplicationInstallation,
+  presentWorkspaceLaunch, presentWorkspaceLaunchStage, presentWorkspaceResourceReadiness
 } from "../../app/workspace-experience-model.ts";
 import { Alert, Button, Checkbox, Field } from "../ui/index.ts";
 import { formatDate, formatUsdMicros } from "../../console-model.ts";
@@ -98,7 +99,7 @@ function AgentLaunchPage({
             <details className="launch-diagnostic"><summary>技术详情</summary><dl className="operation-readback"><div><dt>操作编号</dt><dd>{operation.operationId}</dd></div><div><dt>阶段</dt><dd>{operation.stage}</dd></div><div><dt>状态</dt><dd>{operation.status}</dd></div></dl></details>
             {controller.agentPollIssue === "unknown" ? <Alert color="warning" title="结果正在核实" description="暂时无法确认下一阶段，请勿重复提交；刷新后继续读取原操作。" /> : null}
             {controller.agentPollIssue === "timeout" ? <Alert color="warning" title="仍在处理中" description="处理时间较长，请稍后刷新查看原订单。" /> : null}
-            {controller.agentWorkspace ? <details className="launch-diagnostic"><summary>工作空间详情</summary><dl className="operation-readback"><div><dt>工作空间</dt><dd>{controller.agentWorkspace.name}</dd></div><div><dt>资源</dt><dd>{controller.agentWorkspace.resourceReadiness}</dd></div><div><dt>应用</dt><dd>{controller.agentWorkspace.applicationAvailability}</dd></div><div><dt>订单确认</dt><dd>证据确认中</dd></div></dl></details> : null}
+            {controller.agentWorkspace ? <details className="launch-diagnostic"><summary>工作空间详情</summary><dl className="operation-readback"><div><dt>工作空间</dt><dd>{controller.agentWorkspace.name}</dd></div><div><dt>资源</dt><dd>{presentWorkspaceResourceReadiness(controller.agentWorkspace.resourceReadiness)}</dd></div><div><dt>应用</dt><dd>{presentWorkspaceApplicationAvailability(controller.agentWorkspace.applicationAvailability)}</dd></div><div><dt>订单确认</dt><dd>证据确认中</dd></div></dl></details> : null}
             <div className="launch-operation-actions">
               {canOpen ? <Button color="primary" onClick={controller.openAgentWorkspace}>打开应用</Button> : null}
               {operation.status === "succeeded" && canOpen ? <Button onClick={controller.startAnotherAgentLaunch} variant="outline">创建另一个工作空间</Button> : null}
@@ -164,7 +165,7 @@ function AgentLaunchPage({
                 <select aria-label="智能体版本" disabled={!controller.agentCapabilityVersions.length} onChange={(event) => controller.setAgentCapabilityVersionId(event.currentTarget.value)} value={controller.agentCapabilityVersionId}>
                   <option value="">请选择智能体</option>{controller.agentCapabilityVersions.map((item) => <option key={item.id} value={item.id}>{item.versionLabel}</option>)}
                 </select>
-                {!controller.agentReadLoading.agent && !controller.agentCapabilityVersions.length ? <p className="workspace-launch-note">暂无可用智能体。<a href="/console/publisher">前往构建</a></p> : null}
+                {!controller.agentReadLoading.agent && !controller.agentCapabilityVersions.length ? <p className="workspace-launch-note">暂无可用智能体。<a href="/console/publisher" onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return; event.preventDefault(); window.history.pushState(null, "", "/console/publisher"); window.dispatchEvent(new PopStateEvent("popstate")); }}>前往构建</a></p> : null}
               </>}
             </fieldset>}
             <fieldset><legend>工作空间套餐</legend>

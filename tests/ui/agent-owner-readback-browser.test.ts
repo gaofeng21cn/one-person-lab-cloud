@@ -29,8 +29,11 @@ test("Cloud 我的智能体 reads Package, versions, Capability and Build owners
     await page.getByRole("button", { name: "查看详情", exact: true }).click();
     await page.getByRole("heading", { name: "Research Agent", exact: true }).waitFor();
     await page.getByText("版本已可部署", { exact: true }).waitFor();
-    await page.getByText("oma · Build build-1", { exact: true }).waitFor();
+    await page.getByText("oma · 构建 build-1", { exact: true }).waitFor();
     assert.equal(await page.getByText("sha256:", { exact: false }).count(), 0);
+    for (const jargon of ["Capability owner", "owner readback", "OCI 字节销毁", "Build build-1"]) {
+      assert.equal(await page.getByText(jargon, { exact: false }).count(), 0, `unexpected jargon: ${jargon}`);
+    }
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   } finally {
     await browser.close();

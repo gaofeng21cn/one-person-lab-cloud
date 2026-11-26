@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { getJson } from "../api/console-api.ts";
 import type { CustomerConsoleRoute } from "../app/console-router.ts";
+import { presentAgentStatus } from "../app/workspace-experience-model.ts";
 import { Button } from "../components/ui/index.ts";
 import "./agents.css";
 
@@ -59,12 +60,8 @@ async function pages<T>(path: string, signal: AbortSignal): Promise<T[]> {
   return items;
 }
 
-function ownerStatus(value?: string) {
-  return value || "暂不可用";
-}
-
 function AgentStatus({ value }: { value?: string }) {
-  return <span className="agent-status">{ownerStatus(value)}</span>;
+  return <span className="agent-status">{presentAgentStatus(value)}</span>;
 }
 
 function AgentDirectory({ controller }: { controller: { navigate: (path: string) => void } }) {
@@ -96,10 +93,10 @@ function AgentDirectory({ controller }: { controller: { navigate: (path: string)
   }, []);
 
   return <section className="panel agents-page">
-    <div className="panel-title"><div><h2>我的智能体</h2><p>目录与版本状态均来自 Capability owner readback。</p></div><div className="agent-page-actions"><Button onClick={() => controller.navigate("/console/publisher")} color="primary">发布新 Package</Button><Button onClick={load} variant="outline">刷新</Button></div></div>
+    <div className="panel-title"><div><h2>我的智能体</h2></div><div className="agent-page-actions"><Button onClick={() => controller.navigate("/console/publisher")} color="primary">上传智能体</Button><Button onClick={load} variant="outline">刷新</Button></div></div>
     {loading && <p role="status">正在读取智能体目录…</p>}
     {error && <p role="alert">{error}</p>}
-    {!loading && !error && packages.length === 0 && <p role="status">暂无智能体。请从发布入口创建 Package。</p>}
+    {!loading && !error && packages.length === 0 && <p role="status">暂无智能体，点击右上角上传你的第一个智能体。</p>}
     {!loading && !error && packages.length > 0 && <div className="agents-grid">
       {packages.map((agent) => <article className="agent-card" key={agent.id}>
         <div><h3>{agent.name || "未命名智能体"}</h3><p>{agent.description || "未提供用途说明"}</p></div>
@@ -158,11 +155,11 @@ function AgentDetail({ route, controller }: { route: AgentDetailRoute; controlle
   }, [route.packageId]);
 
   return <section className="panel agents-page agent-detail-page">
-    <div className="panel-title"><div><Button onClick={() => controller.navigate("/console/agents")} variant="ghost">返回智能体</Button><h2>{agent?.name || "智能体详情"}</h2><p>用途、来源、版本与引用保护由各 owner 读回。</p></div><Button onClick={load} variant="outline">刷新</Button></div>
+    <div className="panel-title"><div><Button onClick={() => controller.navigate("/console/agents")} variant="ghost">返回智能体</Button><h2>{agent?.name || "智能体详情"}</h2></div><Button onClick={load} variant="outline">刷新</Button></div>
     {loading && <p role="status">正在读取智能体与版本…</p>}
     {error && <p role="alert">{error}</p>}
     {!loading && !error && agent && <>
-      <section className="agent-summary" aria-label="智能体 owner readback"><h3>智能体信息</h3><dl><div><dt>Package</dt><dd><code>{agent.id}</code></dd></div><div><dt>用途</dt><dd>{agent.description || "未提供用途说明"}</dd></div><div><dt>目录状态</dt><dd><AgentStatus value={agent.status} /></dd></div><div><dt>可部署版本</dt><dd>{agent.latestReadyVersionId ? "已登记" : "暂无"}</dd></div></dl></section>
+      <section className="agent-summary" aria-label="智能体信息"><h3>智能体信息</h3><dl><div><dt>智能体编号</dt><dd><code>{agent.id}</code></dd></div><div><dt>简介</dt><dd>{agent.description || "未填写"}</dd></div><div><dt>状态</dt><dd><AgentStatus value={agent.status} /></dd></div><div><dt>可部署版本</dt><dd>{agent.latestReadyVersionId ? "已就绪" : "暂无"}</dd></div></dl></section>
       <section aria-label="智能体版本"><h3>版本</h3><div className="agent-version-list">
         {packageVersions.length === 0 && <p>暂无上传版本。</p>}
         {packageVersions.map((version) => {
@@ -170,12 +167,11 @@ function AgentDetail({ route, controller }: { route: AgentDetailRoute; controlle
           const build = capability ? builds[capability.id] : undefined;
           const deployable = capability?.status === "ready";
           return <article className="agent-version" key={version.id}>
-            <div><h4>{version.versionLabel || "未命名版本"}</h4><p>上传版本：<AgentStatus value={version.status} /></p></div>
-            <dl><div><dt>可部署状态</dt><dd>{deployable ? "版本已可部署" : "尚不可部署"}</dd></div><div><dt>来源</dt><dd>{capability ? `${capability.provenance || "owner readback"}${capability.buildJobId ? ` · Build ${capability.buildJobId}` : ""}` : "尚无登记版本"}</dd></div><div><dt>引用</dt><dd>{capability ? String(capability.referenceCount ?? "暂不可用") : "暂不可用"}</dd></div>{build && <div><dt>构建</dt><dd>{build.stage || build.status || "暂不可用"}{build.errorCode ? ` · ${build.errorCode}` : ""}</dd></div>}</dl>
+            <div><h4>{version.versionLabel || "未命名版本"}</h4><p>上传状态：<AgentStatus value={version.status} /></p></div>
+            <dl><div><dt>部署状态</dt><dd>{deployable ? "版本已可部署" : "尚不可部署"}</dd></div><div><dt>来源</dt><dd>{capability ? `${capability.provenance || "平台构建"}${capability.buildJobId ? ` · 构建 ${capability.buildJobId}` : ""}` : "尚无登记版本"}</dd></div><div><dt>引用次数</dt><dd>{capability ? String(capability.referenceCount ?? "暂不可用") : "暂不可用"}</dd></div>{build && <div><dt>构建状态</dt><dd>{presentAgentStatus(build.stage || build.status)}{build.errorCode ? ` · ${build.errorCode}` : ""}</dd></div>}</dl>
           </article>;
         })}
       </div></section>
-      <p className="agent-boundary">目录下架与归档需要对应 owner 写接口和引用检查；当前页面只展示读回事实，不把目录移除说成 OCI 字节销毁。</p>
     </>}
   </section>;
 }

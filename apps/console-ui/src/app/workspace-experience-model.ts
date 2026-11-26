@@ -329,6 +329,77 @@ export function presentWorkspaceDeliveryModel(model: string | undefined): string
   }
 }
 
+export function presentWorkspaceResourceReadiness(value: string | undefined): string {
+  switch (value) {
+    case "pending":
+      return "处理中";
+    case "ready":
+      return "已就绪";
+    case "unavailable":
+      return "不可用";
+    case "unknown":
+      return "待确认";
+    case undefined:
+    case "":
+      return "暂不可用";
+    default:
+      return "待确认";
+  }
+}
+
+export function presentWorkspaceApplicationAvailability(value: string | undefined): string {
+  switch (value) {
+    case "pending":
+      return "处理中";
+    case "available":
+      return "可用";
+    case "unavailable":
+      return "不可用";
+    case "unknown":
+      return "待确认";
+    case undefined:
+    case "":
+      return "暂不可用";
+    default:
+      return "待确认";
+  }
+}
+
+export function presentAgentStatus(value: string | undefined): string {
+  switch (value) {
+    case "active":
+      return "已启用";
+    case "ready":
+      return "可部署";
+    case "uploaded":
+      return "已上传";
+    case "pending":
+      return "处理中";
+    case "queued":
+      return "排队中";
+    case "building":
+    case "running":
+      return "构建中";
+    case "registering":
+      return "登记中";
+    case "succeeded":
+      return "已完成";
+    case "failed":
+      return "失败";
+    case "revoked":
+      return "已撤销";
+    case "deprecated":
+      return "已停用";
+    case "archived":
+      return "已归档";
+    case undefined:
+    case "":
+      return "暂不可用";
+    default:
+      return "待确认";
+  }
+}
+
 export function presentWorkspaceLifecycle(
   state: WorkspaceDTO["state"] | undefined
 ): WorkspaceLifecyclePresentation {

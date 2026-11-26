@@ -11,15 +11,8 @@
   font-weight: var(--font-weight-medium);
 }
 
-[class*="_Badge_1viyg_"] {
-  border-radius: var(--radius-full);
-  padding: 0 0.625rem;
-  font-weight: 500;
-}
-
 /* 表格单元内的胶囊徽章收紧，避免撑破列宽 */
-td .ui-badge,
-td [class*="_Badge_1viyg_"] {
+td .ui-badge {
   padding: 0 0.5rem;
   font-size: 11px;
 }
@@ -28,9 +21,8 @@ td [class*="_Badge_1viyg_"] {
   gap: 5px;
 }
 
-.account-status-stack .ui-badge,
-.account-status-stack [class*="_Badge_1viyg_"] {
-  /* 状态标签文字必须完整可读：132px 的上限会把「不可新购 Workspace」（约 161px）截成省略号。
+.account-status-stack .ui-badge {
+  /* 状态标签文字必须完整可读：132px 的上限会把「不可新购工作空间」截成省略号。
      列宽不足时让标签换行（并解除 SDK 的固定 20px 高度，避免第二行溢出标签盒），
      而不是截断文字或把标签挤出所在列。 */
   height: auto;

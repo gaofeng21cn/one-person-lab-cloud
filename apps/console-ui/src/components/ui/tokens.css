@@ -123,4 +123,32 @@
   --elevation-300: 0 18px 45px #173a5517;
   --motion-fast: 120ms;
   --motion-normal: 180ms;
+
+  /* Canonical Console semantic aliases (sole :root token SSOT). */
+  --action: var(--blue-500);
+  --action-hover: var(--blue-600);
+  --action-soft: var(--blue-25);
+  --canvas: #f6f8fa;
+  --sidebar-surface: var(--gray-25);
+  --surface: var(--gray-0);
+  --soft: var(--gray-25);
+  --paper: var(--gray-25);
+  --ink: var(--gray-900);
+  --muted: var(--gray-400);
+  --line: var(--gray-100);
+  --navy: var(--gray-0);
+  --navy-line: var(--line);
+  --blue: var(--action);
+  --blue-dark: var(--action-hover);
+  --cobalt: var(--action);
+  --cobalt-dark: var(--action-hover);
+  --cobalt-soft: var(--action-soft);
+  --green: var(--green-500);
+  --green-soft: var(--green-50);
+  --teal: var(--green-500);
+  --orange: var(--orange-400);
+  --amber: var(--orange-400);
+  --amber-soft: #f7ead8;
+  --red: var(--red-500);
+  --shadow-soft: 0 8px 24px #173a5517;
 }

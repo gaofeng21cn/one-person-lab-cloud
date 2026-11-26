@@ -1,5 +1,6 @@
 import {
   Activity,
+  Bot,
   ChevronDown,
   CircleDollarSign,
   Database,
@@ -24,6 +25,7 @@ import { Button, Tooltip } from "../components/ui/index.ts";
 
 const icons: Record<string, ComponentType<{ size?: number; "aria-hidden"?: boolean }>> = {
   Activity,
+  Bot,
   CircleDollarSign,
   Database,
   LayoutDashboard,
