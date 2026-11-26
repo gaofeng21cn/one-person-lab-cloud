@@ -286,14 +286,24 @@ func confirmedChargeEvidence(receipt *api.Receipt) (json.RawMessage, bool) {
 // this exact obligation. A missing, mismatched, unconfirmed or non-wallet receipt
 // is never funding evidence.
 func (s *Service) readConfirmedWalletCharge(ctx context.Context, r *api.EnsureResourcesCommand) (*api.Receipt, bool) {
-	call := proto.Clone(r.GetContext()).(*api.CallContext)
-	call.AuthorizationContextId = ""
-	receipt, err := s.Ledger.ReadReceiptByReference(ctx, &api.GetReceiptByReferenceRequest{Context: call, Owner: "workspace", OwnerEvidenceReference: r.GetObligationId()})
+	return s.readConfirmedCharge(ctx, r.GetContext(), r.GetObligationId(), r.GetConfirmedChargeReceiptId())
+}
+
+// readConfirmedCharge re-reads the owner-authoritative confirmed charge for one
+// exact obligation and receipt. The purchase path and the renewal path share
+// this rule: the reference string alone is never funding evidence.
+func (s *Service) readConfirmedCharge(ctx context.Context, call *api.CallContext, obligationID, receiptID string) (*api.Receipt, bool) {
+	if s.Ledger == nil {
+		return nil, false
+	}
+	read := proto.Clone(call).(*api.CallContext)
+	read.AuthorizationContextId = ""
+	receipt, err := s.Ledger.ReadReceiptByReference(ctx, &api.GetReceiptByReferenceRequest{Context: read, Owner: "workspace", OwnerEvidenceReference: obligationID})
 	if err != nil {
 		return nil, false
 	}
-	if receipt.GetId() != r.GetConfirmedChargeReceiptId() || receipt.GetOwner() != api.OwnerEnum_OWNER_ENUM_WORKSPACE ||
-		receipt.GetOperationId() != r.GetObligationId() || receipt.GetKind() != api.ReceiptKindEnum_RECEIPT_KIND_ENUM_WALLET_ACTION ||
+	if receipt.GetId() != receiptID || receipt.GetOwner() != api.OwnerEnum_OWNER_ENUM_WORKSPACE ||
+		receipt.GetOperationId() != obligationID || receipt.GetKind() != api.ReceiptKindEnum_RECEIPT_KIND_ENUM_WALLET_ACTION ||
 		receipt.GetOutcome() != api.ReceiptOutcomeEnum_RECEIPT_OUTCOME_ENUM_CONFIRMED {
 		return nil, false
 	}

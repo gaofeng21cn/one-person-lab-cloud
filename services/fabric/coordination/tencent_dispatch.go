@@ -44,6 +44,14 @@ func (d *tencentDispatcher) DeleteResource(ctx context.Context, in ResourceDelet
 	return deleteResourceFromOwnSurface(ctx, d.service, in, kind)
 }
 
+// RenewResource extends the prepaid period of the accepted compute and storage
+// through the same internal Fabric service and provider the HTTP runtime routes
+// use. The renewal reuses the original resource identities and the original
+// durable mutation claim, so a lost response never buys a second pair.
+func (d *tencentDispatcher) RenewResource(ctx context.Context, in ResourceRenewalIntent) (ResourceRenewalResult, error) {
+	return renewResourceFromOwnSurface(ctx, d.service, in)
+}
+
 func (d *tencentDispatcher) BindSecret(ctx context.Context, in SecretBindIntent) (SecretBindResult, error) {
 	bound, err := d.provider.BindWorkspaceApplicationSecret(ctx, fabric.SecretBindInput{AccountID: in.AccountID, WorkspaceID: in.WorkspaceID, RuntimeInstanceID: in.RuntimeInstanceID, SecretRef: in.SecretRef, Purpose: in.TargetSlot, Fingerprint: in.Fingerprint, TargetSlot: in.TargetSlot})
 	if err != nil {

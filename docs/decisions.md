@@ -120,6 +120,41 @@ Git log.
   upgrade completes or transfers accepted pending and running deployment
   operations under their original operation and resource identities.
 
+## Workspace Subscription Renewal
+
+- **Renewal Is A Manual Continuation, Not A New Purchase**: A renewal continues
+  the subscription a Workspace already owns. The Resource Catalog prices one
+  month of that Workspace's own plan pair and binds the offer to it; the Fabric
+  owner extends the prepaid period of the compute and storage the Workspace
+  already runs, in place; the CloudIdentity owner grants a renewal obligation
+  whose surface is separate from the launch and the deletion surface; and the
+  Workspace owner accepts the offer, charges it once through the single Gateway
+  wallet, and commits the renewed paid period. The provider's prepaid month and
+  the Cloud's paid period are one fact seen from two sides, so both move
+  together in one obligation.
+- **The Renewed Period Is Anchored On The Paid-Through**: The renewed period
+  continues the confirmed paid-through — the later of the paid-through and the
+  moment of the renewal — so the customer keeps the days it already paid for
+  and receives a full month on top of them. The billing anchor day does not
+  drift, and the Catalog places no period itself: where the renewed period
+  lands belongs to the owner of the subscription.
+- **An Expired Workspace Is Not Renewable, And Is Never Charged**: A renewal
+  whose paid term has already ended is refused before any charge. The provider
+  extends its prepaid period from its own expiry date, so a month that starts
+  after the term ended is a month the provider does not cover; charging for it
+  would take the customer's money for compute nobody delivers. A Workspace that
+  stopped at expiry therefore has no renewal path back to its paid state, and
+  reviving it requires a separate owner-authorized path rather than a renewal.
+  A renewal that is refused for any other reason — resources the provider has
+  lost, a Workspace that is not active, a paid month the subscription already
+  confirmed — is refused on the same boundary, before the charge.
+- **The Charge Precedes The Provider, And The Provider Precedes The Period**:
+  The customer is charged once, the provider is extended only after the Ledger
+  confirms the charge of that exact renewal obligation, and the renewed paid
+  period is written only after the provider confirmed the extension. A pending
+  provider leaves the renewal pending rather than recording a period nobody
+  paid for.
+
 ## Ordinary Source Development And CI
 
 Ordinary source and documentation changes follow standard Git hygiene: narrow
