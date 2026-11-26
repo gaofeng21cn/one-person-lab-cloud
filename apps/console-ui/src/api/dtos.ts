@@ -16,6 +16,7 @@ export type OpenAPIWorkspaceTransactionTrendDay = OpenAPISchemas["WorkspaceTrans
 export type OpenAPICapabilityVersion = OpenAPISchemas["CapabilityVersion"];
 export type OpenAPIComputePlan = OpenAPISchemas["ComputePlan"];
 export type OpenAPIStoragePlan = OpenAPISchemas["StoragePlan"];
+export type OpenAPIQuote = OpenAPISchemas["Quote"];
 
 export type SourceStatus = "available" | "empty" | "unavailable";
 export type SourceValueStatus = Exclude<SourceStatus, "unavailable">;
