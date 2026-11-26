@@ -91,19 +91,34 @@ type quoteSnapshot struct {
 	AcceptedWorkspaceID      string                    `json:"acceptedWorkspaceId,omitempty"`
 }
 
-// CreateQuote prices one deploy request exactly once and stores the immutable
-// offer. This owner charges nothing, reserves no capacity and writes no
-// subscription obligation: it fixes the price and the policy versions the
-// customer will later accept.
+// CreateQuote prices one offer exactly once and stores the immutable offer.
 //
-// A resize or renew request is refused with the gap named. Those variants depend
-// on a Workspace subscription, a paid period and an accepted plan change, none of
-// which exists yet, and inventing them here would be a second subscription model.
+// The deploy variant prices a new Workspace; the renew variant prices one
+// manual renewal of an existing Workspace. A resize request is refused with the
+// gap named: it depends on an accepted plan change that does not exist yet, and
+// answering it here would be a second subscription model.
 func (s *Service) CreateQuote(ctx context.Context, r *api.CreateQuoteRpcRequest) (*api.Quote, error) {
 	if err := s.auth(ctx, r.GetContext(), "CreateQuote", false); err != nil {
 		return nil, err
 	}
 	request := r.GetBody()
+	switch request.GetPurpose() {
+	case api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_DEPLOY:
+		return s.createDeployQuote(ctx, r, request)
+	case api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_RENEW:
+		return s.createRenewQuote(ctx, r, request)
+	case api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_RESIZE:
+		return nil, status.Error(codes.Unimplemented, "this slice prices the deploy and renew variants; a resize depends on an accepted plan change and a plan-change policy that do not exist yet")
+	default:
+		return nil, status.Error(codes.InvalidArgument, "purpose must be deploy, resize or renew")
+	}
+}
+
+// createDeployQuote prices one deploy request exactly once and stores the
+// immutable offer. This owner charges nothing, reserves no capacity and writes no
+// subscription obligation: it fixes the price and the policy versions the
+// customer will later accept.
+func (s *Service) createDeployQuote(ctx context.Context, r *api.CreateQuoteRpcRequest, request *api.QuoteRequest) (*api.Quote, error) {
 	selection, err := validateDeployQuoteRequest(request)
 	if err != nil {
 		return nil, err
@@ -190,6 +205,121 @@ func (s *Service) CreateQuote(ctx context.Context, r *api.CreateQuoteRpcRequest)
 	return out, err
 }
 
+// createRenewQuote prices one manual renewal of an existing Workspace.
+//
+// A renewal continues a subscription: it keeps the Workspace's plan and its
+// application, and prices the same approved plan pair at the price version that
+// is effective now. The offer states the price, the duration and the renewal
+// terms the price policy publishes; where the renewed paid period is placed in
+// time, and whether a stopped Workspace resumes, belongs to the Workspace owner
+// that owns the subscription.
+func (s *Service) createRenewQuote(ctx context.Context, r *api.CreateQuoteRpcRequest, request *api.QuoteRequest) (*api.Quote, error) {
+	if err := validateRenewQuoteRequest(request); err != nil {
+		return nil, err
+	}
+	out := &api.Quote{}
+	err := s.command(ctx, r.GetContext(), "CreateQuote", request, out, func(tx *sql.Tx) error {
+		// The original response wins before current catalog admission or pricing:
+		// a retry must not lose its renewal offer when a plan or policy later changes.
+		now := time.Now().UTC()
+		resolution, err := s.resolvePrice(ctx, tx, request.ComputePlanId, request.StoragePlanId, now)
+		if err != nil {
+			return err
+		}
+		if err := assertRenewablePlanPair(ctx, tx, request.ComputePlanId, request.StoragePlanId); err != nil {
+			return err
+		}
+		plan, err := frozenResourcePlan(ctx, tx, request.ComputePlanId, request.StoragePlanId, request.PeriodMonths)
+		if err != nil {
+			return err
+		}
+		periodStart, periodEnd := now.UTC(), now.UTC().AddDate(0, int(request.PeriodMonths), 0)
+		lines, total, err := pricedLineItems(resolution.Price)
+		if err != nil {
+			return err
+		}
+		tenantID := r.GetContext().GetScope().GetTenant().GetTenantId()
+		snapshot, err := json.Marshal(quoteSnapshot{
+			ComputePlanID:            request.ComputePlanId,
+			StoragePlanID:            request.StoragePlanId,
+			PricePolicyVersionID:     resolution.Price.Id,
+			RefundPolicyVersionID:    resolution.Refund.Id,
+			RetentionPolicyVersionID: resolution.Retention.Id,
+			PeriodMonths:             request.PeriodMonths,
+			PricingBasisUnixMillis:   now.UnixMilli(),
+			ResourcePlan:             plan,
+		})
+		if err != nil {
+			return status.Error(codes.Internal, "encode the renewal admission snapshot")
+		}
+		models, err := json.Marshal(modelSelections(nil))
+		if err != nil {
+			return status.Error(codes.Internal, "encode the quote model selections")
+		}
+		out.Id = id("quote")
+		out.Purpose = api.QuotePurposeEnum_QUOTE_PURPOSE_ENUM_RENEW
+		out.WorkspaceId = request.WorkspaceId
+		out.ComputePlanId = request.ComputePlanId
+		out.StoragePlanId = request.StoragePlanId
+		out.PeriodMonths = request.PeriodMonths
+		out.PeriodStart = timestamppb.New(periodStart)
+		out.PeriodEnd = timestamppb.New(periodEnd)
+		out.PricePolicyVersionId = resolution.Price.Id
+		out.RefundPolicyVersionId = resolution.Refund.Id
+		out.RetentionPolicyVersionId = resolution.Retention.Id
+		out.RefundTerms = resolution.Refund.CustomerTerms
+		out.RetentionTerms = resolution.Retention.CustomerTerms
+		// The offer itself interrupts nothing: the Workspace keeps whatever state
+		// it has until the Workspace owner applies the renewed period.
+		out.ExpectedInterruption = "none_before_period_update"
+		out.RuntimeReadbackRequirement = api.QuoteRuntimeReadbackRequirementEnum_QUOTE_RUNTIME_READBACK_REQUIREMENT_ENUM_REQUIRED
+		out.LineItems = lines
+		out.TotalUsdMicros = total
+		out.Status = api.QuoteStatusEnum_QUOTE_STATUS_ENUM_OFFERED
+		out.ExpiresAt = timestamppb.New(now.Add(quoteValidity))
+		out.CreatedAt = timestamppb.Now()
+		// A renewal names its Workspace and no application of its own: the renewed
+		// Workspace keeps the application it already runs.
+		if _, err := tx.ExecContext(ctx, `INSERT INTO resource_catalog.quotes(id,tenant_id,actor_id,purpose,workspace_id,compute_plan_id,storage_plan_id,price_policy_version_id,refund_policy_version_id,retention_policy_version_id,total_usd_micros,period_start,period_end,status,input_digest,admission_snapshot,expires_at,created_at,model_selections,period_months,refund_terms,retention_terms,expected_interruption) VALUES($1,$2,$3,'renew',$4,$5,$6,$7,$8,$9,$10,$11,$12,'offered',$13,$14,$15,now(),$16,$17,$18,$19,$20)`,
+			out.Id, tenantID, r.GetContext().GetActorId(), out.GetWorkspaceId(), out.ComputePlanId, out.StoragePlanId,
+			out.PricePolicyVersionId, out.RefundPolicyVersionId, out.RetentionPolicyVersionId, out.TotalUsdMicros,
+			periodStart, periodEnd, quoteInputDigest(request, nil, snapshot), snapshot, now.Add(quoteValidity),
+			models, out.PeriodMonths, out.RefundTerms, out.RetentionTerms, out.ExpectedInterruption); err != nil {
+			return dbError(err)
+		}
+		return insertQuoteItems(ctx, tx, out)
+	})
+	return out, err
+}
+
+// validateRenewQuoteRequest admits the renew variant. A renewal is bound to one
+// existing Workspace and keeps everything that Workspace already has: its plan
+// pair, its application and its model configuration are not re-selected here.
+func validateRenewQuoteRequest(request *api.QuoteRequest) error {
+	if request == nil {
+		return status.Error(codes.InvalidArgument, "a quote request is required")
+	}
+	if request.GetWorkspaceId() == "" {
+		return status.Error(codes.InvalidArgument, "a renewal quote is bound to an existing workspace")
+	}
+	if request.GetCapabilityVersionId() != "" || request.GetApplicationSelection() != nil {
+		return status.Error(codes.InvalidArgument, "a renewal keeps the workspace's application selection")
+	}
+	if len(request.GetModelSelections()) > 0 {
+		return status.Error(codes.InvalidArgument, "a renewal keeps the workspace's model configuration")
+	}
+	if request.GetScheduledPlanChangeId() != "" {
+		return status.Error(codes.InvalidArgument, "scheduledPlanChangeId is not valid for the renew variant")
+	}
+	if request.GetComputePlanId() == "" || request.GetStoragePlanId() == "" {
+		return status.Error(codes.InvalidArgument, "computePlanId and storagePlanId are required")
+	}
+	if request.GetPeriodMonths() != renewalPolicy().GetMonths() {
+		return status.Error(codes.InvalidArgument, "periodMonths must match the published renewal policy")
+	}
+	return nil
+}
+
 // validateDeployQuoteRequest admits the deploy variant this slice implements. The
 // other variants are refused with the specific reason rather than answered with a
 // deploy-shaped offer.
@@ -198,8 +328,8 @@ func validateDeployQuoteRequest(request *api.QuoteRequest) (*api.WorkspaceApplic
 		return nil, status.Error(codes.InvalidArgument, "a quote request is required")
 	}
 	switch request.GetPurpose() {
-	case api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_RESIZE, api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_RENEW:
-		return nil, status.Error(codes.Unimplemented, "this slice prices only the deploy variant; resize and renew depend on a Workspace subscription, paid period and accepted plan change that do not exist yet")
+	case api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_RESIZE:
+		return nil, status.Error(codes.Unimplemented, "this slice prices the deploy and renew variants; a resize depends on an accepted plan change and a plan-change policy that do not exist yet")
 	case api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_DEPLOY:
 	default:
 		return nil, status.Error(codes.InvalidArgument, "purpose must be deploy, resize or renew")
@@ -274,6 +404,36 @@ func assertAvailablePlanPair(ctx context.Context, tx *sql.Tx, computePlanID, sto
 	}
 	if compute != "available" || storage != "available" {
 		return status.Error(codes.FailedPrecondition, "both plans in a quote must be available at pricing time")
+	}
+	return nil
+}
+
+// assertRenewablePlanPair admits the plan pair a renewal continues.
+//
+// A renewal is not a new sale: a plan the operator deprecated stops new sales
+// but must not strand the customer who already paid for it, so a deprecated
+// pair is still renewable. A revoked plan is refused, because the operator
+// withdrew that plan from every tenant.
+func assertRenewablePlanPair(ctx context.Context, tx *sql.Tx, computePlanID, storagePlanID string) error {
+	var computeStatus, storageStatus string
+	err := tx.QueryRowContext(ctx, `SELECT c.status,s.status FROM resource_catalog.compute_plans c JOIN resource_catalog.storage_plans s ON s.id=$2 WHERE c.id=$1 FOR SHARE OF c,s`, computePlanID, storagePlanID).
+		Scan(&computeStatus, &storageStatus)
+	if err != nil {
+		return dbError(err)
+	}
+	for _, plan := range []struct {
+		kind, status string
+	}{
+		{"compute", computeStatus},
+		{"storage", storageStatus},
+	} {
+		switch plan.status {
+		case "approved", "deprecated":
+		case "revoked":
+			return status.Errorf(codes.FailedPrecondition, "the %s plan of this renewal was revoked", plan.kind)
+		default:
+			return status.Errorf(codes.DataLoss, "unknown stored %s plan status %q", plan.kind, plan.status)
+		}
 	}
 	return nil
 }
