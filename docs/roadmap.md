@@ -56,6 +56,38 @@ original operation, resource and digest identities, with activation and receipt
 recovered. An unresolved rotation parent still fences Workspace deletion.
 Cross-installation transfer requires separate evidence if used.
 
+### Manual Workspace Renewal
+
+A paid Workspace that reaches the end of its period still has no renewal. The
+Resource Catalog now prices one renewal offer, so the rest of the chain is
+open:
+
+- The Workspace owner accepts the renewal offer, charges it once and writes the
+  renewed paid period as a new subscription period. While the subscription is
+  current the renewal extends the period from the previous paid-through instant.
+  A renewal of an expired Workspace is refused before any charge: the provider
+  extends the prepaid period from its own deadline, so a period that already
+  ended cannot produce a renewed period the provider also covers, and the
+  customer is never charged for a renewal that cannot be delivered.
+- The provider's prepaid month is the same fact seen from the provider, so the
+  renewal extends it through the Fabric owner. Otherwise the Cloud period would
+  outrun the compute the customer paid for.
+- A Workspace that stopped at expiry resumes. The existing lifecycle recovery
+  already resumes a suspended Workspace whose paid term is confirmed, so the
+  renewal has to leave that term confirmed rather than write a second resume.
+- The Console offers the renewal, shows the price and shows the renewed
+  paid-through.
+
+### Generic Agent WebUI Console And Model Links
+
+The generic Agent WebUI guides customers when model access is missing or a
+session expires, and renders console/model links only if the Runtime explicitly
+publishes an absolute `consoleUrl` (plus `workspaceId` for the direct model
+configuration path). Because the Console and Workspace entry run on separate
+hosts by installation contract and the Runtime does not yet publish those
+fields, closing direct cross-host navigation requires one named upstream fact
+rather than a guessed relative URL.
+
 ## Workspace Key And Customer Read Boundaries
 
 Complete migration of remaining transitional customer reads off legacy Control

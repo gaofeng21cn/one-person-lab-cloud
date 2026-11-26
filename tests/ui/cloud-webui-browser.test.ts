@@ -29,7 +29,7 @@ function runtimeReply(turnId: string, finalMessage: string) {
   };
 }
 
-async function startAgentWebuiServer(state = runtimeState()) {
+async function startAgentWebuiServer(state = runtimeState(), options: { authStatus?: number; authBody?: unknown } = {}) {
   const messages: { body: unknown; csrfToken: string | string[] | undefined; response: ServerResponse }[] = [];
   const requests: string[] = [];
   const firstMessage = Promise.withResolvers<void>();
@@ -41,14 +41,17 @@ async function startAgentWebuiServer(state = runtimeState()) {
     ["/style.css", "style.css", "text/css"]
   ].map(async ([path, file, type]) => [path, { type, body: await readFile(new URL(`../../webui/cloud-agent/${file}`, import.meta.url)) }] as const)));
   const server = createServer(async (request, response) => {
+    const pathname = new URL(request.url || "/", "http://127.0.0.1").pathname;
     requests.push(`${request.method} ${request.url}`);
-    const reply = (body: unknown) => {
-      response.writeHead(200, { "content-type": "application/json" });
+    const reply = (body: unknown, statusCode = 200) => {
+      response.writeHead(statusCode, { "content-type": "application/json" });
       response.end(JSON.stringify(body));
     };
-    if (request.method === "GET" && request.url === "/api/auth/user") return reply({ csrfToken: "local-csrf" });
+    if (request.method === "GET" && pathname === "/api/auth/user") {
+      return reply(options.authBody ?? { csrfToken: "local-csrf" }, options.authStatus ?? 200);
+    }
     if (request.method === "GET" && request.url === "/api/opl/state?profile=fast") return reply(state);
-    if (request.method === "POST" && request.url === "/api/send-message") {
+    if (request.method === "POST" && pathname === "/api/send-message") {
       let body = "";
       for await (const chunk of request) body += chunk;
       messages.push({ body: JSON.parse(body), csrfToken: request.headers["x-csrf-token"], response });
@@ -57,7 +60,7 @@ async function startAgentWebuiServer(state = runtimeState()) {
       // Keep the HTTP response pending until the test supplies the canonical turn.
       return;
     }
-    const file = files.get(request.url || "");
+    const file = files.get(pathname);
     response.writeHead(file ? 200 : 404, { "content-type": file?.type || "text/plain" });
     response.end(file?.body);
   });
@@ -83,11 +86,11 @@ test("Cloud Agent keeps the current turn locked until the Runtime completes it",
   try {
     const page = await browser.newPage();
     await page.goto(`${server.origin}/`);
-    await page.getByText("Runtime ready", { exact: true }).waitFor();
+    await page.getByText("运行就绪", { exact: true }).waitFor();
     assert.ok(server.requests.includes("GET /runtime-api.js"));
-    const send = page.getByRole("button", { name: "Send", exact: true });
-    const prompt = page.getByLabel("Prompt", { exact: true });
-    const agent = page.getByLabel("Agent", { exact: true });
+    const send = page.getByRole("button", { name: "发送", exact: true });
+    const prompt = page.getByLabel("输入任务", { exact: true });
+    const agent = page.getByLabel("智能体", { exact: true });
     assert.equal(await agent.locator("option").textContent(), "Local Agent");
     await prompt.fill("First task");
     await send.click();
@@ -103,7 +106,7 @@ test("Cloud Agent keeps the current turn locked until the Runtime completes it",
     assert.equal(await send.isDisabled(), true, "Only Runtime completion may unlock a turn");
     assert.equal(await prompt.isDisabled(), true);
     assert.equal(await agent.isDisabled(), true);
-    assert.deepEqual(await page.locator(".message.assistant").allTextContents(), ["Waiting for Agent…"]);
+    assert.deepEqual(await page.locator(".message.assistant").allTextContents(), ["智能体正在思考…"]);
     // Supply a nonempty prompt so an empty field cannot mask an overlap bug.
     await prompt.evaluate((element: HTMLTextAreaElement) => { element.value = "Overlapping task"; });
     await page.locator("#composer").dispatchEvent("submit");
@@ -112,7 +115,7 @@ test("Cloud Agent keeps the current turn locked until the Runtime completes it",
     await page.locator("#composer").dispatchEvent("submit");
     await send.evaluate((element: HTMLButtonElement) => { element.disabled = true; });
     assert.deepEqual(await page.locator(".message.user").allTextContents(), ["First task"]);
-    assert.deepEqual(await page.locator(".message.assistant").allTextContents(), ["Waiting for Agent…"]);
+    assert.deepEqual(await page.locator(".message.assistant").allTextContents(), ["智能体正在思考…"]);
     assert.equal(server.messages.length, 1, "No overlapping Agent message is submitted");
     const firstResponse = page.waitForResponse("**/api/send-message");
     server.complete(0, runtimeReply("turn-first", "First answer"));
@@ -132,6 +135,8 @@ test("Cloud Agent keeps the current turn locked until the Runtime completes it",
     server.complete(1, runtimeReply("turn-second", "Second answer"));
     await page.getByText("Second answer", { exact: true }).waitFor();
     assert.deepEqual(await page.locator(".message.assistant").allTextContents(), ["First answer", "Second answer"]);
+    assert.equal(await page.getByRole("button", { name: "新建对话", exact: true }).isEnabled(), true);
+    assert.equal(await page.getByRole("button", { name: "导出会话", exact: true }).isEnabled(), true);
     assert.equal(server.messages.length, 2);
     assert.deepEqual(server.requests.filter((request) => request.startsWith("POST ")), [
       "POST /api/send-message", "POST /api/send-message"
@@ -142,26 +147,88 @@ test("Cloud Agent keeps the current turn locked until the Runtime completes it",
   }
 });
 
-test("Cloud Agent with missing model access never sends a message", { timeout: 30_000 }, async () => {
+test("Cloud Agent with missing model access never sends a message and never guesses console URLs", { timeout: 30_000 }, async () => {
   const server = await startAgentWebuiServer(runtimeState(false));
   const browser = await launchBrowser({ headless: true });
   try {
-    const page = await browser.newPage();
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await page.goto(`${server.origin}/`);
-    await page.getByText("Model access required", { exact: true }).waitFor();
-    await page.getByText("Agent loaded. Configure model access in the application before sending a prompt.", { exact: true }).waitFor();
-    const prompt = page.getByLabel("Prompt", { exact: true });
-    assert.equal(await page.getByLabel("Agent", { exact: true }).isEnabled(), true);
+    await page.getByText("需配置模型", { exact: true }).waitFor();
+    await page.getByText("尚未配置可用模型", { exact: true }).waitFor();
+    assert.equal(await page.getByRole("link", { name: "前往控制台配置模型", exact: true }).count(), 0, "must not guess same-host /console URL when Runtime omits consoleUrl");
+    assert.equal(await page.getByRole("link", { name: "返回控制台", exact: true }).count(), 0);
+    const prompt = page.getByLabel("输入任务", { exact: true });
+    assert.equal(await page.getByLabel("智能体", { exact: true }).isEnabled(), true);
     assert.equal(await prompt.isDisabled(), true);
-    assert.equal(await page.getByRole("button", { name: "Send", exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole("button", { name: "发送", exact: true }).isDisabled(), true);
     await prompt.evaluate((element: HTMLTextAreaElement) => { element.value = "Must not be sent"; });
     await page.locator("#composer").dispatchEvent("submit");
     assert.equal(await page.locator(".message").count(), 0);
     assert.equal(server.messages.length, 0);
     assert.equal(server.requests.some((request) => request.startsWith("POST ")), false);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   } finally {
     await server.close();
     await browser.close();
+  }
+
+  const linkedServer = await startAgentWebuiServer(runtimeState(false), {
+    authBody: { csrfToken: "local-csrf", consoleUrl: "https://console.example.test", workspaceId: "ws-42", workspaceName: "研究助手空间" }
+  });
+  const linkedBrowser = await launchBrowser({ headless: true });
+  try {
+    const page = await linkedBrowser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.goto(`${linkedServer.origin}/`);
+    await page.getByText("尚未配置可用模型", { exact: true }).waitFor();
+    assert.equal(await page.getByRole("heading", { name: "研究助手空间", exact: true }).isVisible(), true);
+    assert.equal(await page.getByRole("link", { name: "前往控制台配置模型", exact: true }).getAttribute("href"), "https://console.example.test/console/workspaces/ws-42/models");
+    assert.equal(await page.getByRole("link", { name: "返回控制台", exact: true }).getAttribute("href"), "https://console.example.test/console/workspaces/ws-42");
+  } finally {
+    await linkedServer.close();
+    await linkedBrowser.close();
+  }
+});
+
+test("Cloud Agent renders safe Markdown, resets thread on new chat, and shows friendly 401 guidance", { timeout: 30_000 }, async () => {
+  const server = await startAgentWebuiServer();
+  const browser = await launchBrowser({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.origin}/`);
+    await page.getByText("运行就绪", { exact: true }).waitFor();
+    await page.getByLabel("输入任务", { exact: true }).fill("Show markdown");
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    await server.firstMessage;
+    server.complete(0, runtimeReply("turn-md", "### 结论\n\n<script>window.__xss=1</script>\n\n```js\nconsole.log(1)\n```"));
+    await page.getByRole("button", { name: "复制代码", exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss), undefined);
+    assert.equal(await page.locator(".md-code-block code").textContent(), "console.log(1)");
+
+    await page.getByRole("button", { name: "新建对话", exact: true }).click();
+    await page.getByText("开始对话", { exact: true }).waitFor();
+    await page.getByLabel("输入任务", { exact: true }).fill("Fresh thread");
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    await server.secondMessage;
+    assert.ok("agentSelection" in (server.messages[1].body as Record<string, unknown>), "New chat must start a new thread with agentSelection");
+    assert.equal("threadId" in (server.messages[1].body as Record<string, unknown>), false);
+    server.complete(1, runtimeReply("turn-fresh", "Fresh answer"));
+    await page.getByText("Fresh answer", { exact: true }).waitFor();
+  } finally {
+    await server.close();
+    await browser.close();
+  }
+
+  const unauthorizedServer = await startAgentWebuiServer(runtimeState(), { authStatus: 401, authBody: { error: { message: "Unauthorized" } } });
+  const browser2 = await launchBrowser({ headless: true });
+  try {
+    const page = await browser2.newPage();
+    await page.goto(`${unauthorizedServer.origin}/`);
+    await page.getByText("登录状态已失效", { exact: true }).waitFor();
+    assert.equal(await page.getByText("HTTP 401", { exact: false }).isVisible().catch(() => false), false);
+    assert.equal(await page.getByRole("button", { name: "刷新页面", exact: true }).isVisible(), true);
+  } finally {
+    await unauthorizedServer.close();
+    await browser2.close();
   }
 });
 
@@ -171,9 +238,9 @@ test("Cloud Agent rejects a failed canonical turn even when the reply contains a
   try {
     const page = await browser.newPage();
     await page.goto(`${server.origin}/`);
-    await page.getByText("Runtime ready", { exact: true }).waitFor();
-    await page.getByLabel("Prompt", { exact: true }).fill("Fail this task");
-    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await page.getByText("运行就绪", { exact: true }).waitFor();
+    await page.getByLabel("输入任务", { exact: true }).fill("Fail this task");
+    await page.getByRole("button", { name: "发送", exact: true }).click();
     await server.firstMessage;
     server.complete(0, {
       ...runtimeReply("turn-failed", "This must not appear as success"),
@@ -183,12 +250,13 @@ test("Cloud Agent rejects a failed canonical turn even when the reply contains a
       ] }
     });
     await page.locator(".message.error").getByText("Model execution failed", { exact: true }).waitFor();
+    assert.equal(await page.getByRole("button", { name: "重试发送", exact: true }).isVisible(), true);
     assert.equal(await page.locator(".message.assistant").count(), 0);
     assert.equal(await page.getByText("This must not appear as success", { exact: true }).count(), 0);
     assert.deepEqual(await page.locator(".message.user").allTextContents(), ["Fail this task"]);
-    assert.equal(await page.getByRole("button", { name: "Send", exact: true }).isEnabled(), true);
-    assert.equal(await page.getByLabel("Agent", { exact: true }).isEnabled(), true);
-    assert.equal(await page.getByLabel("Prompt", { exact: true }).isEnabled(), true);
+    assert.equal(await page.getByRole("button", { name: "发送", exact: true }).isEnabled(), true);
+    assert.equal(await page.getByLabel("智能体", { exact: true }).isEnabled(), true);
+    assert.equal(await page.getByLabel("输入任务", { exact: true }).isEnabled(), true);
     assert.equal(server.messages.length, 1);
   } finally {
     await server.close();
@@ -264,9 +332,9 @@ test("Publisher presents one customer task with the owner facts behind technical
     // never together with a contradictory loading message.
     const blocked = pageRegion.getByRole("status").filter({ hasText: "暂时无法开始构建" });
     await blocked.first().waitFor({ state: "visible" });
-    assert.equal(await page.getByText("正在读取平台默认输入…", { exact: true }).count(), 0, "loading and unavailable states must not coexist");
+    assert.equal(await page.getByText("正在检查构建环境…", { exact: true }).count(), 0, "loading and unavailable states must not coexist");
 
-    const submit = page.getByRole("button", { name: "上传并构建 / 继续上传" });
+    const submit = page.getByRole("button", { name: "上传并构建" });
     assert.equal(await submit.isDisabled(), true);
     assert.equal(commands.length, 0);
 

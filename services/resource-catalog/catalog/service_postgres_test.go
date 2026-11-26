@@ -364,10 +364,10 @@ func TestDeployQuoteLifecycle(t *testing.T) {
 		t.Fatalf("cross-tenant read code = %v, want NotFound", status.Code(err))
 	}
 
-	// A resize or renew request is refused with the gap named, not answered with a
+	// A resize request is refused with the gap named, not answered with a
 	// deploy-shaped offer.
-	if _, err := service.CreateQuote(ctx, &api.CreateQuoteRpcRequest{Context: member, Body: &api.QuoteRequest{Purpose: api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_RENEW, WorkspaceId: proto.String("ws-1"), ComputePlanId: computePlanID, StoragePlanId: storagePlanID, PeriodMonths: 1}}); status.Code(err) != codes.Unimplemented {
-		t.Fatalf("renew quote code = %v, want Unimplemented", status.Code(err))
+	if _, err := service.CreateQuote(ctx, &api.CreateQuoteRpcRequest{Context: member, Body: &api.QuoteRequest{Purpose: api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_RESIZE, WorkspaceId: proto.String("ws-1"), ComputePlanId: computePlanID, StoragePlanId: storagePlanID, PeriodMonths: 1}}); status.Code(err) != codes.Unimplemented {
+		t.Fatalf("resize quote code = %v, want Unimplemented", status.Code(err))
 	}
 	// A deploy quote is not bound to an existing workspace.
 	if _, err := service.CreateQuote(ctx, &api.CreateQuoteRpcRequest{Context: member, Body: &api.QuoteRequest{Purpose: api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_DEPLOY, WorkspaceId: proto.String("ws-1"), ComputePlanId: computePlanID, StoragePlanId: storagePlanID, PeriodMonths: 1}}); status.Code(err) != codes.InvalidArgument {
@@ -483,5 +483,160 @@ func TestDeployQuoteDefaultAppSelectionRoundTrips(t *testing.T) {
 		ApplicationSelection: &api.WorkspaceApplicationSelection{Kind: api.WorkspaceApplicationSelectionKindEnum_WORKSPACE_APPLICATION_SELECTION_KIND_ENUM_OPL_APP, RuntimeVersionId: proto.String("runtime-1"), CapabilityVersionId: proto.String("cv-1")},
 		ComputePlanId:        computePlanID, StoragePlanId: storagePlanID, PeriodMonths: 1}}); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("mixed selection code = %v, want InvalidArgument", status.Code(err))
+	}
+}
+
+// TestRenewQuoteLifecycle proves a renewal offer prices the effective policy
+// versions of the Workspace's own plan pair, names the Workspace it renews and
+// carries no application, model or second month of its own. The requests that
+// would turn a renewal into something else are refused before any row is
+// written.
+func TestRenewQuoteLifecycle(t *testing.T) {
+	service, _ := system(t)
+	ctx := peerContext(t)
+	computePlanID, storagePlanID := quoteFixture(t, service)
+	member := tenantCall("101", "tenant-test", "r-create", "r-create")
+
+	quote, err := service.CreateQuote(ctx, &api.CreateQuoteRpcRequest{Context: member, Body: &api.QuoteRequest{
+		Purpose: api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_RENEW, WorkspaceId: proto.String("ws-1"),
+		ComputePlanId: computePlanID, StoragePlanId: storagePlanID, PeriodMonths: 1}})
+	if err != nil {
+		t.Fatalf("create renew quote: %v", err)
+	}
+	if quote.GetPurpose() != api.QuotePurposeEnum_QUOTE_PURPOSE_ENUM_RENEW {
+		t.Fatalf("purpose = %v, want renew", quote.GetPurpose())
+	}
+	if quote.GetWorkspaceId() != "ws-1" {
+		t.Fatalf("renewal offer is bound to %q, want ws-1", quote.GetWorkspaceId())
+	}
+	if quote.GetTotalUsdMicros() != 52_580_001 {
+		t.Fatalf("total = %d, want the effective price 52580001", quote.GetTotalUsdMicros())
+	}
+	if quote.GetPeriodMonths() != 1 {
+		t.Fatalf("period months = %d, want 1", quote.GetPeriodMonths())
+	}
+	if quote.GetPricePolicyVersionId() == "" || quote.GetRefundPolicyVersionId() == "" || quote.GetRetentionPolicyVersionId() == "" {
+		t.Fatalf("the renewal offer did not bind the policy versions: %+v", quote)
+	}
+	// A renewal continues what the Workspace already runs: no application source
+	// and no model selection of its own.
+	if quote.GetCapabilityVersionId() != "" || quote.GetRuntimeVersionId() != "" || len(quote.GetModelSelections()) != 0 {
+		t.Fatalf("the renewal offer re-selected the application or the models: %+v", quote)
+	}
+	read, err := service.GetQuote(ctx, &api.GetQuoteRpcRequest{Context: member, QuoteId: quote.GetId()})
+	if err != nil {
+		t.Fatalf("read renew quote: %v", err)
+	}
+	if read.GetPurpose() != api.QuotePurposeEnum_QUOTE_PURPOSE_ENUM_RENEW || read.GetWorkspaceId() != "ws-1" || read.GetTotalUsdMicros() != quote.GetTotalUsdMicros() || len(read.GetLineItems()) != len(quote.GetLineItems()) {
+		t.Fatalf("renew readback differs from the created offer: %+v", read)
+	}
+
+	// Another tenant cannot read the offer: it is simply absent here.
+	if _, err := service.GetQuote(ctx, &api.GetQuoteRpcRequest{Context: tenantCall("102", "another-tenant", "r-other", "r-other"), QuoteId: quote.GetId()}); status.Code(err) != codes.NotFound {
+		t.Fatalf("cross-tenant renew read code = %v, want NotFound", status.Code(err))
+	}
+
+	for _, refusal := range []struct {
+		name    string
+		request *api.QuoteRequest
+	}{
+		{"without a workspace", &api.QuoteRequest{Purpose: api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_RENEW, ComputePlanId: computePlanID, StoragePlanId: storagePlanID, PeriodMonths: 1}},
+		{"with an application selection", &api.QuoteRequest{Purpose: api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_RENEW, WorkspaceId: proto.String("ws-1"), CapabilityVersionId: proto.String("cv-1"), ComputePlanId: computePlanID, StoragePlanId: storagePlanID, PeriodMonths: 1}},
+		{"with model selections", &api.QuoteRequest{Purpose: api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_RENEW, WorkspaceId: proto.String("ws-1"), ModelSelections: []*api.ModelSelection{{Slot: "default", ModelId: "model-1"}}, ComputePlanId: computePlanID, StoragePlanId: storagePlanID, PeriodMonths: 1}},
+		{"for a second month", &api.QuoteRequest{Purpose: api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_RENEW, WorkspaceId: proto.String("ws-1"), ComputePlanId: computePlanID, StoragePlanId: storagePlanID, PeriodMonths: 2}},
+		{"with a scheduled plan change", &api.QuoteRequest{Purpose: api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_RENEW, WorkspaceId: proto.String("ws-1"), ScheduledPlanChangeId: proto.String("pc-1"), ComputePlanId: computePlanID, StoragePlanId: storagePlanID, PeriodMonths: 1}},
+	} {
+		t.Run(refusal.name, func(t *testing.T) {
+			request := tenantCall("101", "tenant-test", "r-"+refusal.name, "r-"+refusal.name)
+			if _, err := service.CreateQuote(ctx, &api.CreateQuoteRpcRequest{Context: request, Body: refusal.request}); status.Code(err) != codes.InvalidArgument {
+				t.Fatalf("renew quote %s code = %v, want InvalidArgument", refusal.name, status.Code(err))
+			}
+		})
+	}
+}
+
+// TestRenewQuoteContinuesADeprecatedPlanAndRefusesARevokedOne proves the plan
+// rule of a renewal: a plan the operator deprecated stops new sales but must not
+// strand the customer who already paid for it, while a revoked plan is refused
+// for every tenant.
+func TestRenewQuoteContinuesADeprecatedPlanAndRefusesARevokedOne(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		change  string
+		renewal bool
+	}{
+		{"deprecated plan stays renewable", "status='deprecated'", true},
+		{"revoked plan is refused", "status='revoked'", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service, _ := system(t)
+			ctx := peerContext(t)
+			computePlanID, storagePlanID := quoteFixture(t, service)
+			if _, err := service.DB.ExecContext(t.Context(), "UPDATE resource_catalog.compute_plans SET "+tc.change+" WHERE id=$1", computePlanID); err != nil {
+				t.Fatal(err)
+			}
+			quote, err := service.CreateQuote(ctx, &api.CreateQuoteRpcRequest{Context: tenantCall("101", "tenant-test", "r-plan", "r-plan"), Body: &api.QuoteRequest{
+				Purpose: api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_RENEW, WorkspaceId: proto.String("ws-1"),
+				ComputePlanId: computePlanID, StoragePlanId: storagePlanID, PeriodMonths: 1}})
+			if tc.renewal {
+				if err != nil {
+					t.Fatalf("renewal of a deprecated plan: %v", err)
+				}
+				if quote.GetTotalUsdMicros() != 52_580_001 {
+					t.Fatalf("total = %d, want the effective price 52580001", quote.GetTotalUsdMicros())
+				}
+				return
+			}
+			if status.Code(err) != codes.FailedPrecondition {
+				t.Fatalf("renewal of a revoked plan code = %v, want FailedPrecondition", status.Code(err))
+			}
+		})
+	}
+}
+
+// TestRenewQuoteAcceptanceBindsThePricedWorkspace proves the acceptance edge of
+// a renewal: only the verified Workspace owner may accept, the offer binds the
+// Workspace it was priced for, and a replay returns the identical acceptance.
+func TestRenewQuoteAcceptanceBindsThePricedWorkspace(t *testing.T) {
+	service, _ := system(t)
+	ctx := peerContext(t)
+	computePlanID, storagePlanID := quoteFixture(t, service)
+	member := tenantCall("101", "tenant-test", "r-accept", "r-accept")
+	quote, err := service.CreateQuote(ctx, &api.CreateQuoteRpcRequest{Context: member, Body: &api.QuoteRequest{
+		Purpose: api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_RENEW, WorkspaceId: proto.String("ws-1"),
+		ComputePlanId: computePlanID, StoragePlanId: storagePlanID, PeriodMonths: 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Only the verified Workspace owner may accept.
+	if _, err := service.AcceptQuote(ctx, &api.AcceptQuoteRequest{Context: member, QuoteId: quote.GetId(), WorkspaceId: "ws-1", ObligationId: "obl-1"}); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("catalog-peer acceptance code = %v, want Unauthenticated", status.Code(err))
+	}
+	workspace := ownerservice.WithPeerOwner(context.Background(), ownerservice.OwnerWorkspace.Service())
+	// The offer was priced for ws-1: accepting it for another Workspace would
+	// renew a subscription the price was never quoted for.
+	if _, err := service.AcceptQuote(workspace, &api.AcceptQuoteRequest{Context: member, QuoteId: quote.GetId(), WorkspaceId: "ws-2", ObligationId: "obl-2"}); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("cross-workspace acceptance code = %v, want FailedPrecondition", status.Code(err))
+	}
+	accepted, err := service.AcceptQuote(workspace, &api.AcceptQuoteRequest{Context: member, QuoteId: quote.GetId(), WorkspaceId: "ws-1", ObligationId: "obl-1"})
+	if err != nil {
+		t.Fatalf("accept renew quote: %v", err)
+	}
+	if accepted.GetWorkspaceId() != "ws-1" || accepted.GetObligationId() != "obl-1" {
+		t.Fatalf("acceptance is bound to the wrong workspace: %+v", accepted)
+	}
+	if accepted.GetQuote().GetPurpose() != api.QuotePurposeEnum_QUOTE_PURPOSE_ENUM_RENEW || accepted.GetQuote().GetTotalUsdMicros() != 52_580_001 {
+		t.Fatalf("the acceptance does not carry the renewal offer: %+v", accepted.GetQuote())
+	}
+	if accepted.GetResourcePlan() == nil || accepted.GetResourcePlan().GetComputePlanId() != computePlanID {
+		t.Fatalf("the acceptance does not carry the frozen resource plan: %+v", accepted.GetResourcePlan())
+	}
+	// A replay returns the identical acceptance instead of a second one.
+	replay, err := service.AcceptQuote(workspace, &api.AcceptQuoteRequest{Context: member, QuoteId: quote.GetId(), WorkspaceId: "ws-1", ObligationId: "obl-1"})
+	if err != nil {
+		t.Fatalf("replay acceptance: %v", err)
+	}
+	if replay.GetAcceptanceId() != accepted.GetAcceptanceId() || replay.GetSnapshotDigest() != accepted.GetSnapshotDigest() {
+		t.Fatalf("the replay acceptance differs: %+v", replay)
 	}
 }
