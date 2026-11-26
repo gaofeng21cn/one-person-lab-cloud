@@ -1,5 +1,6 @@
 import { useConsoleController } from "./app/use-console-controller.ts";
 import type { PublicConsoleRoute } from "./app/console-router.ts";
+import { ConfirmDialogHost } from "./components/ui/index.ts";
 import { ConsoleShell } from "./layout/ConsoleShell.tsx";
 import { AdminPages } from "./pages/AdminPages.tsx";
 import { CustomerPages } from "./pages/CustomerPages.tsx";
@@ -25,19 +26,28 @@ function PublicPage({ controller, route }: { controller: ReturnType<typeof useCo
 export default function App() {
   const controller = useConsoleController();
 
-  if (controller.authStatus === "logout_pending" || controller.authStatus === "logout_unconfirmed") {
-    return <LogoutRecovery controller={controller} />;
-  }
-  if (!controller.route) return <NotFoundPage controller={controller} />;
-  if (controller.route.surface === "public") return <PublicPage controller={controller} route={controller.route} />;
-  if (controller.authStatus !== "ready" || !controller.session) return <SessionRecovery controller={controller} />;
+  const renderSurface = () => {
+    if (controller.authStatus === "logout_pending" || controller.authStatus === "logout_unconfirmed") {
+      return <LogoutRecovery controller={controller} />;
+    }
+    if (!controller.route) return <NotFoundPage controller={controller} />;
+    if (controller.route.surface === "public") return <PublicPage controller={controller} route={controller.route} />;
+    if (controller.authStatus !== "ready" || !controller.session) return <SessionRecovery controller={controller} />;
 
-  switch (controller.route.surface) {
-    case "customer":
-      return <ConsoleShell controller={controller}><CustomerPages controller={controller} route={controller.route} /></ConsoleShell>;
-    case "admin":
-      return <ConsoleShell controller={controller}><AdminPages controller={controller} route={controller.route} /></ConsoleShell>;
-    default:
-      return assertNever(controller.route);
-  }
+    switch (controller.route.surface) {
+      case "customer":
+        return <ConsoleShell controller={controller}><CustomerPages controller={controller} route={controller.route} /></ConsoleShell>;
+      case "admin":
+        return <ConsoleShell controller={controller}><AdminPages controller={controller} route={controller.route} /></ConsoleShell>;
+      default:
+        return assertNever(controller.route);
+    }
+  };
+
+  return (
+    <>
+      {renderSurface()}
+      <ConfirmDialogHost />
+    </>
+  );
 }

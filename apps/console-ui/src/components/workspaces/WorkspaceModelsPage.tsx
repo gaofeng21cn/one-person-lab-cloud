@@ -13,7 +13,7 @@ import {
   workspaceModelDraftSelections
 } from "../../app/workspace-models-controller-model.ts";
 import { formatDate } from "../../console-model.ts";
-import { Alert, Badge, Button, Select } from "../ui/index.ts";
+import { Alert, Badge, Button, Select, requestConfirm } from "../ui/index.ts";
 import { sourceData } from "./workspace-shared.tsx";
 
 // The model configuration page renders the Workspace owner's own facts: the
@@ -59,8 +59,16 @@ export function WorkspaceModelsPage({ controller }: { controller: ConsoleControl
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [dirty]);
 
-  const backToDetail = () => {
-    if (workspace && dirty && !window.confirm("模型配置有未提交的修改，离开将丢弃。是否离开？")) return;
+  const backToDetail = async () => {
+    if (workspace && dirty) {
+      const confirmed = await requestConfirm({
+        title: "放弃未保存修改",
+        description: "模型配置有未提交的修改，离开将丢弃。确认离开？",
+        confirmLabel: "离开页面",
+        tone: "danger"
+      });
+      if (!confirmed) return;
+    }
     const workspaceId = workspace?.id || configuration?.workspaceId || "";
     controller.navigate(workspaceId ? `/console/workspaces/${encodeURIComponent(workspaceId)}` : "/console/workspaces");
   };
@@ -76,7 +84,7 @@ export function WorkspaceModelsPage({ controller }: { controller: ConsoleControl
 
   return (
     <section className="workspace-detail-page" data-slide="C-WS-06">
-      <Button onClick={backToDetail} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />工作空间详情</Button>
+      <Button onClick={() => void backToDetail()} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />工作空间详情</Button>
       <div className="workspace-detail-content">
         <section className="panel workspace-models-panel">
           <div className="workspace-heading">

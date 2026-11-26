@@ -190,7 +190,7 @@ for (const identity of ["legacy", "cloud"] as const) {
         const publisherFacts = (await publisherDetails.textContent()) || "";
         assert.match(publisherFacts, /Fixture Runtime · 1\.0\.0 · sha256:a{64}/);
         assert.doesNotMatch(publisherFacts, /Newest catalog row/);
-        assert.match(publisherFacts, /Agent WebUI[\s\S]*暂不可用/);
+        assert.match(publisherFacts, /交互界面[\s\S]*暂不可用/);
         assert.ok(v2Requests.includes("/api/v2/namespaces"));
         assert.ok(v2Requests.includes("/api/v2/catalog/runtime-versions"));
         assert.ok(v2Requests.includes("/api/v2/catalog/build-policy"));
@@ -1154,9 +1154,9 @@ test("Workspace detail fails closed without exposing Runtime or delete reason co
 
     const advanced = page.locator("details.workspace-advanced-details");
     await advanced.locator("summary").click();
-    page.once("dialog", (dialog) => { void dialog.accept(); });
     const deletePanel = page.locator(".workspace-delete-panel");
     await deletePanel.getByRole("button", { name: "删除工作空间", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "确认删除", exact: true }).click();
     await deletePanel.getByText("工作空间删除暂不可用", { exact: true }).waitFor({ state: "visible" });
     assert.equal(deleteWrites, 1);
     assert.equal(await visibleTextCount(page, "workspace_delete_unavailable"), 0);
@@ -2302,11 +2302,13 @@ test("Cloud Workspace transactions preserve exact money, roles, paging and navig
     });
     await loginCloudFixture(page, demo.origin);
     await page.goto(`${demo.origin}/console/workspaces/ws-a`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("radio", { name: "订阅与费用", exact: true }).click();
     const panel = page.getByRole("region", { name: "工作空间交易记录" });
     await panel.getByText("$9,007,199,254.740993", { exact: true }).waitFor();
     await panel.getByText("结果未确认", { exact: true }).waitFor();
     const trend = page.getByRole("region", { name: "最近14天结算趋势" });
-    await trend.getByText("$9,007,199,254.740992", { exact: true }).waitFor();
+    await trend.locator(".workspace-trend-summary").getByText("$9,007,199,254.740992", { exact: true }).waitFor();
+    assert.equal(await trend.locator("details.workspace-trend-details").evaluate((el: HTMLDetailsElement) => el.open), false);
     await trend.getByText("本窗口创建、结果未知的交易：扣款 $0.000007；退款 $0.000003。", { exact: true }).waitFor();
     await panel.getByText("查看交易详情", { exact: true }).click();
     await panel.getByText("original-charge-1", { exact: true }).waitFor();
@@ -2319,7 +2321,7 @@ test("Cloud Workspace transactions preserve exact money, roles, paging and navig
     holdNext = true;
     await panel.getByRole("button", { name: "下一页交易" }).click();
     await heldPage.promise;
-    await page.evaluate(() => { history.pushState({}, "", "/console/workspaces/ws-b"); window.dispatchEvent(new PopStateEvent("popstate")); });
+    await page.evaluate(() => { history.pushState({}, "", "/console/workspaces/ws-b?tab=billing"); window.dispatchEvent(new PopStateEvent("popstate")); });
     await page.getByRole("heading", { name: "Team ws-b", exact: true }).waitFor();
     await panel.getByText("暂无交易记录。", { exact: true }).waitFor();
     releasePage.resolve();
@@ -2372,6 +2374,7 @@ test("Cloud team financial receipts show original amounts and reject late naviga
     });
     await loginCloudFixture(page, demo.origin);
     await page.goto(`${demo.origin}/console/workspaces/ws-a`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("radio", { name: "订阅与费用", exact: true }).click();
     const panel = page.getByRole("region", { name: "工作空间交易记录" });
     await panel.getByText("查看交易详情", { exact: true }).click();
     await panel.getByRole("button", { name: "读取原始财务收据" }).click();
@@ -2384,7 +2387,7 @@ test("Cloud team financial receipts show original amounts and reject late naviga
     await panel.getByText("查看交易详情", { exact: true }).click();
     await panel.getByRole("button", { name: "读取原始财务收据" }).click();
     await held.promise;
-    await page.evaluate(() => { history.pushState({}, "", "/console/workspaces/ws-b"); window.dispatchEvent(new PopStateEvent("popstate")); });
+    await page.evaluate(() => { history.pushState({}, "", "/console/workspaces/ws-b?tab=billing"); window.dispatchEvent(new PopStateEvent("popstate")); });
     await panel.getByText("暂无交易记录。", { exact: true }).waitFor();
     release.resolve();
     assert.equal(await panel.getByText("quote-original", { exact: true }).count(), 0);

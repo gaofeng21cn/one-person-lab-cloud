@@ -21,7 +21,12 @@ import type { AdminConsoleRoute } from "../app/console-router.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
 import { cloudIdentity } from "../app/console-identity.ts";
 import { recoverWorkspaceLaunch, getWorkspaceLaunchRecovery } from "../api/console-read-api.ts";
-import { presentWorkspaceLaunchCloseout, presentWorkspaceLifecycle } from "../app/workspace-experience-model.ts";
+import {
+  presentWorkspaceApplicationAvailability,
+  presentWorkspaceLaunchCloseout,
+  presentWorkspaceLifecycle,
+  presentWorkspaceResourceReadiness
+} from "../app/workspace-experience-model.ts";
 import type {
   AnnouncementDTO,
   AnnouncementDraftRequest,
@@ -109,12 +114,8 @@ function resourcesUnavailable(item: OperatorWorkspaceDTO): boolean {
 function WorkspaceOwnerFacts({ item }: { item: OperatorWorkspaceDTO }) {
   const facts = [
     { label: "业务状态", read: (workspace: WorkspaceDTO) => presentWorkspaceLifecycle(workspace.state).label },
-    { label: "资源就绪", read: (workspace: WorkspaceDTO) => workspace.resourceReadiness
-      ? ({ pending: "处理中", ready: "已就绪", unavailable: "不可用", unknown: "待确认" } as Record<string, string>)[workspace.resourceReadiness] || "待确认"
-      : "暂不可用" },
-    { label: "应用可用", read: (workspace: WorkspaceDTO) => workspace.applicationAvailability
-      ? ({ pending: "处理中", available: "可用", unavailable: "不可用", unknown: "待确认" } as Record<string, string>)[workspace.applicationAvailability] || "待确认"
-      : "暂不可用" }
+    { label: "资源就绪", read: (workspace: WorkspaceDTO) => presentWorkspaceResourceReadiness(workspace.resourceReadiness) },
+    { label: "应用可用", read: (workspace: WorkspaceDTO) => presentWorkspaceApplicationAvailability(workspace.applicationAvailability) }
   ];
   return <>{facts.map(({ label, read }) => <div key={label}>
     <dt>{label}</dt><dd><SourceOwner source={item.workspace} /><SourceValue source={item.workspace}>{read}</SourceValue></dd>
@@ -682,18 +683,17 @@ function AccountsPage({ controller }: { controller: ConsoleController }) {
 function ReviewDetails({ review }: { review: OperatorReconciliationItemDTO }) {
   return (
     <div>
-      <section className="data-section"><h2>Control Plane</h2><dl className="data-list">
+      <section className="data-section"><h2>计费与操作</h2><dl className="data-list">
         <div><dt>账户</dt><dd>{review.accountId || "暂不可用"}</dd></div>
-        <div><dt>工作空间</dt><dd>暂不可用</dd></div>
         <div><dt>计费操作</dt><dd>{review.billingOperationId || "暂不可用"}</dd></div>
-        <div><dt>报价 / 扣款意图</dt><dd>暂不可用</dd></div>
         <div><dt>阶段</dt><dd>{review.phase || "暂不可用"}</dd></div>
         <div><dt>错误码</dt><dd>{review.errorCode || "暂不可用"}</dd></div>
         <div><dt>操作引用</dt><dd>{review.operationRef || "暂不可用"}</dd></div>
       </dl></section>
-      <section className="data-section"><h2>Gateway</h2><dl className="data-list"><div><dt>权威余额</dt><dd>暂不可用</dd></div><div><dt>余额历史证据</dt><dd>暂不可用</dd></div></dl></section>
-      <section className="data-section"><h2>Fabric</h2><dl className="data-list"><div><dt>计算 / 存储 / 挂载</dt><dd>暂不可用</dd></div><div><dt>provider ID / 可用区 / 最近读回</dt><dd>暂不可用</dd></div></dl></section>
-      <section className="data-section"><h2>Ledger</h2><dl className="data-list"><div><dt>回执引用</dt><dd>{review.receiptRef || "暂不可用"}</dd></div><div><dt>复核异常</dt><dd>{review.status || "暂不可用"}</dd></div></dl></section>
+      <section className="data-section"><h2>账本回执</h2><dl className="data-list">
+        <div><dt>回执引用</dt><dd>{review.receiptRef || "暂不可用"}</dd></div>
+        <div><dt>复核状态</dt><dd>{review.status || "暂不可用"}</dd></div>
+      </dl></section>
     </div>
   );
 }

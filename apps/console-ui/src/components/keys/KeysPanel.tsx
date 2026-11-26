@@ -695,6 +695,13 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
     <form className="key-form" id="keys-form-submit" onSubmit={submitKey}>
       <div className="key-form-grid">
         <Field autoFocus label="名称" maxLength={100} onChange={(event) => updateForm("name", event.currentTarget.value)} required value={form.name} />
+        <Select
+          label="服务分组"
+          onChange={(value) => updateForm("groupId", value)}
+          options={groups.map((group) => ({ value: group.id, label: group.name, description: groupMetadataLabel(group) }))}
+          placeholder="请选择服务分组"
+          value={form.groupId}
+        />
         <Field label="配额（USD，0 为不限）" min="0" onChange={(event) => updateForm("quotaUsd", event.currentTarget.value)} required step="0.000001" type="number" value={form.quotaUsd} />
         {editingKey ? (
           <Field label="过期时间" onChange={(event) => updateForm("expiresAt", event.currentTarget.value)} type="datetime-local" value={form.expiresAt} />
@@ -703,15 +710,8 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
         )}
       </div>
       <details className="key-advanced-settings key-form-technical-details">
-        <summary>技术详情</summary>
+        <summary>高级限制</summary>
         <div className="key-advanced-settings__body">
-          <Select
-            label="服务分组"
-            onChange={(value) => updateForm("groupId", value)}
-            options={groups.map((group) => ({ value: group.id, label: group.name, description: groupMetadataLabel(group) }))}
-            placeholder="请选择服务分组"
-            value={form.groupId}
-          />
           <div className="key-form-grid key-form-grid--three">
             <Field label="5 小时消费限额（USD）" min="0" onChange={(event) => updateForm("rateLimit5hUsd", event.currentTarget.value)} step="0.000001" type="number" value={form.rateLimit5hUsd} />
             <Field label="1 天消费限额（USD）" min="0" onChange={(event) => updateForm("rateLimit1dUsd", event.currentTarget.value)} step="0.000001" type="number" value={form.rateLimit1dUsd} />

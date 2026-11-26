@@ -19,7 +19,7 @@ export function customerSafeMessage(payload: unknown = {}, fallback = "request_f
   const object = asObject(payload);
   const raw = String(object.safeMessage || object.message || object.error || fallback);
   if (/workspace_url_failed|workspace_runtime_not_ready|workspace_url_not_ready/i.test(raw)) {
-    return "正在分发 Docker，预计 3-5 分钟，请稍后再打开 URL。";
+    return "工作空间正在启动，请稍后刷新查看。";
   }
   return raw;
 }

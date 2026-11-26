@@ -283,3 +283,57 @@
   .ui-button[data-variant]:hover:not(:disabled),
   .ui-button[data-variant]:active:not(:disabled) { transform: none !important; }
 }
+
+.workspace-detail-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-bottom: 14px;
+}
+
+.workspace-credential-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.workspace-trend-section {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.workspace-trend-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 14px;
+  font-size: var(--font-text-sm);
+  color: var(--color-text-secondary);
+}
+
+.workspace-trend-summary strong {
+  color: var(--color-text);
+  font-weight: var(--font-weight-semibold);
+}
+
+.workspace-trend-details > summary {
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm);
+  padding: 6px 0;
+}
+
+.console-confirm-form {
+  display: grid;
+  gap: 14px;
+}
+
+.console-confirm-description {
+  margin: 0;
+  color: var(--color-text);
+  line-height: 1.55;
+}

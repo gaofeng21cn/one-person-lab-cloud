@@ -15,6 +15,7 @@ import type {
   SourceEnvelope
 } from "../api/dtos.ts";
 import { authorizationFailureState } from "./authorization-error.ts";
+import { requestConfirm } from "./confirm-dialog-store.ts";
 import type { OperatorAccountController, RemoteState } from "./console-controller-types.ts";
 import {
   accountCommandSucceeded,
@@ -273,8 +274,14 @@ export function useOperatorAccountController({
   const disable = useCallback(async (accountId: string) => {
     const session = currentSession();
     const account = currentAccount(accountId);
-    if (!session || !activeRef.current || !account
-      || !window.confirm("确认停用该客户？账号会立即停用；历史账单、收据和审计记录会保留。")) return;
+    if (!session || !activeRef.current || !account) return;
+    const confirmed = await requestConfirm({
+      title: "停用客户账号",
+      description: "确认停用该客户？账号会立即停用；历史账单、收据和审计记录会保留。",
+      confirmLabel: "确认停用",
+      tone: "danger"
+    });
+    if (!confirmed) return;
     const claim = claimAccount(accountId);
     if (!claim) return;
     const identity = accountIdentity(account);
@@ -319,9 +326,16 @@ export function useOperatorAccountController({
     const session = currentSession();
     const account = currentAccount(accountId);
     const confirmation = enabled
-      ? "确认授予该账户新购 Workspace 的资格？"
-      : "确认撤销该账户新购 Workspace 的资格？已有 Workspace 不会受影响。";
-    if (!session || !activeRef.current || !account || !window.confirm(confirmation)) return;
+      ? "确认授予该账户新购工作空间的资格？"
+      : "确认撤销该账户新购工作空间的资格？已有工作空间不会受影响。";
+    if (!session || !activeRef.current || !account) return;
+    const confirmed = await requestConfirm({
+      title: enabled ? "授予工作空间购买资格" : "撤销工作空间购买资格",
+      description: confirmation,
+      confirmLabel: enabled ? "确认授予" : "确认撤销",
+      tone: enabled ? "primary" : "danger"
+    });
+    if (!confirmed) return;
     const claim = claimAccount(accountId);
     if (!claim) return;
     const identity = accountIdentity(account);

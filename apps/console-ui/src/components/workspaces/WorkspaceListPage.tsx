@@ -2,7 +2,7 @@ import { ChevronRight, Plus, RefreshCw } from "lucide-react";
 
 import type { ConsoleController } from "../../app/use-console-controller.ts";
 import { cloudIdentity } from "../../app/console-identity.ts";
-import { presentWorkspaceDeliveryModel, presentWorkspaceLifecycle } from "../../app/workspace-experience-model.ts";
+import { presentWorkspaceDeliveryModel, presentWorkspaceLifecycle, presentWorkspaceResourceReadiness } from "../../app/workspace-experience-model.ts";
 import type { WorkspaceDTO } from "../../api/dtos.ts";
 import { SourceState } from "../source/SourceState.tsx";
 import { Badge, Button } from "../ui/index.ts";
@@ -48,7 +48,7 @@ export function WorkspaceListPage({ controller }: { controller: WorkspaceListCon
             <PageLink className="workspace-list-row" controller={controller} key={workspace.id} path={`/console/workspaces/${encodeURIComponent(workspace.id)}`}>
               <span className="workspace-list-name"><strong>{workspace.name || "未命名工作空间"}</strong></span>
               {cloudIdentity
-                ? <span><strong>{presentWorkspaceDeliveryModel(workspace.deliveryModel)}</strong><small>{workspace.resourceReadiness ? `资源 ${workspace.resourceReadiness}` : "资源状态暂不可用"}</small></span>
+                ? <span><strong>{presentWorkspaceDeliveryModel(workspace.deliveryModel)}</strong><small>资源：{presentWorkspaceResourceReadiness(workspace.resourceReadiness)}</small></span>
                 : <span><strong>{workspace.packageId?.toUpperCase() || "暂不可用"}</strong><small>{workspace.storageGb ? `${workspace.storageGb} GB` : "规格暂不可用"}</small></span>}
               <span><strong>{presentWorkspaceLifecycle(workspace.state).label}</strong><small>当前状态</small></span>
               <span><strong>{formatDate(workspace.paidThrough)}</strong><small>权益截止</small></span>
