@@ -64,6 +64,14 @@ export function WorkspaceTransactionsPanel({ session, workspaceId }: { session: 
   </section>;
 }
 
+function sumMicros(values: string[]): string {
+  let total = 0n;
+  for (const raw of values) {
+    if (/^(0|[1-9]\d{0,18})$/.test(raw)) total += BigInt(raw);
+  }
+  return total.toString();
+}
+
 function WorkspaceTransactionTrendView({ session, workspaceId, revision }: { session: AuthSession | null; workspaceId: string; revision: number }) {
   const [state, setState] = useState<{ session: AuthSession | null; workspaceId: string; revision: number; value?: WorkspaceTransactionTrend; error?: string }>();
   const current = state?.session === session && state.workspaceId === workspaceId && state.revision === revision ? state : undefined;
@@ -77,13 +85,47 @@ function WorkspaceTransactionTrendView({ session, workspaceId, revision }: { ses
     });
     return () => controller.abort();
   }, [session, workspaceId, revision]);
-  return <section aria-label="最近14天结算趋势">
+
+  const value = current?.value;
+  const totalCharge = value ? sumMicros(value.days.map((day) => day.confirmedChargeUSDMicros)) : "0";
+  const totalRefund = value ? sumMicros(value.days.map((day) => day.confirmedRefundUSDMicros)) : "0";
+  const peak = value ? value.days.reduce((max, day) => {
+    const charge = /^(0|[1-9]\d{0,18})$/.test(day.confirmedChargeUSDMicros) ? BigInt(day.confirmedChargeUSDMicros) : 0n;
+    const refund = /^(0|[1-9]\d{0,18})$/.test(day.confirmedRefundUSDMicros) ? BigInt(day.confirmedRefundUSDMicros) : 0n;
+    const net = charge > refund ? charge - refund : refund - charge;
+    return net > max ? net : max;
+  }, 0n) : 0n;
+
+  return <section className="workspace-trend-section" aria-label="最近14天结算趋势">
     <h3>最近 14 天结算趋势</h3>
-    {current?.error ? <p role="alert">{current.error}</p> : !current?.value ? <p role="status">正在读取结算趋势…</p> : <>
-      <p>按 UTC 日期和支付确认时间统计，今日截至 {formatDate(current.value.periodEnd, true)}；金额单位为美元。</p>
-      <div className="table-wrap"><table><thead><tr><th>日期（UTC）</th><th>已确认扣款</th><th>已确认退款</th></tr></thead><tbody>{current.value.days.map((day) => <tr key={day.date}><td>{day.date}</td><td>{formatWorkspaceTransactionAmount(day.confirmedChargeUSDMicros)}</td><td>{formatWorkspaceTransactionAmount(day.confirmedRefundUSDMicros)}</td></tr>)}</tbody></table></div>
-      <p>本窗口创建、结果未知的交易：扣款 {formatWorkspaceTransactionAmount(current.value.unknownChargeUSDMicros)}；退款 {formatWorkspaceTransactionAmount(current.value.unknownRefundUSDMicros)}。</p>
-      <p>本窗口创建、等待确认的交易：扣款 {formatWorkspaceTransactionAmount(current.value.requestedChargeUSDMicros)}；退款 {formatWorkspaceTransactionAmount(current.value.requestedRefundUSDMicros)}。以上金额均未计入已确认统计。</p>
+    {current?.error ? <p role="alert">{current.error}</p> : !value ? <p role="status">正在读取结算趋势…</p> : <>
+      <div className="workspace-trend-summary">
+        <span>已确认扣款 <strong>{formatWorkspaceTransactionAmount(totalCharge)}</strong></span>
+        <span>已确认退款 <strong>{formatWorkspaceTransactionAmount(totalRefund)}</strong></span>
+        <small>UTC 统计，截至 {formatDate(value.periodEnd, true)}</small>
+      </div>
+      <div className="trend-chart" role="img" aria-label={`最近 ${value.days.length} 天已确认资金变动趋势`}>
+        {value.days.map((day, index) => {
+          const charge = /^(0|[1-9]\d{0,18})$/.test(day.confirmedChargeUSDMicros) ? BigInt(day.confirmedChargeUSDMicros) : 0n;
+          const refund = /^(0|[1-9]\d{0,18})$/.test(day.confirmedRefundUSDMicros) ? BigInt(day.confirmedRefundUSDMicros) : 0n;
+          const net = charge - refund;
+          const abs = net < 0n ? -net : net;
+          const height = peak > 0n && abs > 0n ? Number((abs * 100n) / peak) : 0;
+          const short = index === 0 || index === value.days.length - 1 || index % 3 === 0 ? day.date.slice(5) : "";
+          return (
+            <div className="trend-col" key={day.date} title={`${day.date} · 扣款 ${formatWorkspaceTransactionAmount(day.confirmedChargeUSDMicros)} · 退款 ${formatWorkspaceTransactionAmount(day.confirmedRefundUSDMicros)}`}>
+              <span className="trend-bar" data-empty={abs === 0n} data-refund={net < 0n} style={abs > 0n ? { height: `${Math.max(6, Math.min(100, height))}%` } : undefined} />
+              <small>{short}</small>
+            </div>
+          );
+        })}
+      </div>
+      <p className="trend-note">本窗口创建、结果未知的交易：扣款 {formatWorkspaceTransactionAmount(value.unknownChargeUSDMicros)}；退款 {formatWorkspaceTransactionAmount(value.unknownRefundUSDMicros)}。</p>
+      <p className="trend-note">本窗口创建、等待确认的交易：扣款 {formatWorkspaceTransactionAmount(value.requestedChargeUSDMicros)}；退款 {formatWorkspaceTransactionAmount(value.requestedRefundUSDMicros)}。以上金额均未计入已确认统计。</p>
+      <details className="workspace-trend-details">
+        <summary>查看 14 天每日明细（UTC）</summary>
+        <div className="table-wrap"><table><thead><tr><th>日期（UTC）</th><th>已确认扣款</th><th>已确认退款</th></tr></thead><tbody>{value.days.map((day) => <tr key={day.date}><td>{day.date}</td><td>{formatWorkspaceTransactionAmount(day.confirmedChargeUSDMicros)}</td><td>{formatWorkspaceTransactionAmount(day.confirmedRefundUSDMicros)}</td></tr>)}</tbody></table></div>
+      </details>
     </>}
   </section>;
 }

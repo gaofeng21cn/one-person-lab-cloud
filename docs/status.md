@@ -35,6 +35,11 @@ chronological snapshots.
     MCP (`/api/v2/mcp`), quote review and Gateway session-backed customer
     reads (announcements and legacy personal billing through authenticated
     Control Plane bridges).
+  - The publisher can read the structured build log: the contract's
+    `GET /api/v2/builds/{buildId}/logs` route is served by the BFF and forwards
+    to the Build owner, and the upload page shows the owner's log lines with
+    their stage and severity. The log answers why a build stopped; the build
+    status alone never carried that reason.
   - The Cloud personal Gateway Key surface is writable: the Gateway owner
     reports a personal Key as manageable and revocable (the Workspace's own
     managed Key is neither), and the Console offers create, edit, revoke and

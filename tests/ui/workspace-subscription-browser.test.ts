@@ -163,6 +163,9 @@ async function startFixture(t: { after: (fn: () => Promise<unknown>) => void }, 
 }
 
 function panel(page: Page) { return page.getByRole("region", { name: "工作空间订阅", exact: true }); }
+async function openBillingTab(page: Page) {
+  await page.getByRole("radio", { name: "订阅与费用", exact: true }).click();
+}
 async function mount(page: Page, options: unknown) {
   await page.evaluate((value) => (window as unknown as { mountSubscription: (options: unknown) => void }).mountSubscription(value), options);
 }
@@ -180,6 +183,7 @@ test("real detail and billing consumers read native subscriptions independently 
     return route.fulfill({ json: id === "workspace-one" && onePrice === undefined ? legacySubscription(id) : subscription(id, id === "workspace-one" ? { currentMonthlyUSDMicros: onePrice } : { currentMonthlyUSDMicros: "0", renewalMode: "automatic", renewalConsentId: "consent-original" }) });
   });
   await page.goto(`${origin}__subscription`);
+  await openBillingTab(page);
   await panel(page).getByText("$52.580001", { exact: true }).waitFor();
   await panel(page).getByText("手动续费", { exact: true }).waitFor();
   await panel(page).getByText("原计算方案 · 2 核 / 4 GiB 内存", { exact: true }).waitFor();
@@ -249,6 +253,7 @@ test("subscription unknown values, 404, 403, 401 and failure stay distinct and r
   let value: unknown = subscription("workspace-one", { status: "future_status", renewalMode: "toString", provenance: "future_source", currentMonthlyUSDMicros: undefined, currentPricePolicyVersionId: undefined });
   await page.route("**/api/v2/workspaces/*/subscription", (route) => route.fulfill({ status, json: value }));
   await page.goto(`${origin}__subscription`);
+  await openBillingTab(page);
   await panel(page).getByText("订阅暂不可用，请重试。", { exact: true }).waitFor();
   assert.equal(await panel(page).locator("dl").count(), 0, "unrecognized enums must never become an available subscription");
   assert.equal(await panel(page).getByText("自动续费", { exact: true }).count(), 0);
@@ -290,6 +295,7 @@ test("tenant role, actor, tenant, login and Workspace changes abort and hide old
     await route.fulfill({ json: subscription(id, { currentMonthlyUSDMicros: amount }) }).catch(() => {});
   });
   await page.goto(`${origin}__subscription`);
+  await openBillingTab(page);
   await panel(page).getByText("$11.00", { exact: true }).waitFor();
   // Observe the real combined HTTP signal without replacing fetch or the API.
   await page.evaluate(() => {
@@ -391,6 +397,7 @@ test("Catalog failure, latency and missing exact plans preserve subscription amo
     return storage === "failed" ? route.fulfill({ status: 503, json: { error: "catalog_unavailable" } }) : route.fulfill({ json: { items: [{ id: "storage-original", name: "历史数据盘", capacityGiB: 100, availability: "retired", billingMode: "prepaid_monthly" }] } });
   });
   await page.goto(`${origin}__subscription`);
+  await openBillingTab(page);
   const facts = panel(page).locator(":scope > dl");
   await facts.getByText("$52.580001", { exact: true }).waitFor();
   await facts.getByText("套餐信息暂不可用", { exact: true }).waitFor();

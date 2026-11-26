@@ -73,6 +73,9 @@ test("native credential component reveals explicitly and clears hidden, departed
   assert.deepEqual(managementReads, [], "opening the detail must not read credentials or access");
   await reveal.click();
   await page.getByText("ephemeral-fixture-password", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "复制登录用户名", exact: true }).count(), 1);
+  assert.equal(await page.getByRole("button", { name: "复制登录密码", exact: true }).count(), 1);
+  await page.getByText(/\d+ 秒后自动隐藏/).waitFor();
   await page.getByRole("button", { name: "隐藏登录凭据" }).click();
   assert.equal(await page.getByText("ephemeral-fixture-password", { exact: true }).count(), 0);
   await reveal.click();

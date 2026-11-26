@@ -46,6 +46,7 @@ test("Publisher requires successful complete and exact uploaded readback before 
       const unexpected: string[] = [];
       const errors: string[] = [];
       const builds: unknown[] = [];
+      const logReads: string[] = [];
       const partBodies: Buffer[] = [];
       const completeBodies: unknown[] = [];
       const completeEntered = gate(); const completeResponse = gate();
@@ -114,6 +115,13 @@ test("Publisher requires successful complete and exact uploaded readback before 
           return json(build, 201);
         }
         if (method === "GET" && path === "/api/v2/builds/build-upload") return json(build);
+        if (method === "GET" && path === "/api/v2/builds/build-upload/logs") {
+          logReads.push(url.search);
+          return json({ items: [
+            { id: "log-1", buildJobId: build.id, sequence: 1, stage: "validating", level: "info", message: "package entrypoint resolved", createdAt: "2026-10-19T00:00:00Z" },
+            { id: "log-2", buildJobId: build.id, sequence: 2, stage: "building", level: "error", message: "package entrypoint is missing", createdAt: "2026-10-19T00:00:01Z" }
+          ] });
+        }
         if (method === "GET" && path === "/api/v2/capability-versions/capv-upload") return json({
           id: "capv-upload", status: "ready", artifactDigest: digest, deploymentDescriptorDigest: digest
         });
@@ -151,7 +159,18 @@ test("Publisher requires successful complete and exact uploaded readback before 
           buildResponse.release();
         }
         const succeeds = options.held || options.succeeds || Object.keys(options).length === 0;
-        if (succeeds) await page.getByRole("heading", { name: "版本已就绪", exact: true }).waitFor();
+        if (succeeds) {
+          await page.getByRole("heading", { name: "版本已就绪", exact: true }).waitFor();
+          // The publisher reads the build log the owner already publishes, so a
+          // failed build names its own reason instead of only its status.
+          const logRegion = page.getByRole("region", { name: "构建日志", exact: true });
+          await logRegion.getByText("package entrypoint is missing", { exact: true }).waitFor();
+          const logText = (await logRegion.textContent()) || "";
+          assert.ok(logText.includes("错误"), `the log level is not in the customer's language: ${logText}`);
+          assert.ok(logText.includes("building"), `the log stage is missing: ${logText}`);
+          assert.ok(logReads.length > 0, "the publisher never read the build log");
+          assert.ok(logReads.every((query) => query.includes("limit=200")), `the log read carries no page limit: ${logReads.join(",")}`);
+        }
         else {
           await page.getByRole("alert").waitFor();
           await submit.waitFor({ state: "visible" });
@@ -172,7 +191,7 @@ test("Publisher requires successful complete and exact uploaded readback before 
           const bytes = archive.subarray(offset, offset + 16);
           return { partNumber: index + 1, etag: `part-${index + 1}`, sizeBytes: String(bytes.length), sha256: sha256(bytes) };
         }) });
-        return { events, builds, versionReads };
+        return { events, builds, versionReads, logReads };
       } finally {
         completeResponse.release(); versionResponse.release(); buildResponse.release();
         await context.close();

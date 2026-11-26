@@ -19,6 +19,20 @@
 .publisher-page .publisher-progress p, .publisher-page [aria-label="已就绪版本"] p { margin: 0 0 12px; color: #52677a; }
 .publisher-page [aria-label="已就绪版本"] > p:first-of-type { color: inherit; overflow-wrap: anywhere; }
 
+/* The build log is the publisher's own answer to "why did it stop". It stays
+   visible, not folded away, and the error line carries its own severity. */
+.publisher-page section.publisher-build-logs { margin: 16px 0; padding-top: 0; border-top: 0; }
+.publisher-page .publisher-build-logs h4 { margin: 0 0 8px; font-size: 13px; color: #52677a; }
+.publisher-page .publisher-build-logs ol { margin: 0; padding: 0; list-style: none; max-height: 260px; overflow-y: auto; border: 1px solid #dce1e7; border-radius: 8px; background: #f7f9fb; }
+.publisher-page .publisher-build-logs li { display: grid; grid-template-columns: 48px 96px minmax(0, 1fr); gap: 10px; padding: 6px 10px; font-size: 12px; line-height: 1.6; border-bottom: 1px solid #e8edf2; }
+.publisher-page .publisher-build-logs li:last-child { border-bottom: 0; }
+.publisher-page .publisher-build-logs__level { color: #52677a; }
+.publisher-page .publisher-build-logs__stage { color: #0f4c5c; overflow-wrap: anywhere; }
+.publisher-page .publisher-build-logs__message { overflow-wrap: anywhere; }
+.publisher-page .publisher-build-logs li[data-level="error"] .publisher-build-logs__message { color: #b42318; font-weight: 600; }
+.publisher-page .publisher-build-logs li[data-level="warning"] .publisher-build-logs__message { color: #a15c07; }
+.publisher-page .publisher-build-logs__note { margin: 8px 0 0; color: #52677a; font-size: 12px; }
+
 .publisher-technical-details { margin-top: 28px; border-top: 1px solid #dce1e7; padding-top: 16px; }
 .publisher-technical-details > summary { cursor: pointer; font-weight: 600; color: #0f4c5c; }
 .publisher-technical-details > summary:focus-visible { outline: 2px solid var(--focus, #087f87); outline-offset: 2px; border-radius: 4px; }
