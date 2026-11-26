@@ -36434,6 +36434,10 @@ func (x *ResizeResourcesCommand) GetExecutionPlan() *ProviderPlanChangeExecution
 	return nil
 }
 
+// RenewResourcesCommand renews the prepaid provider period of one accepted
+// resource set. obligation_id names the Workspace owner's renewal obligation:
+// the provider mutation is dispatched only after the Ledger confirms the wallet
+// charge recorded for that exact obligation, exactly like the purchase path.
 type RenewResourcesCommand struct {
 	state                          protoimpl.MessageState `protogen:"open.v1"`
 	Context                        *CallContext           `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
@@ -36443,6 +36447,7 @@ type RenewResourcesCommand struct {
 	PrepaidMonths                  int32                  `protobuf:"varint,5,opt,name=prepaid_months,json=prepaidMonths,proto3" json:"prepaid_months,omitempty"`
 	ConfirmedChargeReceiptId       string                 `protobuf:"bytes,6,opt,name=confirmed_charge_receipt_id,json=confirmedChargeReceiptId,proto3" json:"confirmed_charge_receipt_id,omitempty"`
 	InstanceAuthorizationReference string                 `protobuf:"bytes,7,opt,name=instance_authorization_reference,json=instanceAuthorizationReference,proto3" json:"instance_authorization_reference,omitempty"`
+	ObligationId                   string                 `protobuf:"bytes,8,opt,name=obligation_id,json=obligationId,proto3" json:"obligation_id,omitempty"`
 	unknownFields                  protoimpl.UnknownFields
 	sizeCache                      protoimpl.SizeCache
 }
@@ -36522,6 +36527,13 @@ func (x *RenewResourcesCommand) GetConfirmedChargeReceiptId() string {
 func (x *RenewResourcesCommand) GetInstanceAuthorizationReference() string {
 	if x != nil {
 		return x.InstanceAuthorizationReference
+	}
+	return ""
+}
+
+func (x *RenewResourcesCommand) GetObligationId() string {
+	if x != nil {
+		return x.ObligationId
 	}
 	return ""
 }
@@ -49187,7 +49199,7 @@ const file_internal_proto_rawDesc = "" +
 	"\rtransition_id\x18\n" +
 	" \x01(\tR\ftransitionId\x12'\n" +
 	"\x0fexecution_epoch\x18\v \x01(\x03R\x0eexecutionEpoch\x12^\n" +
-	"\x0eexecution_plan\x18\f \x01(\v27.opl.cloud.api.ProviderPlanChangeExecutionPlanReferenceR\rexecutionPlan\"\xfe\x02\n" +
+	"\x0eexecution_plan\x18\f \x01(\v27.opl.cloud.api.ProviderPlanChangeExecutionPlanReferenceR\rexecutionPlan\"\xa3\x03\n" +
 	"\x15RenewResourcesCommand\x124\n" +
 	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\x12!\n" +
 	"\fworkspace_id\x18\x02 \x01(\tR\vworkspaceId\x12&\n" +
@@ -49195,7 +49207,8 @@ const file_internal_proto_rawDesc = "" +
 	"\x16subscription_period_id\x18\x04 \x01(\tR\x14subscriptionPeriodId\x12%\n" +
 	"\x0eprepaid_months\x18\x05 \x01(\x05R\rprepaidMonths\x12=\n" +
 	"\x1bconfirmed_charge_receipt_id\x18\x06 \x01(\tR\x18confirmedChargeReceiptId\x12H\n" +
-	" instance_authorization_reference\x18\a \x01(\tR\x1einstanceAuthorizationReference\"\x95\x02\n" +
+	" instance_authorization_reference\x18\a \x01(\tR\x1einstanceAuthorizationReference\x12#\n" +
+	"\robligation_id\x18\b \x01(\tR\fobligationId\"\x95\x02\n" +
 	"\x17ResourceReadbackRequest\x124\n" +
 	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\x12&\n" +
 	"\x0fresource_set_id\x18\x02 \x01(\tR\rresourceSetId\x12,\n" +

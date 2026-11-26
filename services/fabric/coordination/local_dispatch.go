@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/services/fabric/internal/fabric"
 )
@@ -29,6 +32,15 @@ func (d *localDispatcher) Provider() string { return providerLocalDocker }
 // internal Fabric service and provider the HTTP runtime routes use.
 func (d *localDispatcher) DeleteResource(ctx context.Context, in ResourceDeletionIntent, kind string) (ResourceDeletionFact, error) {
 	return deleteResourceFromOwnSurface(ctx, d.service, in, kind)
+}
+
+// RenewResource refuses a prepaid renewal. The local Docker provider owns no
+// prepaid provider period, so there is no provider deadline for it to extend;
+// the Workspace owner keeps the only period fact of a zero-charge workspace.
+// The coordination service already refuses a zero-charge resource set before
+// dispatch, so this method only keeps the interface one provider per process.
+func (d *localDispatcher) RenewResource(context.Context, ResourceRenewalIntent) (ResourceRenewalResult, error) {
+	return ResourceRenewalResult{}, status.Error(codes.FailedPrecondition, "local Docker resources own no prepaid provider period to renew")
 }
 
 func (d *localDispatcher) BindSecret(ctx context.Context, in SecretBindIntent) (SecretBindResult, error) {

@@ -17,6 +17,13 @@ Close end-to-end customer lifecycle verification for the latest Cloud Candidate 
 `opl-instance-medopl` Tencent/TKE:
 
 - Default OPL App launch (`create -> quote -> debit -> Fabric provision -> Serve delivery -> readiness -> access -> renewal -> deletion -> refund/reconcile -> Ledger receipt`), plus custom Agent Package build-to-serve E2E on TKE.
+- The renewal step of that chain is not closed yet. The Resource Catalog prices
+  the renewal offer and the Fabric owner extends the provider's prepaid month
+  for the same compute and storage the Workspace already owns. The renewal
+  still has to run as one accepted Workspace obligation — charged once, with its
+  renewed paid period committed — and the two periods have to be reconciled: the
+  provider extends its own prepaid deadline, while the paid period of an
+  expired Workspace starts at the renewal instant.
 - Verify that one customer deletion reaches confirmed CBS final release, compute
   absence, and settlement through the installed Fabric path without an operator
   releasing the recycled disk.
