@@ -18,8 +18,15 @@ test("Cloud 我的智能体 reads Package, versions, Capability and Build owners
       if (url.pathname === "/api/v2/packages") return json({ items: [{ id: "pkg-1", name: "Research Agent", description: "OMA generated research assistant", status: "active", latestReadyVersionId: "pv-1" }] });
       if (url.pathname === "/api/v2/packages/pkg-1") return json({ id: "pkg-1", name: "Research Agent", description: "OMA generated research assistant", status: "active", latestReadyVersionId: "pv-1" });
       if (url.pathname === "/api/v2/packages/pkg-1/versions") return json({ items: [{ id: "pv-1", packageId: "pkg-1", versionLabel: "1.2.0", status: "uploaded", createdAt: "2026-09-27T00:00:00Z" }] });
-      if (url.pathname === "/api/v2/capability-versions") return json({ items: [{ id: "capv-1", packageId: "pkg-1", packageVersionId: "pv-1", buildJobId: "build-1", versionLabel: "1.2.0", status: "ready", provenance: "oma", referenceCount: 0, createdAt: "2026-09-27T00:01:00Z", artifactDigest: "sha256:" + "b".repeat(64) }] });
+      if (url.pathname === "/api/v2/capability-versions") return json({ items: [
+        { id: "capv-other", packageId: "pkg-other", packageVersionId: "pv-other", versionLabel: "0.9.0", status: "ready", modelRequirements: [] },
+        { id: "capv-1", packageId: "pkg-1", packageVersionId: "pv-1", buildJobId: "build-1", versionLabel: "1.2.0", status: "ready", provenance: "oma", referenceCount: 0, createdAt: "2026-09-27T00:01:00Z", artifactDigest: "sha256:" + "b".repeat(64), modelRequirements: [] }
+      ] });
       if (url.pathname === "/api/v2/builds/build-1") return json({ id: "build-1", packageVersionId: "pv-1", status: "succeeded", stage: "registering", resultCapabilityVersionId: "capv-1" });
+      if (url.pathname === "/api/v2/catalog/runtime-versions") return json({ items: [{ id: "rt-1", name: "OPL App", versionLabel: "1.0.0", status: "approved" }] });
+      if (url.pathname === "/api/v2/catalog/compute-plans") return json({ items: [{ id: "compute-1", name: "Basic", vcpus: 2, memoryMiB: 4096, availability: "available", billingMode: "prepaid_monthly", workspaceOffers: [{ storagePlanId: "storage-1", storageCapacityGiB: 50, monthlyUSDMicros: "20000000", pricePolicyVersionId: "pp-1" }] }] });
+      if (url.pathname === "/api/v2/models") return json({ items: [] });
+      if (url.pathname === "/api/v2/wallet/payer") return json({ balanceUSDMicros: "100000000", currency: "USD" });
       return json({ error: "unexpected_agent_readback_request", path: url.pathname }, 500);
     });
     const session = await page.request.post(`${server.origin}/api/auth/login`, { data: CONSOLE_DEMO_CREDENTIALS.customer });
@@ -30,11 +37,17 @@ test("Cloud 我的智能体 reads Package, versions, Capability and Build owners
     await page.getByRole("heading", { name: "Research Agent", exact: true }).waitFor();
     await page.getByText("版本已可部署", { exact: true }).waitFor();
     await page.getByText("oma · 构建 build-1", { exact: true }).waitFor();
+    assert.equal(await page.getByRole("button", { name: "上传新版本", exact: true }).isVisible(), true);
+    assert.equal(await page.getByRole("button", { name: "创建工作空间", exact: true }).isVisible(), true);
     assert.equal(await page.getByText("sha256:", { exact: false }).count(), 0);
     for (const jargon of ["Capability owner", "owner readback", "OCI 字节销毁", "Build build-1"]) {
       assert.equal(await page.getByText(jargon, { exact: false }).count(), 0, `unexpected jargon: ${jargon}`);
     }
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    await page.getByRole("button", { name: "创建工作空间", exact: true }).click();
+    await page.waitForURL(/\/console\/workspaces\/new\?capabilityVersionId=capv-1$/);
+    await page.getByLabel("智能体版本", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.getByLabel("智能体版本", { exact: true }).inputValue(), "capv-1");
   } finally {
     await browser.close();
     await server.close();
