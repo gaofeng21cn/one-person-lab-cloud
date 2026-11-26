@@ -1263,12 +1263,12 @@ test("v2 operation refresh keeps the original order and never opens before Serve
     await page.getByRole("heading", { name: "确认订单", exact: true }).waitFor();
     await page.getByRole("checkbox", { name: /我确认以上配置/ }).check();
     await page.getByRole("button", { name: "确认并开通工作空间", exact: true }).click();
-    await page.getByText("应用访问尚未确认，请稍后刷新。", { exact: true }).waitFor({ state: "visible", timeout: 5_000 });
+    await page.getByText("应用入口仍在准备中，请稍后刷新。", { exact: true }).waitFor({ state: "visible", timeout: 5_000 });
     assert.equal(await page.getByRole("button", { name: "打开应用", exact: true }).count(), 0);
     assert.equal(createWrites, 1);
     assert.ok(operationReads >= 1);
     await page.getByRole("button", { name: "刷新状态", exact: true }).click();
-    await page.getByText("应用访问尚未确认，请稍后刷新。", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("应用入口仍在准备中，请稍后刷新。", { exact: true }).waitFor({ state: "visible" });
     assert.equal(createWrites, 1);
     assert.ok(audit.consoleErrors.every((message) => message.includes("503 (Service Unavailable)")));
     audit.consoleErrors.length = 0;
