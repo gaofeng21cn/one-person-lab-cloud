@@ -2,7 +2,7 @@ export function readRuntimeAgents(value) {
   const state = value?.app_state?.app_state;
   const entries = state?.agent_packages?.directory?.entries;
   if (value?.app_state?.version !== "g2" || state?.schema_version !== "opl_app_state.v1" || !Array.isArray(entries)) {
-    throw new Error("Runtime returned an unsupported Agent directory response.");
+    throw new Error("运行时返回了不受支持的智能体目录响应。");
   }
   const choices = [];
   for (const entry of entries) {
@@ -34,13 +34,15 @@ export function readAgentReply(value, expectedThreadId) {
   const turn = value?.canonicalThread?.turns?.find((item) => item.id === value.turnId);
   if (value?.executor !== "codex_app_server" || !value.threadId || !value.turnId ||
       value.canonicalThread?.id !== value.threadId || (expectedThreadId && expectedThreadId !== value.threadId) || !turn) {
-    throw new Error("Runtime did not confirm the Agent turn on its conversation.");
+    throw new Error("运行时没有在对话中确认这一轮智能体回应。");
   }
   if (turn.status !== "completed") {
-    throw new Error(turn.error?.message || `Agent turn ${turn.status || "is unconfirmed"}.`);
+    // The Runtime owns the failure reason: its message stays the customer-facing
+    // fact, and only the fallback wording belongs to this page.
+    throw new Error(turn.error?.message || `这一轮智能体回应${turn.status ? `的状态是 ${turn.status}` : "尚未确认"}。`);
   }
   if (typeof value.finalMessage !== "string" || !value.finalMessage.trim()) {
-    throw new Error("Runtime completed the turn without an Agent answer.");
+    throw new Error("运行时完成了这一轮，但没有返回智能体回答。");
   }
   return { threadId: value.threadId, answer: value.finalMessage };
 }

@@ -1,29 +1,57 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="opl-cloud-webui" content="generic-agent-webui/v1">
-  <title>OPL Agent</title>
+  <title>智能体工作台</title>
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
   <main class="shell" data-opl-cloud-agent-webui="v1">
     <header class="topbar">
-      <div><span class="eyebrow">OPL AGENT</span><h1>Agent workspace</h1><p>Cloud-provided generic Agent WebUI</p></div>
-      <span id="runtime-status" class="status">Connecting…</span>
+      <div>
+        <span class="eyebrow">OPL 智能体</span>
+        <h1>智能体工作台</h1>
+        <p>由 Cloud 提供的通用 Agent 工作台</p>
+      </div>
+      <span id="runtime-status" class="status">正在连接…</span>
     </header>
-    <section class="workspace" aria-label="Agent conversation">
-      <div id="messages" class="messages" aria-live="polite"><div class="empty"><strong>Start a task</strong><span>Select an installed Agent and send a prompt.</span></div></div>
+    <section id="session-notice" class="notice notice--error" role="alert" hidden>
+      <strong>登录状态已失效</strong>
+      <p>当前工作空间的登录已经过期。请重新登录后再继续提问。</p>
+      <button type="button" id="reload-session">重新登录</button>
+    </section>
+    <section id="model-hint" class="notice notice--warning" role="status" hidden>
+      <strong>尚未配置模型</strong>
+      <p>这个工作空间还没有可用的模型访问权限。请先在控制台为该工作空间配置模型，再回到这里提问。</p>
+    </section>
+    <section class="workspace" aria-label="智能体对话">
+      <div class="conversation">
+        <div id="conversation-actions" class="conversation-actions" hidden>
+          <button type="button" id="copy-conversation">复制对话</button>
+          <button type="button" id="export-conversation">导出 Markdown</button>
+          <span id="conversation-status" role="status"></span>
+        </div>
+        <div id="messages" class="messages" aria-live="polite">
+          <div class="empty"><strong>开始一个任务</strong><span>选择一个已安装的智能体，然后发送你的问题。</span></div>
+        </div>
+      </div>
       <form id="composer" class="composer">
-        <label for="agent">Agent</label>
-        <select id="agent" required disabled><option>Loading Agent catalog…</option></select>
-        <label for="prompt">Prompt</label>
-        <textarea id="prompt" rows="4" required placeholder="Ask the selected Agent to do something…" disabled></textarea>
-        <div class="composer-actions"><span id="hint">Loading runtime state…</span><button id="send" type="submit" disabled>Send</button></div>
+        <label for="agent">智能体</label>
+        <select id="agent" required disabled><option>正在读取智能体列表…</option></select>
+        <label for="prompt">你的问题</label>
+        <textarea id="prompt" rows="4" required placeholder="向选中的智能体提问…" disabled></textarea>
+        <div class="composer-actions">
+          <span id="hint">正在读取运行状态…</span>
+          <button id="send" type="submit" disabled>发送</button>
+        </div>
       </form>
     </section>
-    <details class="diagnostics"><summary>Runtime details</summary><pre id="diagnostics-body">Not loaded.</pre></details>
+    <details class="diagnostics">
+      <summary>技术详情</summary>
+      <pre id="diagnostics-body">尚未加载。</pre>
+    </details>
   </main>
   <script type="module" src="./app.js"></script>
 </body>

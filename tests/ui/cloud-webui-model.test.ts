@@ -136,7 +136,7 @@ test("Runtime Agent decoder rejects unsupported versions and incomplete director
     { app_state: { version: "g2", app_state: { ...state, schema_version: "opl_app_state.v2" } } },
     { app_state: { version: "g2", app_state: { ...state, agent_packages: {} } } },
     { app_state: { version: "g2", app_state: { ...state, agent_packages: { directory: { entries: {} } } } } }
-  ]) assert.throws(() => readRuntimeAgents(value), /unsupported Agent directory response/);
+  ]) assert.throws(() => readRuntimeAgents(value), /不受支持的智能体目录响应/);
   assert.deepEqual(readRuntimeAgents(runtimeState([])), { choices: [], modelReady: true });
 });
 
@@ -216,8 +216,8 @@ test("Runtime reply decoder rejects unconfirmed executor, thread and turn identi
     { ...reply, canonicalThread: { ...reply.canonicalThread, id: "another-thread" } },
     { ...reply, canonicalThread: { id: "thread-ibd", turns: [] } },
     { ...reply, turnId: "missing-turn" }
-  ]) assert.throws(() => readAgentReply(value), /did not confirm the Agent turn/);
-  assert.throws(() => readAgentReply(reply, "another-thread"), /did not confirm the Agent turn/);
+  ]) assert.throws(() => readAgentReply(value), /没有在对话中确认/);
+  assert.throws(() => readAgentReply(reply, "another-thread"), /没有在对话中确认/);
 });
 
 test("Runtime reply decoder rejects failed or unfinished canonical turns despite a final message", () => {
@@ -226,7 +226,7 @@ test("Runtime reply decoder rejects failed or unfinished canonical turns despite
     const value = { ...reply, canonicalThread: { id: "thread-ibd", turns: [
       { id: "unrelated-turn", status: "completed" }, { id: "turn-ibd", status }
     ] } };
-    assert.throws(() => readAgentReply(value), /Agent turn/);
+    assert.throws(() => readAgentReply(value), /这一轮智能体回应/);
   }
   assert.throws(() => readAgentReply({ ...reply, canonicalThread: { id: "thread-ibd", turns: [
     { id: "turn-ibd", status: "failed", error: { message: "Model execution failed" } }
@@ -235,6 +235,6 @@ test("Runtime reply decoder rejects failed or unfinished canonical turns despite
 
 test("Runtime reply decoder requires a nonempty final Agent answer after canonical completion", () => {
   for (const finalMessage of [undefined, null, "", " \n\t", 123, {}]) {
-    assert.throws(() => readAgentReply({ ...completedReply(), finalMessage }), /completed the turn without an Agent answer/);
+    assert.throws(() => readAgentReply({ ...completedReply(), finalMessage }), /没有返回智能体回答/);
   }
 });

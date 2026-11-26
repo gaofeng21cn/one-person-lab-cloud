@@ -29,6 +29,14 @@ chronological snapshots.
   `defaultAccountId`, so onboarding a customer needs no profile edit and no
   restart. A profile that declares neither refuses that Tenant. The profile
   itself stays an `opl-instance-medopl` deployment fact.
+- **Generic Agent WebUI Product Surface**: The runtime WebUI that serves a
+  published Agent Package is a Simplified Chinese customer page: one brand
+  color, an expired session reported as a customer state with a way back in, one
+  instruction when the Workspace has no model access, safe Markdown answers
+  (built as DOM nodes, never as markup), one-click copy and a Markdown export of
+  the conversation. The page links to no console address and no Workspace model
+  page, because the Runtime publishes neither fact to the WebUI; those two
+  links stay an open outcome in [roadmap.md](roadmap.md).
 - **Console / BFF / Control Plane Boundary**:
   - CloudIdentity routes (`/api/v2/*`) serve Workspace, Quote, Launch, Capability
     upload/build, Serve delivery, Gateway wallet/usage summary, Agent read-only

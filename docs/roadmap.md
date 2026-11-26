@@ -49,6 +49,15 @@ original operation, resource and digest identities, with activation and receipt
 recovered. An unresolved rotation parent still fences Workspace deletion.
 Cross-installation transfer requires separate evidence if used.
 
+### Generic Agent WebUI Console And Model Links
+
+The generic Agent WebUI tells a customer how to configure a model, but it cannot
+link to the console or to the Workspace model page: the Runtime publishes neither
+the console address nor the workspace id to the WebUI, and the console and the
+Workspace entry are different hosts by installation contract. Closing this needs
+one named upstream fact (or an explicit decision to keep the guidance text), not
+a guessed URL.
+
 ## Workspace Key And Customer Read Boundaries
 
 Complete migration of remaining transitional customer reads off legacy Control
