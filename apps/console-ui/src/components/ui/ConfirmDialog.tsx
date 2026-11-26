@@ -1,79 +1,27 @@
 import { useEffect, useState, type FormEvent } from "react";
 
+import {
+  getActiveConfirmRequest,
+  requestConfirm,
+  requestPrompt,
+  settleConfirmDialog,
+  subscribeConfirmDialog,
+  type ActiveConfirmRequest,
+  type ConfirmDialogOptions,
+  type PromptDialogOptions
+} from "../../app/confirm-dialog-store.ts";
 import { Alert } from "./index.ts";
 import { Button } from "./Button.tsx";
 import { Field } from "./Field.tsx";
 import { Modal } from "./Modal.tsx";
 
-export interface ConfirmDialogOptions {
-  title: string;
-  description: string;
-  confirmLabel?: string;
-  cancelLabel?: string;
-  tone?: "primary" | "danger";
-  requireText?: {
-    label: string;
-    expected: string;
-    placeholder?: string;
-  };
-}
-
-export interface PromptDialogOptions {
-  title: string;
-  description?: string;
-  label: string;
-  placeholder?: string;
-  confirmLabel?: string;
-  cancelLabel?: string;
-}
-
-type ActiveRequest =
-  | { kind: "confirm"; options: ConfirmDialogOptions; resolve: (confirmed: boolean) => void }
-  | { kind: "prompt"; options: PromptDialogOptions; resolve: (value: string | null) => void };
-
-type Listener = (request: ActiveRequest | null) => void;
-
-const listeners = new Set<Listener>();
-let currentRequest: ActiveRequest | null = null;
-
-function notify(next: ActiveRequest | null) {
-  currentRequest = next;
-  for (const listener of listeners) listener(next);
-}
-
-function dismissCurrent() {
-  const active = currentRequest;
-  if (!active) return;
-  notify(null);
-  if (active.kind === "confirm") active.resolve(false);
-  else active.resolve(null);
-}
-
-export function requestConfirm(options: ConfirmDialogOptions): Promise<boolean> {
-  dismissCurrent();
-  return new Promise<boolean>((resolve) => {
-    notify({ kind: "confirm", options, resolve });
-  });
-}
-
-export function requestPrompt(options: PromptDialogOptions): Promise<string | null> {
-  dismissCurrent();
-  return new Promise<string | null>((resolve) => {
-    notify({ kind: "prompt", options, resolve });
-  });
-}
+export { requestConfirm, requestPrompt, type ConfirmDialogOptions, type PromptDialogOptions };
 
 export function ConfirmDialogHost() {
-  const [request, setRequest] = useState<ActiveRequest | null>(currentRequest);
+  const [request, setRequest] = useState<ActiveConfirmRequest | null>(getActiveConfirmRequest);
   const [inputValue, setInputValue] = useState("");
 
-  useEffect(() => {
-    listeners.add(setRequest);
-    setRequest(currentRequest);
-    return () => {
-      listeners.delete(setRequest);
-    };
-  }, []);
+  useEffect(() => subscribeConfirmDialog(setRequest), []);
 
   useEffect(() => {
     setInputValue("");
@@ -82,10 +30,7 @@ export function ConfirmDialogHost() {
   if (!request) return null;
 
   const cancel = () => {
-    const active = request;
-    notify(null);
-    if (active.kind === "confirm") active.resolve(false);
-    else active.resolve(null);
+    settleConfirmDialog(request, request.kind === "confirm" ? false : null);
   };
 
   if (request.kind === "confirm") {
@@ -95,8 +40,7 @@ export function ConfirmDialogHost() {
     const submit = (event?: FormEvent) => {
       event?.preventDefault();
       if (!canConfirm) return;
-      notify(null);
-      request.resolve(true);
+      settleConfirmDialog(request, true);
     };
 
     return (
@@ -136,8 +80,7 @@ export function ConfirmDialogHost() {
   const submitPrompt = (event?: FormEvent) => {
     event?.preventDefault();
     if (!trimmed) return;
-    notify(null);
-    request.resolve(trimmed);
+    settleConfirmDialog(request, trimmed);
   };
 
   return (

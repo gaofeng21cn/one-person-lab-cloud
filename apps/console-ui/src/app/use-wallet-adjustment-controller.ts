@@ -11,7 +11,7 @@ import type {
   WalletAdjustmentRequest
 } from "../api/dtos.ts";
 import type { WalletAdjustmentController } from "./console-controller-types.ts";
-import { requestConfirm, requestPrompt } from "../components/ui/ConfirmDialog.tsx";
+import { requestConfirm, requestPrompt } from "./confirm-dialog-store.ts";
 import {
   resolveWalletAdjustmentIntent,
   walletRecoveryIdempotencyKey,

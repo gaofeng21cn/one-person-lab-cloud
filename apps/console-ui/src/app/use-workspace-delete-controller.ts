@@ -9,7 +9,7 @@ import {
   workspaceDeleteIdempotencyKey
 } from "../api/workspaces-api.ts";
 import { cloudIdentity } from "./console-identity.ts";
-import { requestConfirm } from "../components/ui/ConfirmDialog.tsx";
+import { requestConfirm } from "./confirm-dialog-store.ts";
 import {
   isWorkspaceDeleteNotFound,
   resolveWorkspaceDeleteIntent,

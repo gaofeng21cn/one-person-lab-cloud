@@ -15,7 +15,7 @@ import type {
   SourceEnvelope
 } from "../api/dtos.ts";
 import { authorizationFailureState } from "./authorization-error.ts";
-import { requestConfirm } from "../components/ui/ConfirmDialog.tsx";
+import { requestConfirm } from "./confirm-dialog-store.ts";
 import type { OperatorAccountController, RemoteState } from "./console-controller-types.ts";
 import {
   accountCommandSucceeded,
