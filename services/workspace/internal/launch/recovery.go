@@ -52,7 +52,7 @@ func (s *Service) RunOnce(ctx context.Context) error {
 	// row for the existing freshly authorized DeleteWorkspace replay instead of
 	// guessing its cause from a retry count and dispatching another owner call.
 	rows, err := s.Store.DB().QueryContext(ctx, `SELECT o.id FROM workspace.operations o
-		WHERE o.kind IN ('create_workspace','delete_workspace','suspend_workspace','resume_workspace') AND o.status IN ('accepted','running','awaiting_confirmation','needs_attention')
+		WHERE o.kind IN ('create_workspace','delete_workspace','suspend_workspace','resume_workspace','renew_workspace') AND o.status IN ('accepted','running','awaiting_confirmation','needs_attention')
 		AND NOT (o.kind IN ('delete_workspace','suspend_workspace','resume_workspace') AND o.status='needs_attention')
 		AND (o.worker_lease_until IS NULL OR o.worker_lease_until<now())
 		AND NOT EXISTS (SELECT 1 FROM workspace.saga_steps st WHERE st.operation_id=o.id AND st.next_attempt_at>now())
@@ -149,6 +149,11 @@ func (s *Service) Resume(ctx context.Context, operationID string) error {
 	if op.Kind == lifecycleSuspend || op.Kind == lifecycleResume {
 		// A committed suspension or recovery continues its own managed-key step.
 		return s.applyWorkspaceLifecycle(ctx, operationID)
+	}
+	if op.Kind == renewalKind {
+		// A committed renewal continues its own ordered continuation: it accepts
+		// the offer, charges it once and extends the prepaid period.
+		return s.resumeRenewal(ctx, operationID)
 	}
 	if op.Kind != "create_workspace" {
 		return status.Error(codes.FailedPrecondition, "operation is not a Workspace launch")
