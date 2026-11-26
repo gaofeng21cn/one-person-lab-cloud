@@ -223,6 +223,8 @@ export function useWorkspaceLaunchController({
     setAgentSourceError("");
     setAgentReadErrors({});
     setAgentReadLoading({ app: true, agent: true, models: true, wallet: true });
+    const requestedCapabilityVersionId = new URLSearchParams(window.location.search).get("capabilityVersionId")?.trim() || "";
+    if (requestedCapabilityVersionId) setAgentApplicationKindState("agent");
     // These are independent authorities. An unavailable Agent/model directory
     // cannot remove a valid default App, resource offer or wallet readback.
     setAgentCapabilityVersions([]); setAgentRuntimeVersions([]); setAgentModels([]); setAgentPayerWallet(null);
@@ -236,7 +238,12 @@ export function useWorkspaceLaunchController({
         if (!current()) return;
         const available = versions.filter((v) => v.status === "ready");
         setAgentCapabilityVersions(available);
-        setAgentCapabilityVersionIdState((id) => available.some((v) => v.id === id) ? id : (available[0]?.id ?? ""));
+        setAgentCapabilityVersionIdState((id) => {
+          if (requestedCapabilityVersionId && available.some((v) => v.id === requestedCapabilityVersionId)) {
+            return requestedCapabilityVersionId;
+          }
+          return available.some((v) => v.id === id) ? id : (available[0]?.id ?? "");
+        });
       }).catch((error) => failed("agent", error)).finally(() => finished("agent")),
       listApprovedRuntimeVersions().then((releases) => {
         if (!current()) return;

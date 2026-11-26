@@ -1,9 +1,10 @@
+import { ChevronLeft } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { getJson, postJson } from "../api/console-api.ts";
 import { readEffectiveBuildDefaults, uploadPackagePart, type UploadPermit } from "../api/publisher-api.ts";
 import type { WorkspaceOwnerOperationDTO as Operation } from "../api/dtos.ts";
 import type { EffectiveBuildDefaults } from "../app/cloud-webui-model.ts";
-import { Button } from "../components/ui/index.ts";
+import { Alert, Button } from "../components/ui/index.ts";
 import "./publisher.css";
 
 type Session = { actorId: string; tenantId?: string; csrfToken: string };
@@ -19,33 +20,33 @@ type Selection = { namespaceId: string; namespaceName: string; packageId: string
 type Work = { selection?: Selection; fingerprint: string; key: string; packageId?: string; uploadId?: string; packageVersionId?: string; buildId?: string };
 
 const base = "/api/v2";
-const stageLabel: Record<string, string> = { queued: "等待构建", validating: "校验输入", building: "正在构建", pushing: "上传镜像", registering: "登记版本", succeeded: "构建完成", failed: "构建失败", needs_attention: "结果待确认", cancelled: "已取消" };
-// The owner publishes three log levels; the publisher shows them in the
-// customer's language so a failed build names its own severity.
+const stageLabel: Record<string, string> = { queued: "等待构建", validating: "校验文件", building: "正在构建", pushing: "保存产物", registering: "登记版本", succeeded: "构建完成", failed: "构建失败", needs_attention: "结果待确认", cancelled: "已取消" };
 const logLevelText: Record<string, string> = { info: "信息", warning: "警告", error: "错误" };
+const buildLogPageLimit = 200;
+const buildLogPageCap = 20;
 // One customer sentence per owner fact the Console cannot supply. The Build
 // stays unavailable until the platform's effective default policy resolves the
 // exact inputs, so a missing policy is never replaced by a catalog row, an older
 // release or a plausible guess.
 const blockedReasonText: Record<string, string> = {
-  effective_default_runtime_missing: "平台尚未激活默认运行底座",
-  effective_default_runtime_ambiguous: "平台默认策略读取到多个运行底座，需要管理员确认",
-  effective_default_runtime_not_approved: "平台默认运行底座当前未获准",
-  effective_default_runtime_digest_not_immutable: "平台默认运行底座的制品摘要不是不可变 digest",
-  effective_default_webui_not_readable: "平台生效的默认界面版本尚未对客户会话提供合法授权读取"
+  effective_default_runtime_missing: "平台尚未启用默认运行底座",
+  effective_default_runtime_ambiguous: "平台存在多个默认运行底座，需要管理员确认",
+  effective_default_runtime_not_approved: "默认运行底座当前不可用",
+  effective_default_runtime_digest_not_immutable: "默认运行底座版本校验未通过",
+  effective_default_webui_not_readable: "默认交互界面尚未就绪"
 };
 // Where a Build stops, the customer needs the next action rather than the code.
 const failureText: Record<string, string> = {
-  validation_failed: "输入校验未通过，请确认 Package、名称与版本后重试。",
-  build_failed: "构建失败，可修正 Package 后重试。",
+  validation_failed: "文件校验未通过，请确认压缩包内容、名称与版本号后重试。",
+  build_failed: "构建失败，请修改压缩包后重试。",
   build_result_unknown: "构建结果待确认，请稍后刷新状态。",
-  runtime_revoked: "所用运行底座已撤销，请联系平台管理员。",
-  webui_incompatible: "界面版本与运行底座不兼容，请联系平台管理员。",
-  policy_unconfigured: "平台尚未配置生效默认策略，请联系平台管理员。"
+  runtime_revoked: "当前运行底座已停用，请联系管理员。",
+  webui_incompatible: "当前交互界面与运行底座不兼容，请联系管理员。",
+  policy_unconfigured: "平台尚未完成默认构建配置，请联系管理员。"
 };
 function blockedSentence(reasons: string[]) {
   const facts = reasons.map((reason) => blockedReasonText[reason] || reason).join("；");
-  return `暂时无法开始构建：${facts || "平台生效默认读取失败"}。请联系平台管理员激活默认策略后再试。`;
+  return `暂时无法开始构建：${facts || "构建环境暂不可用"}。请联系管理员完成构建配置后再试。`;
 }
 async function sha256(bytes: ArrayBuffer) {
   const hash = await crypto.subtle.digest("SHA-256", bytes);
@@ -56,7 +57,7 @@ function decodeUpload(value: UploadWire): Upload {
   if (!Number.isSafeInteger(partSizeBytes) || partSizeBytes <= 0) throw new Error("上传服务返回了无效的分片大小。");
   const completedParts = value.completedParts.map((part) => {
     const sizeBytes = Number(part.sizeBytes);
-    if (!Number.isSafeInteger(sizeBytes) || sizeBytes <= 0) throw new Error("上传服务返回了无效的分片读回。");
+    if (!Number.isSafeInteger(sizeBytes) || sizeBytes <= 0) throw new Error("上传服务返回了无效的分片信息。");
     return { ...part, sizeBytes };
   });
   return { ...value, partSizeBytes, completedParts };
@@ -80,12 +81,6 @@ async function pages<T>(path: string, signal: AbortSignal): Promise<T[]> {
   return entries;
 }
 
-// The build log is the only answer that says why a build stopped. The owner
-// publishes it oldest first, so the publisher reads the whole page chain: a
-// build that fails at the end must show its last line, not its first page.
-const buildLogPageLimit = 200;
-const buildLogPageCap = 20;
-
 async function buildLogs(buildId: string, signal: AbortSignal): Promise<{ items: BuildLog[]; truncated: boolean }> {
   const items: BuildLog[] = [];
   let cursor = "";
@@ -102,7 +97,30 @@ async function buildLogs(buildId: string, signal: AbortSignal): Promise<{ items:
   return { items, truncated: true };
 }
 
-export function PublisherPage() {
+function PublisherSteps({ current }: { current: "select" | "building" | "ready" }) {
+  const steps = [
+    ["select", "填写信息"],
+    ["building", "上传并构建"],
+    ["ready", "构建完成"]
+  ] as const;
+  return (
+    <ol aria-label="上传智能体步骤" className="publisher-steps">
+      {steps.map(([step, label], index) => (
+        <li aria-current={current === step ? "step" : undefined} className={current === step ? "active" : ""} key={step}>
+          <span>{index + 1}</span><strong>{label}</strong>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+export function PublisherPage({ onNavigate }: { onNavigate?: (path: string) => void }) {
+  const navigate = (path: string) => {
+    if (onNavigate) { onNavigate(path); return; }
+    window.history.pushState(null, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+  const requestedPackageId = useRef(new URLSearchParams(window.location.search).get("packageId")?.trim() || "");
   const [session, setSession] = useState<Session | null>(null);
   const [namespaces, setNamespaces] = useState<Entry[]>([]);
   const [packages, setPackages] = useState<Entry[]>([]);
@@ -141,7 +159,7 @@ export function PublisherPage() {
         setSession(active); setNamespaces(ns); setNamespaceId(ns[0]?.id || "");
         try { work.current = JSON.parse(sessionStorage.getItem(storageKey(active)) || "null") as Work | null; } catch { work.current = null; }
         const selected = work.current?.selection;
-        if (selected) {
+        if (selected && !requestedPackageId.current) {
           setNamespaceId(selected.namespaceId); setNamespaceName(selected.namespaceName);
           setPackageId(selected.packageId); setPackageName(selected.packageName);
           setVersionLabel(selected.versionLabel);
@@ -154,24 +172,37 @@ export function PublisherPage() {
           const readback = await getJson<PackageVersion>(`${base}/package-versions/${encodeURIComponent(work.current.packageVersionId)}`, { signal: abort.signal });
           if (!abort.signal.aborted) setPackageVersion(readback);
         }
-      } catch (e) { if (!abort.signal.aborted) setError(e instanceof Error ? e.message : "发布目录读取失败"); }
+      } catch (e) { if (!abort.signal.aborted) setError(e instanceof Error ? e.message : "暂时无法加载智能体列表，请刷新重试。"); }
     })();
     const resolveAbort = new AbortController();
     void readEffectiveBuildDefaults(resolveAbort.signal)
       .then((resolved) => { if (!resolveAbort.signal.aborted) setDefaults(resolved); })
-      .catch((e: unknown) => { if (!resolveAbort.signal.aborted) setError(e instanceof Error ? e.message : "平台生效默认读取失败"); });
+      .catch((e: unknown) => { if (!resolveAbort.signal.aborted) setError(e instanceof Error ? e.message : "暂时无法检查构建环境，请稍后重试。"); });
     return () => { abort.abort(); resolveAbort.abort(); execution.current?.abort(); };
   }, []);
 
   useEffect(() => {
-    const abort = new AbortController(); setPackages([]); setPackageId(work.current?.selection?.namespaceId === namespaceId ? work.current.selection.packageId : "");
-    if (namespaceId) void pages<Entry>(`${base}/packages?namespaceId=${encodeURIComponent(namespaceId)}`, abort.signal).then((items) => { if (!abort.signal.aborted) setPackages(items); }).catch((e: unknown) => { if (!abort.signal.aborted) setError(e instanceof Error ? e.message : "Package 列表读取失败"); });
+    const abort = new AbortController();
+    setPackages([]);
+    const resumedPackageId = !requestedPackageId.current && work.current?.selection?.namespaceId === namespaceId
+      ? work.current.selection.packageId
+      : "";
+    setPackageId(resumedPackageId);
+    if (namespaceId) {
+      void pages<Entry>(`${base}/packages?namespaceId=${encodeURIComponent(namespaceId)}`, abort.signal).then((items) => {
+        if (abort.signal.aborted) return;
+        setPackages(items);
+        if (requestedPackageId.current && items.some((item) => item.id === requestedPackageId.current)) {
+          setPackageId(requestedPackageId.current);
+          requestedPackageId.current = "";
+        }
+      }).catch((e: unknown) => {
+        if (!abort.signal.aborted) setError(e instanceof Error ? e.message : "智能体列表读取失败，请刷新重试。");
+      });
+    }
     return () => abort.abort();
   }, [namespaceId]);
 
-  // The build log answers why a build stopped. It is read again whenever the
-  // build reaches a new stage, and whenever the publisher asks for a refresh,
-  // so the last line of a failed build is always the line the publisher sees.
   useEffect(() => {
     const id = build?.id;
     if (!id) { setLogs([]); setLogsTruncated(false); return; }
@@ -189,11 +220,11 @@ export function PublisherPage() {
     for (;;) {
       const job = await getJson<Build>(`${base}/builds/${encodeURIComponent(id)}`, { signal });
       if (signal.aborted) return;
-      setBuild(job); setMessage(stageLabel[job.stage] || "正在读取构建状态");
+      setBuild(job); setMessage(stageLabel[job.stage] || "正在查询构建进度…");
       if (job.status === "succeeded" && job.resultCapabilityVersionId) {
         const result = await getJson<Version>(`${base}/capability-versions/${encodeURIComponent(job.resultCapabilityVersionId)}`, { signal });
-        if (result.status !== "ready" || result.artifactDigest !== job.artifactDigest) throw new Error("构建与版本回读尚未一致，请刷新状态。");
-        if (!signal.aborted) { setVersion(result); setMessage("版本已就绪，应用镜像已生成。"); }
+        if (result.status !== "ready" || result.artifactDigest !== job.artifactDigest) throw new Error("构建结果仍在同步，请稍后刷新状态。");
+        if (!signal.aborted) { setVersion(result); setMessage("构建完成，现在可以用来创建工作空间。"); }
         return;
       }
       if (["failed", "needs_attention", "cancelled"].includes(job.status)) {
@@ -211,7 +242,7 @@ export function PublisherPage() {
     setBusy(true); setError("");
     try {
       const active = await getJson<Session>(`${base}/auth/session`, { signal: abort.signal });
-      if (storageKey(active) !== storageKey(session)) throw new Error("会话已切换，请重新打开发布页面。");
+      if (storageKey(active) !== storageKey(session)) throw new Error("登录状态已变化，请重新打开此页面。");
       if (resumeBuild && work.current?.buildId) { await readBuild(work.current.buildId, abort.signal); return; }
       // The three frozen inputs are Package/Runtime/WebUI, but only the Package
       // comes from this form: Runtime and WebUI must be the platform's effective
@@ -219,8 +250,8 @@ export function PublisherPage() {
       // replaced by a catalog row.
       if (!defaults?.runtime || !defaults?.webui) throw new Error(blockedSentence(defaults?.reasons || []));
       const runtimeId = defaults.runtime.id; const webuiId = defaults.webui.id;
-      if (!file || !versionLabel || (!namespaceId && !namespaceName) || (!packageId && !packageName)) throw new Error("请填写发布信息并选择 Package 文件。");
-      setMessage("正在读取并校验 Package 文件…");
+      if (!file || !versionLabel || (!namespaceId && !namespaceName) || (!packageId && !packageName)) throw new Error("请填写完整信息并选择智能体压缩包。");
+      setMessage("正在校验压缩包…");
       const bytes = await file.arrayBuffer(); const hash = await sha256(bytes);
       const fingerprint = JSON.stringify([namespaceId, namespaceName, packageId, packageName, versionLabel, runtimeId, webuiId, hash]);
       let current = work.current;
@@ -238,7 +269,7 @@ export function PublisherPage() {
         upload = decodeUpload(await command<UploadWire>(`/packages/${encodeURIComponent(current.packageId)}/uploads`, { versionLabel, fileName: file.name, sizeBytes: String(file.size), sha256: hash }, "upload"));
         current.uploadId = upload.id; current.packageVersionId = upload.packageVersionId; save(active, current);
       }
-      if (!upload.packageVersionId || upload.packageVersionId !== current.packageVersionId) throw new Error("上传会话与本次 Package 版本不一致，未开始构建。");
+      if (!upload.packageVersionId || upload.packageVersionId !== current.packageVersionId) throw new Error("上传记录与当前版本不匹配，未开始构建，请重试。");
       const parts: Part[] = [];
       if (!(upload.partSizeBytes > 0)) throw new Error("上传服务没有返回有效分片大小。");
       for (let offset = 0, number = 1; offset < bytes.byteLength; offset += upload.partSizeBytes, number++) {
@@ -246,7 +277,7 @@ export function PublisherPage() {
         const checksum = await sha256(chunk);
         const done = upload.completedParts.find((p) => p.partNumber === number && p.sha256 === checksum && p.sizeBytes === chunk.byteLength);
         if (done) { parts.push(done); continue; }
-        setMessage(`正在上传分片 ${number}…`);
+        setMessage(`正在上传文件（第 ${number} 段）…`);
         const permit = await command<UploadPermit>(`/uploads/${encodeURIComponent(upload.id)}/parts`, { partNumber: number, sizeBytes: String(chunk.byteLength), sha256: checksum }, `part-${number}`);
         const etag = await uploadPackagePart(permit, chunk, checksum, abort.signal);
         parts.push({ partNumber: number, etag, sizeBytes: chunk.byteLength, sha256: checksum });
@@ -255,54 +286,70 @@ export function PublisherPage() {
       // CompleteUpload currently commits verification and returns its terminal
       // Operation synchronously. HTTP acceptance alone cannot authorize Build.
       const completed = await command<Operation>(`/uploads/${encodeURIComponent(upload.id)}/complete`, { parts: parts.map((part) => ({ ...part, sizeBytes: String(part.sizeBytes) })) }, "complete");
-      if (!completed?.operationId || completed.owner !== "capability" || completed.kind !== "complete_upload" || completed.resourceId !== upload.packageVersionId) throw new Error("上传完成操作与本次 Package 版本不一致，未开始构建。");
-      if (completed.status !== "succeeded" || (completed.observationResult !== undefined && completed.observationResult !== "confirmed")) throw new Error("上传尚未确认成功，未开始构建。请检查上传结果后重试。");
-      setMessage("正在读取 Package 上传版本…");
+      if (!completed?.operationId || completed.owner !== "capability" || completed.kind !== "complete_upload" || completed.resourceId !== upload.packageVersionId) throw new Error("上传结果与当前版本不匹配，未开始构建。");
+      if (completed.status !== "succeeded" || (completed.observationResult !== undefined && completed.observationResult !== "confirmed")) throw new Error("上传尚未确认成功，未开始构建，请检查后重试。");
+      setMessage("正在确认版本信息…");
       const readback = await getJson<PackageVersion>(`${base}/package-versions/${encodeURIComponent(upload.packageVersionId)}`, { signal: abort.signal });
-      if (readback?.id !== upload.packageVersionId || readback.packageId !== current.packageId || readback.versionLabel !== versionLabel || readback.sha256 !== hash || readback.sizeBytes !== String(file.size)) throw new Error("上传版本读回与本次 Package 或文件不一致，未开始构建。");
-      if (readback.status !== "uploaded") throw new Error("Package 版本尚未确认为已上传，未开始构建。");
+      if (readback?.id !== upload.packageVersionId || readback.packageId !== current.packageId || readback.versionLabel !== versionLabel || readback.sha256 !== hash || readback.sizeBytes !== String(file.size)) throw new Error("上传文件校验不一致，未开始构建。");
+      if (readback.status !== "uploaded") throw new Error("文件上传尚未就绪，未开始构建。");
       if (abort.signal.aborted) return;
       setPackageVersion(readback);
       const job = await command<Build>("/builds", { packageVersionId: upload.packageVersionId, runtimeVersionId: runtimeId, webuiVersionId: webuiId }, "build");
       current.buildId = job.id; save(active, current); await readBuild(job.id, abort.signal);
-    } catch (e) { if (!abort.signal.aborted) setError(e instanceof Error ? e.message : "发布失败，可重试读取或继续上传。"); }
+    } catch (e) { if (!abort.signal.aborted) setError(e instanceof Error ? e.message : "上传或构建失败，请稍后重试。"); }
     finally { if (!abort.signal.aborted) setBusy(false); }
   }
 
   const defaultsReady = Boolean(defaults?.runtime && defaults?.webui);
   const loadingDefaults = session !== null && defaults === null && !error;
   const canSubmit = Boolean(session && !busy && defaultsReady && file && versionLabel.trim() && (namespaceId || namespaceName.trim()) && (packageId || packageName.trim()));
+  const hasResumableUpload = Boolean(work.current?.uploadId && !build);
+  const currentStep = version ? "ready" : (busy || build) ? "building" : "select";
+  const resolvedPackageId = packageId || work.current?.packageId || "";
   const readback = (input: { name?: string; versionLabel?: string; artifactDigest: string } | undefined, label: string) => input
     ? `${input.name || label} · ${input.versionLabel || "未标注版本"} · ${input.artifactDigest}`
     : "暂不可用";
   return <section className="panel publisher-page">
-    <div className="panel-title"><div><h2>上传智能体</h2><p>上传智能体 ZIP 包并填写名称与版本，系统将自动完成构建。</p></div></div>
+    <div className="publisher-breadcrumb">
+      <Button onClick={() => navigate("/console/agents")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />返回我的智能体</Button>
+    </div>
+    <div className="panel-title"><div><h2>上传智能体</h2><p>上传智能体压缩包并填写版本号，系统将自动完成构建。</p></div></div>
+    <PublisherSteps current={currentStep} />
     <form onSubmit={(e) => { e.preventDefault(); void run(); }}>
       <fieldset disabled={busy || !session}>
-        <label>命名空间<select aria-label="命名空间" value={namespaceId} onChange={(e) => setNamespaceId(e.target.value)}><option value="">新建命名空间</option>{namespaces.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
-        {!namespaceId && <label>命名空间名称<input value={namespaceName} onChange={(e) => setNamespaceName(e.target.value)} required /></label>}
-        <label>Package<select aria-label="Package" value={packageId} onChange={(e) => setPackageId(e.target.value)}><option value="">新建 Package</option>{packages.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
-        {!packageId && <label>Package 名称<input value={packageName} onChange={(e) => setPackageName(e.target.value)} required /></label>}
-        <label>版本名称<input value={versionLabel} onChange={(e) => setVersionLabel(e.target.value)} placeholder="例如 0.1.0" required /></label>
-        <label>ZIP 文件<input type="file" accept=".zip,application/zip" onChange={(e) => setFile(e.target.files?.[0] || null)} required /></label>
-        <Button type="submit" disabled={!canSubmit}>上传并构建 / 继续上传</Button>
+        <label>所属分组<select aria-label="所属分组" value={namespaceId} onChange={(e) => setNamespaceId(e.target.value)}><option value="">新建分组</option>{namespaces.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
+        {!namespaceId && <label>分组名称<input value={namespaceName} onChange={(e) => setNamespaceName(e.target.value)} placeholder="例如：my-team" required /></label>}
+        <label>智能体<select aria-label="智能体" value={packageId} onChange={(e) => setPackageId(e.target.value)}><option value="">新建智能体</option>{packages.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
+        {!packageId && <label>智能体名称<input value={packageName} onChange={(e) => setPackageName(e.target.value)} placeholder="例如：研究助手" required /></label>}
+        <label>版本号<input value={versionLabel} onChange={(e) => setVersionLabel(e.target.value)} placeholder="例如 0.1.0" required /></label>
+        <label>智能体压缩包（.zip）<input type="file" accept=".zip,application/zip" onChange={(e) => setFile(e.target.files?.[0] || null)} required /></label>
+        <Button busy={busy} color="primary" disabled={!canSubmit} type="submit">{hasResumableUpload ? "继续上传并构建" : "上传并构建"}</Button>
       </fieldset>
     </form>
     {message && <p role="status">{message}</p>}
-    {loadingDefaults && <p role="status">正在读取平台默认输入…</p>}
+    {loadingDefaults && <p role="status">正在检查构建环境…</p>}
     {defaults && !defaultsReady && <p role="status">{blockedSentence(defaults.reasons)}</p>}
-    {error && <p role="alert">{error}</p>}
+    {error && <Alert color="danger" description={error} title="无法继续" />}
     {build && <section aria-label="构建进度" className="publisher-progress">
       <h3>{stageLabel[build.status] || build.status}</h3>
-      <p>{build.status === "succeeded" ? "构建完成，应用镜像已生成。" : "正在处理本次构建；可继续上传或刷新状态。"}</p>
+      <p>{build.status === "succeeded" ? "构建已完成，可以直接创建工作空间。" : "正在后台构建中，可点击刷新查看最新进度。"}</p>
       {logs.length > 0 && <section aria-label="构建日志" className="publisher-build-logs">
         <h4>构建日志</h4>
         <ol>{logs.map((log) => <li data-level={log.level} key={log.id}><span className="publisher-build-logs__level">{logLevelText[log.level] || log.level}</span><span className="publisher-build-logs__stage">{log.stage}</span><span className="publisher-build-logs__message">{log.message}</span></li>)}</ol>
         {logsTruncated ? <p className="publisher-build-logs__note">日志条数较多，以上为前 {logs.length} 条。</p> : null}
       </section>}
-      <Button disabled={busy} variant="outline" onClick={() => { setLogRevision((value) => value + 1); void run(true); }}>刷新构建状态</Button>
+      <div className="publisher-progress__actions">
+        <Button disabled={busy} variant="outline" onClick={() => { setLogRevision((value) => value + 1); void run(true); }}>刷新构建状态</Button>
+      </div>
     </section>}
-    {version && <section aria-label="已就绪版本"><h3>版本已就绪</h3><p>{version.id}</p><p>该版本与本次构建结果一致，可在工作空间中使用。</p></section>}
+    {version && <section aria-label="已就绪版本" className="publisher-ready-card">
+      <h3>版本已就绪</h3>
+      <p>智能体已构建完成，现在可以直接用来创建工作空间。</p>
+      <div className="publisher-ready-actions">
+        <Button color="primary" onClick={() => navigate(`/console/workspaces/new?capabilityVersionId=${encodeURIComponent(version.id)}`)}>使用此智能体创建工作空间</Button>
+        <Button onClick={() => navigate(resolvedPackageId ? `/console/agents/${encodeURIComponent(resolvedPackageId)}` : "/console/agents")} variant="outline">查看智能体详情</Button>
+      </div>
+    </section>}
     <details className="publisher-technical-details">
       <summary>技术详情</summary>
       <div className="publisher-technical-details__body">
@@ -314,9 +361,9 @@ export function PublisherPage() {
             <dt>配置来源</dt><dd><code>平台默认构建策略</code></dd>
           </dl>
         </section>
-        {build && <section aria-label="构建结果"><h3>构建记录</h3><dl><dt>构建</dt><dd>{build.id}</dd><dt>状态</dt><dd>{stageLabel[build.status] || build.status}</dd><dt>Package ref</dt><dd><code>{build.packageVersionId || work.current?.packageVersionId || "暂不可用"}</code></dd><dt>Runtime Release ref</dt><dd><code>{build.runtimeVersionId || "暂不可用"}</code></dd><dt>WebUI ref</dt><dd><code>{build.webuiVersionId || "暂不可用"}</code></dd>{build.artifactDigest && <><dt>OCI digest（Build owner）</dt><dd><code>{build.artifactDigest}</code></dd></>}</dl></section>}
-        {packageVersion && <section aria-label="Package 版本读回"><h3>Package 版本读回</h3><dl><dt>Package Version</dt><dd><code>{packageVersion.id}</code></dd><dt>状态</dt><dd>{packageVersion.status || "暂不可用"}</dd><dt>Package bytes sha256</dt><dd><code>{packageVersion.sha256 || "暂不可用"}</code></dd></dl></section>}
-        {version && <section aria-label="已就绪版本读回"><h3>版本读回</h3><dl><dt>CapabilityVersion</dt><dd><code>{version.id}</code></dd><dt>deployment descriptor digest</dt><dd><code>{version.deploymentDescriptorDigest}</code></dd></dl></section>}
+        {build && <section aria-label="构建结果"><h3>构建记录</h3><dl><dt>构建编号</dt><dd>{build.id}</dd><dt>状态</dt><dd>{stageLabel[build.status] || build.status}</dd><dt>Package ref</dt><dd><code>{build.packageVersionId || work.current?.packageVersionId || "暂不可用"}</code></dd><dt>Runtime Release ref</dt><dd><code>{build.runtimeVersionId || "暂不可用"}</code></dd><dt>WebUI ref</dt><dd><code>{build.webuiVersionId || "暂不可用"}</code></dd>{build.artifactDigest && <><dt>OCI digest</dt><dd><code>{build.artifactDigest}</code></dd></>}</dl></section>}
+        {packageVersion && <section aria-label="Package 版本读回"><h3>上传版本记录</h3><dl><dt>Package Version</dt><dd><code>{packageVersion.id}</code></dd><dt>状态</dt><dd>{packageVersion.status || "暂不可用"}</dd><dt>Package bytes sha256</dt><dd><code>{packageVersion.sha256 || "暂不可用"}</code></dd></dl></section>}
+        {version && <section aria-label="已就绪版本读回"><h3>就绪版本记录</h3><dl><dt>CapabilityVersion</dt><dd><code>{version.id}</code></dd><dt>deployment descriptor digest</dt><dd><code>{version.deploymentDescriptorDigest}</code></dd></dl></section>}
       </div>
     </details>
   </section>;

@@ -96,7 +96,7 @@ func TestOperatorReadPeerBoundaryKeepsConsoleBFFReadOnly(t *testing.T) {
 			{"RenewResources", func() error {
 				_, err := operator.RenewResources(ctx, &api.RenewResourcesCommand{Context: call, WorkspaceId: read.WorkspaceId, ResourceSetId: read.ResourceSetId})
 				return err
-			}, codes.Unimplemented},
+			}, codes.PermissionDenied},
 			{"DeleteResources", func() error {
 				_, err := operator.DeleteResources(ctx, &api.MutateResourcesCommand{Context: call, WorkspaceId: read.WorkspaceId, ResourceSetId: read.ResourceSetId})
 				return err

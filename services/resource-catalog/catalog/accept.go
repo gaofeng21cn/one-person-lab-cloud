@@ -60,6 +60,8 @@ func (s *Service) AcceptQuote(ctx context.Context, r *api.AcceptQuoteRequest) (*
 
 	var (
 		storedState        string
+		storedPurpose      string
+		storedWorkspace    sql.NullString
 		acceptedBy         sql.NullString
 		acceptedAt         sql.NullTime
 		expiresAt, created time.Time
@@ -68,8 +70,8 @@ func (s *Service) AcceptQuote(ctx context.Context, r *api.AcceptQuoteRequest) (*
 	)
 	// The row is locked so two concurrent acceptances cannot both observe an
 	// unaccepted offer.
-	err = tx.QueryRowContext(ctx, `SELECT status,accepted_by_operation_id,accepted_at,expires_at,created_at,admission_snapshot FROM resource_catalog.quotes WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, r.GetQuoteId(), tenantID).
-		Scan(&storedState, &acceptedBy, &acceptedAt, &expiresAt, &created, &snapshotRaw)
+	err = tx.QueryRowContext(ctx, `SELECT status,purpose,workspace_id,accepted_by_operation_id,accepted_at,expires_at,created_at,admission_snapshot FROM resource_catalog.quotes WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, r.GetQuoteId(), tenantID).
+		Scan(&storedState, &storedPurpose, &storedWorkspace, &acceptedBy, &acceptedAt, &expiresAt, &created, &snapshotRaw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, status.Error(codes.NotFound, "no such quote for this tenant")
 	}
@@ -95,6 +97,11 @@ func (s *Service) AcceptQuote(ctx context.Context, r *api.AcceptQuoteRequest) (*
 	case "offered":
 		if !time.Now().UTC().Before(expiresAt) {
 			return nil, status.Error(codes.FailedPrecondition, "this quote has expired; a new quote is required")
+		}
+		// A renewal offer is priced for one Workspace. Accepting it for another
+		// Workspace would renew a subscription the price was never quoted for.
+		if storedPurpose == "renew" && (!storedWorkspace.Valid || storedWorkspace.String != r.WorkspaceId) {
+			return nil, status.Error(codes.FailedPrecondition, "this renewal offer is bound to another workspace")
 		}
 		snapshot.AcceptedWorkspaceID = r.WorkspaceId
 		snapshotRaw, err = json.Marshal(snapshot)
