@@ -53,12 +53,12 @@ try {
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await page.waitForURL(/\/console\/overview$/);
   await page.goto(`${origin}/console/workspaces`, { waitUntil: "networkidle" });
-  await page.getByRole("link", { name: "发布 Package", exact: true }).click();
+  await page.getByRole("button", { name: "上传智能体", exact: true }).click();
   await page.waitForURL(/\/console\/publisher$/);
-  await page.getByLabel("Package", { exact: true }).selectOption({ label: "live-package" });
-  const packageId = await page.getByLabel("Package", { exact: true }).inputValue();
-  await page.getByLabel("版本名称").fill("browser-v1");
-  await page.getByLabel("ZIP 文件").setInputFiles(zip);
+  await page.getByLabel("智能体", { exact: true }).selectOption({ label: "live-package" });
+  const packageId = await page.getByLabel("智能体", { exact: true }).inputValue();
+  await page.getByLabel("版本号").fill("browser-v1");
+  await page.getByLabel("智能体压缩包（.zip）").setInputFiles(zip);
   const stages: string[] = [];
   page.on("request", (request) => {
     const path = new URL(request.url()).pathname;
@@ -67,7 +67,7 @@ try {
   const completion = page.waitForResponse((response) => response.request().method() === "POST" && /\/api\/v2\/uploads\/[^/]+\/complete$/.test(new URL(response.url()).pathname));
   const packageReadback = page.waitForResponse((response) => response.request().method() === "GET" && /\/api\/v2\/package-versions\/[^/]+$/.test(new URL(response.url()).pathname));
   const buildRequest = page.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname === "/api/v2/builds");
-  await page.getByRole("button", { name: "上传并构建 / 继续上传", exact: true }).click();
+  await page.getByRole("button", { name: "上传并构建", exact: true }).click();
   const completionResponse = await completion;
   const operation: WorkspaceOwnerOperationDTO = await completionResponse.json();
   assert.ok(operation.operationId);

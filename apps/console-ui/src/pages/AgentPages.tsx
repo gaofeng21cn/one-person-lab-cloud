@@ -1,9 +1,10 @@
+import { ChevronLeft, Plus, Rocket } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { getJson } from "../api/console-api.ts";
 import type { CustomerConsoleRoute } from "../app/console-router.ts";
 import { presentAgentStatus } from "../app/workspace-experience-model.ts";
-import { Button } from "../components/ui/index.ts";
+import { Alert, Badge, Button } from "../components/ui/index.ts";
 import "./agents.css";
 
 type Package = {
@@ -81,7 +82,7 @@ function AgentDirectory({ controller }: { controller: { navigate: (path: string)
       setLoading(false);
     }).catch((reason: unknown) => {
       if (!abort.signal.aborted) {
-        setError(reason instanceof Error ? reason.message : "智能体目录读取失败");
+        setError(reason instanceof Error ? reason.message : "暂时无法读取智能体列表，请稍后重试。");
         setLoading(false);
       }
     });
@@ -93,15 +94,26 @@ function AgentDirectory({ controller }: { controller: { navigate: (path: string)
   }, []);
 
   return <section className="panel agents-page">
-    <div className="panel-title"><div><h2>我的智能体</h2></div><div className="agent-page-actions"><Button onClick={() => controller.navigate("/console/publisher")} color="primary">上传智能体</Button><Button onClick={load} variant="outline">刷新</Button></div></div>
-    {loading && <p role="status">正在读取智能体目录…</p>}
-    {error && <p role="alert">{error}</p>}
-    {!loading && !error && packages.length === 0 && <p role="status">暂无智能体，点击右上角上传你的第一个智能体。</p>}
+    <div className="panel-title">
+      <div><h2>我的智能体</h2></div>
+      <div className="agent-page-actions">
+        <Button color="primary" onClick={() => controller.navigate("/console/publisher")}><Plus aria-hidden size={16} />上传智能体</Button>
+        <Button onClick={load} variant="outline">刷新</Button>
+      </div>
+    </div>
+    {loading && <p role="status">正在加载智能体…</p>}
+    {error && <Alert color="warning" description={error} title="读取失败" />}
+    {!loading && !error && packages.length === 0 && <p role="status">还没有上传智能体，点击右上角上传你的第一个智能体。</p>}
     {!loading && !error && packages.length > 0 && <div className="agents-grid">
       {packages.map((agent) => <article className="agent-card" key={agent.id}>
-        <div><h3>{agent.name || "未命名智能体"}</h3><p>{agent.description || "未提供用途说明"}</p></div>
-        <dl><div><dt>目录状态</dt><dd><AgentStatus value={agent.status} /></dd></div><div><dt>可部署版本</dt><dd>{agent.latestReadyVersionId ? "已登记" : "暂无"}</dd></div></dl>
-        <Button onClick={() => controller.navigate(`/console/agents/${encodeURIComponent(agent.id)}`)} variant="outline">查看详情</Button>
+        <div><h3>{agent.name || "未命名智能体"}</h3><p>{agent.description || "暂无简介"}</p></div>
+        <dl>
+          <div><dt>状态</dt><dd><AgentStatus value={agent.status} /></dd></div>
+          <div><dt>可用版本</dt><dd>{agent.latestReadyVersionId ? "已就绪" : "暂无"}</dd></div>
+        </dl>
+        <div className="agent-card__actions">
+          <Button onClick={() => controller.navigate(`/console/agents/${encodeURIComponent(agent.id)}`)} variant="outline">查看详情</Button>
+        </div>
       </article>)}
     </div>}
   </section>;
@@ -142,7 +154,7 @@ function AgentDetail({ route, controller }: { route: AgentDetailRoute; controlle
         setLoading(false);
       } catch (reason) {
         if (!abort.signal.aborted) {
-          setError(reason instanceof Error ? reason.message : "智能体详情读取失败");
+          setError(reason instanceof Error ? reason.message : "暂时无法读取智能体详情，请稍后重试。");
           setLoading(false);
         }
       }
@@ -155,23 +167,60 @@ function AgentDetail({ route, controller }: { route: AgentDetailRoute; controlle
   }, [route.packageId]);
 
   return <section className="panel agents-page agent-detail-page">
-    <div className="panel-title"><div><Button onClick={() => controller.navigate("/console/agents")} variant="ghost">返回智能体</Button><h2>{agent?.name || "智能体详情"}</h2></div><Button onClick={load} variant="outline">刷新</Button></div>
-    {loading && <p role="status">正在读取智能体与版本…</p>}
-    {error && <p role="alert">{error}</p>}
+    <div className="panel-title">
+      <div>
+        <Button onClick={() => controller.navigate("/console/agents")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />返回智能体</Button>
+        <h2>{agent?.name || "智能体详情"}</h2>
+      </div>
+      <div className="agent-page-actions">
+        <Button color="primary" onClick={() => controller.navigate(`/console/publisher?packageId=${encodeURIComponent(route.packageId)}`)}><Plus aria-hidden size={16} />上传新版本</Button>
+        <Button onClick={load} variant="outline">刷新</Button>
+      </div>
+    </div>
+    {loading && <p role="status">正在加载智能体版本…</p>}
+    {error && <Alert color="warning" description={error} title="读取失败" />}
     {!loading && !error && agent && <>
-      <section className="agent-summary" aria-label="智能体信息"><h3>智能体信息</h3><dl><div><dt>智能体编号</dt><dd><code>{agent.id}</code></dd></div><div><dt>简介</dt><dd>{agent.description || "未填写"}</dd></div><div><dt>状态</dt><dd><AgentStatus value={agent.status} /></dd></div><div><dt>可部署版本</dt><dd>{agent.latestReadyVersionId ? "已就绪" : "暂无"}</dd></div></dl></section>
-      <section aria-label="智能体版本"><h3>版本</h3><div className="agent-version-list">
-        {packageVersions.length === 0 && <p>暂无上传版本。</p>}
-        {packageVersions.map((version) => {
-          const capability = capabilityVersions.find((item) => item.packageVersionId === version.id);
-          const build = capability ? builds[capability.id] : undefined;
-          const deployable = capability?.status === "ready";
-          return <article className="agent-version" key={version.id}>
-            <div><h4>{version.versionLabel || "未命名版本"}</h4><p>上传状态：<AgentStatus value={version.status} /></p></div>
-            <dl><div><dt>部署状态</dt><dd>{deployable ? "版本已可部署" : "尚不可部署"}</dd></div><div><dt>来源</dt><dd>{capability ? `${capability.provenance || "平台构建"}${capability.buildJobId ? ` · 构建 ${capability.buildJobId}` : ""}` : "尚无登记版本"}</dd></div><div><dt>引用次数</dt><dd>{capability ? String(capability.referenceCount ?? "暂不可用") : "暂不可用"}</dd></div>{build && <div><dt>构建状态</dt><dd>{presentAgentStatus(build.stage || build.status)}{build.errorCode ? ` · ${build.errorCode}` : ""}</dd></div>}</dl>
-          </article>;
-        })}
-      </div></section>
+      <section className="agent-summary" aria-label="智能体信息">
+        <h3>基本信息</h3>
+        <dl>
+          <div><dt>简介</dt><dd>{agent.description || "未填写"}</dd></div>
+          <div><dt>状态</dt><dd><AgentStatus value={agent.status} /></dd></div>
+          <div><dt>可用版本</dt><dd>{agent.latestReadyVersionId ? "已就绪" : "暂无"}</dd></div>
+          <div><dt>智能体编号</dt><dd><code>{agent.id}</code></dd></div>
+        </dl>
+      </section>
+      <section aria-label="智能体版本">
+        <h3>版本记录</h3>
+        <div className="agent-version-list">
+          {packageVersions.length === 0 && <p>暂无上传版本，点击右上角「上传新版本」开始构建。</p>}
+          {packageVersions.map((version) => {
+            const capability = capabilityVersions.find((item) => item.packageVersionId === version.id);
+            const build = capability ? builds[capability.id] : undefined;
+            const deployable = capability?.status === "ready";
+            return <article className="agent-version" key={version.id}>
+              <div className="agent-version__head">
+                <div>
+                  <h4>{version.versionLabel || "未命名版本"}</h4>
+                  <p>上传状态：<AgentStatus value={version.status} /></p>
+                </div>
+                <div className="agent-version__actions">
+                  <Badge color={deployable ? "success" : "secondary"}>{deployable ? "版本已可部署" : "暂不可部署"}</Badge>
+                  {deployable && capability ? (
+                    <Button color="primary" onClick={() => controller.navigate(`/console/workspaces/new?capabilityVersionId=${encodeURIComponent(capability.id)}`)} size="sm">
+                      <Rocket aria-hidden size={14} />创建工作空间
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+              <dl>
+                <div><dt>来源</dt><dd>{capability ? `${capability.provenance || "平台构建"}${capability.buildJobId ? ` · 构建 ${capability.buildJobId}` : ""}` : "未构建"}</dd></div>
+                <div><dt>使用中的工作空间</dt><dd>{capability ? String(capability.referenceCount ?? "-") : "-"}</dd></div>
+                {build && <div><dt>构建进度</dt><dd>{presentAgentStatus(build.stage || build.status)}{build.errorCode ? ` · ${build.errorCode}` : ""}</dd></div>}
+              </dl>
+            </article>;
+          })}
+        </div>
+      </section>
     </>}
   </section>;
 }

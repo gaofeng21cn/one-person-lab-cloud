@@ -43,6 +43,14 @@ chronological snapshots.
   The charge, the renewed Cloud paid period, the authorization group of the
   renewal obligation and the recovery of a stopped Workspace belong to the
   Workspace and identity owners and are not implemented here.
+- **Generic Agent WebUI Product Surface**: The runtime WebUI (`webui/cloud-agent`)
+  presents a Simplified Chinese customer interface aligned with OPL Cloud visual
+  tokens, with friendly expired-session and missing-model guidance, DOM-only
+  safe Markdown answers with code-block and reply copy, failed-turn retry, new
+  chat thread reset, and Markdown conversation export. Console and model-config
+  links render only when the Runtime explicitly publishes an absolute
+  `consoleUrl` (never guessed relative `/console/...` paths across hosts); that
+  upstream publication remains an open item in [roadmap.md](roadmap.md).
 - **Console / BFF / Control Plane Boundary**:
   - CloudIdentity routes (`/api/v2/*`) serve Workspace, Quote, Launch, Capability
     upload/build, Serve delivery, Gateway wallet/usage summary, Agent read-only
