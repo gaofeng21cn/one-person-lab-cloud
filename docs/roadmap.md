@@ -17,6 +17,15 @@ Close end-to-end customer lifecycle verification for the latest Cloud Candidate 
 `opl-instance-medopl` Tencent/TKE:
 
 - Default OPL App launch (`create -> quote -> debit -> Fabric provision -> Serve delivery -> readiness -> access -> renewal -> deletion -> refund/reconcile -> Ledger receipt`), plus custom Agent Package build-to-serve E2E on TKE.
+- The renewal step of that chain is not closed yet. The Resource Catalog prices
+  the renewal offer, the Fabric owner extends the provider's prepaid month for
+  the same compute and storage the Workspace already owns, and the Workspace
+  owner runs the renewal as one accepted obligation: charged once, extended by
+  the provider, and committed as a new paid period that continues the confirmed
+  paid-through. A customer cannot reach that renewal yet — the Console entry is
+  still open — and a Workspace whose paid term already ended is refused before
+  any charge, because the provider extends the prepaid period from its own
+  deadline and cannot cover a month that starts now.
 - Verify that one customer deletion reaches confirmed CBS final release, compute
   absence, and settlement through the installed Fabric path without an operator
   releasing the recycled disk.
@@ -48,6 +57,38 @@ or running `workspace.application.deploy` child that completes under its
 original operation, resource and digest identities, with activation and receipt
 recovered. An unresolved rotation parent still fences Workspace deletion.
 Cross-installation transfer requires separate evidence if used.
+
+### Manual Workspace Renewal
+
+A paid Workspace that reaches the end of its period still has no renewal. The
+Resource Catalog prices one renewal offer, the Fabric owner extends the
+provider's prepaid month for the same compute and storage the Workspace already
+owns, the identity owner grants the renewal obligation, and the Workspace owner
+runs the renewal as one accepted obligation: charged once, extended by the
+provider, and committed as a new subscription period that continues the
+confirmed paid-through. What is still open:
+
+- A Workspace that stopped at expiry does not come back. A renewal of an
+  expired Workspace is refused before any charge — the provider extends the
+  prepaid period from its own deadline, so a period that already ended cannot
+  produce a renewed period the provider also covers — and a stopped Workspace
+  therefore has no renewal path back to its paid state. Reviving it needs a
+  separate owner-authorized path, not a renewal.
+- A provider that refuses the extension after the charge leaves the renewal
+  pending with the money already taken. No refund path exists for a renewal the
+  provider would not deliver.
+- The Console offers the renewal, shows the price and shows the renewed
+  paid-through.
+
+### Generic Agent WebUI Console And Model Links
+
+The generic Agent WebUI guides customers when model access is missing or a
+session expires, and renders console/model links only if the Runtime explicitly
+publishes an absolute `consoleUrl` (plus `workspaceId` for the direct model
+configuration path). Because the Console and Workspace entry run on separate
+hosts by installation contract and the Runtime does not yet publish those
+fields, closing direct cross-host navigation requires one named upstream fact
+rather than a guessed relative URL.
 
 ## Workspace Key And Customer Read Boundaries
 

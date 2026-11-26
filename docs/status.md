@@ -29,6 +29,28 @@ chronological snapshots.
   `defaultAccountId`, so onboarding a customer needs no profile edit and no
   restart. A profile that declares neither refuses that Tenant. The profile
   itself stays an `opl-instance-medopl` deployment fact.
+- **Prepaid Provider Renewal At The Fabric Owner**: The Fabric coordination owner
+  extends the prepaid provider period of one accepted resource set. It renews the
+  compute and storage the Workspace already owns, in place, with their original
+  provider identities and their original durable mutation claim, so a lost
+  response can never buy a second resource. The provider is mutated only after
+  the Ledger confirms the wallet charge recorded for that exact renewal
+  obligation, exactly like the purchase path; an unconfirmed provider stays
+  unknown and is retried against the same resources and keys, never reported as
+  absent. A provider deadline that does not move forward, or that covers less
+  than the prepaid months the Workspace bought, is refused instead of stored,
+  and a zero-charge resource set — which owns no provider period — is refused.
+  The charge, the renewed Cloud paid period, the authorization group of the
+  renewal obligation and the recovery of a stopped Workspace belong to the
+  Workspace and identity owners and are not implemented here.
+- **Generic Agent WebUI Product Surface**: The runtime WebUI (`webui/cloud-agent`)
+  presents a Simplified Chinese customer interface aligned with OPL Cloud visual
+  tokens, with friendly expired-session and missing-model guidance, DOM-only
+  safe Markdown answers with code-block and reply copy, failed-turn retry, new
+  chat thread reset, and Markdown conversation export. Console and model-config
+  links render only when the Runtime explicitly publishes an absolute
+  `consoleUrl` (never guessed relative `/console/...` paths across hosts); that
+  upstream publication remains an open item in [roadmap.md](roadmap.md).
 - **Console / BFF / Control Plane Boundary**:
   - CloudIdentity routes (`/api/v2/*`) serve Workspace, Quote, Launch, Capability
     upload/build, Serve delivery, Gateway wallet/usage summary, Agent read-only
@@ -71,14 +93,47 @@ chronological snapshots.
     operations can be enumerated. Its coverage was partial, and operation
     identities and terminal phases still need a complete readback for the
     deletion, refund, and renewal retirement evidence tracked in the roadmap.
+- **Renewal Pricing At The Catalog Owner**: The Resource Catalog prices one
+  manual renewal offer: it binds the Workspace the renewal continues, keeps that
+  Workspace's application and models untouched, prices the effective price
+  version of the Workspace's own plan pair, and refuses an offer whose plan was
+  revoked. A deprecated plan stays renewable so a customer who already paid for
+  it is not stranded. The renewal itself — the charge, the renewed paid period,
+  the provider's prepaid month and the recovery of a stopped Workspace — belongs
+  to the Workspace owner and is not implemented here.
 - **Retained Application Deployment**: The shared Control Plane worker advances
   accepted `workspace.application.deploy` children through predecessor
   suspension, activation and receipt. The source qualification covers retained
   v0.1.8 fixtures, response loss and restart against the same database.
+- **Renewal Obligation Authorization At The Identity Owner**: CloudIdentity issues
+  and honors the bounded grant of an accepted renewal obligation. A Workspace
+  owner that accepted a `renewWorkspace` obligation carries exactly the renewal
+  surface: the provider extension that extends the prepaid deadline of the
+  compute and storage the Workspace already owns, the renewal offer it reads and
+  accepts, the charge that funds it, and the receipt that records it. The renewal
+  surface is separate from the launch and the deletion surface, so a renewal can
+  neither provision new resources nor release the ones it renews, and a launch
+  grant cannot reach the provider extension. The Workspace owner still has to
+  request that grant and run the renewal itself.
 - **Paid TKE Deletion Recovery**: The November 25, 2026 production readback
   confirmed resource and data deletion, Key closeout, the Ledger deletion
   receipt, and the original-charge refund on the same deletion operation after
   an operator released its recycled CBS. See Instance readback run `45639384732`.
+- **Manual Workspace Renewal At The Workspace Owner**: The Workspace owner accepts
+  one manual renewal of a paid Workspace and carries it as its own accepted
+  obligation: it asks the identity owner for the renewal grant, accepts the
+  renewal offer, observes the resources the renewal would extend, charges the
+  customer exactly once, asks the Fabric owner to extend the prepaid deadline of
+  those resources, and records the renewed paid period. The renewed period
+  continues the confirmed paid-through, so the customer keeps the days it
+  already paid for and receives a full month on top of them. A renewal whose
+  paid term has ended, whose Workspace is not active, whose provider resources
+  are gone, or whose paid month this subscription already confirmed is refused
+  before any charge, so a customer is never charged for a renewal that cannot be
+  delivered. The provider is extended only after the Ledger confirms the charge
+  of that exact renewal; a pending provider keeps the renewal pending instead of
+  recording a period nobody paid for. The Console entry that reaches this
+  renewal belongs to the BFF and Console and is not implemented here.
 - **What Remains Unproven Here**: Same-Candidate paid customer purchase
   execution on Tencent/TKE, J0 READY qualification bound to the latest
   Candidate, end-to-end custom Agent Package build-to-serve production delivery,

@@ -68,9 +68,11 @@ test("Customer copy SSOT: no internal manual jargon or fabricated ETA in custome
     "pages/PublicPages.tsx",
     "pages/AgentPages.tsx",
     "pages/PublisherPage.tsx",
+    "pages/CustomerPages.tsx",
     "components/workspaces/WorkspaceListPage.tsx",
     "components/workspaces/WorkspaceDetailPage.tsx",
     "components/workspaces/WorkspaceLaunchPage.tsx",
+    "components/workspaces/WorkspaceApplicationCredentialsPanel.tsx",
     "api/console-api.ts"
   ];
   const forbidden = [
@@ -80,7 +82,14 @@ test("Customer copy SSOT: no internal manual jargon or fabricated ETA in custome
     "预计 3-5 分钟",
     "没有 operator 权限",
     "defaultForNewBuilds",
-    "按负责服务展示当前"
+    "按负责服务展示当前",
+    "发布 Package",
+    "上传并构建 / 继续上传",
+    "租户余额",
+    "原报价读回中",
+    "证据确认中",
+    "保存在当前页面内存",
+    "槽位分配"
   ];
   const violations: string[] = [];
 

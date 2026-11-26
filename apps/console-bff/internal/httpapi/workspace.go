@@ -58,6 +58,18 @@ func (s *Server) registerWorkspaceRoutes(mux *http.ServeMux, workspace api.Works
 			}
 			return workspace.GetSubscription(r.Context(), &api.GetSubscriptionRpcRequest{Context: call, WorkspaceId: r.PathValue("workspaceId")})
 		})
+	// The manual renewal is a Workspace-owner command. The owner prices the
+	// renewal, charges the wallet and extends the accepted period, so the BFF
+	// forwards only the caller's own renewal quote identifier and publishes the
+	// owner's accepted operation. The BFF never prices a period, never charges a
+	// wallet and never derives a renewal date of its own.
+	s.publisherRoute(mux, "POST /api/v2/workspaces/{workspaceId}/renew", owneridentity.Workspace, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RENEWWORKSPACE, kind, "workspaceId", func() proto.Message { return &api.ApplyQuoteRequest{} },
+		func(r *http.Request, call *api.CallContext, body proto.Message) (proto.Message, error) {
+			if err := require(); err != nil {
+				return nil, err
+			}
+			return workspace.RenewWorkspace(r.Context(), &api.RenewWorkspaceRpcRequest{Context: call, WorkspaceId: r.PathValue("workspaceId"), Body: body.(*api.ApplyQuoteRequest)})
+		})
 	// The model configuration belongs to the Workspace owner: the owner persists the
 	// accepted intent, its own applied version, and the operation that carries the
 	// reload. The BFF only forwards the caller's own request to that owner, so a
