@@ -258,7 +258,7 @@ test("Publisher presents one customer task with the owner facts behind technical
     const details = pageRegion.locator("details.publisher-technical-details");
     assert.equal(await details.count(), 1, "the page must expose exactly one technical disclosure");
     assert.equal(await details.evaluate((element: HTMLDetailsElement) => element.open), false, "technical details start closed");
-    assert.equal(await details.getByText("Runtime Release", { exact: false }).isVisible(), false);
+    assert.equal(await details.getByText("运行底座", { exact: false }).isVisible(), false);
 
     // The unavailable owner fact is stated as one actionable customer sentence,
     // never together with a contradictory loading message.
@@ -282,7 +282,7 @@ test("Publisher presents one customer task with the owner facts behind technical
     // effective default WebUI half has no member-authorized read yet.
     const summary = details.locator("summary");
     await summary.click();
-    await details.getByText("Runtime Release", { exact: false }).waitFor({ state: "visible" });
+    await details.getByText("运行底座", { exact: false }).waitFor({ state: "visible" });
     const facts = (await details.textContent()) || "";
     assert.match(facts, /OPL App Runtime default/);
     assert.doesNotMatch(facts, /First catalog row/);
