@@ -162,10 +162,10 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
   return (
     <section className="overview-page" data-slide="C-OV-01">
       <section className="overview-summary" aria-label="账户关键指标">
-        <Metric emphasis label="可用余额" note="API 服务余额" value={wallet ? formatUsdMicros(wallet.usdMicros) : "暂不可用"} />
+        <Metric emphasis label="可用余额" note="用于工作空间与 API" value={wallet ? formatUsdMicros(wallet.usdMicros) : "暂不可用"} />
         <Metric label="本月 API 实际费用" note="请求实际消费" value={usage ? formatUsdMicros(usage.totalActualCostUsdMicros) : "暂不可用"} />
-        <Metric label="本月请求次数" note="账号级汇总" value={usage ? formatCount(usage.totalRequests) : "暂不可用"} />
-        <Metric label="工作空间" note="当前账户总数" value={workspaces ? formatCount(workspaces.total) : "暂不可用"} />
+        <Metric label="本月请求次数" note="本月累计" value={usage ? formatCount(usage.totalRequests) : "暂不可用"} />
+        <Metric label="工作空间" note="全部工作空间" value={workspaces ? formatCount(workspaces.total) : "暂不可用"} />
       </section>
 
       <div className="overview-grid">
@@ -354,7 +354,7 @@ function AnnouncementsPage({ controller }: { controller: ConsoleController }) {
 export function CustomerPages({ controller, route }: { controller: ConsoleController; route: CustomerConsoleRoute }) {
   switch (route.kind) {
     case "customer.publisher":
-      return <PublisherPage key={controller.session?.user.id} />;
+      return <PublisherPage key={controller.session?.user.id} onNavigate={controller.navigate} />;
     case "customer.agents":
     case "customer.agent-detail":
       return <AgentPages controller={controller} route={route} />;
