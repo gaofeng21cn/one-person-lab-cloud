@@ -162,7 +162,7 @@ for (const identity of ["legacy", "cloud"] as const) {
       assert.equal(session.ok(), true);
       await page.goto(`${demo.origin}/console/workspaces`, { waitUntil: "networkidle" });
       await page.locator(".workspace-list-row").first().waitFor({ state: "visible" });
-      assert.equal(await page.getByRole("link", { name: "发布 Package", exact: true }).count(), identity === "cloud" ? 1 : 0);
+      assert.equal(await page.getByRole("button", { name: "上传智能体", exact: true }).count(), identity === "cloud" ? 1 : 0);
 
       await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "networkidle" });
       await page.locator(".workspace-technical-details").waitFor({ state: "visible" });
@@ -172,7 +172,7 @@ for (const identity of ["legacy", "cloud"] as const) {
         await page.locator("[data-agent-delivery]").getByText("Capability", { exact: true }).waitFor({ state: "visible" });
         assert.ok(v2Requests.includes("/api/v2/delivery/ws-1"));
         await page.goto(`${demo.origin}/console/workspaces`, { waitUntil: "networkidle" });
-        await page.getByRole("link", { name: "发布 Package", exact: true }).click();
+        await page.getByRole("button", { name: "上传智能体", exact: true }).click();
         const publisher = page.locator(".publisher-page");
         await publisher.getByRole("heading", { name: "上传智能体", exact: true }).waitFor({ state: "visible" });
         // The customer supplies only Package/name/version. The platform default
@@ -185,7 +185,7 @@ for (const identity of ["legacy", "cloud"] as const) {
         assert.equal(await publisherDetails.count(), 1);
         assert.equal(await publisherDetails.evaluate((element: HTMLDetailsElement) => element.open), false);
         await publisher.getByRole("status").filter({ hasText: "暂时无法开始构建" }).first().waitFor({ state: "visible" });
-        assert.equal(await page.getByRole("button", { name: "上传并构建 / 继续上传" }).isDisabled(), true);
+        assert.equal(await page.getByRole("button", { name: "上传并构建" }).isDisabled(), true);
         await publisherDetails.locator("summary").click();
         const publisherFacts = (await publisherDetails.textContent()) || "";
         assert.match(publisherFacts, /Fixture Runtime · 1\.0\.0 · sha256:a{64}/);
@@ -885,7 +885,7 @@ test("launch selects fixed all-inclusive Basic/Pro offers by exact pair, rejects
   assert.equal(await page.getByRole("button", { name: "确认并开通工作空间", exact: true }).count(), 0);
   assert.deepEqual(quoteRequests, [], "an offer is not a Catalog Quote");
   await page.getByText("已构建智能体", { exact: true }).click();
-  await page.getByRole("link", { name: "前往构建", exact: true }).waitFor();
+  await page.getByRole("link", { name: "前往上传智能体", exact: true }).waitFor();
   assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
   await page.getByText("OPL App", { exact: true }).click();
   await plans.getByRole("radio", { name: /Basic.*含 113 GiB/ }).check();
@@ -936,7 +936,7 @@ test("default App quotes while Agent and model owners return 503; failed Agent s
   await page.getByLabel("工作空间名称").fill("Independent App");
   await waitForLaunchQuoteButton(page, true);
   assert.equal(await launchSummaryFact(page, "每月合计").innerText(), "$52.58");
-  assert.equal(await launchSummaryFact(page, "租户余额").innerText(), "$200.00");
+  assert.equal(await launchSummaryFact(page, "可用余额").innerText(), "$200.00");
   assert.equal(await page.getByText("开通入口暂不可用", { exact: true }).count(), 0);
   await page.getByText("已构建智能体", { exact: true }).click();
   await page.getByText("智能体目录暂不可用", { exact: true }).waitFor();
@@ -962,7 +962,7 @@ test("pending Agent and model reads cannot hold App, offers or wallet behind all
   await page.getByLabel("工作空间名称").fill("App without optional owners");
   await waitForLaunchQuoteButton(page, true);
   assert.equal(await page.getByText("正在加载应用与套餐", { exact: true }).count(), 0, "compute readiness clears its own loading indicator");
-  assert.equal(await launchSummaryFact(page, "租户余额").innerText(), "$200.00");
+  assert.equal(await launchSummaryFact(page, "可用余额").innerText(), "$200.00");
   await page.getByRole("button", { name: "查看报价", exact: true }).click();
   await page.getByRole("heading", { name: "确认订单", exact: true }).waitFor();
   assert.deepEqual(settled, [], "App must have a real Catalog Quote before either optional read completes");
@@ -986,7 +986,7 @@ for (const requirements of [[], [{ slot: "optional-chat", required: false, capab
     await page.getByLabel("工作空间名称").fill("Independent Agent");
     await page.getByRole("radiogroup", { name: "工作空间套餐", exact: true }).getByRole("radio", { name: /Basic.*37 GiB/ }).waitFor();
     assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true, "failed selected App must not borrow the Agent's readiness");
-    assert.equal(await launchSummaryFact(page, "租户余额").innerText(), "$200.00");
+    assert.equal(await launchSummaryFact(page, "可用余额").innerText(), "$200.00");
     assert.equal(fixture.quoteRequests.length, 0);
     await page.getByText("已构建智能体", { exact: true }).click();
     await page.getByLabel("智能体版本", { exact: true }).selectOption("cap-ready-1");
@@ -1010,7 +1010,7 @@ test("required-model Agent cannot quote after model 503 while App, offer and wal
   assert.equal(await page.getByLabel("required-chat", { exact: true }).getByRole("option").count(), 1);
   assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
   assert.equal(await launchSummaryFact(page, "每月合计").innerText(), "$52.58");
-  assert.equal(await launchSummaryFact(page, "租户余额").innerText(), "$200.00");
+  assert.equal(await launchSummaryFact(page, "可用余额").innerText(), "$200.00");
   assert.equal(fixture.quoteRequests.length, 0);
   await page.getByText("OPL App", { exact: true }).click();
   await page.getByRole("button", { name: "查看报价", exact: true }).click();
@@ -1022,10 +1022,10 @@ test("required-model Agent cannot quote after model 503 while App, offer and wal
 test("wallet 503 blocks App and ready Agent quotes while their catalogs and offers remain visible", { timeout: 45_000 }, async (t) => {
   const fixture = await openNativeLaunchFixture(t, { failures: ["wallet"] });
   const { page } = fixture;
-  await page.getByText("租户余额暂不可用，请刷新后重试。", { exact: true }).waitFor();
+  await page.getByText("可用余额暂不可用，请刷新后重试。", { exact: true }).waitFor();
   await page.getByLabel("工作空间名称").fill("No wallet authority");
   assert.equal(await launchSummaryFact(page, "每月合计").innerText(), "$52.58");
-  assert.equal(await launchSummaryFact(page, "租户余额").innerText(), "暂不可用");
+  assert.equal(await launchSummaryFact(page, "可用余额").innerText(), "暂不可用");
   assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
   await page.getByText("已构建智能体", { exact: true }).click();
   await page.getByLabel("智能体版本", { exact: true }).selectOption("cap-ready-1");
@@ -1062,7 +1062,7 @@ test("compute catalog 503 preserves App and ready Agent data but cannot invent a
   await page.getByText("开通入口暂不可用", { exact: true }).waitFor();
   await page.getByLabel("工作空间名称").fill("No Catalog authority");
   await page.locator(".workspace-order-summary header").getByText("版本 App 1.0", { exact: true }).waitFor();
-  assert.equal(await launchSummaryFact(page, "租户余额").innerText(), "$200.00");
+  assert.equal(await launchSummaryFact(page, "可用余额").innerText(), "$200.00");
   assert.equal(await page.getByRole("button", { name: "查看报价", exact: true }).isDisabled(), true);
   await page.getByText("已构建智能体", { exact: true }).click();
   await page.getByLabel("智能体版本", { exact: true }).selectOption("cap-ready-1");

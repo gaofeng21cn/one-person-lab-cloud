@@ -79,10 +79,11 @@ test("the launch gate compares the quote against the payer wallet", () => {
 // The page shows which balance the decision uses, and there is no self-service
 // payment: the Tenant is recharged by an administrator, so the insufficient
 // balance alert points at the administrator instead of a payment button.
-test("the launch page states the Tenant balance and points at the administrator", () => {
+test("the launch page states the available balance and points at the administrator", () => {
   const page = sourceText("apps/console-ui/src/components/workspaces/WorkspaceLaunchPage.tsx");
 
-  assert.match(page, /<dt>租户余额<\/dt>/);
-  assert.match(page, /租户余额不足，请联系管理员为租户充值后重新报价。/);
+  assert.match(page, /<dt>可用余额<\/dt>/);
+  assert.match(page, /<dt>当前可用余额<\/dt>/);
+  assert.match(page, /当前可用余额不足以支付本次费用，请联系管理员充值后重新获取报价。/);
   assert.doesNotMatch(page, /钱包余额不足，请充值后重新报价。/, "the old personal self-service wording must be gone");
 });

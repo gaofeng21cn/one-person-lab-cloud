@@ -127,12 +127,12 @@ test("Publisher requires successful complete and exact uploaded readback before 
         await page.getByRole("button", { name: "登录", exact: true }).click();
         await page.waitForURL(/\/console\/overview$/);
         await page.goto(`${server.origin}/console/publisher`, { waitUntil: "domcontentloaded" });
-        await page.getByLabel("Package", { exact: true }).selectOption(uploaded.packageId);
-        await page.getByLabel("版本名称").fill(uploaded.versionLabel);
-        await page.getByLabel("ZIP 文件").setInputFiles({ name: "package.zip", mimeType: "application/zip", buffer: archive });
+        await page.getByLabel("智能体", { exact: true }).selectOption(uploaded.packageId);
+        await page.getByLabel("版本号").fill(uploaded.versionLabel);
+        await page.getByLabel("智能体压缩包（.zip）").setInputFiles({ name: "package.zip", mimeType: "application/zip", buffer: archive });
         assert.equal(await page.getByLabel("Runtime Release", { exact: true }).count(), 0);
         assert.equal(await page.getByLabel("WebUI", { exact: true }).count(), 0);
-        const submit = page.getByRole("button", { name: "上传并构建 / 继续上传", exact: true });
+        const submit = page.getByRole("button", { name: /^(继续)?上传并构建$/ });
         await submit.click();
         if (options.held) {
           await completeEntered.promise;
@@ -151,14 +151,16 @@ test("Publisher requires successful complete and exact uploaded readback before 
           buildResponse.release();
         }
         const succeeds = options.held || options.succeeds || Object.keys(options).length === 0;
-        if (succeeds) await page.getByRole("heading", { name: "版本已就绪", exact: true }).waitFor();
-        else {
+        if (succeeds) {
+          await page.getByRole("heading", { name: "版本已就绪", exact: true }).waitFor();
+          assert.equal(await page.getByRole("button", { name: "使用此智能体创建工作空间", exact: true }).isVisible(), true);
+        } else {
           await page.getByRole("alert").waitFor();
           await submit.waitFor({ state: "visible" });
           await page.waitForFunction(() => !(document.querySelector(".publisher-page button[type=submit]") as HTMLButtonElement).disabled);
           if (options.resumeForeignUpload) {
             await submit.click();
-            await page.getByRole("alert").filter({ hasText: "上传会话与本次 Package 版本不一致" }).waitFor();
+            await page.getByRole("alert").filter({ hasText: "上传记录与当前版本不匹配" }).waitFor();
           }
           assert.equal(builds.length, 0, "unconfirmed or foreign upload must never create Build");
           assert.equal(await page.getByRole("heading", { name: "版本已就绪", exact: true }).count(), 0);
