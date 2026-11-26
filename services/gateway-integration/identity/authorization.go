@@ -375,6 +375,33 @@ var workspaceDeletionActions = []api.AuthorizationActionEnum{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE,
 }
 
+// workspaceRenewalActions is the continuation surface of an accepted
+// renew_workspace obligation: reading and accepting the renewal offer, charging
+// it once, recording its receipt, and extending the prepaid period of the
+// resources the Workspace already owns.
+//
+// It is a separate group from the launch and the deletion obligation, so a
+// renewal can neither provision new resources nor release the ones it renews.
+// The canonical surface deliberately excludes the provisioning write: Fabric
+// authorizes its resource-creation entry points (EnsureResources and its
+// resume) with provisionAcceptedResources, so a renewal grant that carried
+// that write could replay resource creation. The provider extension arrives as
+// the renewal's own contract-declared owner action (renewAcceptedResources),
+// which Fabric's RenewResources requires, and it only extends the prepaid
+// deadline of the existing compute and storage. The charge and its receipt are
+// the same Gateway and Ledger continuations the launch obligation already
+// carries, because a renewal is funded through the same single wallet.
+var workspaceRenewalActions = []api.AuthorizationActionEnum{
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RENEWACCEPTEDRESOURCES,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETQUOTE,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEACCEPTEDOBLIGATION,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CHARGEACCEPTEDOBLIGATION,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT,
+}
+
 // grantOwner resolves the owner readback, the accepted action and the
 // continuation surface for one accepted obligation. The accepted action decides
 // the surface: the same owner can accept more than one kind of obligation, and
@@ -408,6 +435,8 @@ func (s *Service) grantOwner(owner api.OwnerEnum, accepted api.AuthorizationActi
 			return s.WorkspaceCommit, accepted, workspaceLaunchActions
 		case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEWORKSPACE:
 			return s.WorkspaceCommit, accepted, workspaceDeletionActions
+		case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RENEWWORKSPACE:
+			return s.WorkspaceCommit, accepted, workspaceRenewalActions
 		}
 	}
 	return nil, 0, nil
@@ -662,7 +691,7 @@ func (s *Service) authorizeGrant(ctx context.Context, r *api.AuthorizationReques
 		// matched as its own bounded clause rather than under the Workspace resource.
 		matched = (r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL && r.Action == workspaceListRuntimeVersions && r.Resource.Kind == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG && r.Resource.GetId() == "") ||
 			(r.Resource.Kind == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE && r.Resource.GetId() == g.ResourceId &&
-				((r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_FABRIC && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES)) ||
+				((r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_FABRIC && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RENEWACCEPTEDRESOURCES || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES)) ||
 					(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETQUOTE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEACCEPTEDOBLIGATION)) ||
 					(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_LEDGER && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT)) ||
 					(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_SERVE && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RETIRERUNTIME)) ||

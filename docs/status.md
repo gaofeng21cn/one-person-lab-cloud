@@ -75,6 +75,16 @@ chronological snapshots.
   accepted `workspace.application.deploy` children through predecessor
   suspension, activation and receipt. The source qualification covers retained
   v0.1.8 fixtures, response loss and restart against the same database.
+- **Renewal Obligation Authorization At The Identity Owner**: CloudIdentity issues
+  and honors the bounded grant of an accepted renewal obligation. A Workspace
+  owner that accepted a `renewWorkspace` obligation carries exactly the renewal
+  surface: the provider extension that extends the prepaid deadline of the
+  compute and storage the Workspace already owns, the renewal offer it reads and
+  accepts, the charge that funds it, and the receipt that records it. The renewal
+  surface is separate from the launch and the deletion surface, so a renewal can
+  neither provision new resources nor release the ones it renews, and a launch
+  grant cannot reach the provider extension. The Workspace owner still has to
+  request that grant and run the renewal itself.
 - **Paid TKE Deletion Recovery**: The November 25, 2026 production readback
   confirmed resource and data deletion, Key closeout, the Ledger deletion
   receipt, and the original-charge refund on the same deletion operation after
