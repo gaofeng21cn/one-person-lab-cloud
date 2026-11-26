@@ -1,29 +1,59 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="opl-cloud-webui" content="generic-agent-webui/v1">
-  <title>OPL Agent</title>
+  <title>智能体工作空间 · OPL Cloud</title>
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
   <main class="shell" data-opl-cloud-agent-webui="v1">
     <header class="topbar">
-      <div><span class="eyebrow">OPL AGENT</span><h1>Agent workspace</h1><p>Cloud-provided generic Agent WebUI</p></div>
-      <span id="runtime-status" class="status">Connecting…</span>
+      <div class="topbar-brand">
+        <span class="eyebrow">OPL CLOUD</span>
+        <h1 id="workspace-title">智能体工作空间</h1>
+      </div>
+      <div class="topbar-actions">
+        <span id="runtime-status" class="status" role="status">正在连接…</span>
+        <button id="new-chat" class="btn-secondary" type="button" disabled>新建对话</button>
+        <button id="export-chat" class="btn-secondary" type="button" disabled>导出会话</button>
+        <a id="console-link" class="btn-link" href="/console/workspaces">返回控制台</a>
+      </div>
     </header>
-    <section class="workspace" aria-label="Agent conversation">
-      <div id="messages" class="messages" aria-live="polite"><div class="empty"><strong>Start a task</strong><span>Select an installed Agent and send a prompt.</span></div></div>
+
+    <section id="guidance" class="guidance" aria-live="polite" hidden></section>
+
+    <section class="workspace" aria-label="智能体对话">
+      <div id="messages" class="messages" aria-live="polite">
+        <div class="empty">
+          <strong>开始对话</strong>
+          <span>输入任务开始对话，按 Ctrl / ⌘ + Enter 发送。</span>
+        </div>
+      </div>
+
       <form id="composer" class="composer">
-        <label for="agent">Agent</label>
-        <select id="agent" required disabled><option>Loading Agent catalog…</option></select>
-        <label for="prompt">Prompt</label>
-        <textarea id="prompt" rows="4" required placeholder="Ask the selected Agent to do something…" disabled></textarea>
-        <div class="composer-actions"><span id="hint">Loading runtime state…</span><button id="send" type="submit" disabled>Send</button></div>
+        <div class="field">
+          <label for="agent">智能体</label>
+          <select id="agent" required disabled>
+            <option>正在加载智能体…</option>
+          </select>
+        </div>
+        <div class="field field--grow">
+          <label for="prompt">输入任务</label>
+          <textarea id="prompt" rows="5" required placeholder="输入你想交给智能体完成的任务…" disabled></textarea>
+        </div>
+        <div class="composer-actions">
+          <span id="hint">正在检查运行状态…</span>
+          <button id="send" class="btn-primary" type="submit" disabled>发送</button>
+        </div>
       </form>
     </section>
-    <details class="diagnostics"><summary>Runtime details</summary><pre id="diagnostics-body">Not loaded.</pre></details>
+
+    <details class="diagnostics">
+      <summary>技术详情</summary>
+      <pre id="diagnostics-body">尚未加载。</pre>
+    </details>
   </main>
   <script type="module" src="./app.js"></script>
 </body>
