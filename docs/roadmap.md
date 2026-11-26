@@ -57,9 +57,11 @@ open:
 
 - The Workspace owner accepts the renewal offer, charges it once and writes the
   renewed paid period as a new subscription period. While the subscription is
-  current the renewal extends the period from the previous paid-through instant;
-  a renewal of an expired Workspace must produce a paid period that covers the
-  service it resumes, so the anchor is the later of the two instants.
+  current the renewal extends the period from the previous paid-through instant.
+  A renewal of an expired Workspace is refused before any charge: the provider
+  extends the prepaid period from its own deadline, so a period that already
+  ended cannot produce a renewed period the provider also covers, and the
+  customer is never charged for a renewal that cannot be delivered.
 - The provider's prepaid month is the same fact seen from the provider, so the
   renewal extends it through the Fabric owner. Otherwise the Cloud period would
   outrun the compute the customer paid for.
