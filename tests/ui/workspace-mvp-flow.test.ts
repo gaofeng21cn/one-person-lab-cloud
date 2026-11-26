@@ -222,9 +222,9 @@ test("Workspace delete scopes busy and reuses its intent after a late response",
       if (!firstAttempt) observeRetry?.();
     });
 
-    page.once("dialog", (dialog) => { void dialog.accept(); });
     const firstDelete = page.getByRole("button", { name: "删除工作空间", exact: true });
     await firstDelete.click();
+    await page.getByRole("dialog").getByRole("button", { name: "确认删除", exact: true }).click();
     await deleteHeld;
     await page.getByRole("heading", { name: "正在提交删除请求", exact: true }).waitFor({ state: "visible" });
 
@@ -277,11 +277,11 @@ test("Workspace delete scopes busy and reuses its intent after a late response",
       await route.fulfill({ response });
     });
 
-    page.once("dialog", (dialog) => { void dialog.accept(); });
     const retryDelete = page.getByRole("button", { name: "删除工作空间", exact: true });
     assert.equal(await retryDelete.getAttribute("aria-busy"), null);
     assert.equal(await retryDelete.isDisabled(), false);
     await retryDelete.click();
+    await page.getByRole("dialog").getByRole("button", { name: "确认删除", exact: true }).click();
     await retryObserved;
     await page.waitForURL(/\/console\/workspaces$/);
     await page.getByText("Workspace 已删除", { exact: true }).waitFor({ state: "visible" });
@@ -357,15 +357,16 @@ test("Workspace deletion survives closing the page and remains pending until its
       await page.getByRole("button", { name: "删除工作空间", exact: true }).waitFor({ state: "visible" });
       assert.match(await page.locator(".workspace-delete-panel").innerText(), /删除和退款是独立操作/);
       assert.doesNotMatch(await page.locator(".workspace-delete-panel").innerText(), /符合原单退款政策时自动处理|不会自动退款/);
-      page.once("dialog", (dialog) => {
-        assert.match(dialog.message(), /请先自行下载/);
-        assert.match(dialog.message(), /关闭页面后仍会继续处理/);
-        assert.match(dialog.message(), /删除和退款是独立操作/);
-        assert.match(dialog.message(), /退款结果以原单回读为准/);
-        assert.doesNotMatch(dialog.message(), /符合原单退款政策时自动处理|不会自动退款/);
-        void dialog.accept();
-      });
       await page.getByRole("button", { name: "删除工作空间", exact: true }).click();
+      const legacyDeleteDialog = page.getByRole("dialog");
+      await legacyDeleteDialog.waitFor({ state: "visible" });
+      const legacyDeleteText = await legacyDeleteDialog.innerText();
+      assert.match(legacyDeleteText, /请先自行下载/);
+      assert.match(legacyDeleteText, /关闭页面后仍会继续处理/);
+      assert.match(legacyDeleteText, /删除和退款是独立操作/);
+      assert.match(legacyDeleteText, /退款结果以原单回读为准/);
+      assert.doesNotMatch(legacyDeleteText, /符合原单退款政策时自动处理|不会自动退款/);
+      await legacyDeleteDialog.getByRole("button", { name: "确认删除", exact: true }).click();
       await page.getByRole("heading", { name: "正在删除工作空间", exact: true }).waitFor({ state: "visible" });
       assert.equal(writes, 1);
       assert.equal(await page.getByRole("button", { name: "打开工作空间", exact: true }).count(), 0);
@@ -541,6 +542,7 @@ test("Cloud Workspace detail first deletion confirms once and displays the origi
     });
     const detailUrl = `${origin}/console/workspaces/${workspace.id}`;
     await page.goto(detailUrl, { waitUntil: "networkidle" });
+    await page.getByRole("radio", { name: "安全与删除", exact: true }).click();
     const deleteButton = page.getByRole("button", { name: "删除工作空间", exact: true });
     await deleteButton.waitFor({ state: "visible", timeout: 5_000 });
     assert.ok(requests.includes(`GET /api/v2/workspaces/${workspace.id}/deletion`));
@@ -548,19 +550,27 @@ test("Cloud Workspace detail first deletion confirms once and displays the origi
     assert.match(await page.locator(".workspace-delete-panel").innerText(), /符合原单退款政策时自动处理/);
     assert.doesNotMatch(await page.locator(".workspace-delete-panel").innerText(), /不会自动退款/);
 
-    page.once("dialog", (dialog) => { void dialog.dismiss(); });
     await deleteButton.click();
+    const cancelDialog = page.getByRole("dialog");
+    await cancelDialog.waitFor({ state: "visible" });
+    await cancelDialog.getByRole("button", { name: "取消", exact: true }).click();
+    await cancelDialog.waitFor({ state: "hidden" });
     assert.equal(writes, 0, "cancelling confirmation must not issue DELETE");
-    page.once("dialog", (dialog) => {
-      assert.match(dialog.message(), /Cloud Delete Workspace/);
-      assert.match(dialog.message(), /请先自行下载/);
-      assert.match(dialog.message(), /删除后数据无法恢复/);
-      assert.match(dialog.message(), /资源删除与退款分别确认/);
-      assert.match(dialog.message(), /符合原单退款政策时自动处理/);
-      assert.match(dialog.message(), /退款结果以原单回读为准/);
-      void dialog.accept();
-    });
     await deleteButton.click();
+    const confirmDialog = page.getByRole("dialog");
+    await confirmDialog.waitFor({ state: "visible" });
+    const confirmText = await confirmDialog.innerText();
+    assert.match(confirmText, /Cloud Delete Workspace/);
+    assert.match(confirmText, /请先自行下载/);
+    assert.match(confirmText, /删除后数据无法恢复/);
+    assert.match(confirmText, /资源删除与退款分别确认/);
+    assert.match(confirmText, /符合原单退款政策时自动处理/);
+    assert.match(confirmText, /退款结果以原单回读为准/);
+    const confirmSubmit = confirmDialog.getByRole("button", { name: "确认删除", exact: true });
+    assert.equal(await confirmSubmit.isDisabled(), true, "Danger Zone delete requires exact workspace name input");
+    await confirmDialog.getByRole("textbox").fill(workspace.name);
+    assert.equal(await confirmSubmit.isDisabled(), false);
+    await confirmSubmit.click();
     await page.getByRole("heading", { name: "正在删除工作空间", exact: true }).waitFor();
     const progress = page.locator("[data-workspace-delete-progress]");
     await progress.getByText(operation.operationId, { exact: true }).waitFor();
@@ -590,8 +600,11 @@ test("Cloud Workspace detail first deletion confirms once and displays the origi
 
     const resumeButton = page.getByRole("button", { name: "重新核对并继续删除", exact: true });
     await resumeButton.waitFor({ state: "visible" });
-    page.once("dialog", (dialog) => { void dialog.accept(); });
     await resumeButton.click();
+    const resumeDialog = page.getByRole("dialog");
+    await resumeDialog.waitFor({ state: "visible" });
+    await resumeDialog.getByRole("textbox").fill(workspace.name);
+    await resumeDialog.getByRole("button", { name: "确认删除", exact: true }).click();
     await page.getByRole("heading", { name: "正在重试删除", exact: true }).waitFor();
     assert.equal(writes, 2, "recovery must replay the original owner delete without a new operation");
 
@@ -604,7 +617,7 @@ test("Cloud Workspace detail first deletion confirms once and displays the origi
     await progress.getByText("退款处理中", { exact: true }).waitFor();
     assert.equal(await page.getByRole("heading", { name: "删除状态暂不可读", exact: true }).count(), 0,
       "the owner's deleting row is expected while its original refund is pending");
-    assert.equal(page.url(), detailUrl);
+    assert.equal(new URL(page.url()).pathname, new URL(detailUrl).pathname);
 
     // The real owner only completes its operation and Workspace row after the
     // refund is confirmed or not applicable. Poll that same original operation.
@@ -618,13 +631,13 @@ test("Cloud Workspace detail first deletion confirms once and displays the origi
     holdOwnerReadback = false;
     releaseOwnerReadback();
     await page.getByRole("heading", { name: "删除状态暂不可读", exact: true }).waitFor();
-    assert.equal(page.url(), detailUrl, "the Workspace owner row must confirm the deletion too");
+    assert.equal(new URL(page.url()).pathname, new URL(detailUrl).pathname, "the Workspace owner row must confirm the deletion too");
     ownerDeleted = true;
     await page.getByRole("button", { name: "刷新删除状态", exact: true }).click();
     await page.getByRole("heading", { name: "工作空间已删除", exact: true }).waitFor();
     await progress.getByText("已确认", { exact: true }).waitFor();
     await progress.getByText("退款已完成", { exact: true }).waitFor();
-    assert.equal(page.url(), detailUrl);
+    assert.equal(new URL(page.url()).pathname, new URL(detailUrl).pathname);
     assert.equal(writes, 2, "refund polling must not resubmit DELETE after the explicit recovery replay");
     assert.ok(requests.filter((request) => request.includes("/operations/")).every((request) => request === `GET /api/v2/operations/workspace/${operation.operationId}`));
     assert.deepEqual(audit, { pageErrors: [], legacyRequests: [], externalRequests: [] });
@@ -702,8 +715,12 @@ test("Cloud Workspace detail preserves owner DELETE authorization and requires a
       return route.fulfill({ status: 403, json: { error: "workspace_owner_required" } });
     });
     await page.goto(`${demo.origin}/console/workspaces/${demo.workspace.id}`, { waitUntil: "networkidle" });
-    page.once("dialog", (dialog) => { void dialog.accept(); });
+    await page.getByRole("radio", { name: "安全与删除", exact: true }).click();
     await page.getByRole("button", { name: "删除工作空间", exact: true }).click();
+    const deleteDialog = page.getByRole("dialog");
+    await deleteDialog.waitFor({ state: "visible" });
+    await deleteDialog.getByRole("textbox").fill(demo.workspace.name);
+    await deleteDialog.getByRole("button", { name: "确认删除", exact: true }).click();
     await page.getByRole("heading", { name: "删除状态暂不可读", exact: true }).waitFor();
     assert.equal(writes, 1);
     assert.equal(await page.getByRole("heading", { name: "工作空间已删除", exact: true }).count(), 0);

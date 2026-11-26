@@ -248,7 +248,6 @@ test("Operator Announcement keeps a pending publish claimed across route exit an
   let projection = draft;
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    page.on("dialog", (dialog) => void dialog.accept());
     await page.route("**/api/operator/announcements?*", (route) => fulfill(route, announcementPage([projection])));
     await page.route("**/api/operator/announcements/announcement-publish/publish", async (route) => {
       keys.push(route.request().headers()["idempotency-key"] || "");
@@ -267,6 +266,7 @@ test("Operator Announcement keeps a pending publish claimed across route exit an
     await login(page, demo.origin);
     await openAnnouncements(page, demo.origin);
     await announcementCard(page, draft.title).getByRole("button", { name: "发布", exact: true }).click();
+    await page.getByRole("dialog", { name: "发布公告" }).getByRole("button", { name: "确认发布", exact: true }).click();
     await firstRequestHeld.promise;
 
     await page.locator(".side-nav").getByRole("link", { name: "系统状态", exact: true }).click();
@@ -288,6 +288,7 @@ test("Operator Announcement keeps a pending publish claimed across route exit an
       return Boolean(button && !button.disabled);
     });
     await reenteredPublish.click();
+    await page.getByRole("dialog", { name: "发布公告" }).getByRole("button", { name: "确认发布", exact: true }).click();
     await announcementCard(page, draft.title).getByText("已发布", { exact: true }).waitFor({ state: "visible" });
 
     assert.equal(keys.length, 2);
@@ -312,7 +313,6 @@ test("Operator Announcement retains withdraw intent until command and readback m
   let projection = published;
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    page.on("dialog", (dialog) => void dialog.accept());
     await page.route("**/api/operator/announcements?*", (route) => fulfill(route, announcementPage([projection])));
     await page.route("**/api/operator/announcements/announcement-withdraw/withdraw", async (route) => {
       keys.push(route.request().headers()["idempotency-key"] || "");
@@ -323,7 +323,10 @@ test("Operator Announcement retains withdraw intent until command and readback m
 
     await login(page, demo.origin);
     await openAnnouncements(page, demo.origin);
-    const withdraw = () => announcementCard(page, published.title).getByRole("button", { name: "撤下", exact: true }).click();
+    const withdraw = async () => {
+      await announcementCard(page, published.title).getByRole("button", { name: "撤下", exact: true }).click();
+      await page.getByRole("dialog", { name: "撤下公告" }).getByRole("button", { name: "确认撤下", exact: true }).click();
+    };
     await withdraw();
     await page.getByText(unknownWriteMessage, { exact: true }).waitFor({ state: "visible" });
     await withdraw();

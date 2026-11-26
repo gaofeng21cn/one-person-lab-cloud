@@ -11,7 +11,7 @@ import {
 } from "../../app/workspace-experience-model.ts";
 import { presentWorkspaceDelete, presentWorkspaceDeleteReason } from "../../app/workspace-delete-controller-model.ts";
 import type { WorkspaceDTO, WorkspaceGatewayBudgetDTO, WorkspaceGatewayBudgetUpdateRequest, WorkspaceRuntimeDTO } from "../../api/dtos.ts";
-import { Alert, Button, Checkbox, Field } from "../ui/index.ts";
+import { Alert, Button, Checkbox, Field, SegmentedControl, requestConfirm } from "../ui/index.ts";
 import { AgentDeliveryPanel } from "./AgentDeliveryPanel.tsx";
 import { WorkspaceSubscriptionPanel } from "./WorkspaceSubscriptionPanel.tsx";
 import { WorkspaceTransactionsPanel } from "./WorkspaceTransactionsPanel.tsx";
@@ -204,9 +204,22 @@ export function WorkspaceDetailPage({ controller }: { controller: WorkspaceDetai
     : <ControlPlaneWorkspaceDetailPage controller={controller} />;
 }
 
+type OwnerDetailTab = "overview" | "billing" | "security";
+
+function initialOwnerDetailTab(): OwnerDetailTab {
+  const value = new URLSearchParams(window.location.search).get("tab");
+  return value === "billing" || value === "security" ? value : "overview";
+}
+
 function WorkspaceOwnerDetailPage({ controller }: { controller: WorkspaceDetailController }) {
-  if (controller.workspaceDeletion || controller.workspaceDeleteBusy || controller.workspaceDeletionLoading || controller.workspaceDeleteIssue === "unconfirmed") return <WorkspaceDeletionProgress controller={controller} />;
+  const [activeTab, setActiveTab] = useState<OwnerDetailTab>(initialOwnerDetailTab);
   const workspaceSource = controller.customerWorkspaceRead.detail.value;
+  const activeWorkspaceId = workspaceSource?.available && workspaceSource.data ? workspaceSource.data.id : "";
+  useEffect(() => {
+    setActiveTab(initialOwnerDetailTab());
+  }, [activeWorkspaceId]);
+
+  if (controller.workspaceDeletion || controller.workspaceDeleteBusy || controller.workspaceDeletionLoading || controller.workspaceDeleteIssue === "unconfirmed") return <WorkspaceDeletionProgress controller={controller} />;
   if (controller.customerWorkspaceRead.detail.loading && !workspaceSource) return <section className="workspace-detail-page"><div className="source-loading" aria-live="polite"><span className="spinner" />正在读取</div></section>;
   if (!workspaceSource) return <section className="workspace-detail-page"><div className="source-loading" aria-live="polite"><span className="spinner" />等待读取</div></section>;
   if (workspaceSource.available === false) return <section className="workspace-detail-page">
@@ -218,30 +231,59 @@ function WorkspaceOwnerDetailPage({ controller }: { controller: WorkspaceDetailC
   const detail = workspaceSource.data;
   const lifecycle = presentWorkspaceLifecycle(detail.state);
   const accessUrl = detail.url && /^https?:\/\//.test(detail.url) ? detail.url : null;
+  const selectTab = (next: OwnerDetailTab) => {
+    setActiveTab(next);
+    const url = new URL(window.location.href);
+    if (next === "overview") url.searchParams.delete("tab");
+    else url.searchParams.set("tab", next);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  };
   return (
     <section className="workspace-detail-page" data-slide="C-WS-05">
       <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />工作空间列表</Button>
       <div className="workspace-detail-content">
         <section className="panel workspace-identity-panel"><div className="workspace-heading"><div><h2>{detail.name || "未命名工作空间"}</h2><div className={`workspace-availability workspace-availability--${lifecycle.known ? lifecycle.kind : "pending"}`}><strong>{lifecycle.label}</strong><span>{accessUrl ? "已就绪，可直接打开。" : "入口准备中，请稍后刷新。"}</span></div></div><div className="workspace-entry-actions"><Button color="primary" disabled={!accessUrl} onClick={() => accessUrl && window.open(accessUrl, "_blank", "noopener,noreferrer")}>打开工作空间<ExternalLink aria-hidden size={16} /></Button><Button onClick={() => controller.navigate(`/console/workspaces/${encodeURIComponent(detail.id)}/models`)} variant="outline">模型配置</Button><Button onClick={() => void controller.refreshCurrentPage()} variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div></div><dl className="workspace-primary-facts"><div><dt>交付模式</dt><dd>{presentWorkspaceDeliveryModel(detail.deliveryModel)}</dd></div><div><dt>资源就绪</dt><dd>{presentWorkspaceResourceReadiness(detail.resourceReadiness)}</dd></div><div><dt>应用可用</dt><dd>{presentWorkspaceApplicationAvailability(detail.applicationAvailability)}</dd></div><div><dt>权益截止</dt><dd>{formatDate(detail.paidThrough)}</dd></div></dl></section>
-        <WorkspaceSubscriptionPanel session={controller.session} workspace={detail} />
-        <WorkspaceApplicationCredentialsPanel session={controller.session} workspaceId={detail.id} />
-        {controller.session && detail.state === "active" ? <NativeDefaultAppUpgrade actorId={controller.session.user.id} csrfToken={controller.session.csrfToken} onUpgraded={controller.refreshCurrentPage} workspaceId={detail.id} /> : null}
-        <WorkspaceTransactionsPanel session={controller.session} workspaceId={detail.id} />
-        <WorkspaceDeletePanel controller={controller} />
-        <section className="panel workspace-technical-panel"><details className="workspace-technical-details"><summary><span>技术详情</span><ChevronDown aria-hidden size={16} /></summary><div className="workspace-technical-details__body">
-          <dl className="data-list">
-            <div><dt>Workspace ID</dt><dd><code>{detail.id}</code></dd></div>
-            <div><dt>lifecycle status</dt><dd><code>{detail.state}</code></dd></div>
-            <div><dt>delivery model</dt><dd><code>{detail.deliveryModel || "-"}</code></dd></div>
-            <div><dt>resource readiness</dt><dd><code>{detail.resourceReadiness || "-"}</code></dd></div>
-            <div><dt>application availability</dt><dd><code>{detail.applicationAvailability || "-"}</code></dd></div>
-            <div><dt>access URL</dt><dd>{accessUrl ? <a href={accessUrl} rel="noreferrer" target="_blank"><code>{accessUrl}</code><ExternalLink aria-hidden size={14} /></a> : "-"}</dd></div>
-          </dl>
-          <div className="workspace-delivery-details" data-agent-delivery>
-            <h3>交付状态</h3>
-            <dl className="data-list"><AgentDeliveryPanel workspaceId={detail.id} /></dl>
-          </div>
-        </div></details></section>
+        <div className="workspace-detail-tabs">
+          <SegmentedControl<OwnerDetailTab>
+            ariaLabel="工作空间详情分类"
+            onChange={selectTab}
+            options={[
+              { value: "overview", label: "概览与访问" },
+              { value: "billing", label: "订阅与费用" },
+              { value: "security", label: "安全与删除" }
+            ]}
+            value={activeTab}
+          />
+        </div>
+        {activeTab === "overview" ? <>
+          <WorkspaceApplicationCredentialsPanel session={controller.session} workspaceId={detail.id} />
+          {controller.session && detail.state === "active" ? <NativeDefaultAppUpgrade actorId={controller.session.user.id} csrfToken={controller.session.csrfToken} onUpgraded={controller.refreshCurrentPage} workspaceId={detail.id} /> : null}
+          <section className="panel workspace-technical-panel"><details className="workspace-technical-details"><summary><span>技术详情</span><ChevronDown aria-hidden size={16} /></summary><div className="workspace-technical-details__body">
+            <dl className="data-list">
+              <div><dt>Workspace ID</dt><dd><code>{detail.id}</code></dd></div>
+              <div><dt>lifecycle status</dt><dd><code>{detail.state}</code></dd></div>
+              <div><dt>delivery model</dt><dd><code>{detail.deliveryModel || "-"}</code></dd></div>
+              <div><dt>resource readiness</dt><dd><code>{detail.resourceReadiness || "-"}</code></dd></div>
+              <div><dt>application availability</dt><dd><code>{detail.applicationAvailability || "-"}</code></dd></div>
+              <div><dt>access URL</dt><dd>{accessUrl ? <a href={accessUrl} rel="noreferrer" target="_blank"><code>{accessUrl}</code><ExternalLink aria-hidden size={14} /></a> : "-"}</dd></div>
+            </dl>
+            <div className="workspace-delivery-details" data-agent-delivery>
+              <h3>交付状态</h3>
+              <dl className="data-list"><AgentDeliveryPanel workspaceId={detail.id} /></dl>
+            </div>
+          </div></details></section>
+        </> : null}
+        {activeTab === "billing" ? <>
+          <WorkspaceSubscriptionPanel session={controller.session} workspace={detail} />
+          <WorkspaceTransactionsPanel session={controller.session} workspaceId={detail.id} />
+        </> : null}
+        {activeTab === "security" ? <>
+          <section className="panel workspace-models-shortcut">
+            <div className="panel-title"><h2>模型访问配置</h2><Button onClick={() => controller.navigate(`/console/workspaces/${encodeURIComponent(detail.id)}/models`)} size="sm" variant="outline">前往配置</Button></div>
+            <p>配置该工作空间可用的模型。</p>
+          </section>
+          <WorkspaceDeletePanel controller={controller} />
+        </> : null}
       </div>
     </section>
   );
@@ -343,7 +385,7 @@ function ControlPlaneWorkspaceDetailPage({ controller }: { controller: Workspace
           {controller.workspaceRenewalIssue === "unconfirmed" ? <Alert color="warning" indicator={<AlertCircle size={18} />} title="续费结果待确认" description="工作空间的续费设置尚未获得确认，请稍后刷新。" /> : null}
           {recoveryPresentation ? <Alert color="warning" title={recoveryPresentation.title} description={recoveryPresentation.description} /> : null}
           {recovery?.state !== "not_required" || controller.workspaceRenewalIssue ? <div className="workspace-actions">
-            {recovery?.state === "recoverable" ? <Button busy={controller.workspaceRenewalBusy} color="primary" disabled={controller.workspaceRenewalLoading || controller.workspaceRenewalIssue === "unconfirmed" || !Number.isSafeInteger(detail.totalUsdMicros) || (detail.totalUsdMicros || 0) < 0} onClick={() => { if (window.confirm(`确认支付 ${formatUsdMicros(detail.totalUsdMicros)} 续费并恢复原工作空间？这会开启后续自动续费。充值本身不会恢复使用，原数据不提供恢复保证。`)) void controller.updateCurrentWorkspaceRenewal(true); }}>续费并恢复</Button> : null}
+            {recovery?.state === "recoverable" ? <Button busy={controller.workspaceRenewalBusy} color="primary" disabled={controller.workspaceRenewalLoading || controller.workspaceRenewalIssue === "unconfirmed" || !Number.isSafeInteger(detail.totalUsdMicros) || (detail.totalUsdMicros || 0) < 0} onClick={() => void requestConfirm({ title: "续费并恢复工作空间", description: `确认支付 ${formatUsdMicros(detail.totalUsdMicros)} 续费并恢复原工作空间？这会开启后续自动续费。充值本身不会恢复使用，原数据不提供恢复保证。`, confirmLabel: "确认续费" }).then((confirmed) => { if (confirmed) void controller.updateCurrentWorkspaceRenewal(true); })}>续费并恢复</Button> : null}
             <Button busy={controller.workspaceRenewalLoading} disabled={controller.workspaceRenewalBusy} onClick={() => void controller.refreshWorkspaceRenewal()} variant="outline">刷新续费条件</Button>
           </div> : null}
           <dl className="data-list"><div><dt>{renewalPresentation.kind === "manual" ? "续费方式" : "续费状态"}</dt><dd>{renewalPresentation.label}</dd></div>{renewalPresentation.kind === "active" && recovery?.state === "not_required" ? <div><dt>自动续费</dt><dd><Checkbox checked={detail.autoRenew === true} disabled={controller.workspaceRenewalBusy || controller.workspaceRenewalLoading || controller.workspaceDeleteBusy} label={detail.autoRenew ? "已开启" : "已关闭"} onChange={() => void controller.updateCurrentWorkspaceRenewal(!detail.autoRenew)} /></dd></div> : null}<div><dt>持久存储</dt><dd>{detail.storageGb ? `${detail.storageGb} GB` : "-"}</dd></div></dl>

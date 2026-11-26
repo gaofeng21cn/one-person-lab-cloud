@@ -130,3 +130,21 @@ test("ConsoleShell registers the Bot icon referenced by customerMenu", () => {
   assert.match(model, /icon:\s*"Bot"/);
   assert.match(shell, /\bBot\b/);
 });
+
+test("UI Primitive SSOT: zero native window.confirm or window.prompt calls in console-ui", () => {
+  const tsFiles = listFiles(CONSOLE_UI_SRC, [".ts", ".tsx"]);
+  const violations: string[] = [];
+
+  for (const file of tsFiles) {
+    const content = readFileSync(file, "utf8");
+    if (/\bwindow\.(confirm|prompt)\s*\(/.test(content)) {
+      violations.push(path.relative(CONSOLE_UI_SRC, file));
+    }
+  }
+
+  assert.deepEqual(
+    violations,
+    [],
+    `native window.confirm/prompt must be replaced by requestConfirm/requestPrompt Modal: ${violations.join(", ")}`
+  );
+});

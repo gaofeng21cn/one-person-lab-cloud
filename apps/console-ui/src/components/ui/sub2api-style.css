@@ -210,13 +210,17 @@ body .ui-button[data-color="primary"]:hover:not(:disabled) {
   line-height: 1.6;
 }
 
-.overview-trend .trend-chart {
+.trend-chart {
   display: grid;
   grid-template-columns: repeat(14, minmax(0, 1fr));
   align-items: end;
   gap: 8px;
   height: 148px;
   padding: 18px 20px 12px;
+}
+
+.workspace-trend-section .trend-chart {
+  padding: 12px 4px 8px;
 }
 
 .trend-col {
@@ -254,15 +258,21 @@ body .ui-button[data-color="primary"]:hover:not(:disabled) {
   white-space: nowrap;
 }
 
-.overview-trend .trend-note {
+.overview-trend .trend-note,
+.workspace-trend-section .trend-note {
   margin: 0 20px 16px;
   color: #64748b;
   font-size: 12px;
   line-height: 1.5;
 }
 
+.workspace-trend-section .trend-note {
+  margin: 4px 0;
+}
+
 /* 资金变动无法确认时，汇总不再是完整结果 */
-.overview-trend .trend-note--warning {
+.overview-trend .trend-note--warning,
+.workspace-trend-section .trend-note--warning {
   color: #b45309;
 }
 
@@ -282,7 +292,7 @@ body .ui-button[data-color="primary"]:hover:not(:disabled) {
   }
 
   /* 窄屏压缩条形而非隐藏日期，卡片标注的“近 14 天”与实际渲染范围保持一致。 */
-  .overview-trend .trend-chart {
+  .trend-chart {
     gap: 4px;
     height: 120px;
     padding: 14px 12px 8px;
