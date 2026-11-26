@@ -12,6 +12,7 @@ type Part = { partNumber: number; etag: string; sizeBytes: number; sha256: strin
 type Upload = { id: string; packageVersionId: string; partSizeBytes: number; completedParts: Part[] };
 type UploadWire = { id: string; packageVersionId: string; partSizeBytes: string; completedParts: Array<{ partNumber: number; etag: string; sizeBytes: string; sha256: string }> };
 type Build = { id: string; status: string; stage: string; artifactDigest?: string; resultCapabilityVersionId?: string; packageVersionId?: string; runtimeVersionId?: string; webuiVersionId?: string };
+type BuildLog = { id: string; buildJobId: string; sequence: number; stage: string; level: string; message: string; createdAt: string };
 type Version = { id: string; status: string; artifactDigest: string; deploymentDescriptorDigest: string };
 export type PackageVersion = { id: string; packageId: string; status: string; versionLabel: string; sha256: string; sizeBytes: string };
 type Selection = { namespaceId: string; namespaceName: string; packageId: string; packageName: string; versionLabel: string; runtimeId: string; webuiId: string };
@@ -19,6 +20,9 @@ type Work = { selection?: Selection; fingerprint: string; key: string; packageId
 
 const base = "/api/v2";
 const stageLabel: Record<string, string> = { queued: "等待构建", validating: "校验输入", building: "正在构建", pushing: "上传镜像", registering: "登记版本", succeeded: "构建完成", failed: "构建失败", needs_attention: "结果待确认", cancelled: "已取消" };
+// The owner publishes three log levels; the publisher shows them in the
+// customer's language so a failed build names its own severity.
+const logLevelText: Record<string, string> = { info: "信息", warning: "警告", error: "错误" };
 // One customer sentence per owner fact the Console cannot supply. The Build
 // stays unavailable until the platform's effective default policy resolves the
 // exact inputs, so a missing policy is never replaced by a catalog row, an older
@@ -65,15 +69,37 @@ function delay(signal: AbortSignal) {
     if (signal.aborted) abort();
   });
 }
-async function pages(path: string, signal: AbortSignal): Promise<Entry[]> {
-  const entries: Entry[] = [];
+async function pages<T>(path: string, signal: AbortSignal): Promise<T[]> {
+  const entries: T[] = [];
   let cursor = "";
   do {
-    const page = await getJson<{ items: Entry[]; nextCursor?: string }>(`${path}${path.includes("?") ? "&" : "?"}cursor=${encodeURIComponent(cursor)}`, { signal });
+    const page = await getJson<{ items: T[]; nextCursor?: string }>(`${path}${path.includes("?") ? "&" : "?"}cursor=${encodeURIComponent(cursor)}`, { signal });
     entries.push(...page.items);
     cursor = page.nextCursor || "";
   } while (cursor);
   return entries;
+}
+
+// The build log is the only answer that says why a build stopped. The owner
+// publishes it oldest first, so the publisher reads the whole page chain: a
+// build that fails at the end must show its last line, not its first page.
+const buildLogPageLimit = 200;
+const buildLogPageCap = 20;
+
+async function buildLogs(buildId: string, signal: AbortSignal): Promise<{ items: BuildLog[]; truncated: boolean }> {
+  const items: BuildLog[] = [];
+  let cursor = "";
+  for (let page = 0; page < buildLogPageCap; page++) {
+    const separator = page === 0 ? "?" : "&";
+    const read = await getJson<{ items: BuildLog[]; nextCursor?: string }>(
+      `${base}/builds/${encodeURIComponent(buildId)}/logs${separator}limit=${buildLogPageLimit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+      { signal }
+    );
+    items.push(...(read.items || []));
+    cursor = read.nextCursor || "";
+    if (!cursor) return { items, truncated: false };
+  }
+  return { items, truncated: true };
 }
 
 export function PublisherPage() {
@@ -91,6 +117,9 @@ export function PublisherPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [build, setBuild] = useState<Build | null>(null);
+  const [logs, setLogs] = useState<BuildLog[]>([]);
+  const [logsTruncated, setLogsTruncated] = useState(false);
+  const [logRevision, setLogRevision] = useState(0);
   const [version, setVersion] = useState<Version | null>(null);
   const [packageVersion, setPackageVersion] = useState<PackageVersion | null>(null);
   const work = useRef<Work | null>(null);
@@ -107,7 +136,7 @@ export function PublisherPage() {
     void (async () => {
       try {
         const active = await getJson<Session>(`${base}/auth/session`, { signal: abort.signal });
-        const ns = await pages(`${base}/namespaces`, abort.signal);
+        const ns = await pages<Entry>(`${base}/namespaces`, abort.signal);
         if (abort.signal.aborted) return;
         setSession(active); setNamespaces(ns); setNamespaceId(ns[0]?.id || "");
         try { work.current = JSON.parse(sessionStorage.getItem(storageKey(active)) || "null") as Work | null; } catch { work.current = null; }
@@ -136,9 +165,25 @@ export function PublisherPage() {
 
   useEffect(() => {
     const abort = new AbortController(); setPackages([]); setPackageId(work.current?.selection?.namespaceId === namespaceId ? work.current.selection.packageId : "");
-    if (namespaceId) void pages(`${base}/packages?namespaceId=${encodeURIComponent(namespaceId)}`, abort.signal).then((items) => { if (!abort.signal.aborted) setPackages(items); }).catch((e: unknown) => { if (!abort.signal.aborted) setError(e instanceof Error ? e.message : "Package 列表读取失败"); });
+    if (namespaceId) void pages<Entry>(`${base}/packages?namespaceId=${encodeURIComponent(namespaceId)}`, abort.signal).then((items) => { if (!abort.signal.aborted) setPackages(items); }).catch((e: unknown) => { if (!abort.signal.aborted) setError(e instanceof Error ? e.message : "Package 列表读取失败"); });
     return () => abort.abort();
   }, [namespaceId]);
+
+  // The build log answers why a build stopped. It is read again whenever the
+  // build reaches a new stage, and whenever the publisher asks for a refresh,
+  // so the last line of a failed build is always the line the publisher sees.
+  useEffect(() => {
+    const id = build?.id;
+    if (!id) { setLogs([]); setLogsTruncated(false); return; }
+    const abort = new AbortController();
+    void (async () => {
+      try {
+        const read = await buildLogs(id, abort.signal);
+        if (!abort.signal.aborted) { setLogs(read.items); setLogsTruncated(read.truncated); }
+      } catch { if (!abort.signal.aborted) { setLogs([]); setLogsTruncated(false); } }
+    })();
+    return () => abort.abort();
+  }, [build?.id, build?.status, logRevision]);
 
   async function readBuild(id: string, signal: AbortSignal) {
     for (;;) {
@@ -250,7 +295,12 @@ export function PublisherPage() {
     {build && <section aria-label="构建进度" className="publisher-progress">
       <h3>{stageLabel[build.status] || build.status}</h3>
       <p>{build.status === "succeeded" ? "构建完成，应用镜像已生成。" : "正在处理本次构建；可继续上传或刷新状态。"}</p>
-      <Button disabled={busy} variant="outline" onClick={() => void run(true)}>刷新构建状态</Button>
+      {logs.length > 0 && <section aria-label="构建日志" className="publisher-build-logs">
+        <h4>构建日志</h4>
+        <ol>{logs.map((log) => <li data-level={log.level} key={log.id}><span className="publisher-build-logs__level">{logLevelText[log.level] || log.level}</span><span className="publisher-build-logs__stage">{log.stage}</span><span className="publisher-build-logs__message">{log.message}</span></li>)}</ol>
+        {logsTruncated ? <p className="publisher-build-logs__note">日志条数较多，以上为前 {logs.length} 条。</p> : null}
+      </section>}
+      <Button disabled={busy} variant="outline" onClick={() => { setLogRevision((value) => value + 1); void run(true); }}>刷新构建状态</Button>
     </section>}
     {version && <section aria-label="已就绪版本"><h3>版本已就绪</h3><p>{version.id}</p><p>该版本与本次构建结果一致，可在工作空间中使用。</p></section>}
     <details className="publisher-technical-details">

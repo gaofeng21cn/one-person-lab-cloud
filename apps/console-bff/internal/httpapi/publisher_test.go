@@ -100,3 +100,41 @@ func TestCapabilityVersionListPreservesFilters(t *testing.T) {
 		t.Fatalf("invalid status=%d, query=%v", response.Code, probe.received)
 	}
 }
+
+type buildLogProbe struct {
+	api.BuildProductServiceClient
+	received *api.ListBuildLogsRpcRequest
+}
+
+func (p *buildLogProbe) ListBuildLogs(_ context.Context, r *api.ListBuildLogsRpcRequest, _ ...grpc.CallOption) (*api.BuildLogPage, error) {
+	p.received = r
+	return &api.BuildLogPage{Items: []*api.BuildLog{{Id: "log-1", BuildJobId: r.GetBuildId(), Sequence: 1, Stage: "building", Level: api.BuildLogLevelEnum_BUILD_LOG_LEVEL_ENUM_ERROR, Message: "package entrypoint is missing"}}}, nil
+}
+
+// TestBuildLogRouteReachesTheBuildOwner proves the publisher can read the
+// structured build log the contract already declares: the route carries the
+// build identity and the owner's own paging filters to the Build owner, and
+// publishes the owner's page unchanged.
+func TestBuildLogRouteReachesTheBuildOwner(t *testing.T) {
+	identity := allowedIdentity()
+	identity.decision.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTBUILDLOGS
+	identity.decision.AudienceOwner = api.OwnerEnum_OWNER_ENUM_BUILD
+	identity.decision.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_BUILD, Id: proto.String("build-1")}
+	probe := &buildLogProbe{}
+	handler := NewPublisherHandler(nil, nil, probe, identity)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, sessionRequest("GET", "/api/v2/builds/build-1/logs?cursor=7&limit=5"))
+	if response.Code != 200 {
+		t.Fatalf("response=%d %s", response.Code, response.Body.String())
+	}
+	request := probe.received
+	if request.GetBuildId() != "build-1" || request.GetQueryCursor() != "7" || request.GetQueryLimit() != 5 {
+		t.Fatalf("owner query=%v", request)
+	}
+	if request.GetContext().GetActorId() != "actor-1" {
+		t.Fatalf("owner context=%v", request.GetContext())
+	}
+	if !strings.Contains(response.Body.String(), "package entrypoint is missing") {
+		t.Fatalf("log body=%s", response.Body.String())
+	}
+}
