@@ -898,7 +898,7 @@ function localV2Fixture({ operationResponses = [], replayOrder, workspaceReadbac
   return { values, workspaceImage, requests, client, compose };
 }
 
-async function runLocalV2FixtureQualification(fixture, dependencies = {}) {
+async function runLocalV2FixtureQualification(fixture, dependencies = {}, optionOverrides = {}, verifyReceipts = null) {
   const root = await mkdtemp(join(tmpdir(), "opl-local-v2-regression-"));
   try {
     const contractPath = join(root, "contract.json");
@@ -913,9 +913,11 @@ async function runLocalV2FixtureQualification(fixture, dependencies = {}) {
         entryPort: "webui", healthChecks: [{ port: 3000, path: "/" }]
       }
     }));
-    return await runLocalV2Qualification({
-      sourceSha: "a".repeat(40), receiptPath: join(root, "receipt.json"), installationEnv: join(root, "installation.env"),
-      applicationContract: contractPath, project: "opl-local-v2", workspaceName: "Local v2 qualification"
+    const receiptPath = join(root, "receipt.json");
+    const result = await runLocalV2Qualification({
+      sourceSha: "a".repeat(40), receiptPath, installationEnv: join(root, "installation.env"),
+      applicationContract: contractPath, project: "opl-local-v2", workspaceName: "Local v2 qualification",
+      ...optionOverrides
     }, {
       readSourceIdentity: async () => ({ sha: "a".repeat(40), tree: "b".repeat(40), clean: true }),
       inspectImage: async (reference) => ({ Id: `sha256:${"f".repeat(64)}`, RepoDigests: [reference],
@@ -925,10 +927,100 @@ async function runLocalV2FixtureQualification(fixture, dependencies = {}) {
       createClient: () => fixture.client, compose: fixture.compose, ownerQuery: async () => "3",
       wait: async () => {}, pollIntervalMs: 0, pollAttempts: 100, ...dependencies
     });
+    await verifyReceipts?.(receiptPath);
+    return result;
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 }
+
+test("uploaded Workspace runtime failure preserves only its owner diagnostics before cleanup", async () => {
+  const order = { owner: "workspace", kind: "create_workspace", operationId: "op_uploaded", resourceId: "workspace_uploaded" };
+  const response = { ...order, status: "awaiting_confirmation", stage: "runtime", observationResult: "unknown", errorCode: "DEPENDENCY_UNAVAILABLE" };
+  const deletion = { owner: "workspace", kind: "delete_workspace", operationId: "op_delete_uploaded", resourceId: order.resourceId, status: "succeeded", stage: "succeeded" };
+  const events = [];
+  const fixture = localV2Fixture({
+    quoteOverride: { capabilityVersionId: "capv_uploaded", provider: "local-docker", billingMode: "LOCAL_NO_CHARGE" },
+    routeReply(method, path, ok) {
+      const replies = {
+        "/api/v2/namespaces": { items: [{ id: "ns_uploaded", isDefault: true }] },
+        "/api/v2/packages": { id: "pkg_uploaded" },
+        "/api/v2/packages/pkg_uploaded/uploads": { id: "upload_fixture", packageVersionId: "pv_uploaded", partSizeBytes: "16777216" },
+        "/api/v2/uploads/upload_fixture/parts": { url: "https://objects.test/fixture" },
+        "/api/v2/uploads/upload_fixture/complete": { owner: "capability", kind: "complete_upload", resourceId: "pv_uploaded", status: "succeeded", stage: "succeeded", observationResult: "confirmed", operationId: "op_upload" },
+        "/api/v2/catalog/build-policy": { runtimeVersionId: "runtime_test", defaultWebuiVersionId: "webui_fixture" },
+        "/api/v2/catalog/runtime-versions": { items: [{ id: "runtime_test", name: "local-qualification-app", publisherContract: { buildRecipe: {
+          packageInput: { sourceRoot: "agent", targetPath: "/agent" }, outputImageCommand: { entrypoint: ["/agent/bin/runtime"] }
+        } } }] },
+        "/api/v2/builds": { id: "build_uploaded", status: "queued", packageVersionId: "pv_uploaded", runtimeVersionId: "runtime_test", webuiVersionId: "webui_fixture" },
+        "/api/v2/builds/build_uploaded": { id: "build_uploaded", status: "succeeded", stage: "succeeded", packageVersionId: "pv_uploaded", runtimeVersionId: "runtime_test", webuiVersionId: "webui_fixture", resultCapabilityVersionId: "capv_uploaded" },
+        "/api/v2/capability-versions/capv_uploaded": { id: "capv_uploaded", status: "ready", artifactDigest: `sha256:${"a".repeat(64)}` },
+        "/api/v2/operations/workspace/op_uploaded": response,
+        "/api/v2/operations/workspace/op_delete_uploaded": deletion
+      };
+      if (path === "/api/v2/workspaces" && method === "POST" && events.length === 0) {
+        events.push("purchase");
+        return ok(order, 202);
+      }
+      if (path === "/api/v2/workspaces/workspace_uploaded" && method === "DELETE") {
+        events.push("delete");
+        return ok(deletion, 202);
+      }
+      if (path === "/api/v2/workspaces/workspace_uploaded") return ok({ id: order.resourceId, status: "deleted", accessUrl: "" });
+      if (replies[path]) return ok(replies[path]);
+    }
+  });
+  const originalJson = fixture.client.json;
+  let upload;
+  fixture.client.json = async (path, init, ...args) => {
+    if (path === "/api/v2/packages/pkg_uploaded/uploads") upload = init.body;
+    if (path === "/api/v2/package-versions/pv_uploaded") {
+      return { payload: { id: "pv_uploaded", packageId: "pkg_uploaded", versionLabel: "1.0.0",
+        sha256: upload.sha256, sizeBytes: upload.sizeBytes, status: "uploaded" } };
+    }
+    return originalJson(path, init, ...args);
+  };
+  const runtimeFailure = {
+    workspaceSteps: [{ step: "read_runtime", observation: "unknown", errorCode: "DEPENDENCY_UNAVAILABLE" }],
+    serveDeployments: [{
+      deploymentStatus: "deploying", deploymentErrorCode: null, runtimeStatus: "starting",
+      runtimeErrorCode: null, startObservation: "unknown", startErrorCode: "local_docker_runtime_unconfirmed"
+    }]
+  };
+  const result = await runLocalV2FixtureQualification(fixture, {
+    pollAttempts: 2,
+    putCustomerPart: async () => ({ status: 200, headers: new Headers() }),
+    ownerQuery: async (database, sql) => {
+      if (database === "opl_workspace") {
+        assert.match(sql, /o\.id = 'op_uploaded' and o\.resource_id = 'workspace_uploaded' and o\.tenant_id = 'tenant_test'/);
+        assert.match(sql, /o\.kind = 'create_workspace'/);
+        events.push("workspace evidence");
+        return JSON.stringify([{ ...runtimeFailure.workspaceSteps[0], inputSnapshot: "private request" }]);
+      }
+      if (database === "opl_serve") {
+        assert.match(sql, /d\.workspace_id = 'workspace_uploaded' and d\.capability_version_id = 'capv_uploaded'/);
+        assert.match(sql, /o\.tenant_id = 'tenant_test' and o\.kind = 'runtime_deploy'/);
+        assert.match(sql, /a\.expected_deployment_id = d\.id and a\.action = 'start'/);
+        events.push("serve evidence");
+        return JSON.stringify([{ ...runtimeFailure.serveDeployments[0], runtimeErrorCode: "https://private.test/credential", raw: "private result" }]);
+      }
+      return "3";
+    }
+  }, {
+    customer: { declared: true, mode: "directory", packageDir: join(process.cwd(), "tests/tools/fixtures/customer-agent-package"),
+      probePath: "agent/provenance/probe.txt", requestedEvidenceLevel: "content-provenance", achievableEvidenceLevel: "content-provenance", degradationReason: "" }
+  }, async (receiptPath) => {
+    const primary = JSON.parse(await readFile(receiptPath, "utf8"));
+    assert.equal(primary.boundary.code, "local_v2_customer_workspace_operation_failed", JSON.stringify(primary.boundary));
+    const nativeEvidence = JSON.parse(await readFile(`${receiptPath}.diagnostic.json`, "utf8"));
+    assert.equal(nativeEvidence.status, "NOT_READY");
+    assert.deepEqual(nativeEvidence.evidence.readbacks.customerPackage.runtimeFailure, runtimeFailure);
+    assert.deepEqual(nativeEvidence, primary);
+    assert.throws(() => validateLocalQualificationReceipt(primary), /READY/);
+  });
+  assert.deepEqual(events, ["purchase", "workspace evidence", "serve evidence", "delete"]);
+  assert.equal(result.boundary.code, "local_v2_customer_workspace_operation_failed");
+});
 
 test("local-v2 replay keeps polling through running and stops activation at an empty entry", async () => {
   const parked = { status: "awaiting_confirmation", stage: "resource_preflight", observationResult: "unknown" };

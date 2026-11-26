@@ -1466,6 +1466,60 @@ function localV2LaunchReadbackBoundary(workspace, workspaceId, origin) {
   return localV2ApplicationEntryBoundary(workspace.accessUrl, origin);
 }
 
+// Collect the failed Local-Docker purchase's persisted owner states before it
+// is cleaned up. Keep commands, result payloads, logs and addresses out of the
+// artifact. An unavailable read (null) differs from a successful empty read.
+async function readCustomerRuntimeFailure(query, tenantId, readback) {
+  const { operationId, workspaceId } = readback.customerOrder || {};
+  const capabilityVersionId = readback.build?.resultCapabilityVersionId;
+  if (![tenantId, operationId, workspaceId, capabilityVersionId].every((id) => typeof id === "string" && /^[a-z0-9_]+$/.test(id))) {
+    return { workspaceSteps: null, serveDeployments: null };
+  }
+  const code = /^(?:[A-Z][A-Z0-9_]{1,127}|(?:local_docker_|workspace_application_)[a-z0-9_]{1,106})$/;
+  const observation = /^(confirmed|rejected|unknown)$/;
+  async function readOwner(database, sql, patterns) {
+    try {
+      const rows = JSON.parse(await query(database, `set statement_timeout = '5s'; ${sql}`));
+      return rows.map((row) => Object.fromEntries(Object.entries(patterns).map(([field, pattern]) => {
+        const value = row?.[field];
+        return [field, typeof value === "string" && pattern.test(value) ? value : null];
+      })));
+    } catch {
+      return null;
+    }
+  }
+  const workspaceSteps = await readOwner("opl_workspace", `
+    select coalesce(json_agg(json_build_object(
+      'step', s.step_key, 'observation', s.observation_result, 'errorCode', s.error_code
+    ) order by s.sequence), '[]'::json)
+    from workspace.saga_steps s join workspace.operations o on o.id = s.operation_id
+    where o.id = '${operationId}' and o.resource_id = '${workspaceId}' and o.tenant_id = '${tenantId}'
+      and o.kind = 'create_workspace' and s.target_owner = 'serve'
+      and s.step_key in ('reserve_runtime', 'deploy_runtime', 'read_runtime')`,
+    { step: /^(reserve_runtime|deploy_runtime|read_runtime)$/, observation, errorCode: code });
+  const serveDeployments = await readOwner("opl_serve", `
+    select coalesce(json_agg(json_build_object(
+      'deploymentStatus', d.status, 'deploymentErrorCode', d.error_code, 'runtimeStatus', i.status,
+      'runtimeErrorCode', i.error_code, 'startObservation', a.observation_result, 'startErrorCode', a.error_code
+    ) order by d.created_at, d.id, a.id), '[]'::json)
+    from serve.agent_deployments d
+    join serve.operations o on o.id = d.operation_id and o.resource_id = d.id
+    left join serve.agent_runtime_instances i
+      on i.id = d.runtime_instance_id and i.deployment_id = d.id and i.workspace_id = d.workspace_id
+    left join serve.agent_runtime_actions a
+      on a.runtime_instance_id = i.id and a.expected_deployment_id = d.id and a.action = 'start'
+    where d.workspace_id = '${workspaceId}' and d.capability_version_id = '${capabilityVersionId}'
+      and o.tenant_id = '${tenantId}' and o.kind = 'runtime_deploy'`, {
+    deploymentStatus: /^(queued|deploying|verifying|active|superseded|failed|rolling_back|rolled_back|needs_attention)$/,
+    deploymentErrorCode: code,
+    runtimeStatus: /^(pending|starting|ready|stopped|failed|terminating|terminated)$/,
+    runtimeErrorCode: code,
+    startObservation: observation,
+    startErrorCode: code
+  });
+  return { workspaceSteps, serveDeployments };
+}
+
 // The Local v2 qualification: one declared installation, the owner processes it
 // starts, and the owner routes it serves. Every step records the readback it
 // observed. Incomplete runs retain their diagnostic boundary. The complete
@@ -1491,6 +1545,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
   let composeEnvironment = process.env;
   const compose = dependencies.compose || ((args, settings = {}) => runProcess("docker", args, { cwd: root, ...settings, env: composeEnvironment }));
   const ownerQuery = dependencies.ownerQuery || null;
+  const putCustomerPart = dependencies.putCustomerPart || customerUploadRequest;
   const wait = dependencies.wait || ((milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds)));
   const startedAt = new Date().toISOString();
   const stages = [];
@@ -1763,7 +1818,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
           pollIntervalMs, pollAttempts,
           readback: customerReadback,
           fetchEntry: (url, headers) => customerEntryRequest(url, headers, caFile),
-          putPart: (url, init) => customerUploadRequest(url, init, caFile),
+          putPart: (url, init) => putCustomerPart(url, init, caFile),
         });
         record("customer_package", customerReadback.degradationReason ? "degraded" : "confirmed", {
           evidenceLevel: String(customerReadback.evidenceLevel || ""),
@@ -1781,6 +1836,9 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       } catch (error) {
         customerBoundary = { code: String(error?.code || "local_v2_customer_chain_failed"), detail: redactedError(error), stage: "customer_package" };
         record("customer_package", "stopped", { code: customerBoundary.code, detail: customerBoundary.detail });
+        if (customerBoundary.code === "local_v2_customer_workspace_operation_failed" && customerReadback.customerOperation?.stage === "runtime") {
+          customerReadback.runtimeFailure = await readCustomerRuntimeFailure(query, tenant.id, customerReadback);
+        }
         // What the chain bought before it stopped leaves the installation with
         // it, so the owner is asked to delete it before the run ends.
         const boughtWorkspaceId = String(customerReadback.customerOrder?.workspaceId || "");
@@ -2150,6 +2208,9 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     }
   }
   await writeJSONAtomic(options.receiptPath, result);
+  if (readbacks.customerPackage?.runtimeFailure) {
+    await writeJSONAtomic(`${options.receiptPath}.diagnostic.json`, result);
+  }
   return result;
 }
 
