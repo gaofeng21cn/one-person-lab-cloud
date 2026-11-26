@@ -18,12 +18,14 @@ Close end-to-end customer lifecycle verification for the latest Cloud Candidate 
 
 - Default OPL App launch (`create -> quote -> debit -> Fabric provision -> Serve delivery -> readiness -> access -> renewal -> deletion -> refund/reconcile -> Ledger receipt`), plus custom Agent Package build-to-serve E2E on TKE.
 - The renewal step of that chain is not closed yet. The Resource Catalog prices
-  the renewal offer and the Fabric owner extends the provider's prepaid month
-  for the same compute and storage the Workspace already owns. The renewal
-  still has to run as one accepted Workspace obligation — charged once, with its
-  renewed paid period committed — and the two periods have to be reconciled: the
-  provider extends its own prepaid deadline, while the paid period of an
-  expired Workspace starts at the renewal instant.
+  the renewal offer, the Fabric owner extends the provider's prepaid month for
+  the same compute and storage the Workspace already owns, and the Workspace
+  owner runs the renewal as one accepted obligation: charged once, extended by
+  the provider, and committed as a new paid period that continues the confirmed
+  paid-through. A customer cannot reach that renewal yet — the Console entry is
+  still open — and a Workspace whose paid term already ended is refused before
+  any charge, because the provider extends the prepaid period from its own
+  deadline and cannot cover a month that starts now.
 - Verify that one customer deletion reaches confirmed CBS final release, compute
   absence, and settlement through the installed Fabric path without an operator
   releasing the recycled disk.
@@ -59,22 +61,22 @@ Cross-installation transfer requires separate evidence if used.
 ### Manual Workspace Renewal
 
 A paid Workspace that reaches the end of its period still has no renewal. The
-Resource Catalog now prices one renewal offer, so the rest of the chain is
-open:
+Resource Catalog prices one renewal offer, the Fabric owner extends the
+provider's prepaid month for the same compute and storage the Workspace already
+owns, the identity owner grants the renewal obligation, and the Workspace owner
+runs the renewal as one accepted obligation: charged once, extended by the
+provider, and committed as a new subscription period that continues the
+confirmed paid-through. What is still open:
 
-- The Workspace owner accepts the renewal offer, charges it once and writes the
-  renewed paid period as a new subscription period. While the subscription is
-  current the renewal extends the period from the previous paid-through instant.
-  A renewal of an expired Workspace is refused before any charge: the provider
-  extends the prepaid period from its own deadline, so a period that already
-  ended cannot produce a renewed period the provider also covers, and the
-  customer is never charged for a renewal that cannot be delivered.
-- The provider's prepaid month is the same fact seen from the provider, so the
-  renewal extends it through the Fabric owner. Otherwise the Cloud period would
-  outrun the compute the customer paid for.
-- A Workspace that stopped at expiry resumes. The existing lifecycle recovery
-  already resumes a suspended Workspace whose paid term is confirmed, so the
-  renewal has to leave that term confirmed rather than write a second resume.
+- A Workspace that stopped at expiry does not come back. A renewal of an
+  expired Workspace is refused before any charge — the provider extends the
+  prepaid period from its own deadline, so a period that already ended cannot
+  produce a renewed period the provider also covers — and a stopped Workspace
+  therefore has no renewal path back to its paid state. Reviving it needs a
+  separate owner-authorized path, not a renewal.
+- A provider that refuses the extension after the charge leaves the renewal
+  pending with the money already taken. No refund path exists for a renewal the
+  provider would not deliver.
 - The Console offers the renewal, shows the price and shows the renewed
   paid-through.
 
