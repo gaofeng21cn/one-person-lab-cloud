@@ -51,6 +51,29 @@ type ResourceResult struct {
 	ObservedAt time.Time                     `json:"observedAt"`
 }
 
+// ResourceRenewalIntent is one committed request to extend the prepaid period of
+// an accepted resource set. It carries the original resource identities, so the
+// provider renews the very compute and storage the Workspace already owns
+// instead of buying a second pair.
+type ResourceRenewalIntent struct {
+	TenantID       string
+	WorkspaceID    string
+	OperationID    string
+	ResourceSetID  string
+	ComputeID      string
+	StorageID      string
+	PrepaidMonths  int32
+	IdempotencyKey string
+}
+
+// ResourceRenewalResult is the provider-confirmed readback of one renewal: the
+// same compute and storage with their extended prepaid deadlines.
+type ResourceRenewalResult struct {
+	Compute    fabric.ComputeAllocation `json:"compute"`
+	Storage    fabric.StorageVolume     `json:"storage"`
+	ObservedAt time.Time                `json:"observedAt"`
+}
+
 // NetworkFact is the provider-authoritative network placement of the compute
 // resource: the concrete provider network the compute joined plus its zone and
 // region. It is a read projection of the same provider mutation, not a second
@@ -82,6 +105,11 @@ type ResourceDispatcher interface {
 	// claim and reconciles by readback, so no second provider terminate or delete
 	// is dispatched for a handle whose mutation may already have been sent.
 	DeleteResource(context.Context, ResourceDeletionIntent, string) (ResourceDeletionFact, error)
+	// RenewResource extends the prepaid period of one accepted resource set. It
+	// is idempotent for the same intent: a repeated call renews the same
+	// compute and storage under the same provider claim and reads back their
+	// extended deadlines, never a second purchase.
+	RenewResource(context.Context, ResourceRenewalIntent) (ResourceRenewalResult, error)
 }
 
 // SecretBindIntent is one committed request to confirm an approved-store Secret

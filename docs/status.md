@@ -29,6 +29,20 @@ chronological snapshots.
   `defaultAccountId`, so onboarding a customer needs no profile edit and no
   restart. A profile that declares neither refuses that Tenant. The profile
   itself stays an `opl-instance-medopl` deployment fact.
+- **Prepaid Provider Renewal At The Fabric Owner**: The Fabric coordination owner
+  extends the prepaid provider period of one accepted resource set. It renews the
+  compute and storage the Workspace already owns, in place, with their original
+  provider identities and their original durable mutation claim, so a lost
+  response can never buy a second resource. The provider is mutated only after
+  the Ledger confirms the wallet charge recorded for that exact renewal
+  obligation, exactly like the purchase path; an unconfirmed provider stays
+  unknown and is retried against the same resources and keys, never reported as
+  absent. A provider deadline that does not move forward, or that covers less
+  than the prepaid months the Workspace bought, is refused instead of stored,
+  and a zero-charge resource set — which owns no provider period — is refused.
+  The charge, the renewed Cloud paid period, the authorization group of the
+  renewal obligation and the recovery of a stopped Workspace belong to the
+  Workspace and identity owners and are not implemented here.
 - **Console / BFF / Control Plane Boundary**:
   - CloudIdentity routes (`/api/v2/*`) serve Workspace, Quote, Launch, Capability
     upload/build, Serve delivery, Gateway wallet/usage summary, Agent read-only

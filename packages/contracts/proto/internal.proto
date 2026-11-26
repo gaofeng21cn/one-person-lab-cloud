@@ -2579,7 +2579,11 @@ message MutateResourcesCommand { CallContext context = 1; string workspace_id = 
  string original_provision_idempotency_key = 6;
 }
 message ResizeResourcesCommand { CallContext context = 1; string workspace_id = 2; string resource_set_id = 3; string expected_resource_version = 4; ResourcePlanSnapshot target = 5; string quote_acceptance_id = 6; PlanChangeFundingEvidence funding_evidence = 7; string instance_authorization_reference = 8; string plan_change_id = 9; string transition_id = 10; int64 execution_epoch = 11; ProviderPlanChangeExecutionPlanReference execution_plan = 12; }
-message RenewResourcesCommand { CallContext context = 1; string workspace_id = 2; string resource_set_id = 3; string subscription_period_id = 4; int32 prepaid_months = 5; string confirmed_charge_receipt_id = 6; string instance_authorization_reference = 7; }
+// RenewResourcesCommand renews the prepaid provider period of one accepted
+// resource set. obligation_id names the Workspace owner's renewal obligation:
+// the provider mutation is dispatched only after the Ledger confirms the wallet
+// charge recorded for that exact obligation, exactly like the purchase path.
+message RenewResourcesCommand { CallContext context = 1; string workspace_id = 2; string resource_set_id = 3; string subscription_period_id = 4; int32 prepaid_months = 5; string confirmed_charge_receipt_id = 6; string instance_authorization_reference = 7; string obligation_id = 8; }
 message ResourceReadbackRequest { CallContext context = 1; string resource_set_id = 2; string resource_action_id = 3; string workspace_id = 4; string original_provision_idempotency_key = 5; }
 message ResourceFact { string id = 1; string kind = 2; string opaque_provider_reference = 3; string state = 4; string receipt_id = 5; }
 // Execution bindings exist only after the Fabric adapter confirms actual resources.
