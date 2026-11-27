@@ -22,10 +22,9 @@ import (
 
 // Server serves the Console BFF REST surface over typed owner reads.
 type Server struct {
-	personalGateway PersonalGatewayReader
-	legacyBilling   LegacyBillingReader
-	announcements   AnnouncementReader
-	operator        OperatorReader
+	legacyBilling LegacyBillingReader
+	announcements AnnouncementReader
+	operator      OperatorReader
 	// operatorProvisioner is the retained owner activation command. It is separate
 	// from the operator reads so activation is composed only when it is configured.
 	operatorProvisioner OperatorProvisioner
@@ -58,9 +57,6 @@ type OwnerReader interface {
 // and authorization preconditions are resolved through.
 func NewServer(reader OwnerReader, identity IdentityReader) *Server {
 	s := &Server{reader: reader, identity: identity}
-	if p, ok := reader.(PersonalGatewayReader); ok {
-		s.personalGateway = p
-	}
 	if b, ok := reader.(LegacyBillingReader); ok {
 		s.legacyBilling = b
 	}

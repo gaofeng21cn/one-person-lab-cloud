@@ -4505,6 +4505,8 @@ const (
 	GatewayProductService_ListPersonalGatewayGroups_FullMethodName         = "/opl.cloud.api.GatewayProductService/ListPersonalGatewayGroups"
 	GatewayProductService_ListPersonalGatewayKeyUsage_FullMethodName       = "/opl.cloud.api.GatewayProductService/ListPersonalGatewayKeyUsage"
 	GatewayProductService_GetPersonalGatewayKeyUsageSummary_FullMethodName = "/opl.cloud.api.GatewayProductService/GetPersonalGatewayKeyUsageSummary"
+	GatewayProductService_ListPersonalGatewayBalanceHistory_FullMethodName = "/opl.cloud.api.GatewayProductService/ListPersonalGatewayBalanceHistory"
+	GatewayProductService_GetPersonalGatewayEndpoint_FullMethodName        = "/opl.cloud.api.GatewayProductService/GetPersonalGatewayEndpoint"
 	GatewayProductService_CreatePersonalGatewayKey_FullMethodName          = "/opl.cloud.api.GatewayProductService/CreatePersonalGatewayKey"
 	GatewayProductService_UpdatePersonalGatewayKey_FullMethodName          = "/opl.cloud.api.GatewayProductService/UpdatePersonalGatewayKey"
 	GatewayProductService_RevealPersonalGatewayKey_FullMethodName          = "/opl.cloud.api.GatewayProductService/RevealPersonalGatewayKey"
@@ -4532,6 +4534,8 @@ type GatewayProductServiceClient interface {
 	ListPersonalGatewayGroups(ctx context.Context, in *ListPersonalGatewayGroupsRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayGroupPage, error)
 	ListPersonalGatewayKeyUsage(ctx context.Context, in *ListPersonalGatewayKeyUsageRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayKeyUsagePage, error)
 	GetPersonalGatewayKeyUsageSummary(ctx context.Context, in *GetPersonalGatewayKeyUsageSummaryRpcRequest, opts ...grpc.CallOption) (*UsageSummary, error)
+	ListPersonalGatewayBalanceHistory(ctx context.Context, in *ListPersonalGatewayBalanceHistoryRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayBalanceHistoryPage, error)
+	GetPersonalGatewayEndpoint(ctx context.Context, in *GetPersonalGatewayEndpointRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayEndpoint, error)
 	CreatePersonalGatewayKey(ctx context.Context, in *CreatePersonalGatewayKeyRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayKey, error)
 	UpdatePersonalGatewayKey(ctx context.Context, in *UpdatePersonalGatewayKeyRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayKey, error)
 	RevealPersonalGatewayKey(ctx context.Context, in *RevealPersonalGatewayKeyRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayKeySecret, error)
@@ -4602,6 +4606,26 @@ func (c *gatewayProductServiceClient) GetPersonalGatewayKeyUsageSummary(ctx cont
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(UsageSummary)
 	err := c.cc.Invoke(ctx, GatewayProductService_GetPersonalGatewayKeyUsageSummary_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gatewayProductServiceClient) ListPersonalGatewayBalanceHistory(ctx context.Context, in *ListPersonalGatewayBalanceHistoryRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayBalanceHistoryPage, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PersonalGatewayBalanceHistoryPage)
+	err := c.cc.Invoke(ctx, GatewayProductService_ListPersonalGatewayBalanceHistory_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gatewayProductServiceClient) GetPersonalGatewayEndpoint(ctx context.Context, in *GetPersonalGatewayEndpointRpcRequest, opts ...grpc.CallOption) (*PersonalGatewayEndpoint, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PersonalGatewayEndpoint)
+	err := c.cc.Invoke(ctx, GatewayProductService_GetPersonalGatewayEndpoint_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -4777,6 +4801,8 @@ type GatewayProductServiceServer interface {
 	ListPersonalGatewayGroups(context.Context, *ListPersonalGatewayGroupsRpcRequest) (*PersonalGatewayGroupPage, error)
 	ListPersonalGatewayKeyUsage(context.Context, *ListPersonalGatewayKeyUsageRpcRequest) (*PersonalGatewayKeyUsagePage, error)
 	GetPersonalGatewayKeyUsageSummary(context.Context, *GetPersonalGatewayKeyUsageSummaryRpcRequest) (*UsageSummary, error)
+	ListPersonalGatewayBalanceHistory(context.Context, *ListPersonalGatewayBalanceHistoryRpcRequest) (*PersonalGatewayBalanceHistoryPage, error)
+	GetPersonalGatewayEndpoint(context.Context, *GetPersonalGatewayEndpointRpcRequest) (*PersonalGatewayEndpoint, error)
 	CreatePersonalGatewayKey(context.Context, *CreatePersonalGatewayKeyRpcRequest) (*PersonalGatewayKey, error)
 	UpdatePersonalGatewayKey(context.Context, *UpdatePersonalGatewayKeyRpcRequest) (*PersonalGatewayKey, error)
 	RevealPersonalGatewayKey(context.Context, *RevealPersonalGatewayKeyRpcRequest) (*PersonalGatewayKeySecret, error)
@@ -4817,6 +4843,12 @@ func (UnimplementedGatewayProductServiceServer) ListPersonalGatewayKeyUsage(cont
 }
 func (UnimplementedGatewayProductServiceServer) GetPersonalGatewayKeyUsageSummary(context.Context, *GetPersonalGatewayKeyUsageSummaryRpcRequest) (*UsageSummary, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPersonalGatewayKeyUsageSummary not implemented")
+}
+func (UnimplementedGatewayProductServiceServer) ListPersonalGatewayBalanceHistory(context.Context, *ListPersonalGatewayBalanceHistoryRpcRequest) (*PersonalGatewayBalanceHistoryPage, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListPersonalGatewayBalanceHistory not implemented")
+}
+func (UnimplementedGatewayProductServiceServer) GetPersonalGatewayEndpoint(context.Context, *GetPersonalGatewayEndpointRpcRequest) (*PersonalGatewayEndpoint, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetPersonalGatewayEndpoint not implemented")
 }
 func (UnimplementedGatewayProductServiceServer) CreatePersonalGatewayKey(context.Context, *CreatePersonalGatewayKeyRpcRequest) (*PersonalGatewayKey, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreatePersonalGatewayKey not implemented")
@@ -4973,6 +5005,42 @@ func _GatewayProductService_GetPersonalGatewayKeyUsageSummary_Handler(srv interf
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(GatewayProductServiceServer).GetPersonalGatewayKeyUsageSummary(ctx, req.(*GetPersonalGatewayKeyUsageSummaryRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GatewayProductService_ListPersonalGatewayBalanceHistory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListPersonalGatewayBalanceHistoryRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayProductServiceServer).ListPersonalGatewayBalanceHistory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayProductService_ListPersonalGatewayBalanceHistory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayProductServiceServer).ListPersonalGatewayBalanceHistory(ctx, req.(*ListPersonalGatewayBalanceHistoryRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GatewayProductService_GetPersonalGatewayEndpoint_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetPersonalGatewayEndpointRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayProductServiceServer).GetPersonalGatewayEndpoint(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayProductService_GetPersonalGatewayEndpoint_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayProductServiceServer).GetPersonalGatewayEndpoint(ctx, req.(*GetPersonalGatewayEndpointRpcRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -5291,6 +5359,14 @@ var GatewayProductService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetPersonalGatewayKeyUsageSummary",
 			Handler:    _GatewayProductService_GetPersonalGatewayKeyUsageSummary_Handler,
+		},
+		{
+			MethodName: "ListPersonalGatewayBalanceHistory",
+			Handler:    _GatewayProductService_ListPersonalGatewayBalanceHistory_Handler,
+		},
+		{
+			MethodName: "GetPersonalGatewayEndpoint",
+			Handler:    _GatewayProductService_GetPersonalGatewayEndpoint_Handler,
 		},
 		{
 			MethodName: "CreatePersonalGatewayKey",

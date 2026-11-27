@@ -69,6 +69,17 @@ chronological snapshots.
     routes are still live and still write Sub2API directly; they are retired in
     the follow-up slice, once the retained Control Plane Console build has
     stopped calling them.
+  - The customer's Gateway balance history and public endpoint are read from the
+    Gateway owner. The BFF calls `ListPersonalGatewayBalanceHistory` and
+    `GetPersonalGatewayEndpoint` on `GatewayProductService`; the owner resolves
+    the caller's own Gateway subject from its own verified identity binding
+    before it reads the Gateway's two monetary record streams, so no request
+    names a subject and no other service proxies the read. Control Plane's
+    `GET /internal/cloud/gateway/balance-history` and
+    `GET /internal/cloud/gateway/endpoint` bridges are retired. The retained
+    `GET /api/gateway/balance-history` and `GET /api/gateway/endpoint` routes
+    stay for the legacy Console build and are retired with the retained
+    Control Plane.
   - A platform administrator can suspend a customer account through the Tenant
     owner: `POST /api/v2/admin/tenants/{tenantId}/suspend` is served by the BFF
     and forwards to `TenantProductService.SuspendTenant`. The owner writes the
