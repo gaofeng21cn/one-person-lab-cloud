@@ -1,5 +1,5 @@
 import {
-  AlertCircle, ChevronLeft, CircleCheck, CircleX, RefreshCw
+  AlertCircle, ChevronLeft, CircleCheck, CircleX, LockKeyhole, RefreshCw
 } from "lucide-react";
 import { RadioGroup } from "@openai/apps-sdk-ui/components/RadioGroup";
 import type { ReactNode } from "react";
@@ -109,6 +109,22 @@ function AgentLaunchPage({
           </section>
           <aside className="workspace-order-summary"><header><span>订单与资源</span><strong>{controller.agentWorkspace?.name || controller.launchName || "工作空间"}</strong></header><dl className="workspace-order-summary__facts"><div><dt>报价</dt><dd>{quote ? formatUsdMicros(quote.totalUSDMicros) : "读取中"}</dd></div><div><dt>套餐</dt><dd>{compute?.name || "暂不可用"} / {storage?.name || "暂不可用"}</dd></div><div><dt>应用来源</dt><dd>{isDefaultApp ? `默认应用 · ${release?.versionLabel || release?.name || "暂不可用"}` : `自定义智能体 · ${version?.versionLabel || "暂不可用"}`}</dd></div><div><dt>模型</dt><dd>{isDefaultApp ? "应用内置配置" : (quote?.modelSelections.map((selection) => `${selection.slot}: ${modelFor(selection.modelId)}`).join("、") || "暂不可用")}</dd></div></dl></aside>
         </div>
+      </section>
+    );
+  }
+
+  if (controller.agentWorkspaceRestricted) {
+    return (
+      <section className="workspace-launch-page" data-slide="C-WS-02">
+        <Button className="workspace-launch-back" onClick={onBack} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />返回工作空间列表</Button>
+        <section className="panel">
+          <div className="source-notice" data-notice-kind="permission" role="status">
+            <span className="source-notice__icon" aria-hidden="true"><LockKeyhole size={20} /></span>
+            <h3>工作空间尚未开通</h3>
+            <p>当前账号尚未开通工作空间白名单，暂无法新建工作空间，请联系管理员；OPL Gateway 与 API 余额仍可正常使用。</p>
+            <div className="source-notice__action"><Button onClick={onBack} size="sm" variant="outline">返回工作空间列表</Button></div>
+          </div>
+        </section>
       </section>
     );
   }

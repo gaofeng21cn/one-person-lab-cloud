@@ -1,4 +1,4 @@
-import { AlertCircle, ChevronDown, ChevronLeft, Copy, ExternalLink, Eye, EyeOff, RefreshCw, Trash2 } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronLeft, Copy, ExternalLink, Eye, EyeOff, LockKeyhole, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { WorkspaceSecretController } from "../../app/console-controller-types.ts";
@@ -220,6 +220,19 @@ function WorkspaceOwnerDetailPage({ controller }: { controller: WorkspaceDetailC
   }, [activeWorkspaceId]);
 
   if (controller.workspaceDeletion || controller.workspaceDeleteBusy || controller.workspaceDeletionLoading || controller.workspaceDeleteIssue === "unconfirmed") return <WorkspaceDeletionProgress controller={controller} />;
+  const workspacesForbidden = controller.customerWorkspaceRead.access === "forbidden";
+  const workspacesRestricted = controller.customerWorkspaceRead.access === "not_enabled" || workspacesForbidden;
+  if (workspacesRestricted && !workspaceSource) return <section className="workspace-detail-page">
+    <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />工作空间列表</Button>
+    <section className="panel">
+      <div className="source-notice" data-notice-kind="permission" role="status">
+        <span className="source-notice__icon" aria-hidden="true"><LockKeyhole size={20} /></span>
+        <h3>{workspacesForbidden ? "无权查看工作空间" : "工作空间尚未开通"}</h3>
+        <p>{workspacesForbidden ? "当前账号角色暂无工作空间访问权限，请联系管理员。" : "工作空间按白名单开通，当前账号可正常使用 OPL Gateway 与 API 余额；如需开通请联系管理员。"}</p>
+        <div className="source-notice__action"><Button onClick={() => controller.navigate("/console/overview")} size="sm" variant="outline">返回概览</Button></div>
+      </div>
+    </section>
+  </section>;
   if (controller.customerWorkspaceRead.detail.loading && !workspaceSource) return <section className="workspace-detail-page"><div className="source-loading" aria-live="polite"><span className="spinner" />正在读取</div></section>;
   if (!workspaceSource) return <section className="workspace-detail-page"><div className="source-loading" aria-live="polite"><span className="spinner" />等待读取</div></section>;
   if (workspaceSource.available === false) return <section className="workspace-detail-page">
