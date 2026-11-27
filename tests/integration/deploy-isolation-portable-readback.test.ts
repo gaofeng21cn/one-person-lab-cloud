@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createServer } from "node:net";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
@@ -373,10 +373,13 @@ if (enabled) test("portable Compose enforces runtime database and caller isolati
       "--label", "opl.task=deploy-isolation-01", "-t", image, "."
     ]);
     compose(["up", "-d", "--wait", "--wait-timeout", "180", "postgres", "ledger", "fabric"]);
+    const dockerfileSource = await readFile(join(repoRoot, "Dockerfile"), "utf8");
+    const nodeFixtureImage = dockerfileSource.match(/^FROM\s+(?:--platform=\S+\s+)?(node:[^\s]+@sha256:[0-9a-f]{64})\s+AS\s+build$/m)?.[1];
+    assert.ok(nodeFixtureImage, "Dockerfile must pin the multi-arch Node build image");
     docker([
       "run", "-d", "--name", fixture, "--network", network,
       "--network-alias", "sub2api-fixture", "--label", "opl.task=deploy-isolation-01",
-      image, "node", "--input-type=module", "-e", sub2APIFixture
+      nodeFixtureImage, "node", "--input-type=module", "-e", sub2APIFixture
     ]);
     compose(["up", "-d", "--no-deps", "control-plane"]);
     waitForHealthy(names.controlPlane);

@@ -148,6 +148,9 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
 
   const topologyPath = join(repoRoot, "deploy/portable/opl-cloud-owner-topology.json");
   const contract = JSON.parse(await readFile(topologyPath, "utf8")) as Contract;
+  const dockerfileSource = await readFile(join(repoRoot, "Dockerfile"), "utf8");
+  const nodeFixtureImage = dockerfileSource.match(/^FROM\s+(?:--platform=\S+\s+)?(node:[^\s]+@sha256:[0-9a-f]{64})\s+AS\s+build$/m)?.[1];
+  assert.ok(nodeFixtureImage, "Dockerfile must pin the multi-arch Node build image");
   const revision = command(["git", "rev-parse", "HEAD"]).stdout.trim();
 
   // The per-owner name the composition reads one owner's own secret by.
@@ -546,7 +549,7 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
       "-e", "TLS_CERT_FILE=/tls/sub2api.crt",
       "-v", `${sub2apiTLSRoot}:/tls:ro`,
       "-v", `${sub2apiScript}:/sub2api.mjs:ro`,
-      image, "node", "/sub2api.mjs"
+      nodeFixtureImage, "node", "/sub2api.mjs"
     ]);
     waitFor(() => {
       const answer = docker([
