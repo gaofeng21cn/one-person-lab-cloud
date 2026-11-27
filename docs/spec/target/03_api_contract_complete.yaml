@@ -3848,6 +3848,60 @@ paths:
         required: false
         schema:
           $ref: '#/components/schemas/OpaqueId'
+  /api/v2/admin/tenants/{tenantId}/wallet-adjustments:
+    post:
+      operationId: adjustTenantWallet
+      summary: adjustTenantWallet
+      tags:
+      - gateway
+      x-feature-id:
+      - F14
+      x-owner: gateway
+      x-permission:
+      - platform_admin
+      x-tables:
+      - gateway.wallet_operations
+      - gateway.tenant_wallet_bindings
+      x-operation-kind: wallet_adjustment
+      responses:
+        '202':
+          description: 命令已持久接受，202不代表完成。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Operation'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+      description: 管理员对单个租户可支配余额的一次明确授权变更；只对已绑定钱包的租户生效，金额以微美元正整数表示。
+      parameters:
+      - name: tenantId
+        in: path
+        required: true
+        schema: *id003
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WalletAdjustmentRequest'
   /api/v2/admin/tenants:
     get:
       operationId: listTenants
@@ -7414,6 +7468,28 @@ components:
           maxLength: 1024
       required:
       - reason
+    WalletAdjustmentRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum:
+          - recharge
+          - debit
+          - business_refund
+        amountUSDMicros:
+          $ref: '#/components/schemas/USDMicros'
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1024
+        originalChargeOperationId:
+          $ref: '#/components/schemas/OpaqueId'
+      required:
+      - kind
+      - amountUSDMicros
+      - reason
     DeleteTenantRequest:
       type: object
       additionalProperties: false
@@ -10020,6 +10096,8 @@ components:
           - charge
           - refund
           - recharge
+          - debit
+          - business_refund
         amountUSDMicros:
           $ref: '#/components/schemas/USDMicros'
         status:
@@ -11273,6 +11351,7 @@ components:
       - cancel_plan_change
       - compensate_plan_change
       - refund_supplement_on_delete
+      - wallet_adjustment
     OperationStage:
       type: string
       enum:
@@ -12134,6 +12213,7 @@ components:
       - acceptInvitation
       - acquireReference
       - activateRoute
+      - adjustTenantWallet
       - adoptWorkspace
       - appendPlanChangeEvidence
       - appendReceipt

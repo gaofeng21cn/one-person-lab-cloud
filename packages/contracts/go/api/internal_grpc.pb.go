@@ -4522,6 +4522,7 @@ const (
 	GatewayProductService_RevealGatewayKey_FullMethodName                  = "/opl.cloud.api.GatewayProductService/RevealGatewayKey"
 	GatewayProductService_RevokeGatewayKey_FullMethodName                  = "/opl.cloud.api.GatewayProductService/RevokeGatewayKey"
 	GatewayProductService_ListRechargeRecords_FullMethodName               = "/opl.cloud.api.GatewayProductService/ListRechargeRecords"
+	GatewayProductService_AdjustTenantWallet_FullMethodName                = "/opl.cloud.api.GatewayProductService/AdjustTenantWallet"
 	GatewayProductService_ListModels_FullMethodName                        = "/opl.cloud.api.GatewayProductService/ListModels"
 )
 
@@ -4551,6 +4552,7 @@ type GatewayProductServiceClient interface {
 	RevealGatewayKey(ctx context.Context, in *RevealGatewayKeyRpcRequest, opts ...grpc.CallOption) (*GatewayKeySecret, error)
 	RevokeGatewayKey(ctx context.Context, in *RevokeGatewayKeyRpcRequest, opts ...grpc.CallOption) (*Operation, error)
 	ListRechargeRecords(ctx context.Context, in *ListRechargeRecordsRpcRequest, opts ...grpc.CallOption) (*WalletOperationPage, error)
+	AdjustTenantWallet(ctx context.Context, in *AdjustTenantWalletRpcRequest, opts ...grpc.CallOption) (*Operation, error)
 	ListModels(ctx context.Context, in *ListModelsRpcRequest, opts ...grpc.CallOption) (*ModelPage, error)
 }
 
@@ -4782,6 +4784,16 @@ func (c *gatewayProductServiceClient) ListRechargeRecords(ctx context.Context, i
 	return out, nil
 }
 
+func (c *gatewayProductServiceClient) AdjustTenantWallet(ctx context.Context, in *AdjustTenantWalletRpcRequest, opts ...grpc.CallOption) (*Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Operation)
+	err := c.cc.Invoke(ctx, GatewayProductService_AdjustTenantWallet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *gatewayProductServiceClient) ListModels(ctx context.Context, in *ListModelsRpcRequest, opts ...grpc.CallOption) (*ModelPage, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ModelPage)
@@ -4818,6 +4830,7 @@ type GatewayProductServiceServer interface {
 	RevealGatewayKey(context.Context, *RevealGatewayKeyRpcRequest) (*GatewayKeySecret, error)
 	RevokeGatewayKey(context.Context, *RevokeGatewayKeyRpcRequest) (*Operation, error)
 	ListRechargeRecords(context.Context, *ListRechargeRecordsRpcRequest) (*WalletOperationPage, error)
+	AdjustTenantWallet(context.Context, *AdjustTenantWalletRpcRequest) (*Operation, error)
 	ListModels(context.Context, *ListModelsRpcRequest) (*ModelPage, error)
 	mustEmbedUnimplementedGatewayProductServiceServer()
 }
@@ -4894,6 +4907,9 @@ func (UnimplementedGatewayProductServiceServer) RevokeGatewayKey(context.Context
 }
 func (UnimplementedGatewayProductServiceServer) ListRechargeRecords(context.Context, *ListRechargeRecordsRpcRequest) (*WalletOperationPage, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListRechargeRecords not implemented")
+}
+func (UnimplementedGatewayProductServiceServer) AdjustTenantWallet(context.Context, *AdjustTenantWalletRpcRequest) (*Operation, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AdjustTenantWallet not implemented")
 }
 func (UnimplementedGatewayProductServiceServer) ListModels(context.Context, *ListModelsRpcRequest) (*ModelPage, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListModels not implemented")
@@ -5315,6 +5331,24 @@ func _GatewayProductService_ListRechargeRecords_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GatewayProductService_AdjustTenantWallet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdjustTenantWalletRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayProductServiceServer).AdjustTenantWallet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayProductService_AdjustTenantWallet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayProductServiceServer).AdjustTenantWallet(ctx, req.(*AdjustTenantWalletRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _GatewayProductService_ListModels_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListModelsRpcRequest)
 	if err := dec(in); err != nil {
@@ -5427,6 +5461,10 @@ var GatewayProductService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListRechargeRecords",
 			Handler:    _GatewayProductService_ListRechargeRecords_Handler,
+		},
+		{
+			MethodName: "AdjustTenantWallet",
+			Handler:    _GatewayProductService_AdjustTenantWallet_Handler,
 		},
 		{
 			MethodName: "ListModels",

@@ -379,7 +379,7 @@ func (s *Service) reconcileWalletOperation(ctx context.Context, record WalletRec
 // settlement semantics did, so an opposite-sign record can never confirm the
 // obligation.
 func nativeAdjustmentMicros(record WalletRecord) int64 {
-	if record.Kind == "charge" {
+	if record.Kind == "charge" || record.Kind == "debit" {
 		return -record.AmountUSDMicros
 	}
 	return record.AmountUSDMicros

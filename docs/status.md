@@ -80,6 +80,21 @@ chronological snapshots.
     `GET /api/gateway/balance-history` and `GET /api/gateway/endpoint` routes
     stay for the legacy Console build and are retired with the retained
     Control Plane.
+  - The administrator's balance change is owned by the Gateway owner:
+    `POST /api/v2/admin/tenants/{tenantId}/wallet-adjustments` is served by the
+    BFF and forwards to `GatewayProductService.AdjustTenantWallet`. A recharge
+    credits the customer, a debit collects from the customer, and a business
+    refund credits back a confirmed original charge the command names. The
+    owner reserves the operation under the operator's idempotency key, moves the
+    balance exactly once, and settles the operation from the Gateway's own
+    balance history, so a lost response is reconciled from the native record
+    instead of being charged again. The operation row is the durable fact: it
+    carries the kind, the amount, the operator, the reason, the Gateway's own
+    adjustment code and the receipt id the Ledger will record. The operator
+    reads the changes back through `GET /api/v2/admin/recharge-records`, which
+    the Gateway owner now serves. The Cloud Console's own administrator write
+    is still locked, and the receipt this owner names is not yet appended to
+    the Ledger; both are open in [roadmap.md](roadmap.md).
   - Control Plane image-replacement creation/preview/worker commands and admin
     activation endpoints are retired; only the operator image-policy GET
     (`GET /api/operator/workspace-runtime-image-policy`), Fabric image
