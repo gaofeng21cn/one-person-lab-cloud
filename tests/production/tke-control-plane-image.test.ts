@@ -9,16 +9,15 @@ test("OPL Cloud product image contains all three control-service binaries", asyn
     .map((line) => line.trim())
     .filter(Boolean);
 
-  for (const [buildTarget, binary] of [
-    ["./cmd/control-plane", "opl-control-plane"],
-    ["./cmd/fabric", "opl-fabric"],
-    ["./cmd/ledger", "opl-ledger"]
+  for (const [serviceDir, buildTarget, binary] of [
+    ["services/control-plane", "./cmd/control-plane", "opl-control-plane"],
+    ["services/fabric", "./cmd/fabric", "opl-fabric"],
+    ["services/ledger", "./cmd/ledger", "opl-ledger"]
   ]) {
-    // The build carries the product revision stamp, so the command is matched
-    // from `go build` up to its output path rather than as one fixed string.
-    assert.match(dockerfile, new RegExp(`go build[^\\n]*-o /out/${binary.replaceAll("-", "\\-")} ${buildTarget.replaceAll("/", "\\/")}`));
-    assert.match(dockerfile, new RegExp(`COPY --from=.* /out/${binary.replaceAll("-", "\\-")} /usr/local/bin/${binary.replaceAll("-", "\\-")}`));
+    // The build carries the product revision stamp and shares the single go-build stage.
+    assert.match(dockerfile, new RegExp(`go -C ${serviceDir.replaceAll("/", "\\/")} build[^\\n]*-o /out/${binary.replaceAll("-", "\\-")} ${buildTarget.replaceAll("/", "\\/")}`));
   }
+  assert.match(dockerfile, /COPY --from=go-build \/out\/ \/usr\/local\/bin\//);
   assert.match(dockerfile, /ARG TARGETARCH/);
   assert.match(dockerfile, /linux\/\$\{TARGETARCH\}\/kubectl/);
   for (const ignored of ["node_modules", "dist", ".runtime", ".git", ".env"]) {
@@ -37,15 +36,21 @@ test("OPL Cloud product image carries the buildx CLI plugin for Agent OCI builds
   );
 });
 
-test("Fabric image build includes its local Go contract replacement before dependency download", async () => {
+test("Go build stage uses the unified root go.mod and copies Go contracts before compiling", async () => {
   const dockerfile = await readFile("Dockerfile", "utf8");
-  const fabricStage = dockerfile.slice(0, dockerfile.indexOf(" AS control-plane-build"));
+  const goBuildStage = dockerfile.slice(dockerfile.indexOf("AS go-build"), dockerfile.indexOf("FROM docker:"));
+  const rootGoMod = "COPY go.mod go.sum /src/";
   const contractsCopy = "COPY packages/contracts/go /src/packages/contracts/go";
   const dependencyDownload = 'RUN GOPROXY="$GOPROXY" go mod download';
 
-  assert.ok(fabricStage.includes(contractsCopy), "fabric-build stage is missing shared Go contracts");
+  assert.ok(goBuildStage.includes(rootGoMod), "go-build stage must copy root go.mod and go.sum");
+  assert.ok(goBuildStage.includes(contractsCopy), "go-build stage is missing shared Go contracts");
   assert.ok(
-    fabricStage.indexOf(contractsCopy) < fabricStage.indexOf(dependencyDownload),
-    "fabric-build must copy local Go contracts before downloading modules"
+    goBuildStage.indexOf(rootGoMod) < goBuildStage.indexOf(dependencyDownload),
+    "go-build must copy root go.mod/go.sum before downloading modules"
+  );
+  assert.ok(
+    goBuildStage.indexOf(contractsCopy) < goBuildStage.indexOf("go -C services/fabric build"),
+    "go-build must copy local Go contracts before compiling"
   );
 });
