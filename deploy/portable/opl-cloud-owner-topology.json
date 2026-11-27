@@ -548,6 +548,9 @@
     "OPL_LEDGER_URL",
     "OPL_LEDGER_TOKEN"
    ],
+   "optionalEnv": [
+    "OPL_CONSOLE_DIST_DIR"
+   ],
    "registers": [
     "Console BFF REST surface"
    ],
@@ -580,7 +583,7 @@
     },
     "evidence": [
      "services/internal/ownerservice/config.go:72 reads the shared DATABASE_URL and services/internal/ownerservice/database.go:41 opens that PostgreSQL connection for the owner it serves",
-     "deploy/portable/compose.cloud.yaml:44 declares postgres as its own Compose service with its own image, so the database is not one of this unit's processes"
+     "deploy/portable/compose.cloud.yaml:23 declares postgres as its own Compose service with its own image, so the database is not one of this unit's processes"
     ]
    },
    {
@@ -591,11 +594,11 @@
      "reachedThrough": "the Capability owner's selected storage provider",
      "boundaryEnv": "OPL_CAPABILITY_STORAGE_KIND"
     },
-    "note": "The local kind keeps the bytes on a volume mounted into the Capability container itself, which is this unit's own container. The cos kind keeps them in the instance's COS bucket and reads no local root, so an installation that selects the cos kind deploys no storage container for objects.",
+    "note": "The local kind keeps the bytes on a volume mounted into the composed Cloud backend container itself, which is this unit's own container. The cos kind keeps them in the instance's COS bucket and reads no local root, so an installation that selects the cos kind deploys no storage container for objects.",
     "evidence": [
      "services/capability/cmd/server/main.go:158 selects the store from OPL_CAPABILITY_STORAGE_KIND: the local kind builds it on a root path at services/capability/cmd/server/main.go:168 and the cos kind builds the instance bucket store at services/capability/cmd/server/main.go:170",
      "services/capability/catalog/cos_storage.go:52 binds that store as an HTTP client of the instance's bucket URL, so the cos kind is a remote service and not a container",
-     "deploy/portable/compose.cloud.yaml:321 mounts the local object store as a volume of the Capability container, so the installation deploys no object-storage service"
+     "deploy/portable/compose.cloud.yaml:233 mounts the local object store as a volume of the composed Cloud backend container, so the installation deploys no object-storage service"
     ]
    },
    {
@@ -625,7 +628,7 @@
     "distinction": "The build owner service is a member of this unit; the privileged BuildKit builder it invokes is not. The unit ships the build client, not the builder.",
     "evidence": [
      "services/build/internal/build/runner.go:640 builds the docker buildx command for the installation's builder and services/build/internal/build/runner.go:643 runs that client as an external executable",
-     "Dockerfile:136 ships the docker client and Dockerfile:141 ships its buildx plugin; neither ships a BuildKit daemon"
+     "Dockerfile:81 ships the docker client and Dockerfile:86 ships its buildx plugin; neither ships a BuildKit daemon"
     ]
    },
    {
@@ -921,11 +924,12 @@
    {
     "prefix": "/",
     "processes": [
+     "console-bff",
      "control-plane",
      "serve"
     ],
     "browserFacing": false,
-    "evidence": "Control Plane routes_core.go registers the Console static root; Serve delivery/access.go registers the application entry root on its separate HTTP listener. The two registrations use separate HTTP listeners."
+    "evidence": "Console BFF httpapi/console_static.go registers the Console SPA root; Control Plane routes_core.go retains the legacy Console and Workspace root fallback; Serve delivery/access.go registers the application entry root on its separate HTTP listener."
    },
    {
     "prefix": "/w/",

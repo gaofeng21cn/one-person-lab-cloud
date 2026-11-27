@@ -153,5 +153,17 @@ Plane / delegated process-local custody onto canonical domain owners:
      non-terminal operations from completed settlement. Include accepted
      refunds that still need their first execution and renewals whose expiry
      or Ledger settlement is incomplete.
-4. **Module & DB-Role Coverage**: Expand `tests/contracts/module-physical-boundaries.test.ts`
-   and PostgreSQL role-isolation checks to cover every extracted service and Console BFF.
+4. **Module & DB-Role Coverage**: `tests/contracts/module-physical-boundaries.test.ts`
+   now enforces package and SDK isolation across all 11 Go services under `services/`
+   and `apps/console-bff`; extend PostgreSQL role-isolation checks to cover every
+   extracted service and Console BFF.
+
+## Backend Single-Binary Convergence (P1)
+
+- Evolve `opl-cloud-composition` (currently 1 container supervising 11 separate Go
+  processes over loopback gRPC/mTLS) into a single in-process modular Go binary
+  (`opl-cloud`) preserving `services/<domain>/` package boundaries, per-owner
+  PostgreSQL schema/role isolation, and external BuildKit/Workspace trust boundaries,
+  while eliminating intra-container process orchestration, redundant Go runtimes,
+  and intra-pod mTLS overhead alongside retiring `services/control-plane` and
+  legacy root `compose.yaml`.

@@ -59,30 +59,29 @@ test("every product binary in the image carries the build-time product revision"
   }
 
   // The composition entrypoint is a product binary: it is built with the stamp
-  // and the runtime stage ships the whole publisher output.
+  // and the runtime stage ships the whole go-build output.
   const compositionBuild = productBuilds.find((command) => command.includes("-o /out/opl-cloud-composition "));
   assert.ok(compositionBuild, "the composition entrypoint must be built as a product binary");
   assert.ok(
-    dockerfile.includes("COPY --from=publisher-build /out/ /usr/local/bin/"),
+    dockerfile.includes("COPY --from=go-build /out/ /usr/local/bin/"),
     "the runtime stage must ship the composition entrypoint"
   );
 
-  // The publisher lane builds one binary per iteration, so the stamp has to be
-  // on that single command rather than on a per-service list.
-  const publisherStart = dockerfile.indexOf("AS publisher-build");
-  const publisherEnd = dockerfile.indexOf("FROM docker:");
-  assert.ok(publisherStart > 0 && publisherEnd > publisherStart);
-  const publisherStage = dockerfile.slice(publisherStart, publisherEnd);
-  const publisherBuilds = [...publisherStage.matchAll(/go (?:-C [^ ]+ )?build[^\n]*/g)].map((match) => match[0]);
-  assert.ok(publisherBuilds.length >= 2, "the publisher lane must build the owner services and the Console BFF");
-  for (const command of publisherBuilds) {
-    assert.ok(command.includes(STAMP), `the publisher lane builds a binary without the stamp: ${command}`);
+  // The shared go-build stage builds all binaries with the revision stamp.
+  const goBuildStart = dockerfile.indexOf("AS go-build");
+  const goBuildEnd = dockerfile.indexOf("FROM docker:");
+  assert.ok(goBuildStart > 0 && goBuildEnd > goBuildStart);
+  const goBuildStage = dockerfile.slice(goBuildStart, goBuildEnd);
+  const goBuilds = [...goBuildStage.matchAll(/go (?:-C [^ ]+ )?build[^\n]*/g)].map((match) => match[0]);
+  assert.ok(goBuilds.length >= 9, "the go-build stage must build all product binaries");
+  for (const command of goBuilds) {
+    assert.ok(command.includes(STAMP), `the go-build stage builds a binary without the stamp: ${command}`);
   }
 });
 
 test("the product image refuses to build without a valid product revision", async () => {
   const dockerfile = await readFile("Dockerfile", "utf8");
-  const stages = ["fabric-build", "control-plane-build", "ledger-build", "publisher-build"];
+  const stages = ["go-build"];
   for (const stage of stages) {
     const start = dockerfile.indexOf(`AS ${stage}`);
     assert.ok(start > 0, `the product image must keep its ${stage} stage`);

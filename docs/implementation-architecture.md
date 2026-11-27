@@ -9,6 +9,8 @@ ownership and database persistence layout. Product targets belong to
 
 ```text
 Browser Console (apps/console-ui)
+  -> Console SPA static assets (/):
+       Served by Console BFF (apps/console-bff) from OPL_CONSOLE_DIST_DIR (/app/dist)
   -> CloudIdentity paths (/api/v2/*):
        Console BFF (apps/console-bff)
        -> CloudIdentity session & audience authorization (services/gateway-integration)
@@ -65,7 +67,7 @@ files or per-service repositories.
 | Owner / Module | Path | Persistence / Store | Transport & Allowed Dependencies |
 | --- | --- | --- | --- |
 | Console UI | `apps/console-ui/` | None (browser SPA) | Same-origin BFF `/api/v2/*` & legacy `/api/*` adapters only |
-| Console BFF | `apps/console-bff/` | None (stateless HTTP/MCP proxy) | CloudIdentity + generated gRPC owner clients + authenticated CP HTTP bridges |
+| Console BFF | `apps/console-bff/` | None (stateless HTTP/MCP proxy + Console SPA static host) | CloudIdentity + generated gRPC owner clients + authenticated CP HTTP bridges |
 | CloudIdentity & Gateway Integration | `services/gateway-integration/` | `opl_tenant` & `opl_gateway` (two distinct DBs) | gRPC/protobuf, external Sub2API HTTP APIs, OCI registry identity |
 | Capability | `services/capability/` | `opl_capability` | gRPC/protobuf + storage provider (`filesystem` / presigned COS) |
 | Build | `services/build/` | `opl_build` | gRPC/protobuf + BuildKit worker + OCI Registry exporter |
@@ -90,9 +92,9 @@ reads are forbidden.
 
 ## Deployment & Diagnostic Units
 
-- **Composed Backend**: `deploy/portable/compose.cloud.yaml` packages PostgreSQL,
-  all 11 owner processes and the same-origin reverse proxy as one portable host
-  unit. Clean-host verification runs via `npm run verify:local-v2`.
+- **Single-Stage Build & Slim Runtime Image**: `Dockerfile` compiles all Go binaries in a single shared `go-build` stage (`golang:1.27-bookworm`) and runs on `debian:bookworm-slim` without Node.js or `node_modules`, baking `/app/dist` and `/app/contracts/opl-cloud-owner-topology.json` directly into the product image.
+- **Composed Backend**: `deploy/portable/compose.cloud.yaml` packages a 3-container host unit (`postgres`, single composed `cloud-backend` running `opl-cloud-composition` for all 11 owner processes over loopback, and same-origin `cloud-local-v2` reverse proxy). Clean-host verification runs via `npm run verify:local-v2`.
+- **Module Boundary Enforcement**: `tests/contracts/module-physical-boundaries.test.ts` enforces package and SDK isolation across all 11 Go services under `services/`, `apps/console-bff/`, and `services/internal/*`.
 - **Instance Separation**: `opl-instance-medopl` owns TKE manifests, Secrets,
   domains and install/rollback receipts; protected Cloud diagnostic scripts live
   in `tools/` (`workspace-fabric-dispatch-error-readback.ts`,
