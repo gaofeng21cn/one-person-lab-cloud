@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -105,6 +107,132 @@ func TestOperatorRoutesAuthorizePlatformOperatorBeforeOwnerRead(t *testing.T) {
 			request.GetScope().GetPlatform() == nil || request.GetActorId() != "operator-1" {
 			t.Fatalf("operator decision request=%v", request)
 		}
+	}
+}
+
+// operatorAccountsProbe answers the owner that holds the customer account fact.
+// The operator account page is read from that owner, not bridged from the
+// retained Control Plane writer.
+type operatorAccountsProbe struct {
+	api.TenantProductServiceClient
+	request *api.ListOperatorAccountsRpcRequest
+	page    *api.OperatorAccountPage
+	err     error
+	calls   int
+}
+
+func (p *operatorAccountsProbe) ListOperatorAccounts(_ context.Context, r *api.ListOperatorAccountsRpcRequest, _ ...grpc.CallOption) (*api.OperatorAccountPage, error) {
+	p.calls++
+	p.request = r
+	if p.err != nil {
+		return nil, p.err
+	}
+	return p.page, nil
+}
+
+// TestOperatorAccountsReadComesFromTheAccountOwner proves the operator account
+// page is read from the owner that holds the account fact, after the platform
+// operator decision, and that the Gateway observations the owner read natively
+// are published as they were read while a fact this owner does not hold stays
+// unavailable instead of being reported as a zero.
+func TestOperatorAccountsReadComesFromTheAccountOwner(t *testing.T) {
+	identity := &fakeIdentity{
+		session:  &api.Session{ActorId: "operator-1", CsrfToken: "csrf-1"},
+		decision: allowOperatorDecision("operator-1"),
+	}
+	gatewayEmail := "customer@example.test"
+	gatewayStatus := "active"
+	balance := int64(4200)
+	keyCount := int32(2)
+	today := int64(100)
+	total := int64(900)
+	probe := &operatorAccountsProbe{page: &api.OperatorAccountPage{
+		Items: []*api.OperatorAccount{{
+			AccountId: "acct-1", ActorId: "77", Email: "customer@example.test", Status: "active",
+			WorkspacePurchaseEnabled: true,
+			GatewayEmail:             &gatewayEmail, GatewayStatus: &gatewayStatus,
+			BalanceUsdMicros: &balance, KeyCount: &keyCount,
+			TodayActualCostUsdMicros: &today, TotalActualCostUsdMicros: &total,
+			PlatformUsage: []*api.GatewayPlatformUsage{{
+				Platform: "openai", TodayActualCostUsdMicros: 60, TotalActualCostUsdMicros: 500,
+			}},
+		}},
+		Total: 1, Page: 2, PageSize: 3,
+	}}
+	server := &Server{identity: identity, tenant: probe}
+
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/operator/accounts?page=2&pageSize=3"))
+	if response.Code != http.StatusOK {
+		t.Fatalf("accounts status=%d body=%s", response.Code, response.Body.String())
+	}
+	if probe.calls != 1 || probe.request.GetPage() != 2 || probe.request.GetPageSize() != 3 {
+		t.Fatalf("owner page request=%+v calls=%d", probe.request, probe.calls)
+	}
+	if probe.request.GetContext().GetActorId() != "operator-1" || probe.request.GetContext().GetScope().GetPlatform() == nil {
+		t.Fatalf("owner page context=%+v", probe.request.GetContext())
+	}
+	if len(identity.requests) != 1 || identity.requests[0].GetAction() != operatorPrivilegeAction {
+		t.Fatalf("operator decisions=%v", identity.requests)
+	}
+
+	var envelope map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope["source"] != "tenant+sub2api" {
+		t.Fatalf("accounts source=%v", envelope["source"])
+	}
+	data := envelope["data"].(map[string]any)
+	if data["total"].(float64) != 1 || data["page"].(float64) != 2 || data["pageSize"].(float64) != 3 {
+		t.Fatalf("accounts page=%v", data)
+	}
+	item := data["items"].([]any)[0].(map[string]any)
+	if item["accountId"] != "acct-1" || item["sub2apiUserId"] != "77" || item["email"] != "customer@example.test" ||
+		item["workspacePurchaseEnabled"] != true {
+		t.Fatalf("accounts item=%v", item)
+	}
+	gatewayIdentity := item["gatewayIdentity"].(map[string]any)
+	if gatewayIdentity["source"] != "sub2api" || gatewayIdentity["available"] != true {
+		t.Fatalf("gateway identity=%v", gatewayIdentity)
+	}
+	wallet := item["wallet"].(map[string]any)
+	if wallet["data"].(map[string]any)["usdMicros"] != "4200" {
+		t.Fatalf("wallet=%v", wallet)
+	}
+	if item["keyCount"].(map[string]any)["data"].(float64) != 2 {
+		t.Fatalf("key count=%v", item["keyCount"])
+	}
+	usage := item["usage"].(map[string]any)
+	if usage["data"].(map[string]any)["totalActualCostUsdMicros"].(float64) != 900 {
+		t.Fatalf("usage=%v", usage)
+	}
+	// The Workspace count is a fact this owner does not hold, so the projection
+	// reports it as unavailable instead of inventing a count.
+	workspaceCount := item["workspaceCount"].(map[string]any)
+	if workspaceCount["available"] != false || workspaceCount["source"] != "control-plane" ||
+		workspaceCount["reasonCode"] != "control_plane_unavailable" {
+		t.Fatalf("workspace count=%v", workspaceCount)
+	}
+}
+
+// TestOperatorAccountsRefuseTheOwnerRefusal proves an owner refusal reaches the
+// browser as the owner's own typed failure instead of an empty page.
+func TestOperatorAccountsRefuseTheOwnerRefusal(t *testing.T) {
+	identity := &fakeIdentity{
+		session:  &api.Session{ActorId: "operator-1", CsrfToken: "csrf-1"},
+		decision: allowOperatorDecision("operator-1"),
+	}
+	probe := &operatorAccountsProbe{err: status.Error(codes.Unavailable, "gateway directory unavailable")}
+	server := &Server{identity: identity, tenant: probe}
+
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/operator/accounts"))
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("owner refusal status=%d body=%s", response.Code, response.Body.String())
+	}
+	if probe.calls != 1 {
+		t.Fatalf("owner calls=%d", probe.calls)
 	}
 }
 

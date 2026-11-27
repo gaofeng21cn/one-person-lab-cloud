@@ -22,10 +22,20 @@ func TestCloudOperatorReadsServeTheConsoleSurfaces(t *testing.T) {
 	overview := f.request(t, http.MethodGet, "/internal/cloud/operator/overview", operator, "")
 	assertCloudOperatorEnvelope(t, overview, "control-plane", "available")
 	assertNoCookieMutation(t, overview)
+}
 
-	accounts := f.request(t, http.MethodGet, "/internal/cloud/operator/accounts?page=1&pageSize=20", operator, "")
-	assertCloudOperatorEnvelope(t, accounts, "control-plane+sub2api", "available", "empty")
-	assertNoCookieMutation(t, accounts)
+// TestCloudOperatorAccountsBridgeIsRetired proves the operator account page is
+// no longer bridged to this retained writer. The account fact belongs to the
+// CloudIdentity owner now, so the internal accounts route is gone and the
+// Console reads the owner's own page instead.
+func TestCloudOperatorAccountsBridgeIsRetired(t *testing.T) {
+	f := newCloudAnnouncementHTTPFixture(t, newMemoryTableStore())
+	operator := f.gateway.bind("operator-session", "operator-actor", "910")
+
+	accounts := f.requestRaw(t, http.MethodGet, "/internal/cloud/operator/accounts?page=1&pageSize=20", operator, "")
+	if strings.Contains(string(accounts.body), "control-plane+sub2api") {
+		t.Fatalf("the retired accounts bridge still served the account page: %d %s", accounts.code, accounts.body)
+	}
 }
 
 // TestCloudOperatorAnnouncementsShareTheRetainedWriter proves the operator
@@ -73,9 +83,6 @@ func TestCloudOperatorReadsRequireTheServiceProofAndNeverTouchCookies(t *testing
 		{name: "browser actor header", path: "/internal/cloud/operator/overview", ref: operator, code: http.StatusBadRequest, mutate: func(h http.Header) { h.Set("X-Opl-Actor-Id", "other") }},
 		{name: "body", path: "/internal/cloud/operator/overview", ref: operator, code: http.StatusBadRequest, body: `{}`},
 		{name: "overview query", path: "/internal/cloud/operator/overview?tenantId=tenant-a", ref: operator, code: http.StatusBadRequest},
-		{name: "accounts selector", path: "/internal/cloud/operator/accounts?accountId=acct-a", ref: operator, code: http.StatusBadRequest},
-		{name: "accounts duplicate page", path: "/internal/cloud/operator/accounts?page=1&page=2", ref: operator, code: http.StatusBadRequest},
-		{name: "accounts page out of range", path: "/internal/cloud/operator/accounts?page=0", ref: operator, code: http.StatusBadRequest},
 		{name: "announcements duplicate page", path: "/internal/cloud/operator/announcements?page=1&page=2", ref: operator, code: http.StatusBadRequest},
 		{name: "announcements selector", path: "/internal/cloud/operator/announcements?accountId=acct-a", ref: operator, code: http.StatusBadRequest},
 	} {

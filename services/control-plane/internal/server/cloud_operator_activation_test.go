@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,43 +18,30 @@ func activationHeaders(key string) func(http.Header) {
 	}
 }
 
-// TestCloudOperatorActivationSharesTheRetainedWriter proves the Console BFF can
-// run the operator activation through the established peer/token/session proof.
-// The internal route is the only route that still runs the shared activation
-// writer: one account, one Gateway user and the same receipt, including the Gateway
-// subject the Tenant owner needs.
-func TestCloudOperatorActivationSharesTheRetainedWriter(t *testing.T) {
+// TestCloudOperatorActivationRouteIsRetired proves the retained Control Plane
+// no longer opens customer accounts. The account-opening write moved to the
+// CloudIdentity owner, so the internal activation route is gone: a BFF-shaped
+// request to it is refused and no account is created.
+func TestCloudOperatorActivationRouteIsRetired(t *testing.T) {
 	f := newCloudAnnouncementHTTPFixture(t, newMemoryTableStore())
 	operator := f.gateway.bind("operator-session", "operator-actor", "910")
 
-	response := f.request(t, http.MethodPost, "/internal/cloud/operator/accounts", operator, activationFixtureBody, activationHeaders("activate-customer-1"))
-	if response.code != http.StatusCreated {
-		t.Fatalf("activation status=%d body=%s", response.code, response.body)
+	response := f.requestRaw(t, http.MethodPost, "/internal/cloud/operator/accounts", operator, activationFixtureBody, activationHeaders("activate-customer-1"))
+	if response.code == http.StatusCreated {
+		t.Fatalf("the retired activation route created an account: %d %s", response.code, response.body)
 	}
-	receipt := map[string]any{}
-	if err := json.Unmarshal(response.body, &receipt); err != nil {
+	accounts, err := f.store.ListAccounts(t.Context(), "")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if receipt["status"] != "succeeded" || receipt["accountId"] == "" || receipt["operationId"] == "" || receipt["workspacePurchaseEnabled"] != true {
-		t.Fatalf("activation receipt=%v", receipt)
+	if customerAccounts(accounts) != 0 {
+		t.Fatalf("the retired activation route created accounts: %v", accounts)
 	}
-	if receipt["sub2apiUserId"] != "41" {
-		t.Fatalf("activation receipt did not read back the Gateway subject: %v", receipt)
-	}
-	account, found, err := f.store.GetAccount(t.Context(), receipt["accountId"].(string))
-	if err != nil || !found {
-		t.Fatalf("activated account was not persisted: found=%v err=%v", found, err)
-	}
-	if int64(numberField(account, "sub2apiUserId", 0)) != 41 {
-		t.Fatalf("persisted account subject=%v", account)
-	}
-	assertNoCookieMutation(t, response)
-
 }
 
-// TestCloudOperatorActivationRefusesNonBFFCallers proves the new write route does
-// not widen the established operator proof: a missing peer, token or live session
-// is rejected before the writer runs, and no account is created.
+// TestCloudOperatorActivationRefusesNonBFFCallers proves no caller reaches an
+// account-opening writer: the route is retired, so a missing peer, token or
+// live session changes nothing and no account is created.
 func TestCloudOperatorActivationRefusesNonBFFCallers(t *testing.T) {
 	f := newCloudAnnouncementHTTPFixture(t, newMemoryTableStore())
 	operator := f.gateway.bind("operator-session", "operator-actor", "910")
@@ -99,31 +85,24 @@ func TestCloudOperatorActivationRefusesNonBFFCallers(t *testing.T) {
 	}
 }
 
-// TestCloudOperatorActivationIsRepeatableForTheSameAccount proves re-running
-// activation for the same customer converges on the one account and one Gateway
-// subject rather than creating a second identity. The Tenant step built on this
-// receipt is keyed from the same account.
-func TestCloudOperatorActivationIsRepeatableForTheSameAccount(t *testing.T) {
+// TestCloudOperatorActivationRouteStaysRetiredOnReplay proves the retired route
+// stays retired for every caller: repeated activation requests neither create
+// an account nor reach a provisioning writer.
+func TestCloudOperatorActivationRouteStaysRetiredOnReplay(t *testing.T) {
 	f := newCloudAnnouncementHTTPFixture(t, newMemoryTableStore())
 	operator := f.gateway.bind("operator-session", "operator-actor", "910")
 
-	first := f.request(t, http.MethodPost, "/internal/cloud/operator/accounts", operator, activationFixtureBody, activationHeaders("activate-once"))
-	second := f.request(t, http.MethodPost, "/internal/cloud/operator/accounts", operator, activationFixtureBody, activationHeaders("activate-again"))
-	if first.code != http.StatusCreated || second.code != http.StatusCreated {
-		t.Fatalf("activation statuses=%d/%d", first.code, second.code)
-	}
-	firstReceipt, secondReceipt := map[string]any{}, map[string]any{}
-	_ = json.Unmarshal(first.body, &firstReceipt)
-	_ = json.Unmarshal(second.body, &secondReceipt)
-	if firstReceipt["accountId"] != secondReceipt["accountId"] || firstReceipt["sub2apiUserId"] != secondReceipt["sub2apiUserId"] {
-		t.Fatalf("repeat activation changed the identity: %v vs %v", firstReceipt, secondReceipt)
+	first := f.requestRaw(t, http.MethodPost, "/internal/cloud/operator/accounts", operator, activationFixtureBody, activationHeaders("activate-once"))
+	second := f.requestRaw(t, http.MethodPost, "/internal/cloud/operator/accounts", operator, activationFixtureBody, activationHeaders("activate-again"))
+	if first.code == http.StatusCreated || second.code == http.StatusCreated {
+		t.Fatalf("the retired activation route created accounts: %d %d", first.code, second.code)
 	}
 	accounts, err := f.store.ListAccounts(t.Context(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if customerAccounts(accounts) != 1 {
-		t.Fatalf("repeat activation created %d customer accounts: %v", customerAccounts(accounts), accounts)
+	if customerAccounts(accounts) != 0 {
+		t.Fatalf("the retired activation route created %d customer accounts: %v", customerAccounts(accounts), accounts)
 	}
 }
 

@@ -5,86 +5,49 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"opl-cloud/apps/console-bff/internal/clients"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/packages/contracts/go/publicjson"
 )
 
-// OperatorProvisioner is the retained owner's activation command. It is a
-// separate surface from the operator reads so a reader double never has to
-// pretend it can write, and so the BFF composes activation only when the
-// command is actually configured.
+// OperatorProvisioner names the retired retained-owner activation writer. The
+// account-opening command is the owner's own now, so no reader implements this
+// seam any more; the declaration stays so the server's optional wiring keeps
+// compiling and stays inert.
 type OperatorProvisioner interface {
 	OperatorProvisionAccount(context.Context, string, string, []byte) ([]byte, error)
 }
 
-// Activation step names are part of the receipt: they tell the caller exactly
-// which step succeeded and which one did not.
-const (
-	activationStepAccount     = "account"
-	activationStepTenant      = "tenant"
-	activationStepEligibility = "purchaseEligibility"
-	activationStepBinding     = "billingBinding"
-)
-
-// activationReceipt is the single activation answer. It extends the retained
-// activation receipt rather than introducing a second endpoint: the retained
-// fields keep their names, and the tenant and billing readbacks are added beside
-// them. A non-succeeded status is reported with the steps that did complete, so a
-// partial activation is visible and can be resumed by re-running the same command.
-type activationReceipt struct {
-	OperationID              string                   `json:"operationId"`
-	AccountID                string                   `json:"accountId"`
-	Sub2APIUserID            string                   `json:"sub2apiUserId"`
-	Status                   string                   `json:"status"`
-	WorkspacePurchaseEnabled bool                     `json:"workspacePurchaseEnabled"`
-	TenantID                 string                   `json:"tenantId,omitempty"`
-	TenantOperationID        string                   `json:"tenantOperationId,omitempty"`
-	BillingBinding           *activationBindingResult `json:"billingBinding,omitempty"`
-	FailedStep               string                   `json:"failedStep,omitempty"`
-	Steps                    []activationStepResult   `json:"steps"`
-}
-
-type activationStepResult struct {
-	Step   string `json:"step"`
-	Status string `json:"status"`
-	Detail string `json:"detail,omitempty"`
-}
-
-type activationBindingResult struct {
-	Status               string `json:"status"`
-	BillingSub2APIUserID string `json:"billingSub2ApiUserId"`
-	BindingVersion       int64  `json:"bindingVersion,omitempty"`
-}
-
-// activationInput is the exact command the retained owner already accepts. The
-// BFF validates it before forwarding so a malformed command fails here, and
-// re-encodes a canonical body rather than forwarding browser bytes.
+// activationInput is the browser's account-opening command. The BFF validates
+// it before forwarding, and re-encodes a canonical body rather than forwarding
+// browser bytes.
 type activationInput struct {
 	Email     *string `json:"email"`
 	Password  *string `json:"password"`
 	Name      *string `json:"name,omitempty"`
-	Admission *string `json:"admission"`
+	Admission *string `json:"admission,omitempty"`
 }
 
 func (s *Server) registerOperatorActivationRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v2/operator/accounts", s.operatorActivationHandler)
 }
 
-// operatorActivationHandler activates one customer in one tracked operation:
-// the account and its Gateway user (retained owner), the Tenant whose owner is
-// that Gateway subject (Tenant owner), and the billing binding (Gateway owner).
-// Each owner keeps its own authorization; the BFF holds no state and invents no
-// fact. The derived tenant and binding keys make a retry converge instead of
-// admitting a second Tenant or a second binding.
+// operatorActivationHandler publishes the canonical account-opening command
+// for platform operators.
+//
+// The BFF holds no activation state: it checks the live session, the CSRF,
+// same-origin and idempotency guards, authorizes the action at platform scope
+// and forwards the validated command to the owner that writes the account, its
+// Tenant and its wallet binding. The owner's own operation record carries the
+// durable result, so a retry of the same command converges there.
 func (s *Server) operatorActivationHandler(w http.ResponseWriter, r *http.Request) {
 	publisherRequestID(r)
 	w.Header().Set("Cache-Control", "private, no-store")
@@ -102,266 +65,99 @@ func (s *Server) operatorActivationHandler(w http.ResponseWriter, r *http.Reques
 	if !requirePublisherWriteGuards(w, r, caller, clients.CallContext(ctx)) {
 		return
 	}
-	input, body, ok := decodeActivationInput(w, r)
+	input, ok := decodeActivationInput(w, r)
 	if !ok {
 		return
 	}
-	if s.operatorProvisioner == nil || s.tenant == nil || s.gatewayCoordination == nil {
-		writePublisherError(w, r, 503, "owner_unconfigured", "activation owners are not configured")
+	if s.tenant == nil {
+		writePublisherError(w, r, 503, "owner_unconfigured", "tenant owner is not configured")
 		return
 	}
 	requestID := r.Header.Get(requestIDHeader)
-	if err := RequireAuthorizedAction(ctx, s.identity, caller, owneridentity.Capability,
-		operatorPrivilegeAction,
-		&api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG},
+	if err := RequireAuthorizedAction(ctx, s.identity, caller, owneridentity.Tenant,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONOPERATORACCOUNT,
+		&api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PLATFORM},
 		requestID); err != nil {
 		writePublisherIdentityError(w, r, err)
 		return
 	}
-
-	// Step 1: the account and its Gateway user. The retained owner keeps its own
-	// session, CSRF and duplicate rules; the caller's idempotency key is forwarded
-	// so the owner's operation id is stable across a retry.
-	raw, err := s.operatorProvisioner.OperatorProvisionAccount(ctx, caller.SessionID, clients.CallContext(ctx).GetIdempotencyKey(), body)
-	if err != nil {
-		writeActivationFailure(w, activationReceipt{
-			Status:     "account_failed",
-			FailedStep: activationStepAccount,
-			Steps:      []activationStepResult{{Step: activationStepAccount, Status: "failed", Detail: activationErrorDetail(err)}},
-		}, activationStatusFor(err))
-		return
-	}
-	receipt, ok := decodeRetainedActivation(w, r, raw)
-	if !ok {
-		return
-	}
-	if receipt.Status != "succeeded" || receipt.AccountID == "" || receipt.Sub2APIUserID == "" {
-		writeActivationFailure(w, activationReceipt{
-			Status:     "account_failed",
-			FailedStep: activationStepAccount,
-			Steps:      []activationStepResult{{Step: activationStepAccount, Status: "failed", Detail: "owner did not confirm the account and its Gateway subject"}},
-		}, http.StatusBadGateway)
-		return
-	}
-	steps := []activationStepResult{{Step: activationStepAccount, Status: "succeeded"}}
-
-	// Step 2: the Tenant whose owner is the activated Gateway subject. The
-	// idempotency key is derived from the account, not from the browser request, so
-	// a retried activation with a new browser key still replays the same Tenant.
-	tenantName := activationTenantName(input)
-	tenantCall := activationCall(caller, requestID, platformScope(), activationTenantKey(receipt.AccountID))
-	tenantCtx := clients.WithCallContext(r.Context(), tenantCall)
-	tenantCaller := Caller{Session: platformSession(caller.Session), SessionID: caller.SessionID}
-	if err := RequireAuthorizedAction(tenantCtx, s.identity, tenantCaller, owneridentity.Tenant,
-		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATETENANT,
-		&api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT},
-		requestID); err != nil {
-		writePublisherIdentityError(w, r, err)
-		return
-	}
-	operation, err := s.tenant.CreateTenant(tenantCtx, &api.CreateTenantRpcRequest{
-		Context: tenantCall,
-		Body: &api.CreateTenantRequest{
-			Name: tenantName, OwnerGatewaySubjectId: receipt.Sub2APIUserID,
-			BillingSub2ApiUserId: receipt.Sub2APIUserID, OwnerEmail: stringValueOf(input.Email),
-		},
+	command, err := s.tenant.ProvisionOperatorAccount(ctx, &api.ProvisionOperatorAccountRpcRequest{
+		Context: clients.CallContext(ctx),
+		Body:    input.body(),
 	})
 	if err != nil {
-		steps = append(steps, activationStepResult{Step: activationStepTenant, Status: "failed", Detail: activationErrorDetail(err)})
-		writeActivationFailure(w, activationReceipt{
-			OperationID: receipt.OperationID, AccountID: receipt.AccountID, Sub2APIUserID: receipt.Sub2APIUserID,
-			Status: "tenant_failed", WorkspacePurchaseEnabled: receipt.WorkspacePurchaseEnabled,
-			FailedStep: activationStepTenant, Steps: steps,
-		}, http.StatusBadGateway)
+		writeOwnerCallFailure(w, r, err)
 		return
 	}
-	if operation.GetResourceId() == "" {
-		steps = append(steps, activationStepResult{Step: activationStepTenant, Status: "failed", Detail: "tenant owner returned no tenant id"})
-		writeActivationFailure(w, activationReceipt{
-			OperationID: receipt.OperationID, AccountID: receipt.AccountID, Sub2APIUserID: receipt.Sub2APIUserID,
-			Status: "tenant_failed", WorkspacePurchaseEnabled: receipt.WorkspacePurchaseEnabled,
-			FailedStep: activationStepTenant, Steps: steps,
-		}, http.StatusBadGateway)
-		return
-	}
-	tenantID := operation.GetResourceId()
-	steps = append(steps, activationStepResult{Step: activationStepTenant, Status: "succeeded"})
-	receipt.TenantID = tenantID
-	receipt.TenantOperationID = operation.GetOperationId()
-
-	// Step 2b: persist the initial workspace purchase eligibility at the canonical
-	// CloudIdentity owner using a deterministic activation key so retries converge.
-	eligCall := activationCall(caller, requestID, platformScope(), activationEligibilityKey(receipt.AccountID))
-	eligCtx := clients.WithCallContext(r.Context(), eligCall)
-	if err := RequireAuthorizedAction(eligCtx, s.identity, tenantCaller, owneridentity.Tenant,
-		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETWORKSPACEPURCHASEELIGIBILITY,
-		&api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PLATFORM, Id: proto.String(receipt.Sub2APIUserID)},
-		requestID); err != nil {
-		writePublisherIdentityError(w, r, err)
-		return
-	}
-	if _, err := s.tenant.SetWorkspacePurchaseEligibility(eligCtx, &api.SetWorkspacePurchaseEligibilityRpcRequest{
-		Context:       eligCall,
-		TargetActorId: receipt.Sub2APIUserID,
-		Body: &api.SetWorkspacePurchaseEligibilityRequest{
-			ConfirmationAccountId: receipt.Sub2APIUserID,
-			Enabled:               receipt.WorkspacePurchaseEnabled,
-			Reason:                "account_activation",
-		},
-	}); err != nil {
-		steps = append(steps, activationStepResult{Step: activationStepEligibility, Status: "failed", Detail: activationErrorDetail(err)})
-		receipt.Status = "eligibility_failed"
-		receipt.FailedStep = activationStepEligibility
-		receipt.Steps = steps
-		writeActivationFailure(w, receipt, http.StatusBadGateway)
-		return
-	}
-	steps = append(steps, activationStepResult{Step: activationStepEligibility, Status: "succeeded"})
-
-	// Step 3: the billing binding. The Tenant readback reports the active binding,
-	// so a resumed activation binds once and a re-run reports the existing binding
-	// instead of attempting a second version.
-	binding, err := s.bindActivatedTenant(r, caller, requestID, tenantID, receipt.Sub2APIUserID)
+	raw, err := publicjson.Marshal(command)
 	if err != nil {
-		steps = append(steps, activationStepResult{Step: activationStepBinding, Status: "failed", Detail: activationErrorDetail(err)})
-		receipt.Status = "billing_binding_failed"
-		receipt.FailedStep = activationStepBinding
-		receipt.Steps = steps
-		writeActivationFailure(w, receipt, http.StatusBadGateway)
+		writePublisherError(w, r, 502, "invalid_owner_response", "publisher owner returned an invalid response")
 		return
 	}
-	steps = append(steps, activationStepResult{Step: activationStepBinding, Status: binding.Status})
-	receipt.BillingBinding = binding
-	receipt.Status = "succeeded"
-	receipt.Steps = steps
+	code, declared := successStatus[api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONOPERATORACCOUNT]
+	if !declared {
+		writePublisherError(w, r, 500, "undeclared_success_status", "this route has no declared success status")
+		return
+	}
+	if command.GetPollAfterSeconds() > 0 {
+		w.Header().Set("Retry-After", strconv.Itoa(int(command.GetPollAfterSeconds())))
+	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(receipt)
+	w.WriteHeader(code)
+	_, _ = w.Write(raw)
 }
 
-// bindActivatedTenant binds the activated subject to the Tenant's billing. The
-// binding identity is the derived command key, so the Gateway owner replays the
-// binding this activation already made instead of attempting a second one; the
-// BFF holds no binding state and reads no Tenant it is not a member of.
-func (s *Server) bindActivatedTenant(r *http.Request, caller Caller, requestID, tenantID, subject string) (*activationBindingResult, error) {
-	bindCall := activationCall(caller, requestID, tenantScopeOf(tenantID), activationBindingKey(tenantID))
-	bindCtx := clients.WithCallContext(r.Context(), bindCall)
-	tenantCaller := Caller{Session: tenantSession(caller.Session, tenantID), SessionID: caller.SessionID}
-	if err := RequireAuthorizedAction(bindCtx, s.identity, tenantCaller, owneridentity.Tenant,
-		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDTENANTWALLET,
-		&api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: proto.String(tenantID)},
-		requestID); err != nil {
-		return nil, err
+// body is the canonical owner command the browser input maps to.
+func (i activationInput) body() *api.ProvisionAccountRequest {
+	body := &api.ProvisionAccountRequest{Email: stringValueOf(i.Email), Password: stringValueOf(i.Password)}
+	if i.Name != nil {
+		body.Name = proto.String(*i.Name)
 	}
-	readback, err := s.gatewayCoordination.BindWallet(bindCtx, &api.WalletBindingCommand{
-		Context: bindCall, TargetTenantId: tenantID, BillingSub2ApiUserId: subject,
-		ExpectedBindingVersion: 0, AuthorizationReceiptId: bindCall.GetAuthorizationContextId(),
-	})
-	if err != nil {
-		return nil, err
+	switch stringValueOf(i.Admission) {
+	case "":
+	case "full_cloud_customer":
+		body.Admission = api.ProvisionAccountRequestAdmissionEnum_PROVISION_ACCOUNT_REQUEST_ADMISSION_ENUM_FULL_CLOUD_CUSTOMER.Enum()
+	case "gateway_only":
+		body.Admission = api.ProvisionAccountRequestAdmissionEnum_PROVISION_ACCOUNT_REQUEST_ADMISSION_ENUM_GATEWAY_ONLY.Enum()
 	}
-	if readback.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED {
-		return nil, status.Error(codes.Unavailable, "billing binding was not confirmed")
-	}
-	return &activationBindingResult{Status: "succeeded", BillingSub2APIUserID: readback.GetBillingSub2ApiUserId(), BindingVersion: readback.GetBindingVersion()}, nil
+	return body
 }
 
-func decodeActivationInput(w http.ResponseWriter, r *http.Request) (activationInput, []byte, bool) {
+func decodeActivationInput(w http.ResponseWriter, r *http.Request) (activationInput, bool) {
 	media := strings.TrimSpace(strings.Split(r.Header.Get("Content-Type"), ";")[0])
 	if media != "application/json" {
 		writePublisherError(w, r, 415, "json_required", "application/json required")
-		return activationInput{}, nil, false
+		return activationInput{}, false
 	}
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 2<<20))
 	if err != nil {
 		writePublisherError(w, r, 400, "invalid_request", "invalid or oversized request body")
-		return activationInput{}, nil, false
+		return activationInput{}, false
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(raw)))
 	decoder.DisallowUnknownFields()
 	var input activationInput
 	if err := decoder.Decode(&input); err != nil {
 		writePublisherError(w, r, 400, "invalid_request", "invalid or oversized request body")
-		return activationInput{}, nil, false
+		return activationInput{}, false
 	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		writePublisherError(w, r, 400, "invalid_request", "invalid or oversized request body")
-		return activationInput{}, nil, false
+		return activationInput{}, false
 	}
 	if input.Email == nil || input.Password == nil || *input.Password == "" || strings.TrimSpace(*input.Email) == "" {
 		writePublisherError(w, r, 400, "invalid_request", "email and password are required")
-		return activationInput{}, nil, false
+		return activationInput{}, false
 	}
 	if input.Name != nil && (*input.Name == "" || *input.Name != strings.TrimSpace(*input.Name) || len([]rune(*input.Name)) > 100) {
 		writePublisherError(w, r, 400, "invalid_request", "name must be a trimmed non-empty value of at most 100 characters")
-		return activationInput{}, nil, false
+		return activationInput{}, false
 	}
 	if input.Admission != nil && *input.Admission != "full_cloud_customer" && *input.Admission != "gateway_only" {
 		writePublisherError(w, r, 400, "invalid_request", "invalid admission")
-		return activationInput{}, nil, false
+		return activationInput{}, false
 	}
-	body, err := json.Marshal(input)
-	if err != nil {
-		writePublisherError(w, r, 400, "invalid_request", "invalid request body")
-		return activationInput{}, nil, false
-	}
-	return input, body, true
-}
-
-func decodeRetainedActivation(w http.ResponseWriter, r *http.Request, raw []byte) (activationReceipt, bool) {
-	var retained struct {
-		OperationID              string `json:"operationId"`
-		AccountID                string `json:"accountId"`
-		Sub2APIUserID            string `json:"sub2apiUserId"`
-		Status                   string `json:"status"`
-		WorkspacePurchaseEnabled bool   `json:"workspacePurchaseEnabled"`
-	}
-	if json.Unmarshal(raw, &retained) != nil {
-		writeActivationFailure(w, activationReceipt{
-			Status:     "account_failed",
-			FailedStep: activationStepAccount,
-			Steps:      []activationStepResult{{Step: activationStepAccount, Status: "failed", Detail: "owner returned an invalid receipt"}},
-		}, http.StatusBadGateway)
-		return activationReceipt{}, false
-	}
-	return activationReceipt{
-		OperationID: retained.OperationID, AccountID: retained.AccountID, Sub2APIUserID: retained.Sub2APIUserID,
-		Status: retained.Status, WorkspacePurchaseEnabled: retained.WorkspacePurchaseEnabled,
-	}, true
-}
-
-func writeActivationFailure(w http.ResponseWriter, receipt activationReceipt, httpStatus int) {
-	if receipt.Steps == nil {
-		receipt.Steps = []activationStepResult{}
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(httpStatus)
-	_ = json.NewEncoder(w).Encode(receipt)
-}
-
-// activationStatusFor maps an owner transport category onto the activation
-// status. A refused caller keeps its refusal; an owner failure is a gateway
-// failure, never a success.
-func activationStatusFor(err error) int {
-	switch status.Code(err) {
-	case codes.InvalidArgument:
-		return http.StatusBadRequest
-	case codes.Unauthenticated:
-		return http.StatusUnauthorized
-	case codes.PermissionDenied:
-		return http.StatusForbidden
-	case codes.NotFound, codes.FailedPrecondition:
-		return http.StatusConflict
-	default:
-		return http.StatusBadGateway
-	}
-}
-
-func activationErrorDetail(err error) string {
-	if message := status.Convert(err).Message(); message != "" {
-		return message
-	}
-	return "owner call failed"
+	return input, true
 }
 
 // activationCall is the platform-scoped call the operator's own session already
@@ -378,56 +174,8 @@ func activationCall(caller Caller, requestID string, scope *api.AuthorizationSco
 	return call
 }
 
-func platformSession(session *api.Session) *api.Session {
-	out := proto.Clone(session).(*api.Session)
-	out.TenantId = nil
-	return out
-}
-
-func tenantSession(session *api.Session, tenantID string) *api.Session {
-	out := proto.Clone(session).(*api.Session)
-	out.TenantId = proto.String(tenantID)
-	return out
-}
-
 func platformScope() *api.AuthorizationScope {
 	return &api.AuthorizationScope{Scope: &api.AuthorizationScope_Platform{Platform: &api.PlatformScope{}}}
-}
-
-func tenantScopeOf(tenantID string) *api.AuthorizationScope {
-	return &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: tenantID}}}
-}
-
-// activationTenantKey and activationBindingKey derive the owner command identity
-// from the account and tenant rather than from a browser-generated key, so a
-// retried activation that mints a new browser key still converges on one Tenant
-// and one binding.
-func activationTenantKey(accountID string) string { return "activation-tenant:" + accountID }
-
-func activationEligibilityKey(accountID string) string {
-	return "activation-eligibility:" + accountID
-}
-
-func activationBindingKey(tenantID string) string {
-	return "activation-binding:" + tenantID
-}
-
-// activationTenantName uses the operator's own name when supplied and otherwise
-// the account's email local part. The Tenant name is presentation only; ownership
-// is the Gateway subject.
-func activationTenantName(input activationInput) string {
-	if input.Name != nil {
-		return *input.Name
-	}
-	email := stringValueOf(input.Email)
-	name := email
-	if at := strings.IndexByte(email, '@'); at > 0 {
-		name = email[:at]
-	}
-	if runes := []rune(strings.TrimSpace(name)); len(runes) > 100 {
-		name = string(runes[:100])
-	}
-	return name
 }
 
 func stringValueOf(value *string) string {

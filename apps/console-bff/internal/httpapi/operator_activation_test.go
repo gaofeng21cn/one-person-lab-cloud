@@ -20,88 +20,41 @@ import (
 	"opl-cloud/packages/contracts/go/owneridentity"
 )
 
-type activationProvisionProbe struct {
-	receipt []byte
-	refusal error
-	session string
-	key     string
-	body    []byte
-	calls   int
-}
-
-func (p *activationProvisionProbe) OperatorProvisionAccount(_ context.Context, session, key string, body []byte) ([]byte, error) {
-	p.calls++
-	p.session, p.key, p.body = session, key, body
-	if p.refusal != nil {
-		return nil, p.refusal
-	}
-	return p.receipt, nil
-}
-
-// activationTenantProbe answers the Tenant owner's two calls: admission, and the
-// billing readback the activation uses to decide whether it still has to bind.
+// activationTenantProbe answers the owner that holds the customer account fact.
+// The account-opening command is that owner's own now, so the BFF forwards one
+// command and publishes the owner's Operation.
 type activationTenantProbe struct {
 	api.TenantProductServiceClient
-	create         *api.CreateTenantRpcRequest
-	createErr      error
-	eligibility    *api.SetWorkspacePurchaseEligibilityRpcRequest
-	eligibilityErr error
+	provision    *api.ProvisionOperatorAccountRpcRequest
+	provisionErr error
+	command      *api.OperatorAccountCommand
+	calls        int
 }
 
-func (p *activationTenantProbe) CreateTenant(_ context.Context, r *api.CreateTenantRpcRequest, _ ...grpc.CallOption) (*api.Operation, error) {
-	p.create = r
-	if p.createErr != nil {
-		return nil, p.createErr
-	}
-	return &api.Operation{
-		OperationId: "op-tenant-1", Owner: api.OperationOwnerEnum_OPERATION_OWNER_ENUM_TENANT,
-		Kind: api.OperationKindEnum_OPERATION_KIND_ENUM_CREATE_TENANT, ResourceId: "tenant-created-1",
-		Status: api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED, Stage: api.OperationStageEnum_OPERATION_STAGE_ENUM_SUCCEEDED,
-		RequestId: r.GetContext().GetRequestId(),
-	}, nil
-}
-
-func (p *activationTenantProbe) SetWorkspacePurchaseEligibility(_ context.Context, r *api.SetWorkspacePurchaseEligibilityRpcRequest, _ ...grpc.CallOption) (*api.WorkspacePurchaseEligibilityCommand, error) {
-	p.eligibility = r
-	if p.eligibilityErr != nil {
-		return nil, p.eligibilityErr
-	}
-	return &api.WorkspacePurchaseEligibilityCommand{
-		OperationId:              "workspace-purchase-eligibility-activation",
-		AccountId:                r.GetTargetActorId(),
-		Status:                   "succeeded",
-		WorkspacePurchaseEnabled: r.GetBody().GetEnabled(),
-	}, nil
-}
-
-type activationBindingProbe struct {
-	api.GatewayCoordinationClient
-	received *api.WalletBindingCommand
-	calls    int
-	refusal  error
-}
-
-func (p *activationBindingProbe) BindWallet(_ context.Context, r *api.WalletBindingCommand, _ ...grpc.CallOption) (*api.WalletBindingReadback, error) {
+func (p *activationTenantProbe) ProvisionOperatorAccount(_ context.Context, r *api.ProvisionOperatorAccountRpcRequest, _ ...grpc.CallOption) (*api.OperatorAccountCommand, error) {
 	p.calls++
-	p.received = r
-	if p.refusal != nil {
-		return nil, p.refusal
+	p.provision = r
+	if p.provisionErr != nil {
+		return nil, p.provisionErr
 	}
-	return &api.WalletBindingReadback{TenantId: r.GetTargetTenantId(), BillingSub2ApiUserId: r.GetBillingSub2ApiUserId(),
-		BindingVersion: 1, Outcome: api.Observation_OBSERVATION_CONFIRMED, AuthorizationReceiptId: r.GetAuthorizationReceiptId()}, nil
+	if p.command != nil {
+		return p.command, nil
+	}
+	return activationSucceededCommand("op_provision_1", "acct-1"), nil
 }
 
-// activationIdentity pins one decision per action so each composed owner check is
-// exercised with the scope, audience and resource that owner requires.
+// activationIdentity pins the platform-administrator decision the account-opening
+// command is authorized with. The owner decides the same action again for
+// itself; the BFF asks for it once, at platform scope.
 func activationIdentity() *fakeIdentity {
 	return &fakeIdentity{
 		session: &api.Session{ActorId: "admin-1", CsrfToken: "csrf-admin"},
 		decisions: map[api.AuthorizationActionEnum]*api.AuthorizationDecision{
-			operatorPrivilegeAction: activationPlatformDecision(operatorPrivilegeAction, api.OwnerEnum_OWNER_ENUM_CAPABILITY, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "", "operator-authority"),
-			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATETENANT:                    activationPlatformDecision(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATETENANT, api.OwnerEnum_OWNER_ENUM_TENANT, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", "tenant-authority"),
-			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETWORKSPACEPURCHASEELIGIBILITY: activationPlatformDecision(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETWORKSPACEPURCHASEELIGIBILITY, api.OwnerEnum_OWNER_ENUM_TENANT, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PLATFORM, "77", "eligibility-authority"),
-			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANT:                       activationTenantDecision(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANT, "tenant-read-authority"),
-			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDTENANTWALLET: activationTenantDecision(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDTENANTWALLET, "binding-authority"),
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONOPERATORACCOUNT: activationPlatformDecision(
+				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONOPERATORACCOUNT,
+				api.OwnerEnum_OWNER_ENUM_TENANT,
+				api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PLATFORM,
+				"", "provision-authority"),
 		},
 	}
 }
@@ -120,19 +73,8 @@ func activationPlatformDecision(action api.AuthorizationActionEnum, audience api
 	}
 }
 
-func activationTenantDecision(action api.AuthorizationActionEnum, contextID string) *api.AuthorizationDecision {
-	resource := &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: proto.String("tenant-created-1")}
-	return &api.AuthorizationDecision{
-		ActorId: "admin-1", SessionId: ptr(owneridentity.SessionReference("session-admin")),
-		Scope:             &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-created-1"}}},
-		PermissionVersion: 1, IssuedAt: timestamppb.New(time.Now().Add(-time.Minute)), ExpiresAt: timestamppb.New(time.Now().Add(time.Minute)),
-		Result: api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED, Issuer: api.AuthorizationIssuer_AUTHORIZATION_ISSUER_CLOUD_IDENTITY,
-		Action: action, AudienceOwner: api.OwnerEnum_OWNER_ENUM_TENANT, Resource: resource, AuthorizationContextId: proto.String(contextID),
-	}
-}
-
-func activationServer(provision *activationProvisionProbe, tenant *activationTenantProbe, binding *activationBindingProbe, identity IdentityReader) *Server {
-	return &Server{identity: identity, operatorProvisioner: provision, tenant: tenant, gatewayCoordination: binding}
+func activationServer(tenant *activationTenantProbe, identity IdentityReader) *Server {
+	return &Server{identity: identity, tenant: tenant}
 }
 
 func activationRequest(body string) *http.Request {
@@ -146,185 +88,135 @@ func activationRequest(body string) *http.Request {
 
 const activationBody = `{"email":"customer@example.com","password":"CorrectHorseBatteryStaple!","name":"Customer One","admission":"full_cloud_customer"}`
 
-func activationReceiptOf(t *testing.T, recorder *httptest.ResponseRecorder) activationReceipt {
-	t.Helper()
-	var receipt activationReceipt
-	if err := json.Unmarshal(recorder.Body.Bytes(), &receipt); err != nil {
-		t.Fatalf("activation receipt %s: %v", recorder.Body.String(), err)
+// activationSucceededCommand is the owner's terminal answer for one finished
+// account-opening command: the opened account, its operation and the purchase
+// eligibility the owner granted it.
+func activationSucceededCommand(operationID, accountID string) *api.OperatorAccountCommand {
+	return &api.OperatorAccountCommand{
+		OperationId: operationID, AccountId: accountID, Status: "succeeded",
+		WorkspacePurchaseEnabled: true,
 	}
-	return receipt
 }
 
-// TestOperatorActivationComposesAccountTenantAndBinding proves the one activation
-// operation activates the account, admits the Tenant whose owner is the activated
-// Gateway subject, binds that subject to the Tenant's billing, and returns one
-// receipt that reads all three back.
-func TestOperatorActivationComposesAccountTenantAndBinding(t *testing.T) {
-	provision := &activationProvisionProbe{receipt: []byte(`{"operationId":"account-provision-1","accountId":"acct-1","sub2apiUserId":"77","status":"succeeded","workspacePurchaseEnabled":true}`)}
+// activationCommandOf reads the owner's published command receipt.
+func activationCommandOf(t *testing.T, recorder *httptest.ResponseRecorder) map[string]any {
+	t.Helper()
+	var command map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &command); err != nil {
+		t.Fatalf("activation command %s: %v", recorder.Body.String(), err)
+	}
+	return command
+}
+
+// TestOperatorActivationPublishesTheOwnerOperation proves the account-opening
+// command is the owner's own now: the BFF authorizes the action once, forwards
+// the caller's own session and idempotency key with a canonical body, and
+// publishes the owner's Operation as the accepted answer.
+func TestOperatorActivationPublishesTheOwnerOperation(t *testing.T) {
 	tenant := &activationTenantProbe{}
-	binding := &activationBindingProbe{}
-	handler := activationServer(provision, tenant, binding, activationIdentity()).Handler()
+	identity := activationIdentity()
+	handler := activationServer(tenant, identity).Handler()
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, activationRequest(activationBody))
-	if recorder.Code != http.StatusCreated {
+	if recorder.Code != http.StatusAccepted {
 		t.Fatalf("activation status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
-	receipt := activationReceiptOf(t, recorder)
-	if receipt.Status != "succeeded" || receipt.AccountID != "acct-1" || receipt.Sub2APIUserID != "77" ||
-		receipt.TenantID != "tenant-created-1" || receipt.TenantOperationID != "op-tenant-1" ||
-		receipt.BillingBinding == nil || receipt.BillingBinding.Status != "succeeded" ||
-		receipt.BillingBinding.BillingSub2APIUserID != "77" || receipt.BillingBinding.BindingVersion != 1 {
-		t.Fatalf("activation receipt=%+v", receipt)
+	if recorder.Header().Get("Content-Type") != "application/json" {
+		t.Fatalf("activation content type=%q", recorder.Header().Get("Content-Type"))
 	}
-	if len(receipt.Steps) != 4 || receipt.Steps[0].Step != activationStepAccount || receipt.Steps[2].Step != activationStepEligibility || receipt.Steps[3].Step != activationStepBinding {
-		t.Fatalf("activation steps=%+v", receipt.Steps)
+	// A terminal operation carries no poll cadence: the browser stops reading.
+	if recorder.Header().Get("Retry-After") != "" {
+		t.Fatalf("terminal activation asked the browser to poll: %q", recorder.Header().Get("Retry-After"))
 	}
-	if tenant.eligibility == nil || tenant.eligibility.GetTargetActorId() != "77" || !tenant.eligibility.GetBody().GetEnabled() || tenant.eligibility.GetContext().GetIdempotencyKey() != "activation-eligibility:acct-1" {
-		t.Fatalf("activation eligibility call=%+v", tenant.eligibility)
+	command := activationCommandOf(t, recorder)
+	if command["operationId"] != "op_provision_1" || command["accountId"] != "acct-1" ||
+		command["status"] != "succeeded" || command["workspacePurchaseEnabled"] != true {
+		t.Fatalf("activation command=%v", command)
 	}
 
-	// The retained owner receives the operator's own session and idempotency key,
+	// The owner receives the operator's own session, request and idempotency key,
 	// and a canonical command body rather than browser bytes.
-	if !strings.HasPrefix(provision.session, "session_") || provision.key != "activation-1" {
-		t.Fatalf("retained activation call session=%q key=%q", provision.session, provision.key)
+	if tenant.calls != 1 || tenant.provision == nil {
+		t.Fatalf("owner calls=%d", tenant.calls)
 	}
-	if !strings.Contains(string(provision.body), `"email":"customer@example.com"`) || strings.Contains(string(provision.body), "unknown") {
-		t.Fatalf("retained activation body=%s", provision.body)
+	call := tenant.provision.GetContext()
+	if call.GetActorId() != "admin-1" || !strings.HasPrefix(call.GetSessionId(), "session_") ||
+		call.GetScope().GetPlatform() == nil || call.GetRequestId() == "" || call.GetIdempotencyKey() != "activation-1" {
+		t.Fatalf("owner call context=%+v", call)
 	}
-
-	// The Tenant owner is called with the activated Gateway subject as its owner,
-	// under the platform scope and a key derived from the account, so a retry with a
-	// new browser key replays this same Tenant.
-	call := tenant.create.GetContext()
-	if tenant.create.GetBody().GetOwnerGatewaySubjectId() != "77" || tenant.create.GetBody().GetName() != "Customer One" ||
-		tenant.create.GetBody().GetOwnerEmail() != "customer@example.com" || tenant.create.GetBody().GetBillingSub2ApiUserId() != "77" {
-		t.Fatalf("tenant admission body=%+v", tenant.create.GetBody())
-	}
-	if call.GetScope().GetPlatform() == nil || call.GetIdempotencyKey() != "activation-tenant:acct-1" || call.GetActorId() != "admin-1" || !strings.HasPrefix(call.GetSessionId(), "session_") {
-		t.Fatalf("tenant admission context=%+v", call)
-	}
-	if call.GetAuthorizationContextId() != "tenant-authority" {
-		t.Fatalf("tenant admission authority=%q", call.GetAuthorizationContextId())
+	body := tenant.provision.GetBody()
+	if body.GetEmail() != "customer@example.com" || body.GetPassword() != "CorrectHorseBatteryStaple!" ||
+		body.GetName() != "Customer One" || body.GetAdmission() != api.ProvisionAccountRequestAdmissionEnum_PROVISION_ACCOUNT_REQUEST_ADMISSION_ENUM_FULL_CLOUD_CUSTOMER {
+		t.Fatalf("owner command body=%+v", body)
 	}
 
-	// The billing binding targets the Tenant the owner just returned and carries the
-	// Tenant owner's own authorization receipt.
-	command := binding.received
-	if command.GetTargetTenantId() != "tenant-created-1" || command.GetBillingSub2ApiUserId() != "77" || command.GetExpectedBindingVersion() != 0 {
-		t.Fatalf("binding command=%+v", command)
+	// The BFF asks for exactly this one action, at the tenant audience and
+	// platform scope: the owner decides the same action again for itself.
+	if len(identity.requests) != 1 {
+		t.Fatalf("authorization requests=%d", len(identity.requests))
 	}
-	if command.GetAuthorizationReceiptId() != "binding-authority" || command.GetContext().GetScope().GetTenant().GetTenantId() != "tenant-created-1" {
-		t.Fatalf("binding context=%+v receipt=%q", command.GetContext(), command.GetAuthorizationReceiptId())
+	request := identity.requests[0]
+	if request.GetAction() != api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONOPERATORACCOUNT ||
+		request.GetAudienceOwner() != api.OwnerEnum_OWNER_ENUM_TENANT ||
+		request.GetResource().GetKind() != api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PLATFORM ||
+		request.GetScope().GetPlatform() == nil {
+		t.Fatalf("authorization request=%v", request)
 	}
 }
 
-// TestOperatorActivationReRunReusesTheSameBindingKey proves a resumed activation
-// derives the same binding command key, which is what makes the Gateway owner
-// replay the binding it already made instead of admitting a second one.
-func TestOperatorActivationReRunReusesTheSameBindingKey(t *testing.T) {
-	provision := &activationProvisionProbe{receipt: []byte(`{"operationId":"account-provision-1","accountId":"acct-1","sub2apiUserId":"77","status":"succeeded","workspacePurchaseEnabled":true}`)}
+// TestOperatorActivationReportsThePendingOperation proves a command whose
+// outcome is not confirmed yet answers with the owner's poll cadence, so the
+// browser reads the same command back instead of retrying it.
+func TestOperatorActivationReportsThePendingOperation(t *testing.T) {
+	poll := int32(5)
+	tenant := &activationTenantProbe{command: &api.OperatorAccountCommand{
+		OperationId: "op_provision_pending", AccountId: "acct-1", Status: "awaiting_confirmation",
+		PollAfterSeconds: &poll,
+	}}
+	handler := activationServer(tenant, activationIdentity()).Handler()
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, activationRequest(activationBody))
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("activation status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if recorder.Header().Get("Retry-After") != "5" {
+		t.Fatalf("pending activation retry-after=%q", recorder.Header().Get("Retry-After"))
+	}
+	command := activationCommandOf(t, recorder)
+	if command["status"] != "awaiting_confirmation" || command["pollAfterSeconds"] != float64(5) {
+		t.Fatalf("pending activation command=%v", command)
+	}
+}
+
+// TestOperatorActivationRefusesADeniedAction proves a caller the owner does not
+// authorize is refused before the owner is called at all.
+func TestOperatorActivationRefusesADeniedAction(t *testing.T) {
+	identity := activationIdentity()
+	denied := activationPlatformDecision(
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONOPERATORACCOUNT,
+		api.OwnerEnum_OWNER_ENUM_TENANT,
+		api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PLATFORM,
+		"", "provision-authority")
+	denied.Result = api.AuthorizationResult_AUTHORIZATION_RESULT_DENIED
+	identity.decisions[api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONOPERATORACCOUNT] = denied
 	tenant := &activationTenantProbe{}
-	keys := []string{}
-	for _, browserKey := range []string{"activation-first", "activation-second"} {
-		binding := &activationBindingProbe{}
-		handler := activationServer(provision, tenant, binding, activationIdentity()).Handler()
-		request := activationRequest(activationBody)
-		request.Header.Set("Idempotency-Key", browserKey)
-		recorder := httptest.NewRecorder()
-		handler.ServeHTTP(recorder, request)
-		if recorder.Code != http.StatusCreated {
-			t.Fatalf("activation status=%d body=%s", recorder.Code, recorder.Body.String())
-		}
-		keys = append(keys, binding.received.GetContext().GetIdempotencyKey())
+	handler := activationServer(tenant, identity).Handler()
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, activationRequest(activationBody))
+	if recorder.Code != http.StatusForbidden || !strings.Contains(recorder.Body.String(), `"FORBIDDEN"`) {
+		t.Fatalf("denied activation status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
-	if keys[0] != keys[1] || keys[0] == "" {
-		t.Fatalf("binding key depended on the browser key: %v", keys)
+	if tenant.calls != 0 {
+		t.Fatalf("a denied activation reached the owner: %d", tenant.calls)
 	}
 }
 
-// TestOperatorActivationReportsTheFailedStep proves a step failure is reported with
-// what already succeeded, is never labelled succeeded, and does not proceed to the
-// steps behind it.
-func TestOperatorActivationReportsTheFailedStep(t *testing.T) {
-	for name, test := range map[string]struct {
-		provision *activationProvisionProbe
-		tenant    *activationTenantProbe
-		binding   *activationBindingProbe
-		status    string
-		failed    string
-		code      int
-		bindCalls int
-	}{
-		"account refused": {
-			provision: &activationProvisionProbe{refusal: status.Error(codes.PermissionDenied, "operator refused")},
-			tenant:    &activationTenantProbe{}, binding: &activationBindingProbe{},
-			status: "account_failed", failed: activationStepAccount, code: http.StatusForbidden,
-		},
-		"tenant failed": {
-			provision: &activationProvisionProbe{receipt: []byte(`{"operationId":"account-provision-1","accountId":"acct-1","sub2apiUserId":"77","status":"succeeded","workspacePurchaseEnabled":true}`)},
-			tenant:    &activationTenantProbe{createErr: status.Error(codes.PermissionDenied, "tenant owner refused")},
-			binding:   &activationBindingProbe{},
-			status:    "tenant_failed", failed: activationStepTenant, code: http.StatusBadGateway,
-		},
-		"eligibility failed": {
-			provision: &activationProvisionProbe{receipt: []byte(`{"operationId":"account-provision-1","accountId":"acct-1","sub2apiUserId":"77","status":"succeeded","workspacePurchaseEnabled":true}`)},
-			tenant:    &activationTenantProbe{eligibilityErr: status.Error(codes.Unavailable, "eligibility owner unavailable")},
-			binding:   &activationBindingProbe{},
-			status:    "eligibility_failed", failed: activationStepEligibility, code: http.StatusBadGateway,
-		},
-		"binding failed": {
-			provision: &activationProvisionProbe{receipt: []byte(`{"operationId":"account-provision-1","accountId":"acct-1","sub2apiUserId":"77","status":"succeeded","workspacePurchaseEnabled":true}`)},
-			tenant:    &activationTenantProbe{},
-			binding:   &activationBindingProbe{refusal: status.Error(codes.Unavailable, "billing owner unavailable")},
-			status:    "billing_binding_failed", failed: activationStepBinding, code: http.StatusBadGateway,
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			handler := activationServer(test.provision, test.tenant, test.binding, activationIdentity()).Handler()
-			recorder := httptest.NewRecorder()
-			handler.ServeHTTP(recorder, activationRequest(activationBody))
-			if recorder.Code != test.code {
-				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
-			}
-			receipt := activationReceiptOf(t, recorder)
-			if receipt.Status != test.status || receipt.FailedStep != test.failed {
-				t.Fatalf("failure receipt=%+v", receipt)
-			}
-			if receipt.Status == "succeeded" {
-				t.Fatalf("failed activation reported success: %s", recorder.Body.String())
-			}
-			if test.failed == activationStepAccount && len(receipt.Steps) != 1 {
-				t.Fatalf("account failure reported later steps: %+v", receipt.Steps)
-			}
-			if test.failed == activationStepTenant {
-				if len(receipt.Steps) != 2 || receipt.Steps[0].Status != "succeeded" || receipt.Steps[1].Status != "failed" {
-					t.Fatalf("tenant failure steps=%+v", receipt.Steps)
-				}
-				if receipt.AccountID != "acct-1" || receipt.Sub2APIUserID != "77" || receipt.TenantID != "" {
-					t.Fatalf("tenant failure receipt=%+v", receipt)
-				}
-			}
-			if test.failed == activationStepEligibility {
-				if receipt.TenantID != "tenant-created-1" || len(receipt.Steps) != 3 {
-					t.Fatalf("eligibility failure receipt=%+v", receipt)
-				}
-			}
-			if test.failed == activationStepBinding {
-				if receipt.TenantID != "tenant-created-1" || len(receipt.Steps) != 4 {
-					t.Fatalf("binding failure receipt=%+v", receipt)
-				}
-			}
-			if test.failed != activationStepBinding && test.binding.calls != 0 {
-				t.Fatalf("a failed step still bound the wallet: %d", test.binding.calls)
-			}
-		})
-	}
-}
-
-// TestOperatorActivationKeepsItsWriteAndOperatorGuards proves the composed command
-// is not a new unguarded path: it keeps the shared CSRF, origin and idempotency
-// guards and the existing platform-operator privilege.
+// TestOperatorActivationKeepsItsWriteAndOperatorGuards proves the command is
+// not a new unguarded path: it keeps the shared CSRF, origin and idempotency
+// guards, and a refused request never reaches the owner.
 func TestOperatorActivationKeepsItsWriteAndOperatorGuards(t *testing.T) {
 	for name, test := range map[string]struct {
 		mutate func(*http.Request)
@@ -339,10 +231,13 @@ func TestOperatorActivationKeepsItsWriteAndOperatorGuards(t *testing.T) {
 			r.Body = io.NopCloser(strings.NewReader(`{"email":"a@b.c","password":"x","sub2apiUserId":"99"}`))
 		}, code: http.StatusBadRequest},
 		"missing password": {mutate: func(r *http.Request) { r.Body = io.NopCloser(strings.NewReader(`{"email":"a@b.c"}`)) }, code: http.StatusBadRequest},
+		"invalid admission": {mutate: func(r *http.Request) {
+			r.Body = io.NopCloser(strings.NewReader(`{"email":"a@b.c","password":"x","admission":"enterprise"}`))
+		}, code: http.StatusBadRequest},
 	} {
 		t.Run(name, func(t *testing.T) {
-			provision := &activationProvisionProbe{receipt: []byte(`{"operationId":"account-provision-1","accountId":"acct-1","sub2apiUserId":"77","status":"succeeded"}`)}
-			handler := activationServer(provision, &activationTenantProbe{}, &activationBindingProbe{}, activationIdentity()).Handler()
+			tenant := &activationTenantProbe{}
+			handler := activationServer(tenant, activationIdentity()).Handler()
 			request := activationRequest(activationBody)
 			test.mutate(request)
 			recorder := httptest.NewRecorder()
@@ -350,102 +245,86 @@ func TestOperatorActivationKeepsItsWriteAndOperatorGuards(t *testing.T) {
 			if recorder.Code != test.code {
 				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 			}
-			if provision.calls != 0 {
-				t.Fatalf("a guarded-out request reached the retained owner")
+			if tenant.calls != 0 {
+				t.Fatalf("a guarded-out request reached the owner: %d", tenant.calls)
 			}
 		})
 	}
 
-	// A tenant administrator holds no platform privilege, so activation is denied
-	// before any owner is called.
+	// A tenant administrator holds no platform privilege, so the activation is
+	// denied before any owner is called.
 	identity := activationIdentity()
-	identity.decisions[operatorPrivilegeAction] = &api.AuthorizationDecision{
-		ActorId: "admin-1", SessionId: ptr(owneridentity.SessionReference("session-admin")),
-		Scope:             &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-1"}}},
-		PermissionVersion: 1, IssuedAt: timestamppb.New(time.Now().Add(-time.Minute)), ExpiresAt: timestamppb.New(time.Now().Add(time.Minute)),
-		Result: api.AuthorizationResult_AUTHORIZATION_RESULT_DENIED, Issuer: api.AuthorizationIssuer_AUTHORIZATION_ISSUER_CLOUD_IDENTITY,
-		Action: operatorPrivilegeAction, AudienceOwner: api.OwnerEnum_OWNER_ENUM_CAPABILITY,
-		Resource: &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG},
-	}
-	provision := &activationProvisionProbe{}
-	handler := activationServer(provision, &activationTenantProbe{}, &activationBindingProbe{}, identity).Handler()
+	denied := activationPlatformDecision(
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONOPERATORACCOUNT,
+		api.OwnerEnum_OWNER_ENUM_TENANT,
+		api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PLATFORM,
+		"", "provision-authority")
+	denied.Result = api.AuthorizationResult_AUTHORIZATION_RESULT_DENIED
+	identity.decisions[api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONOPERATORACCOUNT] = denied
+	tenant := &activationTenantProbe{}
+	handler := activationServer(tenant, identity).Handler()
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, activationRequest(activationBody))
-	if recorder.Code != http.StatusForbidden || provision.calls != 0 {
-		t.Fatalf("tenant administrator activation status=%d calls=%d", recorder.Code, provision.calls)
+	if recorder.Code != http.StatusForbidden || tenant.calls != 0 {
+		t.Fatalf("tenant administrator activation status=%d calls=%d", recorder.Code, tenant.calls)
 	}
 }
 
-// TestOperatorActivationReportsAVersionConflict proves a real version conflict
-// (another binding already owns the Tenant) is reported as a failed step, never as
-// a successful activation.
-func TestOperatorActivationReportsAVersionConflict(t *testing.T) {
-	provision := &activationProvisionProbe{receipt: []byte(`{"operationId":"account-provision-1","accountId":"acct-1","sub2apiUserId":"77","status":"succeeded","workspacePurchaseEnabled":true}`)}
-	binding := &activationBindingProbe{refusal: status.Error(codes.Aborted, "wallet binding version conflict")}
-	handler := activationServer(provision, &activationTenantProbe{}, binding, activationIdentity()).Handler()
-
-	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, activationRequest(activationBody))
-	if recorder.Code != http.StatusBadGateway {
-		t.Fatalf("conflict status=%d body=%s", recorder.Code, recorder.Body.String())
-	}
-	receipt := activationReceiptOf(t, recorder)
-	if receipt.Status != "billing_binding_failed" || receipt.FailedStep != activationStepBinding || receipt.TenantID != "tenant-created-1" {
-		t.Fatalf("conflict receipt=%+v", receipt)
-	}
-}
-
-// TestOperatorActivationUsesTheAccountForTheTenantKey proves the derived key does
-// not depend on the browser idempotency key, so a retried activation that mints a
-// new browser key still addresses the same Tenant operation.
-func TestOperatorActivationUsesTheAccountForTheTenantKey(t *testing.T) {
-	keys := []string{}
-	for _, browserKey := range []string{"activation-first", "activation-second"} {
-		provision := &activationProvisionProbe{receipt: []byte(`{"operationId":"account-provision-1","accountId":"acct-1","sub2apiUserId":"77","status":"succeeded","workspacePurchaseEnabled":true}`)}
-		tenant := &activationTenantProbe{}
-		handler := activationServer(provision, tenant, &activationBindingProbe{}, activationIdentity()).Handler()
-		request := activationRequest(activationBody)
-		request.Header.Set("Idempotency-Key", browserKey)
-		recorder := httptest.NewRecorder()
-		handler.ServeHTTP(recorder, request)
-		if recorder.Code != http.StatusCreated {
-			t.Fatalf("activation status=%d body=%s", recorder.Code, recorder.Body.String())
-		}
-		keys = append(keys, tenant.create.GetContext().GetIdempotencyKey())
-		if provision.key != browserKey {
-			t.Fatalf("retained owner did not receive the caller key: %q", provision.key)
-		}
-	}
-	if keys[0] != keys[1] {
-		t.Fatalf("tenant key depended on the browser key: %v", keys)
+// TestOperatorActivationSurfacesTheOwnerRefusal proves the owner's own refusal
+// reaches the browser with its typed business code, so a reused idempotency key
+// is reported as a conflict instead of a generic failure.
+func TestOperatorActivationSurfacesTheOwnerRefusal(t *testing.T) {
+	for name, test := range map[string]struct {
+		refusal error
+		code    int
+		typed   string
+	}{
+		"reused key": {
+			refusal: owneridentity.WithErrorCode(status.Error(codes.AlreadyExists, "idempotency key reused"), api.ErrorCodeEnum_ERROR_CODE_ENUM_IDEMPOTENCY_CONFLICT),
+			code:    http.StatusConflict, typed: "IDEMPOTENCY_CONFLICT",
+		},
+		"owner refused": {
+			refusal: status.Error(codes.PermissionDenied, "platform administrator authorization required"),
+			code:    http.StatusForbidden, typed: "FORBIDDEN",
+		},
+		"owner unavailable": {
+			refusal: status.Error(codes.Unavailable, "gateway unavailable"),
+			code:    http.StatusServiceUnavailable, typed: "DEPENDENCY_UNAVAILABLE",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			tenant := &activationTenantProbe{provisionErr: test.refusal}
+			handler := activationServer(tenant, activationIdentity()).Handler()
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, activationRequest(activationBody))
+			if recorder.Code != test.code {
+				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+			}
+			if !strings.Contains(recorder.Body.String(), test.typed) {
+				t.Fatalf("owner refusal body=%s", recorder.Body.String())
+			}
+			if tenant.calls != 1 {
+				t.Fatalf("owner calls=%d", tenant.calls)
+			}
+		})
 	}
 }
 
 const activationBodyWithoutName = `{"email":"customer@example.com","password":"CorrectHorseBatteryStaple!","admission":"full_cloud_customer"}`
 
 // TestOperatorActivationForwardsAnAbsentNameAsAbsent proves an omitted browser
-// name is forwarded as an absent field, not as JSON null. The retained owner
-// accepts a missing name (it derives the Tenant name from the email) and rejects
-// a non-string, so re-encoding the canonical body must preserve absence.
+// name is forwarded as an absent field, not as JSON null: the owner derives the
+// Tenant name from the email when no name is given.
 func TestOperatorActivationForwardsAnAbsentNameAsAbsent(t *testing.T) {
-	provision := &activationProvisionProbe{receipt: []byte(`{"operationId":"account-provision-1","accountId":"acct-1","sub2apiUserId":"77","status":"succeeded","workspacePurchaseEnabled":true}`)}
 	tenant := &activationTenantProbe{}
-	handler := activationServer(provision, tenant, &activationBindingProbe{}, activationIdentity()).Handler()
+	handler := activationServer(tenant, activationIdentity()).Handler()
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, activationRequest(activationBodyWithoutName))
-	if recorder.Code != http.StatusCreated {
+	if recorder.Code != http.StatusAccepted {
 		t.Fatalf("activation status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
-
-	var forwarded map[string]json.RawMessage
-	if err := json.Unmarshal(provision.body, &forwarded); err != nil {
-		t.Fatalf("forwarded body %s: %v", provision.body, err)
-	}
-	if raw, exists := forwarded["name"]; exists {
-		t.Fatalf("forwarded body carries name=%s: %s", raw, provision.body)
-	}
-	if tenant.create.GetBody().GetName() != "customer" {
-		t.Fatalf("tenant name=%q body=%+v", tenant.create.GetBody().GetName(), tenant.create.GetBody())
+	if tenant.provision.GetBody().GetName() != "" {
+		t.Fatalf("forwarded name=%q", tenant.provision.GetBody().GetName())
 	}
 }

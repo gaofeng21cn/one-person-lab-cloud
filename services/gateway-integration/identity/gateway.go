@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -74,6 +75,16 @@ type GatewayBatchUserUsage struct {
 	ByPlatform               []GatewayPlatformUsage
 }
 
+// ErrGatewayAccountUnknown reports that the Gateway directory holds no account
+// for the requested email.
+var ErrGatewayAccountUnknown = errors.New("gateway account not found")
+
+// ErrGatewayAccountConflict reports that the Gateway directory holds more than
+// one account for the requested email, so no single account can be adopted.
+var ErrGatewayAccountConflict = errors.New("gateway account is ambiguous")
+
+// gatewayUserPageSize is the page size the Gateway account list is read with.
+const gatewayUserPageSize = 100
 type Gateway struct {
 	base   string
 	client *http.Client
@@ -240,6 +251,197 @@ func (g *Gateway) request(ctx context.Context, path, token string, body any, out
 	}
 	return nil
 }
+
+// UserByEmail resolves the Gateway account that carries this exact email.
+//
+// The directory search is the native readback an account-opening command
+// converges on: Sub2API has no idempotency key for account creation, so the
+// owner confirms an account it may already have created by reading it back
+// instead of writing a second one.
+func (g *Gateway) UserByEmail(ctx context.Context, email string) (GatewayIdentity, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return GatewayIdentity{}, status.Error(codes.InvalidArgument, "an email is required")
+	}
+	if !g.DirectoryConfigured() {
+		return GatewayIdentity{}, status.Error(codes.FailedPrecondition, "the Gateway directory identity is not configured")
+	}
+	token, err := g.directoryToken(ctx)
+	if err != nil {
+		return GatewayIdentity{}, err
+	}
+	matches := make([]GatewayIdentity, 0, 1)
+	for page := 1; ; page++ {
+		values := url.Values{
+			"page": {strconv.Itoa(page)}, "page_size": {strconv.Itoa(gatewayUserPageSize)},
+			"search": {email}, "sort_by": {"id"}, "sort_order": {"asc"},
+		}
+		var data struct {
+			Items    []GatewayIdentity `json:"items"`
+			Total    int64             `json:"total"`
+			Page     int               `json:"page"`
+			PageSize int               `json:"page_size"`
+			Pages    int               `json:"pages"`
+		}
+		if err = g.request(ctx, "/api/v1/admin/users?"+values.Encode(), token, nil, &data); err != nil {
+			if status.Code(err) == codes.Unauthenticated {
+				g.invalidateDirectoryToken()
+			}
+			return GatewayIdentity{}, err
+		}
+		if data.Page != page || data.PageSize != gatewayUserPageSize || data.Total < 0 || data.Pages < 1 {
+			return GatewayIdentity{}, status.Error(codes.Unavailable, "invalid Gateway account page")
+		}
+		for _, item := range data.Items {
+			if strings.ToLower(strings.TrimSpace(item.Email)) == email {
+				matches = append(matches, item)
+			}
+		}
+		if page >= data.Pages {
+			break
+		}
+	}
+	switch len(matches) {
+	case 1:
+		if matches[0].ID <= 0 || (matches[0].Status != "active" && matches[0].Status != "disabled") {
+			return GatewayIdentity{}, status.Error(codes.FailedPrecondition, "the Gateway returned an invalid account")
+		}
+		return matches[0], nil
+	case 0:
+		return GatewayIdentity{}, ErrGatewayAccountUnknown
+	default:
+		return GatewayIdentity{}, ErrGatewayAccountConflict
+	}
+}
+
+// CreateUser creates one Gateway account for a customer.
+//
+// The Gateway provider has no idempotency key for account creation, so this
+// write is dispatched at most once per owner command: the caller confirms the
+// outcome with UserByEmail instead of repeating it.
+func (g *Gateway) CreateUser(ctx context.Context, email, password string) (GatewayIdentity, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" || password == "" {
+		return GatewayIdentity{}, status.Error(codes.InvalidArgument, "an email and a password are required")
+	}
+	if !g.DirectoryConfigured() {
+		return GatewayIdentity{}, status.Error(codes.FailedPrecondition, "the Gateway directory identity is not configured")
+	}
+	token, err := g.directoryToken(ctx)
+	if err != nil {
+		return GatewayIdentity{}, err
+	}
+	var out GatewayIdentity
+	if err = g.request(ctx, "/api/v1/admin/users", token, map[string]string{"email": email, "password": password, "role": "user"}, &out); err != nil {
+		return GatewayIdentity{}, err
+	}
+	return out, nil
+}
+
+// KeyCount reads how many Gateway API keys one account holds. The key material
+// never leaves the provider; only the count is a readable fact.
+func (g *Gateway) KeyCount(ctx context.Context, subject string) (int, error) {
+	id, err := strconv.ParseInt(strings.TrimSpace(subject), 10, 64)
+	if err != nil || id <= 0 {
+		return 0, status.Error(codes.InvalidArgument, "a positive Gateway subject id is required")
+	}
+	if !g.DirectoryConfigured() {
+		return 0, status.Error(codes.FailedPrecondition, "the Gateway directory identity is not configured")
+	}
+	token, err := g.directoryToken(ctx)
+	if err != nil {
+		return 0, err
+	}
+	var keys struct {
+		Items []struct {
+			Key    string `json:"key"`
+			Status string `json:"status"`
+		} `json:"items"`
+	}
+	if err = g.request(ctx, "/api/v1/admin/users/"+strconv.FormatInt(id, 10)+"/api-keys", token, nil, &keys); err != nil {
+		if status.Code(err) == codes.Unauthenticated {
+			g.invalidateDirectoryToken()
+		}
+		return 0, err
+	}
+	return len(keys.Items), nil
+}
+
+// BatchUsersUsage reads the usage facts of several Gateway accounts in one
+// provider call. A malformed entry is skipped rather than reported as a whole
+// page failure, so one unreadable account never hides the others.
+func (g *Gateway) BatchUsersUsage(ctx context.Context, subjects []string) (map[string]GatewayUsage, error) {
+	ids := make([]int64, 0, len(subjects))
+	for _, subject := range subjects {
+		id, err := strconv.ParseInt(strings.TrimSpace(subject), 10, 64)
+		if err != nil || id <= 0 {
+			return nil, status.Error(codes.InvalidArgument, "a positive Gateway subject id is required")
+		}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return map[string]GatewayUsage{}, nil
+	}
+	if !g.DirectoryConfigured() {
+		return nil, status.Error(codes.FailedPrecondition, "the Gateway directory identity is not configured")
+	}
+	token, err := g.directoryToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var data struct {
+		Stats map[string]json.RawMessage `json:"stats"`
+	}
+	if err = g.request(ctx, "/api/v1/admin/dashboard/users-usage", token, map[string]any{"user_ids": ids}, &data); err != nil {
+		if status.Code(err) == codes.Unauthenticated {
+			g.invalidateDirectoryToken()
+		}
+		return nil, err
+	}
+	if data.Stats == nil {
+		return nil, status.Error(codes.Unavailable, "invalid Gateway usage response")
+	}
+	out := make(map[string]GatewayUsage, len(ids))
+	for _, id := range ids {
+		raw, ok := data.Stats[strconv.FormatInt(id, 10)]
+		if !ok {
+			continue
+		}
+		var item struct {
+			UserID          int64       `json:"user_id"`
+			TodayActualCost json.Number `json:"today_actual_cost"`
+			TotalActualCost json.Number `json:"total_actual_cost"`
+			ByPlatform      []struct {
+				Platform        string      `json:"platform"`
+				TodayActualCost json.Number `json:"today_actual_cost"`
+				TotalActualCost json.Number `json:"total_actual_cost"`
+			} `json:"by_platform"`
+		}
+		if json.Unmarshal(raw, &item) != nil || item.UserID != id {
+			continue
+		}
+		today, todayErr := floorUSDDecimalToMicros(item.TodayActualCost)
+		total, totalErr := floorUSDDecimalToMicros(item.TotalActualCost)
+		if todayErr != nil || totalErr != nil {
+			continue
+		}
+		usage := GatewayUsage{UserID: id, TodayActualCostUSDMicros: today, TotalActualCostUSDMicros: total}
+		for _, platform := range item.ByPlatform {
+			platformName := strings.TrimSpace(platform.Platform)
+			platformToday, platformTodayErr := floorUSDDecimalToMicros(platform.TodayActualCost)
+			platformTotal, platformTotalErr := floorUSDDecimalToMicros(platform.TotalActualCost)
+			if platformName == "" || platformTodayErr != nil || platformTotalErr != nil {
+				continue
+			}
+			usage.ByPlatform = append(usage.ByPlatform, GatewayPlatformUsage{
+				Platform: platformName, TodayActualCostUSDMicros: platformToday, TotalActualCostUSDMicros: platformTotal,
+			})
+		}
+		out[strconv.FormatInt(id, 10)] = usage
+	}
+	return out, nil
+}
+
 func (g *Gateway) Login(ctx context.Context, user, password string) (GatewayIdentity, string, time.Time, error) {
 	var out struct {
 		AccessToken string          `json:"access_token"`

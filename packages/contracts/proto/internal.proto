@@ -2258,6 +2258,38 @@ message CreateTenantRpcRequest {
  CreateTenantRequest body = 2;
 }
 
+// ProvisionAccountRequest is one administrator account-opening command. The
+// password is the customer's own Gateway credential and is never stored or
+// echoed by Cloud.
+message ProvisionAccountRequest {
+ string email = 1;
+ string password = 2;
+ optional string name = 3;
+ optional ProvisionAccountRequestAdmissionEnum admission = 4;
+}
+
+enum ProvisionAccountRequestAdmissionEnum {
+ PROVISION_ACCOUNT_REQUEST_ADMISSION_ENUM_UNSPECIFIED = 0;
+ PROVISION_ACCOUNT_REQUEST_ADMISSION_ENUM_FULL_CLOUD_CUSTOMER = 1;
+ PROVISION_ACCOUNT_REQUEST_ADMISSION_ENUM_GATEWAY_ONLY = 2;
+}
+
+message ProvisionOperatorAccountRpcRequest {
+ CallContext context = 1;
+ ProvisionAccountRequest body = 2;
+}
+
+// OperatorAccountCommand is the owner's answer to one account-opening command.
+// It carries the account fact the console reads back, the operation identity it
+// polls, and the owner's own poll cadence while the command is still open.
+message OperatorAccountCommand {
+ string operation_id = 1;
+ string account_id = 2;
+ string status = 3;
+ bool workspace_purchase_enabled = 4;
+ optional int32 poll_after_seconds = 5;
+}
+
 message GetAdminTenantRpcRequest {
  CallContext context = 1;
  string tenant_id = 2;
@@ -2558,6 +2590,7 @@ service TenantProductService {
  rpc ReadCallerLinkRelayEntitlement(ReadCallerLinkRelayEntitlementRpcRequest) returns (LinkRelayEntitlementReadback);
  rpc SetPackageEntitlement(SetPackageEntitlementRpcRequest) returns (PackageEntitlementCommand);
  rpc ListCallerPackageEntitlements(ListCallerPackageEntitlementsRpcRequest) returns (CallerPackageEntitlementsReadback);
+ rpc ProvisionOperatorAccount(ProvisionOperatorAccountRpcRequest) returns (OperatorAccountCommand);
 }
 
 service CapabilityProductService {
@@ -3525,6 +3558,7 @@ enum OperationKindEnum {
  OPERATION_KIND_ENUM_CANCEL_PLAN_CHANGE = 32;
  OPERATION_KIND_ENUM_COMPENSATE_PLAN_CHANGE = 33;
  OPERATION_KIND_ENUM_REFUND_SUPPLEMENT_ON_DELETE = 34;
+ OPERATION_KIND_ENUM_PROVISION_ACCOUNT = 35;
 }
 
 enum OperationStageEnum {
@@ -3804,6 +3838,7 @@ AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES = 153;
  AUTHORIZATION_ACTION_ENUM_LISTOPERATORSOFTWAREPACKAGES = 183;
  AUTHORIZATION_ACTION_ENUM_LISTSOFTWAREENTITLEMENTS = 184;
  AUTHORIZATION_ACTION_ENUM_DOWNLOADSOFTWAREPACKAGE = 185;
+ AUTHORIZATION_ACTION_ENUM_PROVISIONOPERATORACCOUNT = 186;
 }
 
 enum ServiceIdentityEnum {
