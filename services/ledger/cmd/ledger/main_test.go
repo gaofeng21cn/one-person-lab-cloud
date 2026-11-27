@@ -56,6 +56,14 @@ func TestStoreDatabaseURLRequiresVerifyFullTLS(t *testing.T) {
 	}); err != nil || got != safe {
 		t.Fatalf("verified DATABASE_URL = %q, %v", got, err)
 	}
+	if got, err := storeDatabaseURL(func(key string) string {
+		if key == "DATABASE_URL" {
+			return "  " + safe + "\r\n"
+		}
+		return ""
+	}); err != nil || got != safe {
+		t.Fatalf("trimmed DATABASE_URL = %q, %v", got, err)
+	}
 }
 
 func TestStoreDatabaseURLAllowsOnlyExplicitLoopbackPostgresWithTestGate(t *testing.T) {

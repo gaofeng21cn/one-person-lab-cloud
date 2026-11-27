@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -118,6 +119,122 @@ func TestValidateTLSAllowsExplicitPrivatePilotDisableOnly(t *testing.T) {
 	if err := ValidateTLS("postgresql://user:pass@10.66.0.21/opl?sslmode=disable"); err == nil {
 		t.Fatal("private sslmode=disable succeeded without explicit PGSSLMODE=disable")
 	}
+}
+
+func TestOpenPoolTrimsWhitespaceAndNormalizesLegacyLibPQParams(t *testing.T) {
+	t.Run("trailing_newline_plain_private_ip", func(t *testing.T) {
+		t.Setenv("PGSSLMODE", "disable")
+		dsn := "postgres://u:p@10.0.0.1:5432/opl_control_plane\n"
+		if err := ValidateTLS(dsn); err != nil {
+			t.Fatalf("ValidateTLS: %v", err)
+		}
+		var gotDB string
+		var gotTLSNil bool
+		pool, db, err := OpenPool(context.Background(), dsn, func(cfg *pgxpool.Config) {
+			gotDB = cfg.ConnConfig.Database
+			gotTLSNil = cfg.ConnConfig.TLSConfig == nil
+		})
+		if err != nil {
+			t.Fatalf("OpenPool: %v", err)
+		}
+		_ = db.Close()
+		pool.Close()
+		if gotDB != "opl_control_plane" || !gotTLSNil {
+			t.Fatalf("gotDB=%q gotTLSNil=%v", gotDB, gotTLSNil)
+		}
+	})
+
+	t.Run("trailing_crlf_sslmode_disable", func(t *testing.T) {
+		t.Setenv("PGSSLMODE", "disable")
+		dsn := "postgres://u:p@10.0.0.1:5432/opl_control_plane?sslmode=disable\r\n"
+		if err := ValidateTLS(dsn); err != nil {
+			t.Fatalf("ValidateTLS: %v", err)
+		}
+		var gotDB string
+		var gotTLSNil bool
+		pool, db, err := OpenPool(context.Background(), dsn, func(cfg *pgxpool.Config) {
+			gotDB = cfg.ConnConfig.Database
+			gotTLSNil = cfg.ConnConfig.TLSConfig == nil
+		})
+		if err != nil {
+			t.Fatalf("OpenPool: %v", err)
+		}
+		_ = db.Close()
+		pool.Close()
+		if gotDB != "opl_control_plane" || !gotTLSNil {
+			t.Fatalf("gotDB=%q gotTLSNil=%v", gotDB, gotTLSNil)
+		}
+	})
+
+	t.Run("surrounding_spaces_verify_full", func(t *testing.T) {
+		dsn := "  postgres://u:p@db.example.com:5432/opl_control_plane?sslmode=verify-full  "
+		if err := ValidateTLS(dsn); err != nil {
+			t.Fatalf("ValidateTLS: %v", err)
+		}
+		var gotDB string
+		var hasTLS bool
+		pool, db, err := OpenPool(context.Background(), dsn, func(cfg *pgxpool.Config) {
+			gotDB = cfg.ConnConfig.Database
+			hasTLS = cfg.ConnConfig.TLSConfig != nil
+		})
+		if err != nil {
+			t.Fatalf("OpenPool: %v", err)
+		}
+		_ = db.Close()
+		pool.Close()
+		if gotDB != "opl_control_plane" || !hasTLS {
+			t.Fatalf("gotDB=%q hasTLS=%v", gotDB, hasTLS)
+		}
+	})
+
+	t.Run("strips_binary_parameters_and_promotes_fallback_application_name", func(t *testing.T) {
+		t.Setenv("PGSSLMODE", "disable")
+		dsn := "postgres://u:p@10.0.0.1:5432/opl_control_plane?sslmode=disable&binary_parameters=yes&fallback_application_name=opl-ledger"
+		if err := ValidateTLS(dsn); err != nil {
+			t.Fatalf("ValidateTLS: %v", err)
+		}
+		var params map[string]string
+		pool, db, err := OpenPool(context.Background(), dsn, func(cfg *pgxpool.Config) {
+			params = cfg.ConnConfig.RuntimeParams
+		})
+		if err != nil {
+			t.Fatalf("OpenPool: %v", err)
+		}
+		_ = db.Close()
+		pool.Close()
+		if _, ok := params["binary_parameters"]; ok {
+			t.Fatalf("binary_parameters must be stripped: %#v", params)
+		}
+		if _, ok := params["fallback_application_name"]; ok {
+			t.Fatalf("fallback_application_name must be stripped: %#v", params)
+		}
+		if params["application_name"] != "opl-ledger" {
+			t.Fatalf("application_name = %q, want opl-ledger", params["application_name"])
+		}
+	})
+
+	t.Run("keeps_explicit_application_name_over_fallback", func(t *testing.T) {
+		t.Setenv("PGSSLMODE", "disable")
+		dsn := "postgres://u:p@10.0.0.1:5432/opl_control_plane?sslmode=disable&application_name=explicit&fallback_application_name=fallback"
+		if err := ValidateTLS(dsn); err != nil {
+			t.Fatalf("ValidateTLS: %v", err)
+		}
+		var params map[string]string
+		pool, db, err := OpenPool(context.Background(), dsn, func(cfg *pgxpool.Config) {
+			params = cfg.ConnConfig.RuntimeParams
+		})
+		if err != nil {
+			t.Fatalf("OpenPool: %v", err)
+		}
+		_ = db.Close()
+		pool.Close()
+		if _, ok := params["fallback_application_name"]; ok {
+			t.Fatalf("fallback_application_name must be stripped: %#v", params)
+		}
+		if params["application_name"] != "explicit" {
+			t.Fatalf("application_name = %q, want explicit", params["application_name"])
+		}
+	})
 }
 
 func TestApplyRunsMigrationOnlyOnce(t *testing.T) {
