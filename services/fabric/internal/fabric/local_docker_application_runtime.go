@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"regexp"
@@ -15,11 +14,11 @@ import (
 	"strings"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	dockercontainer "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/api/types/network"
 	mobyclient "github.com/moby/moby/client"
-	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	contracts "opl-cloud/packages/contracts/go"
 )
@@ -382,6 +381,7 @@ func (p *LocalDockerProvider) ensureWorkspaceApplicationComponent(
 		hostConfig.Mounts = append(hostConfig.Mounts, secretSpec.Mounts...)
 		containerConfig.Env = append(containerConfig.Env, secretSpec.Env...)
 	}
+	overrideEntrypoint := component.Role == contracts.WorkspaceApplicationComponentMain && len(input.Revision.Entrypoint) > 0
 	if component.Role == contracts.WorkspaceApplicationComponentMain {
 		containerConfig.Env = append(containerConfig.Env, applicationEnvironmentVars(input)...)
 		secretSpec, err := p.applicationSecretMountSpec(input)
@@ -427,31 +427,31 @@ func (p *LocalDockerProvider) ensureWorkspaceApplicationComponent(
 		for _, m := range input.Revision.ScratchMounts {
 			applyLocalDockerApplicationScratchMount(hostConfig, m, identity)
 		}
-		if len(input.Revision.Entrypoint) > 0 {
+		if overrideEntrypoint {
 			// Overriding Entrypoint clears the image CMD in Docker. Pull the
 			// admitted platform before reading its defaults, then preserve CMD
 			// after the entrypoint tail.
-			pullStream, err := p.docker.ImagePull(ctx, component.Image, mobyclient.ImagePullOptions{Platforms: []ocispec.Platform{*platform}})
-			if err != nil {
+			if err := p.docker.PullImage(ctx, component.Image, *platform); err != nil {
 				return component, err
 			}
-			if pullStream != nil {
-				_, drainErr := io.Copy(io.Discard, pullStream)
-				closeErr := pullStream.Close()
-				if drainErr != nil || closeErr != nil {
-					return component, firstNonNil(drainErr, closeErr)
-				}
-			}
-			cmd, err := p.localDockerApplicationImageCommand(ctx, component.Image, input.Revision.Platform)
+			imageCommand, err := p.localDockerApplicationImageCommand(ctx, component.Image, input.Revision.Platform)
 			if err != nil {
 				return component, err
 			}
 			containerConfig.Entrypoint = []string{input.Revision.Entrypoint[0]}
-			containerConfig.Cmd = append(append([]string(nil), input.Revision.Entrypoint[1:]...), cmd...)
+			containerConfig.Cmd = append(append([]string(nil), input.Revision.Entrypoint[1:]...), imageCommand...)
 		}
 	}
 	hostConfig.Mounts = append(hostConfig.Mounts, p.applicationConfigMounts(input, component.Name)...)
 	createdResp, err := p.docker.ContainerCreate(ctx, containerConfig, hostConfig, networkingConfig, platform, name)
+	if !overrideEntrypoint && cerrdefs.IsNotFound(err) {
+		// BuildKit pushes to the registry. A cold Engine needs the admitted
+		// image and platform before it can create a container with image defaults.
+		if pullErr := p.docker.PullImage(ctx, component.Image, *platform); pullErr != nil {
+			return component, fmt.Errorf("local_docker_application_image_pull_failed: %w", pullErr)
+		}
+		createdResp, err = p.docker.ContainerCreate(ctx, containerConfig, hostConfig, networkingConfig, platform, name)
+	}
 	if err == nil {
 		err = p.docker.ContainerStart(ctx, firstNonEmpty(createdResp.ID, name), mobyclient.ContainerStartOptions{})
 	}

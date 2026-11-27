@@ -65,6 +65,8 @@ type applicationRuntimeDockerRunner struct {
 	imagePlatforms       map[string]string
 	imageInspectOverride *image.InspectResponse
 	imageInspectErr      error
+	imagePullErr         error
+	requireLocalImages   bool
 }
 
 func formatOCIPlatform(p *ocispec.Platform) string {
@@ -78,15 +80,14 @@ func formatOCIPlatform(p *ocispec.Platform) string {
 	return out
 }
 
-func (r *applicationRuntimeDockerRunner) ImagePull(_ context.Context, refStr string, options mobyclient.ImagePullOptions) (io.ReadCloser, error) {
+func (r *applicationRuntimeDockerRunner) PullImage(_ context.Context, refStr string, platform ocispec.Platform) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	platStr := ""
-	if len(options.Platforms) > 0 {
-		p := options.Platforms[0]
-		platStr = formatOCIPlatform(&p)
-	}
+	platStr := formatOCIPlatform(&platform)
 	r.calls = append(r.calls, applicationRuntimeDockerCall{Method: "ImagePull", Target: refStr, Platform: platStr})
+	if r.imagePullErr != nil {
+		return r.imagePullErr
+	}
 	if r.images == nil {
 		r.images = map[string]bool{}
 	}
@@ -95,7 +96,7 @@ func (r *applicationRuntimeDockerRunner) ImagePull(_ context.Context, refStr str
 	}
 	r.images[refStr] = true
 	r.imagePlatforms[refStr] = platStr
-	return io.NopCloser(strings.NewReader("")), nil
+	return nil
 }
 
 func (r *applicationRuntimeDockerRunner) ImageInspect(_ context.Context, imageID string, platform *ocispec.Platform) (image.InspectResponse, error) {
@@ -209,6 +210,9 @@ func (r *applicationRuntimeDockerRunner) ContainerCreate(_ context.Context, conf
 			Config: config,
 		}
 		return mobyclient.ContainerCreateResult{ID: "cid-" + containerName}, nil
+	}
+	if r.requireLocalImages && !r.images[config.Image] {
+		return mobyclient.ContainerCreateResult{}, fmt.Errorf("%w: No such image: %s", cerrdefs.ErrNotFound, config.Image)
 	}
 	r.runs = append(r.runs, rec)
 	imageConfig := r.imageConfigs[config.Image]
@@ -951,6 +955,63 @@ func TestLocalDockerApplicationMainCommandPreservesImageCMD(t *testing.T) {
 			}
 			if _, err := ensureApplicationCommandRuntime(p, input); err != nil || runner.runCount() != 1 {
 				t.Fatalf("replay err=%v runs=%d", err, runner.runCount())
+			}
+		})
+	}
+}
+
+func TestLocalDockerApplicationColdImageWithDefaultCommand(t *testing.T) {
+	pullFailure := errors.New("registry unavailable")
+	for _, test := range []struct {
+		name    string
+		pullErr error
+	}{
+		{name: "cold engine"},
+		{name: "registry unavailable", pullErr: pullFailure},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			p, runner, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
+			revision := applicationRevisionForTest()
+			revision.Entrypoint, revision.Dependencies = nil, nil
+			runner.requireLocalImages = true
+			runner.imagePullErr = test.pullErr
+			runner.imageConfigs = map[string]applicationRuntimeImageConfig{
+				revision.Image: {Entrypoint: []string{"/agent/bin/runtime"}, Cmd: []string{"serve"}},
+			}
+			input := applicationRuntimeInput("cold-build", revision)
+			observation, err := ensureApplicationCommandRuntime(p, input)
+			name, _ := localDockerApplicationComponentNameForInput(input, "main")
+			var imageCalls []applicationRuntimeDockerCall
+			for _, call := range runner.calls {
+				if call.Method == "ImagePull" || (call.Method == "ContainerCreate" && call.Target == name) {
+					imageCalls = append(imageCalls, call)
+				}
+			}
+			create := applicationRuntimeDockerCall{Method: "ContainerCreate", Target: name, Platform: revision.Platform}
+			pull := applicationRuntimeDockerCall{Method: "ImagePull", Target: revision.Image, Platform: revision.Platform}
+			want := []applicationRuntimeDockerCall{create, pull}
+			if test.pullErr != nil {
+				if !errors.Is(err, test.pullErr) || observation.Status == "ready" || runner.runCount() != 0 || !slices.Equal(imageCalls, want) {
+					t.Fatalf("observation=%+v err=%v calls=%+v", observation, err, imageCalls)
+				}
+				return
+			}
+			want = append(want, create)
+			if err != nil || observation.Status != "ready" || runner.runCount() != 1 || !slices.Equal(imageCalls, want) {
+				t.Fatalf("observation=%+v err=%v calls=%+v", observation, err, imageCalls)
+			}
+			container := runner.containers[name]
+			if container.Path != "/agent/bin/runtime" || !slices.Equal(container.Args, []string{"serve"}) {
+				t.Fatalf("image command changed: %s %q", container.Path, container.Args)
+			}
+			firstRead := len(runner.calls)
+			if _, err := ensureApplicationCommandRuntime(p, input); err != nil || runner.runCount() != 1 {
+				t.Fatalf("replay err=%v runs=%d", err, runner.runCount())
+			}
+			for _, call := range runner.calls[firstRead:] {
+				if call.Method == "ImagePull" {
+					t.Fatalf("replay pulled image: %+v", call)
+				}
 			}
 		})
 	}
