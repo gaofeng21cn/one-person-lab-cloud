@@ -85,15 +85,19 @@ Git log.
   `POST /api/operator/accounts/{accountId}/workspace-purchase-eligibility`
   remains only for the retained legacy Console build until Control Plane
   retirement.
-- **Private Software Package Entitlement & Controlled Delivery Ownership**:
-  Cloud-governed access to restricted Software Center packages
-  (`visibility: "authorized_only"`) uses the caller's existing OPL Gateway
-  account mapped through `gateway.identity_mappings`, keeping public packages
-  anonymous on GitHub while storing per-subject `package_entitlements` inside
-  `CloudIdentity` (`opl_tenant`) with zero client-side GHCR secrets and a
-  stable Console BFF contract supporting PVC-cached GHCR streaming first and
-  private object-storage Presigned URLs later
-  ([software-package-entitlements.md](software-package-entitlements.md)).
+- **Private Software Package, Link Relay & Admin Delegation Ownership**:
+  All Cloud-governed Gateway-user permissions follow one uniform fail-closed
+  allowlist model inside `CloudIdentity` (`opl_tenant`): restricted Software
+  Center packages (`tenant.package_entitlements`, keeping public packages
+  anonymous on GitHub with zero client-side GHCR secrets and two-stage
+  Cloud/COS delivery), OPL Link Relay forwarding
+  (`tenant.link_relay_entitlements` checked only at control-plane registration
+  and host enrollment routes, with existing active Gateway users explicitly
+  seeded into the allowlist during initial rollout for zero-config UX), and
+  planned runtime operator delegation (`tenant.platform_admins` backed by
+  Console `/operator` with audit + idempotency + last-admin lockout protection,
+  keeping `OPL_PLATFORM_ADMIN_SUBJECTS` as immutable bootstrap/break-glass root
+  admins) ([software-package-entitlements.md](software-package-entitlements.md)).
 - **Personal Gateway Key Write Ownership**: `Gateway Integration` owns the native
   personal Gateway Key create/update/reveal/revoke capability over the delegated
   Sub2API authority, projecting the same `PersonalGatewayKey` fact the personal

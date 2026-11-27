@@ -38,17 +38,31 @@ in [roadmap.md](roadmap.md); durable boundaries live in
 
 ## Entitlement Policy Ownership (`CloudIdentity` / `opl_tenant`)
 
-- **Canonical Owner**: Follows the `tenant.workspace_purchase_eligibility`
-  single-writer pattern in `services/gateway-integration` (`opl_tenant` schema):
-  `tenant.package_entitlements(actor_id, package_id, enabled, reason, expires_at, updated_by, updated_at)`.
+- **Canonical Owner & Uniform Fail-Closed Allowlist**: Follows the
+  `tenant.workspace_purchase_eligibility` single-writer pattern in
+  `services/gateway-integration` (`opl_tenant` schema). Every Cloud-governed
+  Gateway-user capability uses one explicit fail-closed allowlist model:
+  - `tenant.workspace_purchase_eligibility(actor_id, workspace_purchase_enabled, reason, updated_by, updated_at)` (existing)
+  - `tenant.package_entitlements(actor_id, package_id, enabled, reason, expires_at, updated_by, updated_at)` (restricted packages such as `occ`)
+  - `tenant.link_relay_entitlements(actor_id, relay_enabled, reason, updated_by, updated_at)` (OPL Link Relay forwarding admission)
 - **Fail-Closed Admission**: Missing or expired rows for non-admin subjects deny
-  access (`enabled: false`).
-- **Administrator Governance**: Platform administrators
-  (`OPL_PLATFORM_ADMIN_SUBJECTS`) grant or revoke per-subject package
-  entitlements through Console BFF and the Console Operator UI, recording atomic
-  policy updates, audit events, and idempotency keys. Later subscription or
-  order workflows may write to the same owner boundary without altering client
-  APIs.
+  access (`enabled: false`). Zero end-user configuration is required beyond
+  signing in once with OPL Gateway.
+- **Initial Active-User Seed For OPL Link Relay**: Because OPL Link already
+  authenticates via mandatory OPL Gateway tokens, instances enabling Relay
+  enforcement (such as `medopl`) explicitly backfill/enable all existing active
+  Gateway users in `tenant.link_relay_entitlements` at rollout time so active
+  users experience no disruption, while keeping ongoing grants and revocations
+  under the same fail-closed allowlist control in Console `/operator`.
+- **Platform Administrator & Entitlement Governance**: Deployment-configured
+  `OPL_PLATFORM_ADMIN_SUBJECTS` remains the immutable bootstrap/break-glass root
+  administrator list (protected against accidental lockout), while planned
+  `tenant.platform_admins` DB delegation allows platform administrators to
+  grant or revoke delegated administrator access, package entitlements,
+  purchase eligibility, and Link Relay admission from Console `/operator` — all
+  recording atomic policy updates, audit events, and idempotency keys. Later
+  subscription or order workflows may write to the same owner boundary without
+  altering client APIs.
 - **Deployment Separation**: Runtime entitlements live exclusively in the live
   Cloud instance database (e.g., `cloud.medopl.com`), never in git deployment
   repositories such as `opl-instance-medopl`. Self-hosted OPL Cloud instances
@@ -90,7 +104,9 @@ in [roadmap.md](roadmap.md); durable boundaries live in
   consolidation build on top of Framework v2's `opl.db` and `opld`
   `pack.sources.*` single-writer foundation without reintroducing v1 shims or
   local flat-file writers.
-- **Reusable Admission Pattern For Companion Services**: The same per-subject
-  `CloudIdentity` entitlement model may later gate optional service admission
-  (such as OPL Link relay enrollment) strictly at control-plane admission
-  boundaries while keeping service data planes independent.
+- **Uniform Companion Service Admission (OPL Link Relay)**: OPL Link Relay
+  enforces `tenant.link_relay_entitlements` strictly at its 3 control-plane
+  routes (`/api/v1/devices/register`, `/api/v1/link/account/hosts`,
+  `/api/v1/link/account/enroll`) via HTTP `403` (`companion_access_denied`),
+  keeping the encrypted WebSocket data plane unblocked and end-user setup
+  zero-config (Gateway sign-in only).
