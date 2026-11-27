@@ -5,7 +5,7 @@
 # cannot disagree.
 ARG OPL_SOURCE_SHA
 
-FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS fabric-build
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS go-build
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -13,74 +13,18 @@ ARG GOPROXY=https://proxy.golang.org,direct
 ARG OPL_SOURCE_SHA
 RUN printf '%s' "$OPL_SOURCE_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "opl_source_sha_invalid" >&2; exit 1; }
 
-WORKDIR /src/services/fabric
-COPY services/internal/ownerservice /src/services/internal/ownerservice
-COPY services/internal/ownerstore /src/services/internal/ownerstore
-COPY services/internal/postgresmigrate /src/services/internal/postgresmigrate
-# Fabric's provider and the tencent provisioner read the installation's
-# protected-compute guard, so the shared guard module is part of this stage's
-# local replacements.
-COPY services/internal/protectedresource /src/services/internal/protectedresource
-COPY services/internal/tkeapply /src/services/internal/tkeapply
-COPY packages/contracts/go /src/packages/contracts/go
-COPY go.mod go.sum /src/
-RUN GOPROXY="$GOPROXY" go mod download
-COPY services/fabric ./
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-tencent-provisioner ./cmd/opl-tencent-provisioner \
-  && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-fabric ./cmd/fabric \
-  && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-node-image-retire ./cmd/opl-node-image-retire
-
-FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS control-plane-build
-
-ARG TARGETOS
-ARG TARGETARCH
-ARG GOPROXY=https://proxy.golang.org,direct
-ARG OPL_SOURCE_SHA
-RUN printf '%s' "$OPL_SOURCE_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "opl_source_sha_invalid" >&2; exit 1; }
-
-WORKDIR /src/services/control-plane
-COPY services/internal/ownerstore /src/services/internal/ownerstore
-COPY services/internal/postgresmigrate /src/services/internal/postgresmigrate
-COPY packages/contracts/go /src/packages/contracts/go
-COPY go.mod go.sum /src/
-RUN GOPROXY="$GOPROXY" go mod download
-COPY services/control-plane ./
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-control-plane ./cmd/control-plane
-
-FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS ledger-build
-
-ARG TARGETOS
-ARG TARGETARCH
-ARG GOPROXY=https://proxy.golang.org,direct
-ARG OPL_SOURCE_SHA
-RUN printf '%s' "$OPL_SOURCE_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "opl_source_sha_invalid" >&2; exit 1; }
-
-WORKDIR /src/services/ledger
-COPY services/internal/ownerservice /src/services/internal/ownerservice
-COPY services/internal/ownerstore /src/services/internal/ownerstore
-COPY services/internal/postgresmigrate /src/services/internal/postgresmigrate
-COPY packages/contracts/go /src/packages/contracts/go
-COPY go.mod go.sum /src/
-RUN GOPROXY="$GOPROXY" go mod download
-COPY services/ledger ./
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-ledger ./cmd/ledger
-
-# The publisher lane is shipped as independent owner executables in the same
-# portable product image. Instance chooses which processes to run.
-FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS publisher-build
-ARG TARGETOS
-ARG TARGETARCH
-ARG GOPROXY=https://proxy.golang.org,direct
-ARG OPL_SOURCE_SHA
-RUN printf '%s' "$OPL_SOURCE_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "opl_source_sha_invalid" >&2; exit 1; }
 WORKDIR /src
 COPY go.mod go.sum /src/
 RUN GOPROXY="$GOPROXY" go mod download
 COPY packages/contracts/go /src/packages/contracts/go
 COPY services /src/services
 COPY apps/console-bff /src/apps/console-bff
-COPY packages/contracts/go/cmd/opl-owner-probe /src/packages/contracts/go/cmd/opl-owner-probe
-RUN for service in capability build runtime-control workspace resource-catalog serve gateway-integration; do \
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/fabric build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-tencent-provisioner ./cmd/opl-tencent-provisioner \
+    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/fabric build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-fabric ./cmd/fabric \
+    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/fabric build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-node-image-retire ./cmd/opl-node-image-retire \
+    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/control-plane build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-control-plane ./cmd/control-plane \
+    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/ledger build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-ledger ./cmd/ledger \
+    && for service in capability build runtime-control workspace resource-catalog serve gateway-integration; do \
       CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/$service build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-$service ./cmd/server || exit 1; \
     done \
     && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C apps/console-bff build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-console-bff ./cmd/server \
@@ -99,7 +43,7 @@ RUN npm ci --no-audit --no-fund --fetch-retries=5 --fetch-retry-mintimeout=20000
 COPY . .
 RUN npm run build
 
-FROM node:26-bookworm-slim@sha256:367679cf9792759492a486e4aa4b421764d71a9546a6dae8aab81a99eb797b3e AS runtime
+FROM debian:bookworm-slim@sha256:e67eeead736ff7bbe258ef088bff683635c561b1fcfefad0806c1df4ab49ce0e AS runtime
 
 WORKDIR /app
 ARG TARGETARCH
@@ -126,31 +70,25 @@ RUN apt-get update \
      esac \
   && echo "${KUBECTL_SHA256}  /usr/local/bin/kubectl" | sha256sum -c \
   && chmod +x /usr/local/bin/kubectl \
+  && groupadd --gid 1000 opl \
+  && useradd --uid 1000 --gid 1000 --shell /usr/sbin/nologin --create-home opl \
   && rm -rf /var/lib/apt/lists/*
 
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --no-audit --no-fund --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 COPY --from=build /app/dist ./dist
-COPY --from=publisher-build /out/ /usr/local/bin/
+COPY --from=go-build /out/ /usr/local/bin/
 COPY docs/spec/target/contracts/publisher-contract.schema.json /app/contracts/publisher-contract.schema.json
-COPY --from=fabric-build /out/opl-tencent-provisioner /usr/local/bin/opl-tencent-provisioner
-COPY --from=control-plane-build /out/opl-control-plane /usr/local/bin/opl-control-plane
-COPY --from=ledger-build /out/opl-ledger /usr/local/bin/opl-ledger
-COPY --from=fabric-build /out/opl-fabric /usr/local/bin/opl-fabric
-COPY --from=fabric-build /out/opl-node-image-retire /usr/local/bin/opl-node-image-retire
+COPY deploy/portable/opl-cloud-owner-topology.json /app/contracts/opl-cloud-owner-topology.json
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 # The Build owner invokes `docker buildx build` for every Agent OCI. The
 # docker CLI discovers buildx only as a CLI plugin on its plugin path, so the
 # product image must carry the plugin binary or every Agent build fails with
 # 'unknown command: buildx'.
 COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/libexec/docker/cli-plugins/docker-buildx
-RUN mkdir -p /app/.runtime && chown -R node:node /app/.runtime
+RUN mkdir -p /app/.runtime && chown -R opl:opl /app/.runtime
 
-USER node
+USER opl
 EXPOSE 8787
-# The published default command stays the Control Plane process. The image also
-# carries the composition entrypoint, which starts the declared owner
-# processes inside one container, and an installation opts into it explicitly.
-# The owner topology contract the entrypoint reads is a Candidate-only asset
-# the installation carries, so the image holds no copy of it.
+# The published default command stays the Control Plane process for compatibility
+# with existing deployment profiles; the image also ships the composition
+# entrypoint and baked owner topology contract (/app/contracts/opl-cloud-owner-topology.json).
 CMD ["/usr/local/bin/opl-control-plane"]

@@ -1,6 +1,6 @@
 services:
   sub2api-authority:
-    image: ${OPL_CLOUD_IMAGE:?Set OPL_CLOUD_IMAGE to an immutable image digest}
+    image: node:26-bookworm-slim@sha256:367679cf9792759492a486e4aa4b421764d71a9546a6dae8aab81a99eb797b3e
     command: ["node", "--experimental-strip-types", "/qualification/local-sub2api-authority-fixture.ts"]
     user: root
     restart: unless-stopped
@@ -21,7 +21,7 @@ services:
     ports:
       - "127.0.0.1:${OPL_QUALIFICATION_AUTHORITY_HOST_PORT:?Set OPL_QUALIFICATION_AUTHORITY_HOST_PORT}:8080"
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/healthz"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 2s
       timeout: 2s
       retries: 30

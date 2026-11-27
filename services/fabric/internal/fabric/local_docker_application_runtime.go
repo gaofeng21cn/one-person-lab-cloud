@@ -653,31 +653,6 @@ func (p *LocalDockerProvider) validateLocalDockerApplicationProbe(revision contr
 	return nil
 }
 
-const localDockerApplicationProbeScript = `
-import net from 'node:net';
-const checks = JSON.parse(process.argv[1]);
-const results = await Promise.all(checks.map(async check => {
-  try {
-    if (check.type === 'tcp') {
-      return await new Promise(resolve => {
-        const socket = net.createConnection({host: '127.0.0.1', port: check.port});
-        const finish = ready => { socket.destroy(); resolve(ready); };
-        socket.setTimeout(5000);
-        socket.once('connect', () => finish(true));
-        socket.once('timeout', () => finish(false));
-        socket.once('error', () => finish(false));
-      });
-    }
-    if (check.type !== 'http') return false;
-    const response = await fetch('http://127.0.0.1:' + check.port + check.path, { signal: AbortSignal.timeout(5000), redirect: 'manual' });
-    const ready = response.status >= 200 && response.status < 400;
-    await response.body?.cancel();
-    return ready;
-  } catch { return false; }
-}));
-process.stdout.write(JSON.stringify({ready: results.every(Boolean)}));
-`
-
 func (p *LocalDockerProvider) probeLocalDockerApplication(ctx context.Context, input WorkspaceApplicationRuntimeInput, container dockerContainerInspect) (bool, error) {
 	checks := make([]contracts.WorkspaceApplicationDependencyHealthCheck, 0, len(input.Revision.HealthChecks))
 	for _, check := range input.Revision.HealthChecks {
@@ -761,8 +736,9 @@ func (p *LocalDockerProvider) probeLocalDockerApplicationChecks(ctx context.Cont
 	probeCfg := &dockercontainer.Config{
 		Image:      p.applicationProbeImage,
 		User:       "65534:65534",
-		Entrypoint: []string{"node"},
-		Cmd:        []string{"--input-type=module", "-e", localDockerApplicationProbeScript, string(checks)},
+		Env:        []string{"GOMAXPROCS=2"},
+		Entrypoint: []string{"/usr/local/bin/opl-owner-probe"},
+		Cmd:        []string{"--app-probe", string(checks)},
 		Labels: map[string]string{
 			"opl.fabric.kind":  "application_probe",
 			"opl.workspace.id": input.WorkspaceID,
