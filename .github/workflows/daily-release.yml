@@ -60,3 +60,65 @@ jobs:
           name: cloud-daily-product-${{ github.run_id }}
           path: ${{ runner.temp }}/cloud-daily-release-result.json
           if-no-files-found: error
+      - name: Emit standard opl.release-receipt.v1
+        if: always()
+        env:
+          RESULT_FILE: ${{ runner.temp }}/cloud-daily-release-result.json
+          OUTPUT_FILE: ${{ runner.temp }}/release-receipt.json
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 - <<'PY'
+          from datetime import datetime, timezone
+          import json, os, re
+          from pathlib import Path
+
+          result_path = Path(os.environ['RESULT_FILE'])
+          data = json.loads(result_path.read_text()) if result_path.is_file() else {}
+          raw_status = data.get('status', 'blocked')
+          if raw_status == 'published':
+              stage = 'published'
+              qual_status = 'passed'
+          elif raw_status == 'qualification_pending':
+              stage = 'qualification_pending'
+              qual_status = 'pending'
+          else:
+              stage = 'blocked'
+              qual_status = 'failed'
+
+          tag = str(data.get('tag') or os.environ.get('RELEASE_TAG') or '').strip()
+          version = tag.lstrip('v')
+          commit = str(data.get('product_sha') or '').strip()
+          receipt = {
+              'schema': 'opl.release-receipt.v1',
+              'subject_id': 'opl-cloud',
+              'lane': 'qualification-and-publication',
+              'stage': stage,
+              'recorded_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+              'qualification': {'required': True, 'status': qual_status},
+              'run_url': os.environ['RUN_URL'],
+          }
+          candidate = {}
+          if version:
+              candidate['version'] = version
+          if tag:
+              candidate['tag'] = tag
+          if re.fullmatch(r'[a-f0-9]{40}', commit):
+              candidate['commit'] = commit
+          if candidate:
+              receipt['candidate'] = candidate
+          if stage == 'published' and tag:
+              receipt['published'] = {'version': version, 'tag': tag}
+          if stage == 'blocked':
+              reason = str(data.get('reason') or 'Cloud daily release continuation blocked')
+              receipt['blocker'] = {'code': 'cloud_daily_blocked', 'message': reason[:500]}
+          Path(os.environ['OUTPUT_FILE']).write_text(json.dumps(receipt, indent=2) + '\n')
+          PY
+      - name: Upload standard release receipt
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: opl-release-receipt-opl-cloud-qualification-and-publication-${{ github.run_id }}
+          path: ${{ runner.temp }}/release-receipt.json
+          if-no-files-found: warn
+          retention-days: 30
