@@ -29,9 +29,10 @@ type OperatorProvisioner interface {
 // Activation step names are part of the receipt: they tell the caller exactly
 // which step succeeded and which one did not.
 const (
-	activationStepAccount = "account"
-	activationStepTenant  = "tenant"
-	activationStepBinding = "billingBinding"
+	activationStepAccount     = "account"
+	activationStepTenant      = "tenant"
+	activationStepEligibility = "purchaseEligibility"
+	activationStepBinding     = "billingBinding"
 )
 
 // activationReceipt is the single activation answer. It extends the retained
@@ -187,6 +188,35 @@ func (s *Server) operatorActivationHandler(w http.ResponseWriter, r *http.Reques
 	steps = append(steps, activationStepResult{Step: activationStepTenant, Status: "succeeded"})
 	receipt.TenantID = tenantID
 	receipt.TenantOperationID = operation.GetOperationId()
+
+	// Step 2b: persist the initial workspace purchase eligibility at the canonical
+	// CloudIdentity owner using a deterministic activation key so retries converge.
+	eligCall := activationCall(caller, requestID, platformScope(), activationEligibilityKey(receipt.AccountID))
+	eligCtx := clients.WithCallContext(r.Context(), eligCall)
+	if err := RequireAuthorizedAction(eligCtx, s.identity, tenantCaller, owneridentity.Tenant,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETWORKSPACEPURCHASEELIGIBILITY,
+		&api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PLATFORM, Id: proto.String(receipt.Sub2APIUserID)},
+		requestID); err != nil {
+		writePublisherIdentityError(w, r, err)
+		return
+	}
+	if _, err := s.tenant.SetWorkspacePurchaseEligibility(eligCtx, &api.SetWorkspacePurchaseEligibilityRpcRequest{
+		Context:       eligCall,
+		TargetActorId: receipt.Sub2APIUserID,
+		Body: &api.SetWorkspacePurchaseEligibilityRequest{
+			ConfirmationAccountId: receipt.Sub2APIUserID,
+			Enabled:               receipt.WorkspacePurchaseEnabled,
+			Reason:                "account_activation",
+		},
+	}); err != nil {
+		steps = append(steps, activationStepResult{Step: activationStepEligibility, Status: "failed", Detail: activationErrorDetail(err)})
+		receipt.Status = "eligibility_failed"
+		receipt.FailedStep = activationStepEligibility
+		receipt.Steps = steps
+		writeActivationFailure(w, receipt, http.StatusBadGateway)
+		return
+	}
+	steps = append(steps, activationStepResult{Step: activationStepEligibility, Status: "succeeded"})
 
 	// Step 3: the billing binding. The Tenant readback reports the active binding,
 	// so a resumed activation binds once and a re-run reports the existing binding
@@ -373,6 +403,10 @@ func tenantScopeOf(tenantID string) *api.AuthorizationScope {
 // retried activation that mints a new browser key still converges on one Tenant
 // and one binding.
 func activationTenantKey(accountID string) string { return "activation-tenant:" + accountID }
+
+func activationEligibilityKey(accountID string) string {
+	return "activation-eligibility:" + accountID
+}
 
 func activationBindingKey(tenantID string) string {
 	return "activation-binding:" + tenantID

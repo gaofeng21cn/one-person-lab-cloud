@@ -107,7 +107,6 @@ func NewPersistentServer(service *controlplane.Service, store StateStore) (http.
 	registerWorkspaceLaunchRoutes(mux, app, service)
 	registerBillingRoutes(mux, app, service)
 	registerAnnouncementRoutes(mux, app)
-	mux.HandleFunc("GET /internal/cloud/workspace-purchase-eligibility", app.cloudWorkspacePurchaseEligibility)
 	app.registerCloudOperatorRoutes(mux, service)
 	registerAdminRoutes(mux, app, service)
 	initialized = true

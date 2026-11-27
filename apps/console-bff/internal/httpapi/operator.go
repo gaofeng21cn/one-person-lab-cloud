@@ -145,6 +145,14 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 			writePublisherError(w, r, 502, "invalid_owner_response", "invalid operator owner response")
 			return
 		}
+		if kind == "accounts" {
+			projected, projErr := s.projectOperatorAccountEligibility(ctx, caller, r.Header.Get(requestIDHeader), raw)
+			if projErr != nil {
+				writeOwnerCallFailure(w, r, projErr)
+				return
+			}
+			raw = projected
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(raw)

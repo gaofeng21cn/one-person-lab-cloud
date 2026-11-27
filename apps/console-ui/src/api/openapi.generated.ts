@@ -1796,6 +1796,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/operator/accounts/{actorId}/workspace-purchase-eligibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set workspace new-purchase eligibility for a Gateway subject */
+        post: operations["setWorkspacePurchaseEligibility"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/admin/tenants/{tenantId}/operations/{operationId}": {
         parameters: {
             query?: never;
@@ -2213,6 +2230,19 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        /** @description Platform administrator instruction to grant or revoke new Workspace purchase eligibility for one Gateway subject. */
+        SetWorkspacePurchaseEligibilityRequest: {
+            confirmationAccountId: components["schemas"]["OpaqueId"];
+            enabled: boolean;
+            reason: string;
+        };
+        /** @description Canonical receipt for one Workspace purchase eligibility update. */
+        WorkspacePurchaseEligibilityCommand: {
+            operationId: components["schemas"]["OpaqueId"];
+            accountId: components["schemas"]["OpaqueId"];
+            status: string;
+            workspacePurchaseEnabled: boolean;
         };
         /** @description platform_admin创建Tenant；Gateway确认身份/钱包委托存在，不创建外部身份密码。 */
         CreateTenantRequest: {
@@ -3696,7 +3726,7 @@ export interface components {
             pageSize: number;
         };
         /** @enum {string} */
-        AuthorizationAction: "acceptInvitation" | "acquireReference" | "activateRoute" | "adoptWorkspace" | "appendPlanChangeEvidence" | "appendReceipt" | "archiveNamespace" | "archivePackage" | "bindManagedSecret" | "bindReference" | "bindTenantWallet" | "cancelAcceptedObligation" | "cancelPlanChange" | "chargeAcceptedObligation" | "chargePlanChangeSupplement" | "claimNextPeriodObligation" | "closeoutAcceptedObligation" | "completeAcceptedObligation" | "completeUpload" | "createBuild" | "createComputePlan" | "createGatewayKey" | "createNamespace" | "createPackage" | "createPricePolicyVersion" | "createPublisherNamespace" | "createQuote" | "createRefundPolicyVersion" | "createRetentionPolicyVersion" | "createStoragePlan" | "createTenant" | "createUpload" | "createUploadPart" | "createWorkspace" | "deleteAcceptedResources" | "deleteCapabilityVersion" | "deleteTenant" | "deleteWorkspace" | "executeScheduledPlanChange" | "fenceRouteEpoch" | "getAdminTenant" | "getBuild" | "getBuildRuntimePolicy" | "getCapabilityVersion" | "getDeployment" | "getLoginContext" | "getOperation" | "getPackage" | "getPackageVersion" | "getPlanChange" | "getQuote" | "getReceipt" | "getWorkspaceFinancialReceipt" | "getSession" | "getSelfUserExternalBinding" | "getSubscription" | "getTenant" | "getTenantAssetCustody" | "getTenantLifecycleOperation" | "getTenantWallet" | "getUpload" | "getWallet" | "getWorkspace" | "getWorkspaceAccess" | "getWorkspaceDeletion" | "getWorkspaceModels" | "inviteMember" | "issueAcceptedOperationGrant" | "listAdminOperations" | "listAuditEvents" | "listBuildLogs" | "listBuilds" | "listCapabilityVersions" | "listComputePlans" | "listDeployments" | "listGatewayKeys" | "listInvitations" | "listMembers" | "listModels" | "listNamespaces" | "listPackageVersions" | "listPackages" | "listPlanChanges" | "listPricePolicyVersions" | "listPublisherNamespaces" | "listQualifications" | "listReceipts" | "listRechargeRecords" | "listRefundPolicyVersions" | "listRetentionPolicyVersions" | "listRuntimeVersions" | "listStoragePlans" | "listTenants" | "getUsageSummary" | "listUsage" | "listWebuiVersions" | "listWorkspaceTransactions" | "getWorkspaceTransactionTrend" | "listWorkspaces" | "listOperatorWorkspaces" | "getOperatorWorkspace" | "readOperatorResources" | "listOperatorDeployments" | "getOperatorWorkspaceAccess" | "login" | "logout" | "observeResources" | "observeRoute" | "provisionAcceptedResources" | "publishOfficialPackage" | "readApplicationCredentials" | "readApprovedPlanTransition" | "readArtifact" | "readAuthorizationContext" | "readClaimUsage" | "readNextPeriodObligation" | "readOwnerCommit" | "readRenewalConsent" | "readSubscriptionPlanState" | "readWalletAction" | "reconcileOperation" | "reenableTenant" | "refundConfirmedDeletion" | "refundPlanChangeCompensation" | "refundSupplementOnDeletion" | "registerRuntimeVersion" | "registerWebuiVersion" | "releaseReference" | "removeMember" | "renewAcceptedResources" | "renewWorkspace" | "reserveRuntime" | "resizeAcceptedResources" | "resizeWorkspace" | "resolveBuildInput" | "resolvePublisherContract" | "restoreTenant" | "resumeTenantWorkspaces" | "retireRuntime" | "retryBuild" | "revealGatewayKey" | "revealWorkspaceApplicationCredentials" | "revokeGatewayKey" | "revokeInvitation" | "revokePublisherNamespace" | "rollbackRoute" | "rollbackWorkspace" | "setBuildRuntimePolicy" | "setComputePlanAvailability" | "setRuntimeVersionStatus" | "setStoragePlanAvailability" | "setWebuiVersionStatus" | "suspendTenant" | "updateMemberRole" | "updateNamespace" | "updatePackage" | "updateRenewalSettings" | "updateWorkspaceModels" | "updateWorkspaceVersion" | "readExecutionPlan" | "restoreAfterResourceChange" | "debitScheduledPeriod" | "readPlanChangeFailure" | "listPersonalGatewayKeys" | "getPersonalGatewayKey" | "listPersonalGatewayGroups" | "listPersonalGatewayKeyUsage" | "getPersonalGatewayKeyUsageSummary" | "createPersonalGatewayKey" | "updatePersonalGatewayKey" | "revealPersonalGatewayKey" | "revokePersonalGatewayKey";
+        AuthorizationAction: "acceptInvitation" | "acquireReference" | "activateRoute" | "adoptWorkspace" | "appendPlanChangeEvidence" | "appendReceipt" | "archiveNamespace" | "archivePackage" | "bindManagedSecret" | "bindReference" | "bindTenantWallet" | "cancelAcceptedObligation" | "cancelPlanChange" | "chargeAcceptedObligation" | "chargePlanChangeSupplement" | "claimNextPeriodObligation" | "closeoutAcceptedObligation" | "completeAcceptedObligation" | "completeUpload" | "createBuild" | "createComputePlan" | "createGatewayKey" | "createNamespace" | "createPackage" | "createPricePolicyVersion" | "createPublisherNamespace" | "createQuote" | "createRefundPolicyVersion" | "createRetentionPolicyVersion" | "createStoragePlan" | "createTenant" | "createUpload" | "createUploadPart" | "createWorkspace" | "deleteAcceptedResources" | "deleteCapabilityVersion" | "deleteTenant" | "deleteWorkspace" | "executeScheduledPlanChange" | "fenceRouteEpoch" | "getAdminTenant" | "getBuild" | "getBuildRuntimePolicy" | "getCapabilityVersion" | "getDeployment" | "getLoginContext" | "getOperation" | "getPackage" | "getPackageVersion" | "getPlanChange" | "getQuote" | "getReceipt" | "getWorkspaceFinancialReceipt" | "getSession" | "getSelfUserExternalBinding" | "getSubscription" | "getTenant" | "getTenantAssetCustody" | "getTenantLifecycleOperation" | "getTenantWallet" | "getUpload" | "getWallet" | "getWorkspace" | "getWorkspaceAccess" | "getWorkspaceDeletion" | "getWorkspaceModels" | "inviteMember" | "issueAcceptedOperationGrant" | "listAdminOperations" | "listAuditEvents" | "listBuildLogs" | "listBuilds" | "listCapabilityVersions" | "listComputePlans" | "listDeployments" | "listGatewayKeys" | "listInvitations" | "listMembers" | "listModels" | "listNamespaces" | "listPackageVersions" | "listPackages" | "listPlanChanges" | "listPricePolicyVersions" | "listPublisherNamespaces" | "listQualifications" | "listReceipts" | "listRechargeRecords" | "listRefundPolicyVersions" | "listRetentionPolicyVersions" | "listRuntimeVersions" | "listStoragePlans" | "listTenants" | "getUsageSummary" | "listUsage" | "listWebuiVersions" | "listWorkspaceTransactions" | "getWorkspaceTransactionTrend" | "listWorkspaces" | "listOperatorWorkspaces" | "getOperatorWorkspace" | "readOperatorResources" | "listOperatorDeployments" | "getOperatorWorkspaceAccess" | "login" | "logout" | "observeResources" | "observeRoute" | "provisionAcceptedResources" | "publishOfficialPackage" | "readApplicationCredentials" | "readApprovedPlanTransition" | "readArtifact" | "readAuthorizationContext" | "readClaimUsage" | "readNextPeriodObligation" | "readOwnerCommit" | "readRenewalConsent" | "readSubscriptionPlanState" | "readWalletAction" | "reconcileOperation" | "reenableTenant" | "refundConfirmedDeletion" | "refundPlanChangeCompensation" | "refundSupplementOnDeletion" | "registerRuntimeVersion" | "registerWebuiVersion" | "releaseReference" | "removeMember" | "renewAcceptedResources" | "renewWorkspace" | "reserveRuntime" | "resizeAcceptedResources" | "resizeWorkspace" | "resolveBuildInput" | "resolvePublisherContract" | "restoreTenant" | "resumeTenantWorkspaces" | "retireRuntime" | "retryBuild" | "revealGatewayKey" | "revealWorkspaceApplicationCredentials" | "revokeGatewayKey" | "revokeInvitation" | "revokePublisherNamespace" | "rollbackRoute" | "rollbackWorkspace" | "setBuildRuntimePolicy" | "setComputePlanAvailability" | "setRuntimeVersionStatus" | "setStoragePlanAvailability" | "setWebuiVersionStatus" | "suspendTenant" | "updateMemberRole" | "updateNamespace" | "updatePackage" | "updateRenewalSettings" | "updateWorkspaceModels" | "updateWorkspaceVersion" | "readExecutionPlan" | "restoreAfterResourceChange" | "debitScheduledPeriod" | "readPlanChangeFailure" | "listPersonalGatewayKeys" | "getPersonalGatewayKey" | "listPersonalGatewayGroups" | "listPersonalGatewayKeyUsage" | "getPersonalGatewayKeyUsageSummary" | "createPersonalGatewayKey" | "updatePersonalGatewayKey" | "revealPersonalGatewayKey" | "revokePersonalGatewayKey" | "setWorkspacePurchaseEligibility";
         /** @enum {string} */
         ServiceIdentity: "console_bff" | "capability" | "build" | "workspace" | "runtime_control" | "fabric" | "gateway_integration" | "resource_catalog" | "ledger";
         WorkspaceApplicationExecution: {
@@ -8583,6 +8613,43 @@ export interface operations {
             422: components["responses"]["ErrorResponse"];
             429: components["responses"]["ErrorResponse"];
             500: components["responses"]["ErrorResponse"];
+            503: components["responses"]["ErrorResponse"];
+        };
+    };
+    setWorkspacePurchaseEligibility: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description 匹配同源session并校验Origin。 */
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path: {
+                actorId: components["schemas"]["OpaqueId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetWorkspacePurchaseEligibilityRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated workspace purchase eligibility for the named Gateway subject */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspacePurchaseEligibilityCommand"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
             503: components["responses"]["ErrorResponse"];
         };
     };

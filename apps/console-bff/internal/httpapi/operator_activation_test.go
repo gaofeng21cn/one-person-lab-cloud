@@ -42,8 +42,10 @@ func (p *activationProvisionProbe) OperatorProvisionAccount(_ context.Context, s
 // billing readback the activation uses to decide whether it still has to bind.
 type activationTenantProbe struct {
 	api.TenantProductServiceClient
-	create    *api.CreateTenantRpcRequest
-	createErr error
+	create         *api.CreateTenantRpcRequest
+	createErr      error
+	eligibility    *api.SetWorkspacePurchaseEligibilityRpcRequest
+	eligibilityErr error
 }
 
 func (p *activationTenantProbe) CreateTenant(_ context.Context, r *api.CreateTenantRpcRequest, _ ...grpc.CallOption) (*api.Operation, error) {
@@ -56,6 +58,19 @@ func (p *activationTenantProbe) CreateTenant(_ context.Context, r *api.CreateTen
 		Kind: api.OperationKindEnum_OPERATION_KIND_ENUM_CREATE_TENANT, ResourceId: "tenant-created-1",
 		Status: api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED, Stage: api.OperationStageEnum_OPERATION_STAGE_ENUM_SUCCEEDED,
 		RequestId: r.GetContext().GetRequestId(),
+	}, nil
+}
+
+func (p *activationTenantProbe) SetWorkspacePurchaseEligibility(_ context.Context, r *api.SetWorkspacePurchaseEligibilityRpcRequest, _ ...grpc.CallOption) (*api.WorkspacePurchaseEligibilityCommand, error) {
+	p.eligibility = r
+	if p.eligibilityErr != nil {
+		return nil, p.eligibilityErr
+	}
+	return &api.WorkspacePurchaseEligibilityCommand{
+		OperationId:              "workspace-purchase-eligibility-activation",
+		AccountId:                r.GetTargetActorId(),
+		Status:                   "succeeded",
+		WorkspacePurchaseEnabled: r.GetBody().GetEnabled(),
 	}, nil
 }
 
@@ -83,8 +98,9 @@ func activationIdentity() *fakeIdentity {
 		session: &api.Session{ActorId: "admin-1", CsrfToken: "csrf-admin"},
 		decisions: map[api.AuthorizationActionEnum]*api.AuthorizationDecision{
 			operatorPrivilegeAction: activationPlatformDecision(operatorPrivilegeAction, api.OwnerEnum_OWNER_ENUM_CAPABILITY, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "", "operator-authority"),
-			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATETENANT:     activationPlatformDecision(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATETENANT, api.OwnerEnum_OWNER_ENUM_TENANT, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", "tenant-authority"),
-			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANT:        activationTenantDecision(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANT, "tenant-read-authority"),
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATETENANT:                    activationPlatformDecision(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATETENANT, api.OwnerEnum_OWNER_ENUM_TENANT, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", "tenant-authority"),
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETWORKSPACEPURCHASEELIGIBILITY: activationPlatformDecision(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETWORKSPACEPURCHASEELIGIBILITY, api.OwnerEnum_OWNER_ENUM_TENANT, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PLATFORM, "77", "eligibility-authority"),
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANT:                       activationTenantDecision(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANT, "tenant-read-authority"),
 			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDTENANTWALLET: activationTenantDecision(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDTENANTWALLET, "binding-authority"),
 		},
 	}
@@ -161,8 +177,11 @@ func TestOperatorActivationComposesAccountTenantAndBinding(t *testing.T) {
 		receipt.BillingBinding.BillingSub2APIUserID != "77" || receipt.BillingBinding.BindingVersion != 1 {
 		t.Fatalf("activation receipt=%+v", receipt)
 	}
-	if len(receipt.Steps) != 3 || receipt.Steps[0].Step != activationStepAccount || receipt.Steps[2].Step != activationStepBinding {
+	if len(receipt.Steps) != 4 || receipt.Steps[0].Step != activationStepAccount || receipt.Steps[2].Step != activationStepEligibility || receipt.Steps[3].Step != activationStepBinding {
 		t.Fatalf("activation steps=%+v", receipt.Steps)
+	}
+	if tenant.eligibility == nil || tenant.eligibility.GetTargetActorId() != "77" || !tenant.eligibility.GetBody().GetEnabled() || tenant.eligibility.GetContext().GetIdempotencyKey() != "activation-eligibility:acct-1" {
+		t.Fatalf("activation eligibility call=%+v", tenant.eligibility)
 	}
 
 	// The retained owner receives the operator's own session and idempotency key,
@@ -248,6 +267,12 @@ func TestOperatorActivationReportsTheFailedStep(t *testing.T) {
 			binding:   &activationBindingProbe{},
 			status:    "tenant_failed", failed: activationStepTenant, code: http.StatusBadGateway,
 		},
+		"eligibility failed": {
+			provision: &activationProvisionProbe{receipt: []byte(`{"operationId":"account-provision-1","accountId":"acct-1","sub2apiUserId":"77","status":"succeeded","workspacePurchaseEnabled":true}`)},
+			tenant:    &activationTenantProbe{eligibilityErr: status.Error(codes.Unavailable, "eligibility owner unavailable")},
+			binding:   &activationBindingProbe{},
+			status:    "eligibility_failed", failed: activationStepEligibility, code: http.StatusBadGateway,
+		},
 		"binding failed": {
 			provision: &activationProvisionProbe{receipt: []byte(`{"operationId":"account-provision-1","accountId":"acct-1","sub2apiUserId":"77","status":"succeeded","workspacePurchaseEnabled":true}`)},
 			tenant:    &activationTenantProbe{},
@@ -280,8 +305,13 @@ func TestOperatorActivationReportsTheFailedStep(t *testing.T) {
 					t.Fatalf("tenant failure receipt=%+v", receipt)
 				}
 			}
-			if test.failed == activationStepBinding {
+			if test.failed == activationStepEligibility {
 				if receipt.TenantID != "tenant-created-1" || len(receipt.Steps) != 3 {
+					t.Fatalf("eligibility failure receipt=%+v", receipt)
+				}
+			}
+			if test.failed == activationStepBinding {
+				if receipt.TenantID != "tenant-created-1" || len(receipt.Steps) != 4 {
 					t.Fatalf("binding failure receipt=%+v", receipt)
 				}
 			}

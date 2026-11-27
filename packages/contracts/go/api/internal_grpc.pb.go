@@ -20,33 +20,35 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	TenantProductService_GetLoginContext_FullMethodName             = "/opl.cloud.api.TenantProductService/GetLoginContext"
-	TenantProductService_Login_FullMethodName                       = "/opl.cloud.api.TenantProductService/Login"
-	TenantProductService_GetSession_FullMethodName                  = "/opl.cloud.api.TenantProductService/GetSession"
-	TenantProductService_Logout_FullMethodName                      = "/opl.cloud.api.TenantProductService/Logout"
-	TenantProductService_IssueAgentCredential_FullMethodName        = "/opl.cloud.api.TenantProductService/IssueAgentCredential"
-	TenantProductService_ResolveAgentCredential_FullMethodName      = "/opl.cloud.api.TenantProductService/ResolveAgentCredential"
-	TenantProductService_ListAgentCredentials_FullMethodName        = "/opl.cloud.api.TenantProductService/ListAgentCredentials"
-	TenantProductService_RevokeAgentCredential_FullMethodName       = "/opl.cloud.api.TenantProductService/RevokeAgentCredential"
-	TenantProductService_GetTenant_FullMethodName                   = "/opl.cloud.api.TenantProductService/GetTenant"
-	TenantProductService_ListMembers_FullMethodName                 = "/opl.cloud.api.TenantProductService/ListMembers"
-	TenantProductService_ListInvitations_FullMethodName             = "/opl.cloud.api.TenantProductService/ListInvitations"
-	TenantProductService_InviteMember_FullMethodName                = "/opl.cloud.api.TenantProductService/InviteMember"
-	TenantProductService_AcceptInvitation_FullMethodName            = "/opl.cloud.api.TenantProductService/AcceptInvitation"
-	TenantProductService_RevokeInvitation_FullMethodName            = "/opl.cloud.api.TenantProductService/RevokeInvitation"
-	TenantProductService_UpdateMemberRole_FullMethodName            = "/opl.cloud.api.TenantProductService/UpdateMemberRole"
-	TenantProductService_RemoveMember_FullMethodName                = "/opl.cloud.api.TenantProductService/RemoveMember"
-	TenantProductService_ListTenants_FullMethodName                 = "/opl.cloud.api.TenantProductService/ListTenants"
-	TenantProductService_CreateTenant_FullMethodName                = "/opl.cloud.api.TenantProductService/CreateTenant"
-	TenantProductService_GetAdminTenant_FullMethodName              = "/opl.cloud.api.TenantProductService/GetAdminTenant"
-	TenantProductService_DeleteTenant_FullMethodName                = "/opl.cloud.api.TenantProductService/DeleteTenant"
-	TenantProductService_BindTenantWallet_FullMethodName            = "/opl.cloud.api.TenantProductService/BindTenantWallet"
-	TenantProductService_SuspendTenant_FullMethodName               = "/opl.cloud.api.TenantProductService/SuspendTenant"
-	TenantProductService_RestoreTenant_FullMethodName               = "/opl.cloud.api.TenantProductService/RestoreTenant"
-	TenantProductService_GetTenantAssetCustody_FullMethodName       = "/opl.cloud.api.TenantProductService/GetTenantAssetCustody"
-	TenantProductService_ListAuditEvents_FullMethodName             = "/opl.cloud.api.TenantProductService/ListAuditEvents"
-	TenantProductService_ReenableTenant_FullMethodName              = "/opl.cloud.api.TenantProductService/ReenableTenant"
-	TenantProductService_GetTenantLifecycleOperation_FullMethodName = "/opl.cloud.api.TenantProductService/GetTenantLifecycleOperation"
+	TenantProductService_GetLoginContext_FullMethodName                  = "/opl.cloud.api.TenantProductService/GetLoginContext"
+	TenantProductService_Login_FullMethodName                            = "/opl.cloud.api.TenantProductService/Login"
+	TenantProductService_GetSession_FullMethodName                       = "/opl.cloud.api.TenantProductService/GetSession"
+	TenantProductService_Logout_FullMethodName                           = "/opl.cloud.api.TenantProductService/Logout"
+	TenantProductService_IssueAgentCredential_FullMethodName             = "/opl.cloud.api.TenantProductService/IssueAgentCredential"
+	TenantProductService_ResolveAgentCredential_FullMethodName           = "/opl.cloud.api.TenantProductService/ResolveAgentCredential"
+	TenantProductService_ListAgentCredentials_FullMethodName             = "/opl.cloud.api.TenantProductService/ListAgentCredentials"
+	TenantProductService_RevokeAgentCredential_FullMethodName            = "/opl.cloud.api.TenantProductService/RevokeAgentCredential"
+	TenantProductService_GetTenant_FullMethodName                        = "/opl.cloud.api.TenantProductService/GetTenant"
+	TenantProductService_ListMembers_FullMethodName                      = "/opl.cloud.api.TenantProductService/ListMembers"
+	TenantProductService_ListInvitations_FullMethodName                  = "/opl.cloud.api.TenantProductService/ListInvitations"
+	TenantProductService_InviteMember_FullMethodName                     = "/opl.cloud.api.TenantProductService/InviteMember"
+	TenantProductService_AcceptInvitation_FullMethodName                 = "/opl.cloud.api.TenantProductService/AcceptInvitation"
+	TenantProductService_RevokeInvitation_FullMethodName                 = "/opl.cloud.api.TenantProductService/RevokeInvitation"
+	TenantProductService_UpdateMemberRole_FullMethodName                 = "/opl.cloud.api.TenantProductService/UpdateMemberRole"
+	TenantProductService_RemoveMember_FullMethodName                     = "/opl.cloud.api.TenantProductService/RemoveMember"
+	TenantProductService_ListTenants_FullMethodName                      = "/opl.cloud.api.TenantProductService/ListTenants"
+	TenantProductService_CreateTenant_FullMethodName                     = "/opl.cloud.api.TenantProductService/CreateTenant"
+	TenantProductService_GetAdminTenant_FullMethodName                   = "/opl.cloud.api.TenantProductService/GetAdminTenant"
+	TenantProductService_DeleteTenant_FullMethodName                     = "/opl.cloud.api.TenantProductService/DeleteTenant"
+	TenantProductService_BindTenantWallet_FullMethodName                 = "/opl.cloud.api.TenantProductService/BindTenantWallet"
+	TenantProductService_SuspendTenant_FullMethodName                    = "/opl.cloud.api.TenantProductService/SuspendTenant"
+	TenantProductService_RestoreTenant_FullMethodName                    = "/opl.cloud.api.TenantProductService/RestoreTenant"
+	TenantProductService_GetTenantAssetCustody_FullMethodName            = "/opl.cloud.api.TenantProductService/GetTenantAssetCustody"
+	TenantProductService_ListAuditEvents_FullMethodName                  = "/opl.cloud.api.TenantProductService/ListAuditEvents"
+	TenantProductService_ReenableTenant_FullMethodName                   = "/opl.cloud.api.TenantProductService/ReenableTenant"
+	TenantProductService_GetTenantLifecycleOperation_FullMethodName      = "/opl.cloud.api.TenantProductService/GetTenantLifecycleOperation"
+	TenantProductService_SetWorkspacePurchaseEligibility_FullMethodName  = "/opl.cloud.api.TenantProductService/SetWorkspacePurchaseEligibility"
+	TenantProductService_ListWorkspacePurchaseEligibility_FullMethodName = "/opl.cloud.api.TenantProductService/ListWorkspacePurchaseEligibility"
 )
 
 // TenantProductServiceClient is the client API for TenantProductService service.
@@ -80,6 +82,8 @@ type TenantProductServiceClient interface {
 	ListAuditEvents(ctx context.Context, in *ListAuditEventsRpcRequest, opts ...grpc.CallOption) (*AuditEventPage, error)
 	ReenableTenant(ctx context.Context, in *ReenableTenantRpcRequest, opts ...grpc.CallOption) (*Operation, error)
 	GetTenantLifecycleOperation(ctx context.Context, in *GetTenantLifecycleOperationRpcRequest, opts ...grpc.CallOption) (*TenantLifecycleProgress, error)
+	SetWorkspacePurchaseEligibility(ctx context.Context, in *SetWorkspacePurchaseEligibilityRpcRequest, opts ...grpc.CallOption) (*WorkspacePurchaseEligibilityCommand, error)
+	ListWorkspacePurchaseEligibility(ctx context.Context, in *ListWorkspacePurchaseEligibilityRpcRequest, opts ...grpc.CallOption) (*WorkspacePurchaseEligibilityList, error)
 }
 
 type tenantProductServiceClient struct {
@@ -360,6 +364,26 @@ func (c *tenantProductServiceClient) GetTenantLifecycleOperation(ctx context.Con
 	return out, nil
 }
 
+func (c *tenantProductServiceClient) SetWorkspacePurchaseEligibility(ctx context.Context, in *SetWorkspacePurchaseEligibilityRpcRequest, opts ...grpc.CallOption) (*WorkspacePurchaseEligibilityCommand, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WorkspacePurchaseEligibilityCommand)
+	err := c.cc.Invoke(ctx, TenantProductService_SetWorkspacePurchaseEligibility_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tenantProductServiceClient) ListWorkspacePurchaseEligibility(ctx context.Context, in *ListWorkspacePurchaseEligibilityRpcRequest, opts ...grpc.CallOption) (*WorkspacePurchaseEligibilityList, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WorkspacePurchaseEligibilityList)
+	err := c.cc.Invoke(ctx, TenantProductService_ListWorkspacePurchaseEligibility_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TenantProductServiceServer is the server API for TenantProductService service.
 // All implementations must embed UnimplementedTenantProductServiceServer
 // for forward compatibility.
@@ -391,6 +415,8 @@ type TenantProductServiceServer interface {
 	ListAuditEvents(context.Context, *ListAuditEventsRpcRequest) (*AuditEventPage, error)
 	ReenableTenant(context.Context, *ReenableTenantRpcRequest) (*Operation, error)
 	GetTenantLifecycleOperation(context.Context, *GetTenantLifecycleOperationRpcRequest) (*TenantLifecycleProgress, error)
+	SetWorkspacePurchaseEligibility(context.Context, *SetWorkspacePurchaseEligibilityRpcRequest) (*WorkspacePurchaseEligibilityCommand, error)
+	ListWorkspacePurchaseEligibility(context.Context, *ListWorkspacePurchaseEligibilityRpcRequest) (*WorkspacePurchaseEligibilityList, error)
 	mustEmbedUnimplementedTenantProductServiceServer()
 }
 
@@ -481,6 +507,12 @@ func (UnimplementedTenantProductServiceServer) ReenableTenant(context.Context, *
 }
 func (UnimplementedTenantProductServiceServer) GetTenantLifecycleOperation(context.Context, *GetTenantLifecycleOperationRpcRequest) (*TenantLifecycleProgress, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTenantLifecycleOperation not implemented")
+}
+func (UnimplementedTenantProductServiceServer) SetWorkspacePurchaseEligibility(context.Context, *SetWorkspacePurchaseEligibilityRpcRequest) (*WorkspacePurchaseEligibilityCommand, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetWorkspacePurchaseEligibility not implemented")
+}
+func (UnimplementedTenantProductServiceServer) ListWorkspacePurchaseEligibility(context.Context, *ListWorkspacePurchaseEligibilityRpcRequest) (*WorkspacePurchaseEligibilityList, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListWorkspacePurchaseEligibility not implemented")
 }
 func (UnimplementedTenantProductServiceServer) mustEmbedUnimplementedTenantProductServiceServer() {}
 func (UnimplementedTenantProductServiceServer) testEmbeddedByValue()                              {}
@@ -989,6 +1021,42 @@ func _TenantProductService_GetTenantLifecycleOperation_Handler(srv interface{}, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TenantProductService_SetWorkspacePurchaseEligibility_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetWorkspacePurchaseEligibilityRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantProductServiceServer).SetWorkspacePurchaseEligibility(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantProductService_SetWorkspacePurchaseEligibility_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantProductServiceServer).SetWorkspacePurchaseEligibility(ctx, req.(*SetWorkspacePurchaseEligibilityRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TenantProductService_ListWorkspacePurchaseEligibility_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListWorkspacePurchaseEligibilityRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantProductServiceServer).ListWorkspacePurchaseEligibility(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantProductService_ListWorkspacePurchaseEligibility_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantProductServiceServer).ListWorkspacePurchaseEligibility(ctx, req.(*ListWorkspacePurchaseEligibilityRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // TenantProductService_ServiceDesc is the grpc.ServiceDesc for TenantProductService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1103,6 +1171,14 @@ var TenantProductService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetTenantLifecycleOperation",
 			Handler:    _TenantProductService_GetTenantLifecycleOperation_Handler,
+		},
+		{
+			MethodName: "SetWorkspacePurchaseEligibility",
+			Handler:    _TenantProductService_SetWorkspacePurchaseEligibility_Handler,
+		},
+		{
+			MethodName: "ListWorkspacePurchaseEligibility",
+			Handler:    _TenantProductService_ListWorkspacePurchaseEligibility_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -6314,9 +6390,10 @@ var WorkspaceAuthorizationReadback_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	CloudIdentityAuthorization_AuthorizeAction_FullMethodName             = "/opl.cloud.api.CloudIdentityAuthorization/AuthorizeAction"
-	CloudIdentityAuthorization_GetAuthorizationContext_FullMethodName     = "/opl.cloud.api.CloudIdentityAuthorization/GetAuthorizationContext"
-	CloudIdentityAuthorization_IssueAcceptedOperationGrant_FullMethodName = "/opl.cloud.api.CloudIdentityAuthorization/IssueAcceptedOperationGrant"
+	CloudIdentityAuthorization_AuthorizeAction_FullMethodName                  = "/opl.cloud.api.CloudIdentityAuthorization/AuthorizeAction"
+	CloudIdentityAuthorization_GetAuthorizationContext_FullMethodName          = "/opl.cloud.api.CloudIdentityAuthorization/GetAuthorizationContext"
+	CloudIdentityAuthorization_IssueAcceptedOperationGrant_FullMethodName      = "/opl.cloud.api.CloudIdentityAuthorization/IssueAcceptedOperationGrant"
+	CloudIdentityAuthorization_ReadWorkspacePurchaseEligibility_FullMethodName = "/opl.cloud.api.CloudIdentityAuthorization/ReadWorkspacePurchaseEligibility"
 )
 
 // CloudIdentityAuthorizationClient is the client API for CloudIdentityAuthorization service.
@@ -6326,6 +6403,7 @@ type CloudIdentityAuthorizationClient interface {
 	AuthorizeAction(ctx context.Context, in *AuthorizationRequest, opts ...grpc.CallOption) (*AuthorizationDecision, error)
 	GetAuthorizationContext(ctx context.Context, in *GetAuthorizationContextRequest, opts ...grpc.CallOption) (*AuthorizationDecision, error)
 	IssueAcceptedOperationGrant(ctx context.Context, in *AcceptedOperationGrantRequest, opts ...grpc.CallOption) (*AcceptedOperationGrant, error)
+	ReadWorkspacePurchaseEligibility(ctx context.Context, in *ReadWorkspacePurchaseEligibilityRequest, opts ...grpc.CallOption) (*WorkspacePurchaseEligibilityReadback, error)
 }
 
 type cloudIdentityAuthorizationClient struct {
@@ -6366,6 +6444,16 @@ func (c *cloudIdentityAuthorizationClient) IssueAcceptedOperationGrant(ctx conte
 	return out, nil
 }
 
+func (c *cloudIdentityAuthorizationClient) ReadWorkspacePurchaseEligibility(ctx context.Context, in *ReadWorkspacePurchaseEligibilityRequest, opts ...grpc.CallOption) (*WorkspacePurchaseEligibilityReadback, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WorkspacePurchaseEligibilityReadback)
+	err := c.cc.Invoke(ctx, CloudIdentityAuthorization_ReadWorkspacePurchaseEligibility_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CloudIdentityAuthorizationServer is the server API for CloudIdentityAuthorization service.
 // All implementations must embed UnimplementedCloudIdentityAuthorizationServer
 // for forward compatibility.
@@ -6373,6 +6461,7 @@ type CloudIdentityAuthorizationServer interface {
 	AuthorizeAction(context.Context, *AuthorizationRequest) (*AuthorizationDecision, error)
 	GetAuthorizationContext(context.Context, *GetAuthorizationContextRequest) (*AuthorizationDecision, error)
 	IssueAcceptedOperationGrant(context.Context, *AcceptedOperationGrantRequest) (*AcceptedOperationGrant, error)
+	ReadWorkspacePurchaseEligibility(context.Context, *ReadWorkspacePurchaseEligibilityRequest) (*WorkspacePurchaseEligibilityReadback, error)
 	mustEmbedUnimplementedCloudIdentityAuthorizationServer()
 }
 
@@ -6391,6 +6480,9 @@ func (UnimplementedCloudIdentityAuthorizationServer) GetAuthorizationContext(con
 }
 func (UnimplementedCloudIdentityAuthorizationServer) IssueAcceptedOperationGrant(context.Context, *AcceptedOperationGrantRequest) (*AcceptedOperationGrant, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method IssueAcceptedOperationGrant not implemented")
+}
+func (UnimplementedCloudIdentityAuthorizationServer) ReadWorkspacePurchaseEligibility(context.Context, *ReadWorkspacePurchaseEligibilityRequest) (*WorkspacePurchaseEligibilityReadback, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReadWorkspacePurchaseEligibility not implemented")
 }
 func (UnimplementedCloudIdentityAuthorizationServer) mustEmbedUnimplementedCloudIdentityAuthorizationServer() {
 }
@@ -6468,6 +6560,24 @@ func _CloudIdentityAuthorization_IssueAcceptedOperationGrant_Handler(srv interfa
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CloudIdentityAuthorization_ReadWorkspacePurchaseEligibility_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReadWorkspacePurchaseEligibilityRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CloudIdentityAuthorizationServer).ReadWorkspacePurchaseEligibility(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CloudIdentityAuthorization_ReadWorkspacePurchaseEligibility_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CloudIdentityAuthorizationServer).ReadWorkspacePurchaseEligibility(ctx, req.(*ReadWorkspacePurchaseEligibilityRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // CloudIdentityAuthorization_ServiceDesc is the grpc.ServiceDesc for CloudIdentityAuthorization service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -6486,6 +6596,10 @@ var CloudIdentityAuthorization_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "IssueAcceptedOperationGrant",
 			Handler:    _CloudIdentityAuthorization_IssueAcceptedOperationGrant_Handler,
+		},
+		{
+			MethodName: "ReadWorkspacePurchaseEligibility",
+			Handler:    _CloudIdentityAuthorization_ReadWorkspacePurchaseEligibility_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

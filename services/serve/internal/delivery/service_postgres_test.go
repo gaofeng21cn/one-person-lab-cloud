@@ -26,6 +26,7 @@ import (
 // ownerservice.Authorizer, so Serve's declared resource scope, audience and action
 // are exercised exactly as production would.
 type fakeIdentity struct {
+	api.CloudIdentityAuthorizationClient
 	deny  bool
 	last  *api.AuthorizationRequest
 	calls int

@@ -1956,6 +1956,44 @@ message ListTenantsRpcRequest {
  optional int32 query_limit = 3;
 }
 
+message SetWorkspacePurchaseEligibilityRequest {
+ string confirmation_account_id = 1;
+ bool enabled = 2;
+ string reason = 3;
+}
+
+message SetWorkspacePurchaseEligibilityRpcRequest {
+ CallContext context = 1;
+ string target_actor_id = 2;
+ SetWorkspacePurchaseEligibilityRequest body = 3;
+}
+
+message WorkspacePurchaseEligibilityCommand {
+ string operation_id = 1;
+ string account_id = 2;
+ string status = 3;
+ bool workspace_purchase_enabled = 4;
+}
+
+message ReadWorkspacePurchaseEligibilityRequest {
+ CallContext context = 1;
+}
+
+message WorkspacePurchaseEligibilityReadback {
+ string actor_id = 1;
+ string account_id = 2;
+ bool workspace_purchase_enabled = 3;
+}
+
+message ListWorkspacePurchaseEligibilityRpcRequest {
+ CallContext context = 1;
+ repeated string actor_ids = 2;
+}
+
+message WorkspacePurchaseEligibilityList {
+ repeated WorkspacePurchaseEligibilityReadback items = 1;
+}
+
 message CreateTenantRpcRequest {
  CallContext context = 1;
  CreateTenantRequest body = 2;
@@ -2248,6 +2286,8 @@ service TenantProductService {
  rpc ListAuditEvents(ListAuditEventsRpcRequest) returns (AuditEventPage);
  rpc ReenableTenant(ReenableTenantRpcRequest) returns (Operation);
  rpc GetTenantLifecycleOperation(GetTenantLifecycleOperationRpcRequest) returns (TenantLifecycleProgress);
+ rpc SetWorkspacePurchaseEligibility(SetWorkspacePurchaseEligibilityRpcRequest) returns (WorkspacePurchaseEligibilityCommand);
+ rpc ListWorkspacePurchaseEligibility(ListWorkspacePurchaseEligibilityRpcRequest) returns (WorkspacePurchaseEligibilityList);
 }
 
 service CapabilityProductService {
@@ -2465,6 +2505,7 @@ service CloudIdentityAuthorization {
  rpc AuthorizeAction(AuthorizationRequest) returns (AuthorizationDecision);
  rpc GetAuthorizationContext(GetAuthorizationContextRequest) returns (AuthorizationDecision);
  rpc IssueAcceptedOperationGrant(AcceptedOperationGrantRequest) returns (AcceptedOperationGrant);
+ rpc ReadWorkspacePurchaseEligibility(ReadWorkspacePurchaseEligibilityRequest) returns (WorkspacePurchaseEligibilityReadback);
 }
 message AdmissionRequest { CallContext context = 1; string workspace_id = 2; string capability_version_id = 3; string compute_plan_id = 4; string storage_plan_id = 5; repeated ModelSelection model_selections = 6; string purpose = 7; }
 message AdmissionResult { Observation outcome = 1; string admission_id = 2; string capability_snapshot_digest = 3; string provider_capability_version = 4; string policy_version_id = 5; string error_code = 6; google.protobuf.Timestamp expires_at = 7; string expected_interruption = 8; }
@@ -3477,6 +3518,7 @@ AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES = 153;
  AUTHORIZATION_ACTION_ENUM_UPDATEPERSONALGATEWAYKEY = 170;
  AUTHORIZATION_ACTION_ENUM_REVEALPERSONALGATEWAYKEY = 171;
  AUTHORIZATION_ACTION_ENUM_REVOKEPERSONALGATEWAYKEY = 172;
+ AUTHORIZATION_ACTION_ENUM_SETWORKSPACEPURCHASEELIGIBILITY = 173;
 }
 
 enum ServiceIdentityEnum {

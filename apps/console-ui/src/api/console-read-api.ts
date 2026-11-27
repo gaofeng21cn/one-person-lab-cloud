@@ -520,6 +520,13 @@ export function operatorActivationRoute(cloud: boolean): "/api/v2/operator/accou
   return "/api/v2/operator/accounts";
 }
 
+export function operatorPurchaseEligibilityRoute(cloud: boolean, targetId: string): string {
+  const encoded = encodeURIComponent(targetId);
+  return cloud
+    ? `/api/v2/operator/accounts/${encoded}/workspace-purchase-eligibility`
+    : `/api/operator/accounts/${encoded}/workspace-purchase-eligibility`;
+}
+
 export function getOperatorAccounts(cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorAccountsData>> {
   return sourceGet<OperatorAccountsData>(`${operatorReadRoute(cloud)}/accounts`);
 }
@@ -581,7 +588,7 @@ export function disableOperatorAccount(accountId: string, reason: string, csrfTo
 }
 
 export function setOperatorWorkspacePurchaseEligibility(accountId: string, enabled: boolean, reason: string, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperatorWorkspacePurchaseEligibilityCommandDTO> {
-  return postJson<unknown>(operatorWriteRoute(cloud, `/accounts/${encodeURIComponent(accountId)}/workspace-purchase-eligibility`), { confirmationAccountId: accountId, enabled, reason }, csrfToken, idempotencyKey).then(decodeDto<OperatorWorkspacePurchaseEligibilityCommandDTO>);
+  return postJson<unknown>(operatorPurchaseEligibilityRoute(cloud, accountId), { confirmationAccountId: accountId, enabled, reason }, csrfToken, idempotencyKey).then(decodeDto<OperatorWorkspacePurchaseEligibilityCommandDTO>);
 }
 
 export function resolveBillingReview(resourceType: string, resourceId: string, input: BillingReviewResolutionRequest, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperationStatusDTO> {

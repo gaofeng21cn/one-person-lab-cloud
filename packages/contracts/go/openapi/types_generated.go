@@ -248,6 +248,7 @@ const (
 	AuthorizationActionSetRuntimeVersionStatus               AuthorizationAction = "setRuntimeVersionStatus"
 	AuthorizationActionSetStoragePlanAvailability            AuthorizationAction = "setStoragePlanAvailability"
 	AuthorizationActionSetWebuiVersionStatus                 AuthorizationAction = "setWebuiVersionStatus"
+	AuthorizationActionSetWorkspacePurchaseEligibility       AuthorizationAction = "setWorkspacePurchaseEligibility"
 	AuthorizationActionSuspendTenant                         AuthorizationAction = "suspendTenant"
 	AuthorizationActionUpdateMemberRole                      AuthorizationAction = "updateMemberRole"
 	AuthorizationActionUpdateNamespace                       AuthorizationAction = "updateNamespace"
@@ -588,6 +589,8 @@ func (e AuthorizationAction) Valid() bool {
 	case AuthorizationActionSetStoragePlanAvailability:
 		return true
 	case AuthorizationActionSetWebuiVersionStatus:
+		return true
+	case AuthorizationActionSetWorkspacePurchaseEligibility:
 		return true
 	case AuthorizationActionSuspendTenant:
 		return true
@@ -7702,6 +7705,14 @@ type SetBuildRuntimePolicyRequest struct {
 	RuntimeVersionId OpaqueId `json:"runtimeVersionId"`
 }
 
+// SetWorkspacePurchaseEligibilityRequest Platform administrator instruction to grant or revoke new Workspace purchase eligibility for one Gateway subject.
+type SetWorkspacePurchaseEligibilityRequest struct {
+	// ConfirmationAccountId 不透明string；新旧ID原样保留，不假定UUID。
+	ConfirmationAccountId OpaqueId `json:"confirmationAccountId"`
+	Enabled               bool     `json:"enabled"`
+	Reason                string   `json:"reason"`
+}
+
 // StoragePlan  仅查询指定另一侧planId且存在唯一有效组合价时返回monthlyPriceUSDMicros/pricePolicyVersionId；否则省略，UI展示“选择完整套餐后报价”，不猜最低价。
 type StoragePlan struct {
 	Availability StoragePlanAvailability `json:"availability"`
@@ -8788,6 +8799,17 @@ type WorkspacePlanOffer struct {
 	StoragePlanId OpaqueId `json:"storagePlanId"`
 }
 
+// WorkspacePurchaseEligibilityCommand Canonical receipt for one Workspace purchase eligibility update.
+type WorkspacePurchaseEligibilityCommand struct {
+	// AccountId 不透明string；新旧ID原样保留，不假定UUID。
+	AccountId OpaqueId `json:"accountId"`
+
+	// OperationId 不透明string；新旧ID原样保留，不假定UUID。
+	OperationId              OpaqueId `json:"operationId"`
+	Status                   string   `json:"status"`
+	WorkspacePurchaseEnabled bool     `json:"workspacePurchaseEnabled"`
+}
+
 // WorkspaceTransactionTrend 最近14个UTC自然日（包含今日至本次读回时间）。已确认扣退款按原confirmed_at归日；unknown和requested按created_at在同一窗口内分别列示，绝不计入已结算。原记录金额按int64聚合，溢出拒绝返回，不取浮点、不使用分页小计。
 type WorkspaceTransactionTrend struct {
 	Days        []WorkspaceTransactionTrendDay `json:"days"`
@@ -9349,6 +9371,15 @@ type ArchiveNamespaceParams struct {
 	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
 }
 
+// SetWorkspacePurchaseEligibilityParams defines parameters for SetWorkspacePurchaseEligibility.
+type SetWorkspacePurchaseEligibilityParams struct {
+	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+
+	// XCSRFToken 匹配同源session并校验Origin。
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
 // ListOperatorWorkspacesParams defines parameters for ListOperatorWorkspaces.
 type ListOperatorWorkspacesParams struct {
 	Page     *int `form:"page,omitempty" json:"page,omitempty"`
@@ -9723,6 +9754,9 @@ type CreateNamespaceJSONRequestBody = NamespaceWriteRequest
 
 // UpdateNamespaceJSONRequestBody defines body for UpdateNamespace for application/json ContentType.
 type UpdateNamespaceJSONRequestBody = NamespaceWriteRequest
+
+// SetWorkspacePurchaseEligibilityJSONRequestBody defines body for SetWorkspacePurchaseEligibility for application/json ContentType.
+type SetWorkspacePurchaseEligibilityJSONRequestBody = SetWorkspacePurchaseEligibilityRequest
 
 // CreatePackageJSONRequestBody defines body for CreatePackage for application/json ContentType.
 type CreatePackageJSONRequestBody = CreatePackageRequest
