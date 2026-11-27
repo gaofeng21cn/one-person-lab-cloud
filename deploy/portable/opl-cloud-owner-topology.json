@@ -916,7 +916,7 @@
      "control-plane"
     ],
     "browserFacing": false,
-    "evidence": "Control Plane registers /internal/cloud/announcements for the authenticated BFF; the original owner revalidates the Cloud session with Gateway."
+    "evidence": "Control Plane registers the retained /internal/cloud/legacy-billing/* and /internal/cloud/operator/* bridges for the authenticated BFF; the original owner revalidates the Cloud session with Gateway."
    },
    {
     "prefix": "/",

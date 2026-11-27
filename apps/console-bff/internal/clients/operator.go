@@ -25,11 +25,6 @@ func (c *Clients) OperatorAccounts(ctx context.Context, session string, page, pa
 	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
 }
 
-func (c *Clients) OperatorAnnouncements(ctx context.Context, session string, page, pageSize int) ([]byte, error) {
-	path := "/internal/cloud/operator/announcements?" + url.Values{"page": {strconv.Itoa(page)}, "pageSize": {strconv.Itoa(pageSize)}}.Encode()
-	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
-}
-
 func (c *Clients) OperatorHealth(ctx context.Context, session string) ([]byte, error) {
 	path := "/internal/cloud/operator/health"
 	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)

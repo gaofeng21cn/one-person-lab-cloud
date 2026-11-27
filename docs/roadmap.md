@@ -134,6 +134,13 @@ Plane / delegated process-local custody onto canonical domain owners:
    bridges (`/internal/cloud/legacy-billing/*`, `/internal/cloud/announcements`)
    once Cloud Ledger and Announcement owners serve authenticated CloudIdentity
    reads directly without losing historical user acknowledgements or receipts.
+   - The announcement half has moved: publication, withdrawal, the customer read
+     and the read receipt are owned by CloudIdentity, and the three
+     `/internal/cloud/announcements*` bridges are retired. What remains is the
+     retirement of the legacy Control Plane announcement table and routes that
+     still serve the retained legacy Console build, the removal of the
+     now-unused Control Plane announcement client in the Console BFF, and the
+     frontend unlock that lets the Console call the owner directly.
 3. **Retained Control Plane Cleanup**: Progressively retire remaining legacy
    Launch/Policy/Admin surfaces once open persisted Workspaces converge and all
    non-browser Instance callers confirm zero dependency.
