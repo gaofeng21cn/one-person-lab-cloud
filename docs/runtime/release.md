@@ -52,7 +52,10 @@ are fixed as Build inputs).
   source/unit suites) pass on the exact commit.
 - **Clean-Host Local Qualification**: `local-v2` starts `compose.local-v2.yaml`,
   verifies native owner stores, HTTPS Console access, restart continuity and
-  delete/replay (`LOCAL_NO_CHARGE`, `p0Ready: false`). If an uploaded package's
+  delete/replay (`LOCAL_NO_CHARGE`, `p0Ready: false`). Restart verifies that all
+  previously observed Ledger receipts retain their contents, including the
+  order's no-charge proof, while allowing pending owner events to arrive.
+  If an uploaded package's
   Workspace stops at runtime, the `local-v2-native-evidence` artifact records
   the exact purchase's Workspace saga and Serve status and error codes before
   cleanup. The qualification result remains `NOT_READY`.

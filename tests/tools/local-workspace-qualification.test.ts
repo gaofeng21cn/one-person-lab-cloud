@@ -1212,30 +1212,58 @@ test("local-v2 operation deadline includes reads and never replays after expiry"
   assert.equal(fixture.requests.filter((x) => x === "POST /api/v2/workspaces").length, 1);
 });
 
-test("local-v2 no-charge deletion confirms only after a reachable entry and owner absence", async () => {
-  let deleted = false;
-  let probes = 0;
-  const operation = { owner: "workspace", kind: "create_workspace", operationId: "op_test", resourceId: "workspace_test", status: "awaiting_confirmation", stage: "activation", observationResult: "confirmed" };
-  const deletion = { owner: "workspace", kind: "delete_workspace", operationId: "op_delete", resourceId: "workspace_test", status: "succeeded", stage: "done" };
-  const ready = { id: "workspace_test", status: "provisioning", resourceReadiness: "ready", applicationAvailability: "available", accessUrl: "https://localhost:18443/w/one", runtimeVersionId: "runtime_test" };
-  const fixture = localV2Fixture({ operationResponses: [operation], workspaceReadback: ready,
-    routeReply(method, path, ok) {
-      if (method === "DELETE") { assert.equal(probes, 1); deleted = true; return ok(deletion, 202); }
-      if (path === "/api/v2/operations/workspace/op_delete") return ok(deletion);
-      if (path === "/api/v2/workspaces/workspace_test" && deleted) return ok({ ...ready, status: "deleted", accessUrl: "" });
-      if (path === "/api/v2/workspaces/workspace_test/deletion") return ok({
-        workspaceId: "workspace_test", operationId: "op_delete", resourceDeletionStatus: "confirmed", dataDeletionStatus: "confirmed", refundStatus: "not_applicable",
-        deletionReceipt: { id: "receipt_delete", kind: "provider_action", owner: "workspace", operationId: "op_delete", outcome: "confirmed", createdAt: "2026-10-25T00:00:00Z" }
-      });
+test("local-v2 restart preserves settled Ledger receipts before proceeding to deletion", async (t) => {
+  const funding = ["receipt_funding", "a".repeat(64), true];
+  const readiness = ["receipt_readiness", "b".repeat(64), null];
+  const delayed = ["receipt_delayed", "c".repeat(64), null];
+  const cases = [
+    { name: "late observation", before: [funding, readiness], after: [funding, readiness, delayed], stable: true, retained: 2 },
+    { name: "replaced receipt", before: [funding, readiness], after: [funding, delayed], stable: false, retained: 1 },
+    { name: "changed receipt", before: [funding, readiness], after: [funding, [readiness[0], delayed[1], null]], stable: false, retained: 1 },
+    { name: "missing original funding", before: [readiness], after: [readiness, funding], stable: false, retained: 1 },
+    { name: "duplicate funding", before: [funding, readiness], after: [funding, readiness, ["duplicate_funding", delayed[1], true]], stable: false, retained: 2 },
+  ];
+  for (const scenario of cases) await t.test(scenario.name, async () => {
+    let deleted = false;
+    let probes = 0;
+    let ledgerReads = 0;
+    const operation = { owner: "workspace", kind: "create_workspace", operationId: "op_test", resourceId: "workspace_test", status: "awaiting_confirmation", stage: "activation", observationResult: "confirmed" };
+    const deletion = { owner: "workspace", kind: "delete_workspace", operationId: "op_delete", resourceId: "workspace_test", status: "succeeded", stage: "done" };
+    const ready = { id: "workspace_test", status: "provisioning", resourceReadiness: "ready", applicationAvailability: "available", accessUrl: "https://localhost:18443/w/one", runtimeVersionId: "runtime_test" };
+    const fixture = localV2Fixture({ operationResponses: [operation], workspaceReadback: ready,
+      routeReply(method, path, ok) {
+        if (method === "DELETE") { assert.equal(probes, 1); deleted = true; return ok(deletion, 202); }
+        if (path === "/api/v2/operations/workspace/op_delete") return ok(deletion);
+        if (path === "/api/v2/workspaces/workspace_test" && deleted) return ok({ ...ready, status: "deleted", accessUrl: "" });
+        if (path === "/api/v2/workspaces/workspace_test/deletion") return ok({
+          workspaceId: "workspace_test", operationId: "op_delete", resourceDeletionStatus: "confirmed", dataDeletionStatus: "confirmed", refundStatus: "not_applicable",
+          deletionReceipt: { id: "receipt_delete", kind: "provider_action", owner: "workspace", operationId: "op_delete", outcome: "confirmed", createdAt: "2026-10-25T00:00:00Z" }
+        });
+      }
+    });
+    const result = await runLocalV2FixtureQualification(fixture, {
+      fetchEntry: async () => { probes += 1; return { response: { status: 200 }, text: "ready" }; },
+      ownerQuery: async (database, sql) => {
+        if (database === "opl_ledger" && sql.includes("sha256(")) {
+          assert.match(sql, /organization_id = 'tenant_test' and r\.workspace_id = 'workspace_test'/);
+          assert.match(sql, /evidenceReference' = 'op_test'/);
+          return JSON.stringify(ledgerReads++ === 0 ? scenario.before : scenario.after);
+        }
+        return database === "opl_fabric" && sql.includes("deleted_at") || database === "opl_serve" ? "0" : "4";
+      }
+    });
+    assert.equal(ledgerReads, 2);
+    assert.equal(result.evidence.readbacks.restart.receiptStable, scenario.stable);
+    assert.equal(result.evidence.readbacks.ledger.restart.retained, scenario.retained);
+    assert.equal(deleted, scenario.stable);
+    if (scenario.stable) {
+      assert.equal(result.evidence.stages.find((x) => x.stage === "workspace_delete")?.status, "confirmed");
+      assert.equal(result.evidence.readbacks.deletion.refundStatus, "not_applicable");
+    } else {
+      assert.equal(result.errorCode, "local_v2_restart_continuity_lost");
     }
+    assert.equal(result.status, "NOT_READY");
   });
-  const result = await runLocalV2FixtureQualification(fixture, {
-    fetchEntry: async () => { probes += 1; return { response: { status: 200 }, text: "ready" }; },
-    ownerQuery: async (database, sql) => database === "opl_fabric" && sql.includes("deleted_at") || database === "opl_serve" ? "0" : "4"
-  });
-  assert.equal(result.evidence.stages.find((x) => x.stage === "workspace_delete")?.status, "confirmed");
-  assert.equal(result.evidence.readbacks.deletion.refundStatus, "not_applicable");
-  assert.equal(result.status, "NOT_READY");
 });
 
 test("local-v2 unreachable same-origin entry never authorizes deletion", async () => {
