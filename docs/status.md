@@ -16,6 +16,20 @@ chronological snapshots.
   live under the single root Go module `go.mod` (`module opl-cloud`), backed by
   typed `database/sql` PostgreSQL stores and `services/internal/postgresmigrate`
   (`ent` ORM has been retired).
+- **Control Plane Retirement Residue Gate**: The retirement of
+  `services/control-plane` is proved by one instrument,
+  `tools/verify-no-control-plane.ts`, which runs in the `source` group of
+  `npm run verify:local`. It declares thirteen assertions, one per retirement
+  slice, and runs the assertions whose slice has arrived; the assertions of the
+  slices that have not arrived stay pending and are reported as pending rather
+  than as a pass. The declared stage table is checked against the assertions'
+  `fromSlice` markers, so a check cannot be postponed by editing one copy of
+  the plan. The gate scans the bridge implementation surface, the Local-Docker
+  gateway label, the published portable deployment surface, the product image
+  pipeline, the retired service directory, the local verification targets, the
+  compose files, the retired Control Plane environment variables, the retired
+  internal bridge prefix and every repository path that still names the retired
+  source directory; it does not scan the documentation layer.
 - **Slim Go-Only Image & 3-Container Composed Portable Topology**: `Dockerfile`
   compiles all Go binaries in one shared `go-build` stage onto a
   Node-free `debian:bookworm-slim` runtime carrying `/app/dist` and baked

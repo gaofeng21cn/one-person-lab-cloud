@@ -146,6 +146,11 @@ Plane / delegated process-local custody onto canonical domain owners:
      non-terminal operations from completed settlement. Include accepted
      refunds that still need their first execution and renewals whose expiry
      or Ledger settlement is incomplete.
+   - Every retirement slice must leave no residue, and the instrument that
+     proves it is `tools/verify-no-control-plane.ts` in the `source` group of
+     `npm run verify:local`: a slice opens its own assertions, the gate turns
+     red when a slice leaves residue behind, and the assertions of the slices
+     that have not arrived stay pending and are reported as pending.
 4. **Module & DB-Role Coverage**: `tests/contracts/module-physical-boundaries.test.ts`
    now enforces package and SDK isolation across all 11 Go services under `services/`
    and `apps/console-bff`; extend PostgreSQL role-isolation checks to cover every

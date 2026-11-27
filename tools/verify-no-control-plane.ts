@@ -64,7 +64,8 @@ export const stageTable = Object.freeze({
     "verify-local-targets-clean",
     "compose-no-root-user",
     "control-plane-env-vars-absent",
-    "internal-cloud-prefix-absent"
+    "internal-cloud-prefix-absent",
+    "repo-paths-no-control-plane"
   ]
 } satisfies Record<Slice, readonly string[]>);
 
@@ -436,6 +437,17 @@ export const assertions: readonly Assertion[] = Object.freeze([
       const files = repositorySurfaceFiles(root);
       const findings = scanLiteral(root, files, "/internal/cloud/");
       return { findings, detail: `${findings.length} occurrence(s) of the internal bridge prefix` };
+    }
+  },
+  {
+    id: "repo-paths-no-control-plane",
+    fromSlice: "S10",
+    description: "No repository file still names the retired Control Plane source directory.",
+    scope: "repository surface (docs/ excluded)",
+    check: (root) => {
+      const files = repositorySurfaceFiles(root);
+      const findings = scanLiteral(root, files, "services/control-plane");
+      return { findings, detail: `${findings.length} occurrence(s) of the retired Control Plane source path` };
     }
   }
 ]);

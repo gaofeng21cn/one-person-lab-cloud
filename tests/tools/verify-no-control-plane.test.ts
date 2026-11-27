@@ -14,6 +14,11 @@ import {
 
 const slicePosition = (slice: string) => sliceOrder.indexOf(slice as (typeof sliceOrder)[number]);
 
+// The sample path is assembled from parts so this file does not itself carry a
+// literal the gate hunts for: the gate scans the whole repository, and its own
+// test must not look like residue.
+const retiredPath = ["services", "control-plane"].join("/");
+
 const stageIds = Object.entries(stageTable)
   .filter(([slice]) => slicePosition(slice) <= slicePosition(currentSlice))
   .flatMap(([, ids]) => ids)
@@ -88,10 +93,28 @@ test("the directory scan reports an existing Control Plane directory", async () 
     assert.ok(directory);
     assert.deepEqual(directory.check(root).findings, []);
 
-    await mkdir(join(root, "services/control-plane"), { recursive: true });
+    await mkdir(join(root, retiredPath), { recursive: true });
     const findings = directory.check(root).findings;
     assert.equal(findings.length, 1);
-    assert.equal(findings[0].file, "services/control-plane");
+    assert.equal(findings[0].file, retiredPath);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the repository path scan reports every file that still names the retired directory", async () => {
+  const root = await mkdtemp(join(tmpdir(), "opl-residue-gate-"));
+  try {
+    const paths = assertions.find((assertion) => assertion.id === "repo-paths-no-control-plane");
+    assert.ok(paths);
+    assert.deepEqual(paths.check(root).findings, []);
+
+    const target = join(root, "sqlc.yaml");
+    await writeFile(target, `schema: ${retiredPath}/migrations/x.sql\n`, "utf8");
+    const findings = paths.check(root).findings;
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].file, "sqlc.yaml");
+    assert.equal(findings[0].line, 1);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
