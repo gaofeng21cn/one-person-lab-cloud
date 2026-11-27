@@ -29,8 +29,9 @@ import (
 // walletAdjustmentSystem provisions the owner exactly as the settlement system
 // does: one isolated PostgreSQL tenant database, one isolated PostgreSQL
 // Gateway database with the owner's own migrations, a real Gateway fixture, a
-// real platform administrator and a real gRPC client.
-func walletAdjustmentSystem(t *testing.T, stub *gatewayWalletStub) (*identity.Service, *sql.DB, string, api.GatewayProductServiceClient) {
+// real platform administrator, the real receipt owner in front of it and a real
+// gRPC client.
+func walletAdjustmentSystem(t *testing.T, stub *gatewayWalletStub) (*identity.Service, *sql.DB, *sql.DB, string, api.GatewayProductServiceClient, api.LedgerCoordinationClient) {
 	t.Helper()
 	ctx := t.Context()
 	admin := ownerstoretest.EnsureAdminDSNOrSkip(os.Getenv, t.Skip)
@@ -101,7 +102,7 @@ func walletAdjustmentSystem(t *testing.T, stub *gatewayWalletStub) (*identity.Se
 
 	const consoleToken = "isolated-adjust-console-bff-token-0001"
 	config := ownerservice.Config{Owner: owneridentity.Tenant, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true},
-		Peers: map[owneridentity.Service]string{owneridentity.ConsoleBFF: consoleToken}}
+		Peers: map[owneridentity.Service]string{owneridentity.ConsoleBFF: consoleToken, owneridentity.Ledger.Service(): adjustmentLedgerToken}}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -115,6 +116,12 @@ func walletAdjustmentSystem(t *testing.T, stub *gatewayWalletStub) (*identity.Se
 	}
 	go server.ServeOn(listener)
 	t.Cleanup(server.Stop)
+
+	// The administrator's balance change is acknowledged by the receipt owner,
+	// so the owner reaches it as the tenant deployment unit that carries the
+	// Gateway owner.
+	ledgerDB, ledger := adjustmentReceiptOwner(t, listener.Addr().String())
+	s.Ledger = ledger
 
 	consoleConn, err := grpc.NewClient(listener.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithUnaryInterceptor(owneridentity.OutboundInterceptor(owneridentity.ConsoleBFF, consoleToken)))
 	if err != nil {
@@ -134,7 +141,7 @@ func walletAdjustmentSystem(t *testing.T, stub *gatewayWalletStub) (*identity.Se
 	if session.ActorId != "101" {
 		t.Fatalf("unexpected session actor %s", session.ActorId)
 	}
-	return s, gatewayDB, header.Get(owneridentity.SessionCookieHeader)[0], api.NewGatewayProductServiceClient(consoleConn)
+	return s, gatewayDB, ledgerDB, header.Get(owneridentity.SessionCookieHeader)[0], api.NewGatewayProductServiceClient(consoleConn), ledger
 }
 
 // adminAdjustmentCall is the platform administrator's own command context.
@@ -148,15 +155,15 @@ func adminAdjustmentCall(step, cookie string) *api.CallContext {
 // original operation, and a different command under the same key is refused.
 func TestAdminWalletAdjustmentMovesTheBalanceOnce(t *testing.T) {
 	stub := &gatewayWalletStub{}
-	_, gatewayDB, cookie, client := walletAdjustmentSystem(t, stub)
+	_, gatewayDB, _, cookie, client, _ := walletAdjustmentSystem(t, stub)
 
 	command := &api.AdjustTenantWalletRpcRequest{
 		Context:  adminAdjustmentCall("adjust-1", cookie),
 		TenantId: "tenant-adjust",
 		Body: &api.WalletAdjustmentRequest{
-			Kind:           api.WalletAdjustmentRequestKindEnum_WALLET_ADJUSTMENT_REQUEST_KIND_ENUM_RECHARGE,
+			Kind:            api.WalletAdjustmentRequestKindEnum_WALLET_ADJUSTMENT_REQUEST_KIND_ENUM_RECHARGE,
 			AmountUsdMicros: 2_500_000,
-			Reason:         "operator_requested",
+			Reason:          "operator_requested",
 		},
 	}
 	operation, err := client.AdjustTenantWallet(t.Context(), command)
@@ -226,7 +233,7 @@ func TestAdminWalletAdjustmentMovesTheBalanceOnce(t *testing.T) {
 // a refund never exceeds that charge, and a customer cannot adjust a balance.
 func TestAdminWalletAdjustmentRefusesAnUnsafeCommand(t *testing.T) {
 	stub := &gatewayWalletStub{}
-	_, gatewayDB, cookie, client := walletAdjustmentSystem(t, stub)
+	_, gatewayDB, _, cookie, client, _ := walletAdjustmentSystem(t, stub)
 
 	// A debit collects from the customer, so the Gateway's own record of it is
 	// negative.
@@ -234,9 +241,9 @@ func TestAdminWalletAdjustmentRefusesAnUnsafeCommand(t *testing.T) {
 		Context:  adminAdjustmentCall("adjust-debit", cookie),
 		TenantId: "tenant-adjust",
 		Body: &api.WalletAdjustmentRequest{
-			Kind:           api.WalletAdjustmentRequestKindEnum_WALLET_ADJUSTMENT_REQUEST_KIND_ENUM_DEBIT,
+			Kind:            api.WalletAdjustmentRequestKindEnum_WALLET_ADJUSTMENT_REQUEST_KIND_ENUM_DEBIT,
 			AmountUsdMicros: 1_000_000,
-			Reason:         "operator_requested",
+			Reason:          "operator_requested",
 		},
 	})
 	if err != nil {
@@ -267,9 +274,9 @@ func TestAdminWalletAdjustmentRefusesAnUnsafeCommand(t *testing.T) {
 		Context:  adminAdjustmentCall("adjust-refund-missing", cookie),
 		TenantId: "tenant-adjust",
 		Body: &api.WalletAdjustmentRequest{
-			Kind:           api.WalletAdjustmentRequestKindEnum_WALLET_ADJUSTMENT_REQUEST_KIND_ENUM_BUSINESS_REFUND,
+			Kind:            api.WalletAdjustmentRequestKindEnum_WALLET_ADJUSTMENT_REQUEST_KIND_ENUM_BUSINESS_REFUND,
 			AmountUsdMicros: 1_000_000,
-			Reason:         "operator_requested",
+			Reason:          "operator_requested",
 		},
 	}); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("expected a refused refund, got %v", err)
@@ -278,9 +285,9 @@ func TestAdminWalletAdjustmentRefusesAnUnsafeCommand(t *testing.T) {
 		Context:  adminAdjustmentCall("adjust-refund-absent", cookie),
 		TenantId: "tenant-adjust",
 		Body: &api.WalletAdjustmentRequest{
-			Kind:                   api.WalletAdjustmentRequestKindEnum_WALLET_ADJUSTMENT_REQUEST_KIND_ENUM_BUSINESS_REFUND,
-			AmountUsdMicros:         1_000_000,
-			Reason:                 "operator_requested",
+			Kind:                      api.WalletAdjustmentRequestKindEnum_WALLET_ADJUSTMENT_REQUEST_KIND_ENUM_BUSINESS_REFUND,
+			AmountUsdMicros:           1_000_000,
+			Reason:                    "operator_requested",
 			OriginalChargeOperationId: proto.String("wallet-op-absent"),
 		},
 	}); status.Code(err) != codes.FailedPrecondition {
@@ -298,9 +305,9 @@ func TestAdminWalletAdjustmentRefusesAnUnsafeCommand(t *testing.T) {
 		Context:  adminAdjustmentCall("adjust-refund-ok", cookie),
 		TenantId: "tenant-adjust",
 		Body: &api.WalletAdjustmentRequest{
-			Kind:                   api.WalletAdjustmentRequestKindEnum_WALLET_ADJUSTMENT_REQUEST_KIND_ENUM_BUSINESS_REFUND,
-			AmountUsdMicros:         3_000_000,
-			Reason:                 "operator_requested",
+			Kind:                      api.WalletAdjustmentRequestKindEnum_WALLET_ADJUSTMENT_REQUEST_KIND_ENUM_BUSINESS_REFUND,
+			AmountUsdMicros:           3_000_000,
+			Reason:                    "operator_requested",
 			OriginalChargeOperationId: proto.String("wallet-op-charge"),
 		},
 	}); err != nil {
@@ -310,9 +317,9 @@ func TestAdminWalletAdjustmentRefusesAnUnsafeCommand(t *testing.T) {
 		Context:  adminAdjustmentCall("adjust-refund-over", cookie),
 		TenantId: "tenant-adjust",
 		Body: &api.WalletAdjustmentRequest{
-			Kind:                   api.WalletAdjustmentRequestKindEnum_WALLET_ADJUSTMENT_REQUEST_KIND_ENUM_BUSINESS_REFUND,
-			AmountUsdMicros:         3_000_000,
-			Reason:                 "operator_requested",
+			Kind:                      api.WalletAdjustmentRequestKindEnum_WALLET_ADJUSTMENT_REQUEST_KIND_ENUM_BUSINESS_REFUND,
+			AmountUsdMicros:           3_000_000,
+			Reason:                    "operator_requested",
 			OriginalChargeOperationId: proto.String("wallet-op-charge"),
 		},
 	}); status.Code(err) != codes.FailedPrecondition {
@@ -322,9 +329,9 @@ func TestAdminWalletAdjustmentRefusesAnUnsafeCommand(t *testing.T) {
 		Context:  adminAdjustmentCall("adjust-refund-too-much", cookie),
 		TenantId: "tenant-adjust",
 		Body: &api.WalletAdjustmentRequest{
-			Kind:                   api.WalletAdjustmentRequestKindEnum_WALLET_ADJUSTMENT_REQUEST_KIND_ENUM_BUSINESS_REFUND,
-			AmountUsdMicros:         6_000_000,
-			Reason:                 "operator_requested",
+			Kind:                      api.WalletAdjustmentRequestKindEnum_WALLET_ADJUSTMENT_REQUEST_KIND_ENUM_BUSINESS_REFUND,
+			AmountUsdMicros:           6_000_000,
+			Reason:                    "operator_requested",
 			OriginalChargeOperationId: proto.String("wallet-op-charge"),
 		},
 	}); status.Code(err) != codes.FailedPrecondition {
@@ -334,12 +341,12 @@ func TestAdminWalletAdjustmentRefusesAnUnsafeCommand(t *testing.T) {
 	// A customer is not a platform administrator.
 	session := owneridentity.SessionReference(cookie)
 	if _, err = client.AdjustTenantWallet(t.Context(), &api.AdjustTenantWalletRpcRequest{
-		Context: &api.CallContext{ActorId: "someone-else", SessionId: &session, RequestId: "req-forged", IdempotencyKey: "opl-test:forged", Scope: platformScope()},
+		Context:  &api.CallContext{ActorId: "someone-else", SessionId: &session, RequestId: "req-forged", IdempotencyKey: "opl-test:forged", Scope: platformScope()},
 		TenantId: "tenant-adjust",
 		Body: &api.WalletAdjustmentRequest{
-			Kind:           api.WalletAdjustmentRequestKindEnum_WALLET_ADJUSTMENT_REQUEST_KIND_ENUM_RECHARGE,
+			Kind:            api.WalletAdjustmentRequestKindEnum_WALLET_ADJUSTMENT_REQUEST_KIND_ENUM_RECHARGE,
 			AmountUsdMicros: 1_000_000,
-			Reason:         "operator_requested",
+			Reason:          "operator_requested",
 		},
 	}); status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("a customer adjusted a balance: %v", err)

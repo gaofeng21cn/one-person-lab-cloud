@@ -732,6 +732,11 @@ message WalletOperation {
  google.protobuf.Timestamp coverage_end = 15;
  optional int64 coverage_start_milliseconds = 16;
  optional int64 coverage_end_milliseconds = 17;
+ // actor_id and reason name the operator who ordered an operator-initiated
+ // balance change and why. A Workspace obligation carries no operator, so
+ // exactly one of the two attributions is present on a wallet operation.
+ optional string actor_id = 18;
+ optional string reason = 19;
 }
 
 message Wallet {
@@ -2795,7 +2800,7 @@ service TenantWorkspaceCoordination {
  rpc DeleteTenantWorkspaces(TenantWorkspaceLifecycleCommand) returns (TenantWorkspaceLifecycleReadback);
  rpc ResumeTenantWorkspaces(ResumeTenantWorkspacesRequest) returns (TenantWorkspaceLifecycleReadback);
 }
-message AppendReceiptRequest { CallContext context = 1; Receipt receipt = 2; string evidence_digest = 3; string owner_evidence_reference = 4; QuoteAcceptance quote_acceptance = 5; OwnerCommitEvidence owner_commit_evidence = 6; WalletOperation wallet_operation = 7; }
+message AppendReceiptRequest { CallContext context = 1; Receipt receipt = 2; string evidence_digest = 3; string owner_evidence_reference = 4; QuoteAcceptance quote_acceptance = 5; OwnerCommitEvidence owner_commit_evidence = 6; WalletOperation wallet_operation = 7; GatewayWalletAdjustmentReceiptEvidence gateway_wallet_adjustment_evidence = 8; }
 message GetReceiptByReferenceRequest { CallContext context = 1; string owner = 2; string owner_evidence_reference = 3; }
 message LocalNoChargeReceiptEvidence { Receipt receipt = 1; QuoteAcceptance quote_acceptance = 2; OwnerCommitEvidence owner_commit_evidence = 3; string evidence_digest = 4; }
 // WalletActionReceiptEvidence is the owner-authoritative funded-charge proof the
@@ -2813,11 +2818,19 @@ message WalletActionReceiptEvidence { Receipt receipt = 1; QuoteAcceptance quote
 // never be satisfied by, or stand in for, either funded evidence type. It names
 // a receipt, never a raw key.
 message ProviderActionReceiptEvidence { Receipt receipt = 1; OwnerCommitEvidence owner_commit_evidence = 2; string evidence_digest = 3; }
+// GatewayWalletAdjustmentReceiptEvidence is the owner-authoritative proof the
+// Ledger records for a confirmed administrator balance change. It binds the
+// Gateway owner's own confirmed wallet operation - the operator, the reason,
+// the amount, the native adjustment code and the receipt id - to the receipt.
+// It names no Workspace and no accepted quote: a tenant-level adjustment names
+// a Tenant, so a Workspace-scoped funding fact can never stand in for it.
+message GatewayWalletAdjustmentReceiptEvidence { Receipt receipt = 1; WalletOperation wallet_operation = 2; string evidence_digest = 3; }
 service LedgerCoordination {
  rpc AppendReceipt(AppendReceiptRequest) returns (Receipt);
  rpc ReadReceiptByReference(GetReceiptByReferenceRequest) returns (Receipt);
  rpc ReadLocalNoChargeReceipt(GetReceiptByReferenceRequest) returns (LocalNoChargeReceiptEvidence);
  rpc ReadWalletActionReceipt(GetReceiptByReferenceRequest) returns (WalletActionReceiptEvidence);
+ rpc ReadGatewayWalletAdjustmentReceipt(GetReceiptByReferenceRequest) returns (GatewayWalletAdjustmentReceiptEvidence);
 }
 
 // D17: fixed approved policy-v1. RPC groups below live in the existing Workspace,
@@ -3539,6 +3552,7 @@ AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES = 153;
  AUTHORIZATION_ACTION_ENUM_REVOKEPERSONALGATEWAYKEY = 172;
  AUTHORIZATION_ACTION_ENUM_SETWORKSPACEPURCHASEELIGIBILITY = 173;
  AUTHORIZATION_ACTION_ENUM_ADJUSTTENANTWALLET = 174;
+ AUTHORIZATION_ACTION_ENUM_READWALLETADJUSTMENT = 175;
 }
 
 enum ServiceIdentityEnum {
@@ -4040,6 +4054,7 @@ enum ReceiptKindEnum {
  RECEIPT_KIND_ENUM_SUPPLEMENTAL_DELETION_REFUND = 12;
  RECEIPT_KIND_ENUM_NEXT_PERIOD_PLAN_SETTLEMENT = 13;
  RECEIPT_KIND_ENUM_LOCAL_NO_CHARGE = 14;
+ RECEIPT_KIND_ENUM_GATEWAY_WALLET_ADJUSTMENT = 15;
 }
 
 enum ReceiptOutcomeEnum {

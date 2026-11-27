@@ -132,14 +132,7 @@ Plane / delegated process-local custody onto canonical domain owners:
      Console build is retired.
    - The administrator's balance change has moved to the Gateway owner: the
      owner reserves the operation, moves the balance once and settles it from
-     the Gateway's own balance history. Two continuations are still open:
-     - **The receipt the owner names is not appended to the Ledger yet.** The
-       Ledger's `AppendReceipt` admits the Workspace peer only, so an
-       operator-initiated adjustment has no Cloud-native receipt kind. The
-       retained Control Plane still writes its own `gateway.wallet_adjustment.v1`
-       receipts, and that writer is retired with Control Plane in PR-5, so the
-       Ledger needs its own slice: a receipt kind for the Gateway peer that
-       re-reads the owner's confirmed wallet operation.
+     the Gateway's own balance history. One continuation is still open:
      - **The Cloud Console's administrator write is still locked.** The button
        is hidden by `!cloudIdentity` and the operator write path throws
        `operator_write_unavailable`; unlocking the full administrator surface

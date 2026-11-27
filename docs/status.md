@@ -100,9 +100,12 @@ chronological snapshots.
     carries the kind, the amount, the operator, the reason, the Gateway's own
     adjustment code and the receipt id the Ledger will record. The operator
     reads the changes back through `GET /api/v2/admin/recharge-records`, which
-    the Gateway owner now serves. The Cloud Console's own administrator write
-    is still locked, and the receipt this owner names is not yet appended to
-    the Ledger; both are open in [roadmap.md](roadmap.md).
+    the Gateway owner now serves. The confirmed balance change is also
+    appended to the Ledger by the Gateway owner itself, as the owner's own
+    receipt kind: the Ledger re-reads the owner's confirmed wallet operation
+    before it stores anything, and the receipt reads back by its own
+    reference. The Cloud Console's own administrator write is still locked;
+    that is open in [roadmap.md](roadmap.md).
   - Control Plane image-replacement creation/preview/worker commands and admin
     activation endpoints are retired; only the operator image-policy GET
     (`GET /api/operator/workspace-runtime-image-policy`), Fabric image

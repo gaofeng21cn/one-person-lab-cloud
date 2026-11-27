@@ -77,13 +77,20 @@ for action, policy in api.get('x-internal-action-policies', {}).items():
  owner = policy['owner']
  roles = ','.join('"'+v+'"' for v in policy['permission'])
  lines.append(f'api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_{action.upper()}:{{api.OwnerEnum_OWNER_ENUM_{owner.upper()},[]string{{{roles}}}}},')
+# Internal owner-action policies share the same canonical owner/role source
+# without adding a public HTTP route or broadening accepted-operation actions.
+# A platform-scoped operator read also carries the resource shape it is
+# allowed to name; a tenant-scoped owner action binds its own Tenant instead
+# and is authorized against that Tenant.
+for action, policy in api.get('x-internal-action-policies', {}).items():
+ if (policy['scope'], policy['resource']) not in (('platform', 'workspace'), ('tenant', 'tenant')):
+  raise ValueError(f'Unsupported internal action scope/resource: {action}')
 lines+=['}', '', '// Internal read constraints come from the same canonical policy as their roles.',
         'type internalReadPolicy struct { scope string; resource api.AuthorizationResourceKind }',
         'var internalReadPolicies = map[api.AuthorizationActionEnum]internalReadPolicy{']
 for action, policy in api.get('x-internal-action-policies', {}).items():
- if policy['scope'] != 'platform' or policy['resource'] != 'workspace':
-  raise ValueError(f'Unsupported internal read scope/resource: {action}')
- lines.append(f'api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_{action.upper()}:{{"platform",api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE}},')
+ if policy['scope'] == 'platform' and policy['resource'] == 'workspace':
+  lines.append(f'api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_{action.upper()}:{{"platform",api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE}},')
 lines+=['}']
 # Project only the continuation methods consumed by the current Serve update
 # chain. The canonical workflow may describe later capabilities; they do not

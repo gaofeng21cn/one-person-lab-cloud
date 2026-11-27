@@ -214,6 +214,7 @@ const (
 	AuthorizationActionReadRenewalConsent                    AuthorizationAction = "readRenewalConsent"
 	AuthorizationActionReadSubscriptionPlanState             AuthorizationAction = "readSubscriptionPlanState"
 	AuthorizationActionReadWalletAction                      AuthorizationAction = "readWalletAction"
+	AuthorizationActionReadWalletAdjustment                  AuthorizationAction = "readWalletAdjustment"
 	AuthorizationActionReconcileOperation                    AuthorizationAction = "reconcileOperation"
 	AuthorizationActionReenableTenant                        AuthorizationAction = "reenableTenant"
 	AuthorizationActionRefundConfirmedDeletion               AuthorizationAction = "refundConfirmedDeletion"
@@ -522,6 +523,8 @@ func (e AuthorizationAction) Valid() bool {
 	case AuthorizationActionReadSubscriptionPlanState:
 		return true
 	case AuthorizationActionReadWalletAction:
+		return true
+	case AuthorizationActionReadWalletAdjustment:
 		return true
 	case AuthorizationActionReconcileOperation:
 		return true
@@ -8348,8 +8351,11 @@ type WalletAdjustmentRequest struct {
 // WalletAdjustmentRequestKind defines model for WalletAdjustmentRequest.Kind.
 type WalletAdjustmentRequestKind string
 
-// WalletOperation 非第二钱包，只存不透明原付款/幂等引用和观察结果。unknown不重扣/反向退款。 purpose区分基础周期款、升级补差、基础删除、升级确定失败全退、成功补差按自身T..E删除退款、下期计划失败全退。所有refund绑定originalChargeOperationId；unknown退款占同原charge可退额度但不改变wallet权威。
+// WalletOperation 非第二钱包，只存不透明原付款/幂等引用和观察结果。unknown不重扣/反向退款。 purpose区分基础周期款、升级补差、基础删除、升级确定失败全退、成功补差按自身T..E删除退款、下期计划失败全退。所有refund绑定originalChargeOperationId；unknown退款占同原charge可退额度但不改变wallet权威。 actorId/reason只由operator发起的余额变更（recharge/debit/business_refund）携带；Workspace义务没有operator，二者互斥。
 type WalletOperation struct {
+	// ActorId 不透明string；新旧ID原样保留，不假定UUID。
+	ActorId *OpaqueId `json:"actorId,omitempty"`
+
 	// AmountUSDMicros 微美元非负int64，JSON十进制字符串，范围0..9223372036854775807；禁止浮点/前导零。
 	AmountUSDMicros USDMicros `json:"amountUSDMicros"`
 
@@ -8380,6 +8386,7 @@ type WalletOperation struct {
 	// PlanChangeId 不透明string；新旧ID原样保留，不假定UUID。
 	PlanChangeId *OpaqueId               `json:"planChangeId,omitempty"`
 	Purpose      *WalletOperationPurpose `json:"purpose,omitempty"`
+	Reason       *string                 `json:"reason,omitempty"`
 
 	// ReceiptId 不透明string；新旧ID原样保留，不假定UUID。
 	ReceiptId *OpaqueId             `json:"receiptId,omitempty"`
@@ -8817,7 +8824,7 @@ type WorkspaceFinancialReceipt struct {
 	// Receipt 无秘密/私网地址；Cloud静态检查、Candidate与Instance资格/部署证据分层。
 	Receipt Receipt `json:"receipt"`
 
-	// WalletOperation 非第二钱包，只存不透明原付款/幂等引用和观察结果。unknown不重扣/反向退款。 purpose区分基础周期款、升级补差、基础删除、升级确定失败全退、成功补差按自身T..E删除退款、下期计划失败全退。所有refund绑定originalChargeOperationId；unknown退款占同原charge可退额度但不改变wallet权威。
+	// WalletOperation 非第二钱包，只存不透明原付款/幂等引用和观察结果。unknown不重扣/反向退款。 purpose区分基础周期款、升级补差、基础删除、升级确定失败全退、成功补差按自身T..E删除退款、下期计划失败全退。所有refund绑定originalChargeOperationId；unknown退款占同原charge可退额度但不改变wallet权威。 actorId/reason只由operator发起的余额变更（recharge/debit/business_refund）携带；Workspace义务没有operator，二者互斥。
 	WalletOperation WalletOperation `json:"walletOperation"`
 
 	// WorkspaceId 不透明string；新旧ID原样保留，不假定UUID。

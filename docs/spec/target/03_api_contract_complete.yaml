@@ -10140,6 +10140,12 @@ components:
           $ref: '#/components/schemas/NonnegativeInt64'
         coverageEndMilliseconds:
           $ref: '#/components/schemas/NonnegativeInt64'
+        actorId:
+          $ref: '#/components/schemas/OpaqueId'
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1024
       required:
       - id
       - kind
@@ -10175,7 +10181,9 @@ components:
           sources:
           - gateway.wallet_operations.refund_entitlement_snapshot
           rule: typed原补差entitlement.coverageEndMilliseconds（或same original charge readback），不可从PG timestamptz重算
-      description: 非第二钱包，只存不透明原付款/幂等引用和观察结果。unknown不重扣/反向退款。 purpose区分基础周期款、升级补差、基础删除、升级确定失败全退、成功补差按自身T..E删除退款、下期计划失败全退。所有refund绑定originalChargeOperationId；unknown退款占同原charge可退额度但不改变wallet权威。
+        actorId: gateway.wallet_operations.actor_id
+        reason: gateway.wallet_operations.reason
+      description: 非第二钱包，只存不透明原付款/幂等引用和观察结果。unknown不重扣/反向退款。 purpose区分基础周期款、升级补差、基础删除、升级确定失败全退、成功补差按自身T..E删除退款、下期计划失败全退。所有refund绑定originalChargeOperationId；unknown退款占同原charge可退额度但不改变wallet权威。 actorId/reason只由operator发起的余额变更（recharge/debit/business_refund）携带；Workspace义务没有operator，二者互斥。
     Wallet:
       type: object
       additionalProperties: false
@@ -12331,6 +12339,7 @@ components:
       - readRenewalConsent
       - readSubscriptionPlanState
       - readWalletAction
+      - readWalletAdjustment
       - reconcileOperation
       - reenableTenant
       - refundConfirmedDeletion
@@ -14512,6 +14521,22 @@ x-operator-presentation-schemas:
         required: [items, total, page, pageSize]
     required: [source, status, available, fetchedAt, data]
 x-internal-action-policies:
+  appendReceipt:
+    owner: ledger
+    permission: [platform_admin]
+    rpc: LedgerCoordination.AppendReceipt
+    callers: [workspace, fabric, build, gateway_integration]
+    scope: tenant
+    resource: tenant
+    description: "Record one owner's own typed receipt evidence. The Ledger re-reads that evidence from the owner that produced it before it stores anything, so a caller can never mint a fact it does not own; the administrator's balance change is the platform administrator's own command and names the Tenant it changed."
+  readWalletAdjustment:
+    owner: gateway
+    permission: [platform_admin]
+    rpc: GatewayCoordination.ReadWalletAction
+    callers: [ledger]
+    scope: tenant
+    resource: tenant
+    description: "Read one confirmed administrator balance change the Gateway owner recorded. It is tenant-scoped; it names the Tenant whose spendable balance changed and never a Workspace."
   listOperatorDeployments:
     owner: serve
     permission: [platform_admin]
@@ -14727,6 +14752,7 @@ x-service-action-allowlist:
   - readOwnerCommit
   - readRenewalConsent
   - readSubscriptionPlanState
+  - readWalletAdjustment
   resource_catalog:
   - appendReceipt
   - getCapabilityVersion

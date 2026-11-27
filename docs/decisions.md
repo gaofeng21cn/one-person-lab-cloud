@@ -151,8 +151,13 @@ Git log.
   public surface is the Console BFF route
   `POST /api/v2/admin/tenants/{tenantId}/wallet-adjustments` plus the owner's
   `GET /api/v2/admin/recharge-records` readback. The receipt this owner names
-  is not yet appended to the Ledger: that is a Ledger-owned slice, because
-  `AppendReceipt` admits the Workspace peer only.
+  is appended to the Ledger by the Gateway owner itself: the Ledger admits one
+  receipt kind per owner, so the administrator's balance change is the
+  Gateway owner's own kind, its evidence is the owner's own confirmed wallet
+  operation, and the Ledger re-reads that operation from the owner before it
+  stores anything. The retained Control Plane writer of
+  `gateway.wallet_adjustment.v1` is a different, account-scoped fact and is
+  retired with Control Plane.
 
 ## Non-Spending Publication & Incremental Retirement
 

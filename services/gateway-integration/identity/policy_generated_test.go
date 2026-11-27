@@ -64,8 +64,8 @@ func TestGeneratedPolicyCoversAssignedOwners(t *testing.T) {
 		api.OwnerEnum_OWNER_ENUM_SERVE:            7,
 		api.OwnerEnum_OWNER_ENUM_WORKSPACE:        20,
 		api.OwnerEnum_OWNER_ENUM_FABRIC:           1,
-		api.OwnerEnum_OWNER_ENUM_GATEWAY:          11,
-		api.OwnerEnum_OWNER_ENUM_LEDGER:           4,
+		api.OwnerEnum_OWNER_ENUM_GATEWAY:          12,
+		api.OwnerEnum_OWNER_ENUM_LEDGER:           5,
 	} {
 		if counts[owner] != want {
 			t.Fatalf("owner %v has %d policy rows, expected %d", owner, counts[owner], want)
@@ -131,6 +131,24 @@ func TestGeneratedPolicyAudienceAndRoles(t *testing.T) {
 	for _, role := range []string{"member", "admin", "owner"} {
 		if permitted(adjustment, role, false) {
 			t.Fatalf("tenant role %s may change a tenant's balance", role)
+		}
+	}
+	// The administrator's balance change is recorded in the Ledger as the
+	// Gateway owner's own receipt. The append is a platform administrator
+	// action on the receipt owner, and the readback of the adjustment is the
+	// same authority against the Gateway owner; a tenant role must inherit
+	// neither, or one tenant could read another tenant's balance change.
+	append := policyFor(t, "APPENDRECEIPT")
+	if append.owner != api.OwnerEnum_OWNER_ENUM_LEDGER || len(append.roles) != 1 || append.roles[0] != "platform_admin" {
+		t.Fatalf("APPENDRECEIPT is %v/%v, expected the receipt owner platform administrator", append.owner, append.roles)
+	}
+	readback := policyFor(t, "READWALLETADJUSTMENT")
+	if readback.owner != api.OwnerEnum_OWNER_ENUM_GATEWAY || len(readback.roles) != 1 || readback.roles[0] != "platform_admin" {
+		t.Fatalf("READWALLETADJUSTMENT is %v/%v, expected the Gateway platform administrator", readback.owner, readback.roles)
+	}
+	for _, role := range []string{"member", "admin", "owner"} {
+		if permitted(append, role, false) || permitted(readback, role, false) {
+			t.Fatalf("tenant role %s inherited the administrator's balance-change authority", role)
 		}
 	}
 	// The invitee-bound operation is deliberately not a grantable role row.

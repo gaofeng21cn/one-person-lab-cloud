@@ -369,6 +369,16 @@ func WalletOperationMessage(record WalletRecord) *api.WalletOperation {
 	if record.PlanChangeID != "" {
 		out.PlanChangeId = &record.PlanChangeID
 	}
+	// The operator and the reason belong to the money row, so the readback of
+	// an administrator balance change carries the same attribution the owner
+	// recorded. A Workspace obligation carries no operator, so exactly one of
+	// the two attributions is present.
+	if record.ActorID != "" {
+		out.ActorId = &record.ActorID
+	}
+	if record.Reason != "" {
+		out.Reason = &record.Reason
+	}
 	if !record.CoverageStart.IsZero() {
 		out.CoverageStart = stampOf(record.CoverageStart)
 		milliseconds := record.CoverageStart.UnixMilli()
