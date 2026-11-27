@@ -76,3 +76,8 @@ Daily continuation/release workflows promote verified Candidate artifacts with
 GitHub build provenance attestations. Failures classify distinctly across
 `source_gate_failed`, `clean_host_failed`, `instance_install_failed` and
 `qualification_failed` without downgrading evidence layers.
+
+The Framework daily release status reads the Cloud continuation run for the
+frozen tag. The continuation receipt includes the exact tag and Product commit
+once their version and canonical ancestry have been verified, including when a
+later step blocks. Public publication is confirmed through the GitHub Release.

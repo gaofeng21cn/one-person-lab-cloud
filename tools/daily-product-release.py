@@ -105,7 +105,7 @@ def installation_run(candidate, receipt_digest, root):
     return None
 
 
-def execute(root):
+def frozen_product():
     tag = os.environ['RELEASE_TAG']
     if not re.fullmatch(r'v0\.[0-9]+\.[0-9]+', tag):
         raise RuntimeError('Invalid frozen Cloud product tag')
@@ -115,6 +115,11 @@ def execute(root):
         raise RuntimeError('Cloud tag does not select the product version')
     command(['git', 'fetch', 'origin', 'main', '--quiet'])
     command(['git', 'merge-base', '--is-ancestor', source, 'origin/main'])
+    return {'product_sha': source, 'tag': tag}
+
+
+def execute(root, identity):
+    source, tag = identity['product_sha'], identity['tag']
     candidate_run = ensure_run('build-opl-cloud-candidate.yml', {'product_sha': source, 'release_tag': tag}, 'Cloud candidate ' + source)
     candidate_directory = root / 'candidate'
     download(candidate_run['id'], f"opl-cloud-candidate-{source}-{candidate_run['run_attempt']}", candidate_directory)
@@ -125,9 +130,8 @@ def execute(root):
         raise RuntimeError('Candidate selects different product bytes')
     receipt_digest = command(['node', 'tools/cloud-candidate-receipt.ts', 'digest', '--receipt', str(receipt)]).strip()
     local = ensure_run('clean-host-qualification.yml', {'ref': source, 'cloud_image_ref': candidate['cloudImage']['indexRef'], 'mode': 'local-v2'}, 'Cloud local qualification ' + source)
-    result = {'schema_version': 'opl.cloud-daily-release.v1', 'product_sha': source, 'tag': tag,
-              'candidate_run_id': candidate_run['id'], 'candidate_receipt_digest': receipt_digest,
-              'local_qualification_run_id': local['id'], 'instance_deployment_dispatched': False}
+    result = {'candidate_run_id': candidate_run['id'], 'candidate_receipt_digest': receipt_digest,
+              'local_qualification_run_id': local['id']}
     instance = installation_run(candidate, receipt_digest, root / 'instance')
     if instance is None:
         return {**result, 'status': 'qualification_pending', 'required_evidence': 'Same-Candidate Instance deployment-verify receipt. Reuse the retained Candidate; production deployment remains Instance-owned.'}
@@ -146,6 +150,17 @@ def execute(root):
         'Cloud release ' + tag + ' / ' + source)
     return {**result, 'status': 'published', 'publication_run_id': publication['id'], 'instance_qualification_run_id': instance,
             'source_verification_run_id': source_run['id']}
+
+
+def continuation_receipt(root):
+    receipt = {'schema_version': 'opl.cloud-daily-release.v1', 'instance_deployment_dispatched': False}
+    try:
+        identity = frozen_product()
+        receipt.update(identity)
+        receipt.update(execute(root, identity))
+    except Exception as error:
+        receipt.update(status='blocked', reason=str(error))
+    return receipt
 
 
 def dispatch_tag(tag):
@@ -169,11 +184,8 @@ if __name__ == '__main__' and len(sys.argv) == 3 and sys.argv[1] == '--dispatch-
     dispatch_tag(sys.argv[2])
 elif __name__ == '__main__':
     output = Path(os.environ['RUNNER_TEMP']) / 'cloud-daily-release-result.json'
-    try:
-        with tempfile.TemporaryDirectory(prefix='cloud-daily-') as temporary:
-            result = execute(Path(temporary))
-    except Exception as error:
-        result = {'schema_version': 'opl.cloud-daily-release.v1', 'status': 'blocked', 'reason': str(error), 'instance_deployment_dispatched': False}
+    with tempfile.TemporaryDirectory(prefix='cloud-daily-') as temporary:
+        result = continuation_receipt(Path(temporary))
     output.write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(result, indent=2))
     if os.getenv('GITHUB_STEP_SUMMARY'):

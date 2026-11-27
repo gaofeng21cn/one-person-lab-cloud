@@ -6,6 +6,18 @@
   "trigger": "tag",
   "tag_prefix": "v",
   "publisher_workflow": "daily-release.yml",
+  "observed_publishers": [
+    {
+      "lane": "qualification-and-publication",
+      "workflow": "daily-release.yml",
+      "event": "workflow_dispatch",
+      "title_from_tag": "Cloud product {tag}",
+      "receipt": "cloud",
+      "channel": {
+        "kind": "github_release"
+      }
+    }
+  ],
   "recheck_after_success": true,
   "channel": {
     "kind": "github_release"
