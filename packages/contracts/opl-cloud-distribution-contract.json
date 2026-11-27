@@ -249,7 +249,7 @@
           "installer": "install.sh",
           "entrypoint": "install.mjs",
           "contract": "opl-cloud-distribution-contract.json",
-          "installedFacts": 70,
+          "installedFacts": 69,
           "manualFacts": 13,
           "dryRun": true,
           "publicationRequiresVerifiedInstallability": true,

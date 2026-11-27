@@ -3,6 +3,8 @@ set -euo pipefail
 
 registry="opl-qualification-workspace-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"
 builder="${registry}-buildkit"
+forwarder="${registry}-build-forwarder"
+node_fixture_image="node:26-bookworm-slim@sha256:367679cf9792759492a486e4aa4b421764d71a9546a6dae8aab81a99eb797b3e"
 
 push_image() {
   local tag="$1"
@@ -100,8 +102,13 @@ EOF
     registry_ip="$(docker inspect "$registry" | jq -er --arg network "$network" '.[0].NetworkSettings.Networks[$network].IPAddress')"
     compose=(docker compose -p "$project" --env-file "$installation_env" -f deploy/portable/compose.local-v2.yaml)
     # Registry references keep the Docker Engine's loopback identity. The Build
-    # process reaches that same registry through its own isolated loopback.
-    "${compose[@]}" exec -d -T build node -e '
+    # process reaches that same registry through its own isolated loopback via a
+    # pinned Node sidecar sharing the build container's network namespace.
+    build_container="$("${compose[@]}" ps -q build)"
+    test -n "$build_container"
+    docker rm --force "$forwarder" >/dev/null 2>&1 || true
+    docker run -d --name "$forwarder" --network "container:$build_container" \
+      "$node_fixture_image" node -e '
       const net = require("node:net");
       const [host, port] = process.argv.slice(1);
       net.createServer((client) => {
@@ -118,6 +125,9 @@ EOF
     "${compose[@]}" exec -T build docker --config /var/lib/opl/build/docker buildx inspect qualification --bootstrap
     ;;
   detach)
+    if docker container inspect "$forwarder" >/dev/null 2>&1; then
+      docker rm --force "$forwarder"
+    fi
     network="${2:?}_opl-cloud-local-v2"
     if docker container inspect "$registry" >/dev/null 2>&1 &&
       docker inspect "$registry" | jq -e --arg network "$network" '.[0].NetworkSettings.Networks | has($network)' >/dev/null; then
@@ -125,6 +135,9 @@ EOF
     fi
     ;;
   cleanup)
+    if docker container inspect "$forwarder" >/dev/null 2>&1; then
+      docker rm --force "$forwarder"
+    fi
     if docker container inspect "$builder" >/dev/null 2>&1; then
       docker rm --force --volumes "$builder"
     fi

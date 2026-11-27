@@ -3,7 +3,7 @@ import type {
   WorkspaceDTO,
   WorkspaceListData
 } from "../api/dtos.ts";
-import type { RemoteState } from "./console-controller-types.ts";
+import type { CustomerWorkspaceAccessState, RemoteState } from "./console-controller-types.ts";
 
 export const CUSTOMER_WORKSPACE_LIST_PAGE_SIZE = 10 as const;
 
@@ -195,6 +195,7 @@ export function customerWorkspaceSourceMatchesScope(input: CustomerWorkspaceScop
 }
 
 export interface CustomerWorkspaceReadState {
+  readonly access: CustomerWorkspaceAccessState;
   readonly workspaces: RemoteState<SourceEnvelope<WorkspaceListData>>;
   readonly detail: RemoteState<SourceEnvelope<WorkspaceDTO | null>>;
 }
@@ -207,6 +208,7 @@ function settledRemote<T>(source: SourceEnvelope<T>, error = ""): RemoteState<So
 
 export function createCustomerWorkspaceReadState(): CustomerWorkspaceReadState {
   return {
+    access: "unknown",
     workspaces: emptyRemote(),
     detail: emptyRemote()
   };
@@ -230,6 +232,20 @@ export type CustomerWorkspaceCompletion =
     readonly error?: string;
   };
 
+export type CustomerWorkspaceAccessDenied =
+  | {
+    readonly kind: "list";
+    readonly activeScope: CustomerWorkspaceListScope;
+    readonly responseScope: CustomerWorkspaceListScope;
+    readonly access: "not_enabled" | "forbidden";
+  }
+  | {
+    readonly kind: "detail";
+    readonly activeScope: CustomerWorkspaceDetailScope;
+    readonly responseScope: CustomerWorkspaceDetailScope;
+    readonly access: "not_enabled" | "forbidden";
+  };
+
 export function applyCustomerWorkspaceCompletion(
   state: CustomerWorkspaceReadState,
   completion: CustomerWorkspaceCompletion
@@ -245,6 +261,7 @@ export function applyCustomerWorkspaceCompletion(
     })) return null;
     return {
       ...state,
+      access: completion.source.available ? "allowed" : state.access,
       workspaces: settledRemote(completion.source, completion.error)
     };
   }
@@ -257,7 +274,27 @@ export function applyCustomerWorkspaceCompletion(
   })) return null;
   return {
     ...state,
+    access: completion.source.available ? "allowed" : state.access,
     detail: settledRemote(completion.source, completion.error)
+  };
+}
+
+export function applyCustomerWorkspaceAccessDenied(
+  state: CustomerWorkspaceReadState,
+  denial: CustomerWorkspaceAccessDenied
+): CustomerWorkspaceReadState | null {
+  if (!customerWorkspaceScopeIsCurrent(denial.activeScope, denial.responseScope)) return null;
+  if (denial.kind === "list") {
+    return {
+      ...state,
+      access: denial.access,
+      workspaces: emptyRemote()
+    };
+  }
+  return {
+    ...state,
+    access: denial.access,
+    detail: emptyRemote()
   };
 }
 

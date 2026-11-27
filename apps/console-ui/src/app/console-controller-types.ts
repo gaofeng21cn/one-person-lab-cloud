@@ -72,7 +72,10 @@ export interface GatewayAccountReadController {
   changeBalancePage: (page: number) => Promise<void>;
 }
 
+export type CustomerWorkspaceAccessState = "unknown" | "allowed" | "not_enabled" | "forbidden";
+
 export interface CustomerWorkspaceReadController {
+  access: CustomerWorkspaceAccessState;
   workspaces: RemoteState<SourceEnvelope<WorkspaceListData>>;
   detail: RemoteState<SourceEnvelope<WorkspaceDTO | null>>;
   page: number;
@@ -227,7 +230,9 @@ export interface BillingController {
   view: BillingView;
   setView: (view: BillingView) => void;
   receipts: RemoteState<SourceEnvelope<BillingReceiptPage>>;
+  receiptsNoLegacyAccount: boolean;
   trend: RemoteState<SourceEnvelope<WorkspaceSettlementTrend>>;
+  trendNoLegacyAccount: boolean;
   detail: RemoteState<SourceEnvelope<BillingReceipt>>;
   selectedReceiptId: string;
   pageNumber: number;

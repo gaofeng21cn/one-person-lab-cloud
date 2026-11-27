@@ -148,6 +148,7 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
         </div>
 
         <nav className="side-nav">
+          {controller.session?.isOperator ? <div className="nav-section-label">Console</div> : null}
           {customerMenu.map((item) => <NavigationLink controller={controller} item={item} key={item.path} />)}
 
           {controller.session?.isOperator ? (
@@ -159,7 +160,9 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
         </nav>
 
         <div className="sidebar-account">
-          <UserRound aria-hidden size={18} />
+          <span className="sidebar-account__avatar" aria-hidden="true">
+            {(controller.session?.user.email?.[0] || "?").toUpperCase()}
+          </span>
           <span>
             <strong>{controller.session?.user.email || "-"}</strong>
             <small>{controller.session?.isOperator ? "管理员" : "客户"}</small>
@@ -177,7 +180,11 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
           <div className="topbar-title">
             <button aria-controls="console-navigation" aria-expanded={sidebarOpen} aria-label="打开导航" className="mobile-menu" onClick={openNavigation} ref={mobileMenuRef}><Menu aria-hidden size={19} /></button>
             <div>
-              <h1>{controller.pageTitle}</h1>
+              <div className="topbar-heading-row">
+                <span className="topbar-surface-crumb">{adminSurface ? "平台管理" : "控制台"}</span>
+                <span aria-hidden="true" className="topbar-surface-sep">/</span>
+                <h1>{controller.pageTitle}</h1>
+              </div>
             </div>
           </div>
           <div className="topbar-actions">

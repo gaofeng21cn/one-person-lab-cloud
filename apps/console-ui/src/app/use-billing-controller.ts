@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getBillingReceipt, getBillingReceipts, getWorkspaceSettlementTrend } from "../api/console-read-api.ts";
+import { isLegacyBillingAccountAbsent } from "./authorization-error.ts";
+import { cloudIdentity } from "./console-identity.ts";
 import type {
   AuthSession,
   BillingReceipt,
@@ -39,7 +41,9 @@ export function useBillingController({
 }: BillingDependencies): BillingCapability {
   const [view, setView] = useState<BillingView>("terms");
   const [receipts, setReceipts] = useState<RemoteState<SourceEnvelope<BillingReceiptPage>>>(emptyRemote);
+  const [receiptsNoLegacyAccount, setReceiptsNoLegacyAccount] = useState(false);
   const [trend, setTrend] = useState<RemoteState<SourceEnvelope<WorkspaceSettlementTrend>>>(emptyRemote);
+  const [trendNoLegacyAccount, setTrendNoLegacyAccount] = useState(false);
   const [detail, setDetail] = useState<RemoteState<SourceEnvelope<BillingReceipt>>>(emptyRemote);
   const [selectedReceiptId, setSelectedReceiptId] = useState("");
   const [cursorStack, setCursorStack] = useState<string[]>([]);
@@ -81,6 +85,8 @@ export function useBillingController({
     listGeneration.current += 1;
     trendGeneration.current += 1;
     setView("terms");
+    setReceiptsNoLegacyAccount(false);
+    setTrendNoLegacyAccount(false);
     setReceipts(emptyRemote());
     setTrend(emptyRemote());
     closeReceipt();
@@ -106,17 +112,24 @@ export function useBillingController({
     const userId = session.user.id;
     const csrfToken = session.csrfToken;
     closeReceipt();
+    setReceiptsNoLegacyAccount(false);
     setReceipts((current) => ({ ...current, loading: true, error: "" }));
     try {
       const result = await getBillingReceipts(cursor, limit);
       if (generation !== listGeneration.current
         || cursor !== cursorRef.current
         || !requestOwnsScope(userId, csrfToken, expectedRoute)) return;
+      setReceiptsNoLegacyAccount(false);
       setReceipts({ value: result, loading: false, error: "" });
     } catch (error) {
       if (generation !== listGeneration.current
         || cursor !== cursorRef.current
         || !requestOwnsScope(userId, csrfToken, expectedRoute)) return;
+      if (cloudIdentity && isLegacyBillingAccountAbsent(error)) {
+        setReceiptsNoLegacyAccount(true);
+        setReceipts(emptyRemote());
+        return;
+      }
       setReceipts({
         value: unavailableSource("ledger"),
         loading: false,
@@ -136,15 +149,22 @@ export function useBillingController({
     const generation = ++trendGeneration.current;
     const userId = session.user.id;
     const csrfToken = session.csrfToken;
+    setTrendNoLegacyAccount(false);
     setTrend((current) => ({ ...current, loading: true, error: "" }));
     try {
       const result = await getWorkspaceSettlementTrend();
       if (generation !== trendGeneration.current
         || !requestOwnsScope(userId, csrfToken, expectedRoute)) return;
+      setTrendNoLegacyAccount(false);
       setTrend({ value: result, loading: false, error: "" });
     } catch (error) {
       if (generation !== trendGeneration.current
         || !requestOwnsScope(userId, csrfToken, expectedRoute)) return;
+      if (cloudIdentity && isLegacyBillingAccountAbsent(error)) {
+        setTrendNoLegacyAccount(true);
+        setTrend(emptyRemote());
+        return;
+      }
       setTrend({
         value: unavailableSource<WorkspaceSettlementTrend>("control_plane"),
         loading: false,
@@ -230,7 +250,9 @@ export function useBillingController({
     view,
     setView,
     receipts,
+    receiptsNoLegacyAccount,
     trend,
+    trendNoLegacyAccount,
     detail,
     selectedReceiptId,
     pageNumber: cursorStack.length + 1,

@@ -36,9 +36,10 @@ test("the candidate asset set carries the entrypoint and every file it reference
     if (!file) continue;
     assert.ok(format.candidateAssets.includes(file.replace(/^\.\//, "")), file);
   }
-  for (const process of topology.processes as Array<{ service: string; ownerName: string }>) {
-    assert.ok(services[process.service] || services[process.ownerName], process.service);
-  }
+  const backend = services["cloud-backend"] as { command?: string[]; environment?: Record<string, string> } | undefined;
+  assert.ok(backend, "cloud-backend service must be declared in compose.cloud.yaml");
+  assert.deepEqual(backend.command, [topology.deploymentUnit.unit.entrypoint]);
+  assert.equal(backend.environment?.OPL_CLOUD_OWNER_TOPOLOGY, "/app/contracts/opl-cloud-owner-topology.json");
 });
 
 test("the owner topology contract stays in the Candidate bundle and is not published", () => {

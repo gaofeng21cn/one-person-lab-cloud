@@ -114,6 +114,14 @@ function source(data, name = "control-plane", status = "available") {
   return { source: name, status, available: true, fetchedAt: NOW, data };
 }
 
+function parseFixturePagination(url: URL, defaultPage = 1, defaultPageSize = 20) {
+  const rawPage = Number(url.searchParams.get("page"));
+  const rawPageSize = Number(url.searchParams.get("pageSize"));
+  const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : defaultPage;
+  const pageSize = Number.isInteger(rawPageSize) && rawPageSize > 0 ? rawPageSize : defaultPageSize;
+  return { page, pageSize };
+}
+
 function operatorRuntimeObservations(): OperatorRuntimeObservationsDTO {
   return {
     ownershipScope: "workspaces_and_retained_operations",
@@ -595,7 +603,14 @@ export async function apiFixture(route, state, session = state) {
       : fulfillJson(route, { error: "receipt_not_found" }, 404);
   }
   if (path === "/api/announcements" && method === "GET") {
-    const data = { items: state.announcements, total: state.announcements.length, page: 1, pageSize: 20 };
+    const { page, pageSize } = parseFixturePagination(url);
+    const start = (page - 1) * pageSize;
+    const data = {
+      items: state.announcements.slice(start, start + pageSize),
+      total: state.announcements.length,
+      page,
+      pageSize
+    };
     return fulfillJson(route, source(data, "control-plane", state.announcements.length ? "available" : "empty"));
   }
   const announcementReadMatch = path.match(/^\/api\/announcements\/([^/]+)\/read$/);
@@ -773,7 +788,14 @@ export async function apiFixture(route, state, session = state) {
     progressionOwner: "control_plane_launch_reconciler", allowedActions: ["resume_workspace_launch"], operationRef: "launch-resume-fixture", receiptRef: "receipt-resume-fixture"
   }], total: 1, page: 1, pageSize: 20 }, "control-plane"));
   if (path === "/api/operator/announcements" && method === "GET") {
-    const data = { items: state.announcements, total: state.announcements.length, page: 1, pageSize: 20 };
+    const { page, pageSize } = parseFixturePagination(url);
+    const start = (page - 1) * pageSize;
+    const data = {
+      items: state.announcements.slice(start, start + pageSize),
+      total: state.announcements.length,
+      page,
+      pageSize
+    };
     for (const announcementId of state.announcementCreateWriteResults.values()) {
       const announcement = state.announcements.find((item) => item.id === announcementId);
       if (!announcement) continue;

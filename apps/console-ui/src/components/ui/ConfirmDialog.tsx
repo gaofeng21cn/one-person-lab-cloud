@@ -48,7 +48,7 @@ export function ConfirmDialogHost() {
         className={`console-confirm-modal${tone === "danger" ? " console-confirm-modal--danger" : ""}`}
         footer={
           <>
-            <Button onClick={cancel} variant="outline">{cancelLabel}</Button>
+            <Button autoFocus={tone === "danger" && !requireText} onClick={cancel} variant="outline">{cancelLabel}</Button>
             <Button color={tone === "danger" ? "danger" : "primary"} disabled={!canConfirm} onClick={() => submit()}>{confirmLabel}</Button>
           </>
         }

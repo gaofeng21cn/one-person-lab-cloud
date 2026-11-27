@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { useLayoutEffect, useRef, type ReactNode } from "react";
+import { useId, useLayoutEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { Button } from "./Button.tsx";
@@ -19,7 +19,10 @@ const focusableSelector = "button:not([disabled]), [href], input:not([disabled])
 export function Modal({ children, className = "", description, footer, onClose, open, title }: ModalProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  const pressedBackdropRef = useRef(false);
   const onCloseRef = useRef(onClose);
+  const titleId = useId();
+  const descriptionId = useId();
   onCloseRef.current = onClose;
 
   useLayoutEffect(() => {
@@ -60,10 +63,20 @@ export function Modal({ children, className = "", description, footer, onClose, 
   if (!open) return null;
 
   return createPortal(
-    <div className="console-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <div
+      className="console-modal-backdrop"
+      onPointerDown={(event) => {
+        pressedBackdropRef.current = event.target === event.currentTarget;
+      }}
+      onPointerUp={(event) => {
+        const shouldClose = pressedBackdropRef.current && event.target === event.currentTarget;
+        pressedBackdropRef.current = false;
+        if (shouldClose) onCloseRef.current();
+      }}
+    >
       <div
-        aria-describedby={description ? "console-modal-description" : undefined}
-        aria-labelledby="console-modal-title"
+        aria-describedby={description ? descriptionId : undefined}
+        aria-labelledby={titleId}
         aria-modal="true"
         className={`console-modal ${className}`.trim()}
         ref={rootRef}
@@ -71,8 +84,8 @@ export function Modal({ children, className = "", description, footer, onClose, 
       >
         <header className="console-modal__header">
           <div>
-            <h2 id="console-modal-title">{title}</h2>
-            {description ? <p id="console-modal-description">{description}</p> : null}
+            <h2 id={titleId}>{title}</h2>
+            {description ? <p id={descriptionId}>{description}</p> : null}
           </div>
           <Button aria-label="关闭" color="secondary" onClick={onClose} size="sm" uniform variant="ghost">
             <X aria-hidden="true" size={18} />
