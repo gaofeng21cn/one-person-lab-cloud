@@ -211,6 +211,19 @@ Plane / delegated process-local custody onto canonical domain owners:
      `npm run verify:local`: a slice opens its own assertions, the gate turns
      red when a slice leaves residue behind, and the assertions of the slices
      that have not arrived stay pending and are reported as pending.
+   - Administrator account opening is owner-owned end to end: the CloudIdentity
+     tenant owner opens the account, its single-tenant Workspace owner and its
+     Gateway wallet binding under one command, and the Console publishes the
+     owner's own receipt. The operator account *list* is a separate read the
+     tenant owner already serves over the OPL Gateway directory, joined with the
+     owner's eligibility and entitlement policies, so it is not restricted to
+     the accounts this product opened. This slice retires the retained Control
+     Plane account read and write bridges, so Control Plane no longer reads or
+     opens accounts at all. Next: retire the retained Control Plane account
+     writer (`control_plane_accounts`, PR-5), give the Console account page the
+     Workspace count it can no longer read from the retained product, and add
+     the tenant owner to the Console operation read map so
+     `GET /api/v2/operations/tenant/{id}` answers the open command.
 4. **Module & DB-Role Coverage**: `tests/contracts/module-physical-boundaries.test.ts`
    now enforces package and SDK isolation across all 11 Go services under `services/`
    and `apps/console-bff`; extend PostgreSQL role-isolation checks to cover every
