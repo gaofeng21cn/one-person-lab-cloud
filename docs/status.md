@@ -80,6 +80,17 @@ chronological snapshots.
     `GET /api/gateway/balance-history` and `GET /api/gateway/endpoint` routes
     stay for the legacy Console build and are retired with the retained
     Control Plane.
+  - A platform administrator can re-enable a customer account through the Tenant
+    owner: `POST /api/v2/admin/tenants/{tenantId}/reenable` is served by the BFF
+    and forwards to `TenantProductService.ReenableTenant`. The owner restores
+    the Tenant's status, clears its suspension and advances its permission
+    version in one transaction together with the durable Operation and the
+    audit evidence, so the owner's own fences serve that customer again. A
+    personal customer owns exactly one Tenant, so re-enabling that Tenant is
+    what brings the account back. The revoked sessions stay revoked and the
+    customer signs in again. The Workspace resume continuation the re-enable
+    contract describes stays open, because the Cloud's tenant suspension pauses
+    no Workspace; that is recorded in [roadmap.md](roadmap.md).
   - Control Plane image-replacement creation/preview/worker commands and admin
     activation endpoints are retired; only the operator image-policy GET
     (`GET /api/operator/workspace-runtime-image-policy`), Fabric image
