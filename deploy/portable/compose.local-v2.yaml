@@ -599,6 +599,7 @@ services:
     environment:
       <<: *opl-v2-environment
       OPL_BFF_ADDR: ":8190"
+      OPL_CONSOLE_DIST_DIR: /app/dist
       OPL_PUBLIC_URL: ${OPL_PUBLIC_URL}
       OPL_CAPABILITY_URL: capability:8181
       OPL_CAPABILITY_TOKEN: ${OPL_CAPABILITY_TOKEN}

@@ -6,9 +6,9 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 const digest = `ghcr.io/gaofeng21cn/one-person-lab-cloud@sha256:${"a".repeat(64)}`;
-const names = ["tenant", "resource-catalog", "ledger", "capability", "build", "runtime-control", "workspace", "serve", "fabric", "control-plane", "console-bff", "cloud-local-v2", "postgres"];
+const names = ["cloud-backend", "cloud-local-v2", "postgres"];
 
-test("portable Cloud Compose is the complete owner topology without qualification fixtures", async () => {
+test("portable Cloud Compose is the single composed backend unit without qualification fixtures", async () => {
   const root = await mkdtemp(join(tmpdir(), "opl-cloud-topology-"));
   try {
     const vars = JSON.parse(spawnSync("docker", ["compose", "--env-file", "/dev/null", "-p", "opl-cloud", "-f", "deploy/portable/compose.cloud.yaml", "config", "--variables", "--format", "json"], { encoding: "utf8" }).stdout);
@@ -46,6 +46,7 @@ test("portable Cloud Compose is the complete owner topology without qualificatio
     const model = JSON.parse(result.stdout);
     assert.deepEqual(Object.keys(model.services).sort(), names.sort());
     assert.equal(model.services["sub2api-authority"], undefined);
-    for (const name of names.filter(name => name !== "postgres" && name !== "cloud-local-v2")) assert.equal(model.services[name].image, digest, name);
+    assert.equal(model.services["cloud-backend"].image, digest);
+    assert.deepEqual(model.services["cloud-backend"].command, ["/usr/local/bin/opl-cloud-composition"]);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

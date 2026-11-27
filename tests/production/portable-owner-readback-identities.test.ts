@@ -102,7 +102,7 @@ test("the installer still verifies the Console, through the Console's own criter
     console.address.includes("://"),
     "the Console is probed over an owner gRPC address, which owneridentity refuses",
   );
-  assert.equal(console.service, "console-bff");
+  assert.equal(console.service, "cloud-backend");
 });
 
 test("every deployment unit the installer probes is one the probe can answer for", async () => {

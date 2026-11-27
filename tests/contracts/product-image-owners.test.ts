@@ -23,47 +23,44 @@ async function ownerServicesWithServer() {
   return services.sort();
 }
 
-test("the product image builds every service that has a server entrypoint", async () => {
+test("the product image builds every service and control binary in the single go-build stage without Node runtime bloat", async () => {
   const dockerfile = await readFile("Dockerfile", "utf8");
-  const publisherStart = dockerfile.indexOf("AS publisher-build");
-  const publisherEnd = dockerfile.indexOf("FROM docker:");
-  assert.ok(publisherStart > 0 && publisherEnd > publisherStart, "Dockerfile must keep its publisher-build stage before the docker-cli stage");
-  const publisherStage = dockerfile.slice(publisherStart, publisherEnd);
+  const goBuildStart = dockerfile.indexOf("AS go-build");
+  const goBuildEnd = dockerfile.indexOf("FROM docker:");
+  assert.ok(goBuildStart > 0 && goBuildEnd > goBuildStart, "Dockerfile must keep a single go-build stage before the docker-cli stage");
+  const goBuildStage = dockerfile.slice(goBuildStart, goBuildEnd);
 
-  // control-plane, fabric and ledger are built by their own stages; every other
-  // owner with a server entrypoint is built in the shared publisher lane.
+  // control-plane, fabric and ledger are built explicitly alongside the owner
+  // server loop inside the single shared Go build stage.
   const dedicated = new Set(["control-plane", "fabric", "ledger"]);
   const expected = (await ownerServicesWithServer()).filter((service) => !dedicated.has(service));
   assert.ok(expected.length >= 7, `expected the target owner set, saw ${expected.join(",")}`);
 
-  const loop = publisherStage.match(/for service in ([^;]+); do/);
-  assert.ok(loop, "the publisher-build stage must iterate its owner set");
+  const loop = goBuildStage.match(/for service in ([^;]+); do/);
+  assert.ok(loop, "the go-build stage must iterate its owner set");
   const built = loop[1].trim().split(/\s+/).sort();
-  assert.deepEqual(built, expected, "every owner with a server entrypoint must be built in the publisher lane");
-  // The lane builds the loop variable, so one emitted name per iteration is the
-  // exact shape the installer relies on.
+  assert.deepEqual(built, expected, "every owner with a server entrypoint must be built in go-build");
   assert.ok(
-    publisherStage.includes("-o /out/opl-$service ./cmd/server"),
-    "publisher-build must emit one opl-<service> binary per iteration"
+    goBuildStage.includes("-o /out/opl-$service ./cmd/server"),
+    "go-build must emit one opl-<service> binary per iteration"
   );
-  assert.match(publisherStage, /-o \/out\/opl-console-bff \.\/cmd\/server/, "publisher-build must emit the Console BFF");
-
-  // The runtime image is what Instance actually runs, so the binaries must be copied there.
-  const runtimeStage = dockerfile.slice(dockerfile.indexOf(" AS runtime"));
-  assert.match(runtimeStage, /COPY --from=publisher-build \/out\/ \/usr\/local\/bin\//, "the runtime stage must copy the publisher binaries");
-});
-
-test("the product image builds the three control services from their own stages", async () => {
-  const dockerfile = await readFile("Dockerfile", "utf8");
-  for (const [stage, binary, command] of [
-    ["control-plane-build", "opl-control-plane", "./cmd/control-plane"],
-    ["fabric-build", "opl-fabric", "./cmd/fabric"],
-    ["ledger-build", "opl-ledger", "./cmd/ledger"]
+  assert.match(goBuildStage, /-o \/out\/opl-console-bff \.\/cmd\/server/, "go-build must emit the Console BFF");
+  for (const [binary, command] of [
+    ["opl-control-plane", "./cmd/control-plane"],
+    ["opl-fabric", "./cmd/fabric"],
+    ["opl-ledger", "./cmd/ledger"],
+    ["opl-tencent-provisioner", "./cmd/opl-tencent-provisioner"],
+    ["opl-node-image-retire", "./cmd/opl-node-image-retire"],
+    ["opl-owner-probe", "./cmd/opl-owner-probe"],
+    ["opl-cloud-composition", "./cmd/opl-cloud-composition"]
   ]) {
-    const start = dockerfile.indexOf(` AS ${stage}`);
-    const end = dockerfile.indexOf("FROM ", start + 5);
-    const body = dockerfile.slice(start, end === -1 ? undefined : end);
-    assert.ok(body.includes(`-o /out/${binary} ${command}`), `${stage} must build ${binary}`);
-    assert.ok(dockerfile.includes(`COPY --from=${stage} /out/${binary} /usr/local/bin/${binary}`), `${binary} must be copied into the runtime image`);
+    assert.ok(goBuildStage.includes(`-o /out/${binary} ${command}`), `go-build must build ${binary}`);
   }
+
+  // The runtime image must stay free of Node.js / npm dependencies and ship all Go binaries and topology contract.
+  const runtimeStage = dockerfile.slice(dockerfile.lastIndexOf("FROM "));
+  assert.match(runtimeStage, /FROM debian:bookworm-slim@sha256:/, "the runtime stage must use slim Debian instead of Node");
+  assert.ok(!runtimeStage.includes("npm ci"), "the runtime stage must not install npm packages");
+  assert.match(runtimeStage, /COPY --from=go-build \/out\/ \/usr\/local\/bin\//, "the runtime stage must copy all built Go binaries");
+  assert.match(runtimeStage, /COPY deploy\/portable\/opl-cloud-owner-topology\.json \/app\/contracts\/opl-cloud-owner-topology\.json/, "the runtime stage must bake the owner topology contract");
 });

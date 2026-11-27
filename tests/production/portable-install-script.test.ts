@@ -300,9 +300,9 @@ else if (args.includes('pull') || args.includes('up')) {}
 else if (args.includes('ps') && args.includes('-q')) console.log('fixture-container');
 else if (args.includes('ps')) {
   const mode = readFileSync(${JSON.stringify(scenario)}, 'utf8');
-  const services = ['postgres','tenant','resource-catalog','ledger','capability','build','runtime-control','workspace','serve','fabric','control-plane','console-bff','cloud-local-v2'];
-  let rows = services.map(Service => ({Service, State: mode === 'stopped' && Service === 'tenant' ? 'exited' : 'running'}));
-  if (mode === 'missing') rows = rows.filter(row => row.Service !== 'control-plane');
+  const services = ['postgres','cloud-backend','cloud-local-v2'];
+  let rows = services.map(Service => ({Service, State: mode === 'stopped' && Service === 'cloud-backend' ? 'exited' : 'running'}));
+  if (mode === 'missing') rows = rows.filter(row => row.Service !== 'cloud-backend');
   console.log(mode === 'array' ? JSON.stringify(rows) : rows.map(row => JSON.stringify(row)).join('\\n'));
 } else if (args.includes('exec')) console.log(JSON.stringify({status:'ok'}));
 else { console.error('unexpected docker command'); process.exitCode = 1; }
@@ -321,7 +321,7 @@ else { console.error('unexpected docker command'); process.exitCode = 1; }
       } else {
         assert.equal(result.status, 0, `${mode}:${result.stdout}${result.stderr}`);
         assert.equal(calls.filter(args => args.includes("exec")).length, 11);
-        assert.equal(calls.filter(args => args[0] === "inspect").length, 11);
+        assert.equal(calls.filter(args => args[0] === "inspect").length, 1);
         assert.match(result.stdout, /OPL Cloud is running/);
       }
     }
@@ -346,7 +346,7 @@ const INSTALLATION_FACTS: Record<string, string> = {
   OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: JSON.stringify({ schemaVersion: 1 }),
   OPL_RESOURCE_CATALOG_PROFILE_JSON: JSON.stringify({ provider: "local-docker" }),
 };
-const COMPOSE_SERVICES = ["postgres", "tenant", "resource-catalog", "ledger", "capability", "build", "runtime-control", "workspace", "serve", "fabric", "control-plane", "console-bff", "cloud-local-v2"];
+const COMPOSE_SERVICES = ["postgres", "cloud-backend", "cloud-local-v2"];
 
 // A Docker stub that reports one Compose version and delegates every Compose
 // parse to the real binary, so the merge tags are still parsed for real.
@@ -687,7 +687,8 @@ for (const oldParser of [false, true]) {
         assert.equal(saved.values.OPL_BUILD_INSECURE_HTTP_HOSTS, value);
         const config = spawnSync("docker", ["compose", "--env-file", "/dev/null", "-f", join(updateBundle, "compose.cloud.yaml"), "config", "--format", "json"], { encoding: "utf8", env: { ...process.env, ...saved.values } });
         assert.equal(config.status, 0, config.stderr);
-        assert.equal(JSON.parse(config.stdout).services.build.environment.OPL_BUILD_INSECURE_HTTP_HOSTS, value ?? "");
+        const services = JSON.parse(config.stdout).services;
+        assert.equal((services["cloud-backend"] ?? services.build).environment.OPL_BUILD_INSECURE_HTTP_HOSTS, value ?? "");
       }
       const calls = await mock.calls();
       assert.ok(calls.some(args => args.includes("--variables")));
