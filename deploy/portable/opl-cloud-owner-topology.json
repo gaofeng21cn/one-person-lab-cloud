@@ -355,7 +355,9 @@
     "OPL_WORKSPACE_REGISTRY_HOST",
     "OPL_WORKSPACE_REGISTRY_NAMESPACE",
     "OPL_FABRIC_ADDR",
-    "OPL_FABRIC_TOKEN"
+    "OPL_FABRIC_TOKEN",
+    "OPL_LEDGER_ADDR",
+    "OPL_LEDGER_TOKEN"
    ],
    "optionalEnv": [],
    "externalEnv": [],

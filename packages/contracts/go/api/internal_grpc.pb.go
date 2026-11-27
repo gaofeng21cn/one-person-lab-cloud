@@ -4522,6 +4522,7 @@ const (
 	GatewayProductService_RevealGatewayKey_FullMethodName                  = "/opl.cloud.api.GatewayProductService/RevealGatewayKey"
 	GatewayProductService_RevokeGatewayKey_FullMethodName                  = "/opl.cloud.api.GatewayProductService/RevokeGatewayKey"
 	GatewayProductService_ListRechargeRecords_FullMethodName               = "/opl.cloud.api.GatewayProductService/ListRechargeRecords"
+	GatewayProductService_AdjustTenantWallet_FullMethodName                = "/opl.cloud.api.GatewayProductService/AdjustTenantWallet"
 	GatewayProductService_ListModels_FullMethodName                        = "/opl.cloud.api.GatewayProductService/ListModels"
 )
 
@@ -4551,6 +4552,7 @@ type GatewayProductServiceClient interface {
 	RevealGatewayKey(ctx context.Context, in *RevealGatewayKeyRpcRequest, opts ...grpc.CallOption) (*GatewayKeySecret, error)
 	RevokeGatewayKey(ctx context.Context, in *RevokeGatewayKeyRpcRequest, opts ...grpc.CallOption) (*Operation, error)
 	ListRechargeRecords(ctx context.Context, in *ListRechargeRecordsRpcRequest, opts ...grpc.CallOption) (*WalletOperationPage, error)
+	AdjustTenantWallet(ctx context.Context, in *AdjustTenantWalletRpcRequest, opts ...grpc.CallOption) (*Operation, error)
 	ListModels(ctx context.Context, in *ListModelsRpcRequest, opts ...grpc.CallOption) (*ModelPage, error)
 }
 
@@ -4782,6 +4784,16 @@ func (c *gatewayProductServiceClient) ListRechargeRecords(ctx context.Context, i
 	return out, nil
 }
 
+func (c *gatewayProductServiceClient) AdjustTenantWallet(ctx context.Context, in *AdjustTenantWalletRpcRequest, opts ...grpc.CallOption) (*Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Operation)
+	err := c.cc.Invoke(ctx, GatewayProductService_AdjustTenantWallet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *gatewayProductServiceClient) ListModels(ctx context.Context, in *ListModelsRpcRequest, opts ...grpc.CallOption) (*ModelPage, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ModelPage)
@@ -4818,6 +4830,7 @@ type GatewayProductServiceServer interface {
 	RevealGatewayKey(context.Context, *RevealGatewayKeyRpcRequest) (*GatewayKeySecret, error)
 	RevokeGatewayKey(context.Context, *RevokeGatewayKeyRpcRequest) (*Operation, error)
 	ListRechargeRecords(context.Context, *ListRechargeRecordsRpcRequest) (*WalletOperationPage, error)
+	AdjustTenantWallet(context.Context, *AdjustTenantWalletRpcRequest) (*Operation, error)
 	ListModels(context.Context, *ListModelsRpcRequest) (*ModelPage, error)
 	mustEmbedUnimplementedGatewayProductServiceServer()
 }
@@ -4894,6 +4907,9 @@ func (UnimplementedGatewayProductServiceServer) RevokeGatewayKey(context.Context
 }
 func (UnimplementedGatewayProductServiceServer) ListRechargeRecords(context.Context, *ListRechargeRecordsRpcRequest) (*WalletOperationPage, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListRechargeRecords not implemented")
+}
+func (UnimplementedGatewayProductServiceServer) AdjustTenantWallet(context.Context, *AdjustTenantWalletRpcRequest) (*Operation, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AdjustTenantWallet not implemented")
 }
 func (UnimplementedGatewayProductServiceServer) ListModels(context.Context, *ListModelsRpcRequest) (*ModelPage, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListModels not implemented")
@@ -5315,6 +5331,24 @@ func _GatewayProductService_ListRechargeRecords_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GatewayProductService_AdjustTenantWallet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdjustTenantWalletRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayProductServiceServer).AdjustTenantWallet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayProductService_AdjustTenantWallet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayProductServiceServer).AdjustTenantWallet(ctx, req.(*AdjustTenantWalletRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _GatewayProductService_ListModels_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListModelsRpcRequest)
 	if err := dec(in); err != nil {
@@ -5427,6 +5461,10 @@ var GatewayProductService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListRechargeRecords",
 			Handler:    _GatewayProductService_ListRechargeRecords_Handler,
+		},
+		{
+			MethodName: "AdjustTenantWallet",
+			Handler:    _GatewayProductService_AdjustTenantWallet_Handler,
 		},
 		{
 			MethodName: "ListModels",
@@ -8981,10 +9019,11 @@ var TenantWorkspaceCoordination_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	LedgerCoordination_AppendReceipt_FullMethodName            = "/opl.cloud.api.LedgerCoordination/AppendReceipt"
-	LedgerCoordination_ReadReceiptByReference_FullMethodName   = "/opl.cloud.api.LedgerCoordination/ReadReceiptByReference"
-	LedgerCoordination_ReadLocalNoChargeReceipt_FullMethodName = "/opl.cloud.api.LedgerCoordination/ReadLocalNoChargeReceipt"
-	LedgerCoordination_ReadWalletActionReceipt_FullMethodName  = "/opl.cloud.api.LedgerCoordination/ReadWalletActionReceipt"
+	LedgerCoordination_AppendReceipt_FullMethodName                      = "/opl.cloud.api.LedgerCoordination/AppendReceipt"
+	LedgerCoordination_ReadReceiptByReference_FullMethodName             = "/opl.cloud.api.LedgerCoordination/ReadReceiptByReference"
+	LedgerCoordination_ReadLocalNoChargeReceipt_FullMethodName           = "/opl.cloud.api.LedgerCoordination/ReadLocalNoChargeReceipt"
+	LedgerCoordination_ReadWalletActionReceipt_FullMethodName            = "/opl.cloud.api.LedgerCoordination/ReadWalletActionReceipt"
+	LedgerCoordination_ReadGatewayWalletAdjustmentReceipt_FullMethodName = "/opl.cloud.api.LedgerCoordination/ReadGatewayWalletAdjustmentReceipt"
 )
 
 // LedgerCoordinationClient is the client API for LedgerCoordination service.
@@ -8995,6 +9034,7 @@ type LedgerCoordinationClient interface {
 	ReadReceiptByReference(ctx context.Context, in *GetReceiptByReferenceRequest, opts ...grpc.CallOption) (*Receipt, error)
 	ReadLocalNoChargeReceipt(ctx context.Context, in *GetReceiptByReferenceRequest, opts ...grpc.CallOption) (*LocalNoChargeReceiptEvidence, error)
 	ReadWalletActionReceipt(ctx context.Context, in *GetReceiptByReferenceRequest, opts ...grpc.CallOption) (*WalletActionReceiptEvidence, error)
+	ReadGatewayWalletAdjustmentReceipt(ctx context.Context, in *GetReceiptByReferenceRequest, opts ...grpc.CallOption) (*GatewayWalletAdjustmentReceiptEvidence, error)
 }
 
 type ledgerCoordinationClient struct {
@@ -9045,6 +9085,16 @@ func (c *ledgerCoordinationClient) ReadWalletActionReceipt(ctx context.Context, 
 	return out, nil
 }
 
+func (c *ledgerCoordinationClient) ReadGatewayWalletAdjustmentReceipt(ctx context.Context, in *GetReceiptByReferenceRequest, opts ...grpc.CallOption) (*GatewayWalletAdjustmentReceiptEvidence, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GatewayWalletAdjustmentReceiptEvidence)
+	err := c.cc.Invoke(ctx, LedgerCoordination_ReadGatewayWalletAdjustmentReceipt_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LedgerCoordinationServer is the server API for LedgerCoordination service.
 // All implementations must embed UnimplementedLedgerCoordinationServer
 // for forward compatibility.
@@ -9053,6 +9103,7 @@ type LedgerCoordinationServer interface {
 	ReadReceiptByReference(context.Context, *GetReceiptByReferenceRequest) (*Receipt, error)
 	ReadLocalNoChargeReceipt(context.Context, *GetReceiptByReferenceRequest) (*LocalNoChargeReceiptEvidence, error)
 	ReadWalletActionReceipt(context.Context, *GetReceiptByReferenceRequest) (*WalletActionReceiptEvidence, error)
+	ReadGatewayWalletAdjustmentReceipt(context.Context, *GetReceiptByReferenceRequest) (*GatewayWalletAdjustmentReceiptEvidence, error)
 	mustEmbedUnimplementedLedgerCoordinationServer()
 }
 
@@ -9074,6 +9125,9 @@ func (UnimplementedLedgerCoordinationServer) ReadLocalNoChargeReceipt(context.Co
 }
 func (UnimplementedLedgerCoordinationServer) ReadWalletActionReceipt(context.Context, *GetReceiptByReferenceRequest) (*WalletActionReceiptEvidence, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReadWalletActionReceipt not implemented")
+}
+func (UnimplementedLedgerCoordinationServer) ReadGatewayWalletAdjustmentReceipt(context.Context, *GetReceiptByReferenceRequest) (*GatewayWalletAdjustmentReceiptEvidence, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReadGatewayWalletAdjustmentReceipt not implemented")
 }
 func (UnimplementedLedgerCoordinationServer) mustEmbedUnimplementedLedgerCoordinationServer() {}
 func (UnimplementedLedgerCoordinationServer) testEmbeddedByValue()                            {}
@@ -9168,6 +9222,24 @@ func _LedgerCoordination_ReadWalletActionReceipt_Handler(srv interface{}, ctx co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LedgerCoordination_ReadGatewayWalletAdjustmentReceipt_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetReceiptByReferenceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerCoordinationServer).ReadGatewayWalletAdjustmentReceipt(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerCoordination_ReadGatewayWalletAdjustmentReceipt_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerCoordinationServer).ReadGatewayWalletAdjustmentReceipt(ctx, req.(*GetReceiptByReferenceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LedgerCoordination_ServiceDesc is the grpc.ServiceDesc for LedgerCoordination service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -9190,6 +9262,10 @@ var LedgerCoordination_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReadWalletActionReceipt",
 			Handler:    _LedgerCoordination_ReadWalletActionReceipt_Handler,
+		},
+		{
+			MethodName: "ReadGatewayWalletAdjustmentReceipt",
+			Handler:    _LedgerCoordination_ReadGatewayWalletAdjustmentReceipt_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

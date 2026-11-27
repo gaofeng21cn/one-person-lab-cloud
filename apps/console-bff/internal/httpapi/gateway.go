@@ -126,6 +126,32 @@ func (s *Server) registerWalletBindingRoute(mux *http.ServeMux) {
 	})
 }
 
+// registerWalletAdjustmentRoutes exposes the administrator's balance-change
+// commands and their readback.
+//
+// The Gateway owner owns the money: it authorizes the platform administrator,
+// moves the balance and records the operation. The BFF carries the operator's
+// command over the owner's typed client and publishes the owner's answer; it
+// never derives a balance, a status or a receipt of its own.
+func (s *Server) registerWalletAdjustmentRoutes(mux *http.ServeMux, gateway api.GatewayProductServiceClient) {
+	s.publisherRoute(mux, "POST /api/v2/admin/tenants/{tenantId}/wallet-adjustments", owneridentity.Gateway, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ADJUSTTENANTWALLET, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "tenantId", func() proto.Message { return &api.WalletAdjustmentRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		if gateway == nil {
+			return nil, status.Error(codes.Unavailable, "gateway owner is not configured")
+		}
+		return gateway.AdjustTenantWallet(r.Context(), &api.AdjustTenantWalletRpcRequest{
+			Context: c, TenantId: r.PathValue("tenantId"), Body: body.(*api.WalletAdjustmentRequest),
+		})
+	})
+	s.publisherRoute(mux, "GET /api/v2/admin/recharge-records", owneridentity.Gateway, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRECHARGERECORDS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", nil, func(r *http.Request, c *api.CallContext, _ proto.Message) (proto.Message, error) {
+		if gateway == nil {
+			return nil, status.Error(codes.Unavailable, "gateway owner is not configured")
+		}
+		return gateway.ListRechargeRecords(r.Context(), &api.ListRechargeRecordsRpcRequest{
+			Context: c, QueryCursor: optionalQuery(r, "cursor"), QueryLimit: optionalLimit(r), QueryTenantId: optionalQuery(r, "tenantId"),
+		})
+	})
+}
+
 // NewGatewayReadHandler exposes only the Gateway-owned product reads (wallet,
 // usage summary and model catalog) over the BFF's authenticated boundary. It exists so a caller
 // outside apps/console-bff, which cannot reach the internal package, can still

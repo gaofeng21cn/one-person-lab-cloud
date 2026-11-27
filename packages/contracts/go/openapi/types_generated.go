@@ -87,6 +87,7 @@ const (
 	AuthorizationActionAcceptInvitation                      AuthorizationAction = "acceptInvitation"
 	AuthorizationActionAcquireReference                      AuthorizationAction = "acquireReference"
 	AuthorizationActionActivateRoute                         AuthorizationAction = "activateRoute"
+	AuthorizationActionAdjustTenantWallet                    AuthorizationAction = "adjustTenantWallet"
 	AuthorizationActionAdoptWorkspace                        AuthorizationAction = "adoptWorkspace"
 	AuthorizationActionAppendPlanChangeEvidence              AuthorizationAction = "appendPlanChangeEvidence"
 	AuthorizationActionAppendReceipt                         AuthorizationAction = "appendReceipt"
@@ -213,6 +214,7 @@ const (
 	AuthorizationActionReadRenewalConsent                    AuthorizationAction = "readRenewalConsent"
 	AuthorizationActionReadSubscriptionPlanState             AuthorizationAction = "readSubscriptionPlanState"
 	AuthorizationActionReadWalletAction                      AuthorizationAction = "readWalletAction"
+	AuthorizationActionReadWalletAdjustment                  AuthorizationAction = "readWalletAdjustment"
 	AuthorizationActionReconcileOperation                    AuthorizationAction = "reconcileOperation"
 	AuthorizationActionReenableTenant                        AuthorizationAction = "reenableTenant"
 	AuthorizationActionRefundConfirmedDeletion               AuthorizationAction = "refundConfirmedDeletion"
@@ -267,6 +269,8 @@ func (e AuthorizationAction) Valid() bool {
 	case AuthorizationActionAcquireReference:
 		return true
 	case AuthorizationActionActivateRoute:
+		return true
+	case AuthorizationActionAdjustTenantWallet:
 		return true
 	case AuthorizationActionAdoptWorkspace:
 		return true
@@ -519,6 +523,8 @@ func (e AuthorizationAction) Valid() bool {
 	case AuthorizationActionReadSubscriptionPlanState:
 		return true
 	case AuthorizationActionReadWalletAction:
+		return true
+	case AuthorizationActionReadWalletAdjustment:
 		return true
 	case AuthorizationActionReconcileOperation:
 		return true
@@ -1783,6 +1789,7 @@ const (
 	OperationKindUpdateModels             OperationKind = "update_models"
 	OperationKindUpdateRenewalSettings    OperationKind = "update_renewal_settings"
 	OperationKindUpdateWorkspace          OperationKind = "update_workspace"
+	OperationKindWalletAdjustment         OperationKind = "wallet_adjustment"
 )
 
 // Valid indicates whether the value is a known member of the OperationKind enum.
@@ -1855,6 +1862,8 @@ func (e OperationKind) Valid() bool {
 	case OperationKindUpdateRenewalSettings:
 		return true
 	case OperationKindUpdateWorkspace:
+		return true
+	case OperationKindWalletAdjustment:
 		return true
 	default:
 		return false
@@ -4177,17 +4186,44 @@ func (e WalletStatus) Valid() bool {
 	}
 }
 
+// Defines values for WalletAdjustmentRequestKind.
+const (
+	WalletAdjustmentRequestKindBusinessRefund WalletAdjustmentRequestKind = "business_refund"
+	WalletAdjustmentRequestKindDebit          WalletAdjustmentRequestKind = "debit"
+	WalletAdjustmentRequestKindRecharge       WalletAdjustmentRequestKind = "recharge"
+)
+
+// Valid indicates whether the value is a known member of the WalletAdjustmentRequestKind enum.
+func (e WalletAdjustmentRequestKind) Valid() bool {
+	switch e {
+	case WalletAdjustmentRequestKindBusinessRefund:
+		return true
+	case WalletAdjustmentRequestKindDebit:
+		return true
+	case WalletAdjustmentRequestKindRecharge:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WalletOperationKind.
 const (
-	WalletOperationKindCharge   WalletOperationKind = "charge"
-	WalletOperationKindRecharge WalletOperationKind = "recharge"
-	WalletOperationKindRefund   WalletOperationKind = "refund"
+	WalletOperationKindBusinessRefund WalletOperationKind = "business_refund"
+	WalletOperationKindCharge         WalletOperationKind = "charge"
+	WalletOperationKindDebit          WalletOperationKind = "debit"
+	WalletOperationKindRecharge       WalletOperationKind = "recharge"
+	WalletOperationKindRefund         WalletOperationKind = "refund"
 )
 
 // Valid indicates whether the value is a known member of the WalletOperationKind enum.
 func (e WalletOperationKind) Valid() bool {
 	switch e {
+	case WalletOperationKindBusinessRefund:
+		return true
 	case WalletOperationKindCharge:
+		return true
+	case WalletOperationKindDebit:
 		return true
 	case WalletOperationKindRecharge:
 		return true
@@ -8301,8 +8337,25 @@ type WalletSource string
 // WalletStatus defines model for Wallet.Status.
 type WalletStatus string
 
-// WalletOperation 非第二钱包，只存不透明原付款/幂等引用和观察结果。unknown不重扣/反向退款。 purpose区分基础周期款、升级补差、基础删除、升级确定失败全退、成功补差按自身T..E删除退款、下期计划失败全退。所有refund绑定originalChargeOperationId；unknown退款占同原charge可退额度但不改变wallet权威。
+// WalletAdjustmentRequest defines model for WalletAdjustmentRequest.
+type WalletAdjustmentRequest struct {
+	// AmountUSDMicros 微美元非负int64，JSON十进制字符串，范围0..9223372036854775807；禁止浮点/前导零。
+	AmountUSDMicros USDMicros                   `json:"amountUSDMicros"`
+	Kind            WalletAdjustmentRequestKind `json:"kind"`
+
+	// OriginalChargeOperationId 不透明string；新旧ID原样保留，不假定UUID。
+	OriginalChargeOperationId *OpaqueId `json:"originalChargeOperationId,omitempty"`
+	Reason                    string    `json:"reason"`
+}
+
+// WalletAdjustmentRequestKind defines model for WalletAdjustmentRequest.Kind.
+type WalletAdjustmentRequestKind string
+
+// WalletOperation 非第二钱包，只存不透明原付款/幂等引用和观察结果。unknown不重扣/反向退款。 purpose区分基础周期款、升级补差、基础删除、升级确定失败全退、成功补差按自身T..E删除退款、下期计划失败全退。所有refund绑定originalChargeOperationId；unknown退款占同原charge可退额度但不改变wallet权威。 actorId/reason只由operator发起的余额变更（recharge/debit/business_refund）携带；Workspace义务没有operator，二者互斥。
 type WalletOperation struct {
+	// ActorId 不透明string；新旧ID原样保留，不假定UUID。
+	ActorId *OpaqueId `json:"actorId,omitempty"`
+
 	// AmountUSDMicros 微美元非负int64，JSON十进制字符串，范围0..9223372036854775807；禁止浮点/前导零。
 	AmountUSDMicros USDMicros `json:"amountUSDMicros"`
 
@@ -8333,6 +8386,7 @@ type WalletOperation struct {
 	// PlanChangeId 不透明string；新旧ID原样保留，不假定UUID。
 	PlanChangeId *OpaqueId               `json:"planChangeId,omitempty"`
 	Purpose      *WalletOperationPurpose `json:"purpose,omitempty"`
+	Reason       *string                 `json:"reason,omitempty"`
 
 	// ReceiptId 不透明string；新旧ID原样保留，不假定UUID。
 	ReceiptId *OpaqueId             `json:"receiptId,omitempty"`
@@ -8770,7 +8824,7 @@ type WorkspaceFinancialReceipt struct {
 	// Receipt 无秘密/私网地址；Cloud静态检查、Candidate与Instance资格/部署证据分层。
 	Receipt Receipt `json:"receipt"`
 
-	// WalletOperation 非第二钱包，只存不透明原付款/幂等引用和观察结果。unknown不重扣/反向退款。 purpose区分基础周期款、升级补差、基础删除、升级确定失败全退、成功补差按自身T..E删除退款、下期计划失败全退。所有refund绑定originalChargeOperationId；unknown退款占同原charge可退额度但不改变wallet权威。
+	// WalletOperation 非第二钱包，只存不透明原付款/幂等引用和观察结果。unknown不重扣/反向退款。 purpose区分基础周期款、升级补差、基础删除、升级确定失败全退、成功补差按自身T..E删除退款、下期计划失败全退。所有refund绑定originalChargeOperationId；unknown退款占同原charge可退额度但不改变wallet权威。 actorId/reason只由operator发起的余额变更（recharge/debit/business_refund）携带；Workspace义务没有operator，二者互斥。
 	WalletOperation WalletOperation `json:"walletOperation"`
 
 	// WorkspaceId 不透明string；新旧ID原样保留，不假定UUID。
@@ -9105,6 +9159,15 @@ type RestoreTenantParams struct {
 
 // SuspendTenantParams defines parameters for SuspendTenant.
 type SuspendTenantParams struct {
+	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+
+	// XCSRFToken 匹配同源session并校验Origin。
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
+// AdjustTenantWalletParams defines parameters for AdjustTenantWallet.
+type AdjustTenantWalletParams struct {
 	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 
@@ -9730,6 +9793,9 @@ type RestoreTenantJSONRequestBody = TenantActionRequest
 
 // SuspendTenantJSONRequestBody defines body for SuspendTenant for application/json ContentType.
 type SuspendTenantJSONRequestBody = TenantActionRequest
+
+// AdjustTenantWalletJSONRequestBody defines body for AdjustTenantWallet for application/json ContentType.
+type AdjustTenantWalletJSONRequestBody = WalletAdjustmentRequest
 
 // BindTenantWalletJSONRequestBody defines body for BindTenantWallet for application/json ContentType.
 type BindTenantWalletJSONRequestBody = BindTenantWalletRequest

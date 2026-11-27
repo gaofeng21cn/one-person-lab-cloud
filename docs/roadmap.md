@@ -130,6 +130,15 @@ Plane / delegated process-local custody onto canonical domain owners:
      `GET /internal/cloud/gateway/endpoint` bridges are retired with it; the
      retained `/api/gateway/*` read routes stay until the retained Control Plane
      Console build is retired.
+   - The administrator's balance change has moved to the Gateway owner: the
+     owner reserves the operation, moves the balance once and settles it from
+     the Gateway's own balance history. One continuation is still open:
+     - **The Cloud Console's administrator write is still locked.** The button
+       is hidden by `!cloudIdentity` and the operator write path throws
+       `operator_write_unavailable`; unlocking the full administrator surface
+       belongs to PR-7. That work also converts the Console's legacy
+       `amountUsd` request field to the contract's `amountUSDMicros`, so the
+       browser and the published contract name the same amount.
 2. **Billing & Announcements Extraction**: Retire retained Control Plane
    bridges (`/internal/cloud/legacy-billing/*`, `/internal/cloud/announcements`)
    once Cloud Ledger and Announcement owners serve authenticated CloudIdentity

@@ -56,8 +56,13 @@ type Service struct {
 	// GatewayStore is required before service registration or authentication.
 	// Secret delivery remains separately configured for managed-key operations.
 	GatewayStore *GatewayStore
-	SecretStore  SecretStore
-	KeyIssuer    ManagedKeyIssuer
+	// Ledger is the receipt owner this owner appends its own confirmed
+	// administrator balance change to. An owner without that authority records
+	// no receipt, so the command reports the missing receipt instead of
+	// pretending the balance change was acknowledged.
+	Ledger      api.LedgerCoordinationClient
+	SecretStore SecretStore
+	KeyIssuer   ManagedKeyIssuer
 	// WorkspaceKeyGroup is the approved Sub2API group a Workspace-managed key is
 	// placed in. It is a deployment fact (OPL_GATEWAY_WORKSPACE_KEY_GROUP): the
 	// group carries the approved model allowlist the issuer resolves for a

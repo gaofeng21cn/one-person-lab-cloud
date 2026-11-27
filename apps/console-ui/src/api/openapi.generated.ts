@@ -1140,6 +1140,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/admin/tenants/{tenantId}/wallet-adjustments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * adjustTenantWallet
+         * @description 管理员对单个租户可支配余额的一次明确授权变更；只对已绑定钱包的租户生效，金额以微美元正整数表示。
+         */
+        post: operations["adjustTenantWallet"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/admin/tenants": {
         parameters: {
             query?: never;
@@ -2289,6 +2309,13 @@ export interface components {
         TenantActionRequest: {
             reason: string;
         };
+        WalletAdjustmentRequest: {
+            /** @enum {string} */
+            kind: "recharge" | "debit" | "business_refund";
+            amountUSDMicros: components["schemas"]["USDMicros"];
+            reason: string;
+            originalChargeOperationId?: components["schemas"]["OpaqueId"];
+        };
         /** @description 名称精确确认；停用是reenable，删除恢复是restore。restoreUntil只在确认deleted时设为deletedAt+15天，删除处理中无恢复倒计时；先收敛未决删除子操作。 */
         DeleteTenantRequest: {
             confirmationName: string;
@@ -3053,12 +3080,12 @@ export interface components {
             /** @enum {unknown} */
             renewalMode?: "automatic";
         }));
-        /** @description 非第二钱包，只存不透明原付款/幂等引用和观察结果。unknown不重扣/反向退款。 purpose区分基础周期款、升级补差、基础删除、升级确定失败全退、成功补差按自身T..E删除退款、下期计划失败全退。所有refund绑定originalChargeOperationId；unknown退款占同原charge可退额度但不改变wallet权威。 */
+        /** @description 非第二钱包，只存不透明原付款/幂等引用和观察结果。unknown不重扣/反向退款。 purpose区分基础周期款、升级补差、基础删除、升级确定失败全退、成功补差按自身T..E删除退款、下期计划失败全退。所有refund绑定originalChargeOperationId；unknown退款占同原charge可退额度但不改变wallet权威。 actorId/reason只由operator发起的余额变更（recharge/debit/business_refund）携带；Workspace义务没有operator，二者互斥。 */
         WalletOperation: {
             id: components["schemas"]["OpaqueId"];
             workspaceId?: components["schemas"]["OpaqueId"];
             /** @enum {string} */
-            kind: "charge" | "refund" | "recharge";
+            kind: "charge" | "refund" | "recharge" | "debit" | "business_refund";
             amountUSDMicros: components["schemas"]["USDMicros"];
             /** @enum {string} */
             status: "requested" | "confirmed" | "rejected" | "unknown";
@@ -3085,6 +3112,8 @@ export interface components {
             coverageEnd?: string;
             coverageStartMilliseconds?: components["schemas"]["NonnegativeInt64"];
             coverageEndMilliseconds?: components["schemas"]["NonnegativeInt64"];
+            actorId?: components["schemas"]["OpaqueId"];
+            reason?: string;
         };
         /** @description 仅实时Gateway readback。失败503，不用缓存余额或0兜底。 */
         Wallet: {
@@ -3475,7 +3504,7 @@ export interface components {
             modelSelections: components["schemas"]["ModelSelection"][];
         };
         /** @enum {string} */
-        OperationKind: "complete_upload" | "build" | "delete_capability_version" | "create_workspace" | "update_models" | "update_workspace" | "rollback_workspace" | "resize_workspace" | "renew_workspace" | "delete_workspace" | "create_tenant" | "bind_tenant_wallet" | "suspend_tenant" | "delete_tenant" | "restore_tenant" | "revoke_key" | "reconcile" | "adopt_workspace" | "resource_provision" | "resource_resize" | "resource_renew" | "resource_suspend" | "resource_resume" | "resource_delete" | "runtime_deploy" | "runtime_reload" | "runtime_retire" | "reenable_tenant" | "migration" | "update_renewal_settings" | "apply_scheduled_plan_change" | "cancel_plan_change" | "compensate_plan_change" | "refund_supplement_on_delete";
+        OperationKind: "complete_upload" | "build" | "delete_capability_version" | "create_workspace" | "update_models" | "update_workspace" | "rollback_workspace" | "resize_workspace" | "renew_workspace" | "delete_workspace" | "create_tenant" | "bind_tenant_wallet" | "suspend_tenant" | "delete_tenant" | "restore_tenant" | "revoke_key" | "reconcile" | "adopt_workspace" | "resource_provision" | "resource_resize" | "resource_renew" | "resource_suspend" | "resource_resume" | "resource_delete" | "runtime_deploy" | "runtime_reload" | "runtime_retire" | "reenable_tenant" | "migration" | "update_renewal_settings" | "apply_scheduled_plan_change" | "cancel_plan_change" | "compensate_plan_change" | "refund_supplement_on_delete" | "wallet_adjustment";
         /** @enum {string} */
         OperationStage: "absence_verification" | "access_enablement" | "access_revocation" | "activation" | "actual_resource_evidence" | "admission" | "asset_custody" | "attachment" | "attachment_deletion" | "building" | "cancellation_guard" | "catalog_tombstone" | "compatibility" | "compute" | "compute_deletion" | "configuration" | "consent_commit" | "consent_validation" | "coverage_calculation" | "debit" | "deletion_evidence" | "failure_fence" | "grant_revocation" | "identity_verification" | "key" | "key_revocation" | "membership" | "obligation_check" | "original_action_readback" | "owner_switch" | "payment_authorization" | "period_boundary" | "period_update" | "plan_change_commit" | "plan_commit" | "provider_renewal" | "provider_resume" | "provider_suspend" | "pushing" | "queued" | "quote_binding" | "readback" | "receipt" | "reconciliation" | "reference_check" | "refund" | "refund_original_charge" | "registering" | "reload" | "resource_preflight" | "restore_window_check" | "retirement" | "runtime" | "runtime_deletion" | "schedule_cancel" | "schedule_commit" | "secret_unbinding" | "snapshot_import" | "source_verification" | "storage" | "storage_deletion" | "succeeded" | "supplement_payment" | "target_period_payment" | "tenant_state_check" | "upload_verification" | "validating" | "verification" | "wallet_binding" | "workspace_deletion" | "workspace_resumption" | "workspace_suspension" | "write_barrier";
         BuildRuntimePolicy: {
@@ -3726,7 +3755,7 @@ export interface components {
             pageSize: number;
         };
         /** @enum {string} */
-        AuthorizationAction: "acceptInvitation" | "acquireReference" | "activateRoute" | "adoptWorkspace" | "appendPlanChangeEvidence" | "appendReceipt" | "archiveNamespace" | "archivePackage" | "bindManagedSecret" | "bindReference" | "bindTenantWallet" | "cancelAcceptedObligation" | "cancelPlanChange" | "chargeAcceptedObligation" | "chargePlanChangeSupplement" | "claimNextPeriodObligation" | "closeoutAcceptedObligation" | "completeAcceptedObligation" | "completeUpload" | "createBuild" | "createComputePlan" | "createGatewayKey" | "createNamespace" | "createPackage" | "createPricePolicyVersion" | "createPublisherNamespace" | "createQuote" | "createRefundPolicyVersion" | "createRetentionPolicyVersion" | "createStoragePlan" | "createTenant" | "createUpload" | "createUploadPart" | "createWorkspace" | "deleteAcceptedResources" | "deleteCapabilityVersion" | "deleteTenant" | "deleteWorkspace" | "executeScheduledPlanChange" | "fenceRouteEpoch" | "getAdminTenant" | "getBuild" | "getBuildRuntimePolicy" | "getCapabilityVersion" | "getDeployment" | "getLoginContext" | "getOperation" | "getPackage" | "getPackageVersion" | "getPlanChange" | "getQuote" | "getReceipt" | "getWorkspaceFinancialReceipt" | "getSession" | "getSelfUserExternalBinding" | "getSubscription" | "getTenant" | "getTenantAssetCustody" | "getTenantLifecycleOperation" | "getTenantWallet" | "getUpload" | "getWallet" | "getWorkspace" | "getWorkspaceAccess" | "getWorkspaceDeletion" | "getWorkspaceModels" | "inviteMember" | "issueAcceptedOperationGrant" | "listAdminOperations" | "listAuditEvents" | "listBuildLogs" | "listBuilds" | "listCapabilityVersions" | "listComputePlans" | "listDeployments" | "listGatewayKeys" | "listInvitations" | "listMembers" | "listModels" | "listNamespaces" | "listPackageVersions" | "listPackages" | "listPlanChanges" | "listPricePolicyVersions" | "listPublisherNamespaces" | "listQualifications" | "listReceipts" | "listRechargeRecords" | "listRefundPolicyVersions" | "listRetentionPolicyVersions" | "listRuntimeVersions" | "listStoragePlans" | "listTenants" | "getUsageSummary" | "listUsage" | "listWebuiVersions" | "listWorkspaceTransactions" | "getWorkspaceTransactionTrend" | "listWorkspaces" | "listOperatorWorkspaces" | "getOperatorWorkspace" | "readOperatorResources" | "listOperatorDeployments" | "getOperatorWorkspaceAccess" | "login" | "logout" | "observeResources" | "observeRoute" | "provisionAcceptedResources" | "publishOfficialPackage" | "readApplicationCredentials" | "readApprovedPlanTransition" | "readArtifact" | "readAuthorizationContext" | "readClaimUsage" | "readNextPeriodObligation" | "readOwnerCommit" | "readRenewalConsent" | "readSubscriptionPlanState" | "readWalletAction" | "reconcileOperation" | "reenableTenant" | "refundConfirmedDeletion" | "refundPlanChangeCompensation" | "refundSupplementOnDeletion" | "registerRuntimeVersion" | "registerWebuiVersion" | "releaseReference" | "removeMember" | "renewAcceptedResources" | "renewWorkspace" | "reserveRuntime" | "resizeAcceptedResources" | "resizeWorkspace" | "resolveBuildInput" | "resolvePublisherContract" | "restoreTenant" | "resumeTenantWorkspaces" | "retireRuntime" | "retryBuild" | "revealGatewayKey" | "revealWorkspaceApplicationCredentials" | "revokeGatewayKey" | "revokeInvitation" | "revokePublisherNamespace" | "rollbackRoute" | "rollbackWorkspace" | "setBuildRuntimePolicy" | "setComputePlanAvailability" | "setRuntimeVersionStatus" | "setStoragePlanAvailability" | "setWebuiVersionStatus" | "suspendTenant" | "updateMemberRole" | "updateNamespace" | "updatePackage" | "updateRenewalSettings" | "updateWorkspaceModels" | "updateWorkspaceVersion" | "readExecutionPlan" | "restoreAfterResourceChange" | "debitScheduledPeriod" | "readPlanChangeFailure" | "listPersonalGatewayKeys" | "getPersonalGatewayKey" | "listPersonalGatewayGroups" | "listPersonalGatewayKeyUsage" | "getPersonalGatewayKeyUsageSummary" | "createPersonalGatewayKey" | "updatePersonalGatewayKey" | "revealPersonalGatewayKey" | "revokePersonalGatewayKey" | "setWorkspacePurchaseEligibility";
+        AuthorizationAction: "acceptInvitation" | "acquireReference" | "activateRoute" | "adjustTenantWallet" | "adoptWorkspace" | "appendPlanChangeEvidence" | "appendReceipt" | "archiveNamespace" | "archivePackage" | "bindManagedSecret" | "bindReference" | "bindTenantWallet" | "cancelAcceptedObligation" | "cancelPlanChange" | "chargeAcceptedObligation" | "chargePlanChangeSupplement" | "claimNextPeriodObligation" | "closeoutAcceptedObligation" | "completeAcceptedObligation" | "completeUpload" | "createBuild" | "createComputePlan" | "createGatewayKey" | "createNamespace" | "createPackage" | "createPricePolicyVersion" | "createPublisherNamespace" | "createQuote" | "createRefundPolicyVersion" | "createRetentionPolicyVersion" | "createStoragePlan" | "createTenant" | "createUpload" | "createUploadPart" | "createWorkspace" | "deleteAcceptedResources" | "deleteCapabilityVersion" | "deleteTenant" | "deleteWorkspace" | "executeScheduledPlanChange" | "fenceRouteEpoch" | "getAdminTenant" | "getBuild" | "getBuildRuntimePolicy" | "getCapabilityVersion" | "getDeployment" | "getLoginContext" | "getOperation" | "getPackage" | "getPackageVersion" | "getPlanChange" | "getQuote" | "getReceipt" | "getWorkspaceFinancialReceipt" | "getSession" | "getSelfUserExternalBinding" | "getSubscription" | "getTenant" | "getTenantAssetCustody" | "getTenantLifecycleOperation" | "getTenantWallet" | "getUpload" | "getWallet" | "getWorkspace" | "getWorkspaceAccess" | "getWorkspaceDeletion" | "getWorkspaceModels" | "inviteMember" | "issueAcceptedOperationGrant" | "listAdminOperations" | "listAuditEvents" | "listBuildLogs" | "listBuilds" | "listCapabilityVersions" | "listComputePlans" | "listDeployments" | "listGatewayKeys" | "listInvitations" | "listMembers" | "listModels" | "listNamespaces" | "listPackageVersions" | "listPackages" | "listPlanChanges" | "listPricePolicyVersions" | "listPublisherNamespaces" | "listQualifications" | "listReceipts" | "listRechargeRecords" | "listRefundPolicyVersions" | "listRetentionPolicyVersions" | "listRuntimeVersions" | "listStoragePlans" | "listTenants" | "getUsageSummary" | "listUsage" | "listWebuiVersions" | "listWorkspaceTransactions" | "getWorkspaceTransactionTrend" | "listWorkspaces" | "listOperatorWorkspaces" | "getOperatorWorkspace" | "readOperatorResources" | "listOperatorDeployments" | "getOperatorWorkspaceAccess" | "login" | "logout" | "observeResources" | "observeRoute" | "provisionAcceptedResources" | "publishOfficialPackage" | "readApplicationCredentials" | "readApprovedPlanTransition" | "readArtifact" | "readAuthorizationContext" | "readClaimUsage" | "readNextPeriodObligation" | "readOwnerCommit" | "readRenewalConsent" | "readSubscriptionPlanState" | "readWalletAction" | "readWalletAdjustment" | "reconcileOperation" | "reenableTenant" | "refundConfirmedDeletion" | "refundPlanChangeCompensation" | "refundSupplementOnDeletion" | "registerRuntimeVersion" | "registerWebuiVersion" | "releaseReference" | "removeMember" | "renewAcceptedResources" | "renewWorkspace" | "reserveRuntime" | "resizeAcceptedResources" | "resizeWorkspace" | "resolveBuildInput" | "resolvePublisherContract" | "restoreTenant" | "resumeTenantWorkspaces" | "retireRuntime" | "retryBuild" | "revealGatewayKey" | "revealWorkspaceApplicationCredentials" | "revokeGatewayKey" | "revokeInvitation" | "revokePublisherNamespace" | "rollbackRoute" | "rollbackWorkspace" | "setBuildRuntimePolicy" | "setComputePlanAvailability" | "setRuntimeVersionStatus" | "setStoragePlanAvailability" | "setWebuiVersionStatus" | "suspendTenant" | "updateMemberRole" | "updateNamespace" | "updatePackage" | "updateRenewalSettings" | "updateWorkspaceModels" | "updateWorkspaceVersion" | "readExecutionPlan" | "restoreAfterResourceChange" | "debitScheduledPeriod" | "readPlanChangeFailure" | "listPersonalGatewayKeys" | "getPersonalGatewayKey" | "listPersonalGatewayGroups" | "listPersonalGatewayKeyUsage" | "getPersonalGatewayKeyUsageSummary" | "createPersonalGatewayKey" | "updatePersonalGatewayKey" | "revealPersonalGatewayKey" | "revokePersonalGatewayKey" | "setWorkspacePurchaseEligibility";
         /** @enum {string} */
         ServiceIdentity: "console_bff" | "capability" | "build" | "workspace" | "runtime_control" | "fabric" | "gateway_integration" | "resource_catalog" | "ledger";
         WorkspaceApplicationExecution: {
@@ -7072,6 +7101,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WalletOperationPage"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
+            422: components["responses"]["ErrorResponse"];
+            429: components["responses"]["ErrorResponse"];
+            500: components["responses"]["ErrorResponse"];
+            503: components["responses"]["ErrorResponse"];
+        };
+    };
+    adjustTenantWallet: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description 匹配同源session并校验Origin。 */
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path: {
+                tenantId: components["schemas"]["OpaqueId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WalletAdjustmentRequest"];
+            };
+        };
+        responses: {
+            /** @description 命令已持久接受，202不代表完成。 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
                 };
             };
             400: components["responses"]["ErrorResponse"];

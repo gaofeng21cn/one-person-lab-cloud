@@ -123,6 +123,27 @@ func main() {
 			}
 			s.SecretStore = identity.NewFabricManagedSecretStore(api.NewFabricCoordinationClient(conn))
 		}
+		// The receipt owner is where this owner's own administrator balance
+		// change is acknowledged. An absent address is a deployment that has not
+		// placed that owner yet, so the owner records no receipt and the command
+		// reports the missing receipt rather than claiming one. The Gateway
+		// Integration process is the tenant deployment unit, so it presents the
+		// tenant transport principal to the receipt owner.
+		if address := strings.TrimSpace(os.Getenv("OPL_LEDGER_ADDR")); address != "" {
+			options, e := config.TLS.DialOptions(owneridentity.Tenant.Service(), owneridentity.Ledger.Service(), os.Getenv("OPL_LEDGER_TOKEN"))
+			if e != nil {
+				return e
+			}
+			conn, e := grpc.NewClient(address, options...)
+			if e != nil {
+				return e
+			}
+			if e = server.TrackCloser(conn); e != nil {
+				conn.Close()
+				return e
+			}
+			s.Ledger = api.NewLedgerCoordinationClient(conn)
+		}
 		// Owner-commit readback for grant issuance is wired only for an owner whose
 		// address this deployment actually configures. An absent address is a
 		// deployment that has not placed that owner yet, and grpc.NewClient accepts

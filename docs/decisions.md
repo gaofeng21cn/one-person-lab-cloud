@@ -134,6 +134,31 @@ Git log.
   `/api/gateway/*` read routes stay only for the legacy Console build until
   Control Plane retirement.
 
+- **Administrator Balance Change Ownership**: The Gateway owner
+  (`services/gateway-integration`, `gateway.wallet_operations`) owns the
+  administrator's change to a customer's spendable balance, because the Gateway
+  is the external wallet authority and the owner already resolves the balance
+  from the Gateway's own records. The owner's existing settlement machinery is
+  reused unchanged: the operation is reserved under the operator's idempotency
+  key before any money moves, exactly one adjustment is dispatched, and the
+  outcome is settled from the Gateway's own balance history, so a lost response
+  is reconciled from the native record and never charged again. The operator
+  adjustment is recorded as a wallet operation of its own kinds (`recharge`,
+  `debit`, `business_refund`), so it can never be read as a Workspace purchase
+  or as a deletion refund, and a business refund shares the original charge's
+  cumulative refund cap. The operation row carries the operator and the reason
+  with the money, because the adjustment and who ordered it are one fact. The
+  public surface is the Console BFF route
+  `POST /api/v2/admin/tenants/{tenantId}/wallet-adjustments` plus the owner's
+  `GET /api/v2/admin/recharge-records` readback. The receipt this owner names
+  is appended to the Ledger by the Gateway owner itself: the Ledger admits one
+  receipt kind per owner, so the administrator's balance change is the
+  Gateway owner's own kind, its evidence is the owner's own confirmed wallet
+  operation, and the Ledger re-reads that operation from the owner before it
+  stores anything. The retained Control Plane writer of
+  `gateway.wallet_adjustment.v1` is a different, account-scoped fact and is
+  retired with Control Plane.
+
 ## Non-Spending Publication & Incremental Retirement
 
 - **Non-Spending Release Admission**: Formal Cloud Candidate/Release

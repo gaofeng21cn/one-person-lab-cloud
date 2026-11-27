@@ -187,6 +187,11 @@ type WalletRecord struct {
 	ConfirmedAt          time.Time
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
+	// ActorID and Reason name the operator who ordered an operator-initiated
+	// balance change and why. A Workspace obligation carries no operator, so
+	// exactly one of the two attributions is present.
+	ActorID string
+	Reason  string
 }
 
 // ReadWalletOperation reads one wallet operation by its own id.
@@ -203,7 +208,8 @@ func (s *GatewayStore) ReadWalletOperationByBusinessKey(ctx context.Context, key
 const walletSelect = `SELECT id, tenant_id, COALESCE(workspace_id,''), wallet_binding_id, kind, status, amount_usd_micros,
 	COALESCE(original_wallet_operation_id,''), business_idempotency_key, request_fingerprint,
 	COALESCE(external_reference,''), COALESCE(receipt_id,''), COALESCE(refund_entitlement_ref,''), COALESCE(error_code,''),
-	COALESCE(purpose,''), confirmed_at, created_at, updated_at, COALESCE(plan_change_id,''), coverage_start, coverage_end
+	COALESCE(purpose,''), confirmed_at, created_at, updated_at, COALESCE(plan_change_id,''), coverage_start, coverage_end,
+	COALESCE(actor_id,''), COALESCE(reason,'')
 	FROM gateway.wallet_operations`
 
 type rowScanner interface{ Scan(...any) error }
@@ -214,7 +220,8 @@ func (s *GatewayStore) scanWallet(ctx context.Context, row rowScanner) (WalletRe
 	var coverageStart, coverageEnd sql.NullTime
 	err := row.Scan(&record.ID, &record.TenantID, &record.WorkspaceID, &record.WalletBindingID, &record.Kind, &record.Status, &record.AmountUSDMicros,
 		&record.OriginalOperationID, &record.BusinessKey, &record.RequestFingerprint, &record.ExternalReference, &record.ReceiptID,
-		&record.RefundEntitlementRef, &record.ErrorCode, &record.Purpose, &confirmed, &record.CreatedAt, &record.UpdatedAt, &record.PlanChangeID, &coverageStart, &coverageEnd)
+		&record.RefundEntitlementRef, &record.ErrorCode, &record.Purpose, &confirmed, &record.CreatedAt, &record.UpdatedAt, &record.PlanChangeID, &coverageStart, &coverageEnd,
+		&record.ActorID, &record.Reason)
 	if errors.Is(err, sql.ErrNoRows) {
 		return WalletRecord{}, ErrGatewayWalletUnknown
 	}
@@ -255,7 +262,11 @@ func (s *GatewayStore) ReserveWalletOperation(ctx context.Context, record Wallet
 	case !errors.Is(err, ErrGatewayWalletUnknown):
 		return WalletRecord{}, false, err
 	}
-	if record.Kind == "refund" {
+	// A refund never exceeds the charge it refunds. A Workspace deletion refund
+	// and an operator business refund are both refunds of one confirmed charge,
+	// so the reserved total counts both kinds: a second route to the same charge
+	// can never spend the original twice.
+	if record.Kind == "refund" || record.Kind == "business_refund" {
 		original, readErr := s.scanWallet(ctx, tx.QueryRowContext(ctx, walletSelect+` WHERE id=$1 FOR UPDATE`, record.OriginalOperationID))
 		if errors.Is(readErr, ErrGatewayWalletUnknown) {
 			return WalletRecord{}, false, ErrGatewayWalletConflict
@@ -263,11 +274,17 @@ func (s *GatewayStore) ReserveWalletOperation(ctx context.Context, record Wallet
 		if readErr != nil {
 			return WalletRecord{}, false, readErr
 		}
-		if original.Kind != "charge" || original.Status != "confirmed" || original.TenantID != record.TenantID || original.WorkspaceID != record.WorkspaceID || record.AmountUSDMicros <= 0 {
+		if original.Kind != "charge" || original.Status != "confirmed" || original.TenantID != record.TenantID || record.AmountUSDMicros <= 0 {
+			return WalletRecord{}, false, ErrGatewayWalletConflict
+		}
+		// A Workspace refund stays inside the Workspace it refunds. An operator
+		// business refund is the Tenant's own wallet, so it names the Tenant's
+		// confirmed charge without naming a Workspace.
+		if record.Kind == "refund" && original.WorkspaceID != record.WorkspaceID {
 			return WalletRecord{}, false, ErrGatewayWalletConflict
 		}
 		var reserved int64
-		if err = tx.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount_usd_micros),0) FROM gateway.wallet_operations WHERE original_wallet_operation_id=$1 AND kind='refund' AND status<>'rejected'`, original.ID).Scan(&reserved); err != nil {
+		if err = tx.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount_usd_micros),0) FROM gateway.wallet_operations WHERE original_wallet_operation_id=$1 AND kind IN ('refund','business_refund') AND status<>'rejected'`, original.ID).Scan(&reserved); err != nil {
 			return WalletRecord{}, false, err
 		}
 		if record.AmountUSDMicros > original.AmountUSDMicros-reserved {
@@ -280,10 +297,11 @@ func (s *GatewayStore) ReserveWalletOperation(ctx context.Context, record Wallet
 	record.CreatedAt, record.UpdatedAt = now, now
 	if _, err = tx.ExecContext(ctx, `
 		INSERT INTO gateway.wallet_operations (id, tenant_id, wallet_binding_id, workspace_id, kind, status, amount_usd_micros,
-			original_wallet_operation_id, business_idempotency_key, request_fingerprint, refund_entitlement_ref, purpose, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,'requested',$6,$7,$8,$9,$10,$11,$12,$12)`,
+			original_wallet_operation_id, business_idempotency_key, request_fingerprint, refund_entitlement_ref, purpose, actor_id, reason, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,'requested',$6,$7,$8,$9,$10,$11,$12,$13,$14,$14)`,
 		record.ID, record.TenantID, record.WalletBindingID, nullString(record.WorkspaceID), record.Kind, record.AmountUSDMicros,
-		nullString(record.OriginalOperationID), record.BusinessKey, record.RequestFingerprint, nullString(record.RefundEntitlementRef), nullString(record.Purpose), now); err != nil {
+		nullString(record.OriginalOperationID), record.BusinessKey, record.RequestFingerprint, nullString(record.RefundEntitlementRef), nullString(record.Purpose),
+		nullString(record.ActorID), nullString(record.Reason), now); err != nil {
 		return WalletRecord{}, false, err
 	}
 	if err = tx.Commit(); err != nil {
@@ -351,6 +369,16 @@ func WalletOperationMessage(record WalletRecord) *api.WalletOperation {
 	if record.PlanChangeID != "" {
 		out.PlanChangeId = &record.PlanChangeID
 	}
+	// The operator and the reason belong to the money row, so the readback of
+	// an administrator balance change carries the same attribution the owner
+	// recorded. A Workspace obligation carries no operator, so exactly one of
+	// the two attributions is present.
+	if record.ActorID != "" {
+		out.ActorId = &record.ActorID
+	}
+	if record.Reason != "" {
+		out.Reason = &record.Reason
+	}
 	if !record.CoverageStart.IsZero() {
 		out.CoverageStart = stampOf(record.CoverageStart)
 		milliseconds := record.CoverageStart.UnixMilli()
@@ -377,6 +405,10 @@ func walletKindEnum(kind string) api.WalletOperationKindEnum {
 		return api.WalletOperationKindEnum_WALLET_OPERATION_KIND_ENUM_REFUND
 	case "recharge":
 		return api.WalletOperationKindEnum_WALLET_OPERATION_KIND_ENUM_RECHARGE
+	case "debit":
+		return api.WalletOperationKindEnum_WALLET_OPERATION_KIND_ENUM_DEBIT
+	case "business_refund":
+		return api.WalletOperationKindEnum_WALLET_OPERATION_KIND_ENUM_BUSINESS_REFUND
 	default:
 		return api.WalletOperationKindEnum_WALLET_OPERATION_KIND_ENUM_UNSPECIFIED
 	}

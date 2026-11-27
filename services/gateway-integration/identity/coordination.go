@@ -379,7 +379,7 @@ func (s *Service) reconcileWalletOperation(ctx context.Context, record WalletRec
 // settlement semantics did, so an opposite-sign record can never confirm the
 // obligation.
 func nativeAdjustmentMicros(record WalletRecord) int64 {
-	if record.Kind == "charge" {
+	if record.Kind == "charge" || record.Kind == "debit" {
 		return -record.AmountUSDMicros
 	}
 	return record.AmountUSDMicros
@@ -829,7 +829,26 @@ func (s *Service) authorizeWalletWrite(ctx context.Context, call *api.CallContex
 	})
 }
 
+// authorizeWalletRead admits a read of one wallet operation.
+//
+// A Workspace obligation names the Workspace it funds, so the read is
+// authorized against that Workspace. An administrator balance change names no
+// Workspace: it is a tenant-scoped fact about the Tenant whose spendable
+// balance changed, so the read is authorized against that Tenant under the
+// operator's own adjustment action. A wallet operation that is neither is
+// refused rather than read against an empty resource.
 func (s *Service) authorizeWalletRead(ctx context.Context, call *api.CallContext, record WalletRecord) error {
+	if operatorAdjustmentKind(record.Kind) {
+		return s.authorizeInternal(ctx, owneridentity.Gateway.Service(), &api.AuthorizationRequest{
+			Scope: call.GetScope(), ActorId: call.GetActorId(), SessionId: call.SessionId, AcceptedOperationGrantId: call.AcceptedOperationGrantId,
+			AudienceOwner: api.OwnerEnum_OWNER_ENUM_GATEWAY, Action: api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETADJUSTMENT,
+			Resource:  &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: proto.String(record.TenantID)},
+			RequestId: call.GetRequestId(),
+		})
+	}
+	if strings.TrimSpace(record.WorkspaceID) == "" {
+		return status.Error(codes.PermissionDenied, "a wallet operation without a Workspace cannot be read")
+	}
 	return s.authorizeInternal(ctx, owneridentity.Gateway.Service(), &api.AuthorizationRequest{
 		Scope: call.GetScope(), ActorId: call.GetActorId(), SessionId: call.SessionId, AcceptedOperationGrantId: call.AcceptedOperationGrantId,
 		AudienceOwner: api.OwnerEnum_OWNER_ENUM_GATEWAY, Action: api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_READWALLETACTION,
