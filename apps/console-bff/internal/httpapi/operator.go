@@ -31,9 +31,6 @@ type OperatorReader interface {
 	OperatorReconciliation(context.Context, string, int, int) ([]byte, error)
 	OperatorWorkspaceLaunchRecovery(context.Context, string, string) ([]byte, error)
 	OperatorWalletAdjustment(context.Context, string, string) ([]byte, error)
-	OperatorApplicationDeployment(context.Context, string, string) ([]byte, error)
-	OperatorRegistryRepositories(context.Context, string, string) ([]byte, error)
-	OperatorRegistryTags(context.Context, string, string, string) ([]byte, error)
 }
 
 const (
@@ -60,9 +57,6 @@ func (s *Server) registerOperatorRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v2/operator/reconciliation", s.operatorReadHandler("Reconciliation", "control-plane"))
 	mux.HandleFunc("GET /api/v2/operator/workspace-launches/{operationId}/recovery", s.operatorReadHandler("WorkspaceLaunchRecovery", ""))
 	mux.HandleFunc("GET /api/v2/operator/wallet-adjustments/{operationId}", s.operatorReadHandler("WalletAdjustment", ""))
-	mux.HandleFunc("GET /api/v2/operator/application-deployments/{operationId}", s.operatorReadHandler("ApplicationDeployment", ""))
-	mux.HandleFunc("GET /api/v2/operator/registry/repositories", s.operatorReadHandler("RegistryRepositories", ""))
-	mux.HandleFunc("GET /api/v2/operator/registry/tags/{namespace}/{repository}", s.operatorReadHandler("RegistryTags", ""))
 }
 
 // operatorReadHandler resolves the live CloudIdentity session, requires an
@@ -90,18 +84,6 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 			if page, pageSize, err = operatorPage(r); err != nil {
 				writePublisherError(w, r, 400, "invalid_pagination", "one page and pageSize are required")
 				return
-			}
-		case "RegistryRepositories":
-			query, parseErr := url.ParseQuery(r.URL.RawQuery)
-			if parseErr != nil || r.ContentLength != 0 {
-				writePublisherError(w, r, 400, "invalid_operator_read", "invalid registry selector")
-				return
-			}
-			for key, values := range query {
-				if key != "namespace" || len(values) != 1 {
-					writePublisherError(w, r, 400, "invalid_operator_read", "invalid registry selector")
-					return
-				}
 			}
 		default:
 			if r.URL.RawQuery != "" || r.ContentLength != 0 {
@@ -179,12 +161,6 @@ func (s *Server) operatorRead(ctx context.Context, kind, session, workspaceID st
 		return s.operator.OperatorWorkspaceLaunchRecovery(ctx, session, r.PathValue("operationId"))
 	case "WalletAdjustment":
 		return s.operator.OperatorWalletAdjustment(ctx, session, r.PathValue("operationId"))
-	case "ApplicationDeployment":
-		return s.operator.OperatorApplicationDeployment(ctx, session, r.PathValue("operationId"))
-	case "RegistryRepositories":
-		return s.operator.OperatorRegistryRepositories(ctx, session, r.URL.Query().Get("namespace"))
-	case "RegistryTags":
-		return s.operator.OperatorRegistryTags(ctx, session, r.PathValue("namespace"), r.PathValue("repository"))
 	default:
 		return nil, status.Error(codes.Internal, "unknown operator read")
 	}

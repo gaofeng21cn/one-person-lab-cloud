@@ -136,9 +136,6 @@ func TestCloudOperatorSupplementalReadsKeepOwnerAndCookieBoundaries(t *testing.T
 		{"reconciliation", http.StatusOK},
 		{"workspace-launches/unknown/recovery", http.StatusNotFound},
 		{"wallet-adjustments/unknown", http.StatusNotFound},
-		{"application-deployments/unknown", http.StatusNotFound},
-		{"registry/repositories", http.StatusServiceUnavailable},
-		{"registry/tags/namespace/repository", http.StatusServiceUnavailable},
 	} {
 		path := "/internal/cloud/operator/" + tc.path
 		response := f.request(t, http.MethodGet, path, operator, "")

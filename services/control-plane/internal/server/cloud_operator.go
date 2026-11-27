@@ -34,7 +34,6 @@ func (app *controlPlaneServer) registerCloudOperatorRoutes(mux *http.ServeMux, s
 		{"/internal/cloud/operator/reconciliation", pagination, app.writeOperatorReconciliation},
 		{"/internal/cloud/operator/workspace-launches/{operationId}/recovery", nil, func(w http.ResponseWriter, r *http.Request) { app.writeOperatorWorkspaceLaunchRecovery(w, r, service) }},
 		{"/internal/cloud/operator/wallet-adjustments/{operationId}", nil, app.getWalletAdjustment},
-		{"/internal/cloud/operator/application-deployments/{operationId}", nil, app.writeOperatorApplicationDeployment},
 		{"/internal/cloud/operator/overview", nil, func(w http.ResponseWriter, r *http.Request) {
 			app.writeOperatorOverview(w, r, service)
 		}},

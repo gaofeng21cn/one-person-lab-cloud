@@ -39,11 +39,10 @@ export const sliceOrder = ["S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10"
 export type Slice = (typeof sliceOrder)[number];
 
 /**
- * The slice this script is delivered in. The retirement slices that follow
- * raise it to their own id; that is the only change a slice needs to open its
- * assertion.
+ * The slice the retirement has reached. Every slice raises it to its own id;
+ * that is the only change a slice needs to open its assertion.
  */
-export const currentSlice: Slice = "S2";
+export const currentSlice: Slice = "S3";
 
 /**
  * The declared stage table: the assertion ids each slice turns on. It is the
