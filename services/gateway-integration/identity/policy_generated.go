@@ -66,6 +66,7 @@ var actions = map[api.AuthorizationActionEnum]actionPolicy{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVEALGATEWAYKEY:                       {api.OwnerEnum_OWNER_ENUM_GATEWAY, []string{"member"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVOKEGATEWAYKEY:                       {api.OwnerEnum_OWNER_ENUM_GATEWAY, []string{"member"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRECHARGERECORDS:                    {api.OwnerEnum_OWNER_ENUM_GATEWAY, []string{"platform_admin"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ADJUSTTENANTWALLET:                     {api.OwnerEnum_OWNER_ENUM_GATEWAY, []string{"platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTTENANTS:                            {api.OwnerEnum_OWNER_ENUM_TENANT, []string{"platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATETENANT:                           {api.OwnerEnum_OWNER_ENUM_TENANT, []string{"platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETADMINTENANT:                         {api.OwnerEnum_OWNER_ENUM_TENANT, []string{"platform_admin"}},

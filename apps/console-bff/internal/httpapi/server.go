@@ -154,6 +154,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerGatewayRoutes(mux, s.gateway)
 	s.registerFinancialReceiptRoutes(mux)
 	s.registerWalletBindingRoute(mux)
+	s.registerWalletAdjustmentRoutes(mux, s.gateway)
 	s.registerWorkspaceRoutes(mux, s.workspace)
 	if reader, ok := s.reader.(ServeDeliveryReader); ok {
 		RegisterServeDeliveryRoutes(mux, reader, s.identity)

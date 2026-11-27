@@ -1951,6 +1951,21 @@ message ListRechargeRecordsRpcRequest {
  optional string query_tenant_id = 4;
 }
 
+// WalletAdjustmentRequest is one operator command against one Tenant's wallet.
+// The amount is a positive amount of USD micros; the sign is the kind's own.
+message WalletAdjustmentRequest {
+ WalletAdjustmentRequestKindEnum kind = 1;
+ int64 amount_usd_micros = 2;
+ string reason = 3;
+ optional string original_charge_operation_id = 4;
+}
+
+message AdjustTenantWalletRpcRequest {
+ CallContext context = 1;
+ string tenant_id = 2;
+ WalletAdjustmentRequest body = 3;
+}
+
 message ListTenantsRpcRequest {
  CallContext context = 1;
  optional string query_cursor = 2;
@@ -2679,6 +2694,7 @@ service GatewayProductService {
  rpc RevealGatewayKey(RevealGatewayKeyRpcRequest) returns (GatewayKeySecret);
  rpc RevokeGatewayKey(RevokeGatewayKeyRpcRequest) returns (Operation);
  rpc ListRechargeRecords(ListRechargeRecordsRpcRequest) returns (WalletOperationPage);
+ rpc AdjustTenantWallet(AdjustTenantWalletRpcRequest) returns (Operation);
  rpc ListModels(ListModelsRpcRequest) returns (ModelPage);
 }
 
@@ -3525,6 +3541,7 @@ enum OperationKindEnum {
  OPERATION_KIND_ENUM_CANCEL_PLAN_CHANGE = 32;
  OPERATION_KIND_ENUM_COMPENSATE_PLAN_CHANGE = 33;
  OPERATION_KIND_ENUM_REFUND_SUPPLEMENT_ON_DELETE = 34;
+OPERATION_KIND_ENUM_WALLET_ADJUSTMENT = 35;
 }
 
 enum OperationStageEnum {
@@ -3804,6 +3821,7 @@ AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES = 153;
  AUTHORIZATION_ACTION_ENUM_LISTOPERATORSOFTWAREPACKAGES = 183;
  AUTHORIZATION_ACTION_ENUM_LISTSOFTWAREENTITLEMENTS = 184;
  AUTHORIZATION_ACTION_ENUM_DOWNLOADSOFTWAREPACKAGE = 185;
+ AUTHORIZATION_ACTION_ENUM_ADJUSTTENANTWALLET = 186;
 }
 
 enum ServiceIdentityEnum {
@@ -4211,11 +4229,24 @@ enum SubscriptionRenewalModeEnum {
  SUBSCRIPTION_RENEWAL_MODE_ENUM_AUTOMATIC = 2;
 }
 
+// WalletAdjustmentRequestKindEnum is the vocabulary of an operator-initiated
+// change to one Tenant's spendable balance. A recharge credits the customer, a
+// debit collects from the customer, and a business refund credits back a
+// confirmed original charge the command names.
+enum WalletAdjustmentRequestKindEnum {
+ WALLET_ADJUSTMENT_REQUEST_KIND_ENUM_UNSPECIFIED = 0;
+ WALLET_ADJUSTMENT_REQUEST_KIND_ENUM_RECHARGE = 1;
+ WALLET_ADJUSTMENT_REQUEST_KIND_ENUM_DEBIT = 2;
+ WALLET_ADJUSTMENT_REQUEST_KIND_ENUM_BUSINESS_REFUND = 3;
+}
+
 enum WalletOperationKindEnum {
  WALLET_OPERATION_KIND_ENUM_UNSPECIFIED = 0;
  WALLET_OPERATION_KIND_ENUM_CHARGE = 1;
  WALLET_OPERATION_KIND_ENUM_REFUND = 2;
  WALLET_OPERATION_KIND_ENUM_RECHARGE = 3;
+ WALLET_OPERATION_KIND_ENUM_DEBIT = 4;
+ WALLET_OPERATION_KIND_ENUM_BUSINESS_REFUND = 5;
 }
 
 enum WalletOperationStatusEnum {

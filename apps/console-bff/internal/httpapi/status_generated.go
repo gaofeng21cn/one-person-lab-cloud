@@ -82,6 +82,7 @@ var successStatus = map[api.AuthorizationActionEnum]int{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVEALGATEWAYKEY:                       200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVOKEGATEWAYKEY:                       202,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRECHARGERECORDS:                    200,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ADJUSTTENANTWALLET:                     202,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTTENANTS:                            200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATETENANT:                           202,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETADMINTENANT:                         200,
