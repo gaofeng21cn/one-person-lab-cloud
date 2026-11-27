@@ -39,6 +39,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -80,10 +81,14 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
-	if err := checkTargetsMatchTree(targets, *targetPattern); err != nil {
+	packages, err := analysisPackages(*targetPattern)
+	if err != nil {
 		fail(err)
 	}
-	raw, err := runOfficialDeadcode(targets, *targetPattern)
+	if err := checkTargetsMatchTree(targets, packages); err != nil {
+		fail(err)
+	}
+	raw, err := runOfficialDeadcode(targets, packages)
 	if err != nil {
 		fail(err)
 	}
@@ -172,11 +177,16 @@ func readTargets(path string) ([]string, error) {
 // checkTargetsMatchTree fails when the declared list no longer equals the set
 // of covered packages the tree actually contains. The declared list is the
 // boundary; without this check a package could leave the boundary unnoticed.
-func checkTargetsMatchTree(declared []string, pattern string) error {
-	derived, err := deriveTargets(pattern)
-	if err != nil {
-		return err
+// checkTargetsMatchTree compares the declared target list with the packages
+// the tree actually contains.
+func checkTargetsMatchTree(declared []string, packages []string) error {
+	derived := []string{}
+	for _, pkg := range packages {
+		if targetPackage(pkg) {
+			derived = append(derived, pkg)
+		}
 	}
+	sort.Strings(derived)
 	return compareTargets(declared, derived)
 }
 
@@ -217,40 +227,15 @@ func compareTargets(declared, derived []string) error {
 	return fmt.Errorf("%s", report.String())
 }
 
-// deriveTargets lists the packages the boundary covers from the tree itself.
-func deriveTargets(pattern string) ([]string, error) {
-	cmd := exec.Command("go", "list", "-f", "{{.ImportPath}}", pattern)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg != "" {
-			return nil, fmt.Errorf("go list failed: %w: %s", err, msg)
-		}
-		return nil, fmt.Errorf("go list failed: %w", err)
-	}
-	targets := []string{}
-	for _, line := range strings.Split(stdout.String(), "\n") {
-		importPath := strings.TrimSpace(line)
-		if importPath == "" {
-			continue
-		}
-		if targetPackage(importPath) {
-			targets = append(targets, importPath)
-		}
-	}
-	sort.Strings(targets)
-	return targets, nil
-}
-
-func runOfficialDeadcode(targets []string, pattern string) ([]byte, error) {
+func runOfficialDeadcode(targets []string, packages []string) ([]byte, error) {
 	quoted := make([]string, 0, len(targets))
 	for _, target := range targets {
 		quoted = append(quoted, regexp.QuoteMeta(target))
 	}
 	filter := "^(" + strings.Join(quoted, "|") + ")$"
-	cmd := exec.Command("go", "tool", "deadcode", "-json", "-test", "-filter="+filter, pattern)
+	args := []string{"tool", "deadcode", "-json", "-test", "-filter=" + filter}
+	args = append(args, packages...)
+	cmd := exec.Command("go", args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -262,6 +247,136 @@ func runOfficialDeadcode(targets []string, pattern string) ([]byte, error) {
 		return nil, fmt.Errorf("go tool deadcode failed: %w", err)
 	}
 	return stdout.Bytes(), nil
+}
+
+// analysisPackages returns the module's tracked packages, which are the
+// packages the analyzer loads.
+//
+// The list is the tracked packages rather than "./..." on purpose. The
+// analyzer's roots are the main packages and, with -test, the test binary of
+// every package it loads — so the packages that are loaded decide what the
+// boundary means, and every tracked package must be loaded for the boundary to
+// cover the repository. The repository keeps its ignored scratch directories
+// inside the tree, and a scratch program that does not compile would otherwise
+// be loaded and fail the whole check with a file that is not part of the
+// repository.
+func analysisPackages(pattern string) ([]string, error) {
+	root, err := repositoryRoot()
+	if err != nil {
+		return nil, err
+	}
+	tracked, err := trackedGoDirectories(root)
+	if err != nil {
+		return nil, err
+	}
+	listed, err := listModulePackages(pattern)
+	if err != nil {
+		return nil, err
+	}
+	packages := selectTrackedPackages(listed, root, tracked)
+	if len(packages) == 0 {
+		return nil, fmt.Errorf("no tracked package to analyse; the repository's packages are not tracked")
+	}
+	return packages, nil
+}
+
+// selectTrackedPackages keeps the packages the repository actually tracks. A
+// package in an untracked directory is a scratch program: it is not part of
+// the boundary, and it must not be loaded by the analyzer.
+func selectTrackedPackages(packages []listedPackage, root string, tracked map[string]bool) []string {
+	selected := []string{}
+	for _, pkg := range packages {
+		if pkg.ImportPath == "" || pkg.Name == "" || pkg.Dir == "" {
+			continue
+		}
+		rel, err := filepath.Rel(root, pkg.Dir)
+		if err != nil {
+			continue
+		}
+		if !tracked[filepath.ToSlash(rel)] {
+			continue
+		}
+		selected = append(selected, pkg.ImportPath)
+	}
+	sort.Strings(selected)
+	return selected
+}
+
+// listedPackage is one package of the module as the tool needs it.
+type listedPackage struct {
+	ImportPath string
+	Name       string
+	Dir        string
+}
+
+// listModulePackages lists the module's packages. A package that does not load
+// is reported rather than fatal: the boundary is decided by the tracked
+// packages, and an untracked package that does not compile is not one of them.
+func listModulePackages(pattern string) ([]listedPackage, error) {
+	cmd := exec.Command("go", "list", "-e", "-f", "{{.ImportPath}}\t{{.Name}}\t{{.Dir}}", pattern)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg != "" {
+			return nil, fmt.Errorf("go list failed: %w: %s", err, msg)
+		}
+		return nil, fmt.Errorf("go list failed: %w", err)
+	}
+	packages := []listedPackage{}
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		fields := strings.Split(strings.TrimRight(line, "\r"), "\t")
+		if len(fields) != 3 {
+			continue
+		}
+		importPath := strings.TrimSpace(fields[0])
+		if importPath == "" {
+			continue
+		}
+		packages = append(packages, listedPackage{
+			ImportPath: importPath,
+			Name:       strings.TrimSpace(fields[1]),
+			Dir:        strings.TrimSpace(fields[2]),
+		})
+	}
+	return packages, nil
+}
+
+// repositoryRoot returns the working tree's root directory.
+func repositoryRoot() (string, error) {
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("git rev-parse --show-toplevel failed: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	root := strings.TrimSpace(stdout.String())
+	if root == "" {
+		return "", fmt.Errorf("git rev-parse --show-toplevel returned no working tree")
+	}
+	return root, nil
+}
+
+// trackedGoDirectories returns the repository directories that hold at least
+// one tracked Go file, relative to the repository root.
+func trackedGoDirectories(root string) (map[string]bool, error) {
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command("git", "-C", root, "ls-files", "-z", "--", "*.go")
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("git ls-files failed: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	directories := map[string]bool{}
+	for _, file := range strings.Split(stdout.String(), "\x00") {
+		if file == "" {
+			continue
+		}
+		directories[filepath.ToSlash(filepath.Dir(file))] = true
+	}
+	return directories, nil
 }
 
 // parseProductionDeadcode keeps the unreachable production declarations of the

@@ -176,3 +176,27 @@ func TestCompareTargetsReportsACoveredPackageThatIsNotDeclared(t *testing.T) {
 		t.Fatalf("compareTargets must accept an equal list: %v", err)
 	}
 }
+
+func TestSelectTrackedPackagesKeepsOnlyTheRepositorysOwnPackages(t *testing.T) {
+	root := "/repo"
+	tracked := map[string]bool{
+		"services/gateway-integration/cmd/server": true,
+		"services/fabric/internal/fabric":         true,
+	}
+	packages := []listedPackage{
+		{ImportPath: "opl-cloud/services/fabric/internal/fabric", Name: "fabric", Dir: "/repo/services/fabric/internal/fabric"},
+		{ImportPath: "opl-cloud/services/gateway-integration/cmd/server", Name: "main", Dir: "/repo/services/gateway-integration/cmd/server"},
+		// A scratch program in an ignored directory is not part of the boundary.
+		{ImportPath: "opl-cloud/tmp/work", Name: "main", Dir: "/repo/tmp/work"},
+		// A package the tool could not load has no name and no directory.
+		{ImportPath: "", Name: "", Dir: ""},
+	}
+	want := []string{
+		"opl-cloud/services/fabric/internal/fabric",
+		"opl-cloud/services/gateway-integration/cmd/server",
+	}
+	got := selectTrackedPackages(packages, root, tracked)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("selectTrackedPackages() = %v, want %v", got, want)
+	}
+}
