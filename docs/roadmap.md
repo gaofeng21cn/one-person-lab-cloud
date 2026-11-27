@@ -85,6 +85,23 @@ hosts by installation contract and the Runtime does not yet publish those
 fields, closing direct cross-host navigation requires one named upstream fact
 rather than a guessed relative URL.
 
+### Private Software Package Entitlements & Controlled Delivery
+
+Deliver the Cloud-governed restricted Software Center package authorization flow
+defined in [software-package-entitlements.md](software-package-entitlements.md)
+after Framework v2 Wave 1 single-writer source storage lands:
+
+- `CloudIdentity` (`opl_tenant`): add `tenant.package_entitlements` with
+  operator grant/revoke commands, audit/idempotency records, and fail-closed
+  per-subject checks.
+- Console BFF & Operator UI: expose operator entitlement management and add
+  `GET /api/v2/software/entitlements` plus
+  `POST /api/v2/software/packages/{packageId}/download` (Stage 1 server-only
+  GHCR fetch with PVC `sha256` blob cache; Stage 2 private COS Presigned URLs).
+- Cross-repo alignment: wire `@opl/pack` Gateway-session source consumption in
+  `one-person-lab` and simplify `opl-studio` Software Center to use the active
+  OPL Gateway account by default while keeping public packages zero-login.
+
 ## Workspace Key And Customer Read Boundaries
 
 Complete migration of remaining transitional customer reads off legacy Control
