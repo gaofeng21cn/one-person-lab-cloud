@@ -12303,6 +12303,7 @@ components:
       - updatePersonalGatewayKey
       - revealPersonalGatewayKey
       - revokePersonalGatewayKey
+      - setWorkspacePurchaseEligibility
     ServiceIdentity:
       type: string
       enum:

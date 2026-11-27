@@ -248,6 +248,7 @@ const (
 	AuthorizationActionSetRuntimeVersionStatus               AuthorizationAction = "setRuntimeVersionStatus"
 	AuthorizationActionSetStoragePlanAvailability            AuthorizationAction = "setStoragePlanAvailability"
 	AuthorizationActionSetWebuiVersionStatus                 AuthorizationAction = "setWebuiVersionStatus"
+	AuthorizationActionSetWorkspacePurchaseEligibility       AuthorizationAction = "setWorkspacePurchaseEligibility"
 	AuthorizationActionSuspendTenant                         AuthorizationAction = "suspendTenant"
 	AuthorizationActionUpdateMemberRole                      AuthorizationAction = "updateMemberRole"
 	AuthorizationActionUpdateNamespace                       AuthorizationAction = "updateNamespace"
@@ -588,6 +589,8 @@ func (e AuthorizationAction) Valid() bool {
 	case AuthorizationActionSetStoragePlanAvailability:
 		return true
 	case AuthorizationActionSetWebuiVersionStatus:
+		return true
+	case AuthorizationActionSetWorkspacePurchaseEligibility:
 		return true
 	case AuthorizationActionSuspendTenant:
 		return true
