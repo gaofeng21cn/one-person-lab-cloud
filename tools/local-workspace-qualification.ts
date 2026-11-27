@@ -1456,6 +1456,31 @@ function validateLocalV2Replay(operation, operationId, workspaceId) {
   }
 }
 
+async function readLocalV2LedgerSnapshot(query, { tenantId, workspaceId, operationId }) {
+  const [tenant, workspace, operation] = [tenantId, workspaceId, operationId]
+    .map((id) => `'${id.replace(/'/g, "''")}'`);
+  // Keep only IDs and hashes in memory. Qualification artifacts need no
+  // receipt payloads or owner credentials.
+  const rows = JSON.parse(await query("opl_ledger", `
+    set statement_timeout = '5s';
+    select coalesce(json_agg(json_build_array(
+      r.id, encode(sha256(convert_to(to_jsonb(r)::text, 'UTF8')), 'hex'),
+      case when r.receipt_type = 'workspace.local_no_charge.v1' then
+        r.status = 'completed' and
+        coalesce(r.payload_json::jsonb->'owner'->>'evidenceReference' = ${operation}, false)
+        else null end
+    ) order by r.id), '[]'::json)
+    from public.evidence_receipts r
+    where r.organization_id = ${tenant} and r.workspace_id = ${workspace}`));
+  const receipts = new Map();
+  const noCharge = [];
+  for (const [id, digest, funding] of rows) {
+    receipts.set(id, digest);
+    if (funding !== null) noCharge.push(funding);
+  }
+  return { receipts, fundingConfirmed: noCharge.length === 1 && noCharge[0] === true };
+}
+
 function localV2LaunchReadbackBoundary(workspace, workspaceId, origin) {
   if (workspace?.id !== workspaceId) {
     return { ok: false, code: "local_v2_workspace_readback_invalid", detail: "the Workspace owner readback does not identify the accepted Workspace" };
@@ -2032,9 +2057,10 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
           kind: String(operation?.kind || ""), resourceId: String(operation?.resourceId || ""),
         },
         workspace: { ...readbacks.workspace },
-        receipts: Number(readbacks.ledger?.receipts || 0),
       };
       stage = "restart_continuity";
+      const ledgerIdentity = { tenantId: tenant.id, workspaceId, operationId };
+      const ledgerBefore = await readLocalV2LedgerSnapshot(query, ledgerIdentity);
       const restartStarted = Date.now();
       // This caller's compose wrapper takes the raw docker arguments and the
       // project prefix travels as its own argument list.
@@ -2055,9 +2081,12 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
         applicationAvailability: String(afterRestartWorkspace.payload?.applicationAvailability || ""),
         runtimeVersionId: String(afterRestartWorkspace.payload?.runtimeVersionId || ""),
       };
-      const afterRestartReceipts = typeof query === "function"
-        ? Number(await query("opl_ledger", `select count(*) from public.evidence_receipts where workspace_id=${workspaceSQL}`))
-        : beforeRestart.receipts;
+      const ledgerAfter = await readLocalV2LedgerSnapshot(query, ledgerIdentity);
+      const retainedReceipts = [...ledgerBefore.receipts].filter(([id, digest]) => ledgerAfter.receipts.get(id) === digest).length;
+      readbacks.ledger.restart = {
+        before: ledgerBefore.receipts.size, after: ledgerAfter.receipts.size, retained: retainedReceipts,
+        fundingBefore: ledgerBefore.fundingConfirmed, fundingAfter: ledgerAfter.fundingConfirmed,
+      };
       readbacks.restart = {
         performed: true,
         seconds: Math.round((Date.now() - restartStarted) / 1000),
@@ -2069,7 +2098,10 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
           afterRestartWorkspaceView.status === beforeRestart.workspace.status &&
           afterRestartWorkspaceView.runtimeVersionId === beforeRestart.workspace.runtimeVersionId,
         runtimeStable: afterRestartWorkspaceView.applicationAvailability === beforeRestart.workspace.applicationAvailability,
-        receiptStable: afterRestartReceipts === beforeRestart.receipts,
+        // Serve observations may reach Ledger after restart via its outbox.
+        // Every receipt already observed must still have its original bytes.
+        receiptStable: ledgerBefore.fundingConfirmed && ledgerAfter.fundingConfirmed &&
+          retainedReceipts === ledgerBefore.receipts.size,
         sessionReestablished: String(restartedAuth.cookie || "").includes("opl_console_session="),
       };
       auth = restartedAuth;
@@ -2078,7 +2110,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       record("restart_continuity", restartStable ? "confirmed" : "stopped", readbacks.restart);
       if (!restartStable) {
         throw namedQualificationError("local_v2_restart_continuity_lost",
-          "the installation answered different identities after its restart");
+          "the installation did not preserve its owner evidence across restart");
       }
       const launchBoundary = boundary;
       stage = "workspace_delete";
