@@ -55,7 +55,9 @@ for (const composePath of ["deploy/portable/compose.cloud.yaml", "deploy/portabl
       else selected[insecureHostsEnv] = value;
       const resolved = spawnSync("docker", ["compose", "--env-file", "/dev/null", "-f", composePath, "config", "--format", "json"], { encoding: "utf8", env: { ...clean, ...selected } });
       assert.equal(resolved.status, 0, resolved.stderr);
-      assert.equal(JSON.parse(resolved.stdout).services.build.environment[insecureHostsEnv], value ?? "");
+      const services = JSON.parse(resolved.stdout).services;
+      const buildEnvironment = (services["cloud-backend"] ?? services.build).environment;
+      assert.equal(buildEnvironment[insecureHostsEnv], value ?? "");
     }
   });
 }
