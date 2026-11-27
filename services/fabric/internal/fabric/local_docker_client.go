@@ -42,7 +42,7 @@ type localDockerClient interface {
 	ContainerLogs(ctx context.Context, containerID string, options mobyclient.ContainerLogsOptions) (io.ReadCloser, error)
 	CopyFromContainer(ctx context.Context, containerID, srcPath string) (io.ReadCloser, container.PathStat, error)
 	ContainerExec(ctx context.Context, containerID string, cmd []string, stdin []byte) ([]byte, error)
-	ImagePull(ctx context.Context, refStr string, options mobyclient.ImagePullOptions) (io.ReadCloser, error)
+	PullImage(ctx context.Context, refStr string, platform ocispec.Platform) error
 	ImageInspect(ctx context.Context, imageID string, platform *ocispec.Platform) (image.InspectResponse, error)
 	ImageRemove(ctx context.Context, imageID string, options mobyclient.ImageRemoveOptions) ([]image.DeleteResponse, error)
 	VolumeInspect(ctx context.Context, volumeID string) (volume.Volume, error)
@@ -310,12 +310,16 @@ func (c *mobyDockerClient) ContainerExec(ctx context.Context, containerID string
 	return stdout.Bytes(), nil
 }
 
-func (c *mobyDockerClient) ImagePull(ctx context.Context, refStr string, options mobyclient.ImagePullOptions) (io.ReadCloser, error) {
+func (c *mobyDockerClient) PullImage(ctx context.Context, refStr string, platform ocispec.Platform) error {
 	api, err := c.client()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return api.ImagePull(ctx, refStr, options)
+	pull, err := api.ImagePull(ctx, refStr, mobyclient.ImagePullOptions{Platforms: []ocispec.Platform{platform}})
+	if err != nil {
+		return err
+	}
+	return pull.Wait(ctx)
 }
 
 func (c *mobyDockerClient) ImageInspect(ctx context.Context, imageID string, platform *ocispec.Platform) (image.InspectResponse, error) {

@@ -1456,6 +1456,31 @@ function validateLocalV2Replay(operation, operationId, workspaceId) {
   }
 }
 
+async function readLocalV2LedgerSnapshot(query, { tenantId, workspaceId, operationId }) {
+  const [tenant, workspace, operation] = [tenantId, workspaceId, operationId]
+    .map((id) => `'${id.replace(/'/g, "''")}'`);
+  // Keep only IDs and hashes in memory. Qualification artifacts need no
+  // receipt payloads or owner credentials.
+  const rows = JSON.parse(await query("opl_ledger", `
+    set statement_timeout = '5s';
+    select coalesce(json_agg(json_build_array(
+      r.id, encode(sha256(convert_to(to_jsonb(r)::text, 'UTF8')), 'hex'),
+      case when r.receipt_type = 'workspace.local_no_charge.v1' then
+        r.status = 'completed' and
+        coalesce(r.payload_json::jsonb->'owner'->>'evidenceReference' = ${operation}, false)
+        else null end
+    ) order by r.id), '[]'::json)
+    from public.evidence_receipts r
+    where r.organization_id = ${tenant} and r.workspace_id = ${workspace}`));
+  const receipts = new Map();
+  const noCharge = [];
+  for (const [id, digest, funding] of rows) {
+    receipts.set(id, digest);
+    if (funding !== null) noCharge.push(funding);
+  }
+  return { receipts, fundingConfirmed: noCharge.length === 1 && noCharge[0] === true };
+}
+
 function localV2LaunchReadbackBoundary(workspace, workspaceId, origin) {
   if (workspace?.id !== workspaceId) {
     return { ok: false, code: "local_v2_workspace_readback_invalid", detail: "the Workspace owner readback does not identify the accepted Workspace" };
@@ -1464,6 +1489,60 @@ function localV2LaunchReadbackBoundary(workspace, workspaceId, origin) {
     return { ok: false, code: "local_v2_application_readiness_unconfirmed", detail: "the Workspace resource and Serve application readbacks do not confirm readiness" };
   }
   return localV2ApplicationEntryBoundary(workspace.accessUrl, origin);
+}
+
+// Collect the failed Local-Docker purchase's persisted owner states before it
+// is cleaned up. Keep commands, result payloads, logs and addresses out of the
+// artifact. An unavailable read (null) differs from a successful empty read.
+async function readCustomerRuntimeFailure(query, tenantId, readback) {
+  const { operationId, workspaceId } = readback.customerOrder || {};
+  const capabilityVersionId = readback.build?.resultCapabilityVersionId;
+  if (![tenantId, operationId, workspaceId, capabilityVersionId].every((id) => typeof id === "string" && /^[a-z0-9_]+$/.test(id))) {
+    return { workspaceSteps: null, serveDeployments: null };
+  }
+  const code = /^(?:[A-Z][A-Z0-9_]{1,127}|(?:local_docker_|workspace_application_)[a-z0-9_]{1,106})$/;
+  const observation = /^(confirmed|rejected|unknown)$/;
+  async function readOwner(database, sql, patterns) {
+    try {
+      const rows = JSON.parse(await query(database, `set statement_timeout = '5s'; ${sql}`));
+      return rows.map((row) => Object.fromEntries(Object.entries(patterns).map(([field, pattern]) => {
+        const value = row?.[field];
+        return [field, typeof value === "string" && pattern.test(value) ? value : null];
+      })));
+    } catch {
+      return null;
+    }
+  }
+  const workspaceSteps = await readOwner("opl_workspace", `
+    select coalesce(json_agg(json_build_object(
+      'step', s.step_key, 'observation', s.observation_result, 'errorCode', s.error_code
+    ) order by s.sequence), '[]'::json)
+    from workspace.saga_steps s join workspace.operations o on o.id = s.operation_id
+    where o.id = '${operationId}' and o.resource_id = '${workspaceId}' and o.tenant_id = '${tenantId}'
+      and o.kind = 'create_workspace' and s.target_owner = 'serve'
+      and s.step_key in ('reserve_runtime', 'deploy_runtime', 'read_runtime')`,
+    { step: /^(reserve_runtime|deploy_runtime|read_runtime)$/, observation, errorCode: code });
+  const serveDeployments = await readOwner("opl_serve", `
+    select coalesce(json_agg(json_build_object(
+      'deploymentStatus', d.status, 'deploymentErrorCode', d.error_code, 'runtimeStatus', i.status,
+      'runtimeErrorCode', i.error_code, 'startObservation', a.observation_result, 'startErrorCode', a.error_code
+    ) order by d.created_at, d.id, a.id), '[]'::json)
+    from serve.agent_deployments d
+    join serve.operations o on o.id = d.operation_id and o.resource_id = d.id
+    left join serve.agent_runtime_instances i
+      on i.id = d.runtime_instance_id and i.deployment_id = d.id and i.workspace_id = d.workspace_id
+    left join serve.agent_runtime_actions a
+      on a.runtime_instance_id = i.id and a.expected_deployment_id = d.id and a.action = 'start'
+    where d.workspace_id = '${workspaceId}' and d.capability_version_id = '${capabilityVersionId}'
+      and o.tenant_id = '${tenantId}' and o.kind = 'runtime_deploy'`, {
+    deploymentStatus: /^(queued|deploying|verifying|active|superseded|failed|rolling_back|rolled_back|needs_attention)$/,
+    deploymentErrorCode: code,
+    runtimeStatus: /^(pending|starting|ready|stopped|failed|terminating|terminated)$/,
+    runtimeErrorCode: code,
+    startObservation: observation,
+    startErrorCode: code
+  });
+  return { workspaceSteps, serveDeployments };
 }
 
 // The Local v2 qualification: one declared installation, the owner processes it
@@ -1491,6 +1570,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
   let composeEnvironment = process.env;
   const compose = dependencies.compose || ((args, settings = {}) => runProcess("docker", args, { cwd: root, ...settings, env: composeEnvironment }));
   const ownerQuery = dependencies.ownerQuery || null;
+  const putCustomerPart = dependencies.putCustomerPart || customerUploadRequest;
   const wait = dependencies.wait || ((milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds)));
   const startedAt = new Date().toISOString();
   const stages = [];
@@ -1763,7 +1843,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
           pollIntervalMs, pollAttempts,
           readback: customerReadback,
           fetchEntry: (url, headers) => customerEntryRequest(url, headers, caFile),
-          putPart: (url, init) => customerUploadRequest(url, init, caFile),
+          putPart: (url, init) => putCustomerPart(url, init, caFile),
         });
         record("customer_package", customerReadback.degradationReason ? "degraded" : "confirmed", {
           evidenceLevel: String(customerReadback.evidenceLevel || ""),
@@ -1781,6 +1861,9 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       } catch (error) {
         customerBoundary = { code: String(error?.code || "local_v2_customer_chain_failed"), detail: redactedError(error), stage: "customer_package" };
         record("customer_package", "stopped", { code: customerBoundary.code, detail: customerBoundary.detail });
+        if (customerBoundary.code === "local_v2_customer_workspace_operation_failed" && customerReadback.customerOperation?.stage === "runtime") {
+          customerReadback.runtimeFailure = await readCustomerRuntimeFailure(query, tenant.id, customerReadback);
+        }
         // What the chain bought before it stopped leaves the installation with
         // it, so the owner is asked to delete it before the run ends.
         const boughtWorkspaceId = String(customerReadback.customerOrder?.workspaceId || "");
@@ -1974,9 +2057,10 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
           kind: String(operation?.kind || ""), resourceId: String(operation?.resourceId || ""),
         },
         workspace: { ...readbacks.workspace },
-        receipts: Number(readbacks.ledger?.receipts || 0),
       };
       stage = "restart_continuity";
+      const ledgerIdentity = { tenantId: tenant.id, workspaceId, operationId };
+      const ledgerBefore = await readLocalV2LedgerSnapshot(query, ledgerIdentity);
       const restartStarted = Date.now();
       // This caller's compose wrapper takes the raw docker arguments and the
       // project prefix travels as its own argument list.
@@ -1997,9 +2081,12 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
         applicationAvailability: String(afterRestartWorkspace.payload?.applicationAvailability || ""),
         runtimeVersionId: String(afterRestartWorkspace.payload?.runtimeVersionId || ""),
       };
-      const afterRestartReceipts = typeof query === "function"
-        ? Number(await query("opl_ledger", `select count(*) from public.evidence_receipts where workspace_id=${workspaceSQL}`))
-        : beforeRestart.receipts;
+      const ledgerAfter = await readLocalV2LedgerSnapshot(query, ledgerIdentity);
+      const retainedReceipts = [...ledgerBefore.receipts].filter(([id, digest]) => ledgerAfter.receipts.get(id) === digest).length;
+      readbacks.ledger.restart = {
+        before: ledgerBefore.receipts.size, after: ledgerAfter.receipts.size, retained: retainedReceipts,
+        fundingBefore: ledgerBefore.fundingConfirmed, fundingAfter: ledgerAfter.fundingConfirmed,
+      };
       readbacks.restart = {
         performed: true,
         seconds: Math.round((Date.now() - restartStarted) / 1000),
@@ -2011,7 +2098,10 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
           afterRestartWorkspaceView.status === beforeRestart.workspace.status &&
           afterRestartWorkspaceView.runtimeVersionId === beforeRestart.workspace.runtimeVersionId,
         runtimeStable: afterRestartWorkspaceView.applicationAvailability === beforeRestart.workspace.applicationAvailability,
-        receiptStable: afterRestartReceipts === beforeRestart.receipts,
+        // Serve observations may reach Ledger after restart via its outbox.
+        // Every receipt already observed must still have its original bytes.
+        receiptStable: ledgerBefore.fundingConfirmed && ledgerAfter.fundingConfirmed &&
+          retainedReceipts === ledgerBefore.receipts.size,
         sessionReestablished: String(restartedAuth.cookie || "").includes("opl_console_session="),
       };
       auth = restartedAuth;
@@ -2020,7 +2110,7 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
       record("restart_continuity", restartStable ? "confirmed" : "stopped", readbacks.restart);
       if (!restartStable) {
         throw namedQualificationError("local_v2_restart_continuity_lost",
-          "the installation answered different identities after its restart");
+          "the installation did not preserve its owner evidence across restart");
       }
       const launchBoundary = boundary;
       stage = "workspace_delete";
@@ -2150,6 +2240,9 @@ export async function runLocalV2Qualification(options, dependencies = {}) {
     }
   }
   await writeJSONAtomic(options.receiptPath, result);
+  if (readbacks.customerPackage?.runtimeFailure) {
+    await writeJSONAtomic(`${options.receiptPath}.diagnostic.json`, result);
+  }
   return result;
 }
 

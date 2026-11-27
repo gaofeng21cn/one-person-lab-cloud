@@ -10,6 +10,28 @@ spec.loader.exec_module(daily)
 
 
 class DailyCloudRelease(unittest.TestCase):
+    def test_blocked_continuation_keeps_only_verified_frozen_identity(self):
+        tag = 'v0.1.21'
+        source = 'a' * 40
+        outputs = [source, '{"version":"0.1.21"}', '', '']
+        with patch.dict(daily.os.environ, {'RELEASE_TAG': tag}), \
+                patch.object(daily, 'command', side_effect=outputs), \
+                patch.object(daily, 'ensure_run', side_effect=RuntimeError('candidate failed')):
+            receipt = daily.continuation_receipt(ROOT)
+        self.assertEqual(receipt, {'schema_version': 'opl.cloud-daily-release.v1',
+                                  'instance_deployment_dispatched': False, 'status': 'blocked',
+                                  'reason': 'candidate failed', 'tag': tag, 'product_sha': source})
+
+        outputs = [source, '{"version":"0.1.21"}', '', RuntimeError('tag source is not on main')]
+        with patch.dict(daily.os.environ, {'RELEASE_TAG': tag}), \
+                patch.object(daily, 'command', side_effect=outputs), \
+                patch.object(daily, 'ensure_run') as ensure_run:
+            receipt = daily.continuation_receipt(ROOT)
+        ensure_run.assert_not_called()
+        self.assertEqual(receipt, {'schema_version': 'opl.cloud-daily-release.v1',
+                                  'instance_deployment_dispatched': False, 'status': 'blocked',
+                                  'reason': 'tag source is not on main'})
+
     def test_unknown_dispatch_reconciles_the_same_run_without_another_post(self):
         row = {'id': 123, 'head_branch': 'main', 'display_title': 'fixture frozen source',
                'status': 'completed', 'conclusion': 'success', 'html_url': 'https://example.invalid/123'}
