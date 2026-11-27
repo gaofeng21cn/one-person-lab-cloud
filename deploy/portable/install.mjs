@@ -308,12 +308,12 @@ function ownerReadback(bundle, env, sourceSha) {
   // owners: they carry a transport identity, not an owner identity, so they
   // are probed over the HTTP surface each one serves.
   const probes = [
-    ['tenant', 'tenant', '127.0.0.1:8187'], ['resource-catalog', 'resource_catalog', '127.0.0.1:8186'],
-    ['ledger', 'ledger', '127.0.0.1:8189'], ['capability', 'capability', '127.0.0.1:8181'],
-    ['build', 'build', '127.0.0.1:8182'], ['runtime-control', 'runtime_control', '127.0.0.1:8183'],
-    ['workspace', 'workspace', '127.0.0.1:8184'], ['serve', 'serve', '127.0.0.1:8185'],
-    ['fabric', 'fabric', '127.0.0.1:8188'], ['console-bff', 'console_bff', 'http://127.0.0.1:8190'],
-    ['control-plane', 'control_plane', 'http://127.0.0.1:8787']
+    ['cloud-backend', 'tenant', '127.0.0.1:8187'], ['cloud-backend', 'resource_catalog', '127.0.0.1:8186'],
+    ['cloud-backend', 'ledger', '127.0.0.1:8081'], ['cloud-backend', 'capability', '127.0.0.1:8181'],
+    ['cloud-backend', 'build', '127.0.0.1:8182'], ['cloud-backend', 'runtime_control', '127.0.0.1:8183'],
+    ['cloud-backend', 'workspace', '127.0.0.1:8184'], ['cloud-backend', 'serve', '127.0.0.1:8185'],
+    ['cloud-backend', 'fabric', '127.0.0.1:8188'], ['cloud-backend', 'console_bff', 'http://127.0.0.1:8190'],
+    ['cloud-backend', 'control_plane', 'http://127.0.0.1:8787']
   ];
   for (const [service, owner, address] of probes) {
     const args = ['-f', 'compose.cloud.yaml', 'exec', '-T', service, '/usr/local/bin/opl-owner-probe', '--owner', owner, '--addr', address, '--timeout', '10s'];

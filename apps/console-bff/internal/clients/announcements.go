@@ -84,6 +84,15 @@ func (c *controlPlaneReader) requestRaw(ctx context.Context, session, method, pa
 	case http.StatusForbidden:
 		return nil, status.Error(codes.PermissionDenied, "original owner access denied")
 	case http.StatusNotFound:
+		rawErr, readErr := io.ReadAll(io.LimitReader(response.Body, 4096))
+		if readErr == nil {
+			var body struct {
+				Error string `json:"error"`
+			}
+			if json.Unmarshal(rawErr, &body) == nil && body.Error == "legacy_billing_account_not_found" {
+				return nil, status.Error(codes.NotFound, "legacy_billing_account_not_found")
+			}
+		}
 		return nil, status.Error(codes.NotFound, "original owner record not found")
 	case http.StatusBadRequest:
 		return nil, status.Error(codes.InvalidArgument, "invalid original owner request")

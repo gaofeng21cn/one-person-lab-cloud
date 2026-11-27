@@ -162,7 +162,7 @@ func fabricServerAuthFromEnv(getenv func(string) string) (fabrichttp.ServerAuthC
 }
 
 func operationStoreDatabaseURL(getenv func(string) string) (string, error) {
-	databaseURL := getenv("DATABASE_URL")
+	databaseURL := strings.TrimSpace(getenv("DATABASE_URL"))
 	if getenv("NODE_ENV") == "production" && databaseURL == "" {
 		return "", errors.New("DATABASE_URL is required for production Fabric persistence")
 	}

@@ -37,15 +37,15 @@ preserving PostgreSQL volumes and existing secrets.
 
 ## Shipped Runtime Topology (`compose.cloud.yaml`)
 
-- PostgreSQL 16 (isolated database and role pair per Cloud owner).
-- The 11 Cloud owner processes (`gateway-integration`, `capability`, `build`,
-  `runtime-control`, `resource-catalog`, `workspace`, `serve`, `control-plane`,
-  `fabric`, `ledger`, `console-bff`) plus same-origin proxy (`console-ui`).
+- **3-Container Portable Host Stack**:
+  1. `postgres`: PostgreSQL 16 (isolated database and role pair per Cloud owner).
+  2. `cloud-backend`: single composed container running `/usr/local/bin/opl-cloud-composition` against the image-baked `/app/contracts/opl-cloud-owner-topology.json`, collaborating all 11 Cloud owner processes (`gateway-integration`, `capability`, `build`, `runtime-control`, `resource-catalog`, `workspace`, `serve`, `control-plane`, `fabric`, `ledger`, `console-bff`) over loopback with per-owner `OPL_GRPC_CERT_DIR` mTLS credentials and `opl_control_plane` / per-owner PostgreSQL roles.
+  3. `cloud-local-v2`: same-origin TLS reverse proxy routing `/api/v2/` and Console SPA (`/`) to `console-bff`, `/objects/` to `capability`, `/w/` to `serve`, and `/api/` to `control-plane`.
 - Local Docker is the single-host installation provider (Linux host with ext4/XFS
   project quotas required for full Workspace local execution). Production Tencent/TKE
   deployments are owned by `opl-instance-medopl`.
 
-## Manual Compose Install (Bundles Without `install.sh`)
+## Legacy Manual Compose Install (Deprecated Compatibility)
 
 ```bash
 sha256sum --check --strict SHA256SUMS   # or: shasum -a 256 -c SHA256SUMS

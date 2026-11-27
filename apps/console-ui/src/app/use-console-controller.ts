@@ -81,9 +81,24 @@ export function unavailableSource<T>(source: string): SourceEnvelope<T> {
 }
 
 export function friendlyError(error: unknown) {
+  const payload = error && typeof error === "object" && "payload" in error
+    ? (error as { payload?: unknown }).payload
+    : null;
+  const payloadObj = payload && typeof payload === "object" ? payload as { code?: unknown; error?: unknown } : null;
+  const payloadCode = typeof payloadObj?.code === "string"
+    ? payloadObj.code.trim()
+    : typeof payloadObj?.error === "string"
+      ? payloadObj.error.trim()
+      : "";
   const raw = String(error && typeof error === "object" && "message" in error ? error.message : error || "request_failed");
   const messages: Record<string, string> = {
     not_authenticated: "登录已失效，请重新登录",
+    invalid_credentials: "邮箱或密码错误，请检查后重试",
+    UNAUTHENTICATED: "邮箱或密码错误，请检查后重试",
+    RATE_LIMITED: "登录尝试过于频繁，请稍后再试",
+    DEPENDENCY_UNAVAILABLE: "身份服务暂不可用，请稍后重试",
+    CSRF_INVALID: "登录会话已过期，请刷新页面后重试",
+    FORBIDDEN: "当前账号暂无此操作权限",
     account_scope_forbidden: "没有权限访问该资源",
     workspace_purchase_not_enabled: "该账户尚未获得 Workspace 新购资格",
     insufficient_balance: "可用余额不足",
@@ -98,7 +113,10 @@ export function friendlyError(error: unknown) {
     workspace_reactivation_required: "Workspace 已到期，需先完成重新激活",
     upstream_unavailable: "服务暂不可用，请稍后重试"
   };
-  return messages[raw] || (raw.includes("failed") || raw.includes("_") ? "请求失败，请重试" : raw);
+  if (payloadCode && messages[payloadCode]) return messages[payloadCode];
+  if (messages[raw]) return messages[raw];
+  if (/invalid (credentials|email|username|password)/i.test(raw)) return "邮箱或密码错误，请检查后重试";
+  return raw.includes("failed") || raw.includes("_") ? "请求失败，请重试" : raw;
 }
 
 function assertNever(value: never): never {

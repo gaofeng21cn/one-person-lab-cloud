@@ -148,6 +148,9 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
 
   const topologyPath = join(repoRoot, "deploy/portable/opl-cloud-owner-topology.json");
   const contract = JSON.parse(await readFile(topologyPath, "utf8")) as Contract;
+  const dockerfileSource = await readFile(join(repoRoot, "Dockerfile"), "utf8");
+  const nodeFixtureImage = dockerfileSource.match(/^FROM\s+(?:--platform=\S+\s+)?(node:[^\s]+@sha256:[0-9a-f]{64})\s+AS\s+build$/m)?.[1];
+  assert.ok(nodeFixtureImage, "Dockerfile must pin the multi-arch Node build image");
   const revision = command(["git", "rev-parse", "HEAD"]).stdout.trim();
 
   // The per-owner name the composition reads one owner's own secret by.
@@ -396,80 +399,27 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
       services: Record<string, RenderedService>;
     };
     renderedServices = rendered.services;
-    const serviceNameByBinary = new Map<string, string>();
-    for (const [name, service] of Object.entries(renderedServices)) {
-      const command = Array.isArray(service.command) ? service.command[0] : service.command;
-      if (command?.startsWith("/usr/local/bin/")) serviceNameByBinary.set(command, name);
-    }
-    ownerEnvironment.clear();
+    const composed = renderedServices["cloud-backend"];
+    assert.ok(composed?.environment, "the published installation must declare cloud-backend");
     for (const process of contract.processes) {
-      const serviceName = serviceNameByBinary.get(process.binary);
-      assert.ok(serviceName, `the published installation declares no service for ${process.service}`);
-      ownerEnvironment.set(process.service, renderedServices[serviceName].environment ?? {});
+      ownerEnvironment.set(process.service, composed.environment);
     }
     const postgresService = Object.values(renderedServices).find((service) => service.image?.startsWith("postgres:"));
     if (postgresService?.image) postgresImage = postgresService.image;
   };
 
-  // Each shared address input is the target owner's real bind address.
-  // Multi-container caller DNS names are not valid single-container binds.
-  const ownerOfAddressEnvironment = new Map<string, string>();
-  for (const process of contract.processes) {
-    if (process.addressEnv) ownerOfAddressEnvironment.set(process.addressEnv, process.service);
-    if (process.rpcAddressEnv) ownerOfAddressEnvironment.set(process.rpcAddressEnv, process.service);
-    for (const listener of process.additionalListeners ?? []) {
-      ownerOfAddressEnvironment.set(listener.addressEnv, process.service);
-    }
-  }
-  const certificateEnvironments = new Set(["OPL_GRPC_CERT_FILE", "OPL_GRPC_KEY_FILE"]);
-
-  // Construct an explicit single-container installation: listener inputs are
-  // real owner binds, database inputs use compositionDatabaseEnv, and retained
-  // legacy consumers share the installation's one DATABASE_URL.
+  // Construct an explicit single-container installation from the published
+  // cloud-backend environment, overriding the test fixture's own CA/URLs/repos.
   let shared: Record<string, string> = {};
   const sharedEnvironment = () => {
-    const names = new Set<string>();
-    for (const environment of ownerEnvironment.values()) {
-      for (const name of Object.keys(environment)) names.add(name);
-    }
-    const environment: Record<string, string> = {};
-    for (const name of names) {
-      if (certificateEnvironments.has(name)) continue;
-      const owner = ownerOfAddressEnvironment.get(name);
-      if (owner) {
-        const own = ownerEnvironment.get(owner)?.[name];
-        assert.ok(own, `the installation declares no bind address for ${name}`);
-        environment[name] = own;
-        continue;
-      }
-      for (const process of contract.processes) {
-        const value = ownerEnvironment.get(process.service)?.[name];
-        if (value !== undefined) {
-          environment[name] = value;
-          break;
-        }
-      }
-    }
-    // The published installation declares the approved repository set at
-    // installation level and wires it to no owner, so the union of the
-    // published per-owner environments does not carry it. One container
-    // carries the installation's declared value: the Control Plane reads it
-    // because one environment also names the registry host.
+    const published = renderedServices["cloud-backend"]?.environment ?? {};
+    const environment: Record<string, string> = { ...published };
+    delete environment.OPL_GRPC_CERT_FILE;
+    delete environment.OPL_GRPC_KEY_FILE;
+    // This integration test issues the sub2api-fixture certificate from the local PKI CA.
+    environment.SSL_CERT_FILE = "/pki/ca.crt";
     if (environment.OPL_WORKSPACE_REGISTRY_REPOSITORIES === undefined) {
       environment.OPL_WORKSPACE_REGISTRY_REPOSITORIES = installEnvironment.OPL_WORKSPACE_REGISTRY_REPOSITORIES;
-    }
-    // The retained Control Plane, Fabric HTTP and Ledger use one legacy
-    // database. Coordination keeps its separately declared RPC database.
-    const legacyDatabase = ownerEnvironment.get("control-plane")?.DATABASE_URL;
-    assert.ok(legacyDatabase, "the installation declares no legacy database");
-    environment.DATABASE_URL = legacyDatabase;
-    for (const process of contract.processes) {
-      if (!process.databaseEnv) continue;
-      assert.ok(process.compositionDatabaseEnv, `${process.service} declares no compositionDatabaseEnv`);
-      if (process.compositionDatabaseEnv === "DATABASE_URL") continue;
-      const dsn = ownerEnvironment.get(process.service)?.[process.databaseEnv];
-      assert.ok(dsn, `the installation declares no database for ${process.service}`);
-      environment[process.compositionDatabaseEnv] = dsn;
     }
     environment.OPL_GRPC_CERT_DIR = "/pki";
     environment.OPL_RELEASE_SHA = revision;
@@ -599,7 +549,7 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
       "-e", "TLS_CERT_FILE=/tls/sub2api.crt",
       "-v", `${sub2apiTLSRoot}:/tls:ro`,
       "-v", `${sub2apiScript}:/sub2api.mjs:ro`,
-      image, "node", "/sub2api.mjs"
+      nodeFixtureImage, "node", "/sub2api.mjs"
     ]);
     waitFor(() => {
       const answer = docker([

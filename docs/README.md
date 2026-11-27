@@ -93,3 +93,4 @@ cannot yet follow is an explicit roadmap gap, not a competing SSOT.
 - [`opl-fabric.md`](./opl-fabric.md): provider-neutral resource substrate (compute, storage, attachment, Secret binding, Connect).
 - [`opl-connect.md`](./opl-connect.md): logical external-access capability inside Fabric.
 - [`opl-ledger.md`](./opl-ledger.md): append-only financial/deletion receipts, reconciliation and opaque provenance.
+- [`software-package-entitlements.md`](./software-package-entitlements.md): per-subject Cloud entitlement governance and controlled delivery for restricted Software Center packages.
