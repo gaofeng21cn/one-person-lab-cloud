@@ -24,41 +24,25 @@ import (
 // This is a client of Gateway's persisted binding proof, not another identity
 // writer. Every request revalidates the reference through the original owner.
 type cloudAnnouncementSource struct {
-	token          string
-	workspaceToken string
-	gateway        api.GatewayCoordinationClient
-	conn           *grpc.ClientConn
+	token   string
+	gateway api.GatewayCoordinationClient
+	conn    *grpc.ClientConn
 }
 
 func cloudAnnouncementSourceFromEnv(getenv func(string) string) (*cloudAnnouncementSource, error) {
 	token := strings.TrimSpace(getenv("OPL_CONTROL_PLANE_BFF_TOKEN"))
-	workspaceToken := strings.TrimSpace(getenv("OPL_CONTROL_PLANE_WORKSPACE_TOKEN"))
 	address := strings.TrimSpace(getenv("OPL_CLOUD_IDENTITY_URL"))
 	upstreamToken := strings.TrimSpace(getenv("OPL_CLOUD_IDENTITY_TOKEN"))
-	if token == "" && workspaceToken == "" && address == "" && upstreamToken == "" {
+	if token == "" && address == "" && upstreamToken == "" {
 		return nil, nil
 	}
-	if (token == "" && workspaceToken == "") || address == "" || len(upstreamToken) < owneridentity.MinimumTokenLength {
-		return nil, fmt.Errorf("Cloud identity reads require OPL_CONTROL_PLANE_BFF_TOKEN and/or OPL_CONTROL_PLANE_WORKSPACE_TOKEN, OPL_CLOUD_IDENTITY_URL and OPL_CLOUD_IDENTITY_TOKEN (tokens at least %d characters)", owneridentity.MinimumTokenLength)
+	if len(token) < owneridentity.MinimumTokenLength || address == "" || len(upstreamToken) < owneridentity.MinimumTokenLength {
+		return nil, fmt.Errorf("Cloud identity reads require OPL_CONTROL_PLANE_BFF_TOKEN, OPL_CLOUD_IDENTITY_URL and OPL_CLOUD_IDENTITY_TOKEN (tokens at least %d characters)", owneridentity.MinimumTokenLength)
 	}
-	for _, caller := range []struct{ key, token string }{
-		{"OPL_CONTROL_PLANE_BFF_TOKEN", token},
-		{"OPL_CONTROL_PLANE_WORKSPACE_TOKEN", workspaceToken},
-	} {
-		if caller.token == "" {
-			continue
+	for _, key := range []string{"OPL_CLOUD_IDENTITY_TOKEN", "OPL_FABRIC_SERVICE_TOKEN", "OPL_LEDGER_SERVICE_TOKEN", "OPL_FABRIC_CAPABILITY_KEY", "OPL_LEDGER_CAPABILITY_KEY"} {
+		if token == strings.TrimSpace(getenv(key)) {
+			return nil, fmt.Errorf("OPL_CONTROL_PLANE_BFF_TOKEN must be independent of outbound service credentials")
 		}
-		if len(caller.token) < owneridentity.MinimumTokenLength {
-			return nil, fmt.Errorf("%s must be at least %d characters", caller.key, owneridentity.MinimumTokenLength)
-		}
-		for _, key := range []string{"OPL_CLOUD_IDENTITY_TOKEN", "OPL_FABRIC_SERVICE_TOKEN", "OPL_LEDGER_SERVICE_TOKEN", "OPL_FABRIC_CAPABILITY_KEY", "OPL_LEDGER_CAPABILITY_KEY"} {
-			if caller.token == strings.TrimSpace(getenv(key)) {
-				return nil, fmt.Errorf("%s must be independent of outbound service credentials", caller.key)
-			}
-		}
-	}
-	if token != "" && token == workspaceToken {
-		return nil, errors.New("OPL_CONTROL_PLANE_BFF_TOKEN and OPL_CONTROL_PLANE_WORKSPACE_TOKEN must be independent")
 	}
 	options, err := owneridentity.TLSFromEnv(getenv).DialOptions(owneridentity.ControlPlane, owneridentity.Tenant.Service(), upstreamToken)
 	if err != nil {
@@ -68,7 +52,7 @@ func cloudAnnouncementSourceFromEnv(getenv func(string) string) (*cloudAnnouncem
 	if err != nil {
 		return nil, err
 	}
-	return &cloudAnnouncementSource{token: token, workspaceToken: workspaceToken, gateway: api.NewGatewayCoordinationClient(conn), conn: conn}, nil
+	return &cloudAnnouncementSource{token: token, gateway: api.NewGatewayCoordinationClient(conn), conn: conn}, nil
 }
 
 func (source *cloudAnnouncementSource) Close() error {
@@ -268,13 +252,8 @@ func (app *controlPlaneServer) cloudSessionProof(w http.ResponseWriter, r *http.
 func (app *controlPlaneServer) cloudSessionProofForCaller(w http.ResponseWriter, r *http.Request, caller owneridentity.Service) (*api.UserIdentityReadback, bool) {
 	source := app.cloudAnnouncements
 	var expectedToken string
-	if source != nil {
-		switch caller {
-		case owneridentity.ConsoleBFF:
-			expectedToken = source.token
-		case owneridentity.Workspace.Service():
-			expectedToken = source.workspaceToken
-		}
+	if source != nil && caller == owneridentity.ConsoleBFF {
+		expectedToken = source.token
 	}
 	if source == nil || source.gateway == nil || len(expectedToken) < owneridentity.MinimumTokenLength {
 		writeSourceEnvelope(w, http.StatusServiceUnavailable, "control-plane", "unavailable", nil)

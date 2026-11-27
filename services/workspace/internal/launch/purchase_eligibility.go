@@ -2,19 +2,13 @@ package launch
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"strings"
-	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	contracts "opl-cloud/packages/contracts/go"
 	api "opl-cloud/packages/contracts/go/api"
-	"opl-cloud/packages/contracts/go/owneridentity"
 )
 
 // PurchaseEligibilityReader reads the current Account fact from its sole owner.
@@ -23,65 +17,45 @@ type PurchaseEligibilityReader interface {
 	Read(context.Context, *api.CallContext) (*contracts.WorkspacePurchaseEligibility, error)
 }
 
-type purchaseEligibilityReader struct {
-	origin string
-	token  string
-	http   *http.Client
+type cloudIdentityPurchaseEligibilityReader struct {
+	client api.CloudIdentityAuthorizationClient
 }
 
-// NewPurchaseEligibilityReader leaves historical recovery available when the
-// retained owner is unconfigured; CreateWorkspace refuses new orders in that case.
-func NewPurchaseEligibilityReader(origin, token string) (PurchaseEligibilityReader, error) {
-	origin, token = strings.TrimSpace(origin), strings.TrimSpace(token)
-	if origin == "" && token == "" {
-		return nil, nil
+// NewCloudIdentityPurchaseEligibilityReader reads Workspace purchase eligibility
+// from the canonical CloudIdentity owner over the existing mTLS gRPC channel.
+func NewCloudIdentityPurchaseEligibilityReader(client api.CloudIdentityAuthorizationClient) (PurchaseEligibilityReader, error) {
+	if client == nil {
+		return nil, fmt.Errorf("CloudIdentity authorization client is required for Workspace purchase eligibility")
 	}
-	u, err := url.Parse(origin)
-	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || len(token) < owneridentity.MinimumTokenLength {
-		return nil, fmt.Errorf("Workspace purchase eligibility requires a Control Plane HTTP(S) origin and an independent token of at least %d characters", owneridentity.MinimumTokenLength)
-	}
-	return &purchaseEligibilityReader{origin: strings.TrimRight(origin, "/"), token: token, http: &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
+	return &cloudIdentityPurchaseEligibilityReader{client: client}, nil
 }
 
-func (c *purchaseEligibilityReader) Read(ctx context.Context, call *api.CallContext) (*contracts.WorkspacePurchaseEligibility, error) {
+func (c *cloudIdentityPurchaseEligibilityReader) Read(ctx context.Context, call *api.CallContext) (*contracts.WorkspacePurchaseEligibility, error) {
 	if call.GetActorId() == "" || call.GetSessionId() == "" {
 		return nil, status.Error(codes.Unauthenticated, "a live purchase session is required")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.origin+"/internal/cloud/workspace-purchase-eligibility", nil)
+	resp, err := c.client.ReadWorkspacePurchaseEligibility(ctx, &api.ReadWorkspacePurchaseEligibilityRequest{Context: call})
 	if err != nil {
-		return nil, status.Error(codes.Internal, "invalid purchase eligibility request")
+		switch status.Code(err) {
+		case codes.Unauthenticated:
+			return nil, status.Error(codes.Unauthenticated, "purchase session or owner identity rejected")
+		case codes.PermissionDenied:
+			return nil, status.Error(codes.PermissionDenied, "account is not eligible for a new Workspace purchase")
+		case codes.FailedPrecondition:
+			return nil, status.Error(codes.FailedPrecondition, "purchase account identity is unresolved")
+		default:
+			return nil, status.Error(codes.Unavailable, "purchase eligibility owner is unavailable")
+		}
 	}
-	req.Header.Set(owneridentity.PeerHeader, owneridentity.Workspace.String())
-	req.Header.Set(owneridentity.TokenHeader, c.token)
-	req.Header.Set(contracts.CloudSessionHeader, call.GetSessionId())
-	req.Header.Set("Accept", "application/json")
-	response, err := c.http.Do(req)
-	if err != nil {
-		return nil, status.Error(codes.Unavailable, "purchase eligibility owner is unavailable")
-	}
-	defer response.Body.Close()
-	switch response.StatusCode {
-	case http.StatusOK:
-	case http.StatusUnauthorized:
-		return nil, status.Error(codes.Unauthenticated, "purchase session or owner identity rejected")
-	case http.StatusForbidden:
-		return nil, status.Error(codes.PermissionDenied, "account is not eligible for a new Workspace purchase")
-	case http.StatusConflict:
-		return nil, status.Error(codes.FailedPrecondition, "purchase account identity is unresolved")
-	default:
-		return nil, status.Error(codes.Unavailable, "purchase eligibility owner is unavailable")
-	}
-	body, err := io.ReadAll(io.LimitReader(response.Body, 4097))
-	if err != nil || len(body) > 4096 {
+	if resp == nil || resp.GetActorId() != call.GetActorId() || strings.TrimSpace(resp.GetAccountId()) == "" || resp.GetAccountId() != strings.TrimSpace(resp.GetAccountId()) {
 		return nil, status.Error(codes.DataLoss, "invalid purchase eligibility readback")
 	}
-	var result contracts.WorkspacePurchaseEligibility
-	decoder := json.NewDecoder(strings.NewReader(string(body)))
-	decoder.DisallowUnknownFields()
-	if decoder.Decode(&result) != nil || decoder.Decode(new(any)) != io.EOF || result.ActorID != call.GetActorId() || strings.TrimSpace(result.AccountID) == "" || result.AccountID != strings.TrimSpace(result.AccountID) || result.WorkspacePurchaseEnabled == nil {
-		return nil, status.Error(codes.DataLoss, "invalid purchase eligibility readback")
-	}
-	return &result, nil
+	enabled := resp.GetWorkspacePurchaseEnabled()
+	return &contracts.WorkspacePurchaseEligibility{
+		ActorID:                  resp.GetActorId(),
+		AccountID:                resp.GetAccountId(),
+		WorkspacePurchaseEnabled: &enabled,
+	}, nil
 }
 
 func (s *Service) requirePurchaseEligibility(ctx context.Context, call *api.CallContext) error {

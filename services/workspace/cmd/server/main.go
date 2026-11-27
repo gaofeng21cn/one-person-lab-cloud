@@ -64,11 +64,12 @@ func main() {
 		if err != nil {
 			return err
 		}
-		service, err := launch.New(database.DB(), authorizer, api.NewCatalogCoordinationClient(catalogConn), api.NewFabricCoordinationClient(fabricConn), api.NewCloudIdentityAuthorizationClient(identityConn))
+		identityClient := api.NewCloudIdentityAuthorizationClient(identityConn)
+		service, err := launch.New(database.DB(), authorizer, api.NewCatalogCoordinationClient(catalogConn), api.NewFabricCoordinationClient(fabricConn), identityClient)
 		if err != nil {
 			return err
 		}
-		service.PurchaseEligibility, err = launch.NewPurchaseEligibilityReader(os.Getenv("OPL_CONTROL_PLANE_URL"), os.Getenv("OPL_CONTROL_PLANE_WORKSPACE_TOKEN"))
+		service.PurchaseEligibility, err = launch.NewCloudIdentityPurchaseEligibilityReader(identityClient)
 		if err != nil {
 			return err
 		}

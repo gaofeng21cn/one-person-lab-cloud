@@ -66,25 +66,25 @@ Git log.
   transitional Control Plane announcements/billing reads require live
   CloudIdentity proof and reciprocal subject bindings; CloudIdentity User
   delegated credentials never bypass Tenant/Role fences.
-- **Account Purchase-Eligibility Policy Ownership**: The retained Control Plane
-  operator endpoint
+- **Account Purchase-Eligibility Policy Ownership**: `CloudIdentity`
+  (`services/gateway-integration`, `tenant.workspace_purchase_eligibility`) is
+  the canonical owner of new-Workspace purchase eligibility per Gateway
+  subject (`actor_id`). Platform administrators grant or revoke eligibility
+  through the Console BFF route
+  `POST /api/v2/operator/accounts/{actorId}/workspace-purchase-eligibility`
+  backed by `TenantProductService.SetWorkspacePurchaseEligibility`, which
+  commits the policy row, audit event and idempotency record in one
+  `opl_tenant` transaction; customer activation persists the initial eligibility
+  there as well. The native Workspace owner gates every new purchase directly
+  through `CloudIdentityAuthorization.ReadWorkspacePurchaseEligibility`
+  (`services/workspace/internal/launch/purchase_eligibility.go`) over its
+  existing gRPC channel, retiring the transitional Control Plane HTTP reader
+  `GET /internal/cloud/workspace-purchase-eligibility` and
+  `OPL_CONTROL_PLANE_WORKSPACE_TOKEN`. Missing rows for non-admin subjects fail
+  closed (`false`). The legacy Control Plane route
   `POST /api/operator/accounts/{accountId}/workspace-purchase-eligibility`
-  (`services/control-plane/internal/server/routes_admin.go`) stays the only
-  path that can change `Account.WorkspacePurchaseEnabled` after an Account
-  exists; it commits the column and its audit event in one transaction through
-  `ApplyWorkspacePurchaseEligibility`
-  (`services/control-plane/internal/server/ent_state_store_identity.go`). The
-  native Workspace owner gates every new purchase on the value it produces
-  (`services/workspace/internal/launch/service.go` ->
-  `services/workspace/internal/launch/purchase_eligibility.go`) by reading the
-  Control Plane's `GET /internal/cloud/workspace-purchase-eligibility` reader
-  (`services/control-plane/internal/server/cloud_workspace_purchase_eligibility.go`);
-  no other owner has a writer for this fact. Removing the writer therefore
-  requires a two-sided owner/caller migration — an Account-policy writer in the
-  target topology plus the native Workspace consumer's read path — not a
-  writer-only deletion, and the shared read contract
-  `contracts.WorkspacePurchaseEligibility`
-  (`packages/contracts/go/workspace_provisioning.go`) stays.
+  remains only for the retained legacy Console build until Control Plane
+  retirement.
 - **Personal Gateway Key Write Ownership**: `Gateway Integration` owns the native
   personal Gateway Key create/update/reveal/revoke capability over the delegated
   Sub2API authority, projecting the same `PersonalGatewayKey` fact the personal

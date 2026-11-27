@@ -150,7 +150,6 @@ const operatorCommands: Array<[string, string, (cloud: boolean) => Promise<unkno
   ["wallet adjustment", "/accounts/acct/wallet-adjustments", cloud => operatorApi.createWalletAdjustment("acct", {} as never, "csrf", "key", cloud)],
   ["wallet recovery", "/wallet-adjustments/op/recover", cloud => operatorApi.recoverWalletAdjustment("op", {} as never, "csrf", "key", cloud)],
   ["disable account", "/accounts/acct/disable", cloud => operatorApi.disableOperatorAccount("acct", "reason", "csrf", "key", cloud)],
-  ["eligibility", "/accounts/acct/workspace-purchase-eligibility", cloud => operatorApi.setOperatorWorkspacePurchaseEligibility("acct", false, "reason", "csrf", "key", cloud)],
   ["billing review", "/billing-reviews/workspace/ws/resolve", cloud => operatorApi.resolveBillingReview("workspace", "ws", {} as never, "csrf", "key", cloud)],
   ["launch recovery", "/workspace-launches/op/recover", cloud => operatorApi.recoverWorkspaceLaunch("op", {} as never, "csrf", "key", cloud)],
   ["announcement create", "/announcements", cloud => operatorApi.createOperatorAnnouncement({} as never, "csrf", "key", cloud)],
@@ -172,6 +171,20 @@ for (const [name, path, invoke] of operatorCommands) {
     assert.deepEqual(calls, [`/api/operator${path}`]);
   });
 }
+
+test("workspace purchase eligibility routes to Cloud BFF in cloud mode and Control Plane in legacy mode", async () => {
+  const calls: string[] = [];
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    calls.push(String(url));
+    return new Response(JSON.stringify({ operationId: "op-elig", accountId: "42", status: "succeeded", workspacePurchaseEnabled: true }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  await operatorApi.setOperatorWorkspacePurchaseEligibility("42", true, "operator_requested", "csrf", "key-cloud", true);
+  await operatorApi.setOperatorWorkspacePurchaseEligibility("acct", false, "operator_requested", "csrf", "key-legacy", false);
+  assert.deepEqual(calls, [
+    "/api/v2/operator/accounts/42/workspace-purchase-eligibility",
+    "/api/operator/accounts/acct/workspace-purchase-eligibility"
+  ]);
+});
 
 test("activation uses its Cloud BFF owner and refuses the retired legacy route", async () => {
   const calls: string[] = [];

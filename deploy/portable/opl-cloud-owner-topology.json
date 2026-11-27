@@ -179,8 +179,6 @@
    "compositionDatabaseEnv": "OPL_WORKSPACE_DATABASE_URL",
    "env": [
     "OPL_CAPABILITY_ADDR",
-    "OPL_CONTROL_PLANE_URL",
-    "OPL_CONTROL_PLANE_WORKSPACE_TOKEN",
     "OPL_FABRIC_ADDR",
     "OPL_GATEWAY_ADDR",
     "OPL_LEDGER_ADDR",
@@ -197,7 +195,7 @@
    ],
    "notes": [
     "Owns the accepted order and resource intent; it persists no second current-deployment pointer.",
-    "Reads purchase eligibility from its single retained Control Plane owner through typed HTTP using OPL_CONTROL_PLANE_URL and the independent OPL_CONTROL_PLANE_WORKSPACE_TOKEN shared by both processes. This read adds no writer and is outside the gRPC communication edges."
+    "Reads workspace new-purchase eligibility from CloudIdentityAuthorization over its existing gRPC channel."
    ],
    "transportPrincipal": "workspace",
    "daemonArgs": []
@@ -506,16 +504,14 @@
     "OPL_SUB2API_USER_EMAIL",
     "OPL_SUB2API_USER_PASSWORD",
     "OPL_SUB2API_REQUEST_TIMEOUT_MS",
-    "OPL_CONTROL_PLANE_BFF_TOKEN",
-    "OPL_CONTROL_PLANE_WORKSPACE_TOKEN"
+    "OPL_CONTROL_PLANE_BFF_TOKEN"
    ],
    "registers": [
     "legacy Control Plane HTTP surface"
    ],
    "notes": [
     "Migration source, not a permanent second writer; it also serves the Console static bundle.",
-    "Cloud announcement reads use the authenticated BFF-only typed HTTP boundary; Control Plane revalidates its Cloud session with Gateway under the control_plane transport principal and retains publication/ACK persistence.",
-    "Remains the single purchase-eligibility owner, serving Workspace through typed HTTP with OPL_CONTROL_PLANE_WORKSPACE_TOKEN independently of BFF and outbound credentials; this adds no writer. Either BFF or Workspace token activates its CloudIdentity client."
+    "Cloud announcement reads use the authenticated BFF-only typed HTTP boundary; Control Plane revalidates its Cloud session with Gateway under the control_plane transport principal and retains publication/ACK persistence."
    ],
    "transportPrincipal": "control_plane",
    "daemonArgs": [],
@@ -1388,8 +1384,7 @@
     "tokenEnv": "OPL_CLOUD_IDENTITY_TOKEN",
     "activation": "configured",
     "activationEnvs": [
-     "OPL_CONTROL_PLANE_BFF_TOKEN",
-     "OPL_CONTROL_PLANE_WORKSPACE_TOKEN"
+     "OPL_CONTROL_PLANE_BFF_TOKEN"
     ],
     "configuredAddressSemantics": "trimmed-nonempty"
    },
@@ -1459,16 +1454,6 @@
     "addressEnv": "OPL_FABRIC_APPLICATION_URL",
     "tokenEnv": "OPL_FABRIC_SERVE_SERVICE_TOKEN",
     "targetAddressEnv": "FABRIC_ADDR",
-    "originScheme": "http",
-    "activation": "configured",
-    "configuredAddressSemantics": "trimmed-nonempty"
-   },
-   {
-    "caller": "workspace",
-    "target": "control_plane",
-    "addressEnv": "OPL_CONTROL_PLANE_URL",
-    "tokenEnv": "OPL_CONTROL_PLANE_WORKSPACE_TOKEN",
-    "targetAddressEnv": "CONTROL_PLANE_ADDR",
     "originScheme": "http",
     "activation": "configured",
     "configuredAddressSemantics": "trimmed-nonempty"

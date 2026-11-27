@@ -1796,6 +1796,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/operator/accounts/{actorId}/workspace-purchase-eligibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set workspace new-purchase eligibility for a Gateway subject */
+        post: operations["setWorkspacePurchaseEligibility"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/admin/tenants/{tenantId}/operations/{operationId}": {
         parameters: {
             query?: never;
@@ -2213,6 +2230,19 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        /** @description Platform administrator instruction to grant or revoke new Workspace purchase eligibility for one Gateway subject. */
+        SetWorkspacePurchaseEligibilityRequest: {
+            confirmationAccountId: components["schemas"]["OpaqueId"];
+            enabled: boolean;
+            reason: string;
+        };
+        /** @description Canonical receipt for one Workspace purchase eligibility update. */
+        WorkspacePurchaseEligibilityCommand: {
+            operationId: components["schemas"]["OpaqueId"];
+            accountId: components["schemas"]["OpaqueId"];
+            status: string;
+            workspacePurchaseEnabled: boolean;
         };
         /** @description platform_admin创建Tenant；Gateway确认身份/钱包委托存在，不创建外部身份密码。 */
         CreateTenantRequest: {
@@ -8583,6 +8613,43 @@ export interface operations {
             422: components["responses"]["ErrorResponse"];
             429: components["responses"]["ErrorResponse"];
             500: components["responses"]["ErrorResponse"];
+            503: components["responses"]["ErrorResponse"];
+        };
+    };
+    setWorkspacePurchaseEligibility: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description 匹配同源session并校验Origin。 */
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path: {
+                actorId: components["schemas"]["OpaqueId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetWorkspacePurchaseEligibilityRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated workspace purchase eligibility for the named Gateway subject */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspacePurchaseEligibilityCommand"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
             503: components["responses"]["ErrorResponse"];
         };
     };

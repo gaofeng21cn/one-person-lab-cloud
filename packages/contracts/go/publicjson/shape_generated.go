@@ -189,6 +189,8 @@ var required = map[protoreflect.Name]map[string]bool{
 	"Session":                                   {"actorId": true, "displayName": true, "permissions": true, "csrfToken": true, "expiresAt": true},
 	"UserExternalBindingReadback":               {"actorId": true, "sub2apiUserId": true, "registryHost": true, "registryNamespace": true, "repository": true, "status": true, "verification": true, "verificationEvidenceRef": true, "verifiedAt": true, "createdAt": true, "updatedAt": true, "destinationVerifiedAt": true},
 	"Tenant":                                    {"id": true, "name": true, "status": true, "assetCustodyStatus": true, "createdAt": true, "updatedAt": true},
+	"SetWorkspacePurchaseEligibilityRequest":    {"confirmationAccountId": true, "enabled": true, "reason": true},
+	"WorkspacePurchaseEligibilityCommand":       {"operationId": true, "accountId": true, "status": true, "workspacePurchaseEnabled": true},
 	"CreateTenantRequest":                       {"name": true, "billingSub2apiUserId": true, "ownerGatewaySubjectId": true},
 	"BindTenantWalletRequest":                   {"billingSub2apiUserId": true, "expectedBindingVersion": true},
 	"Member":                                    {"id": true, "actorId": true, "displayName": true, "role": true, "status": true, "createdAt": true},

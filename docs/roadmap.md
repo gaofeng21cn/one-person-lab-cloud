@@ -17,15 +17,12 @@ Close end-to-end customer lifecycle verification for the latest Cloud Candidate 
 `opl-instance-medopl` Tencent/TKE:
 
 - Default OPL App launch (`create -> quote -> debit -> Fabric provision -> Serve delivery -> readiness -> access -> renewal -> deletion -> refund/reconcile -> Ledger receipt`), plus custom Agent Package build-to-serve E2E on TKE.
-- The renewal step of that chain is not closed yet. The Resource Catalog prices
-  the renewal offer, the Fabric owner extends the provider's prepaid month for
-  the same compute and storage the Workspace already owns, and the Workspace
-  owner runs the renewal as one accepted obligation: charged once, extended by
-  the provider, and committed as a new paid period that continues the confirmed
-  paid-through. A customer cannot reach that renewal yet — the Console entry is
-  still open — and a Workspace whose paid term already ended is refused before
-  any charge, because the provider extends the prepaid period from its own
-  deadline and cannot cover a month that starts now.
+- The renewal step of that chain is implemented end-to-end across Resource
+  Catalog, Fabric, CloudIdentity, Workspace, Console BFF, and Console UI for
+  active pre-expiry paid Workspaces, and still requires live Tencent/TKE
+  acceptance verification. A Workspace whose paid term already ended is refused
+  before any charge, because the provider extends the prepaid period from its
+  own deadline and cannot cover a month that starts now.
 - Verify that one customer deletion reaches confirmed CBS final release, compute
   absence, and settlement through the installed Fabric path without an operator
   releasing the recycled disk.
@@ -77,8 +74,6 @@ confirmed paid-through. What is still open:
 - A provider that refuses the extension after the charge leaves the renewal
   pending with the money already taken. No refund path exists for a renewal the
   provider would not deliver.
-- The Console offers the renewal, shows the price and shows the renewed
-  paid-through.
 
 ### Generic Agent WebUI Console And Model Links
 
@@ -112,13 +107,10 @@ Plane / delegated process-local custody onto canonical domain owners:
 3. **Retained Control Plane Cleanup**: Progressively retire remaining legacy
    Launch/Policy/Admin surfaces once open persisted Workspaces converge and all
    non-browser Instance callers confirm zero dependency.
-   - The purchase-eligibility policy writer
-     (`POST /api/operator/accounts/{accountId}/workspace-purchase-eligibility`)
-     stays until a two-sided owner/caller migration exists: an Account-policy
-     writer in the target topology plus the native Workspace consumer's read
-     path. Deleting the writer alone would freeze
-     `Account.WorkspacePurchaseEnabled` and keep gating new purchases on a
-     stale fact.
+   - The Cloud purchase-eligibility policy writer and Workspace reader have
+     migrated to `CloudIdentity` (`opl_tenant`). The legacy Control Plane
+     endpoint `POST /api/operator/accounts/{accountId}/workspace-purchase-eligibility`
+     stays only until the retained legacy Console build is retired.
    - Preserve the retained deletion, refund, and renewal executors until their
      live clients have migrated and a current owner census can distinguish
      non-terminal operations from completed settlement. Include accepted

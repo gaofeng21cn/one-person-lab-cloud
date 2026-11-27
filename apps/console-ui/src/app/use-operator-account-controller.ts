@@ -16,6 +16,7 @@ import type {
 } from "../api/dtos.ts";
 import { authorizationFailureState } from "./authorization-error.ts";
 import { requestConfirm } from "./confirm-dialog-store.ts";
+import { cloudIdentity } from "./console-identity.ts";
 import type { OperatorAccountController, RemoteState } from "./console-controller-types.ts";
 import {
   accountCommandSucceeded,
@@ -357,16 +358,21 @@ export function useOperatorAccountController({
     const scope = scopeGeneration.current;
     const userId = session.user.id;
     const csrfToken = session.csrfToken;
+    const targetId = cloudIdentity ? String(account.sub2apiUserId).trim() : accountId;
+    if (!targetId) {
+      releaseAccount(accountId, claim);
+      return;
+    }
     try {
       const result = await setOperatorWorkspacePurchaseEligibilityCommand(
-        accountId,
+        targetId,
         enabled,
         reason,
         csrfToken,
         intent.idempotencyKey
       );
       if (accountClaims.current.get(accountId) !== claim || !requestOwnsScope(scope, userId, csrfToken)) return;
-      if (!eligibilityCommandSucceeded(result, accountId, enabled)) {
+      if (!eligibilityCommandSucceeded(result, targetId, enabled)) {
         throw new Error("operator_account_eligibility_identity_mismatch");
       }
       const readback = await findAccountProjection(

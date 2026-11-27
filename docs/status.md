@@ -79,13 +79,18 @@ chronological snapshots.
     `services/control-plane/internal/server/workspace_delete.go` and
     `workspace_store.go` so historical rotated Workspaces can still be deleted
     safely.
-  - The Control Plane purchase-eligibility policy writer
-    (`POST /api/operator/accounts/{accountId}/workspace-purchase-eligibility`)
-    is retained: it is the only path that grants or revokes
-    `Account.WorkspacePurchaseEnabled` for an existing Account, and the native
-    Workspace owner gates every new purchase on the value it produces through
-    the Control Plane's `GET /internal/cloud/workspace-purchase-eligibility`
-    reader.
+  - Workspace new-purchase eligibility has completed its two-sided migration to
+    `CloudIdentity` (`opl_tenant`, `tenant.workspace_purchase_eligibility`).
+    The Console BFF publishes
+    `POST /api/v2/operator/accounts/{actorId}/workspace-purchase-eligibility`,
+    persists initial eligibility during customer activation, and projects
+    authoritative eligibility onto `GET /api/v2/operator/accounts`; the native
+    Workspace owner reads eligibility directly via
+    `CloudIdentityAuthorization.ReadWorkspacePurchaseEligibility`, retiring
+    Control Plane's `GET /internal/cloud/workspace-purchase-eligibility` and
+    `OPL_CONTROL_PLANE_WORKSPACE_TOKEN`. The retained Control Plane endpoint
+    `POST /api/operator/accounts/{accountId}/workspace-purchase-eligibility`
+    remains only for the legacy Console build.
   - The native Workspace owner accepts new purchases. The Control Plane
     [Launch executor](implementation/workspace-launch-recovery.md) continues
     accepted operations carried forward from before the purchase cutover.

@@ -958,7 +958,7 @@ test("installation CLI always declares the Product minimum token length for the 
 
 
 test("installation CLI retains the current Control Plane CloudIdentity caller from the default image command", async t => {
-  for (const activationName of ["OPL_CONTROL_PLANE_BFF_TOKEN", "OPL_CONTROL_PLANE_WORKSPACE_TOKEN"]) await t.test(activationName, async () => {
+  for (const activationName of ["OPL_CONTROL_PLANE_BFF_TOKEN"]) await t.test(activationName, async () => {
     const list = workedInstallation();
     const image = container(list, "serve").image;
     list.items.push({ apiVersion: "apps/v1", kind: "Deployment", metadata: { name: "retained-http", namespace: "installation" }, spec: {
@@ -1296,7 +1296,7 @@ test("configured RPC edges follow each native caller's address semantics and ret
       });
     }
   }
-  for (const activationName of ["OPL_CONTROL_PLANE_BFF_TOKEN", "OPL_CONTROL_PLANE_WORKSPACE_TOKEN"]) {
+  for (const activationName of ["OPL_CONTROL_PLANE_BFF_TOKEN"]) {
     for (const [value, enabled] of [["", false], [" ", false], ["\u0085", false], ["\uFEFF", true], ["independent-inbound-token-32-characters", true]] as const) {
       await t.test(`Control Plane ${activationName} ${JSON.stringify(value)}`, async () => {
         const list = setup("control-plane");
@@ -1310,11 +1310,10 @@ test("configured RPC edges follow each native caller's address semantics and ret
       });
     }
   }
-  await t.test("Control Plane both inbound tokens are Go whitespace", async () => {
+  await t.test("Control Plane inbound token is Go whitespace", async () => {
     const list = setup("control-plane");
     container(list, "control-plane").env.push(
       { name: "OPL_CONTROL_PLANE_BFF_TOKEN", value: " \u0085\t" },
-      { name: "OPL_CONTROL_PLANE_WORKSPACE_TOKEN", value: "\u0085 \n" },
     );
     const result = await invoke(list);
     assert.equal(result.status, 0, result.stdout + result.stderr);

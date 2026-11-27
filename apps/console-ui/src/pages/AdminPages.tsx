@@ -403,15 +403,15 @@ function AccountActions({ account, controller, openAccount }: {
     <div className="operator-card-actions">
       <Button onClick={() => openAccount(account, "detail")} size="sm" variant="ghost">查看账户</Button>
       <Button hidden={cloudIdentity} onClick={() => openAccount(account, "wallet")} size="sm" variant="outline"><WalletCards aria-hidden size={15} />余额操作</Button>
-      {reservedAdmin || cloudIdentity
-        ? <span className="account-read-only">{cloudIdentity ? "账户仅查看" : "保留管理员账户仅查看"}</span>
+      {reservedAdmin
+        ? <span className="account-read-only">保留管理员账户仅查看</span>
         : account.status === "active"
           ? <>
             <Button color={account.workspacePurchaseEnabled ? "danger" : "primary"} disabled={busy} onClick={() => void controller.operatorAccounts.setWorkspacePurchaseEligibility(account.accountId, !account.workspacePurchaseEnabled)} size="sm" variant="ghost">
               {account.workspacePurchaseEnabled ? <ShieldOff aria-hidden size={15} /> : <ShieldCheck aria-hidden size={15} />}
               {account.workspacePurchaseEnabled ? "撤销新购" : "授予新购"}
             </Button>
-            <Button color="danger" disabled={busy} onClick={() => void controller.operatorAccounts.disable(account.accountId)} size="sm" variant="ghost"><Ban aria-hidden size={15} />停用</Button>
+            {!cloudIdentity && <Button color="danger" disabled={busy} onClick={() => void controller.operatorAccounts.disable(account.accountId)} size="sm" variant="ghost"><Ban aria-hidden size={15} />停用</Button>}
           </>
           : <span className="account-read-only">账户已停用</span>}
     </div>
