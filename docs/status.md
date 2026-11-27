@@ -46,7 +46,12 @@ chronological snapshots.
   pipeline, the retired service directory, the local verification targets, the
   compose files, the retired Control Plane environment variables, the retired
   internal bridge prefix and every repository path that still names the retired
-  source directory; it does not scan the documentation layer.
+  source directory; it does not scan the documentation layer. The first slice it
+  holds is open: the three operator read bridges that no consumer calls, and the
+  Console BFF public paths that only existed to serve them, are gone, and the
+  published installation facts no longer declare a registry credential and
+  repository set that no source reads. The twelve assertions of the slices that
+  have not arrived stay pending.
 - **Single-Binary In-Process Backend & 3-Container Portable Topology (P1)**:
   `Dockerfile` compiles **4** stamped Go binaries (`cmd/opl-cloud` ->
   `/usr/local/bin/opl-cloud` plus CLI helpers `opl-tencent-provisioner`,
