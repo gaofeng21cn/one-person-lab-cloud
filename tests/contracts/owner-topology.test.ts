@@ -243,12 +243,25 @@ function declaredEnvNames(processes: ProcessEntry[], shared: Topology["sharedEnv
 type ComposeService = { command?: string[]; environment?: Record<string, unknown> };
 
 // installedEnvironments returns the environment the published portable
-// installation gives each owner product binary. The Compose service that runs
-// the owner's binary is the owner's own service, so the values read here are
-// the ones that owner's process receives.
+// installation gives each owner product binary. When the published Compose file
+// runs the single composed backend unit (`cloud-backend` running
+// `opl-cloud-composition`), every declared owner binary receives the shared
+// composition environment.
 async function installedEnvironments(): Promise<Map<string, Record<string, string>>> {
+  const topology = await loadTopology();
   const compose = YAML.parse(await readFile(composePath, "utf8")) as { services?: Record<string, ComposeService> };
   const environments = new Map<string, Record<string, string>>();
+  const composed = compose.services?.["cloud-backend"];
+  if (composed?.command?.[0] === topology.deploymentUnit?.unit.entrypoint) {
+    const environment: Record<string, string> = {};
+    for (const [name, value] of Object.entries(composed.environment ?? {})) {
+      if (typeof value === "string") environment[name] = value;
+    }
+    for (const process of topology.processes) {
+      environments.set(process.binary, environment);
+    }
+    return environments;
+  }
   for (const service of Object.values(compose.services ?? {})) {
     const binary = service.command?.[0];
     if (!binary) continue;
@@ -414,20 +427,21 @@ test("the Fabric process declares the Tencent credentials its provisioner consum
 test("the declaration covers every owner binary the product image builds", async () => {
   const topology = await loadTopology();
   const dockerfile = await readFile(dockerfilePath, "utf8");
-  const publisher = dockerfile.slice(dockerfile.indexOf("AS publisher-build"), dockerfile.indexOf("FROM docker:27.5.1-cli"));
-  const loop = publisher.match(/for service in ([^;]+); do/);
-  assert.ok(loop, "publisher-build must iterate its owner set");
+  const goBuild = dockerfile.slice(dockerfile.indexOf("AS go-build"), dockerfile.indexOf("FROM docker:"));
+  const loop = goBuild.match(/for service in ([^;]+); do/);
+  assert.ok(loop, "go-build must iterate its owner set");
   const byService = new Map(topology.processes.map((process) => [process.service, process]));
   for (const service of [...loop[1].trim().split(/\s+/), "console-bff"].sort()) {
     const process = byService.get(service);
     assert.ok(process, `${service} is built into the product image and must be declared in ${topologyPath}`);
-    assert.ok(publisher.includes(`-o /out/opl-${service} `) || publisher.includes("-o /out/opl-$service "),
-      `publisher-build must emit opl-${service}`);
+    assert.ok(goBuild.includes(`-o /out/opl-${service} `) || goBuild.includes("-o /out/opl-$service "),
+      `go-build must emit opl-${service}`);
     assert.equal(process.binary, `/usr/local/bin/opl-${service}`);
   }
   for (const [service, binary] of [["control-plane", "opl-control-plane"], ["fabric", "opl-fabric"], ["ledger", "opl-ledger"]] as const) {
     assert.equal(byService.get(service)?.binary, `/usr/local/bin/${binary}`);
-    assert.ok(dockerfile.includes(`/out/${binary} /usr/local/bin/${binary}`), `the runtime stage must ship ${binary}`);
+    assert.ok(dockerfile.includes(`-o /out/${binary} `) && dockerfile.includes("COPY --from=go-build /out/ /usr/local/bin/"),
+      `the runtime stage must ship ${binary}`);
   }
 });
 
@@ -475,8 +489,14 @@ test("the declaration records that two owners share a default listen address", a
 
 test("the contract declares the listen address the published installation binds for every owner listener", async () => {
   const topology = await loadTopology();
+  const compose = YAML.parse(await readFile(composePath, "utf8")) as { services?: Record<string, ComposeService> };
+  const composedMode = isComposedBackendCompose(topology, compose.services ?? {});
   const environments = await installedEnvironments();
   const listeners = installedListenAddresses(environments);
+  const allDeclaredListenEnvs = new Set<string>();
+  for (const process of topology.processes) {
+    for (const env of ownerListenAddresses(process).keys()) allDeclaredListenEnvs.add(env);
+  }
   for (const process of topology.processes) {
     const bound = listeners.get(process.binary);
     assert.ok(bound, `the published installation must run ${process.binary}`);
@@ -488,10 +508,16 @@ test("the contract declares the listen address the published installation binds 
         `${process.service} must declare the listen address of ${listener.addressEnv}`);
     }
     const declared = ownerListenAddresses(process);
-    // Every listener the installation binds for this owner is declared.
+    // Every listener the installation binds must be declared by this owner (or by
+    // one of the composed owners when running inside the shared cloud-backend).
     for (const [env] of bound) {
-      assert.ok(declared.has(env),
-        `${process.service} does not declare the listen address ${env} the published installation binds`);
+      if (composedMode) {
+        assert.ok(allDeclaredListenEnvs.has(env),
+          `cloud-backend binds ${env}, which no declared process in ${topologyPath} declares`);
+      } else {
+        assert.ok(declared.has(env),
+          `${process.service} does not declare the listen address ${env} the published installation binds`);
+      }
     }
     // Every declared listener is the address the installation binds for it.
     for (const [env, address] of declared) {
@@ -1426,10 +1452,13 @@ async function parseEntrypointCompose(): Promise<Record<string, any>> {
 }
 
 // memberComposeServices names the Compose services that run this unit's
-// members. A member is declared by its process service name; the Gateway
-// Integration process runs in the tenant deployment unit, so the Compose file
-// names that unit's owner name.
+// members. In the composed single-container topology, `cloud-backend` runs the
+// composition entrypoint for all declared processes.
 function memberComposeServices(topology: Topology, compose: Record<string, any>): Set<string> {
+  const composed = compose["cloud-backend"];
+  if (composed?.command?.[0] === topology.deploymentUnit?.unit.entrypoint) {
+    return new Set(["cloud-backend"]);
+  }
   const names = new Set<string>();
   for (const process of topology.processes) {
     const name = compose[process.service] ? process.service : process.ownerName;
@@ -1611,8 +1640,8 @@ test("every declared dependency of the Cloud backend unit is proved against the 
       const carriers = Object.entries(compose)
         .filter(([, service]) => JSON.stringify(service.volumes ?? []).includes("/objects"))
         .map(([name]) => name);
-      assert.deepEqual(carriers, ["capability"],
-        "only the Capability owner may carry the object store, so the installation deploys no storage container");
+      assert.deepEqual(carriers, ["cloud-backend"],
+        "only the composed backend container may carry the object store, so the installation deploys no storage container");
       // Every service the installation deploys besides the unit's members is
       // either its PostgreSQL service or its same-origin entry. No other
       // container exists, so no storage container can be deployed.
@@ -1783,11 +1812,12 @@ function peerOrigin(value: string): { host: string; port: number } | undefined {
   return { host: match[1], port };
 }
 
+function isComposedBackendCompose(topology: Topology, compose: Record<string, any>): boolean {
+  return compose["cloud-backend"]?.command?.[0] === topology.deploymentUnit?.unit.entrypoint;
+}
+
 // ownerOfComposeService maps every Compose service of the published
-// installation to the owner process that runs in it. The Compose service that
-// runs an owner's binary is that owner's own service; the Gateway Integration
-// process runs in the tenant deployment unit, so the Compose file names that
-// unit's owner name.
+// installation to the owner process that runs in it.
 function ownerOfComposeService(topology: Topology, compose: Record<string, any>): Map<string, ProcessEntry> {
   const owners = new Map<string, ProcessEntry>();
   for (const process of topology.processes) {
@@ -1799,12 +1829,32 @@ function ownerOfComposeService(topology: Topology, compose: Record<string, any>)
 }
 
 // installedPeerAddresses returns every peer address the published portable
-// installation sets on an owner: an environment whose value names another
-// owner's Compose service, and the port that name carries. The value is read
-// from the owner's own Compose service, so the peer it names is the peer that
-// owner dials.
+// installation sets on an owner. In composed single-container mode, peer
+// addresses in cloud-backend target 127.0.0.1:<port> matching each declared
+// target listener port.
 async function installedPeerAddresses(topology: Topology): Promise<InstalledPeerAddress[]> {
   const compose = await parseEntrypointCompose();
+  if (isComposedBackendCompose(topology, compose)) {
+    const environment = (compose["cloud-backend"]?.environment ?? {}) as Record<string, unknown>;
+    const byPrincipal = new Map(topology.processes.map((process) => [process.transportPrincipal, process]));
+    const peers: InstalledPeerAddress[] = [];
+    for (const declaration of declaredPeerAddresses(topology)) {
+      const raw = environment[declaration.addressEnv];
+      if (typeof raw !== "string") continue;
+      const origin = peerOrigin(raw.trim());
+      if (!origin || origin.host !== "127.0.0.1") continue;
+      const target = byPrincipal.get(declaration.target);
+      assert.ok(target, `${declaration.target} must be a declared owner process`);
+      peers.push({
+        caller: declaration.caller,
+        target: declaration.target,
+        addressEnv: declaration.addressEnv,
+        value: raw.trim(),
+        port: origin.port
+      });
+    }
+    return peers;
+  }
   const owners = ownerOfComposeService(topology, compose);
   const peers: InstalledPeerAddress[] = [];
   for (const [service, owner] of owners) {
@@ -1911,10 +1961,34 @@ test("every peer address the published installation sets on an owner is declared
 test("every peer address this contract declares is one the published installation actually sets on that owner", async () => {
   const topology = await loadTopology();
   const compose = await parseEntrypointCompose();
-  const owners = ownerOfComposeService(topology, compose);
   const byPrincipal = new Map(topology.processes.map((process) => [process.transportPrincipal, process]));
   const declarations = declaredPeerAddresses(topology);
 
+  if (isComposedBackendCompose(topology, compose)) {
+    const environment = (compose["cloud-backend"]?.environment ?? {}) as Record<string, unknown>;
+    for (const declaration of declarations) {
+      assert.equal(typeof environment[declaration.addressEnv], "string",
+        `cloud-backend must declare ${declaration.addressEnv} for ${declaration.caller}`);
+      assert.equal(typeof environment[declaration.tokenEnv], "string",
+        `cloud-backend must declare ${declaration.tokenEnv} for ${declaration.addressEnv}`);
+      const target = byPrincipal.get(declaration.target);
+      assert.ok(target, `${declaration.target} must be a declared owner process`);
+      const targetPorts = declaredListenerPorts(target);
+      const raw = String(environment[declaration.addressEnv]).trim();
+      const origin = peerOrigin(raw);
+      if (!origin) continue;
+      assert.equal(origin.host, "127.0.0.1",
+        `${declaration.addressEnv} in composed cloud-backend must use loopback 127.0.0.1, got ${raw}`);
+      const expectedPorts = declaration.targetAddressEnv
+        ? (targetPorts.get(declaration.targetAddressEnv) ?? [])
+        : [...declaredListenAddresses(target).grpc].flatMap((env) => targetPorts.get(env) ?? []);
+      assert.ok(expectedPorts.includes(origin.port),
+        `${declaration.addressEnv} targets port ${origin.port} which ${declaration.target} does not declare`);
+    }
+    return;
+  }
+
+  const owners = ownerOfComposeService(topology, compose);
   for (const declaration of declarations) {
     const caller = byPrincipal.get(declaration.caller);
     assert.ok(caller, `${declaration.caller} must be a declared owner process`);

@@ -8,6 +8,7 @@ import type {
 } from "../../apps/console-ui/src/api/dtos.ts";
 import {
   CUSTOMER_WORKSPACE_LIST_PAGE_SIZE,
+  applyCustomerWorkspaceAccessDenied,
   applyCustomerWorkspaceCompletion,
   commitCustomerWorkspaceDetailProjectionLease,
   createCustomerWorkspaceDetailScope,
@@ -371,4 +372,57 @@ test("each identity accepts only the customer Workspace owner it reads", () => {
   assert.ok(ownerDetailState?.detail.value?.available);
   assert.equal(ownerDetailState.detail.value.source, "workspace");
   assert.equal(ownerDetailState.detail.value.data?.id, alpha.id);
+  assert.equal(ownerDetailState.access, "allowed");
+});
+
+test("access denial commits not_enabled or forbidden cleanly while rejecting stale scopes", () => {
+  const initial = createCustomerWorkspaceReadState();
+  assert.equal(initial.access, "unknown");
+  const listScope = createCustomerWorkspaceListScope({
+    ...epoch(),
+    requestGeneration: 1,
+    page: 1,
+    pageSize: 10
+  });
+  const staleListScope = createCustomerWorkspaceListScope({
+    ...epoch(),
+    requestGeneration: 0,
+    page: 1,
+    pageSize: 10
+  });
+  const detailScope = createCustomerWorkspaceDetailScope({
+    ...epoch(),
+    requestGeneration: 2,
+    workspaceId: alpha.id
+  });
+
+  assert.equal(applyCustomerWorkspaceAccessDenied(initial, {
+    kind: "list",
+    activeScope: listScope,
+    responseScope: staleListScope,
+    access: "not_enabled"
+  }), null);
+
+  const notEnabled = applyCustomerWorkspaceAccessDenied(initial, {
+    kind: "list",
+    activeScope: listScope,
+    responseScope: listScope,
+    access: "not_enabled"
+  });
+  assert.ok(notEnabled);
+  assert.equal(notEnabled.access, "not_enabled");
+  assert.equal(notEnabled.workspaces.value, null);
+  assert.equal(notEnabled.workspaces.loading, false);
+  assert.equal(notEnabled.workspaces.error, "");
+
+  const forbidden = applyCustomerWorkspaceAccessDenied(notEnabled, {
+    kind: "detail",
+    activeScope: detailScope,
+    responseScope: detailScope,
+    access: "forbidden"
+  });
+  assert.ok(forbidden);
+  assert.equal(forbidden.access, "forbidden");
+  assert.equal(forbidden.detail.value, null);
+  assert.equal(forbidden.detail.error, "");
 });

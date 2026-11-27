@@ -145,7 +145,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v2/operations/{owner}/{operationId}", s.handleOperation)
 	s.registerAgentReadRoutes(mux)
 	s.registerAgentCredentialRoutes(mux)
+	mux.HandleFunc("/", s.handleConsoleStatic)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if containsDotDotSegment(r.URL.Path) || containsDotDotSegment(r.URL.RawPath) {
+			http.NotFound(w, r)
+			return
+		}
 		if len(r.Header.Values("Authorization")) != 0 && r.URL.Path != "/api/v2/mcp" {
 			writePublisherIdentityError(w, r, ErrSessionRequired)
 			return

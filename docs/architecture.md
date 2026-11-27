@@ -54,7 +54,7 @@ opl-instance-medopl (Instance profile + protected workflows)
 | Path | Boundary | Owns |
 | --- | --- | --- |
 | `apps/console-ui/` | React / TypeScript SPA | Presentation & same-origin BFF/CP requests |
-| `apps/console-bff/` | Go BFF in `opl-cloud` | Session security, CSRF, MCP `/api/v2/mcp`, owner DTO aggregation |
+| `apps/console-bff/` | Go BFF in `opl-cloud` | Session security, CSRF, MCP `/api/v2/mcp`, owner DTO aggregation & Console SPA static serving |
 | `services/gateway-integration/` | Go service (`tenant` + `gateway` DBs) | CloudIdentity sessions/Tenants, external identity mappings, `key_bindings` |
 | `services/capability/` | Go service (`capability` DB) | Publisher namespaces, Agent Package uploads/versions, approved WebUI catalog |
 | `services/build/` | Go service (`build` DB) | Immutable BuildJobs & OCI artifacts (no Cloud/Sub2API DB access) |
@@ -71,7 +71,7 @@ opl-instance-medopl (Instance profile + protected workflows)
 ### Deployment Model & Unit Composition
 
 - `OPL_DEPLOYMENT_MODE` (`platform_owned`, `managed_tke`, `customer_owned`) and `OPL_FABRIC_PROVIDER` (`local-docker`, `tencent-tke`) vary independently; `opl-instance-medopl` binds `managed_tke` + `tencent-tke`. macOS does not support `local-docker` project quotas for production Workspace verification.
-- Domain boundaries do not force separate deployment containers: Cloud ships a composed backend unit (`compose.cloud.yaml`: PostgreSQL + 11 owner processes + same-origin proxy) while keeping BuildKit workers and running customer Workspace containers outside backend privileges.
+- Domain boundaries do not force separate deployment containers: Cloud ships a unified 3-container portable topology (`compose.cloud.yaml`: PostgreSQL + one composed `cloud-backend` container running all 11 owner processes via `opl-cloud-composition` against the image-baked `/app/contracts/opl-cloud-owner-topology.json` + same-origin proxy `cloud-local-v2`) while keeping BuildKit workers and running customer Workspace containers outside backend privileges. The runtime image (`debian:bookworm-slim`) contains no Node.js runtime or `node_modules`.
 
 ## Candidate And Installation-Data Boundary
 
@@ -102,5 +102,5 @@ Customer purchases decouple resource fulfillment from application delivery:
 Before introducing a new service, contract or cross-owner integration, verify:
 1. Exactly one canonical writer owns each stateful table/fact;
 2. Cross-owner data flows use typed public protobuf/gRPC or authenticated HTTP readbacks (no cross-DB joins or sibling source imports);
-3. Provider-specific SDKs (`tencentcloud-sdk-go`, `docker`) remain isolated inside `services/fabric/`;
+3. Provider-specific SDKs (`tencentcloud-sdk-go`, `github.com/moby/*`) remain isolated inside `services/fabric/`; Kubernetes SSA client access stays isolated behind `services/internal/tkeapply` (`services/fabric/` and `services/serve/`), and BuildKit CLI invocation stays isolated inside `services/build/`;
 4. Monetary, Secret, and irreversible deletion paths enforce idempotency keys, CAS revisions and readback-before-retry fences.

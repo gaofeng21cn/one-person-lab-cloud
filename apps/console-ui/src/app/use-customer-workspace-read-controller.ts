@@ -12,10 +12,12 @@ import {
   readCustomerWorkspaceOwnerDetail,
   readCustomerWorkspaceOwnerList
 } from "../api/workspaces-api.ts";
+import { hasCloudTenantAccess, isPermissionDeniedError } from "./authorization-error.ts";
 import { cloudIdentity } from "./console-identity.ts";
 import type { CustomerWorkspaceReadController, WorkspaceSourceProjectionLease } from "./console-controller-types.ts";
 import {
   CUSTOMER_WORKSPACE_LIST_PAGE_SIZE,
+  applyCustomerWorkspaceAccessDenied,
   applyCustomerWorkspaceCompletion,
   commitCustomerWorkspaceDetailProjectionLease,
   createCustomerWorkspaceDetailScope,
@@ -209,6 +211,30 @@ export function useCustomerWorkspaceReadController({
     }) ?? current);
   }, []);
 
+  const commitListAccessDenied = useCallback((
+    requestScope: CustomerWorkspaceListScope,
+    access: "not_enabled" | "forbidden"
+  ) => {
+    setState((current) => applyCustomerWorkspaceAccessDenied(current, {
+      kind: "list",
+      activeScope: requestScope,
+      responseScope: requestScope,
+      access
+    }) ?? current);
+  }, []);
+
+  const commitDetailAccessDenied = useCallback((
+    requestScope: CustomerWorkspaceDetailScope,
+    access: "not_enabled" | "forbidden"
+  ) => {
+    setState((current) => applyCustomerWorkspaceAccessDenied(current, {
+      kind: "detail",
+      activeScope: requestScope,
+      responseScope: requestScope,
+      access
+    }) ?? current);
+  }, []);
+
   const loadList = useCallback(async (
     requestedPage: number,
     requestedPageSize: number
@@ -224,6 +250,12 @@ export function useCustomerWorkspaceReadController({
       page: requestedPage,
       pageSize: requestedPageSize
     });
+    if (!hasCloudTenantAccess(activeSession)) {
+      committedPageRef.current = 1;
+      listRequestedPageRef.current = 1;
+      commitListAccessDenied(requestScope, "not_enabled");
+      return;
+    }
     listRequestedPageRef.current = requestedPage;
     listRequestedPageSizeRef.current = requestedPageSize;
     const userId = activeSession.user.id;
@@ -256,13 +288,17 @@ export function useCustomerWorkspaceReadController({
     } catch (error) {
       if (!requestOwnsScope(requestScope, userId, csrfToken, requestRouteKey)) return;
       listRequestedPageRef.current = committedPageRef.current;
+      if (isPermissionDeniedError(error)) {
+        commitListAccessDenied(requestScope, hasCloudTenantAccess(activeSession) ? "forbidden" : "not_enabled");
+        return;
+      }
       commitList(
         requestScope,
         unavailableSource<WorkspaceListData>(customerWorkspaceSourceOwner),
         friendlyError(error)
       );
     }
-  }, [beginProjection, commitList, currentEpoch, currentSession, friendlyError, requestOwnsScope, syncRouteBoundary, syncSessionBoundary, unavailableSource]);
+  }, [beginProjection, commitList, commitListAccessDenied, currentEpoch, currentSession, friendlyError, requestOwnsScope, syncRouteBoundary, syncSessionBoundary, unavailableSource]);
 
   const loadDetail = useCallback(async (
     workspaceId: string
@@ -277,6 +313,10 @@ export function useCustomerWorkspaceReadController({
       requestGeneration: ++detailGeneration.current,
       workspaceId
     });
+    if (!hasCloudTenantAccess(activeSession)) {
+      commitDetailAccessDenied(requestScope, "not_enabled");
+      return null;
+    }
     const userId = activeSession.user.id;
     const csrfToken = activeSession.csrfToken;
     beginProjection("detail");
@@ -298,11 +338,15 @@ export function useCustomerWorkspaceReadController({
       return result;
     } catch (error) {
       if (!requestOwnsScope(requestScope, userId, csrfToken, requestRouteKey)) return null;
+      if (isPermissionDeniedError(error)) {
+        commitDetailAccessDenied(requestScope, hasCloudTenantAccess(activeSession) ? "forbidden" : "not_enabled");
+        return null;
+      }
       const fallback = unavailableSource<WorkspaceDTO | null>(customerWorkspaceSourceOwner);
       commitDetail(requestScope, fallback, friendlyError(error));
       return fallback;
     }
-  }, [beginProjection, commitDetail, currentEpoch, currentSession, friendlyError, requestOwnsScope, syncRouteBoundary, syncSessionBoundary, unavailableSource]);
+  }, [beginProjection, commitDetail, commitDetailAccessDenied, currentEpoch, currentSession, friendlyError, requestOwnsScope, syncRouteBoundary, syncSessionBoundary, unavailableSource]);
 
   const load = useCallback(async (): Promise<SourceEnvelope<WorkspaceDTO | null> | null> => {
     const plan = customerWorkspaceRouteReadPlan(scopeRef.current, committedPageRef.current);
@@ -413,6 +457,7 @@ export function useCustomerWorkspaceReadController({
     : 0;
 
   return {
+    access: state.access,
     workspaces: state.workspaces,
     detail: state.detail,
     page,

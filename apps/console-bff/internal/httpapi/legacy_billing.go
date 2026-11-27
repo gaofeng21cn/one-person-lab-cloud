@@ -7,7 +7,10 @@ import (
 	"strconv"
 	"strings"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	contracts "opl-cloud/packages/contracts/go"
+	"opl-cloud/packages/contracts/go/openapi"
 )
 
 type LegacyBillingReader interface {
@@ -85,6 +88,10 @@ func (s *Server) legacyBillingHandler(kind string) http.HandlerFunc {
 			valid = validLegacyBillingSource(trend, "control_plane") && trend.Data.Days != nil && trend.Data.Timezone != ""
 		}
 		if err != nil {
+			if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound && st.Message() == "legacy_billing_account_not_found" {
+				writeJSON(w, http.StatusNotFound, openapi.NewError(openapi.ErrorCode("NOT_FOUND"), "legacy_billing_account_not_found", r.Header.Get(requestIDHeader)))
+				return
+			}
 			writeOwnerCallFailure(w, r, err)
 			return
 		}

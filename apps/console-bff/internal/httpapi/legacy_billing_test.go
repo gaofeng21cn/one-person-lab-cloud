@@ -104,3 +104,71 @@ func TestLegacyBillingBFFUsesSessionOnlyAndPreservesOriginalMoney(t *testing.T) 
 		t.Fatalf("unavailable=%d %s", w.Code, w.Body.String())
 	}
 }
+
+func TestLegacyBillingBFFPreservesAccountNotFoundReason(t *testing.T) {
+	const token = "historical-billing-test-token-000001"
+	var ownerStatus int
+	var ownerBody string
+	owner := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(ownerStatus)
+		_, _ = w.Write([]byte(ownerBody))
+	}))
+	defer owner.Close()
+	readers, err := clients.Dial(clients.Config{ControlPlaneURL: owner.URL, ControlPlaneToken: token})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer readers.Close()
+	identity := allowedIdentity()
+	identity.session.TenantId = nil
+	handler := NewServer(readers, identity).Handler()
+
+	ownerStatus = http.StatusNotFound
+	ownerBody = `{"error":"legacy_billing_account_not_found"}`
+	for _, path := range []string{"/api/v2/legacy-billing/receipts?limit=3", "/api/v2/legacy-billing/workspace-settlements"} {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, sessionRequest("GET", path))
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("%s status=%d body=%s", path, w.Code, w.Body.String())
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["code"] != "NOT_FOUND" || payload["message"] != "legacy_billing_account_not_found" {
+			t.Fatalf("%s payload=%v", path, payload)
+		}
+	}
+
+	ownerStatus = http.StatusNotFound
+	ownerBody = `{"error":"billing_receipt_not_found"}`
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, sessionRequest("GET", "/api/v2/legacy-billing/receipts/missing"))
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("receipt not found status=%d body=%s", w.Code, w.Body.String())
+	}
+	var missingPayload map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &missingPayload); err != nil {
+		t.Fatal(err)
+	}
+	if missingPayload["code"] != "NOT_FOUND" || missingPayload["message"] == "legacy_billing_account_not_found" {
+		t.Fatalf("missing receipt leaked account reason: %v", missingPayload)
+	}
+
+	ownerStatus = http.StatusConflict
+	ownerBody = `{"error":"legacy_billing_identity_lineage_invalid"}`
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, sessionRequest("GET", "/api/v2/legacy-billing/receipts?limit=3"))
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("conflict status=%d body=%s", w.Code, w.Body.String())
+	}
+
+	ownerStatus = http.StatusServiceUnavailable
+	ownerBody = `{"status":"unavailable"}`
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, sessionRequest("GET", "/api/v2/legacy-billing/workspace-settlements"))
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unavailable status=%d body=%s", w.Code, w.Body.String())
+	}
+}
