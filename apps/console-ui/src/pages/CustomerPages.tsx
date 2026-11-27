@@ -151,13 +151,19 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
   const announcements = sourceData(announcementController.announcements.value)?.items || [];
   const primaryWorkspace = workspaces?.items[0];
   const primaryPath = primaryWorkspace ? `/console/workspaces/${encodeURIComponent(primaryWorkspace.id)}` : "/console/workspaces/new";
-  const workspacesUnavailable = workspaceRead.workspaces.value?.status === "unavailable" || Boolean(workspaceRead.workspaces.error);
-  const workspacesPending = !workspaceRead.workspaces.value || workspaceRead.workspaces.loading;
+  const workspacesForbidden = workspaceRead.access === "forbidden";
+  const workspacesRestricted = workspaceRead.access === "not_enabled" || workspacesForbidden;
+  const workspacesUnavailable = !workspacesRestricted && (workspaceRead.workspaces.value?.status === "unavailable" || Boolean(workspaceRead.workspaces.error));
+  const workspacesPending = !workspacesRestricted && (!workspaceRead.workspaces.value || workspaceRead.workspaces.loading);
   const workspaceCountLabel = workspaces
     ? `当前账户共 ${formatCount(workspaces.total)} 个`
-    : workspacesPending && !workspacesUnavailable
-      ? "正在读取工作空间总数"
-      : "工作空间总数暂不可用";
+    : workspacesRestricted
+      ? (workspacesForbidden ? "当前账号无权查看工作空间" : "当前账号尚未开通工作空间白名单")
+      : workspacesPending && !workspacesUnavailable
+        ? "正在读取工作空间总数"
+        : "工作空间总数暂不可用";
+  const workspaceMetricValue = workspaces ? formatCount(workspaces.total) : workspacesRestricted ? (workspacesForbidden ? "无权限" : "未开通") : "暂不可用";
+  const workspaceMetricNote = workspacesRestricted ? (workspacesForbidden ? "当前角色无访问权限" : "需管理员开通白名单") : "全部工作空间";
 
   return (
     <section className="overview-page" data-slide="C-OV-01">
@@ -165,7 +171,7 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
         <Metric emphasis label="可用余额" note="用于工作空间与 API" value={wallet ? formatUsdMicros(wallet.usdMicros) : "暂不可用"} />
         <Metric label="本月 API 实际费用" note="请求实际消费" value={usage ? formatUsdMicros(usage.totalActualCostUsdMicros) : "暂不可用"} />
         <Metric label="本月请求次数" note="本月累计" value={usage ? formatCount(usage.totalRequests) : "暂不可用"} />
-        <Metric label="工作空间" note="全部工作空间" value={workspaces ? formatCount(workspaces.total) : "暂不可用"} />
+        <Metric label="工作空间" note={workspaceMetricNote} value={workspaceMetricValue} />
       </section>
 
       <div className="overview-grid">
@@ -173,11 +179,17 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
           <div className="panel-title overview-workspace-title">
             <div><h2>工作空间</h2><span>{workspaceCountLabel}</span></div>
             <div className="overview-workspace-actions">
-              <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost">全部</Button>
-              <Button color="primary" disabled={workspacesPending && !workspacesUnavailable} onClick={() => workspacesUnavailable ? void workspaceRead.refresh() : controller.navigate(primaryPath)} size="sm">
-                {workspacesUnavailable ? "重试读取工作空间" : primaryWorkspace ? "查看工作空间" : workspacesPending ? "正在读取工作空间" : "新建工作空间"}
-                {workspacesUnavailable ? <RefreshCw aria-hidden size={16} /> : <ArrowRight aria-hidden size={16} />}
-              </Button>
+              {workspacesRestricted ? (
+                <Button onClick={() => controller.navigate("/console/api")} size="sm" variant="outline">前往 OPL Gateway<ArrowRight aria-hidden size={15} /></Button>
+              ) : (
+                <>
+                  <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost">全部</Button>
+                  <Button color="primary" disabled={workspacesPending && !workspacesUnavailable} onClick={() => workspacesUnavailable ? void workspaceRead.refresh() : controller.navigate(primaryPath)} size="sm">
+                    {workspacesUnavailable ? "重试读取工作空间" : primaryWorkspace ? "查看工作空间" : workspacesPending ? "正在读取工作空间" : "新建工作空间"}
+                    {workspacesUnavailable ? <RefreshCw aria-hidden size={16} /> : <ArrowRight aria-hidden size={16} />}
+                  </Button>
+                </>
+              )}
             </div>
           </div>
           <SourceState
@@ -185,6 +197,10 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
             error={workspaceRead.workspaces.error}
             errorDescription="暂时无法读取工作空间，请稍后重试。"
             loading={workspaceRead.workspaces.loading}
+            notice={workspacesRestricted}
+            noticeDescription={workspacesForbidden ? "当前账号角色暂无工作空间访问权限，请联系管理员。" : "工作空间按白名单开通，当前账号可正常使用 OPL Gateway 与 API 余额；如需开通请联系管理员。"}
+            noticeKind="permission"
+            noticeTitle={workspacesForbidden ? "无权查看工作空间" : "工作空间尚未开通"}
             onRetry={() => void workspaceRead.refresh()}
             source={workspaceRead.workspaces.value}
             unavailableDescription="暂时无法读取工作空间，请稍后重试。"
@@ -210,6 +226,10 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
             error={controller.billing.trend.error}
             errorDescription="暂时无法确认工作空间扣款与退款，请稍后重试。"
             loading={controller.billing.trend.loading}
+            notice={controller.billing.trendNoLegacyAccount}
+            noticeDescription="当前账号没有旧版个人工作空间扣款记录，API 用量与余额可正常查看。"
+            noticeKind="info"
+            noticeTitle="无历史工作空间扣款记录"
             onRetry={() => void controller.billing.refresh()}
             source={controller.billing.trend.value}
             unavailableDescription="暂时无法从钱包资金记录确认工作空间扣款与退款，请稍后重试。"
@@ -227,6 +247,10 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
             error={controller.billing.receipts.error}
             errorDescription="暂时无法读取费用记录，请稍后重试。"
             loading={controller.billing.receipts.loading}
+            notice={controller.billing.receiptsNoLegacyAccount}
+            noticeDescription="当前账号没有旧版个人费用记录。"
+            noticeKind="info"
+            noticeTitle="无历史费用记录"
             onRetry={() => void controller.billing.refresh()}
             source={controller.billing.receipts.value}
             unavailableDescription="暂时无法读取费用记录，请稍后重试。"
@@ -309,10 +333,12 @@ function BillingPage({ controller }: { controller: ConsoleController }) {
   const workspaces = sourceData(workspaceRead.workspaces.value)?.items || [];
   const subscriptionPlans = useWorkspaceSubscriptionPlans(controller.session, cloudIdentity && billing.view === "terms" && workspaces.length > 0);
   const workspaceName = (workspaceId?: string) => workspaces.find((item) => item.id === workspaceId)?.name || "工作空间名称暂不可用";
+  const workspacesForbidden = workspaceRead.access === "forbidden";
+  const workspacesRestricted = workspaceRead.access === "not_enabled" || workspacesForbidden;
   return <section className="billing-page">
     <p>工作空间月费与 API 用量从同一账户余额扣除；退款退回原账户余额。<PageLink controller={controller} path="/console/api/usage">查看 API 用量</PageLink></p>
     <SegmentedControl ariaLabel="费用视图" block onChange={(value) => billing.setView(value)} options={[{ value: "terms", label: "订阅与续费" }, { value: "receipts", label: cloudIdentity ? "个人历史账单" : "账单记录" }]} value={billing.view} />
-    {billing.view === "terms" ? <section className="panel billing-surface" data-slide="C-BIL-01"><div className="panel-title"><h2>订阅与续费</h2></div><SourceState source={workspaceRead.workspaces.value} empty={workspaceRead.workspaces.value?.status === "empty"} emptyTitle="暂无订阅" error={workspaceRead.workspaces.error} errorDescription="暂时无法读取订阅与续费信息，请稍后重试。" loading={workspaceRead.workspaces.loading} onRetry={() => void workspaceRead.refresh()} unavailableDescription="暂时无法读取订阅与续费信息，请稍后重试。" unavailableTitle="订阅与续费暂不可用">{(data) => <>{cloudIdentity ? <div className="billing-subscriptions" role="list">{data.items.map((item) => <article className="billing-subscription-row" key={item.id} role="listitem"><header className="billing-subscription-row__heading"><h3><PageLink controller={controller} path={`/console/workspaces/${encodeURIComponent(item.id)}`}>{item.name || "未命名工作空间"}</PageLink></h3></header><WorkspaceSubscriptionPanel layout="billing" plans={subscriptionPlans} session={controller.session} workspace={item} /></article>)}</div> : <><div className="table-wrap billing-table-desktop"><table><thead><tr><th>工作空间</th><th>套餐</th><th>月度总价</th><th>计费周期</th><th>续费状态</th><th>自动续费</th></tr></thead><tbody>{data.items.map((item) => <tr key={item.id}><td><PageLink controller={controller} path={`/console/workspaces/${encodeURIComponent(item.id)}`}>{item.name || "未命名工作空间"}</PageLink></td><td>{item.packageId?.toUpperCase() || "-"}</td><td>{formatUsdMicros(item.totalUsdMicros)}</td><td>{item.periodStart && item.paidThrough ? `${formatDate(item.periodStart)} 至 ${formatDate(item.paidThrough)}` : "-"}</td><td>{presentWorkspaceRenewal(item.renewalStatus).label}</td><td>{item.autoRenew === true ? "开启" : item.autoRenew === false ? "关闭" : "-"}</td></tr>)}</tbody></table></div><div className="billing-list-mobile" role="list">{data.items.map((item) => {
+    {billing.view === "terms" ? <section className="panel billing-surface" data-slide="C-BIL-01"><div className="panel-title"><h2>订阅与续费</h2></div><SourceState source={workspaceRead.workspaces.value} empty={workspaceRead.workspaces.value?.status === "empty"} emptyTitle="暂无订阅" error={workspaceRead.workspaces.error} errorDescription="暂时无法读取订阅与续费信息，请稍后重试。" loading={workspaceRead.workspaces.loading} notice={workspacesRestricted} noticeDescription={workspacesForbidden ? "当前账号暂无工作空间访问权限，请联系管理员。" : "当前账号尚未开通工作空间白名单，暂无订阅与续费信息；API 用量与余额仍可正常使用。"} noticeKind="permission" noticeTitle={workspacesForbidden ? "无权查看工作空间订阅" : "工作空间订阅尚未开通"} onRetry={() => void workspaceRead.refresh()} unavailableDescription="暂时无法读取订阅与续费信息，请稍后重试。" unavailableTitle="订阅与续费暂不可用">{(data) => <>{cloudIdentity ? <div className="billing-subscriptions" role="list">{data.items.map((item) => <article className="billing-subscription-row" key={item.id} role="listitem"><header className="billing-subscription-row__heading"><h3><PageLink controller={controller} path={`/console/workspaces/${encodeURIComponent(item.id)}`}>{item.name || "未命名工作空间"}</PageLink></h3></header><WorkspaceSubscriptionPanel layout="billing" plans={subscriptionPlans} session={controller.session} workspace={item} /></article>)}</div> : <><div className="table-wrap billing-table-desktop"><table><thead><tr><th>工作空间</th><th>套餐</th><th>月度总价</th><th>计费周期</th><th>续费状态</th><th>自动续费</th></tr></thead><tbody>{data.items.map((item) => <tr key={item.id}><td><PageLink controller={controller} path={`/console/workspaces/${encodeURIComponent(item.id)}`}>{item.name || "未命名工作空间"}</PageLink></td><td>{item.packageId?.toUpperCase() || "-"}</td><td>{formatUsdMicros(item.totalUsdMicros)}</td><td>{item.periodStart && item.paidThrough ? `${formatDate(item.periodStart)} 至 ${formatDate(item.paidThrough)}` : "-"}</td><td>{presentWorkspaceRenewal(item.renewalStatus).label}</td><td>{item.autoRenew === true ? "开启" : item.autoRenew === false ? "关闭" : "-"}</td></tr>)}</tbody></table></div><div className="billing-list-mobile" role="list">{data.items.map((item) => {
       const path = item.id ? `/console/workspaces/${encodeURIComponent(item.id)}` : null;
       const card = <>
         <div className="billing-subscription-mobile__identity"><strong>{item.name || "未命名工作空间"}</strong><small>Workspace ID: {item.id || "暂不可用"}</small></div>
@@ -325,7 +351,7 @@ function BillingPage({ controller }: { controller: ConsoleController }) {
         ? <PageLink className="billing-subscription-mobile" controller={controller} key={item.id} path={path}>{card}</PageLink>
         : <div className="billing-subscription-mobile billing-subscription-mobile--static" key={item.id || item.name} role="listitem">{card}</div>;
     })}</div></>}<Pagination current={workspaceRead.page} label="订阅分页" onChange={(page) => void workspaceRead.changePage(page)} pages={workspaceRead.pages} /></>}</SourceState></section> : <>
-      <section className="panel billing-surface" data-slide="C-BIL-02"><div className="panel-title"><h2>{cloudIdentity ? "个人历史账单" : "账单记录"}</h2><span>{cloudIdentity ? "本人旧账户的原始记录；团队账单尚未开放" : "按时间顺序分页"}</span></div><SourceState source={billing.receipts.value} empty={billing.receipts.value?.status === "empty"} emptyTitle="暂无账单记录" error={billing.receipts.error} errorDescription="暂时无法读取账单记录，请稍后重试。" loading={billing.receipts.loading} onRetry={() => void billing.refresh()} unavailableDescription="暂时无法读取账单记录，请稍后重试。" unavailableTitle="账单记录暂不可用">{() => <><div className="table-wrap billing-table-desktop"><table><thead><tr><th>时间</th><th>类型</th><th>工作空间</th><th>金额</th><th>状态</th><th>操作</th></tr></thead><tbody>{receipts.map((item) => <tr key={item.receiptId}><td>{formatDate(item.createdAt, true)}</td><td>{presentBillingReceiptType(item.type, item.kind).label}</td><td><ReceiptWorkspaceIdentity workspaceId={item.workspaceId} workspaceName={workspaceName(item.workspaceId)} /></td><td>{presentBillingReceiptAmount(item)}</td><td>{presentBillingStatus(item.status).label}</td><td><Button onClick={() => void billing.openReceipt(item.receiptId)} size="sm" variant="ghost">查看</Button></td></tr>)}</tbody></table></div><div className="billing-list-mobile" role="list">{receipts.map((item) => <button key={item.receiptId} onClick={() => void billing.openReceipt(item.receiptId)} role="listitem"><span className="billing-receipt-mobile__identity"><strong>{presentBillingReceiptType(item.type, item.kind).label}</strong><ReceiptWorkspaceIdentity workspaceId={item.workspaceId} workspaceName={workspaceName(item.workspaceId)} /><small>{formatDate(item.createdAt, true)}</small></span><span className="billing-receipt-mobile__result"><strong>{presentBillingReceiptAmount(item)}</strong><small>{presentBillingStatus(item.status).label}</small></span><ChevronRight aria-hidden size={18} /></button>)}</div><ReceiptCursorNotice controller={billing} /></>}</SourceState></section>
+      <section className="panel billing-surface" data-slide="C-BIL-02"><div className="panel-title"><h2>{cloudIdentity ? "个人历史账单" : "账单记录"}</h2><span>{cloudIdentity ? "本人旧账户的原始记录；团队账单尚未开放" : "按时间顺序分页"}</span></div><SourceState source={billing.receipts.value} empty={billing.receipts.value?.status === "empty"} emptyTitle="暂无账单记录" error={billing.receipts.error} errorDescription="暂时无法读取账单记录，请稍后重试。" loading={billing.receipts.loading} notice={billing.receiptsNoLegacyAccount} noticeDescription="当前账号没有旧版个人账单记录，API 消费明细可在 OPL Gateway 中查看。" noticeKind="info" noticeTitle="无历史账单记录" onRetry={() => void billing.refresh()} unavailableDescription="暂时无法读取账单记录，请稍后重试。" unavailableTitle="账单记录暂不可用">{() => <><div className="table-wrap billing-table-desktop"><table><thead><tr><th>时间</th><th>类型</th><th>工作空间</th><th>金额</th><th>状态</th><th>操作</th></tr></thead><tbody>{receipts.map((item) => <tr key={item.receiptId}><td>{formatDate(item.createdAt, true)}</td><td>{presentBillingReceiptType(item.type, item.kind).label}</td><td><ReceiptWorkspaceIdentity workspaceId={item.workspaceId} workspaceName={workspaceName(item.workspaceId)} /></td><td>{presentBillingReceiptAmount(item)}</td><td>{presentBillingStatus(item.status).label}</td><td><Button onClick={() => void billing.openReceipt(item.receiptId)} size="sm" variant="ghost">查看</Button></td></tr>)}</tbody></table></div><div className="billing-list-mobile" role="list">{receipts.map((item) => <button key={item.receiptId} onClick={() => void billing.openReceipt(item.receiptId)} role="listitem"><span className="billing-receipt-mobile__identity"><strong>{presentBillingReceiptType(item.type, item.kind).label}</strong><ReceiptWorkspaceIdentity workspaceId={item.workspaceId} workspaceName={workspaceName(item.workspaceId)} /><small>{formatDate(item.createdAt, true)}</small></span><span className="billing-receipt-mobile__result"><strong>{presentBillingReceiptAmount(item)}</strong><small>{presentBillingStatus(item.status).label}</small></span><ChevronRight aria-hidden size={18} /></button>)}</div><ReceiptCursorNotice controller={billing} /></>}</SourceState></section>
       {billing.selectedReceiptId ? <ReceiptDetail controller={billing} workspaceName={workspaceName(receipt?.workspaceId)} /> : null}
     </>}
   </section>;
@@ -354,7 +380,7 @@ function AnnouncementsPage({ controller }: { controller: ConsoleController }) {
 export function CustomerPages({ controller, route }: { controller: ConsoleController; route: CustomerConsoleRoute }) {
   switch (route.kind) {
     case "customer.publisher":
-      return <PublisherPage key={controller.session?.user.id} onNavigate={controller.navigate} />;
+      return <PublisherPage key={controller.session?.user.id} onNavigate={controller.navigate} session={controller.session} />;
     case "customer.agents":
     case "customer.agent-detail":
       return <AgentPages controller={controller} route={route} />;

@@ -72,6 +72,7 @@
   --color-surface-raised: #ffffff;
   --color-border: #e5e5e5;
   --color-border-strong: #d4d4d4;
+  --focus-accent: #0ea5e9;
   --color-ring: rgb(15 118 110 / 24%);
 
   --color-background-primary-solid: #0f766e;
@@ -123,6 +124,7 @@
   --elevation-100: 0 1px 2px rgb(17 17 17 / 6%);
   --elevation-200: 0 6px 18px rgb(17 17 17 / 9%);
   --elevation-300: 0 20px 50px -12px rgb(17 17 17 / 22%);
+  --shadow-showcase: 0 20px 50px -24px rgb(0 0 0 / 24%), 0 4px 14px -8px rgb(0 0 0 / 10%);
   --motion-fast: 120ms;
   --motion-normal: 180ms;
 
