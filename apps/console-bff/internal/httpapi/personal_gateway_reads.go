@@ -1,18 +1,21 @@
 package httpapi
 
 import (
-	"context"
 	"net/http"
 	"net/url"
-	contracts "opl-cloud/packages/contracts/go"
 	"strconv"
+	"strings"
+	"time"
+
+	"opl-cloud/apps/console-bff/internal/clients"
+	contracts "opl-cloud/packages/contracts/go"
+	api "opl-cloud/packages/contracts/go/api"
 )
 
-type PersonalGatewayReader interface {
-	GetPersonalGatewayHistory(context.Context, string, int, int) (*contracts.LegacyBillingSource[contracts.PersonalGatewayHistoryPage], error)
-	GetPersonalGatewayEndpoint(context.Context, string) (*contracts.LegacyBillingSource[contracts.PersonalGatewayEndpoint], error)
-}
-
+// These two customer reads belong to the Gateway owner: the Gateway keeps the
+// spendable balance, so the owner reads the balance history and publishes its
+// own public endpoint. The BFF publishes what the owner answered and never
+// derives a balance, a record or an endpoint of its own.
 func (s *Server) registerPersonalGatewayReadRoutes(mux *http.ServeMux) {
 	for _, kind := range []string{"balance-history", "endpoint"} {
 		mux.HandleFunc("GET /api/v2/gateway/"+kind, func(w http.ResponseWriter, r *http.Request) {
@@ -49,28 +52,58 @@ func (s *Server) registerPersonalGatewayReadRoutes(mux *http.ServeMux) {
 					size = n
 				}
 			}
-			if s.personalGateway == nil {
+			if s.gateway == nil {
 				writePublisherError(w, r, 503, "owner_unconfigured", "gateway reader is not configured")
 				return
 			}
+			ctx := WithCaller(r.Context(), caller, r.Header.Get(requestIDHeader))
+			call := clients.CallContext(ctx)
 			var out any
-			valid := false
 			if kind == "balance-history" {
-				history, e := s.personalGateway.GetPersonalGatewayHistory(r.Context(), caller.SessionID, page, size)
-				err, out = e, history
-				valid = validLegacyBillingSource(history, "sub2api") && history.Data.Items != nil && history.Data.Page == page && history.Data.PageSize == size && len(history.Data.Items) <= size && history.Data.Total >= 0 && history.Data.Pages >= 0
+				history, e := s.gateway.ListPersonalGatewayBalanceHistory(ctx, &api.ListPersonalGatewayBalanceHistoryRpcRequest{
+					Context: call, Page: int32(page), PageSize: int32(size),
+				})
+				if e != nil {
+					writeOwnerCallFailure(w, r, e)
+					return
+				}
+				items := make([]contracts.PersonalGatewayHistoryEntry, 0, len(history.GetItems()))
+				for _, item := range history.GetItems() {
+					entry := contracts.PersonalGatewayHistoryEntry{
+						Type: item.GetType(), ValueUSDMicros: item.GetValueUsdMicros(),
+						Status: item.GetStatus(), CreatedAt: item.GetCreatedAt(),
+					}
+					if item.UsedAt != nil {
+						usedAt := item.GetUsedAt()
+						entry.UsedAt = &usedAt
+					}
+					items = append(items, entry)
+				}
+				status := "available"
+				if len(items) == 0 {
+					status = "empty"
+				}
+				out = contracts.LegacyBillingSource[contracts.PersonalGatewayHistoryPage]{
+					Source: "gateway", Status: status, Available: true,
+					Data:      &contracts.PersonalGatewayHistoryPage{Items: items, Total: history.GetTotal(), Page: int(history.GetPage()), PageSize: int(history.GetPageSize()), Pages: int64(history.GetPages())},
+					FetchedAt: time.Now().UTC().Format(time.RFC3339Nano),
+				}
 			} else {
-				endpoint, e := s.personalGateway.GetPersonalGatewayEndpoint(r.Context(), caller.SessionID)
-				err, out = e, endpoint
-				valid = validLegacyBillingSource(endpoint, "sub2api") && endpoint.Data.BaseURL != ""
-			}
-			if err != nil {
-				writeOwnerCallFailure(w, r, err)
-				return
-			}
-			if !valid {
-				writePublisherError(w, r, 502, "invalid_owner_response", "invalid gateway owner response")
-				return
+				endpoint, e := s.gateway.GetPersonalGatewayEndpoint(ctx, &api.GetPersonalGatewayEndpointRpcRequest{Context: call})
+				if e != nil {
+					writeOwnerCallFailure(w, r, e)
+					return
+				}
+				baseURL := strings.TrimSpace(endpoint.GetBaseUrl())
+				if baseURL == "" {
+					writePublisherError(w, r, 502, "invalid_owner_response", "invalid gateway owner response")
+					return
+				}
+				out = contracts.LegacyBillingSource[contracts.PersonalGatewayEndpoint]{
+					Source: "gateway", Status: "available", Available: true,
+					Data:      &contracts.PersonalGatewayEndpoint{BaseURL: baseURL},
+					FetchedAt: time.Now().UTC().Format(time.RFC3339Nano),
+				}
 			}
 			writeJSON(w, 200, out)
 		})

@@ -93,6 +93,20 @@ Git log.
   quota or a rate limit. The public surface is the Console BFF, which carries the
   customer's whole instruction to that owner and projects its answer; the Control
   Plane's own `/api/gateway/keys` write routes are not yet migrated onto it.
+- **Customer Gateway Balance History And Endpoint Ownership**: `Gateway
+  Integration` owns the customer's own balance history and the public Gateway
+  endpoint, because the Gateway keeps the spendable balance and the endpoint is a
+  fact of the owner's own configuration. The owner resolves the subject from the
+  caller's own verified identity binding (`gateway.identity_mappings`) and never
+  from a request field, so a read can only return the caller's own money; the
+  Gateway's two monetary record streams (`balance` and `admin_balance`) are read
+  and merged by the owner, because an unfiltered upstream read would mix
+  subscriptions and concurrency into the customer's USD. The public surface is
+  the Console BFF, which projects the owner's answer. The Control Plane's
+  `GET /internal/cloud/gateway/balance-history` and
+  `GET /internal/cloud/gateway/endpoint` bridges are retired; its retained
+  `/api/gateway/*` read routes stay only for the legacy Console build until
+  Control Plane retirement.
 
 ## Non-Spending Publication & Incremental Retirement
 

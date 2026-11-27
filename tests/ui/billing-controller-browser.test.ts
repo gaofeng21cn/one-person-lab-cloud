@@ -867,7 +867,7 @@ test("Cloud billing uses session-bound history routes and labels the original sc
         csrfToken: "cloud-csrf", expiresAt: "2099-01-01T00:00:00Z"
       });
       if (path.startsWith("/api/v2/legacy-billing/") || path === "/api/v2/gateway/balance-history") reads.push(path);
-      if (path === "/api/v2/gateway/balance-history") return fulfill(route, { source: "sub2api", status: "available", available: true, fetchedAt: "2026-10-16T00:00:00Z", data: { items: [{type: "balance", valueUsdMicros: "1230000", status: "used", usedAt: null, createdAt: "2026-10-16T00:00:00Z"}], total: 1, page: 1, pageSize: 20, pages: 1 } });
+      if (path === "/api/v2/gateway/balance-history") return fulfill(route, { source: "gateway", status: "available", available: true, fetchedAt: "2026-10-16T00:00:00Z", data: { items: [{type: "balance", valueUsdMicros: "1230000", status: "used", usedAt: null, createdAt: "2026-10-16T00:00:00Z"}], total: 1, page: 1, pageSize: 20, pages: 1 } });
       if (path === "/api/v2/legacy-billing/receipts") return fulfill(route, receiptSource([original]));
       if (path === "/api/v2/legacy-billing/receipts/original-history") return fulfill(route, detailSource(original));
       return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ code: "isolated_owner_unavailable" }) });

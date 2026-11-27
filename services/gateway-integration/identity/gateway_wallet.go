@@ -26,9 +26,18 @@ const (
 	gatewayBalanceNotePrefix     = "OPL Cloud balance adjustment: "
 	gatewayAdjustmentCodeLimit   = 32
 	gatewayAdjustmentLookups     = 100
-	gatewayBalanceHistoryTypes   = 2
 	maxGatewayBalanceHistoryPage = 1_000_000
 )
+
+// gatewayBalanceRecordTypes are the two monetary record streams the Gateway
+// keeps for one account. The official endpoint accepts one exact type per
+// request, never a union, so every read of a monetary record names one of
+// these. An unfiltered upstream read would mix subscriptions and concurrency
+// into the customer's own USD, so this list is the single statement of which
+// streams count as money. The order is the order the wallet adjustment
+// confirmation reads them in; a merged customer display sorts by time and code
+// afterwards, so it does not depend on this order.
+var gatewayBalanceRecordTypes = []string{"admin_balance", "balance"}
 
 // ErrGatewayChargeUnknown reports that a balance POST was dispatched but its
 // outcome is unconfirmed. It is never retried inside this adapter: the upstream
@@ -166,9 +175,9 @@ func (g *Gateway) PositiveBalanceHistoryByCodes(ctx context.Context, userID int6
 		return nil, err
 	}
 	matches := make(map[string]GatewayBalanceHistoryEntry, len(targets))
-	for _, recordType := range []string{"admin_balance", "balance"} {
+	for _, recordType := range gatewayBalanceRecordTypes {
 		for page := 1; ; page++ {
-			data, err := g.balanceHistoryPage(ctx, token, userID, page, recordType)
+			data, err := g.balanceHistoryPage(ctx, token, userID, page, gatewayAdjustmentLookups, recordType)
 			if err != nil {
 				return nil, err
 			}
@@ -222,11 +231,11 @@ type gatewayBalancePage struct {
 	Pages    int                    `json:"pages"`
 }
 
-func (g *Gateway) balanceHistoryPage(ctx context.Context, token string, userID int64, page int, recordType string) (gatewayBalancePage, error) {
+func (g *Gateway) balanceHistoryPage(ctx context.Context, token string, userID int64, page, pageSize int, recordType string) (gatewayBalancePage, error) {
 	if page > maxGatewayBalanceHistoryPage {
 		return gatewayBalancePage{}, status.Error(codes.InvalidArgument, "Gateway balance history page exceeds supported range")
 	}
-	path := "/api/v1/admin/users/" + strconv.FormatInt(userID, 10) + "/balance-history?page=" + strconv.Itoa(page) + "&page_size=" + strconv.Itoa(gatewayAdjustmentLookups) + "&type=" + recordType
+	path := "/api/v1/admin/users/" + strconv.FormatInt(userID, 10) + "/balance-history?page=" + strconv.Itoa(page) + "&page_size=" + strconv.Itoa(pageSize) + "&type=" + recordType
 	body, err := g.adminRequest(ctx, path, nil, token)
 	if err != nil {
 		return gatewayBalancePage{}, err
@@ -238,15 +247,15 @@ func (g *Gateway) balanceHistoryPage(ctx context.Context, token string, userID i
 	expectedPages := 1
 	expectedItems := 0
 	if data.Total > 0 {
-		expectedPages = int((data.Total + int64(gatewayAdjustmentLookups) - 1) / int64(gatewayAdjustmentLookups))
+		expectedPages = int((data.Total + int64(pageSize) - 1) / int64(pageSize))
 		if page <= expectedPages {
-			expectedItems = gatewayAdjustmentLookups
-			if remaining := data.Total - int64(page-1)*int64(gatewayAdjustmentLookups); remaining < int64(expectedItems) {
+			expectedItems = pageSize
+			if remaining := data.Total - int64(page-1)*int64(pageSize); remaining < int64(expectedItems) {
 				expectedItems = int(remaining)
 			}
 		}
 	}
-	if data.Total < 0 || data.Page != page || data.PageSize != gatewayAdjustmentLookups || data.Pages != expectedPages || page > data.Pages || len(data.Items) != expectedItems {
+	if data.Total < 0 || data.Page != page || data.PageSize != pageSize || data.Pages != expectedPages || page > data.Pages || len(data.Items) != expectedItems {
 		return gatewayBalancePage{}, status.Error(codes.Unavailable, "invalid Gateway balance history pagination")
 	}
 	return data, nil

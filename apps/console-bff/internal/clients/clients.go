@@ -9,14 +9,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/url"
-	"strconv"
 	"strings"
 
 	"google.golang.org/grpc"
 
-	contracts "opl-cloud/packages/contracts/go"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 )
@@ -402,21 +398,4 @@ func (c *Clients) Deployment(ctx context.Context, workspaceID, deploymentID stri
 		return nil, fmt.Errorf("serve: %w", ErrUpstreamUnconfigured)
 	}
 	return c.serve.GetDeployment(ctx, &api.GetDeploymentRpcRequest{Context: CallContext(ctx), WorkspaceId: workspaceID, DeploymentId: deploymentID})
-}
-
-func (c *Clients) GetPersonalGatewayHistory(ctx context.Context, session string, page, size int) (*contracts.LegacyBillingSource[contracts.PersonalGatewayHistoryPage], error) {
-	out := &contracts.LegacyBillingSource[contracts.PersonalGatewayHistoryPage]{}
-	path := "/internal/cloud/gateway/balance-history?" + url.Values{"page": {strconv.Itoa(page)}, "pageSize": {strconv.Itoa(size)}}.Encode()
-	if err := c.controlPlane.request(ctx, session, http.MethodGet, path, "", out); err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *Clients) GetPersonalGatewayEndpoint(ctx context.Context, session string) (*contracts.LegacyBillingSource[contracts.PersonalGatewayEndpoint], error) {
-	out := &contracts.LegacyBillingSource[contracts.PersonalGatewayEndpoint]{}
-	if err := c.controlPlane.request(ctx, session, http.MethodGet, "/internal/cloud/gateway/endpoint", "", out); err != nil {
-		return nil, err
-	}
-	return out, nil
 }

@@ -16,15 +16,16 @@ import {
   GATEWAY_BALANCE_HISTORY_PAGE_SIZE,
   accountUsageSourceTag,
   applyGatewayAccountReadCompletion,
+  balanceHistorySourceTag,
   beginGatewayAccountReadProjection,
   createGatewayAccountReadRequestScope,
   createGatewayAccountReadState,
+  endpointSourceTag,
   gatewayAccountReadPlan,
   gatewayAccountReadScopeIsCurrent,
   gatewayAccountReadSourceMatchesScope,
   walletSourceTag,
   invalidateGatewayAccountReadEpoch,
-  sub2apiAccountReadSourceTag,
   type GatewayAccountReadCompletion,
   type GatewayAccountReadEpoch,
   type GatewayAccountReadProjectionKind,
@@ -55,7 +56,8 @@ type ProjectionGenerations = Record<GatewayAccountReadProjectionKind, number>;
 function unavailableSourceTag(kind: GatewayAccountReadProjectionKind): string {
   if (kind === "wallet") return walletSourceTag(cloudIdentity);
   if (kind === "accountUsage") return accountUsageSourceTag(cloudIdentity);
-  return sub2apiAccountReadSourceTag;
+  if (kind === "balanceHistory") return balanceHistorySourceTag(cloudIdentity);
+  return endpointSourceTag(cloudIdentity);
 }
 
 const createProjectionGenerations = (): ProjectionGenerations => ({
