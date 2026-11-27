@@ -16,6 +16,22 @@ chronological snapshots.
   live under the single root Go module `go.mod` (`module opl-cloud`), backed by
   typed `database/sql` PostgreSQL stores and `services/internal/postgresmigrate`
   (`ent` ORM has been retired).
+- **Dead-Code Boundary Over The Owner Packages**: The repository's dead-code
+  boundary is the tool `tools/go/deadcode`, not a service artifact. It runs
+  `golang.org/x/tools/cmd/deadcode` over the whole module from the repository
+  root, keeps only production declarations in the packages
+  `tools/go/deadcode/targets.txt` declares, and compares the unreachable set
+  against `tools/go/deadcode/allowlist.txt`. The declared list covers the 43
+  production packages under `services/` and `apps/console-bff` — every owner
+  package, not one service — and the tool refuses to run when that list no
+  longer equals the packages the tree contains, so a package cannot leave the
+  boundary unnoticed. Allowlist keys are package-qualified
+  (`<import path>.<Symbol>` for a package-level symbol,
+  `<import path>.<ReceiverType>.<name>` for a method) and every entry carries
+  the reason its declaration cannot simply be deleted. The HTTP surface scanners
+  the owner-topology contract tests read live in `tools/go/http-surface-scan` and
+  `tools/go/route-scan`, so retiring the retained Control Plane directory
+  removes no source check.
 - **Slim Go-Only Image & 3-Container Composed Portable Topology**: `Dockerfile`
   compiles all Go binaries in one shared `go-build` stage onto a
   Node-free `debian:bookworm-slim` runtime carrying `/app/dist` and baked
