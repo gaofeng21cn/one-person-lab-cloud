@@ -3,9 +3,12 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"opl-cloud/packages/contracts/go/owneridentity"
 )
 
 const testProbeTimeout = 5 * time.Second
@@ -192,5 +195,42 @@ func TestProbeFromArgsRoutesEachIdentityToItsOwnCriterion(t *testing.T) {
 	}
 	if out.Status != "failed" {
 		t.Fatalf("a refused identity did not report a failure: %+v", out)
+	}
+}
+
+
+func TestProbeGRPCResolvesMaterialFromSharedCertDir(t *testing.T) {
+	dir := t.TempDir()
+	env := func(mapValues map[string]string) func(string) string {
+		return func(key string) string { return mapValues[key] }
+	}
+	resolved := owneridentity.OwnerTLSFromEnv(env(map[string]string{
+		"NODE_ENV":                "production",
+		"OPL_GRPC_CA_FILE":        filepath.Join(dir, "ca.crt"),
+		owneridentity.CertDirEnv:  dir,
+	}), owneridentity.Tenant.Service())
+	if resolved.CertFile != filepath.Join(dir, "tenant.crt") || resolved.KeyFile != filepath.Join(dir, "tenant.key") {
+		t.Fatalf("resolved shared cert dir paths = (%q, %q)", resolved.CertFile, resolved.KeyFile)
+	}
+	explicitCert := filepath.Join(dir, "explicit.crt")
+	explicitKey := filepath.Join(dir, "explicit.key")
+	explicit := owneridentity.OwnerTLSFromEnv(env(map[string]string{
+		"NODE_ENV":               "production",
+		"OPL_GRPC_CA_FILE":       filepath.Join(dir, "ca.crt"),
+		owneridentity.CertDirEnv: dir,
+		"OPL_GRPC_CERT_FILE":     explicitCert,
+		"OPL_GRPC_KEY_FILE":      explicitKey,
+	}), owneridentity.Tenant.Service())
+	if explicit.CertFile != explicitCert || explicit.KeyFile != explicitKey {
+		t.Fatalf("explicit cert/key override lost: (%q, %q)", explicit.CertFile, explicit.KeyFile)
+	}
+	// Exercising probeGRPC confirms missing cert files under OPL_GRPC_CERT_DIR fail with tls_config rather than dialing unauthenticated.
+	out, err := probeGRPC(config{Owner: owneridentity.Gateway, Address: "127.0.0.1:1", Timeout: testProbeTimeout}, env(map[string]string{
+		"NODE_ENV":               "production",
+		"OPL_GRPC_CA_FILE":       filepath.Join(dir, "ca.crt"),
+		owneridentity.CertDirEnv: dir,
+	}))
+	if err == nil || !strings.HasPrefix(err.Error(), "tls_config:") || out.TransportPrincipal != "tenant" {
+		t.Fatalf("probeGRPC with shared cert dir = (%+v, %v), want tls_config error for tenant principal", out, err)
 	}
 }

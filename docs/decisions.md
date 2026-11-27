@@ -21,6 +21,19 @@ Git log.
   composed deployment unit while keeping separate database roles, single-writer
   boundaries, idempotency fences and privileged BuildKit / running Workspace
   execution outside the ordinary backend trust boundary.
+- **Slim Go-only runtime image**: `Dockerfile` compiles all Go binaries in a
+  single shared `go-build` stage and packages `debian:bookworm-slim` without
+  Node.js or `node_modules`, baking `/app/dist` and
+  `/app/contracts/opl-cloud-owner-topology.json` into the product image while
+  retaining `CMD ["/usr/local/bin/opl-control-plane"]` for existing deployment
+  profiles.
+- **Unified 3-container portable Compose**: `deploy/portable/compose.cloud.yaml`
+  standardizes single-host portable installations on 3 containers (`postgres`,
+  `cloud-backend` running `opl-cloud-composition`, and `cloud-local-v2` proxy)
+  instead of 11 separate backend service containers.
+- **Console SPA ownership**: `apps/console-bff` serves the compiled Console SPA
+  static bundle (`/app/dist`) on `/` for the `cloud` Console identity so
+  Console static delivery no longer depends on the retained `services/control-plane`.
 
 ## Workspace Application Model
 

@@ -156,7 +156,7 @@ func probeGRPC(cfg config, getenv func(string) string) (result, error) {
 	out := resultFor(cfg.Owner.String())
 	transportTarget := owneridentity.DeploymentUnitTransportPrincipal(cfg.Owner)
 	out.TransportPrincipal = transportTarget.String()
-	transport := owneridentity.TLSFromEnv(getenv)
+	transport := owneridentity.OwnerTLSFromEnv(getenv, transportTarget)
 	options, err := transport.HealthDialOptions(transportTarget, transportTarget)
 	if err != nil {
 		return out, fmt.Errorf("tls_config: %w", err)
