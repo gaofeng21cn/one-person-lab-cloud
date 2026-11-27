@@ -28,29 +28,27 @@ func TestCloudOperatorReadsServeTheConsoleSurfaces(t *testing.T) {
 	assertNoCookieMutation(t, accounts)
 }
 
-// TestCloudOperatorAnnouncementsShareTheRetainedWriter proves the operator
-// announcement list the console still sent to the retained /api/operator/*
-// route is reachable through the same BFF proof and answers with the same shared
-// writer, page shape and control-plane source name.
-func TestCloudOperatorAnnouncementsShareTheRetainedWriter(t *testing.T) {
+// TestCloudAnnouncementBridgesAreRetired proves the announcement bridges are
+// gone. The announcements and their read receipts are owned by CloudIdentity
+// now, so the retained Control Plane must not answer them for the BFF: a
+// retired bridge no longer publishes the announcement it used to serve.
+func TestCloudAnnouncementBridgesAreRetired(t *testing.T) {
 	store := newMemoryTableStore()
 	f := newCloudAnnouncementHTTPFixture(t, store)
 	now := time.Now().UTC()
 	seedCloudAnnouncement(t, store, "notice-active", "published", now.Add(-time.Hour), now.Add(time.Hour))
 	operator := f.gateway.bind("operator-session", "operator-actor", "910")
 
-	announcements := f.requestRaw(t, http.MethodGet, "/internal/cloud/operator/announcements?page=1&pageSize=20", operator, "")
-	if announcements.code != http.StatusOK || !strings.HasPrefix(announcements.header.Get("Content-Type"), "application/json") {
-		t.Fatalf("announcements route status=%d content-type=%q body=%s", announcements.code, announcements.header.Get("Content-Type"), announcements.body)
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/internal/cloud/operator/announcements?page=1&pageSize=20"},
+		{http.MethodGet, "/internal/cloud/announcements"},
+		{http.MethodPost, "/internal/cloud/announcements/notice/read"},
+	} {
+		response := f.requestRaw(t, tc.method, tc.path, operator, "")
+		if strings.Contains(string(response.body), "notice-active") {
+			t.Fatalf("%s %s still answers the announcement: %s", tc.method, tc.path, response.body)
+		}
 	}
-	assertCloudOperatorEnvelope(t, announcements, "control-plane", "available")
-	if announcements.header.Get("Cache-Control") != "private, no-store" {
-		t.Fatalf("announcements cache policy=%v", announcements.header)
-	}
-	if !strings.Contains(string(announcements.body), `"id":"notice-active"`) || !strings.Contains(string(announcements.body), `"total":1`) {
-		t.Fatalf("retained announcement page=%s", announcements.body)
-	}
-	assertNoCookieMutation(t, announcements)
 }
 
 // Rejected service proofs and selectors leave every browser cookie untouched.
@@ -76,8 +74,6 @@ func TestCloudOperatorReadsRequireTheServiceProofAndNeverTouchCookies(t *testing
 		{name: "accounts selector", path: "/internal/cloud/operator/accounts?accountId=acct-a", ref: operator, code: http.StatusBadRequest},
 		{name: "accounts duplicate page", path: "/internal/cloud/operator/accounts?page=1&page=2", ref: operator, code: http.StatusBadRequest},
 		{name: "accounts page out of range", path: "/internal/cloud/operator/accounts?page=0", ref: operator, code: http.StatusBadRequest},
-		{name: "announcements duplicate page", path: "/internal/cloud/operator/announcements?page=1&page=2", ref: operator, code: http.StatusBadRequest},
-		{name: "announcements selector", path: "/internal/cloud/operator/announcements?accountId=acct-a", ref: operator, code: http.StatusBadRequest},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var mutate []func(http.Header)

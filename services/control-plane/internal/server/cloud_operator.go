@@ -41,9 +41,6 @@ func (app *controlPlaneServer) registerCloudOperatorRoutes(mux *http.ServeMux, s
 		{"/internal/cloud/operator/accounts", pagination, func(w http.ResponseWriter, r *http.Request) {
 			app.writeOperatorAccounts(w, r, service)
 		}},
-		{"/internal/cloud/operator/announcements", pagination, func(w http.ResponseWriter, r *http.Request) {
-			app.listOperatorAnnouncements(w, r)
-		}},
 	} {
 		mux.HandleFunc("GET "+route.path, app.cloudOperatorRead(route.read, route.query))
 	}

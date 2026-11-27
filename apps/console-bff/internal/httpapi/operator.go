@@ -24,7 +24,6 @@ import (
 type OperatorReader interface {
 	OperatorOverview(context.Context, string) ([]byte, error)
 	OperatorAccounts(context.Context, string, int, int) ([]byte, error)
-	OperatorAnnouncements(context.Context, string, int, int) ([]byte, error)
 	OperatorHealth(context.Context, string) ([]byte, error)
 	OperatorRuntimeObservations(context.Context, string) ([]byte, error)
 	OperatorReconciliation(context.Context, string, int, int) ([]byte, error)
@@ -53,7 +52,6 @@ func (s *Server) registerOperatorRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v2/operator/accounts", s.operatorReadHandler("accounts", "control-plane+sub2api"))
 	mux.HandleFunc("GET /api/v2/operator/workspaces", s.operatorReadHandler("workspaces", "workspace+fabric+serve"))
 	mux.HandleFunc("GET /api/v2/operator/workspaces/{workspaceId}", s.operatorReadHandler("workspace", "workspace+fabric+serve"))
-	mux.HandleFunc("GET /api/v2/operator/announcements", s.operatorReadHandler("announcements", "control-plane"))
 	mux.HandleFunc("GET /api/v2/operator/health", s.operatorReadHandler("Health", "control-plane"))
 	mux.HandleFunc("GET /api/v2/operator/runtime-observations", s.operatorReadHandler("RuntimeObservations", "control-plane+fabric"))
 	mux.HandleFunc("GET /api/v2/operator/reconciliation", s.operatorReadHandler("Reconciliation", "control-plane"))
@@ -80,7 +78,7 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 		}
 		page, pageSize := 1, operatorDefaultPageSize
 		switch kind {
-		case "accounts", "workspaces", "announcements", "Reconciliation":
+		case "accounts", "workspaces", "Reconciliation":
 			if page, pageSize, err = operatorPage(r); err != nil {
 				writePublisherError(w, r, 400, "invalid_pagination", "one page and pageSize are required")
 				return
@@ -165,8 +163,6 @@ func (s *Server) operatorRead(ctx context.Context, kind, session, workspaceID st
 		return s.operator.OperatorOverview(ctx, session)
 	case "accounts":
 		return s.operator.OperatorAccounts(ctx, session, page, pageSize)
-	case "announcements":
-		return s.operator.OperatorAnnouncements(ctx, session, page, pageSize)
 	case "Health":
 		return s.operator.OperatorHealth(ctx, session)
 	case "RuntimeObservations":

@@ -31,8 +31,6 @@ type AnnouncementScheduleRequest struct {
 }
 
 func registerAnnouncementRoutes(mux *http.ServeMux, app *controlPlaneServer) {
-	mux.HandleFunc("GET /internal/cloud/announcements", app.cloudAnnouncementHandler(false))
-	mux.HandleFunc("POST /internal/cloud/announcements/{announcementId}/read", app.cloudAnnouncementHandler(true))
 	mux.HandleFunc("GET /api/announcements", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
 		app.listActiveAnnouncements(w, r)
 	}))

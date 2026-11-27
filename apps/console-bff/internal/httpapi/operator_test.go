@@ -29,7 +29,6 @@ func TestOperatorRoutesAuthorizePlatformOperatorBeforeOwnerRead(t *testing.T) {
 	}
 	paths := map[string]string{
 		"/internal/cloud/operator/accounts":                           "control-plane+sub2api",
-		"/internal/cloud/operator/announcements":                      "control-plane",
 		"/internal/cloud/operator/health":                             "control-plane",
 		"/internal/cloud/operator/runtime-observations":               "control-plane+fabric",
 		"/internal/cloud/operator/reconciliation":                     "control-plane",
@@ -74,7 +73,6 @@ func TestOperatorRoutesAuthorizePlatformOperatorBeforeOwnerRead(t *testing.T) {
 
 	for _, route := range []string{
 		"/api/v2/operator/accounts?page=2&pageSize=3",
-		"/api/v2/operator/announcements?page=1&pageSize=20",
 		"/api/v2/operator/health",
 		"/api/v2/operator/runtime-observations",
 		"/api/v2/operator/reconciliation",
@@ -210,8 +208,6 @@ func TestOperatorRoutesRejectUndeclaredSelectors(t *testing.T) {
 		"/api/v2/operator/accounts?pageSize=51",
 		"/api/v2/operator/accounts?page=1&page=2",
 		"/api/v2/operator/accounts?page=1&pageSize=20&actorId=other",
-		"/api/v2/operator/announcements?accountId=acct-other",
-		"/api/v2/operator/announcements?page=1&page=2",
 	} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, sessionRequest(http.MethodGet, route))
@@ -247,7 +243,6 @@ func TestRemainingOperatorReadsRefuseTenantAdministratorWithoutOwnerRead(t *test
 	handler := NewServer(readers, identity).Handler()
 
 	for _, route := range []string{
-		"/api/v2/operator/announcements",
 		"/api/v2/operator/health",
 		"/api/v2/operator/runtime-observations",
 		"/api/v2/operator/reconciliation",
@@ -269,51 +264,13 @@ func TestRemainingOperatorReadsRefuseTenantAdministratorWithoutOwnerRead(t *test
 	if ownerCalls != 0 {
 		t.Fatalf("owner read before operator refusal: %d", ownerCalls)
 	}
-	if len(identity.requests) != 9 {
+	if len(identity.requests) != 8 {
 		t.Fatalf("operator decisions=%d", len(identity.requests))
 	}
 	for _, request := range identity.requests {
 		if request.GetScope().GetTenant() != nil {
 			t.Fatalf("operator scope must be platform, not the tenant: %v", request)
 		}
-	}
-}
-
-// TestRemainingOperatorReadsUnknownSessionNeverTouchCookies pins the 401
-// boundary for operator announcements: a missing or unknown CloudIdentity
-// session is refused without clearing opl_console_session.
-func TestRemainingOperatorReadsUnknownSessionNeverTouchCookies(t *testing.T) {
-	const token = "operator-reader-test-token-000006"
-	identity := &fakeIdentity{err: status.Error(codes.Unauthenticated, "expired or unknown session")}
-	var ownerCalls int
-	owner := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { ownerCalls++ }))
-	defer owner.Close()
-	readers, err := clients.Dial(clients.Config{ControlPlaneURL: owner.URL, ControlPlaneToken: token})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer readers.Close()
-	handler := NewServer(readers, identity).Handler()
-
-	for _, route := range []string{
-		"/api/v2/operator/announcements",
-	} {
-		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, sessionRequest(http.MethodGet, route))
-		if response.Code != http.StatusUnauthorized {
-			t.Fatalf("%s status=%d body=%s", route, response.Code, response.Body.String())
-		}
-		if cookies := response.Result().Cookies(); len(cookies) != 0 {
-			t.Fatalf("%s unknown session mutated a cookie: %v", route, cookies)
-		}
-		response = httptest.NewRecorder()
-		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, route, nil))
-		if response.Code != http.StatusUnauthorized || len(response.Result().Cookies()) != 0 {
-			t.Fatalf("%s missing session status=%d cookies=%v", route, response.Code, response.Result().Cookies())
-		}
-	}
-	if ownerCalls != 0 {
-		t.Fatalf("unknown session reached the owner: %d", ownerCalls)
 	}
 }
 

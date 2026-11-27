@@ -1994,6 +1994,64 @@ message WorkspacePurchaseEligibilityList {
  repeated WorkspacePurchaseEligibilityReadback items = 1;
 }
 
+// An announcement is one platform-wide publication every authenticated Cloud
+// User may read. It is not a Tenant fact: the table carries no Tenant column,
+// and the reader is the live session's own actor.
+message Announcement {
+ string id = 1;
+ string title = 2;
+ string body = 3;
+ string status = 4;
+ string starts_at = 5;
+ string ends_at = 6;
+ string published_at = 7;
+ string created_at = 8;
+ string updated_at = 9;
+ bool read = 10;
+}
+
+message AnnouncementPage {
+ repeated Announcement items = 1;
+ int64 total = 2;
+ int32 page = 3;
+ int32 page_size = 4;
+}
+
+// The read receipt is one row per announcement and reader. A repeated mark
+// returns the original readAt and never writes a second row.
+message AnnouncementRead {
+ string announcement_id = 1;
+ string read_at = 2;
+}
+
+message ListAnnouncementsRpcRequest {
+ CallContext context = 1;
+ int32 page = 2;
+ int32 page_size = 3;
+}
+
+message MarkAnnouncementReadRpcRequest {
+ CallContext context = 1;
+ string announcement_id = 2;
+}
+
+message PublishAnnouncementRequest {
+ string title = 1;
+ string body = 2;
+ string starts_at = 3;
+ string ends_at = 4;
+}
+
+message PublishAnnouncementRpcRequest {
+ CallContext context = 1;
+ PublishAnnouncementRequest body = 2;
+}
+
+message WithdrawAnnouncementRpcRequest {
+ CallContext context = 1;
+ string announcement_id = 2;
+}
+
 message CreateTenantRpcRequest {
  CallContext context = 1;
  CreateTenantRequest body = 2;
@@ -2288,6 +2346,11 @@ service TenantProductService {
  rpc GetTenantLifecycleOperation(GetTenantLifecycleOperationRpcRequest) returns (TenantLifecycleProgress);
  rpc SetWorkspacePurchaseEligibility(SetWorkspacePurchaseEligibilityRpcRequest) returns (WorkspacePurchaseEligibilityCommand);
  rpc ListWorkspacePurchaseEligibility(ListWorkspacePurchaseEligibilityRpcRequest) returns (WorkspacePurchaseEligibilityList);
+ rpc ListAnnouncements(ListAnnouncementsRpcRequest) returns (AnnouncementPage);
+ rpc MarkAnnouncementRead(MarkAnnouncementReadRpcRequest) returns (AnnouncementRead);
+ rpc ListOperatorAnnouncements(ListAnnouncementsRpcRequest) returns (AnnouncementPage);
+ rpc PublishAnnouncement(PublishAnnouncementRpcRequest) returns (Announcement);
+ rpc WithdrawAnnouncement(WithdrawAnnouncementRpcRequest) returns (Announcement);
 }
 
 service CapabilityProductService {
@@ -3521,6 +3584,11 @@ AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES = 153;
  AUTHORIZATION_ACTION_ENUM_REVEALPERSONALGATEWAYKEY = 171;
  AUTHORIZATION_ACTION_ENUM_REVOKEPERSONALGATEWAYKEY = 172;
  AUTHORIZATION_ACTION_ENUM_SETWORKSPACEPURCHASEELIGIBILITY = 173;
+ AUTHORIZATION_ACTION_ENUM_LISTANNOUNCEMENTS = 174;
+ AUTHORIZATION_ACTION_ENUM_MARKANNOUNCEMENTREAD = 175;
+ AUTHORIZATION_ACTION_ENUM_LISTADMINANNOUNCEMENTS = 176;
+ AUTHORIZATION_ACTION_ENUM_PUBLISHANNOUNCEMENT = 177;
+ AUTHORIZATION_ACTION_ENUM_WITHDRAWANNOUNCEMENT = 178;
 }
 
 enum ServiceIdentityEnum {

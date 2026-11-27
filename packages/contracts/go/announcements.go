@@ -14,8 +14,9 @@ const (
 	AnnouncementMaxResponseBytes = AnnouncementMaxPageSize*((AnnouncementMaxTitleRunes+AnnouncementMaxBodyRunes)*6+2048) + 4096
 )
 
-// Announcement remains a Control Plane-owned publication. Cloud and retained
-// Console readers consume the same publication and acknowledgement records.
+// Announcement is one platform-wide publication every authenticated Cloud
+// User may read. CloudIdentity owns the announcement and its read receipts;
+// the Console reads the owner's own page and publishes it unchanged.
 type Announcement struct {
 	ID          string `json:"id"`
 	Title       string `json:"title"`
@@ -42,7 +43,8 @@ type AnnouncementRead struct {
 }
 
 // AnnouncementSource distinguishes an actual empty page from an unavailable
-// owner, using the retained Console's source envelope.
+// owner, using the retained Console's source envelope. The source names the
+// owner that answered the read.
 type AnnouncementSource struct {
 	Source          string            `json:"source"`
 	Status          string            `json:"status"`

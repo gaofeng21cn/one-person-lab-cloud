@@ -160,7 +160,9 @@ const (
 	AuthorizationActionGetWorkspaceTransactionTrend          AuthorizationAction = "getWorkspaceTransactionTrend"
 	AuthorizationActionInviteMember                          AuthorizationAction = "inviteMember"
 	AuthorizationActionIssueAcceptedOperationGrant           AuthorizationAction = "issueAcceptedOperationGrant"
+	AuthorizationActionListAdminAnnouncements                AuthorizationAction = "listAdminAnnouncements"
 	AuthorizationActionListAdminOperations                   AuthorizationAction = "listAdminOperations"
+	AuthorizationActionListAnnouncements                     AuthorizationAction = "listAnnouncements"
 	AuthorizationActionListAuditEvents                       AuthorizationAction = "listAuditEvents"
 	AuthorizationActionListBuildLogs                         AuthorizationAction = "listBuildLogs"
 	AuthorizationActionListBuilds                            AuthorizationAction = "listBuilds"
@@ -196,9 +198,11 @@ const (
 	AuthorizationActionListWorkspaces                        AuthorizationAction = "listWorkspaces"
 	AuthorizationActionLogin                                 AuthorizationAction = "login"
 	AuthorizationActionLogout                                AuthorizationAction = "logout"
+	AuthorizationActionMarkAnnouncementRead                  AuthorizationAction = "markAnnouncementRead"
 	AuthorizationActionObserveResources                      AuthorizationAction = "observeResources"
 	AuthorizationActionObserveRoute                          AuthorizationAction = "observeRoute"
 	AuthorizationActionProvisionAcceptedResources            AuthorizationAction = "provisionAcceptedResources"
+	AuthorizationActionPublishAnnouncement                   AuthorizationAction = "publishAnnouncement"
 	AuthorizationActionPublishOfficialPackage                AuthorizationAction = "publishOfficialPackage"
 	AuthorizationActionReadApplicationCredentials            AuthorizationAction = "readApplicationCredentials"
 	AuthorizationActionReadApprovedPlanTransition            AuthorizationAction = "readApprovedPlanTransition"
@@ -257,6 +261,7 @@ const (
 	AuthorizationActionUpdateRenewalSettings                 AuthorizationAction = "updateRenewalSettings"
 	AuthorizationActionUpdateWorkspaceModels                 AuthorizationAction = "updateWorkspaceModels"
 	AuthorizationActionUpdateWorkspaceVersion                AuthorizationAction = "updateWorkspaceVersion"
+	AuthorizationActionWithdrawAnnouncement                  AuthorizationAction = "withdrawAnnouncement"
 )
 
 // Valid indicates whether the value is a known member of the AuthorizationAction enum.
@@ -414,7 +419,11 @@ func (e AuthorizationAction) Valid() bool {
 		return true
 	case AuthorizationActionIssueAcceptedOperationGrant:
 		return true
+	case AuthorizationActionListAdminAnnouncements:
+		return true
 	case AuthorizationActionListAdminOperations:
+		return true
+	case AuthorizationActionListAnnouncements:
 		return true
 	case AuthorizationActionListAuditEvents:
 		return true
@@ -486,11 +495,15 @@ func (e AuthorizationAction) Valid() bool {
 		return true
 	case AuthorizationActionLogout:
 		return true
+	case AuthorizationActionMarkAnnouncementRead:
+		return true
 	case AuthorizationActionObserveResources:
 		return true
 	case AuthorizationActionObserveRoute:
 		return true
 	case AuthorizationActionProvisionAcceptedResources:
+		return true
+	case AuthorizationActionPublishAnnouncement:
 		return true
 	case AuthorizationActionPublishOfficialPackage:
 		return true
@@ -607,6 +620,8 @@ func (e AuthorizationAction) Valid() bool {
 	case AuthorizationActionUpdateWorkspaceModels:
 		return true
 	case AuthorizationActionUpdateWorkspaceVersion:
+		return true
+	case AuthorizationActionWithdrawAnnouncement:
 		return true
 	default:
 		return false
@@ -4909,6 +4924,43 @@ type AdoptWorkspaceRequest struct {
 	ModelSelections          []ModelSelection `json:"modelSelections"`
 }
 
+// Announcement One platform-wide announcement every authenticated Cloud User may read.
+type Announcement struct {
+	Body      string  `json:"body"`
+	CreatedAt string  `json:"createdAt"`
+	EndsAt    *string `json:"endsAt,omitempty"`
+
+	// Id 不透明string；新旧ID原样保留，不假定UUID。
+	Id          OpaqueId `json:"id"`
+	PublishedAt *string  `json:"publishedAt,omitempty"`
+
+	// Read True when the reader of this answer has already recorded a read receipt for the announcement.
+	Read     bool    `json:"read"`
+	StartsAt *string `json:"startsAt,omitempty"`
+
+	// Status The announcement's own lifecycle state, published while it is readable and withdrawn once it is not.
+	Status    string `json:"status"`
+	Title     string `json:"title"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+// AnnouncementPage One page of announcements.
+type AnnouncementPage struct {
+	Items    []Announcement `json:"items"`
+	Page     int            `json:"page"`
+	PageSize int            `json:"pageSize"`
+
+	// Total 非负int64的JSON十进制字符串，范围0..9223372036854775807；无前导零，不经JavaScript Number转换。
+	Total NonnegativeInt64 `json:"total"`
+}
+
+// AnnouncementRead The read receipt one reader recorded for one announcement.
+type AnnouncementRead struct {
+	// AnnouncementId 不透明string；新旧ID原样保留，不假定UUID。
+	AnnouncementId OpaqueId `json:"announcementId"`
+	ReadAt         string   `json:"readAt"`
+}
+
 // AnonymousAccessContract 仅发布者明确声明且平台准入允许；不因访问故障降级为anonymous。
 type AnonymousAccessContract struct {
 	Mode AnonymousAccessContractMode `json:"mode"`
@@ -7125,6 +7177,18 @@ type PricePolicyVersionPage struct {
 	NextCursor *OpaqueId `json:"nextCursor,omitempty"`
 }
 
+// PublishAnnouncementRequest Platform administrator instruction to publish one platform announcement.
+type PublishAnnouncementRequest struct {
+	Body string `json:"body"`
+
+	// EndsAt The moment the announcement stops being readable. An empty value keeps it readable until it is withdrawn.
+	EndsAt *string `json:"endsAt,omitempty"`
+
+	// StartsAt The moment the announcement becomes readable. An empty value publishes it immediately.
+	StartsAt *string `json:"startsAt,omitempty"`
+	Title    string  `json:"title"`
+}
+
 // PublishPackageRequest platform_admin准入官方Package；普通客户不发布公开Marketplace。
 type PublishPackageRequest struct {
 	// AdmissionReceiptId 不透明string；新旧ID原样保留，不假定UUID。
@@ -8857,6 +8921,24 @@ type Limit = int
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse = Error
 
+// PublishAnnouncementParams defines parameters for PublishAnnouncement.
+type PublishAnnouncementParams struct {
+	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+
+	// XCSRFToken 匹配同源session并校验Origin。
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
+// WithdrawAnnouncementParams defines parameters for WithdrawAnnouncement.
+type WithdrawAnnouncementParams struct {
+	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+
+	// XCSRFToken 匹配同源session并校验Origin。
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
 // ListAuditEventsParams defines parameters for ListAuditEvents.
 type ListAuditEventsParams struct {
 	Cursor   *Cursor   `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -9121,6 +9203,21 @@ type BindTenantWalletParams struct {
 	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
 }
 
+// ListAnnouncementsParams defines parameters for ListAnnouncements.
+type ListAnnouncementsParams struct {
+	Page     *int `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
+// MarkAnnouncementReadParams defines parameters for MarkAnnouncementRead.
+type MarkAnnouncementReadParams struct {
+	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+
+	// XCSRFToken 匹配同源session并校验Origin。
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
 // LoginParams defines parameters for Login.
 type LoginParams struct {
 	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
@@ -9378,6 +9475,12 @@ type SetWorkspacePurchaseEligibilityParams struct {
 
 	// XCSRFToken 匹配同源session并校验Origin。
 	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
+// ListAdminAnnouncementsParams defines parameters for ListAdminAnnouncements.
+type ListAdminAnnouncementsParams struct {
+	Page     *int `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
 // ListOperatorWorkspacesParams defines parameters for ListOperatorWorkspaces.
@@ -9667,6 +9770,9 @@ type UpdateWorkspaceVersionParams struct {
 	// XCSRFToken 匹配同源session并校验Origin。
 	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
 }
+
+// PublishAnnouncementJSONRequestBody defines body for PublishAnnouncement for application/json ContentType.
+type PublishAnnouncementJSONRequestBody = PublishAnnouncementRequest
 
 // SetBuildRuntimePolicyJSONRequestBody defines body for SetBuildRuntimePolicy for application/json ContentType.
 type SetBuildRuntimePolicyJSONRequestBody = SetBuildRuntimePolicyRequest

@@ -5929,6 +5929,245 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
         '503':
           $ref: '#/components/responses/ErrorResponse'
+  /api/v2/announcements:
+    get:
+      operationId: listAnnouncements
+      summary: List the active platform announcements for the signed-in User
+      tags:
+      - tenant
+      x-feature-id:
+      - F15
+      x-owner: tenant
+      x-permission:
+      - authenticated
+      x-tables:
+      - tenant.announcements
+      - tenant.announcement_reads
+      description: >-
+        Reads the active platform announcements every authenticated Cloud User may
+        read. The reader is the live session's own actor; no Tenant role is
+        required and no Tenant, target User or announcement selector is
+        accepted. A withdrawn announcement and an announcement outside its
+        published window are not published to a reader.
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+      responses:
+        '200':
+          description: The active announcements page for the signed-in User.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnouncementPage'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v2/announcements/{announcementId}/read:
+    post:
+      operationId: markAnnouncementRead
+      summary: Record that the signed-in User has read one announcement
+      tags:
+      - tenant
+      x-feature-id:
+      - F15
+      x-owner: tenant
+      x-permission:
+      - authenticated
+      x-tables:
+      - tenant.announcements
+      - tenant.announcement_reads
+      description: >-
+        Records one read receipt for the signed-in User and the named
+        announcement. The receipt is unique per announcement and reader, so a
+        repeated mark returns the original readAt and never writes a second
+        row. A withdrawn announcement is not readable and is answered as not
+        found.
+      parameters:
+      - name: announcementId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '200':
+          description: The read receipt for this announcement and reader.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnouncementRead'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v2/operator/announcements:
+    get:
+      operationId: listAdminAnnouncements
+      summary: List every platform announcement for a platform administrator
+      tags:
+      - tenant
+      x-feature-id:
+      - F15
+      x-owner: tenant
+      x-permission:
+      - platform_admin
+      x-tables:
+      - tenant.announcements
+      - tenant.announcement_reads
+      description: >-
+        Lists every announcement the owner holds, including a withdrawn one and
+        one outside its published window. Only a platform administrator may read
+        the administrative view.
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+      responses:
+        '200':
+          description: The administrative announcements page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnouncementPage'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v2/admin/announcements:
+    post:
+      operationId: publishAnnouncement
+      summary: Publish one platform announcement
+      tags:
+      - tenant
+      x-feature-id:
+      - F15
+      x-owner: tenant
+      x-permission:
+      - platform_admin
+      x-tables:
+      - tenant.announcements
+      - tenant.audit_events
+      - tenant.idempotency_records
+      description: >-
+        Publishes one platform announcement for every authenticated Cloud User.
+        The publication is immediate unless a start time names a later moment,
+        and it ends at the named end time. The caller's idempotency key makes a
+        repeated publication return the first announcement instead of creating a
+        second one.
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishAnnouncementRequest'
+      responses:
+        '201':
+          description: The published announcement.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Announcement'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v2/admin/announcements/{announcementId}/withdraw:
+    post:
+      operationId: withdrawAnnouncement
+      summary: Withdraw one published platform announcement
+      tags:
+      - tenant
+      x-feature-id:
+      - F15
+      x-owner: tenant
+      x-permission:
+      - platform_admin
+      x-tables:
+      - tenant.announcements
+      - tenant.audit_events
+      - tenant.idempotency_records
+      description: >-
+        Withdraws one published platform announcement. A reader no longer sees
+        the withdrawn announcement and can no longer record a read receipt for
+        it, while the recorded receipts of the readers who already read it are
+        preserved.
+      parameters:
+      - name: announcementId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '200':
+          description: The withdrawn announcement.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Announcement'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
   /api/v2/admin/tenants/{tenantId}/operations/{operationId}:
     get:
       operationId: getTenantLifecycleOperation
@@ -7241,6 +7480,103 @@ components:
       - enabled
       - reason
       description: Platform administrator instruction to grant or revoke new Workspace purchase eligibility for one Gateway subject.
+    Announcement:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 160
+        body:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        status:
+          type: string
+          minLength: 1
+          description: The announcement's own lifecycle state, published while it is readable and withdrawn once it is not.
+        startsAt:
+          type: string
+        endsAt:
+          type: string
+        publishedAt:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        read:
+          type: boolean
+          description: True when the reader of this answer has already recorded a read receipt for the announcement.
+      required:
+      - id
+      - title
+      - body
+      - status
+      - createdAt
+      - updatedAt
+      - read
+      description: One platform-wide announcement every authenticated Cloud User may read.
+    AnnouncementPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Announcement'
+        total:
+          $ref: '#/components/schemas/NonnegativeInt64'
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 50
+      required:
+      - items
+      - total
+      - page
+      - pageSize
+      description: One page of announcements.
+    AnnouncementRead:
+      type: object
+      additionalProperties: false
+      properties:
+        announcementId:
+          $ref: '#/components/schemas/OpaqueId'
+        readAt:
+          type: string
+      required:
+      - announcementId
+      - readAt
+      description: The read receipt one reader recorded for one announcement.
+    PublishAnnouncementRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 160
+        body:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        startsAt:
+          type: string
+          description: The moment the announcement becomes readable. An empty value publishes it immediately.
+        endsAt:
+          type: string
+          description: The moment the announcement stops being readable. An empty value keeps it readable until it is withdrawn.
+      required:
+      - title
+      - body
+      description: Platform administrator instruction to publish one platform announcement.
     WorkspacePurchaseEligibilityCommand:
       type: object
       additionalProperties: false
@@ -12200,6 +12536,8 @@ components:
       - inviteMember
       - issueAcceptedOperationGrant
       - listAdminOperations
+      - listAdminAnnouncements
+      - listAnnouncements
       - listAuditEvents
       - listBuildLogs
       - listBuilds
@@ -12237,9 +12575,11 @@ components:
       - getOperatorWorkspaceAccess
       - login
       - logout
+      - markAnnouncementRead
       - observeResources
       - observeRoute
       - provisionAcceptedResources
+      - publishAnnouncement
       - publishOfficialPackage
       - readApplicationCredentials
       - readApprovedPlanTransition
@@ -12290,6 +12630,7 @@ components:
       - updateRenewalSettings
       - updateWorkspaceModels
       - updateWorkspaceVersion
+      - withdrawAnnouncement
       - readExecutionPlan
       - restoreAfterResourceChange
       - debitScheduledPeriod

@@ -54,7 +54,11 @@ session_only={'getLoginContext','login','logout','getSession','getSelfUserExtern
 # role: the reads and the writes over the same personal Key are both bound to the
 # live User's own delegated Sub2API credential. They never become grantable tenant
 # roles, so they carry no role row.
-subject_bound={'acceptInvitation','getWallet','getUsageSummary','listPersonalGatewayKeys','getPersonalGatewayKey','listPersonalGatewayGroups','listPersonalGatewayKeyUsage','getPersonalGatewayKeyUsageSummary','createPersonalGatewayKey','updatePersonalGatewayKey','revealPersonalGatewayKey','revokePersonalGatewayKey'}
+# The announcement surface is bound the same way: a platform announcement is read by
+# every authenticated User, and the read receipt belongs to that User alone. Neither
+# the read nor the receipt is a Tenant grant, so both stay session-bound. The
+# publication and withdrawal commands remain platform administrator rows.
+subject_bound={'acceptInvitation','getWallet','getUsageSummary','listPersonalGatewayKeys','getPersonalGatewayKey','listPersonalGatewayGroups','listPersonalGatewayKeyUsage','getPersonalGatewayKeyUsageSummary','createPersonalGatewayKey','updatePersonalGatewayKey','revealPersonalGatewayKey','revokePersonalGatewayKey','listAnnouncements','markAnnouncementRead'}
 # An Operation is read through an explicit owner route, so the contract names no
 # single Operation writer and getOperation carries no x-owner of its own. The
 # audience is the route the caller chose, so CloudIdentity decides it as a
