@@ -8,9 +8,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc"
@@ -51,6 +53,12 @@ type config struct {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--app-probe" {
+		if err := runAppProbe(os.Args[2:], os.Stdout); err != nil {
+			os.Exit(1)
+		}
+		return
+	}
 	result, err := probeFromArgs(os.Args[1:], os.Getenv)
 	if err != nil {
 		result.Status = "failed"
@@ -308,4 +316,82 @@ func errorCode(err error) string {
 		message = message[:index]
 	}
 	return strings.ToUpper(strings.ReplaceAll(message, "-", "_"))
+}
+
+type appProbeCheck struct {
+	Type string `json:"type"`
+	Port int    `json:"port"`
+	Path string `json:"path,omitempty"`
+}
+
+// runAppProbe evaluates declared Local-Docker application HTTP/TCP readiness checks
+// inside the target container's network namespace without requiring Node.js.
+func runAppProbe(args []string, stdout io.Writer) error {
+	if len(args) != 1 {
+		return errors.New("app_probe_usage_invalid")
+	}
+	var checks []appProbeCheck
+	if err := json.Unmarshal([]byte(args[0]), &checks); err != nil {
+		return fmt.Errorf("app_probe_checks_invalid: %w", err)
+	}
+	results := make([]bool, len(checks))
+	var wg sync.WaitGroup
+	for i, check := range checks {
+		wg.Add(1)
+		go func(index int, item appProbeCheck) {
+			defer wg.Done()
+			results[index] = evaluateAppProbeCheck(item)
+		}(i, check)
+	}
+	wg.Wait()
+	allReady := true
+	for _, ready := range results {
+		if !ready {
+			allReady = false
+			break
+		}
+	}
+	return json.NewEncoder(stdout).Encode(struct {
+		Ready bool `json:"ready"`
+	}{Ready: allReady})
+}
+
+func evaluateAppProbeCheck(check appProbeCheck) bool {
+	if check.Port < 1 || check.Port > 65535 {
+		return false
+	}
+	const checkTimeout = 5 * time.Second
+	switch check.Type {
+	case "tcp":
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", check.Port), checkTimeout)
+		if err != nil {
+			return false
+		}
+		_ = conn.Close()
+		return true
+	case "http":
+		path := check.Path
+		if path != "" && !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+		client := &http.Client{
+			Timeout: checkTimeout,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d%s", check.Port, path), nil)
+		if err != nil {
+			return false
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return false
+		}
+		_, _ = io.CopyN(io.Discard, resp.Body, 4096)
+		_ = resp.Body.Close()
+		return resp.StatusCode >= 200 && resp.StatusCode < 400
+	default:
+		return false
+	}
 }

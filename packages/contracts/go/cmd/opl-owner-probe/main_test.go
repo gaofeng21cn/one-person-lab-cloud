@@ -1,9 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -232,5 +237,76 @@ func TestProbeGRPCResolvesMaterialFromSharedCertDir(t *testing.T) {
 	}))
 	if err == nil || !strings.HasPrefix(err.Error(), "tls_config:") || out.TransportPrincipal != "tenant" {
 		t.Fatalf("probeGRPC with shared cert dir = (%+v, %v), want tls_config error for tenant principal", out, err)
+	}
+}
+
+func TestRunAppProbeChecksTCPAndHTTP(t *testing.T) {
+	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen tcp: %v", err)
+	}
+	defer tcpListener.Close()
+	tcpPort := tcpListener.Addr().(*net.TCPAddr).Port
+
+	closedListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen closed tcp: %v", err)
+	}
+	closedPort := closedListener.Addr().(*net.TCPAddr).Port
+	_ = closedListener.Close()
+
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/ready":
+			w.WriteHeader(http.StatusOK)
+		case "/login":
+			w.Header().Set("Location", "/auth")
+			w.WriteHeader(http.StatusFound)
+		case "/unready":
+			w.WriteHeader(http.StatusServiceUnavailable)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer httpServer.Close()
+	_, rawPort, _ := net.SplitHostPort(strings.TrimPrefix(httpServer.URL, "http://"))
+	httpPort, err := strconv.Atoi(rawPort)
+	if err != nil {
+		t.Fatalf("parse http port: %v", err)
+	}
+
+	decodeReady := func(payload string) bool {
+		t.Helper()
+		var buf bytes.Buffer
+		if err := runAppProbe([]string{payload}, &buf); err != nil {
+			t.Fatalf("runAppProbe(%s) error = %v", payload, err)
+		}
+		var out struct {
+			Ready bool `json:"ready"`
+		}
+		if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+			t.Fatalf("decode output %q: %v", buf.String(), err)
+		}
+		return out.Ready
+	}
+
+	if !decodeReady(fmt.Sprintf(`[{"type":"tcp","port":%d},{"type":"http","port":%d,"path":"/ready"},{"type":"http","port":%d,"path":"/login"}]`, tcpPort, httpPort, httpPort)) {
+		t.Fatal("expected ready=true for healthy tcp + 200 + 302 http checks")
+	}
+	if decodeReady(fmt.Sprintf(`[{"type":"tcp","port":%d},{"type":"http","port":%d,"path":"/unready"}]`, tcpPort, httpPort)) {
+		t.Fatal("expected ready=false when http returns 503")
+	}
+	if decodeReady(fmt.Sprintf(`[{"type":"tcp","port":%d}]`, closedPort)) {
+		t.Fatal("expected ready=false for closed tcp port")
+	}
+	if decodeReady(`[{"type":"exec","port":80}]`) {
+		t.Fatal("expected ready=false for unsupported check type")
+	}
+	var errBuf bytes.Buffer
+	if err := runAppProbe([]string{`{invalid`}, &errBuf); err == nil {
+		t.Fatal("expected error for invalid JSON checks")
+	}
+	if err := runAppProbe(nil, &errBuf); err == nil {
+		t.Fatal("expected error when check payload argument is missing")
 	}
 }
