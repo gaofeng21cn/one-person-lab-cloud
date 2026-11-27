@@ -121,6 +121,135 @@ func TestValidateTLSAllowsExplicitPrivatePilotDisableOnly(t *testing.T) {
 	}
 }
 
+func TestNormalizePostgresDSNPreservesAuthAndAdmissionSemantics(t *testing.T) {
+	t.Run("password with literal at and sslmode disable", func(t *testing.T) {
+		t.Setenv("PGSSLMODE", "disable")
+		raw := "postgresql://user:p@ss@10.66.0.21:5432/opl?sslmode=disable"
+		if err := ValidateTLS(raw); err != nil {
+			t.Fatalf("expected ValidateTLS to accept unescaped @ password, got: %v", err)
+		}
+		if err := AdmitDatabaseURL(func(string) string { return "" }, raw); err != nil {
+			t.Fatalf("expected AdmitDatabaseURL to accept unescaped @ password, got: %v", err)
+		}
+		cfg, err := pgxpool.ParseConfig(normalizePostgresDSN(raw))
+		if err != nil {
+			t.Fatalf("pgxpool.ParseConfig failed: %v", err)
+		}
+		if cfg.ConnConfig.User != "user" || cfg.ConnConfig.Password != "p@ss" || cfg.ConnConfig.Host != "10.66.0.21" || cfg.ConnConfig.Database != "opl" {
+			t.Fatalf("unexpected parsed config: user=%q password=%q host=%q db=%q", cfg.ConnConfig.User, cfg.ConnConfig.Password, cfg.ConnConfig.Host, cfg.ConnConfig.Database)
+		}
+	})
+
+	t.Run("password with literal at without sslmode", func(t *testing.T) {
+		raw := "postgresql://user:p@ss@10.66.0.21:5432/opl"
+		t.Setenv("PGSSLMODE", "")
+		if err := ValidateTLS(raw); err == nil {
+			t.Fatal("expected ValidateTLS to reject missing sslmode without PGSSLMODE=disable")
+		}
+		t.Setenv("PGSSLMODE", "disable")
+		if err := ValidateTLS(raw); err != nil {
+			t.Fatalf("expected ValidateTLS with PGSSLMODE=disable to accept private IPv4 without sslmode query, got: %v", err)
+		}
+	})
+
+	t.Run("password with literal at and verify-full", func(t *testing.T) {
+		t.Setenv("PGSSLMODE", "")
+		raw := "postgres://user:p@ss@db.example.com:5432/opl?sslmode=verify-full"
+		if err := ValidateTLS(raw); err != nil {
+			t.Fatalf("expected ValidateTLS to accept verify-full with unescaped @ password, got: %v", err)
+		}
+		cfg, err := pgxpool.ParseConfig(normalizePostgresDSN(raw))
+		if err != nil {
+			t.Fatalf("pgxpool.ParseConfig failed: %v", err)
+		}
+		if cfg.ConnConfig.Password != "p@ss" || cfg.ConnConfig.Host != "db.example.com" {
+			t.Fatalf("unexpected parsed config: password=%q host=%q", cfg.ConnConfig.Password, cfg.ConnConfig.Host)
+		}
+	})
+
+	t.Run("password with colon and at or already encoded percent40", func(t *testing.T) {
+		t.Setenv("PGSSLMODE", "")
+		rawColonAt := "postgresql://user:p@ss:123@10.66.0.21:5432/opl?sslmode=verify-full"
+		if err := ValidateTLS(rawColonAt); err != nil {
+			t.Fatalf("expected ValidateTLS to accept password with : and @, got: %v", err)
+		}
+		cfgColonAt, err := pgxpool.ParseConfig(normalizePostgresDSN(rawColonAt))
+		if err != nil {
+			t.Fatalf("pgxpool.ParseConfig failed: %v", err)
+		}
+		if cfgColonAt.ConnConfig.User != "user" || cfgColonAt.ConnConfig.Password != "p@ss:123" {
+			t.Fatalf("unexpected colon+@ parse: user=%q password=%q", cfgColonAt.ConnConfig.User, cfgColonAt.ConnConfig.Password)
+		}
+
+		rawEncoded := "postgresql://user:p%40ss@10.66.0.21:5432/opl?sslmode=verify-full"
+		if err := ValidateTLS(rawEncoded); err != nil {
+			t.Fatalf("expected ValidateTLS to accept %%40 password, got: %v", err)
+		}
+		cfgEncoded, err := pgxpool.ParseConfig(normalizePostgresDSN(rawEncoded))
+		if err != nil {
+			t.Fatalf("pgxpool.ParseConfig failed: %v", err)
+		}
+		if cfgEncoded.ConnConfig.Password != "p@ss" {
+			t.Fatalf("expected %%40 not to be double-encoded, got %q", cfgEncoded.ConnConfig.Password)
+		}
+	})
+
+	t.Run("query unescaped equals, literal plus, uppercase scheme, empty pair", func(t *testing.T) {
+		t.Setenv("PGSSLMODE", "disable")
+		raw := "POSTGRES://user:p@ss@10.66.0.21:5432/opl?&options=-c%20search_path=public&application_name=opl+ledger&sslmode=disable"
+		if err := ValidateTLS(raw); err != nil {
+			t.Fatalf("expected ValidateTLS to accept canonicalized query/scheme, got: %v", err)
+		}
+		cfg, err := pgxpool.ParseConfig(normalizePostgresDSN(raw))
+		if err != nil {
+			t.Fatalf("pgxpool.ParseConfig failed: %v", err)
+		}
+		if got := cfg.ConnConfig.RuntimeParams["options"]; got != "-c search_path=public" {
+			t.Fatalf("unexpected options param: %q", got)
+		}
+		if got := cfg.ConnConfig.RuntimeParams["application_name"]; got != "opl+ledger" {
+			t.Fatalf("expected literal + preserved in application_name, got: %q", got)
+		}
+	})
+
+	t.Run("single empty sslmode follows PGSSLMODE while duplicate sslmode remains rejected", func(t *testing.T) {
+		rawSingleEmpty := "postgresql://user:pass@10.66.0.21:5432/opl?sslmode="
+		t.Setenv("PGSSLMODE", "disable")
+		if err := ValidateTLS(rawSingleEmpty); err != nil {
+			t.Fatalf("expected single empty sslmode= with PGSSLMODE=disable on private IP to succeed, got: %v", err)
+		}
+		t.Setenv("PGSSLMODE", "")
+		if err := ValidateTLS(rawSingleEmpty); err == nil {
+			t.Fatal("expected single empty sslmode= without PGSSLMODE=disable to be rejected")
+		}
+
+		t.Setenv("PGSSLMODE", "disable")
+		for _, dup := range []string{
+			"postgresql://user:pass@10.66.0.21:5432/opl?sslmode=verify-full&sslmode=disable",
+			"postgresql://user:pass@10.66.0.21:5432/opl?sslmode=disable&sslmode=verify-full",
+			"postgresql://user:pass@10.66.0.21:5432/opl?sslmode=&sslmode=disable",
+		} {
+			if err := ValidateTLS(dup); err == nil {
+				t.Fatalf("expected ValidateTLS to reject duplicate sslmode %q", dup)
+			}
+			if err := AdmitDatabaseURL(func(string) string { return "" }, dup); err == nil {
+				t.Fatalf("expected AdmitDatabaseURL to reject duplicate sslmode %q", dup)
+			}
+		}
+	})
+
+	t.Run("keyword value DSN stays untouched aside from trimming", func(t *testing.T) {
+		t.Setenv("PGSSLMODE", "")
+		raw := "  host=db.example.com port=5432 user=opl password=p@ss dbname=opl sslmode=verify-full  "
+		if got := normalizePostgresDSN(raw); got != "host=db.example.com port=5432 user=opl password=p@ss dbname=opl sslmode=verify-full" {
+			t.Fatalf("unexpected keyword/value normalization: %q", got)
+		}
+		if err := ValidateTLS(raw); err != nil {
+			t.Fatalf("expected ValidateTLS to accept keyword/value verify-full DSN, got: %v", err)
+		}
+	})
+}
+
 func TestOpenPoolTrimsWhitespaceAndNormalizesLegacyLibPQParams(t *testing.T) {
 	t.Run("trailing_newline_plain_private_ip", func(t *testing.T) {
 		t.Setenv("PGSSLMODE", "disable")
