@@ -1,7 +1,9 @@
-import { ChevronLeft, Plus, Rocket } from "lucide-react";
+import { ChevronLeft, LockKeyhole, Plus, Rocket } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { getJson } from "../api/console-api.ts";
+import type { AuthSession } from "../api/dtos.ts";
+import { hasCloudTenantAccess, isPermissionDeniedError } from "../app/authorization-error.ts";
 import type { CustomerConsoleRoute } from "../app/console-router.ts";
 import { presentAgentStatus } from "../app/workspace-experience-model.ts";
 import { Alert, Badge, Button } from "../components/ui/index.ts";
@@ -65,16 +67,28 @@ function AgentStatus({ value }: { value?: string }) {
   return <span className="agent-status">{presentAgentStatus(value)}</span>;
 }
 
-function AgentDirectory({ controller }: { controller: { navigate: (path: string) => void } }) {
+type AgentController = { navigate: (path: string) => void; session?: AuthSession | null };
+
+function AgentDirectory({ controller }: { controller: AgentController }) {
   const [packages, setPackages] = useState<Package[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [restricted, setRestricted] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const tenantAllowed = controller.session === undefined || hasCloudTenantAccess(controller.session);
 
   const load = () => {
     abortRef.current?.abort();
+    if (!tenantAllowed) {
+      setPackages([]);
+      setError("");
+      setRestricted(true);
+      setLoading(false);
+      return;
+    }
     const abort = new AbortController();
     abortRef.current = abort;
+    setRestricted(false);
     setLoading(true);
     setError("");
     void pages<Package>(`${base}/packages`, abort.signal).then((items) => {
@@ -82,7 +96,12 @@ function AgentDirectory({ controller }: { controller: { navigate: (path: string)
       setLoading(false);
     }).catch((reason: unknown) => {
       if (!abort.signal.aborted) {
-        setError(reason instanceof Error ? reason.message : "暂时无法读取智能体列表，请稍后重试。");
+        if (isPermissionDeniedError(reason)) {
+          setRestricted(true);
+          setError("");
+        } else {
+          setError(reason instanceof Error ? reason.message : "暂时无法读取智能体列表，请稍后重试。");
+        }
         setLoading(false);
       }
     });
@@ -91,20 +110,34 @@ function AgentDirectory({ controller }: { controller: { navigate: (path: string)
   useEffect(() => {
     load();
     return () => abortRef.current?.abort();
-  }, []);
+  }, [tenantAllowed]);
 
   return <section className="panel agents-page">
     <div className="panel-title">
       <div><h2>我的智能体</h2></div>
       <div className="agent-page-actions">
-        <Button color="primary" onClick={() => controller.navigate("/console/publisher")}><Plus aria-hidden size={16} />上传智能体</Button>
-        <Button onClick={load} variant="outline">刷新</Button>
+        {restricted ? (
+          <Button onClick={() => controller.navigate("/console/api")} size="sm" variant="ghost">前往 OPL Gateway</Button>
+        ) : (
+          <>
+            <Button color="primary" onClick={() => controller.navigate("/console/publisher")}><Plus aria-hidden size={16} />上传智能体</Button>
+            <Button onClick={load} variant="outline">刷新</Button>
+          </>
+        )}
       </div>
     </div>
     {loading && <p role="status">正在加载智能体…</p>}
-    {error && <Alert color="warning" description={error} title="读取失败" />}
-    {!loading && !error && packages.length === 0 && <p role="status">还没有上传智能体，点击右上角上传你的第一个智能体。</p>}
-    {!loading && !error && packages.length > 0 && <div className="agents-grid">
+    {restricted && !loading && (
+      <div className="source-notice" data-notice-kind="permission" role="status">
+        <span className="source-notice__icon" aria-hidden="true"><LockKeyhole size={20} /></span>
+        <h3>智能体功能尚未开通</h3>
+        <p>当前账号尚未开通工作空间与智能体白名单，请联系管理员；OPL Gateway 与 API 余额仍可正常使用。</p>
+        <div className="source-notice__action"><Button onClick={() => controller.navigate("/console/overview")} size="sm" variant="outline">返回概览</Button></div>
+      </div>
+    )}
+    {error && !restricted && <Alert color="warning" description={error} title="读取失败" />}
+    {!loading && !error && !restricted && packages.length === 0 && <p role="status">还没有上传智能体，点击右上角上传你的第一个智能体。</p>}
+    {!loading && !error && !restricted && packages.length > 0 && <div className="agents-grid">
       {packages.map((agent) => <article className="agent-card" key={agent.id}>
         <div><h3>{agent.name || "未命名智能体"}</h3><p>{agent.description || "暂无简介"}</p></div>
         <dl>
@@ -119,19 +152,29 @@ function AgentDirectory({ controller }: { controller: { navigate: (path: string)
   </section>;
 }
 
-function AgentDetail({ route, controller }: { route: AgentDetailRoute; controller: { navigate: (path: string) => void } }) {
+function AgentDetail({ route, controller }: { route: AgentDetailRoute; controller: AgentController }) {
   const [agent, setAgent] = useState<Package | null>(null);
   const [packageVersions, setPackageVersions] = useState<PackageVersion[]>([]);
   const [capabilityVersions, setCapabilityVersions] = useState<CapabilityVersion[]>([]);
   const [builds, setBuilds] = useState<Record<string, BuildJob>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [restricted, setRestricted] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const tenantAllowed = controller.session === undefined || hasCloudTenantAccess(controller.session);
 
   const load = () => {
     abortRef.current?.abort();
+    if (!tenantAllowed) {
+      setAgent(null);
+      setError("");
+      setRestricted(true);
+      setLoading(false);
+      return;
+    }
     const abort = new AbortController();
     abortRef.current = abort;
+    setRestricted(false);
     setLoading(true);
     setError("");
     void (async () => {
@@ -154,7 +197,12 @@ function AgentDetail({ route, controller }: { route: AgentDetailRoute; controlle
         setLoading(false);
       } catch (reason) {
         if (!abort.signal.aborted) {
-          setError(reason instanceof Error ? reason.message : "暂时无法读取智能体详情，请稍后重试。");
+          if (isPermissionDeniedError(reason)) {
+            setRestricted(true);
+            setError("");
+          } else {
+            setError(reason instanceof Error ? reason.message : "暂时无法读取智能体详情，请稍后重试。");
+          }
           setLoading(false);
         }
       }
@@ -164,7 +212,7 @@ function AgentDetail({ route, controller }: { route: AgentDetailRoute; controlle
   useEffect(() => {
     load();
     return () => abortRef.current?.abort();
-  }, [route.packageId]);
+  }, [route.packageId, tenantAllowed]);
 
   return <section className="panel agents-page agent-detail-page">
     <div className="panel-title">
@@ -173,13 +221,25 @@ function AgentDetail({ route, controller }: { route: AgentDetailRoute; controlle
         <h2>{agent?.name || "智能体详情"}</h2>
       </div>
       <div className="agent-page-actions">
-        <Button color="primary" onClick={() => controller.navigate(`/console/publisher?packageId=${encodeURIComponent(route.packageId)}`)}><Plus aria-hidden size={16} />上传新版本</Button>
-        <Button onClick={load} variant="outline">刷新</Button>
+        {restricted ? null : (
+          <>
+            <Button color="primary" onClick={() => controller.navigate(`/console/publisher?packageId=${encodeURIComponent(route.packageId)}`)}><Plus aria-hidden size={16} />上传新版本</Button>
+            <Button onClick={load} variant="outline">刷新</Button>
+          </>
+        )}
       </div>
     </div>
     {loading && <p role="status">正在加载智能体版本…</p>}
-    {error && <Alert color="warning" description={error} title="读取失败" />}
-    {!loading && !error && agent && <>
+    {restricted && !loading && (
+      <div className="source-notice" data-notice-kind="permission" role="status">
+        <span className="source-notice__icon" aria-hidden="true"><LockKeyhole size={20} /></span>
+        <h3>智能体功能尚未开通</h3>
+        <p>当前账号尚未开通工作空间与智能体白名单，请联系管理员；OPL Gateway 与 API 余额仍可正常使用。</p>
+        <div className="source-notice__action"><Button onClick={() => controller.navigate("/console/overview")} size="sm" variant="outline">返回概览</Button></div>
+      </div>
+    )}
+    {error && !restricted && <Alert color="warning" description={error} title="读取失败" />}
+    {!loading && !error && !restricted && agent && <>
       <section className="agent-summary" aria-label="智能体信息">
         <h3>基本信息</h3>
         <dl>
@@ -225,6 +285,6 @@ function AgentDetail({ route, controller }: { route: AgentDetailRoute; controlle
   </section>;
 }
 
-export function AgentPages({ controller, route }: { controller: { navigate: (path: string) => void }; route: Extract<CustomerConsoleRoute, { kind: "customer.agents" | "customer.agent-detail" }> }) {
+export function AgentPages({ controller, route }: { controller: AgentController; route: Extract<CustomerConsoleRoute, { kind: "customer.agents" | "customer.agent-detail" }> }) {
   return route.kind === "customer.agents" ? <AgentDirectory controller={controller} /> : <AgentDetail controller={controller} route={route} />;
 }

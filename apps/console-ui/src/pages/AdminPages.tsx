@@ -8,11 +8,13 @@ import {
   ExternalLink,
   Plus,
   RefreshCw,
+  Search,
   Server,
   ShieldAlert,
   ShieldCheck,
   ShieldOff,
-  WalletCards
+  WalletCards,
+  X
 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 
@@ -191,7 +193,7 @@ function overallHealth(source: SourceEnvelope<OperatorHealthDTO> | null | undefi
 
 function SourceTable({ rows }: { rows: Array<{ label: string; source: SourceEnvelope<unknown> }> }) {
   return (
-    <div className="table-wrap">
+    <div aria-label="权威来源状态列表" className="table-wrap" role="region" tabIndex={0}>
       <table className="ops-table source-table">
         <thead><tr><th>来源</th><th>状态</th><th>Console 读回</th><th>权威更新时间</th></tr></thead>
         <tbody>{rows.map(({ label, source }) => (
@@ -392,6 +394,22 @@ function AccountFact<T>({ source, children }: { source: SourceEnvelope<T>; child
   return children(source.data);
 }
 
+function AccountStatusBadges({ account }: { account: OperatorAccountDTO }) {
+  const active = account.status === "active";
+  return (
+    <span className="account-status-stack">
+      <Badge color={statusTone(account.status)}>
+        <span aria-hidden="true" className={`ss-dot ${active ? "ss-dot--ok" : "ss-dot--bad"}`} />
+        {statusLabel(account.status)}
+      </Badge>
+      <Badge color={account.workspacePurchaseEnabled ? "success" : "secondary"}>
+        <span aria-hidden="true" className={`ss-dot ${account.workspacePurchaseEnabled ? "ss-dot--ok" : "ss-dot--muted"}`} />
+        {account.workspacePurchaseEnabled ? "可新购 Workspace" : "不可新购 Workspace"}
+      </Badge>
+    </span>
+  );
+}
+
 function AccountActions({ account, controller, openAccount }: {
   account: OperatorAccountDTO;
   controller: ConsoleController;
@@ -407,7 +425,14 @@ function AccountActions({ account, controller, openAccount }: {
         ? <span className="account-read-only">保留管理员账户仅查看</span>
         : account.status === "active"
           ? <>
-            <Button color={account.workspacePurchaseEnabled ? "danger" : "primary"} disabled={busy} onClick={() => void controller.operatorAccounts.setWorkspacePurchaseEligibility(account.accountId, !account.workspacePurchaseEnabled)} size="sm" variant="ghost">
+            <Button
+              className="account-permission-toggle"
+              color={account.workspacePurchaseEnabled ? "danger" : "primary"}
+              disabled={busy}
+              onClick={() => void controller.operatorAccounts.setWorkspacePurchaseEligibility(account.accountId, !account.workspacePurchaseEnabled)}
+              size="sm"
+              variant="outline"
+            >
               {account.workspacePurchaseEnabled ? <ShieldOff aria-hidden size={15} /> : <ShieldCheck aria-hidden size={15} />}
               {account.workspacePurchaseEnabled ? "撤销新购" : "授予新购"}
             </Button>
@@ -423,17 +448,24 @@ function OperatorAccountMobileCard({ account, controller, openAccount }: {
   controller: ConsoleController;
   openAccount: (account: OperatorAccountDTO, next: AccountDialog) => void;
 }) {
+  const isAdmin = account.role === "admin" || account.accountId === "acct-admin";
   return (
     <article className="operator-object-card operator-account-mobile-card">
       <header className="operator-object-card__header">
-        <span><strong>{account.email}</strong><small>{account.role === "admin" ? "管理员" : account.role}</small></span>
+        <span>
+          <strong>{account.email}</strong>
+          <small className="account-identity-meta">
+            <span className={`account-role-pill ${isAdmin ? "account-role-pill--admin" : ""}`}>{account.role === "admin" ? "管理员" : "客户"}</span>
+            <code className="account-subject-chip">#{account.sub2apiUserId}</code>
+          </small>
+        </span>
       </header>
       <dl className="operator-object-card__facts operator-account-mobile-facts">
         <div className="operator-object-card__wide"><dt>账户映射</dt><dd><span className="account-mapping-stack"><span><small>OPL Account</small><code>{account.accountId}</code></span><span><small>Console User</small><code>{account.consoleUserId}</code></span><span><small>Sub2API User</small><code>{account.sub2apiUserId}</code></span></span></dd></div>
         <div><dt>余额</dt><dd><AccountFact source={account.wallet}>{(wallet) => <span className="account-balance-stack"><strong>{formatUsdMicros(wallet.usdMicros)}</strong><small>{statusLabel(wallet.status)}</small></span>}</AccountFact></dd></div>
         <div><dt>API 费用</dt><dd><AccountFact source={account.usage}>{(usage) => <span className="account-cost-stack"><span><small>今日</small><strong>{formatUsdMicros(usage.todayActualCostUsdMicros)}</strong></span><span><small>累计</small><strong>{formatUsdMicros(usage.totalActualCostUsdMicros)}</strong></span></span>}</AccountFact></dd></div>
         <div><dt>资源</dt><dd><span className="account-resource-stack"><span><small>Key</small><strong><AccountFact source={account.keyCount}>{formatCount}</AccountFact></strong></span><span><small>历史 CP Workspace</small><strong><AccountFact source={account.workspaceCount}>{formatCount}</AccountFact></strong></span></span></dd></div>
-        <div><dt>状态</dt><dd><span className="account-status-stack"><Badge color={statusTone(account.status)}>{statusLabel(account.status)}</Badge><Badge color={account.workspacePurchaseEnabled ? "success" : "secondary"}>{account.workspacePurchaseEnabled ? "可新购 Workspace" : "不可新购 Workspace"}</Badge></span></dd></div>
+        <div><dt>状态</dt><dd><AccountStatusBadges account={account} /></dd></div>
       </dl>
       <AccountActions account={account} controller={controller} openAccount={openAccount} />
     </article>
@@ -514,18 +546,80 @@ function ProvisionAccountModal({ controller, onClose, open }: { controller: Cons
   );
 }
 
-function AccountDetailModal({ account, onClose }: { account: OperatorAccountDTO | null; onClose: () => void }) {
+type PermissionFilter = "all" | "eligible" | "restricted" | "admin" | "disabled";
+
+function AccountDetailModal({ account, controller, onClose }: { account: OperatorAccountDTO | null; controller: ConsoleController; onClose: () => void }) {
+  const reservedAdmin = account ? account.accountId === "acct-admin" || account.role === "admin" : false;
+  const busy = account ? controller.operatorAccounts.busyAccountIds.includes(account.accountId) : false;
+  const isAdmin = account ? reservedAdmin : false;
   return (
     <Modal className="modal" footer={<Button onClick={onClose} variant="outline">关闭</Button>} onClose={onClose} open={Boolean(account)} title="账户详情">
       {account ? (
-        <div data-slide="A-ACC-03">
+        <div className="account-detail-sheet" data-slide="A-ACC-03">
+          <div className="account-detail-hero">
+            <div className="account-detail-hero__identity">
+              <span aria-hidden="true" className={`account-avatar account-avatar--lg ${isAdmin ? "account-avatar--admin" : ""}`}>
+                {(account.email[0] || "?").toUpperCase()}
+              </span>
+              <div className="account-detail-hero__text">
+                <strong>{account.email}</strong>
+                <span className="account-identity-meta">
+                  <span className={`account-role-pill ${isAdmin ? "account-role-pill--admin" : ""}`}>{account.role === "admin" ? "管理员" : account.role}</span>
+                  <code className="account-subject-chip">Sub2API #{account.sub2apiUserId}</code>
+                </span>
+              </div>
+            </div>
+            <AccountStatusBadges account={account} />
+          </div>
+
+          <section className="account-detail-permissions">
+            <div className="account-detail-permissions__head">
+              <h2>权限白名单治理</h2>
+              <small>所有受控能力均采用显式白名单准入</small>
+            </div>
+            <div className="account-detail-permission-row">
+              <div className="account-detail-permission-row__copy">
+                <strong>Workspace 新购资格</strong>
+                <small>控制该 Gateway 主体是否可新购云端 Workspace；已开通工作空间不受撤销影响。</small>
+              </div>
+              <div className="account-detail-permission-row__control">
+                <Badge color={account.workspacePurchaseEnabled ? "success" : "secondary"}>
+                  <span aria-hidden="true" className={`ss-dot ${account.workspacePurchaseEnabled ? "ss-dot--ok" : "ss-dot--muted"}`} />
+                  {account.workspacePurchaseEnabled ? "可新购 Workspace" : "不可新购 Workspace"}
+                </Badge>
+                {reservedAdmin
+                  ? <span className="account-read-only">保留管理员默认拥有平台权限</span>
+                  : account.status === "active"
+                    ? <Button
+                        className="account-permission-toggle"
+                        color={account.workspacePurchaseEnabled ? "danger" : "primary"}
+                        disabled={busy}
+                        onClick={() => void controller.operatorAccounts.setWorkspacePurchaseEligibility(account.accountId, !account.workspacePurchaseEnabled)}
+                        size="sm"
+                        variant="outline"
+                      >
+                        {account.workspacePurchaseEnabled ? <ShieldOff aria-hidden size={15} /> : <ShieldCheck aria-hidden size={15} />}
+                        {account.workspacePurchaseEnabled ? "撤销新购" : "授予新购"}
+                      </Button>
+                    : <span className="account-read-only">账户已停用</span>}
+              </div>
+            </div>
+          </section>
+
+          <div className="account-detail-metrics">
+            <div><span>钱包余额</span><strong><AccountFact source={account.wallet}>{(data) => formatUsdMicros(data.usdMicros)}</AccountFact></strong></div>
+            <div><span>今日 API 费用</span><strong><AccountFact source={account.usage}>{(data) => formatUsdMicros(data.todayActualCostUsdMicros)}</AccountFact></strong></div>
+            <div><span>累计 API 费用</span><strong><AccountFact source={account.usage}>{(data) => formatUsdMicros(data.totalActualCostUsdMicros)}</AccountFact></strong></div>
+            <div><span>Key / CP Workspace</span><strong><AccountFact source={account.keyCount}>{formatCount}</AccountFact> / <AccountFact source={account.workspaceCount}>{formatCount}</AccountFact></strong></div>
+          </div>
+
           <section className="data-section"><h2>Control Plane 映射</h2><dl className="data-list">
             <div><dt>Account</dt><dd>{account.accountId}</dd></div>
             <div><dt>Console User</dt><dd>{account.consoleUserId}</dd></div>
             <div><dt>Sub2API User 记录</dt><dd>{account.sub2apiUserId}</dd></div>
             <div><dt>登录邮箱</dt><dd>{account.email}</dd></div>
             <div><dt>角色</dt><dd>{account.role}</dd></div>
-            <div><dt>状态</dt><dd><span className="account-status-stack"><Badge color={statusTone(account.status)}>{statusLabel(account.status)}</Badge><Badge color={account.workspacePurchaseEnabled ? "success" : "secondary"}>{account.workspacePurchaseEnabled ? "可新购 Workspace" : "不可新购 Workspace"}</Badge></span></dd></div>
+            <div><dt>状态</dt><dd><AccountStatusBadges account={account} /></dd></div>
           </dl></section>
           <section className="data-section"><h2>Gateway 与 Workspace 权威读回</h2><dl className="data-list">
             <div><dt>Sub2API 实时映射</dt><dd><SourceValue source={account.gatewayIdentity}>{(data) => `${data.userId} · ${data.email} · ${data.status}`}</SourceValue></dd></div>
@@ -640,6 +734,8 @@ function WalletAdjustmentModal({ account, controller, onClose }: { account: Oper
 function AccountsPage({ controller }: { controller: ConsoleController }) {
   const [dialog, setDialog] = useState<AccountDialog>("");
   const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [permissionFilter, setPermissionFilter] = useState<PermissionFilter>("all");
   const accountController = controller.operatorAccounts;
   const accounts = sourceData(accountController.accounts.value)?.items || [];
   const selectedAccount = accounts.find((account) => account.accountId === selectedAccountId) || null;
@@ -648,33 +744,143 @@ function AccountsPage({ controller }: { controller: ConsoleController }) {
     setSelectedAccountId(account.accountId);
     setDialog(next);
   };
+  const resetFilters = () => {
+    setSearchQuery("");
+    setPermissionFilter("all");
+  };
   return (
     <section className="panel" data-slide="A-ACC-01 A-ACC-02 A-ACC-03">
-      <div className="panel-title operator-accounts-panel-title"><div className="operator-accounts-title"><h2>客户与计费账户</h2></div><Button hidden={!cloudIdentity} color="primary" onClick={() => setDialog("provision")}><Plus aria-hidden size={16} />开通用户</Button></div>
+      <div className="panel-title operator-accounts-panel-title">
+        <div className="operator-accounts-title"><h2>客户与计费账户</h2></div>
+        <div className="operator-accounts-panel-actions">
+          <Button aria-label="刷新账户列表" disabled={accountController.accounts.loading} onClick={() => void accountController.refresh()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />刷新</Button>
+          <Button hidden={!cloudIdentity} color="primary" onClick={() => setDialog("provision")}><Plus aria-hidden size={16} />开通用户</Button>
+        </div>
+      </div>
       <SourceState empty={accounts.length === 0} emptyTitle="暂无用户" error={accountController.accounts.error} loading={accountController.accounts.loading} onRetry={() => void accountController.refresh()} source={accountController.accounts.value} unavailableTitle="账户数据暂不可用">
-        {(data) => <>
-          <div className="table-wrap operator-account-table"><table className="ops-table"><thead><tr><th>用户</th><th>账户映射</th><th>余额</th><th>API 费用</th><th>资源</th><th>状态</th><th>操作</th></tr></thead><tbody>{data.items.map((account) => (
-            <tr key={account.accountId} data-state={account.status}>
-              <td>
-                <span className="operator-account-identity">
-                  <span className="account-avatar" aria-hidden="true">{(account.email[0] || "?").toUpperCase()}</span>
-                  <span className="operator-account-identity__text"><strong>{account.email}</strong><small>{account.role === "admin" ? "管理员" : account.role}</small></span>
-                </span>
-              </td>
-              <td><span className="account-mapping-stack"><span><small>OPL Account</small><code>{account.accountId}</code></span><span><small>Console User</small><code>{account.consoleUserId}</code></span><span><small>Sub2API User</small><code>{account.sub2apiUserId}</code></span></span></td>
-              <td><AccountFact source={account.wallet}>{(wallet) => <span className="account-balance-stack"><strong>{formatUsdMicros(wallet.usdMicros)}</strong><small>{statusLabel(wallet.status)}</small></span>}</AccountFact></td>
-              <td><AccountFact source={account.usage}>{(usage) => <span className="account-cost-stack"><span><small>今日</small><strong>{formatUsdMicros(usage.todayActualCostUsdMicros)}</strong></span><span><small>累计</small><strong>{formatUsdMicros(usage.totalActualCostUsdMicros)}</strong></span></span>}</AccountFact></td>
-              <td><span className="account-resource-stack"><span><small>Key</small><strong><AccountFact source={account.keyCount}>{formatCount}</AccountFact></strong></span><span><small>历史 CP Workspace</small><strong><AccountFact source={account.workspaceCount}>{formatCount}</AccountFact></strong></span></span></td>
-              <td><span className="account-status-stack"><Badge color={statusTone(account.status)}>{statusLabel(account.status)}</Badge><Badge color={account.workspacePurchaseEnabled ? "success" : "secondary"}>{account.workspacePurchaseEnabled ? "可新购 Workspace" : "不可新购 Workspace"}</Badge></span></td>
-              <td className="table-actions"><AccountActions account={account} controller={controller} openAccount={openAccount} /></td>
-            </tr>
-          ))}</tbody></table></div>
-          <div className="operator-account-mobile-list">{data.items.map((account) => <OperatorAccountMobileCard account={account} controller={controller} key={account.accountId} openAccount={openAccount} />)}</div>
-        </>}
+        {(data) => {
+          const items = data.items;
+          const isReservedAdmin = (item: OperatorAccountDTO) => item.accountId === "acct-admin" || item.role === "admin";
+          const activeCount = items.filter((item) => item.status === "active").length;
+          const disabledCount = items.filter((item) => item.status !== "active").length;
+          const eligibleCount = items.filter((item) => item.workspacePurchaseEnabled).length;
+          const restrictedCount = items.filter((item) => !item.workspacePurchaseEnabled && item.status === "active" && !isReservedAdmin(item)).length;
+          const adminCount = items.filter(isReservedAdmin).length;
+          const normalizedQuery = searchQuery.trim().toLowerCase();
+          const filterOptions: Array<{ id: PermissionFilter; label: string; count: number }> = [
+            { id: "all", label: "全部", count: items.length },
+            { id: "eligible", label: "可新购", count: eligibleCount },
+            { id: "restricted", label: "待授权", count: restrictedCount },
+            { id: "admin", label: "管理员", count: adminCount },
+            { id: "disabled", label: "已停用", count: disabledCount }
+          ];
+          const filteredItems = items.filter((item) => {
+            if (permissionFilter === "eligible" && !item.workspacePurchaseEnabled) return false;
+            if (permissionFilter === "restricted" && (item.workspacePurchaseEnabled || item.status !== "active" || isReservedAdmin(item))) return false;
+            if (permissionFilter === "admin" && !isReservedAdmin(item)) return false;
+            if (permissionFilter === "disabled" && item.status === "active") return false;
+            if (!normalizedQuery) return true;
+            return [item.email, item.accountId, item.consoleUserId, item.sub2apiUserId]
+              .some((value) => String(value || "").toLowerCase().includes(normalizedQuery));
+          });
+
+          return <>
+            <div className="operator-accounts-summary">
+              <div className="operator-accounts-summary__cell">
+                <span className="operator-accounts-summary__label">账户总数</span>
+                <strong className="operator-accounts-summary__value">{formatCount(data.total)}</strong>
+                <span className="ss-telemetry-note">当前页 {formatCount(items.length)} 个</span>
+              </div>
+              <div className="operator-accounts-summary__cell">
+                <span className="operator-accounts-summary__label">账户状态</span>
+                <strong className="operator-accounts-summary__value">{formatCount(activeCount)} / {formatCount(items.length)}</strong>
+                <span className="ss-telemetry-note"><span aria-hidden="true" className="ss-dot ss-dot--ok" />正常 · 停用 {formatCount(disabledCount)}</span>
+              </div>
+              <div className="operator-accounts-summary__cell">
+                <span className="operator-accounts-summary__label">Workspace 新购白名单</span>
+                <strong className="operator-accounts-summary__value">{formatCount(eligibleCount)} / {formatCount(items.length)}</strong>
+                <span className="ss-telemetry-note"><span aria-hidden="true" className="ss-dot ss-dot--ok" />显式白名单放行</span>
+              </div>
+              <div className="operator-accounts-summary__cell">
+                <span className="operator-accounts-summary__label">待授权 / 保留管理员</span>
+                <strong className="operator-accounts-summary__value">{formatCount(restrictedCount)}</strong>
+                <span className="ss-telemetry-note"><span aria-hidden="true" className="ss-dot ss-dot--muted" />管理员 {formatCount(adminCount)}</span>
+              </div>
+            </div>
+
+            {items.length > 0 ? (
+              <div className="operator-accounts-toolbar">
+                <div className="operator-accounts-search">
+                  <Search aria-hidden size={15} />
+                  <input
+                    aria-label="筛选当前页账户"
+                    onChange={(event) => setSearchQuery(event.currentTarget.value)}
+                    placeholder="搜索邮箱、Account ID 或 Sub2API ID…"
+                    type="search"
+                    value={searchQuery}
+                  />
+                  {searchQuery ? (
+                    <button aria-label="清除搜索" className="operator-accounts-search__clear" onClick={() => setSearchQuery("")} type="button">
+                      <X aria-hidden size={14} />
+                    </button>
+                  ) : null}
+                </div>
+                <div aria-label="按权限与状态筛选" className="ss-filter-bar" role="group">
+                  {filterOptions.map((option) => (
+                    <button
+                      aria-pressed={permissionFilter === option.id}
+                      className="ss-filter-chip"
+                      key={option.id}
+                      onClick={() => setPermissionFilter(option.id)}
+                      type="button"
+                    >
+                      <span>{option.label}</span>
+                      <span className="ss-filter-chip__count">{formatCount(option.count)}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {filteredItems.length === 0 ? (
+              <div className="operator-accounts-filter-empty">
+                <span>当前页没有匹配筛选条件的账户</span>
+                <Button onClick={resetFilters} size="sm" variant="outline">重置筛选</Button>
+              </div>
+            ) : <>
+              <div aria-label="客户与计费账户列表" className="table-wrap operator-account-table" role="region" tabIndex={0}><table className="ops-table"><thead><tr><th>用户</th><th>账户映射</th><th>余额</th><th>API 费用</th><th>资源</th><th>状态</th><th>操作</th></tr></thead><tbody>{filteredItems.map((account) => {
+                const isAdmin = isReservedAdmin(account);
+                return (
+                  <tr key={account.accountId} data-state={account.status}>
+                    <td>
+                      <span className="operator-account-identity">
+                        <span className={`account-avatar ${isAdmin ? "account-avatar--admin" : ""}`} aria-hidden="true">{(account.email[0] || "?").toUpperCase()}</span>
+                        <span className="operator-account-identity__text">
+                          <strong>{account.email}</strong>
+                          <small className="account-identity-meta">
+                            <span className={`account-role-pill ${isAdmin ? "account-role-pill--admin" : ""}`}>{account.role === "admin" ? "管理员" : "客户"}</span>
+                            <code className="account-subject-chip">#{account.sub2apiUserId}</code>
+                          </small>
+                        </span>
+                      </span>
+                    </td>
+                    <td><span className="account-mapping-stack"><span><small>OPL Account</small><code>{account.accountId}</code></span><span><small>Console User</small><code>{account.consoleUserId}</code></span><span><small>Sub2API User</small><code>{account.sub2apiUserId}</code></span></span></td>
+                    <td><AccountFact source={account.wallet}>{(wallet) => <span className="account-balance-stack"><strong>{formatUsdMicros(wallet.usdMicros)}</strong><small>{statusLabel(wallet.status)}</small></span>}</AccountFact></td>
+                    <td><AccountFact source={account.usage}>{(usage) => <span className="account-cost-stack"><span><small>今日</small><strong>{formatUsdMicros(usage.todayActualCostUsdMicros)}</strong></span><span><small>累计</small><strong>{formatUsdMicros(usage.totalActualCostUsdMicros)}</strong></span></span>}</AccountFact></td>
+                    <td><span className="account-resource-stack"><span><small>Key</small><strong><AccountFact source={account.keyCount}>{formatCount}</AccountFact></strong></span><span><small>历史 CP Workspace</small><strong><AccountFact source={account.workspaceCount}>{formatCount}</AccountFact></strong></span></span></td>
+                    <td><AccountStatusBadges account={account} /></td>
+                    <td className="table-actions"><AccountActions account={account} controller={controller} openAccount={openAccount} /></td>
+                  </tr>
+                );
+              })}</tbody></table></div>
+              <div className="operator-account-mobile-list">{filteredItems.map((account) => <OperatorAccountMobileCard account={account} controller={controller} key={account.accountId} openAccount={openAccount} />)}</div>
+            </>}
+          </>;
+        }}
       </SourceState>
       <Pagination current={accountController.page} label="账号分页" onChange={(page) => void accountController.changePage(page)} pages={accountController.pages} />
       {cloudIdentity ? <ProvisionAccountModal controller={controller} onClose={() => setDialog("")} open={dialog === "provision"} /> : <p className="inline-notice">新用户开通请使用 Cloud 控制台。</p>}
-      <AccountDetailModal account={dialog === "detail" ? selectedAccount : null} onClose={() => setDialog("")} />
+      <AccountDetailModal account={dialog === "detail" ? selectedAccount : null} controller={controller} onClose={() => setDialog("")} />
       <WalletAdjustmentModal account={dialog === "wallet" ? selectedAccount : null} controller={controller} onClose={() => setDialog("")} />
     </section>
   );
@@ -979,7 +1185,7 @@ function ResourceDetail({ controller }: { controller: OperatorResourceReadContro
           <ResourceReadback item={detail} />
           {resourcesUnavailable(detail) ? null
             : detail.resources.length ? <>
-              <div className="table-wrap operator-resource-detail-table"><table className="ops-table resource-detail-cards"><thead><tr className="sr-only"><th>归属账户</th><th>归属用户</th><th>Workspace</th><th>资源类型</th><th>套餐 / 规格</th><th>provider ID</th><th>Zone</th><th>实时状态</th><th>创建时间</th><th>到期时间</th><th>最近 provider 读回</th><th>operation reference</th><th>Receipt reference</th></tr></thead><tbody>{detail.resources.map((resource, index) => <ResourceRow key={`${index}-${resource.providerId.source}-${resource.operationRef.source}`} resource={resource} />)}</tbody></table></div>
+              <div aria-label="Workspace 底层资源列表" className="table-wrap operator-resource-detail-table" role="region" tabIndex={0}><table className="ops-table resource-detail-cards"><thead><tr className="sr-only"><th>归属账户</th><th>归属用户</th><th>Workspace</th><th>资源类型</th><th>套餐 / 规格</th><th>provider ID</th><th>Zone</th><th>实时状态</th><th>创建时间</th><th>到期时间</th><th>最近 provider 读回</th><th>operation reference</th><th>Receipt reference</th></tr></thead><tbody>{detail.resources.map((resource, index) => <ResourceRow key={`${index}-${resource.providerId.source}-${resource.operationRef.source}`} resource={resource} />)}</tbody></table></div>
               <div className="operator-resource-mobile-list">{detail.resources.map((resource, index) => <OperatorResourceMobileCard key={`${index}-${resource.providerId.source}-${resource.operationRef.source}`} resource={resource} />)}</div>
             </> : <div className="empty-panel"><EmptyResourceFacts item={detail} /></div>}
         </>}
@@ -1021,7 +1227,7 @@ function ResourcesPage({ controller }: { controller: OperatorResourceReadControl
         <div className="panel-title"><div><h2>Workspace 资源列表</h2></div><span>当前页资源状态</span></div>
         <SourceState empty={workspaces.length === 0} emptyTitle="暂无 Workspace" error={controller.workspaces.error} loading={controller.workspaces.loading} onRetry={() => void controller.refresh()} source={controller.workspaces.value} unavailableTitle="Workspace 资源暂不可用">
           {(data) => <>
-            <div className="table-wrap operator-workspace-table"><table className="ops-table"><thead><tr><th>Workspace</th><th>归属</th><th>套餐 / 月费</th><th>权益截止</th><th>Workspace 状态</th><th>Fabric 观测 / 读取时间</th><th>入口</th><th>Key 累计费用</th><th>操作</th></tr></thead><tbody>{data.items.map((item, index) => {
+            <div aria-label="Workspace 资源列表" className="table-wrap operator-workspace-table" role="region" tabIndex={0}><table className="ops-table"><thead><tr><th>Workspace</th><th>归属</th><th>套餐 / 月费</th><th>权益截止</th><th>Workspace 状态</th><th>Fabric 观测 / 读取时间</th><th>入口</th><th>Key 累计费用</th><th>操作</th></tr></thead><tbody>{data.items.map((item, index) => {
               const workspace = sourceData(item.workspace);
               const id = workspace?.id || "";
               const state = sourceData(item.workspace)?.state;

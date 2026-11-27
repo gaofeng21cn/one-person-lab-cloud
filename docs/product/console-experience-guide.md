@@ -46,7 +46,11 @@ and mobile navigation overlays are mutually exclusive and preserve focus.
 - Use a clear responsive hierarchy. All supported actions and critical facts
   must remain reachable on desktop and mobile.
 - Make loading, empty, unavailable, partial-failure and permission states
-  explicit. Never present an unavailable fact as zero, empty or healthy.
+  explicit. Never present an unavailable fact as zero, empty or healthy. When an
+  authenticated user has no Workspace whitelist or no legacy billing account,
+  render a calm, explicit permission or empty-history notice rather than a retry
+  warning banner; keep unavailable retry banners strictly for real upstream
+  failures.
 - Keep independent sources independently usable. A failed balance read must not
   hide a valid Workspace list, for example.
 - Use accessible semantics, keyboard interaction, focus management, readable
@@ -68,8 +72,9 @@ Mobile results and primary actions precede filters and low-frequency controls.
 Long names, identifiers, dates and complete amounts remain readable without
 horizontal page overflow; fixed navigation cannot cover actions. Controls keep
 visible focus, meaningful accessible names and usable touch targets. The
-current visual baseline uses restrained neutral surfaces, shared primary
-action/focus tokens, semantic status colors and the existing system fonts.
+current visual baseline pairs pure neutral grayscale surfaces and `1px` hairline
+borders with the shared teal primary action token, sky-blue focus ring, semantic
+status colors, tabular numerals, and the native system sans/monospace font stack.
 Normal text maintains accessible contrast; style values remain owned by CSS.
 
 Technical disclosure needs a current diagnostic purpose. Workspace and Usage

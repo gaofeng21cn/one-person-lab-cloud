@@ -16,12 +16,20 @@ chronological snapshots.
   live under the single root Go module `go.mod` (`module opl-cloud`), backed by
   typed `database/sql` PostgreSQL stores and `services/internal/postgresmigrate`
   (`ent` ORM has been retired).
-- **Composed Backend & Clean Host**: Portable topology `deploy/portable/compose.cloud.yaml`
-  runs the single PostgreSQL instance, the 11 Cloud owner processes and the
-  same-origin proxy; clean-host `local-v2` verification passes `LOCAL_NO_CHARGE`
-  lifecycle qualification (`p0Ready: false`). Composed backend TKE deployment has
-  been verified for the installed Candidate, while formal public Release remains
-  at `v0.1.8` (GitHub Releases).
+- **Slim Go-Only Image & 3-Container Composed Portable Topology**: `Dockerfile`
+  compiles all Go binaries in one shared `go-build` stage onto a
+  Node-free `debian:bookworm-slim` runtime carrying `/app/dist` and baked
+  `/app/contracts/opl-cloud-owner-topology.json`. Portable topology
+  `deploy/portable/compose.cloud.yaml` converges from 13 containers to 3
+  (`postgres` + single `cloud-backend` container running `opl-cloud-composition`
+  across all 11 owner processes + `cloud-local-v2` proxy), `apps/console-bff`
+  serves Console SPA static assets on `/`, `opl-owner-probe` supports
+  `OPL_GRPC_CERT_DIR`, and `tests/contracts/module-physical-boundaries.test.ts`
+  enforces package/SDK isolation across all 11 Go services and `console-bff`.
+  Clean-host `local-v2` verification passes `LOCAL_NO_CHARGE` lifecycle
+  qualification (`p0Ready: false`). Composed backend TKE deployment has been
+  verified for the installed Candidate, while formal public Release remains at
+  `v0.1.8` (GitHub Releases).
 - **Fabric Provider Account Resolution**: Fabric resolves the ordering Tenant of
   an accepted plan to the provider account that runs its package. A binding in
   the deployment-owned provider profile names a Tenant that runs in a particular

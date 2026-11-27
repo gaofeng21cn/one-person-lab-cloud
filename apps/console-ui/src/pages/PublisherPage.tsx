@@ -1,8 +1,9 @@
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, LockKeyhole } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { getJson, postJson } from "../api/console-api.ts";
 import { readEffectiveBuildDefaults, uploadPackagePart, type UploadPermit } from "../api/publisher-api.ts";
-import type { WorkspaceOwnerOperationDTO as Operation } from "../api/dtos.ts";
+import type { AuthSession, WorkspaceOwnerOperationDTO as Operation } from "../api/dtos.ts";
+import { hasCloudTenantAccess, isPermissionDeniedError } from "../app/authorization-error.ts";
 import type { EffectiveBuildDefaults } from "../app/cloud-webui-model.ts";
 import { Alert, Button } from "../components/ui/index.ts";
 import "./publisher.css";
@@ -114,7 +115,7 @@ function PublisherSteps({ current }: { current: "select" | "building" | "ready" 
   );
 }
 
-export function PublisherPage({ onNavigate }: { onNavigate?: (path: string) => void }) {
+export function PublisherPage({ onNavigate, session: initialSession }: { onNavigate?: (path: string) => void; session?: AuthSession | null }) {
   const navigate = (path: string) => {
     if (onNavigate) { onNavigate(path); return; }
     window.history.pushState(null, "", path);
@@ -134,6 +135,7 @@ export function PublisherPage({ onNavigate }: { onNavigate?: (path: string) => v
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [restricted, setRestricted] = useState(false);
   const [build, setBuild] = useState<Build | null>(null);
   const [logs, setLogs] = useState<BuildLog[]>([]);
   const [logsTruncated, setLogsTruncated] = useState(false);
@@ -150,13 +152,39 @@ export function PublisherPage({ onNavigate }: { onNavigate?: (path: string) => v
   };
 
   useEffect(() => {
+    if (initialSession !== undefined && !hasCloudTenantAccess(initialSession)) {
+      setSession(initialSession ? { actorId: initialSession.user.id, csrfToken: initialSession.csrfToken } : null);
+      setRestricted(true);
+      setError("");
+      return;
+    }
     const abort = new AbortController();
+    const resolveAbort = new AbortController();
     void (async () => {
       try {
         const active = await getJson<Session>(`${base}/auth/session`, { signal: abort.signal });
-        const ns = await pages<Entry>(`${base}/namespaces`, abort.signal);
         if (abort.signal.aborted) return;
-        setSession(active); setNamespaces(ns); setNamespaceId(ns[0]?.id || "");
+        setSession(active);
+        if (!active.tenantId) {
+          setRestricted(true);
+          setError("");
+          resolveAbort.abort();
+          return;
+        }
+        setRestricted(false);
+        const [ns] = await Promise.all([
+          pages<Entry>(`${base}/namespaces`, abort.signal),
+          readEffectiveBuildDefaults(resolveAbort.signal)
+            .then((resolved) => { if (!resolveAbort.signal.aborted) setDefaults(resolved); })
+            .catch((e: unknown) => {
+              if (!resolveAbort.signal.aborted) {
+                if (isPermissionDeniedError(e)) setRestricted(true);
+                else setError(e instanceof Error ? e.message : "暂时无法检查构建环境，请稍后重试。");
+              }
+            })
+        ]);
+        if (abort.signal.aborted) return;
+        setNamespaces(ns); setNamespaceId(ns[0]?.id || "");
         try { work.current = JSON.parse(sessionStorage.getItem(storageKey(active)) || "null") as Work | null; } catch { work.current = null; }
         const selected = work.current?.selection;
         if (selected && !requestedPackageId.current) {
@@ -172,14 +200,19 @@ export function PublisherPage({ onNavigate }: { onNavigate?: (path: string) => v
           const readback = await getJson<PackageVersion>(`${base}/package-versions/${encodeURIComponent(work.current.packageVersionId)}`, { signal: abort.signal });
           if (!abort.signal.aborted) setPackageVersion(readback);
         }
-      } catch (e) { if (!abort.signal.aborted) setError(e instanceof Error ? e.message : "暂时无法加载智能体列表，请刷新重试。"); }
+      } catch (e) {
+        if (!abort.signal.aborted) {
+          if (isPermissionDeniedError(e)) {
+            setRestricted(true);
+            setError("");
+          } else {
+            setError(e instanceof Error ? e.message : "暂时无法加载智能体列表，请刷新重试。");
+          }
+        }
+      }
     })();
-    const resolveAbort = new AbortController();
-    void readEffectiveBuildDefaults(resolveAbort.signal)
-      .then((resolved) => { if (!resolveAbort.signal.aborted) setDefaults(resolved); })
-      .catch((e: unknown) => { if (!resolveAbort.signal.aborted) setError(e instanceof Error ? e.message : "暂时无法检查构建环境，请稍后重试。"); });
     return () => { abort.abort(); resolveAbort.abort(); execution.current?.abort(); };
-  }, []);
+  }, [initialSession]);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -188,7 +221,7 @@ export function PublisherPage({ onNavigate }: { onNavigate?: (path: string) => v
       ? work.current.selection.packageId
       : "";
     setPackageId(resumedPackageId);
-    if (namespaceId) {
+    if (namespaceId && !restricted) {
       void pages<Entry>(`${base}/packages?namespaceId=${encodeURIComponent(namespaceId)}`, abort.signal).then((items) => {
         if (abort.signal.aborted) return;
         setPackages(items);
@@ -197,11 +230,14 @@ export function PublisherPage({ onNavigate }: { onNavigate?: (path: string) => v
           requestedPackageId.current = "";
         }
       }).catch((e: unknown) => {
-        if (!abort.signal.aborted) setError(e instanceof Error ? e.message : "智能体列表读取失败，请刷新重试。");
+        if (!abort.signal.aborted) {
+          if (isPermissionDeniedError(e)) setRestricted(true);
+          else setError(e instanceof Error ? e.message : "智能体列表读取失败，请刷新重试。");
+        }
       });
     }
     return () => abort.abort();
-  }, [namespaceId]);
+  }, [namespaceId, restricted]);
 
   useEffect(() => {
     const id = build?.id;
@@ -314,6 +350,14 @@ export function PublisherPage({ onNavigate }: { onNavigate?: (path: string) => v
       <Button onClick={() => navigate("/console/agents")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />返回我的智能体</Button>
     </div>
     <div className="panel-title"><div><h2>上传智能体</h2><p>上传智能体压缩包并填写版本号，系统将自动完成构建。</p></div></div>
+    {restricted ? (
+      <div className="source-notice" data-notice-kind="permission" role="status">
+        <span className="source-notice__icon" aria-hidden="true"><LockKeyhole size={20} /></span>
+        <h3>上传与构建尚未开通</h3>
+        <p>当前账号尚未开通工作空间与智能体白名单，请联系管理员；OPL Gateway 与 API 余额仍可正常使用。</p>
+        <div className="source-notice__action"><Button onClick={() => navigate("/console/overview")} size="sm" variant="outline">返回概览</Button></div>
+      </div>
+    ) : <>
     <PublisherSteps current={currentStep} />
     <form onSubmit={(e) => { e.preventDefault(); void run(); }}>
       <fieldset disabled={busy || !session}>
@@ -366,5 +410,6 @@ export function PublisherPage({ onNavigate }: { onNavigate?: (path: string) => v
         {version && <section aria-label="已就绪版本读回"><h3>就绪版本记录</h3><dl><dt>CapabilityVersion</dt><dd><code>{version.id}</code></dd><dt>deployment descriptor digest</dt><dd><code>{version.deploymentDescriptorDigest}</code></dd></dl></section>}
       </div>
     </details>
+    </>}
   </section>;
 }

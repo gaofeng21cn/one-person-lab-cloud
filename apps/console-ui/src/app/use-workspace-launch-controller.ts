@@ -17,6 +17,7 @@ import type {
   RuntimeVersionDTO,
   WorkspaceLaunchResponse
 } from "../api/dtos.ts";
+import { hasCloudTenantAccess, isPermissionDeniedError } from "./authorization-error.ts";
 import { cloudIdentity } from "./console-identity.ts";
 import {
   createAgentWorkspace,
@@ -91,6 +92,7 @@ export interface AgentWorkspaceLaunchController extends WorkspaceLaunchControlle
   agentPollIssue: "" | "unavailable" | "timeout" | "unknown";
   agentRecoveryPending: boolean;
   agentRecoveryActionable: boolean;
+  agentWorkspaceRestricted: boolean;
   reviewAgentLaunch: () => void;
   submitAgentLaunch: () => Promise<void>;
   retryAgentLaunch: () => Promise<void>;
@@ -168,6 +170,7 @@ export function useWorkspaceLaunchController({
   const [agentAccess, setAgentAccess] = useState<WorkspaceOwnerAccessDTO | null>(null);
   const [agentConfirmed, setAgentConfirmed] = useState(false);
   const [agentBusy, setAgentBusy] = useState(false);
+  const [agentWorkspaceRestricted, setAgentWorkspaceRestricted] = useState(false);
   const [agentPollIssue, setAgentPollIssue] = useState<"" | "unavailable" | "timeout" | "unknown">("");
   const [agentRecoveryPending, setAgentRecoveryPending] = useState(() => Boolean(sessionStorage.getItem(agentOperationStorageKey)));
   const intent = useRef<PersistedAgentIntent | null>(null);
@@ -210,6 +213,7 @@ export function useWorkspaceLaunchController({
     setAgentAccess(null);
     setAgentConfirmed(false);
     setAgentBusy(false);
+    setAgentWorkspaceRestricted(false);
     setAgentPollIssue("");
     setAgentRecoveryPending(false);
     intent.current = null;
@@ -219,15 +223,22 @@ export function useWorkspaceLaunchController({
   // it never crosses to a retained Account session for missing native data.
   const loadAgentCatalog = async (generation: number, activeSession: AuthSession) => {
     invalidateQuote();
-    setAgentSourceLoading(true);
     setAgentSourceError("");
     setAgentReadErrors({});
+    setAgentCapabilityVersions([]); setAgentRuntimeVersions([]); setAgentModels([]); setAgentPayerWallet(null);
+    if (!hasCloudTenantAccess(activeSession)) {
+      setAgentWorkspaceRestricted(true);
+      setAgentSourceLoading(false);
+      setAgentReadLoading({ app: false, agent: false, models: false, wallet: false });
+      return;
+    }
+    setAgentWorkspaceRestricted(false);
+    setAgentSourceLoading(true);
     setAgentReadLoading({ app: true, agent: true, models: true, wallet: true });
     const requestedCapabilityVersionId = new URLSearchParams(window.location.search).get("capabilityVersionId")?.trim() || "";
     if (requestedCapabilityVersionId) setAgentApplicationKindState("agent");
     // These are independent authorities. An unavailable Agent/model directory
     // cannot remove a valid default App, resource offer or wallet readback.
-    setAgentCapabilityVersions([]); setAgentRuntimeVersions([]); setAgentModels([]); setAgentPayerWallet(null);
     const current = () => isRequestCurrent(generation, activeSession.user.id);
     const failed = (source: keyof typeof agentReadErrors, error: unknown) => {
       if (current()) setAgentReadErrors((old) => ({ ...old, [source]: friendlyError(error) }));
@@ -263,7 +274,14 @@ export function useWorkspaceLaunchController({
           setAgentStoragePlanIdState(first?.workspaceOffers?.[0].storagePlanId ?? "");
         }
       }).catch((error) => {
-        if (current()) { setAgentComputePlans([]); setAgentSourceError(friendlyError(error)); }
+        if (!current()) return;
+        setAgentComputePlans([]);
+        if (isPermissionDeniedError(error)) {
+          setAgentWorkspaceRestricted(true);
+          setAgentSourceError("");
+          return;
+        }
+        setAgentSourceError(friendlyError(error));
       }).finally(() => { if (current()) setAgentSourceLoading(false); }),
       listAvailableLaunchModels().then((models) => { if (current()) setAgentModels(models.filter((m) => m.available)); }).catch((error) => failed("models", error)).finally(() => finished("models")),
       getLaunchPayerWallet().then((wallet) => { if (current()) setAgentPayerWallet(wallet); }).catch((error) => failed("wallet", error)).finally(() => finished("wallet"))
@@ -615,6 +633,7 @@ export function useWorkspaceLaunchController({
     agentConfirmed,
     setAgentConfirmed,
     agentBusy,
+    agentWorkspaceRestricted,
     agentPollIssue,
     agentRecoveryPending,
     agentRecoveryActionable: Boolean(intent.current && intent.current.actorId === session?.user.id && !intent.current.operationId),

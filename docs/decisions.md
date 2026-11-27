@@ -21,6 +21,19 @@ Git log.
   composed deployment unit while keeping separate database roles, single-writer
   boundaries, idempotency fences and privileged BuildKit / running Workspace
   execution outside the ordinary backend trust boundary.
+- **Slim Go-only runtime image**: `Dockerfile` compiles all Go binaries in a
+  single shared `go-build` stage and packages `debian:bookworm-slim` without
+  Node.js or `node_modules`, baking `/app/dist` and
+  `/app/contracts/opl-cloud-owner-topology.json` into the product image while
+  retaining `CMD ["/usr/local/bin/opl-control-plane"]` for existing deployment
+  profiles.
+- **Unified 3-container portable Compose**: `deploy/portable/compose.cloud.yaml`
+  standardizes single-host portable installations on 3 containers (`postgres`,
+  `cloud-backend` running `opl-cloud-composition`, and `cloud-local-v2` proxy)
+  instead of 11 separate backend service containers.
+- **Console SPA ownership**: `apps/console-bff` serves the compiled Console SPA
+  static bundle (`/app/dist`) on `/` for the `cloud` Console identity so
+  Console static delivery no longer depends on the retained `services/control-plane`.
 
 ## Workspace Application Model
 
@@ -85,6 +98,19 @@ Git log.
   `POST /api/operator/accounts/{accountId}/workspace-purchase-eligibility`
   remains only for the retained legacy Console build until Control Plane
   retirement.
+- **Private Software Package, Link Relay & Admin Delegation Ownership**:
+  All Cloud-governed Gateway-user permissions follow one uniform fail-closed
+  allowlist model inside `CloudIdentity` (`opl_tenant`): restricted Software
+  Center packages (`tenant.package_entitlements`, keeping public packages
+  anonymous on GitHub with zero client-side GHCR secrets and two-stage
+  Cloud/COS delivery), OPL Link Relay forwarding
+  (`tenant.link_relay_entitlements` checked only at control-plane registration
+  and host enrollment routes, with existing active Gateway users explicitly
+  seeded into the allowlist during initial rollout for zero-config UX), and
+  planned runtime operator delegation (`tenant.platform_admins` backed by
+  Console `/operator` with audit + idempotency + last-admin lockout protection,
+  keeping `OPL_PLATFORM_ADMIN_SUBJECTS` as immutable bootstrap/break-glass root
+  admins) ([software-package-entitlements.md](software-package-entitlements.md)).
 - **Personal Gateway Key Write Ownership**: `Gateway Integration` owns the native
   personal Gateway Key create/update/reveal/revoke capability over the delegated
   Sub2API authority, projecting the same `PersonalGatewayKey` fact the personal

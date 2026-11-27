@@ -173,19 +173,19 @@ test("the published Compose images must stay digest-pinned", async () => {
       /the published Compose image is not digest-pinned: postgres/
     ],
     [
-      "  tenant:\n    image: ${OPL_CLOUD_IMAGE:?Set OPL_CLOUD_IMAGE to the product image digest}",
-      "  tenant:\n    image: opl-cloud:latest",
-      /the published Compose image is not digest-pinned: tenant/
+      "  cloud-backend:\n    image: ${OPL_CLOUD_IMAGE:?Set OPL_CLOUD_IMAGE to the product image digest}",
+      "  cloud-backend:\n    image: opl-cloud:latest",
+      /the published Compose image is not digest-pinned: cloud-backend/
     ],
     [
-      "  tenant:\n    image: ${OPL_CLOUD_IMAGE:?Set OPL_CLOUD_IMAGE to the product image digest}",
-      "  tenant:",
-      /the published Compose file declares a service without an image: tenant/
+      "  cloud-backend:\n    image: ${OPL_CLOUD_IMAGE:?Set OPL_CLOUD_IMAGE to the product image digest}",
+      "  cloud-backend:",
+      /the published Compose file declares a service without an image: cloud-backend/
     ],
     [
       "    image: ${OPL_CLOUD_IMAGE:?Set OPL_CLOUD_IMAGE to the product image digest}",
       "    image: ${OPL_CLOUD_IMAGE:?Set OPL_CLOUD_IMAGE to the product image digest v2}",
-      /the published Compose image parameter text changed: tenant/
+      /the published Compose image parameter text changed: cloud-backend/
     ]
   ];
   for (const [before, after, expected] of mutations) {

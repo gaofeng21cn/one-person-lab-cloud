@@ -361,10 +361,13 @@ for (const name of referencedFiles) {
     throw new Error(`candidate bundle must carry every file the entrypoint references: ${name}`);
   }
 }
-for (const process of topology.processes || []) {
-  if (!entrypointServices[process.service] && !entrypointServices[process.ownerName]) {
-    throw new Error(`the published Compose surface must run every owner process: ${process.service}`);
-  }
+const cloudBackend = entrypointServices["cloud-backend"];
+const unitEntrypoint = topology.deploymentUnit?.unit?.entrypoint;
+if (!cloudBackend || !Array.isArray(cloudBackend.command) || cloudBackend.command[0] !== unitEntrypoint) {
+  throw new Error(`the published Compose surface must run the composed Cloud backend entrypoint (${unitEntrypoint}) in service cloud-backend`);
+}
+if (cloudBackend.environment?.OPL_CLOUD_OWNER_TOPOLOGY !== "/app/contracts/opl-cloud-owner-topology.json") {
+  throw new Error("the published Compose cloud-backend service must point OPL_CLOUD_OWNER_TOPOLOGY at /app/contracts/opl-cloud-owner-topology.json");
 }
 
 // Every service the published Compose file declares must carry an image, and

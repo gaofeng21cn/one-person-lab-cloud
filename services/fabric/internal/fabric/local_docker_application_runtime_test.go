@@ -667,7 +667,9 @@ func TestLocalDockerApplicationRuntimeProbesMainWithoutPublishingPrivatePorts(t 
 		!probe.HostConfig.ReadonlyRootfs ||
 		!slices.Contains([]string(probe.HostConfig.CapDrop), "ALL") ||
 		!slices.Contains(probe.HostConfig.SecurityOpt, "no-new-privileges") ||
-		!reflect.DeepEqual([]string(probe.Config.Entrypoint), []string{"node"}) ||
+		!slices.Contains(probe.Config.Env, "GOMAXPROCS=2") ||
+		!reflect.DeepEqual([]string(probe.Config.Entrypoint), []string{"/usr/local/bin/opl-owner-probe"}) ||
+		len(probe.Config.Cmd) != 2 || probe.Config.Cmd[0] != "--app-probe" ||
 		probe.Config.Image != provider.applicationProbeImage {
 		t.Fatalf("probe spec invalid: config=%#v hostConfig=%#v", probe.Config, probe.HostConfig)
 	}

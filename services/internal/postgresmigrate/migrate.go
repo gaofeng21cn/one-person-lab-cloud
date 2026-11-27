@@ -46,10 +46,12 @@ type Migration struct {
 // and exposes a database/sql *sql.DB backed by that same pool. Callers must close
 // both the *sql.DB and the *pgxpool.Pool on shutdown.
 func OpenPool(ctx context.Context, databaseURL string, configure func(*pgxpool.Config)) (*pgxpool.Pool, *sql.DB, error) {
+	databaseURL = normalizePostgresDSN(databaseURL)
 	cfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, nil, err
 	}
+	normalizeLegacyLibPQRuntimeParams(cfg)
 	if configure != nil {
 		configure(cfg)
 	}
@@ -60,9 +62,97 @@ func OpenPool(ctx context.Context, databaseURL string, configure func(*pgxpool.C
 	return pool, stdlib.OpenDBFromPool(pool), nil
 }
 
+// normalizeLegacyLibPQRuntimeParams strips lib/pq client-only query parameters
+// that pgx/v5 forwards as PostgreSQL startup RuntimeParams (which cause servers
+// to reject startup with SQLSTATE 42704).
+func normalizeLegacyLibPQRuntimeParams(cfg *pgxpool.Config) {
+	if cfg == nil || cfg.ConnConfig == nil || cfg.ConnConfig.RuntimeParams == nil {
+		return
+	}
+	params := cfg.ConnConfig.RuntimeParams
+	delete(params, "binary_parameters")
+	if fallback, ok := params["fallback_application_name"]; ok {
+		if strings.TrimSpace(params["application_name"]) == "" && strings.TrimSpace(fallback) != "" {
+			params["application_name"] = fallback
+		}
+		delete(params, "fallback_application_name")
+	}
+}
+
 // OpenStdlib opens a database/sql *sql.DB using the pgx/v5 stdlib driver.
 func OpenStdlib(databaseURL string) (*sql.DB, error) {
-	return sql.Open("pgx", databaseURL)
+	return sql.Open("pgx", normalizePostgresDSN(databaseURL))
+}
+
+// normalizePostgresDSN canonicalizes PostgreSQL URI connection strings so
+// pgconn.ParseConfig / pgxpool.ParseConfig accept valid URIs that net/url.Parse
+// and Node URL accept (uppercase scheme, unescaped '@' in passwords, unescaped
+// '=' in query values, empty query pairs, and a single empty sslmode= parameter)
+// without relaxing duplicate-sslmode or TLS admission checks. Keyword/value
+// DSNs are trimmed and returned unchanged.
+func normalizePostgresDSN(databaseURL string) string {
+	trimmed := strings.TrimSpace(databaseURL)
+	if trimmed == "" {
+		return ""
+	}
+	lower := strings.ToLower(trimmed)
+	if !strings.HasPrefix(lower, "postgres://") && !strings.HasPrefix(lower, "postgresql://") {
+		return trimmed
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return trimmed
+	}
+	parsed.Scheme = strings.ToLower(parsed.Scheme)
+	if parsed.RawQuery != "" {
+		type queryPair struct {
+			key   string
+			value string
+			hasEq bool
+		}
+		parts := strings.Split(parsed.RawQuery, "&")
+		pairs := make([]queryPair, 0, len(parts))
+		sslmodeCount := 0
+		for _, part := range parts {
+			if part == "" {
+				continue
+			}
+			rawKey, rawVal, hasEq := strings.Cut(part, "=")
+			key, err := url.PathUnescape(rawKey)
+			if err != nil {
+				return trimmed
+			}
+			val := ""
+			if hasEq {
+				val, err = url.PathUnescape(rawVal)
+				if err != nil {
+					return trimmed
+				}
+			}
+			if key == "sslmode" {
+				sslmodeCount++
+			}
+			pairs = append(pairs, queryPair{key: key, value: val, hasEq: hasEq})
+		}
+		encodedParts := make([]string, 0, len(pairs))
+		for _, pair := range pairs {
+			if pair.key == "sslmode" && pair.value == "" && sslmodeCount == 1 {
+				continue
+			}
+			encodedKey := encodePostgresURIQueryComponent(pair.key)
+			if !pair.hasEq {
+				encodedParts = append(encodedParts, encodedKey)
+				continue
+			}
+			encodedParts = append(encodedParts, encodedKey+"="+encodePostgresURIQueryComponent(pair.value))
+		}
+		parsed.RawQuery = strings.Join(encodedParts, "&")
+	}
+	return parsed.String()
+}
+
+func encodePostgresURIQueryComponent(value string) string {
+	return strings.ReplaceAll(url.QueryEscape(value), "+", "%20")
 }
 
 // StringArrayScanner returns a database/sql.Scanner for PostgreSQL text[] columns
@@ -76,7 +166,7 @@ func StringArrayScanner(dest *[]string) sql.Scanner {
 // (pgconn.ParseConfig), requiring either explicit sslmode=verify-full on explicit
 // TCP host(s) or explicit PGSSLMODE=disable on a single RFC1918 IPv4 host.
 func ValidateTLS(databaseURL string) error {
-	databaseURL = strings.TrimSpace(databaseURL)
+	databaseURL = normalizePostgresDSN(databaseURL)
 	if databaseURL == "" {
 		return errors.New(errTLSAdmissionMessage)
 	}
@@ -524,7 +614,7 @@ func (s *oplJournalStore) ListMigrations(ctx context.Context, db database.DBTxCo
 // may use. Every Cloud owner applies this same rule, so no service invents its own
 // weaker or stronger variant.
 func AdmitDatabaseURL(getenv func(string) string, databaseURL string) error {
-	databaseURL = strings.TrimSpace(databaseURL)
+	databaseURL = normalizePostgresDSN(databaseURL)
 	if databaseURL == "" {
 		return errors.New("PostgreSQL DATABASE_URL is required")
 	}
