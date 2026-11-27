@@ -59,7 +59,7 @@ accepted operation's own terms.
 
 - **Build-time Identity**: `VITE_CONSOLE_IDENTITY` is immutable per build (`cloud` → BFF `/api/v2/*`; `legacy` → retained `/api/*`); there is never runtime identity switching, cookie translation or catch-and-retry fallback to the alternate owner.
 - **Envelope Guard**: Responses commit only when `source` matches the active caller (`gateway`, `sub2api`, `control_plane`/`ledger`, `workspace`). Missing/unavailable owners surface explicit `{ status: "unavailable", available: false }` envelopes rather than zeroed values.
-- **Transitional Reads**: Gateway Key CRUD/balance-history (delegated custody), legacy billing receipts/settlement trend (Control Plane/Ledger HTTP bridge) and announcements (Control Plane HTTP bridge) retain live CloudIdentity proof + reciprocal mapping checks until migrated in [roadmap](../roadmap.md#workspace-key-and-customer-read-boundaries).
+- **Transitional Reads**: Gateway Key CRUD (delegated custody), legacy billing receipts/settlement trend (Control Plane/Ledger HTTP bridge) and announcements (Control Plane HTTP bridge) retain live CloudIdentity proof + reciprocal mapping checks until migrated in [roadmap](../roadmap.md#workspace-key-and-customer-read-boundaries). The Gateway balance history and the public Gateway endpoint are no longer transitional: a cloud build reads both from the Gateway owner.
 - **Retained-Only Routes**: Legacy Workspace renewal, runtime-status, Gateway-budget and launch list/detail routes have no `cloud` caller.
 
 A response commits only for its current Session, route, request generation and
