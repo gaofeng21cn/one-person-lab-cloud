@@ -8,13 +8,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	contracts "opl-cloud/packages/contracts/go"
+	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 )
 
@@ -154,19 +154,27 @@ func (c *controlPlaneReader) requestJSONBody(ctx context.Context, session, metho
 	return raw, nil
 }
 
-func (c *Clients) ListAnnouncements(ctx context.Context, session string, page, pageSize int) (*contracts.AnnouncementSource, error) {
-	out := &contracts.AnnouncementSource{}
-	path := "/internal/cloud/announcements?" + url.Values{"page": {strconv.Itoa(page)}, "pageSize": {strconv.Itoa(pageSize)}}.Encode()
-	if err := c.controlPlane.requestWithLimit(ctx, session, http.MethodGet, path, "", out, contracts.AnnouncementMaxResponseBytes); err != nil {
-		return nil, err
+// The announcements belong to CloudIdentity, the owner of the identity the
+// reader and the platform administrator are. The BFF forwards the live
+// session reference and the caller's own intent; the owner resolves the
+// reader, decides whether an announcement is readable and writes the receipt.
+func (c *Clients) ListAnnouncements(ctx context.Context, call *api.CallContext, page, pageSize int) (*api.AnnouncementPage, error) {
+	if c.tenant == nil {
+		return nil, fmt.Errorf("CloudIdentity: %w", ErrUpstreamUnconfigured)
 	}
-	return out, nil
+	return c.tenant.ListAnnouncements(ctx, &api.ListAnnouncementsRpcRequest{Context: call, Page: int32(page), PageSize: int32(pageSize)})
 }
 
-func (c *Clients) MarkAnnouncementRead(ctx context.Context, session, id, key string) (*contracts.AnnouncementRead, error) {
-	out := &contracts.AnnouncementRead{}
-	if err := c.controlPlane.request(ctx, session, http.MethodPost, "/internal/cloud/announcements/"+url.PathEscape(id)+"/read", key, out); err != nil {
-		return nil, err
+func (c *Clients) MarkAnnouncementRead(ctx context.Context, call *api.CallContext, announcementID string) (*api.AnnouncementRead, error) {
+	if c.tenant == nil {
+		return nil, fmt.Errorf("CloudIdentity: %w", ErrUpstreamUnconfigured)
 	}
-	return out, nil
+	return c.tenant.MarkAnnouncementRead(ctx, &api.MarkAnnouncementReadRpcRequest{Context: call, AnnouncementId: announcementID})
+}
+
+func (c *Clients) ListOperatorAnnouncements(ctx context.Context, call *api.CallContext, page, pageSize int) (*api.AnnouncementPage, error) {
+	if c.tenant == nil {
+		return nil, fmt.Errorf("CloudIdentity: %w", ErrUpstreamUnconfigured)
+	}
+	return c.tenant.ListOperatorAnnouncements(ctx, &api.ListAnnouncementsRpcRequest{Context: call, Page: int32(page), PageSize: int32(pageSize)})
 }

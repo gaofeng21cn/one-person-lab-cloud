@@ -133,6 +133,19 @@ Git log.
   `GET /internal/cloud/gateway/endpoint` bridges are retired; its retained
   `/api/gateway/*` read routes stay only for the legacy Console build until
   Control Plane retirement.
+- **Platform Announcement Ownership**: The platform announcements and their read
+  receipts are owned by CloudIdentity rather than by a new service. The audience
+  is every authenticated Cloud User and the receipt is keyed by the reader
+  alone, so the fact is an identity fact and not a Tenant-scoped one; the
+  publisher is a platform administrator, which CloudIdentity already
+  adjudicates; and the Console BFF already holds a resident connection to that
+  owner, so no new service, credential or address is introduced and no second
+  writer is created. The reader is resolved from the live session and never from
+  a request field, and the announcement table carries no Tenant column. Customer
+  read and receipt are registered as session-bound actions rather than tenant
+  role rows, because they are bound to the reader's own live session and not to
+  a role a Tenant grants. Publication and withdrawal are owner commands carrying
+  the caller's idempotency key, so a repeated call publishes one announcement.
 
 ## Non-Spending Publication & Incremental Retirement
 

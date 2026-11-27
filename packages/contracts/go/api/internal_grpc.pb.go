@@ -49,6 +49,11 @@ const (
 	TenantProductService_GetTenantLifecycleOperation_FullMethodName      = "/opl.cloud.api.TenantProductService/GetTenantLifecycleOperation"
 	TenantProductService_SetWorkspacePurchaseEligibility_FullMethodName  = "/opl.cloud.api.TenantProductService/SetWorkspacePurchaseEligibility"
 	TenantProductService_ListWorkspacePurchaseEligibility_FullMethodName = "/opl.cloud.api.TenantProductService/ListWorkspacePurchaseEligibility"
+	TenantProductService_ListAnnouncements_FullMethodName                = "/opl.cloud.api.TenantProductService/ListAnnouncements"
+	TenantProductService_MarkAnnouncementRead_FullMethodName             = "/opl.cloud.api.TenantProductService/MarkAnnouncementRead"
+	TenantProductService_ListOperatorAnnouncements_FullMethodName        = "/opl.cloud.api.TenantProductService/ListOperatorAnnouncements"
+	TenantProductService_PublishAnnouncement_FullMethodName              = "/opl.cloud.api.TenantProductService/PublishAnnouncement"
+	TenantProductService_WithdrawAnnouncement_FullMethodName             = "/opl.cloud.api.TenantProductService/WithdrawAnnouncement"
 )
 
 // TenantProductServiceClient is the client API for TenantProductService service.
@@ -84,6 +89,11 @@ type TenantProductServiceClient interface {
 	GetTenantLifecycleOperation(ctx context.Context, in *GetTenantLifecycleOperationRpcRequest, opts ...grpc.CallOption) (*TenantLifecycleProgress, error)
 	SetWorkspacePurchaseEligibility(ctx context.Context, in *SetWorkspacePurchaseEligibilityRpcRequest, opts ...grpc.CallOption) (*WorkspacePurchaseEligibilityCommand, error)
 	ListWorkspacePurchaseEligibility(ctx context.Context, in *ListWorkspacePurchaseEligibilityRpcRequest, opts ...grpc.CallOption) (*WorkspacePurchaseEligibilityList, error)
+	ListAnnouncements(ctx context.Context, in *ListAnnouncementsRpcRequest, opts ...grpc.CallOption) (*AnnouncementPage, error)
+	MarkAnnouncementRead(ctx context.Context, in *MarkAnnouncementReadRpcRequest, opts ...grpc.CallOption) (*AnnouncementRead, error)
+	ListOperatorAnnouncements(ctx context.Context, in *ListAnnouncementsRpcRequest, opts ...grpc.CallOption) (*AnnouncementPage, error)
+	PublishAnnouncement(ctx context.Context, in *PublishAnnouncementRpcRequest, opts ...grpc.CallOption) (*Announcement, error)
+	WithdrawAnnouncement(ctx context.Context, in *WithdrawAnnouncementRpcRequest, opts ...grpc.CallOption) (*Announcement, error)
 }
 
 type tenantProductServiceClient struct {
@@ -384,6 +394,56 @@ func (c *tenantProductServiceClient) ListWorkspacePurchaseEligibility(ctx contex
 	return out, nil
 }
 
+func (c *tenantProductServiceClient) ListAnnouncements(ctx context.Context, in *ListAnnouncementsRpcRequest, opts ...grpc.CallOption) (*AnnouncementPage, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AnnouncementPage)
+	err := c.cc.Invoke(ctx, TenantProductService_ListAnnouncements_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tenantProductServiceClient) MarkAnnouncementRead(ctx context.Context, in *MarkAnnouncementReadRpcRequest, opts ...grpc.CallOption) (*AnnouncementRead, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AnnouncementRead)
+	err := c.cc.Invoke(ctx, TenantProductService_MarkAnnouncementRead_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tenantProductServiceClient) ListOperatorAnnouncements(ctx context.Context, in *ListAnnouncementsRpcRequest, opts ...grpc.CallOption) (*AnnouncementPage, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AnnouncementPage)
+	err := c.cc.Invoke(ctx, TenantProductService_ListOperatorAnnouncements_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tenantProductServiceClient) PublishAnnouncement(ctx context.Context, in *PublishAnnouncementRpcRequest, opts ...grpc.CallOption) (*Announcement, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Announcement)
+	err := c.cc.Invoke(ctx, TenantProductService_PublishAnnouncement_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tenantProductServiceClient) WithdrawAnnouncement(ctx context.Context, in *WithdrawAnnouncementRpcRequest, opts ...grpc.CallOption) (*Announcement, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Announcement)
+	err := c.cc.Invoke(ctx, TenantProductService_WithdrawAnnouncement_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TenantProductServiceServer is the server API for TenantProductService service.
 // All implementations must embed UnimplementedTenantProductServiceServer
 // for forward compatibility.
@@ -417,6 +477,11 @@ type TenantProductServiceServer interface {
 	GetTenantLifecycleOperation(context.Context, *GetTenantLifecycleOperationRpcRequest) (*TenantLifecycleProgress, error)
 	SetWorkspacePurchaseEligibility(context.Context, *SetWorkspacePurchaseEligibilityRpcRequest) (*WorkspacePurchaseEligibilityCommand, error)
 	ListWorkspacePurchaseEligibility(context.Context, *ListWorkspacePurchaseEligibilityRpcRequest) (*WorkspacePurchaseEligibilityList, error)
+	ListAnnouncements(context.Context, *ListAnnouncementsRpcRequest) (*AnnouncementPage, error)
+	MarkAnnouncementRead(context.Context, *MarkAnnouncementReadRpcRequest) (*AnnouncementRead, error)
+	ListOperatorAnnouncements(context.Context, *ListAnnouncementsRpcRequest) (*AnnouncementPage, error)
+	PublishAnnouncement(context.Context, *PublishAnnouncementRpcRequest) (*Announcement, error)
+	WithdrawAnnouncement(context.Context, *WithdrawAnnouncementRpcRequest) (*Announcement, error)
 	mustEmbedUnimplementedTenantProductServiceServer()
 }
 
@@ -513,6 +578,21 @@ func (UnimplementedTenantProductServiceServer) SetWorkspacePurchaseEligibility(c
 }
 func (UnimplementedTenantProductServiceServer) ListWorkspacePurchaseEligibility(context.Context, *ListWorkspacePurchaseEligibilityRpcRequest) (*WorkspacePurchaseEligibilityList, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListWorkspacePurchaseEligibility not implemented")
+}
+func (UnimplementedTenantProductServiceServer) ListAnnouncements(context.Context, *ListAnnouncementsRpcRequest) (*AnnouncementPage, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListAnnouncements not implemented")
+}
+func (UnimplementedTenantProductServiceServer) MarkAnnouncementRead(context.Context, *MarkAnnouncementReadRpcRequest) (*AnnouncementRead, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method MarkAnnouncementRead not implemented")
+}
+func (UnimplementedTenantProductServiceServer) ListOperatorAnnouncements(context.Context, *ListAnnouncementsRpcRequest) (*AnnouncementPage, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListOperatorAnnouncements not implemented")
+}
+func (UnimplementedTenantProductServiceServer) PublishAnnouncement(context.Context, *PublishAnnouncementRpcRequest) (*Announcement, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PublishAnnouncement not implemented")
+}
+func (UnimplementedTenantProductServiceServer) WithdrawAnnouncement(context.Context, *WithdrawAnnouncementRpcRequest) (*Announcement, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method WithdrawAnnouncement not implemented")
 }
 func (UnimplementedTenantProductServiceServer) mustEmbedUnimplementedTenantProductServiceServer() {}
 func (UnimplementedTenantProductServiceServer) testEmbeddedByValue()                              {}
@@ -1057,6 +1137,96 @@ func _TenantProductService_ListWorkspacePurchaseEligibility_Handler(srv interfac
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TenantProductService_ListAnnouncements_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAnnouncementsRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantProductServiceServer).ListAnnouncements(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantProductService_ListAnnouncements_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantProductServiceServer).ListAnnouncements(ctx, req.(*ListAnnouncementsRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TenantProductService_MarkAnnouncementRead_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MarkAnnouncementReadRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantProductServiceServer).MarkAnnouncementRead(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantProductService_MarkAnnouncementRead_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantProductServiceServer).MarkAnnouncementRead(ctx, req.(*MarkAnnouncementReadRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TenantProductService_ListOperatorAnnouncements_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAnnouncementsRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantProductServiceServer).ListOperatorAnnouncements(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantProductService_ListOperatorAnnouncements_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantProductServiceServer).ListOperatorAnnouncements(ctx, req.(*ListAnnouncementsRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TenantProductService_PublishAnnouncement_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PublishAnnouncementRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantProductServiceServer).PublishAnnouncement(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantProductService_PublishAnnouncement_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantProductServiceServer).PublishAnnouncement(ctx, req.(*PublishAnnouncementRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TenantProductService_WithdrawAnnouncement_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WithdrawAnnouncementRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantProductServiceServer).WithdrawAnnouncement(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantProductService_WithdrawAnnouncement_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantProductServiceServer).WithdrawAnnouncement(ctx, req.(*WithdrawAnnouncementRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // TenantProductService_ServiceDesc is the grpc.ServiceDesc for TenantProductService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1179,6 +1349,26 @@ var TenantProductService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListWorkspacePurchaseEligibility",
 			Handler:    _TenantProductService_ListWorkspacePurchaseEligibility_Handler,
+		},
+		{
+			MethodName: "ListAnnouncements",
+			Handler:    _TenantProductService_ListAnnouncements_Handler,
+		},
+		{
+			MethodName: "MarkAnnouncementRead",
+			Handler:    _TenantProductService_MarkAnnouncementRead_Handler,
+		},
+		{
+			MethodName: "ListOperatorAnnouncements",
+			Handler:    _TenantProductService_ListOperatorAnnouncements_Handler,
+		},
+		{
+			MethodName: "PublishAnnouncement",
+			Handler:    _TenantProductService_PublishAnnouncement_Handler,
+		},
+		{
+			MethodName: "WithdrawAnnouncement",
+			Handler:    _TenantProductService_WithdrawAnnouncement_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

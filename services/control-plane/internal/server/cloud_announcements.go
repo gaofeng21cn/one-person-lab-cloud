@@ -7,10 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -21,8 +19,10 @@ import (
 	"opl-cloud/packages/contracts/go/owneridentity"
 )
 
-// This is a client of Gateway's persisted binding proof, not another identity
-// writer. Every request revalidates the reference through the original owner.
+// This is the shared CloudIdentity bridge proof for the retained Control Plane
+// owners: the caller credential, the live session reference and the original
+// owner's own binding proof. The announcement bridge that used it is retired;
+// the announcements and their read receipts are owned by CloudIdentity now.
 type cloudAnnouncementSource struct {
 	token   string
 	gateway api.GatewayCoordinationClient
@@ -73,53 +73,6 @@ func singleCloudHeader(r *http.Request, name string) (string, bool) {
 		return "", false
 	}
 	return values[0], true
-}
-
-func (app *controlPlaneServer) cloudAnnouncementHandler(markRead bool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "private, no-store")
-		query, queryErr := url.ParseQuery(r.URL.RawQuery)
-		if queryErr != nil {
-			writeError(w, http.StatusBadRequest, "invalid_pagination")
-			return
-		}
-		for key, values := range query {
-			if markRead || (key != "page" && key != "pageSize") || len(values) != 1 {
-				writeError(w, http.StatusBadRequest, "invalid_announcement_query")
-				return
-			}
-		}
-		if markRead && r.ContentLength != 0 {
-			var input struct{}
-			if !decodeAnnouncementBody(w, r, &input) {
-				writeError(w, http.StatusBadRequest, "invalid_announcement_read")
-				return
-			}
-		} else if !markRead && r.Body != nil && r.ContentLength != 0 {
-			writeError(w, http.StatusBadRequest, "invalid_announcement_query")
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-		defer cancel()
-		proof, ok := app.cloudSessionProof(w, r.WithContext(ctx))
-		if !ok {
-			return
-		}
-		identity, err := app.cloudUserLineage(ctx, proof)
-		if err != nil {
-			if errors.Is(err, errCloudUserLineage) {
-				writeError(w, http.StatusConflict, "announcement_identity_lineage_invalid")
-			} else {
-				writeSourceEnvelope(w, http.StatusServiceUnavailable, "control-plane", "unavailable", nil)
-			}
-			return
-		}
-		if markRead {
-			app.markCloudAnnouncementRead(w, r.WithContext(ctx), identity)
-			return
-		}
-		app.listCloudAnnouncements(w, r.WithContext(ctx), identity)
-	}
 }
 
 func validCloudSessionReference(ref string) bool {
@@ -194,55 +147,6 @@ func writeCloudAnnouncementProofError(w http.ResponseWriter, err error) {
 	default:
 		writeSourceEnvelope(w, http.StatusServiceUnavailable, "control-plane", "unavailable", nil)
 	}
-}
-
-func (app *controlPlaneServer) listCloudAnnouncements(w http.ResponseWriter, r *http.Request, identity cloudUserIdentity) {
-	page, pageSize, ok := operatorPagination(w, r)
-	if !ok {
-		return
-	}
-	rows, err := app.tables.ListAnnouncements(r.Context())
-	if err != nil {
-		writeSourceEnvelope(w, http.StatusServiceUnavailable, "control-plane", "unavailable", nil)
-		return
-	}
-	readIDs := map[string]bool{}
-	// This is an exact two-reference alias read, not a join on names, Tenant,
-	// Account or payer. ACK below folds those same references under the row lock.
-	for _, userID := range []string{identity.cloudUserID, identity.legacyUserID} {
-		if userID == "" {
-			continue
-		}
-		reads, err := app.tables.ListAnnouncementReads(r.Context(), userID)
-		if err != nil {
-			writeSourceEnvelope(w, http.StatusServiceUnavailable, "control-plane", "unavailable", nil)
-			return
-		}
-		for _, read := range reads {
-			readIDs[stringValue(read["announcementId"])] = true
-		}
-	}
-	now := time.Now().UTC()
-	items := make([]AnnouncementDTO, 0, len(rows))
-	for _, row := range rows {
-		if announcementIsActive(row, now) {
-			items = append(items, announcementDTO(row, readIDs[stringValue(row["id"])]))
-		}
-	}
-	writeAnnouncementPage(w, page, pageSize, items, latestAnnouncementUpdatedAt(rows))
-}
-
-func (app *controlPlaneServer) markCloudAnnouncementRead(w http.ResponseWriter, r *http.Request, identity cloudUserIdentity) {
-	row, err := app.tables.MarkCloudAnnouncementRead(r.Context(), strings.TrimSpace(r.PathValue("announcementId")), identity.cloudUserID, identity.legacyUserID, time.Now().UTC().Format(time.RFC3339Nano))
-	if errors.Is(err, errAnnouncementNotActive) {
-		writeError(w, http.StatusNotFound, "announcement_not_active")
-		return
-	}
-	if err != nil {
-		writeSourceEnvelope(w, http.StatusServiceUnavailable, "control-plane", "unavailable", nil)
-		return
-	}
-	writeJSON(w, http.StatusOK, AnnouncementReadDTO{AnnouncementID: stringValue(row["announcementId"]), ReadAt: stringValue(row["readAt"])})
 }
 
 func (app *controlPlaneServer) cloudSessionProof(w http.ResponseWriter, r *http.Request) (*api.UserIdentityReadback, bool) {

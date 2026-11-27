@@ -88,6 +88,20 @@ chronological snapshots.
     `GET /api/gateway/balance-history` and `GET /api/gateway/endpoint` routes
     stay for the legacy Console build and are retired with the retained
     Control Plane.
+  - The platform announcements and the customer's read receipts are now owned by
+    CloudIdentity (`services/gateway-integration`, `opl_tenant`). The announcement
+    is platform content rather than a Tenant fact: its table carries no Tenant
+    column, the reader is the live session's own actor, and the receipt is bound
+    to that reader alone, so one announcement and one reader is one row and a
+    repeated mark keeps its original timestamp. The Console BFF forwards over a
+    typed gRPC client and keeps its own session, CSRF, same-origin and
+    idempotency-key guards; the customer read and receipt keep their existing
+    envelope shape while the administrative surface answers as `cloud-identity`.
+    All three Control Plane announcement bridges (`GET /internal/cloud/announcements`,
+    `POST /internal/cloud/announcements/{id}/read`,
+    `GET /internal/cloud/operator/announcements`) are retired. The contract now
+    publishes five announcement paths and four schemas, and the authorization
+    action enum carries the five matching names.
   - Control Plane image-replacement creation/preview/worker commands and admin
     activation endpoints are retired; only the operator image-policy GET
     (`GET /api/operator/workspace-runtime-image-policy`), Fabric image
