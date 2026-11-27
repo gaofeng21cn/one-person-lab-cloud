@@ -149,6 +149,16 @@ func (s *Server) registerPublisherRoutes(mux *http.ServeMux) {
 		}
 		return s.tenant.CreateTenant(r.Context(), &api.CreateTenantRpcRequest{Context: c, Body: body.(*api.CreateTenantRequest)})
 	})
+	// Suspending a Tenant is suspending a customer account: the personal
+	// customer owns exactly one Tenant, and the owner refuses that Tenant's
+	// members once it is suspended. The owner owns the write; the BFF only
+	// carries the platform administrator's command.
+	s.publisherRoute(mux, "POST /api/v2/admin/tenants/{tenantId}/suspend", owneridentity.Tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SUSPENDTENANT, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "tenantId", func() proto.Message { return &api.TenantActionRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		if s.tenant == nil {
+			return nil, status.Error(codes.Unavailable, "tenant owner is not configured")
+		}
+		return s.tenant.SuspendTenant(r.Context(), &api.SuspendTenantRpcRequest{Context: c, TenantId: r.PathValue("tenantId"), Body: body.(*api.TenantActionRequest)})
+	})
 	mux.HandleFunc("GET /api/v2/auth/session", func(w http.ResponseWriter, r *http.Request) {
 		publisherRequestID(r)
 		w.Header().Set("Cache-Control", "no-store")
