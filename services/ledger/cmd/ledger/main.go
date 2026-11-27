@@ -27,22 +27,22 @@ func main() {
 
 	databaseURL, err := storeDatabaseURL(os.Getenv)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("ledger startup failed stage=database_url: %v", err)
 	}
 	token, err := internalServiceToken(os.Getenv)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("ledger startup failed stage=service_token: %v", err)
 	}
 	capabilityKey, err := ledgerCapabilityKey(os.Getenv, token)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("ledger startup failed stage=capability_key: %v", err)
 	}
 	store := ledger.Store(ledger.NewMemoryStore())
 	var domainDB *sql.DB
 	if databaseURL != "" {
 		pool, db, err := postgresmigrate.OpenPool(context.Background(), databaseURL, nil)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("ledger startup failed stage=open_pool: %v", err)
 		}
 		defer func() {
 			_ = db.Close()
@@ -50,10 +50,10 @@ func main() {
 		}()
 		domainDB = db
 		postgresStore := ledger.NewPostgresStore(db)
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := postgresStore.Install(ctx); err != nil {
-			log.Fatal(err)
+			log.Fatalf("ledger startup failed stage=install_migrations: %v", err)
 		}
 		store = postgresStore
 	}
@@ -61,29 +61,29 @@ func main() {
 	if os.Getenv("OPL_LEDGER_ADDR") != "" {
 		config, err := ownerservice.LoadConfig(os.Getenv, ownerservice.OwnerLedger, ":8186")
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("ledger startup failed stage=load_config: %v", err)
 		}
 		consumer, err := eventconsumer.New(domainDB)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("ledger startup failed stage=eventconsumer_new: %v", err)
 		}
 		closeCoordination, err := consumer.ConfigureCoordination(config, os.Getenv)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("ledger startup failed stage=eventconsumer_coordination: %v", err)
 		}
 		defer closeCoordination()
 		server, err := consumer.NewGRPC(config)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("ledger startup failed stage=eventconsumer_grpc: %v", err)
 		}
 		listener, err := net.Listen("tcp", config.Addr)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("ledger startup failed stage=grpc_listen: %v", err)
 		}
 		defer server.Stop()
 		go func() {
 			if err := server.Serve(listener); err != nil {
-				log.Fatal("Ledger domain listener stopped")
+				log.Fatalf("ledger startup failed stage=grpc_serve: %v", err)
 			}
 		}()
 	}
@@ -91,7 +91,7 @@ func main() {
 	handler := ledgerhttp.NewServerWithAuth(store, token, capabilityKey)
 	log.Printf("ledger listening on %s", addr)
 	if err := newHTTPServer(addr, handler).ListenAndServe(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("ledger startup failed stage=http_listen: %v", err)
 	}
 }
 
@@ -123,7 +123,7 @@ func internalServiceToken(getenv func(string) string) (string, error) {
 }
 
 func storeDatabaseURL(getenv func(string) string) (string, error) {
-	databaseURL := getenv("DATABASE_URL")
+	databaseURL := strings.TrimSpace(getenv("DATABASE_URL"))
 	if getenv("NODE_ENV") == "production" && databaseURL == "" {
 		return "", errors.New("DATABASE_URL is required for production Ledger persistence")
 	}

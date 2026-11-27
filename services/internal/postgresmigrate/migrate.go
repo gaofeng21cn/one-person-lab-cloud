@@ -46,10 +46,12 @@ type Migration struct {
 // and exposes a database/sql *sql.DB backed by that same pool. Callers must close
 // both the *sql.DB and the *pgxpool.Pool on shutdown.
 func OpenPool(ctx context.Context, databaseURL string, configure func(*pgxpool.Config)) (*pgxpool.Pool, *sql.DB, error) {
+	databaseURL = strings.TrimSpace(databaseURL)
 	cfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, nil, err
 	}
+	normalizeLegacyLibPQRuntimeParams(cfg)
 	if configure != nil {
 		configure(cfg)
 	}
@@ -60,9 +62,26 @@ func OpenPool(ctx context.Context, databaseURL string, configure func(*pgxpool.C
 	return pool, stdlib.OpenDBFromPool(pool), nil
 }
 
+// normalizeLegacyLibPQRuntimeParams strips lib/pq client-only query parameters
+// that pgx/v5 forwards as PostgreSQL startup RuntimeParams (which cause servers
+// to reject startup with SQLSTATE 42704).
+func normalizeLegacyLibPQRuntimeParams(cfg *pgxpool.Config) {
+	if cfg == nil || cfg.ConnConfig == nil || cfg.ConnConfig.RuntimeParams == nil {
+		return
+	}
+	params := cfg.ConnConfig.RuntimeParams
+	delete(params, "binary_parameters")
+	if fallback, ok := params["fallback_application_name"]; ok {
+		if strings.TrimSpace(params["application_name"]) == "" && strings.TrimSpace(fallback) != "" {
+			params["application_name"] = fallback
+		}
+		delete(params, "fallback_application_name")
+	}
+}
+
 // OpenStdlib opens a database/sql *sql.DB using the pgx/v5 stdlib driver.
 func OpenStdlib(databaseURL string) (*sql.DB, error) {
-	return sql.Open("pgx", databaseURL)
+	return sql.Open("pgx", strings.TrimSpace(databaseURL))
 }
 
 // StringArrayScanner returns a database/sql.Scanner for PostgreSQL text[] columns
