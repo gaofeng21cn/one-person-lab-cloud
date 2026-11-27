@@ -96,8 +96,8 @@ func (stubDockerClient) ContainerExec(context.Context, string, []string, []byte)
 	return nil, fmt.Errorf("unexpected docker API call: ContainerExec")
 }
 
-func (stubDockerClient) ImagePull(context.Context, string, mobyclient.ImagePullOptions) (io.ReadCloser, error) {
-	return nil, fmt.Errorf("unexpected docker API call: ImagePull")
+func (stubDockerClient) PullImage(context.Context, string, ocispec.Platform) error {
+	return fmt.Errorf("unexpected docker API call: PullImage")
 }
 
 func (stubDockerClient) ImageInspect(context.Context, string, *ocispec.Platform) (image.InspectResponse, error) {
