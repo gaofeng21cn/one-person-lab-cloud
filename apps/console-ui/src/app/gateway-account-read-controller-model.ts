@@ -12,10 +12,11 @@ export const GATEWAY_BALANCE_HISTORY_PAGE_SIZE = 20;
 export type GatewayAccountReadRouteScope = "inactive" | "overview" | "workspace_launch" | "api_overview" | "keys";
 export type GatewayAccountReadProjectionKind = "wallet" | "accountUsage" | "balanceHistory" | "endpoint";
 
-// Each projection names the owner that actually answered it. Cloud wallet and
-// account usage are read from the Gateway owner on the authenticated BFF; the
-// remaining projections still come from the retained Sub2API reader.
-export const gatewayAccountReadSourceTag = { wallet: "gateway", accountUsage: "gateway" } as const;
+// Each projection names the owner that actually answered it. In a cloud build
+// the wallet, the account usage, the balance history and the public endpoint
+// are all read from the Gateway owner on the authenticated BFF; the remaining
+// projections of a retained build still come from the retained Sub2API reader.
+export const gatewayAccountReadSourceTag = { wallet: "gateway", accountUsage: "gateway", balanceHistory: "gateway", endpoint: "gateway" } as const;
 export const sub2apiAccountReadSourceTag = "sub2api";
 
 // The wallet's owner follows the baked console identity, exactly as the reader
@@ -26,6 +27,17 @@ export function walletSourceTag(cloud: boolean): string {
 
 export function accountUsageSourceTag(cloud: boolean): string {
   return cloud ? gatewayAccountReadSourceTag.accountUsage : sub2apiAccountReadSourceTag;
+}
+
+// The balance history and the public endpoint moved to the Gateway owner with
+// the rest of the customer's Gateway reads. The tag follows the baked console
+// identity, so a retained build keeps answering with the Sub2API reader.
+export function balanceHistorySourceTag(cloud: boolean): string {
+  return cloud ? gatewayAccountReadSourceTag.balanceHistory : sub2apiAccountReadSourceTag;
+}
+
+export function endpointSourceTag(cloud: boolean): string {
+  return cloud ? gatewayAccountReadSourceTag.endpoint : sub2apiAccountReadSourceTag;
 }
 
 export interface GatewayAccountReadEpoch {
@@ -162,13 +174,13 @@ export function gatewayAccountReadSourceMatchesScope<K extends GatewayAccountRea
   // produces. Callers that know the baked identity pass it explicitly.
   cloud: boolean = false
 ): boolean {
-  // Cloud wallet and account usage projections are served by the Gateway owner
-  // on the authenticated BFF; the remaining projections still come from the retained
-  // Sub2API reader.
+  // In a cloud build the wallet, the account usage, the balance history and the
+  // public endpoint are all served by the Gateway owner on the authenticated
+  // BFF; a retained build keeps answering with the retained Sub2API reader.
   if (scope.kind === "wallet") return source.source === walletSourceTag(cloud);
   if (scope.kind === "accountUsage") return source.source === accountUsageSourceTag(cloud);
-  if (source.source !== sub2apiAccountReadSourceTag) return false;
-  if (scope.kind !== "balanceHistory") return true;
+  if (scope.kind === "endpoint") return source.source === endpointSourceTag(cloud);
+  if (source.source !== balanceHistorySourceTag(cloud)) return false;
   const historySource = source as GatewayAccountReadProjectionSourceMap["balanceHistory"];
   if (!historySource.available) return true;
   return historySource.data.page === scope.page

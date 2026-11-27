@@ -12,9 +12,11 @@ import {
   GATEWAY_BALANCE_HISTORY_PAGE_SIZE,
   accountUsageSourceTag,
   applyGatewayAccountReadCompletion,
+  balanceHistorySourceTag,
   beginGatewayAccountReadProjection,
   createGatewayAccountReadRequestScope,
   createGatewayAccountReadState,
+  endpointSourceTag,
   gatewayAccountReadPlan,
   gatewayAccountReadScopeIsCurrent,
   gatewayAccountReadSourceMatchesScope,
@@ -138,6 +140,32 @@ test("balance history accepts only Sub2API data for the requested page and fixed
   assert.equal(gatewayAccountReadSourceMatchesScope(scope, available(history(2), "control-plane")), false);
   assert.equal(gatewayAccountReadSourceMatchesScope(scope, unavailable()), true);
   assert.equal(gatewayAccountReadSourceMatchesScope(scope, unavailable("control-plane")), false);
+});
+
+test("cloud balance history and endpoint accept only the Gateway owner", () => {
+  const historyScope = createGatewayAccountReadRequestScope("balanceHistory", {
+    ...epoch(), routeScope: "api_overview", requestGeneration: 4, page: 2
+  });
+  const endpointScope = createGatewayAccountReadRequestScope("endpoint", {
+    ...epoch(), routeScope: "overview", requestGeneration: 1
+  });
+
+  assert.equal(balanceHistorySourceTag(true), "gateway");
+  assert.equal(balanceHistorySourceTag(false), "sub2api");
+  assert.equal(endpointSourceTag(true), "gateway");
+  assert.equal(endpointSourceTag(false), "sub2api");
+
+  assert.equal(gatewayAccountReadSourceMatchesScope(historyScope, available(history(2), "gateway"), true), true);
+  assert.equal(gatewayAccountReadSourceMatchesScope(historyScope, available(history(2), "sub2api"), true), false);
+  assert.equal(gatewayAccountReadSourceMatchesScope(historyScope, unavailable("gateway"), true), true);
+  assert.equal(gatewayAccountReadSourceMatchesScope(historyScope, unavailable("sub2api"), true), false);
+  assert.equal(gatewayAccountReadSourceMatchesScope(historyScope, available(history(2), "sub2api"), false), true);
+
+  assert.equal(gatewayAccountReadSourceMatchesScope(endpointScope, available(endpoint, "gateway"), true), true);
+  assert.equal(gatewayAccountReadSourceMatchesScope(endpointScope, available(endpoint, "sub2api"), true), false);
+  assert.equal(gatewayAccountReadSourceMatchesScope(endpointScope, unavailable("gateway"), true), true);
+  assert.equal(gatewayAccountReadSourceMatchesScope(endpointScope, unavailable("sub2api"), true), false);
+  assert.equal(gatewayAccountReadSourceMatchesScope(endpointScope, available(endpoint, "sub2api"), false), true);
 });
 
 test("projection loading and completion update only their owning state", () => {

@@ -100,6 +100,13 @@ Plane / delegated process-local custody onto canonical domain owners:
      retired in the follow-up slice, together with the retained Control Plane
      Console build's call to them; the Control Plane's read and reveal routes
      stay, because a non-browser consumer still reads them.
+   - The balance history and endpoint half has moved for the published Console:
+     the Gateway owner publishes the caller's own balance history and its public
+     endpoint, and the BFF reaches both over the owner's typed client. Control
+     Plane's `GET /internal/cloud/gateway/balance-history` and
+     `GET /internal/cloud/gateway/endpoint` bridges are retired with it; the
+     retained `/api/gateway/*` read routes stay until the retained Control Plane
+     Console build is retired.
 2. **Billing & Announcements Extraction**: Retire retained Control Plane
    bridges (`/internal/cloud/legacy-billing/*`, `/internal/cloud/announcements`)
    once Cloud Ledger and Announcement owners serve authenticated CloudIdentity

@@ -17,7 +17,6 @@ import (
 )
 
 func registerGatewayRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
-	app.registerCloudGatewayReadRoutes(mux, service)
 	mux.HandleFunc("GET /api/gateway/endpoint", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "private, no-store")
 		endpoint, err := service.GatewayPublicEndpoint()

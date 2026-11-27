@@ -2391,6 +2391,8 @@ service GatewayProductService {
  rpc ListPersonalGatewayGroups(ListPersonalGatewayGroupsRpcRequest) returns (PersonalGatewayGroupPage);
  rpc ListPersonalGatewayKeyUsage(ListPersonalGatewayKeyUsageRpcRequest) returns (PersonalGatewayKeyUsagePage);
  rpc GetPersonalGatewayKeyUsageSummary(GetPersonalGatewayKeyUsageSummaryRpcRequest) returns (UsageSummary);
+ rpc ListPersonalGatewayBalanceHistory(ListPersonalGatewayBalanceHistoryRpcRequest) returns (PersonalGatewayBalanceHistoryPage);
+ rpc GetPersonalGatewayEndpoint(GetPersonalGatewayEndpointRpcRequest) returns (PersonalGatewayEndpoint);
  rpc CreatePersonalGatewayKey(CreatePersonalGatewayKeyRpcRequest) returns (PersonalGatewayKey);
  rpc UpdatePersonalGatewayKey(UpdatePersonalGatewayKeyRpcRequest) returns (PersonalGatewayKey);
  rpc RevealPersonalGatewayKey(RevealPersonalGatewayKeyRpcRequest) returns (PersonalGatewayKeySecret);
@@ -4720,6 +4722,37 @@ message GetPersonalGatewayKeyUsageSummaryRpcRequest {
  CallContext context = 1;
  string key_id = 2;
  string period = 3;
+}
+
+// PersonalGatewayBalanceHistoryEntry is one native balance record of the
+// customer's own spendable balance. The Gateway owner publishes the record the
+// Gateway itself keeps, so no other service has to proxy this read.
+message PersonalGatewayBalanceHistoryEntry {
+  string type = 1;
+  string value_usd_micros = 2;
+  string status = 3;
+  optional string used_at = 4;
+  string created_at = 5;
+}
+message PersonalGatewayBalanceHistoryPage {
+  repeated PersonalGatewayBalanceHistoryEntry items = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 pages = 5;
+}
+message ListPersonalGatewayBalanceHistoryRpcRequest {
+  CallContext context = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+message GetPersonalGatewayEndpointRpcRequest {
+  CallContext context = 1;
+}
+// PersonalGatewayEndpoint is the public Gateway origin the customer's client
+// calls. It is a deployment fact of this owner's own Gateway configuration.
+message PersonalGatewayEndpoint {
+  string base_url = 1;
 }
 // Personal Gateway Key writes use the same delegated Sub2API authority as the
 // personal reads above. The write field set is the personal key's own set, so
