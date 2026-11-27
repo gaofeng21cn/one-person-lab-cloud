@@ -80,6 +80,22 @@ chronological snapshots.
     `GET /api/gateway/balance-history` and `GET /api/gateway/endpoint` routes
     stay for the legacy Console build and are retired with the retained
     Control Plane.
+  - The historical OCI destinations are handed to the Gateway owner. At owner
+    startup, `Gateway Integration` (`services/gateway-integration`) reads the
+    frozen `tenant.tenant_repository_bindings` table and moves each destination
+    into the single live mapping `gateway.identity_mappings`. A destination is
+    attributed only to a Tenant that is `active` and has exactly one registered
+    owner (`tenant.tenant_members` with `role='owner'` and no revocation); that
+    owner's `actor_id` is the Gateway/Sub2API subject id, so the mapping's
+    `actor_id` and `sub2api_user_id` are the same value. A `retired` reservation
+    is reported as released, an inactive Tenant or any other owner count is
+    reported as unattributable, and a live mapping that holds a different
+    destination, is revoked, or lacks its destination verification is reported
+    as a conflict. The pass is read-only on the frozen table, is idempotent, and
+    never overwrites a live destination. It inherits the recorded reservation
+    fact and does not re-verify the destination against the OCI registry. The
+    runtime still reads the frozen table as a fallback for a historical
+    destination; that read is retired in the following slice.
   - Control Plane image-replacement creation/preview/worker commands and admin
     activation endpoints are retired; only the operator image-policy GET
     (`GET /api/operator/workspace-runtime-image-policy`), Fabric image
