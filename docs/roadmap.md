@@ -211,6 +211,17 @@ Plane / delegated process-local custody onto canonical domain owners:
      `npm run verify:local`: a slice opens its own assertions, the gate turns
      red when a slice leaves residue behind, and the assertions of the slices
      that have not arrived stay pending and are reported as pending.
+   - The three operator read bridges that no consumer calls are retired:
+     `/internal/cloud/operator/application-deployments/{operationId}`,
+     `/internal/cloud/operator/registry/repositories` and
+     `/internal/cloud/operator/registry/tags/{namespace}/{repository}`, together
+     with the Console BFF public paths that only existed to serve them. The
+     published Control Plane route
+     `GET /api/operator/application-deployments/{operationId}` stays, because an
+     external consumer reads it. The registry catalog's installation facts go
+     with it: no source reads a registry credential or repository set any more,
+     while the registry host and namespace stay, because the Tenant and Build
+     owners still read them.
 4. **Module & DB-Role Coverage**: `tests/contracts/module-physical-boundaries.test.ts`
    now enforces package and SDK isolation across all 11 Go services under `services/`
    and `apps/console-bff`; extend PostgreSQL role-isolation checks to cover every

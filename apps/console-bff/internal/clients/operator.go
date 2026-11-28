@@ -55,21 +55,6 @@ func (c *Clients) OperatorWalletAdjustment(ctx context.Context, session string, 
 	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
 }
 
-func (c *Clients) OperatorApplicationDeployment(ctx context.Context, session string, operationId string) ([]byte, error) {
-	path := "/internal/cloud/operator/application-deployments/" + url.PathEscape(operationId)
-	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
-}
-
-func (c *Clients) OperatorRegistryRepositories(ctx context.Context, session string, namespace string) ([]byte, error) {
-	path := "/internal/cloud/operator/registry/repositories?" + url.Values{"namespace": {namespace}}.Encode()
-	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
-}
-
-func (c *Clients) OperatorRegistryTags(ctx context.Context, session string, namespace, repository string) ([]byte, error) {
-	path := "/internal/cloud/operator/registry/tags/" + url.PathEscape(namespace) + "/" + url.PathEscape(repository)
-	return c.controlPlane.requestRaw(ctx, session, http.MethodGet, path, "", operatorReadMaximumBytes)
-}
-
 // OperatorProvisionAccount runs the one activation command on the retained owner
 // through the BFF proof. The BFF forwards the operator's exact command and the
 // caller's idempotency key; the owner keeps its own session, CSRF and duplicate
