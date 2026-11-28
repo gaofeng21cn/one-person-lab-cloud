@@ -422,7 +422,10 @@ test("Console wallet form keeps user input focus when opening frames are delayed
     await page.getByRole("button", { name: "登录", exact: true }).click();
     await page.waitForURL(/\/console\/overview$/);
     await page.goto(`${demo.origin}/admin/accounts`, { waitUntil: "networkidle" });
-    const open = page.locator(".operator-account-table tbody tr").filter({ hasText: "pilot@example.com" }).getByRole("button", { name: "余额操作", exact: true });
+    await page.locator(".operator-account-table tbody tr").filter({ hasText: "pilot@example.com" }).click();
+    const inspector = page.locator(".account-inspector-drawer");
+    await inspector.waitFor({ state: "visible" });
+    const open = inspector.getByRole("button", { name: "余额操作", exact: true });
     await open.focus();
     // Hold the opening frame so a user can focus the field before it runs.
     // No sleeps or timing thresholds are needed to expose delayed autofocus.
