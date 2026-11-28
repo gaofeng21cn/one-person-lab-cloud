@@ -88,6 +88,14 @@ chronological snapshots.
     `GET /api/gateway/balance-history` and `GET /api/gateway/endpoint` routes
     stay for the legacy Console build and are retired with the retained
     Control Plane.
+  - A platform administrator can suspend a customer account through the Tenant
+    owner: `POST /api/v2/admin/tenants/{tenantId}/suspend` is served by the BFF
+    and forwards to `TenantProductService.SuspendTenant`. The owner writes the
+    Tenant's status, its durable Operation and its audit evidence in one
+    transaction, revokes the Tenant's live sessions and advances its permission
+    version, so the owner's own fences refuse that customer afterwards. A
+    personal customer owns exactly one Tenant, so suspending that Tenant is
+    what disables the account.
   - A platform administrator can re-enable a customer account through the Tenant
     owner: `POST /api/v2/admin/tenants/{tenantId}/reenable` is served by the BFF
     and forwards to `TenantProductService.ReenableTenant`. The owner restores

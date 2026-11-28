@@ -767,7 +767,7 @@ func (p *LocalDockerProvider) configureRuntimeGateway(ctx context.Context, conta
 	if err != nil || len(bytes.TrimSpace(key)) == 0 {
 		return fmt.Errorf("local_docker_runtime_gateway_key_unavailable")
 	}
-	if _, err := p.docker.ContainerExec(ctx, containerName, []string{"opl", "system", "configure-codex", "--api-key-stdin", "--json"}, key); err != nil {
+	if _, err := p.docker.ContainerExec(ctx, containerName, []string{"opl", "connect", "configure-codex", "--api-key-stdin", "--json"}, key); err != nil {
 		return fmt.Errorf("local_docker_runtime_gateway_configuration_failed")
 	}
 	return nil
