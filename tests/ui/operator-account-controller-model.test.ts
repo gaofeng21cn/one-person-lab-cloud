@@ -8,6 +8,7 @@ import type {
   OperatorPlatformAdminCommandDTO,
   OperatorProvisionAccountCommandDTO,
   OperatorSeedLinkRelayEntitlementsCommandDTO,
+  OperatorServiceEntitlementCommandDTO,
   OperatorWorkspacePurchaseEligibilityCommandDTO,
   ProvisionAccountRequest
 } from "../../apps/console-ui/src/api/dtos.ts";
@@ -24,6 +25,7 @@ import {
   resolveProvisionAccountIntent,
   sameProvisionInput,
   seedLinkRelayCommandSucceeded,
+  serviceEntitlementCommandSucceeded,
   type ProvisionAccountIntent
 } from "../../apps/console-ui/src/app/operator-account-controller-model.ts";
 
@@ -181,6 +183,24 @@ test("provision and eligibility commands require their exact eligibility target"
     eligibilityCommandSucceeded({ ...eligibilityCommand, status: "failed" }, "acct-alpha", false),
     false
   );
+});
+
+test("service entitlement commands require exact account, service, and effective state", () => {
+  const command: OperatorServiceEntitlementCommandDTO = {
+    operationId: "service-entitlement-1",
+    accountId: "42",
+    serviceId: "netfleet_cloud",
+    status: "succeeded",
+    enabled: false,
+    effectiveEnabled: false,
+    role: "user"
+  };
+
+  assert.equal(serviceEntitlementCommandSucceeded(command, "42", "netfleet_cloud", false), true);
+  assert.equal(serviceEntitlementCommandSucceeded(command, "43", "netfleet_cloud", false), false);
+  assert.equal(serviceEntitlementCommandSucceeded(command, "42", "link_relay", false), false);
+  assert.equal(serviceEntitlementCommandSucceeded(command, "42", "netfleet_cloud", true), false);
+  assert.equal(serviceEntitlementCommandSucceeded({ ...command, status: "failed" }, "42", "netfleet_cloud", false), false);
 });
 
 test("provision readback requires the complete authoritative account identity", () => {

@@ -188,6 +188,28 @@ test("workspace purchase eligibility routes to Cloud BFF in cloud mode and Contr
   ]);
 });
 
+test("service entitlements route exclusively through Cloud BFF", async () => {
+  const calls: string[] = [];
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    calls.push(String(url));
+    return new Response(JSON.stringify({
+      operationId: "op-se",
+      accountId: "42",
+      serviceId: "netfleet_cloud",
+      status: "succeeded",
+      enabled: true,
+      effectiveEnabled: true,
+      role: "user"
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  await operatorApi.setOperatorServiceEntitlement("42", "netfleet_cloud", true, "operator_requested", "csrf", "key-se", true);
+  assert.deepEqual(calls, ["/api/v2/operator/accounts/42/service-entitlements/netfleet_cloud"]);
+  await assert.rejects(
+    async () => operatorApi.setOperatorServiceEntitlement("42", "netfleet_cloud", true, "operator_requested", "csrf", "key-se-legacy", false),
+    /service_entitlements_cloud_only/
+  );
+});
+
 test("activation uses its Cloud BFF owner and refuses the retired legacy route", async () => {
   const calls: string[] = [];
   globalThis.fetch = (async (url: string | URL | Request) => {

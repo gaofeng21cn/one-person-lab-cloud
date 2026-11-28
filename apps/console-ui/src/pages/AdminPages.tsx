@@ -421,6 +421,26 @@ function AccountStatusBadges({ account }: { account: OperatorAccountDTO }) {
   );
 }
 
+function serviceEntitlementMeta(serviceId: string): { title: string; subtitle: string } {
+  switch (serviceId) {
+    case "netfleet_cloud":
+      return {
+        title: "OPL NetFleet Cloud",
+        subtitle: "多站点网络监视与加密订阅同步控制面，支持 OPL Gateway 账号免地址自动纳管。"
+      };
+    case "link_relay":
+      return {
+        title: "OPL Link Relay（服务目录 Grant）",
+        subtitle: "伴生服务目录发现与 Ed25519 短期 Grant 令牌准入控制。"
+      };
+    default:
+      return {
+        title: serviceId,
+        subtitle: "受 CloudIdentity 统一准入控制的伴生服务。"
+      };
+  }
+}
+
 function AccountCapabilityTags({ account }: { account: OperatorAccountDTO }) {
   return (
     <span className="account-capabilities-stack">
@@ -720,9 +740,45 @@ function AccountInspectorDrawer({ account, controller, onClose, onOpenWallet }: 
               </div>
             </div>
 
-            <p className="inspector-roadmap-note">
-              私有软件（如 occ）白名单接入后，将统一在此管理。
-            </p>
+            {(account.serviceEntitlements ?? []).map((item) => {
+              const meta = serviceEntitlementMeta(item.serviceId);
+              const statusText = item.effectiveEnabled
+                ? (item.hasExplicitOverride ? "已开通" : "默认开通")
+                : "已停用";
+              return (
+                <div className="inspector-capability-row" key={item.serviceId}>
+                  <div className="inspector-capability-row__copy">
+                    <strong>{meta.title}</strong>
+                    <small>{meta.subtitle}</small>
+                  </div>
+                  <div className="inspector-capability-row__control">
+                    <Badge color={item.effectiveEnabled ? "success" : "secondary"}>
+                      <span aria-hidden="true" className={`ss-dot ${item.effectiveEnabled ? "ss-dot--ok" : "ss-dot--muted"}`} />
+                      {statusText}
+                    </Badge>
+                    {active ? (
+                      <Button
+                        className="account-permission-toggle"
+                        color={item.effectiveEnabled ? "danger" : "primary"}
+                        disabled={busy}
+                        onClick={() => void controller.operatorAccounts.setServiceEntitlement(account.accountId, item.serviceId, !item.effectiveEnabled)}
+                        size="sm"
+                        variant="outline"
+                      >
+                        {item.effectiveEnabled ? <ShieldOff aria-hidden size={14} /> : <ShieldCheck aria-hidden size={14} />}
+                        {item.effectiveEnabled ? "停用" : "开通"}
+                      </Button>
+                    ) : <span className="account-read-only">账户已停用</span>}
+                  </div>
+                </div>
+              );
+            })}
+
+            {!(account.serviceEntitlements && account.serviceEntitlements.length > 0) && (
+              <p className="inspector-roadmap-note">
+                当前实例尚未配置伴生服务目录；接入 Service Catalog 后将自动在此展示与控制各服务准入。
+              </p>
+            )}
           </section>
 
           <section className="inspector-section">

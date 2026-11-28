@@ -3,6 +3,7 @@ package opl.cloud.api;
 option go_package = "opl-cloud/packages/contracts/go/api;api";
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
 // Target contract, not current runtime evidence. Internal services authenticate mTLS
 // service identities and revalidate tenant/actor authorization. Never accept browser
 // self-asserted tenant, price, provider, wallet identity or raw image.
@@ -1994,6 +1995,106 @@ message WorkspacePurchaseEligibilityList {
  repeated WorkspacePurchaseEligibilityReadback items = 1;
 }
 
+message ServiceGrantRequest {
+ string email = 1;
+ string password = 2;
+ optional string totp_code = 3;
+ string service = 4;
+ optional string scope = 5;
+}
+
+message IssueServiceGrantRpcRequest {
+ string bearer_token = 1;
+ ServiceGrantRequest body = 2;
+}
+
+message ServiceGrantResponse {
+ bool requires_2fa = 1;
+ string actor_id = 2;
+ string email = 3;
+ string service = 4;
+ bool enabled = 5;
+ string origin = 6;
+ string grant_token = 7;
+ google.protobuf.Timestamp expires_at = 8;
+ string role = 9;
+ google.protobuf.Struct limits = 10;
+}
+
+message GetServiceGrantJWKSRpcRequest {}
+
+message ServiceGrantJWK {
+ string kty = 1;
+ string crv = 2;
+ string alg = 3;
+ string use = 4;
+ string kid = 5;
+ string x = 6;
+}
+
+message ServiceGrantJWKSResponse {
+ repeated ServiceGrantJWK keys = 1;
+}
+
+message SetServiceEntitlementRequest {
+ string confirmation_account_id = 1;
+ bool enabled = 2;
+ optional string role = 3;
+ optional string origin_override = 4;
+ bool clear_origin_override = 5;
+ google.protobuf.Struct limits = 6;
+ optional google.protobuf.Timestamp expires_at = 7;
+ bool clear_expires_at = 8;
+ string reason = 9;
+}
+
+message SetServiceEntitlementRpcRequest {
+ CallContext context = 1;
+ string target_actor_id = 2;
+ string service_id = 3;
+ SetServiceEntitlementRequest body = 4;
+}
+
+message ServiceEntitlementCommand {
+ string operation_id = 1;
+ string account_id = 2;
+ string service_id = 3;
+ string status = 4;
+ bool enabled = 5;
+ bool effective_enabled = 6;
+ string role = 7;
+ string origin = 8;
+ optional string origin_override = 9;
+ google.protobuf.Struct limits = 10;
+ optional google.protobuf.Timestamp expires_at = 11;
+}
+
+message ListServiceEntitlementsRpcRequest {
+ CallContext context = 1;
+ repeated string actor_ids = 2;
+}
+
+message ServiceEntitlementReadback {
+ string actor_id = 1;
+ string service_id = 2;
+ string admission_mode = 3;
+ bool has_explicit_override = 4;
+ bool enabled = 5;
+ bool effective_enabled = 6;
+ string role = 7;
+ string origin = 8;
+ optional string origin_override = 9;
+ google.protobuf.Struct limits = 10;
+ optional google.protobuf.Timestamp expires_at = 11;
+ optional string reason = 12;
+ optional string updated_by = 13;
+ optional google.protobuf.Timestamp updated_at = 14;
+}
+
+message ServiceEntitlementList {
+ repeated ServiceEntitlementReadback items = 1;
+}
+
 message SetPlatformAdminRequest {
  string confirmation_account_id = 1;
  bool enabled = 2;
@@ -2402,6 +2503,10 @@ service TenantProductService {
  rpc GetTenantLifecycleOperation(GetTenantLifecycleOperationRpcRequest) returns (TenantLifecycleProgress);
  rpc SetWorkspacePurchaseEligibility(SetWorkspacePurchaseEligibilityRpcRequest) returns (WorkspacePurchaseEligibilityCommand);
  rpc ListWorkspacePurchaseEligibility(ListWorkspacePurchaseEligibilityRpcRequest) returns (WorkspacePurchaseEligibilityList);
+ rpc IssueServiceGrant(IssueServiceGrantRpcRequest) returns (ServiceGrantResponse);
+ rpc GetServiceGrantJWKS(GetServiceGrantJWKSRpcRequest) returns (ServiceGrantJWKSResponse);
+ rpc SetServiceEntitlement(SetServiceEntitlementRpcRequest) returns (ServiceEntitlementCommand);
+ rpc ListServiceEntitlements(ListServiceEntitlementsRpcRequest) returns (ServiceEntitlementList);
  rpc ListOperatorAccounts(ListOperatorAccountsRpcRequest) returns (OperatorGatewayAccountPage);
  rpc SetPlatformAdmin(SetPlatformAdminRpcRequest) returns (PlatformAdminCommand);
  rpc SetLinkRelayEntitlement(SetLinkRelayEntitlementRpcRequest) returns (LinkRelayEntitlementCommand);
@@ -3643,9 +3748,12 @@ AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES = 153;
  AUTHORIZATION_ACTION_ENUM_SETWORKSPACEPURCHASEELIGIBILITY = 173;
  AUTHORIZATION_ACTION_ENUM_LISTOPERATORACCOUNTS = 174;
  AUTHORIZATION_ACTION_ENUM_SETPLATFORMADMIN = 175;
- AUTHORIZATION_ACTION_ENUM_SETLINKRELAYENTITLEMENT = 176;
- AUTHORIZATION_ACTION_ENUM_SEEDACTIVEGATEWAYLINKRELAYENTITLEMENTS = 177;
- AUTHORIZATION_ACTION_ENUM_GETLINKRELAYENTITLEMENT = 178;
+	AUTHORIZATION_ACTION_ENUM_SETSERVICEENTITLEMENT = 176;
+	AUTHORIZATION_ACTION_ENUM_ISSUESERVICEGRANT = 177;
+	AUTHORIZATION_ACTION_ENUM_GETSERVICEGRANTJWKS = 178;
+	AUTHORIZATION_ACTION_ENUM_SETLINKRELAYENTITLEMENT = 179;
+	AUTHORIZATION_ACTION_ENUM_SEEDACTIVEGATEWAYLINKRELAYENTITLEMENTS = 180;
+	AUTHORIZATION_ACTION_ENUM_GETLINKRELAYENTITLEMENT = 181;
 }
 
 enum ServiceIdentityEnum {

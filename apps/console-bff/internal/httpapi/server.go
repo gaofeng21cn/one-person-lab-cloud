@@ -14,6 +14,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"opl-cloud/apps/console-bff/internal/clients"
 	api "opl-cloud/packages/contracts/go/api"
@@ -44,6 +45,8 @@ type Server struct {
 	gatewayCoordination api.GatewayCoordinationClient
 	workspace           api.WorkspaceProductServiceClient
 	fabric              api.FabricCoordinationClient
+	grantLimiterOnce    sync.Once
+	grantLimiter        *fixedWindowLimiter
 	getenv              func(string) string
 }
 
@@ -135,6 +138,8 @@ func (s *Server) Handler() http.Handler {
 	s.registerOperatorRoutes(mux)
 	s.registerOperatorActivationRoutes(mux)
 	s.registerOperatorPurchaseEligibilityRoutes(mux)
+	s.registerOperatorServiceEntitlementRoutes(mux)
+	s.registerClientServiceGrantRoutes(mux)
 	s.registerOperatorPlatformAdminRoutes(mux)
 	s.registerOperatorLinkRelayRoutes(mux)
 	s.registerLegacyBillingRoutes(mux)
@@ -163,7 +168,7 @@ func (s *Server) Handler() http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		if len(r.Header.Values("Authorization")) != 0 && r.URL.Path != "/api/v2/mcp" && r.URL.Path != "/api/v2/link-relay/entitlement" {
+		if len(r.Header.Values("Authorization")) != 0 && r.URL.Path != "/api/v2/mcp" && r.URL.Path != "/api/v2/client/service-grant" && r.URL.Path != "/api/v2/link-relay/entitlement" {
 			writePublisherIdentityError(w, r, ErrSessionRequired)
 			return
 		}

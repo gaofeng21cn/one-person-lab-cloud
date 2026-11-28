@@ -48,6 +48,20 @@ func (s *Server) readOperatorAccounts(w http.ResponseWriter, r *http.Request, ct
 		writeOwnerCallFailure(w, r, status.Error(codes.DataLoss, "invalid Tenant operator accounts page"))
 		return
 	}
+	actorIDs := make([]string, 0, len(resp.Items))
+	for _, entry := range resp.Items {
+		if entry.GetActorId() != "" {
+			actorIDs = append(actorIDs, entry.GetActorId())
+		}
+	}
+	var serviceEntitlementsByActor map[string][]map[string]any
+	if len(actorIDs) > 0 {
+		serviceEntitlementsByActor, err = s.projectOperatorServiceEntitlements(tenantCtx, call, actorIDs)
+		if err != nil {
+			writeOwnerCallFailure(w, r, err)
+			return
+		}
+	}
 	items := make([]any, 0, len(resp.Items))
 	for _, entry := range resp.Items {
 		actorID := entry.GetActorId()
@@ -116,6 +130,12 @@ func (s *Server) readOperatorAccounts(w http.ResponseWriter, r *http.Request, ct
 			"platformAdminEnabled":     entry.GetPlatformAdminEnabled(),
 			"isBootstrapAdmin":         entry.GetIsBootstrapAdmin(),
 			"linkRelayEnabled":         entry.GetLinkRelayEnabled(),
+			"serviceEntitlements": func() []map[string]any {
+				if entries := serviceEntitlementsByActor[actorID]; entries != nil {
+					return entries
+				}
+				return []map[string]any{}
+			}(),
 			"gatewayIdentity":          gatewayIdentity,
 			"wallet":                   wallet,
 			"keyCount":                 keyCount,

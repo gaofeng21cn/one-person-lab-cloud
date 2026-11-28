@@ -36,6 +36,10 @@ func (p *platformAdminTenantProbe) ListOperatorAccounts(_ context.Context, r *ap
 	return p.listResp, nil
 }
 
+func (p *platformAdminTenantProbe) ListServiceEntitlements(_ context.Context, _ *api.ListServiceEntitlementsRpcRequest, _ ...grpc.CallOption) (*api.ServiceEntitlementList, error) {
+	return &api.ServiceEntitlementList{}, nil
+}
+
 func (p *platformAdminTenantProbe) SetPlatformAdmin(_ context.Context, r *api.SetPlatformAdminRpcRequest, _ ...grpc.CallOption) (*api.PlatformAdminCommand, error) {
 	p.setReq = r
 	if p.setErr != nil {

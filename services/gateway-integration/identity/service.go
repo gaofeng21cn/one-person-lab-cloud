@@ -63,6 +63,9 @@ type Service struct {
 	// group carries the approved model allowlist the issuer resolves for a
 	// command whose declared selection names no model.
 	WorkspaceKeyGroup string
+
+	serviceCatalog map[string]ServiceCatalogEntry
+	grantSigner    *GrantSigner
 }
 
 // Platform administrators are explicit deployment-owned Gateway subject IDs,

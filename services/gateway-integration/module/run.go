@@ -129,6 +129,11 @@ func Run(ctx context.Context, env ownerservice.ModuleEnv) error {
 		}
 		s.KeyIssuer = issuer
 		s.WorkspaceKeyGroup = group
+		catalog, grantSigner, err := identity.ConfigureServiceGrantsFromEnv(env.Env)
+		if err != nil {
+			return err
+		}
+		s.ConfigureServiceGrants(catalog, grantSigner)
 		if fabricAddr, fabricToken := strings.TrimSpace(env.Env("OPL_FABRIC_ADDR")), strings.TrimSpace(env.Env("OPL_FABRIC_TOKEN")); fabricAddr != "" && fabricToken != "" {
 			options, err := config.TLS.DialOptions(owneridentity.Tenant.Service(), owneridentity.Fabric.Service(), fabricToken)
 			if err != nil {

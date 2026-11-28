@@ -49,7 +49,7 @@ runtime={'listRuntimeVersions','registerRuntimeVersion','setRuntimeVersionStatus
 # workspace even though the contract operation carries no x-owner of its
 # own (getOperation is a route-resolved session read and stays exempt).
 audience_overrides={'getWorkspaceAccess':'serve','listAdminOperations':'workspace','reconcileOperation':'workspace'}
-session_only={'getLoginContext','login','logout','getSession','getSelfUserExternalBinding'}
+session_only={'getLoginContext','login','logout','getSession','getSelfUserExternalBinding','issueServiceGrant','getServiceGrantJWKS'}
 # The personal Gateway Key surface belongs to the signed-in User, not to a Tenant
 # role: the reads and the writes over the same personal Key are both bound to the
 # live User's own delegated Sub2API credential. They never become grantable tenant

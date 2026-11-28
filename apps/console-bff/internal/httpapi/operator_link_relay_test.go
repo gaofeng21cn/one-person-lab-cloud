@@ -37,6 +37,10 @@ func (p *linkRelayTenantProbe) ListOperatorAccounts(_ context.Context, r *api.Li
 	return p.listResp, nil
 }
 
+func (p *linkRelayTenantProbe) ListServiceEntitlements(_ context.Context, _ *api.ListServiceEntitlementsRpcRequest, _ ...grpc.CallOption) (*api.ServiceEntitlementList, error) {
+	return &api.ServiceEntitlementList{}, nil
+}
+
 func (p *linkRelayTenantProbe) SetLinkRelayEntitlement(_ context.Context, r *api.SetLinkRelayEntitlementRpcRequest, _ ...grpc.CallOption) (*api.LinkRelayEntitlementCommand, error) {
 	p.setReq = r
 	if p.setErr != nil {
