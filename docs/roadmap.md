@@ -218,8 +218,13 @@ Plane / delegated process-local custody onto canonical domain owners:
      tenant owner already serves over the OPL Gateway directory, joined with the
      owner's eligibility and entitlement policies, so it is not restricted to
      the accounts this product opened. This slice retires the retained Control
-     Plane account read and write bridges, so Control Plane no longer reads or
-     opens accounts at all. Next: retire the retained Control Plane account
+     Plane account bridges: the BFF-facing `/internal/cloud/operator/accounts`
+     read and write routes are gone, so Control Plane no longer opens customer
+     accounts and no longer answers the Console BFF. The retained
+     `GET /api/operator/accounts` route stays for the legacy Console build, the
+     same way the retained personal-Gateway read routes stayed when their bridges
+     were retired, and it is retired with the retained Control Plane. Next:
+     retire the retained Control Plane account
      writer (`control_plane_accounts`, PR-5), give the Console account page the
      Workspace count it can no longer read from the retained product, and add
      the tenant owner to the Console operation read map so

@@ -102,6 +102,9 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 	mux.HandleFunc("POST /api/operator/wallet-adjustments/{operationId}/recover", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		app.recoverWalletAdjustment(w, r, service)
 	}))
+	mux.HandleFunc("GET /api/operator/accounts", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
+		app.writeOperatorAccounts(w, r, service)
+	}))
 	mux.HandleFunc("GET /api/operator/overview", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		app.writeOperatorOverview(w, r, service)
 	}))
@@ -274,6 +277,23 @@ func operatorPagination(w http.ResponseWriter, r *http.Request) (int, int, bool)
 	return page, pageSize, true
 }
 
+// The operator read writers below are the single read path for a surface, so
+// the console cannot grow a second projection. The BFF-facing
+// /internal/cloud/operator/* bridge for accounts is retired with the account
+// owner; the retained /api/operator/* route stays only for the retained legacy
+// Console build and is retired with the retained Control Plane.
+func (app *controlPlaneServer) writeOperatorAccounts(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
+	page, pageSize, ok := operatorPagination(w, r)
+	if !ok {
+		return
+	}
+	data, status, err := app.operatorAccountPage(r.Context(), service, page, pageSize)
+	if err != nil {
+		writeSourceEnvelope(w, http.StatusBadGateway, "control-plane+sub2api", "unavailable", nil)
+		return
+	}
+	writeSourceEnvelope(w, http.StatusOK, "control-plane+sub2api", status, data)
+}
 func (app *controlPlaneServer) writeOperatorOverview(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
 	data, err := app.operatorOverview(r.Context(), service)
 	if err != nil {
@@ -336,6 +356,117 @@ func workspacePurchaseEligibilityShapeValid(input map[string]any, accountID stri
 	return enabledOK && reasonOK && reason == strings.TrimSpace(reason) && reason != "" && len([]rune(reason)) <= 200
 }
 
+func (app *controlPlaneServer) operatorAccountPage(ctx context.Context, service *controlplane.Service, page, pageSize int) (map[string]any, string, error) {
+	accountPage, err := app.tables.PageAccounts(ctx, tablePageQuery{Offset: (page - 1) * pageSize, Limit: pageSize})
+	if err != nil {
+		return nil, "", err
+	}
+	local := make([]map[string]any, 0, len(accountPage.Items))
+	remoteIDs := make([]int64, 0, len(accountPage.Items))
+	accountIDs := make([]string, 0, len(accountPage.Items))
+	for _, account := range accountPage.Items {
+		remoteID, ok := positiveIntegerField(account, "sub2apiUserId")
+		owner, ownerOK, ownerErr := app.tables.GetUser(ctx, stringValue(account["ownerUserId"]))
+		if ownerErr != nil {
+			return nil, "", ownerErr
+		}
+		if !ok || !ownerOK || !ownsAccount(account, owner) {
+			return nil, "", errAccountIdentityConflict
+		}
+		local = append(local, map[string]any{"account": account, "owner": owner, "remoteId": remoteID})
+		remoteIDs = append(remoteIDs, remoteID)
+		accountIDs = append(accountIDs, stringValue(account["id"]))
+	}
+	if len(local) == 0 {
+		return map[string]any{"items": []any{}, "total": accountPage.Total, "page": page, "pageSize": pageSize}, "empty", nil
+	}
+	workspaceCounts, err := app.tables.CountWorkspacesByAccount(ctx, accountIDs)
+	if err != nil {
+		return nil, "", err
+	}
+	items := make([]any, 0, len(local))
+	for _, joined := range local {
+		account := joined["account"].(map[string]any)
+		owner := joined["owner"].(map[string]any)
+		remoteID := joined["remoteId"].(int64)
+		ownerStatus := stringValue(owner["status"])
+		if ownerStatus != "active" {
+			ownerStatus = "disabled"
+		}
+		item := map[string]any{
+			"accountId": stringValue(account["id"]), "consoleUserId": stringValue(owner["id"]), "role": stringValue(owner["role"]),
+			"sub2apiUserId": strconv.FormatInt(remoteID, 10), "email": normalizeEmail(stringValue(owner["email"])), "status": ownerStatus,
+			"workspacePurchaseEnabled": workspacePurchaseEnabled(account),
+			"gatewayIdentity":          sourceEnvelope("sub2api", "unavailable", nil, ""),
+			"wallet":                   sourceEnvelope("sub2api", "unavailable", nil, ""),
+			"usage":                    sourceEnvelope("sub2api", "unavailable", nil, ""),
+			"keyCount":                 sourceEnvelope("sub2api", "unavailable", nil, ""),
+		}
+		item["workspaceCount"] = sourceEnvelope("control-plane", "available", workspaceCounts[stringValue(account["id"])], "")
+		items = append(items, item)
+	}
+
+	pageCtx, cancel := context.WithTimeout(ctx, operatorPageReadTimeout)
+	defer cancel()
+	totalGate := make(chan struct{}, operatorPageTotalConcurrency)
+	var remoteByID map[int64]clients.Sub2APIUser
+	var usageByID map[int64]clients.Sub2APIBatchUserUsage
+	var usageErr error
+	var remoteReads sync.WaitGroup
+	remoteReads.Add(3)
+	go func() {
+		defer remoteReads.Done()
+		remoteByID = app.operatorCurrentPageUsers(pageCtx, service, local, totalGate)
+	}()
+	go func() {
+		defer remoteReads.Done()
+		release, ok := operatorPageReadPermit(pageCtx, totalGate)
+		if !ok {
+			usageErr = pageCtx.Err()
+			return
+		}
+		defer release()
+		usageByID, usageErr = service.Sub2APIBatchUsersUsage(pageCtx, remoteIDs)
+	}()
+	go func() {
+		defer remoteReads.Done()
+		app.populateOperatorKeyCounts(pageCtx, service, items, totalGate)
+	}()
+	remoteReads.Wait()
+
+	for index, joined := range local {
+		owner := joined["owner"].(map[string]any)
+		remoteID := joined["remoteId"].(int64)
+		item := items[index].(map[string]any)
+		remote, remoteOK := remoteByID[remoteID]
+		remoteOK = remoteOK && remote.ID == remoteID && remote.Email == normalizeEmail(stringValue(owner["email"])) && (remote.Status == "active" || remote.Status == "disabled")
+		if !remoteOK {
+			continue
+		}
+		updatedAt := remote.UpdatedAt.UTC().Format(time.RFC3339Nano)
+		item["gatewayIdentity"] = sourceEnvelope("sub2api", "available", map[string]any{"userId": strconv.FormatInt(remote.ID, 10), "email": remote.Email, "status": remote.Status}, updatedAt)
+		if remote.BalanceUnavailable {
+			item["wallet"] = sourceEnvelope("sub2api", "unavailable", nil, "")
+		} else {
+			item["wallet"] = sourceEnvelope("sub2api", "available", map[string]any{"userId": strconv.FormatInt(remote.ID, 10), "currency": "USD", "usdMicros": strconv.FormatInt(remote.BalanceUSDMicros, 10), "status": remote.Status}, updatedAt)
+		}
+		usage, usageOK := usageByID[remoteID]
+		if usageErr != nil || !usageOK || usage.UserID != remoteID {
+			item["usage"] = sourceEnvelope("sub2api", "unavailable", nil, "")
+		} else {
+			platforms := make([]any, 0, len(usage.ByPlatform))
+			for _, platform := range usage.ByPlatform {
+				platforms = append(platforms, map[string]any{"platform": platform.Platform, "todayActualCostUsdMicros": platform.TodayActualCostUSDMicros, "totalActualCostUsdMicros": platform.TotalActualCostUSDMicros})
+			}
+			item["usage"] = sourceEnvelope("sub2api", "available", map[string]any{"todayActualCostUsdMicros": usage.TodayActualCostUSDMicros, "totalActualCostUsdMicros": usage.TotalActualCostUSDMicros, "byPlatform": platforms}, "")
+		}
+	}
+	status := "available"
+	if len(items) == 0 {
+		status = "empty"
+	}
+	return map[string]any{"items": items, "total": accountPage.Total, "page": page, "pageSize": pageSize}, status, nil
+}
 func operatorPageReadPermit(ctx context.Context, gates ...chan struct{}) (func(), bool) {
 	acquired := make([]chan struct{}, 0, len(gates))
 	for _, gate := range gates {

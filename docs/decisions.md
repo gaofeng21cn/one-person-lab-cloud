@@ -241,7 +241,13 @@ Git log.
   the granted eligibility to read the command back, and the owner reports both as
   its own facts. Each owner step re-authorizes its own action against the live
   session, because an authorization context issued for one action is not evidence
-  for another.
+  for another. The Control Plane's BFF-facing `/internal/cloud/operator/accounts`
+  read and write bridges are retired, so it no longer answers the Console BFF
+  and no longer opens customer accounts. Its retained
+  `GET /api/operator/accounts` route remains only for the retained legacy
+  Console build until Control Plane retirement, the same way the retained
+  personal-Gateway and account-status routes remained when their bridges were
+  retired.
 
 ## Non-Spending Publication & Incremental Retirement
 

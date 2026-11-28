@@ -553,11 +553,6 @@ export function operatorLinkRelaySeedRoute(cloud: boolean): string {
   return "/api/v2/operator/link-relay/seed-active-users";
 }
 
-export function operatorAccountsRoute(cloud: boolean): "/api/v2/operator/accounts" {
-  if (!cloud) throw new Error("operator_read_unavailable");
-  return "/api/v2/operator/accounts";
-}
-
 export function operatorSoftwarePackagesRoute(cloud: boolean): "/api/v2/operator/software-packages" {
   if (!cloud) throw new Error("operator_read_unavailable");
   return "/api/v2/operator/software-packages";
@@ -569,7 +564,7 @@ export function operatorPackageEntitlementRoute(cloud: boolean, targetId: string
 }
 
 export function getOperatorAccounts(cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorAccountsData>> {
-  return sourceGet<OperatorAccountsData>(operatorAccountsRoute(cloud));
+  return sourceGet<OperatorAccountsData>(`${operatorReadRoute(cloud)}/accounts`);
 }
 
 export function getOperatorOverview(signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorOverviewDTO>> {
@@ -580,7 +575,7 @@ export function getOperatorAccountsPage(page = 1, pageSize = 20, signal?: AbortS
   const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
   const trimmedSearch = search?.trim();
   if (trimmedSearch) params.set("search", trimmedSearch);
-  return sourceGet<OperatorAccountPageDTO>(`${operatorAccountsRoute(cloud)}?${params}`, signal);
+  return sourceGet<OperatorAccountPageDTO>(`${operatorReadRoute(cloud)}/accounts?${params}`, signal);
 }
 
 export function getOperatorWorkspaces(page = 1, pageSize = 20, signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorWorkspacePageDTO>> {

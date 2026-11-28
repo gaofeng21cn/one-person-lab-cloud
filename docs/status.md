@@ -189,9 +189,11 @@ chronological snapshots.
     (`GET /api/v2/operator/accounts`) is not this slice: the tenant owner serves
     it over the OPL Gateway directory, joined with the owner's eligibility and
     entitlement policies, so it lists every active OPL Gateway user rather than
-    only the accounts this product opened. The retained Control Plane account
-    read and write bridges are retired with this slice, so Control Plane no
-    longer reads or opens accounts at all. Verified against real PostgreSQL: five
+    only the accounts this product opened. The Control Plane account bridges are
+    retired with this slice, so Control Plane no longer answers the Console BFF
+    for accounts and no longer opens them. The retained
+    `GET /api/operator/accounts` route stays for the legacy Console build and is
+    retired with the retained Control Plane. Verified against real PostgreSQL: five
     owner behaviour cases and two live Console activation cases pass, including
     the customer's own workspace read after activation. Not proven here:
     production deployment, Instance installation receipts, and downstream
