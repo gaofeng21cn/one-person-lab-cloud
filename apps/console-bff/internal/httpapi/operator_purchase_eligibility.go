@@ -176,6 +176,10 @@ func (s *Server) projectOperatorAccountEligibility(ctx context.Context, caller C
 	if err != nil {
 		return nil, err
 	}
+	serviceEntitlementsByActor, err := s.projectOperatorServiceEntitlements(listCtx, listCall, actorIDs)
+	if err != nil {
+		return nil, err
+	}
 	byActor := make(map[string]bool, len(resp.GetItems()))
 	for _, entry := range resp.GetItems() {
 		byActor[entry.GetActorId()] = entry.GetWorkspacePurchaseEnabled()
@@ -188,7 +192,13 @@ func (s *Server) projectOperatorAccountEligibility(ctx context.Context, caller C
 		if !found {
 			return nil, fmt.Errorf("missing purchase eligibility projection for actor %s", actorID)
 		}
-		rawItems[i].(map[string]any)["workspacePurchaseEnabled"] = enabled
+		item := rawItems[i].(map[string]any)
+		item["workspacePurchaseEnabled"] = enabled
+		entries := serviceEntitlementsByActor[actorID]
+		if entries == nil {
+			entries = []map[string]any{}
+		}
+		item["serviceEntitlements"] = entries
 	}
 	return json.Marshal(envelope)
 }

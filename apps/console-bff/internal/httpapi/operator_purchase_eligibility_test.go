@@ -59,6 +59,10 @@ func (p *eligibilityTenantProbe) ListWorkspacePurchaseEligibility(_ context.Cont
 	return &api.WorkspacePurchaseEligibilityList{Items: items}, nil
 }
 
+func (p *eligibilityTenantProbe) ListServiceEntitlements(_ context.Context, _ *api.ListServiceEntitlementsRpcRequest, _ ...grpc.CallOption) (*api.ServiceEntitlementList, error) {
+	return &api.ServiceEntitlementList{}, nil
+}
+
 func TestOperatorPurchaseEligibilityWriteRoute(t *testing.T) {
 	tenant := &eligibilityTenantProbe{}
 	identity := &fakeIdentity{

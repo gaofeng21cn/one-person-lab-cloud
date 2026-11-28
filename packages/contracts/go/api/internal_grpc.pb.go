@@ -49,6 +49,10 @@ const (
 	TenantProductService_GetTenantLifecycleOperation_FullMethodName      = "/opl.cloud.api.TenantProductService/GetTenantLifecycleOperation"
 	TenantProductService_SetWorkspacePurchaseEligibility_FullMethodName  = "/opl.cloud.api.TenantProductService/SetWorkspacePurchaseEligibility"
 	TenantProductService_ListWorkspacePurchaseEligibility_FullMethodName = "/opl.cloud.api.TenantProductService/ListWorkspacePurchaseEligibility"
+	TenantProductService_IssueServiceGrant_FullMethodName                = "/opl.cloud.api.TenantProductService/IssueServiceGrant"
+	TenantProductService_GetServiceGrantJWKS_FullMethodName              = "/opl.cloud.api.TenantProductService/GetServiceGrantJWKS"
+	TenantProductService_SetServiceEntitlement_FullMethodName            = "/opl.cloud.api.TenantProductService/SetServiceEntitlement"
+	TenantProductService_ListServiceEntitlements_FullMethodName          = "/opl.cloud.api.TenantProductService/ListServiceEntitlements"
 )
 
 // TenantProductServiceClient is the client API for TenantProductService service.
@@ -84,6 +88,10 @@ type TenantProductServiceClient interface {
 	GetTenantLifecycleOperation(ctx context.Context, in *GetTenantLifecycleOperationRpcRequest, opts ...grpc.CallOption) (*TenantLifecycleProgress, error)
 	SetWorkspacePurchaseEligibility(ctx context.Context, in *SetWorkspacePurchaseEligibilityRpcRequest, opts ...grpc.CallOption) (*WorkspacePurchaseEligibilityCommand, error)
 	ListWorkspacePurchaseEligibility(ctx context.Context, in *ListWorkspacePurchaseEligibilityRpcRequest, opts ...grpc.CallOption) (*WorkspacePurchaseEligibilityList, error)
+	IssueServiceGrant(ctx context.Context, in *IssueServiceGrantRpcRequest, opts ...grpc.CallOption) (*ServiceGrantResponse, error)
+	GetServiceGrantJWKS(ctx context.Context, in *GetServiceGrantJWKSRpcRequest, opts ...grpc.CallOption) (*ServiceGrantJWKSResponse, error)
+	SetServiceEntitlement(ctx context.Context, in *SetServiceEntitlementRpcRequest, opts ...grpc.CallOption) (*ServiceEntitlementCommand, error)
+	ListServiceEntitlements(ctx context.Context, in *ListServiceEntitlementsRpcRequest, opts ...grpc.CallOption) (*ServiceEntitlementList, error)
 }
 
 type tenantProductServiceClient struct {
@@ -384,6 +392,46 @@ func (c *tenantProductServiceClient) ListWorkspacePurchaseEligibility(ctx contex
 	return out, nil
 }
 
+func (c *tenantProductServiceClient) IssueServiceGrant(ctx context.Context, in *IssueServiceGrantRpcRequest, opts ...grpc.CallOption) (*ServiceGrantResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ServiceGrantResponse)
+	err := c.cc.Invoke(ctx, TenantProductService_IssueServiceGrant_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tenantProductServiceClient) GetServiceGrantJWKS(ctx context.Context, in *GetServiceGrantJWKSRpcRequest, opts ...grpc.CallOption) (*ServiceGrantJWKSResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ServiceGrantJWKSResponse)
+	err := c.cc.Invoke(ctx, TenantProductService_GetServiceGrantJWKS_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tenantProductServiceClient) SetServiceEntitlement(ctx context.Context, in *SetServiceEntitlementRpcRequest, opts ...grpc.CallOption) (*ServiceEntitlementCommand, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ServiceEntitlementCommand)
+	err := c.cc.Invoke(ctx, TenantProductService_SetServiceEntitlement_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tenantProductServiceClient) ListServiceEntitlements(ctx context.Context, in *ListServiceEntitlementsRpcRequest, opts ...grpc.CallOption) (*ServiceEntitlementList, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ServiceEntitlementList)
+	err := c.cc.Invoke(ctx, TenantProductService_ListServiceEntitlements_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TenantProductServiceServer is the server API for TenantProductService service.
 // All implementations must embed UnimplementedTenantProductServiceServer
 // for forward compatibility.
@@ -417,6 +465,10 @@ type TenantProductServiceServer interface {
 	GetTenantLifecycleOperation(context.Context, *GetTenantLifecycleOperationRpcRequest) (*TenantLifecycleProgress, error)
 	SetWorkspacePurchaseEligibility(context.Context, *SetWorkspacePurchaseEligibilityRpcRequest) (*WorkspacePurchaseEligibilityCommand, error)
 	ListWorkspacePurchaseEligibility(context.Context, *ListWorkspacePurchaseEligibilityRpcRequest) (*WorkspacePurchaseEligibilityList, error)
+	IssueServiceGrant(context.Context, *IssueServiceGrantRpcRequest) (*ServiceGrantResponse, error)
+	GetServiceGrantJWKS(context.Context, *GetServiceGrantJWKSRpcRequest) (*ServiceGrantJWKSResponse, error)
+	SetServiceEntitlement(context.Context, *SetServiceEntitlementRpcRequest) (*ServiceEntitlementCommand, error)
+	ListServiceEntitlements(context.Context, *ListServiceEntitlementsRpcRequest) (*ServiceEntitlementList, error)
 	mustEmbedUnimplementedTenantProductServiceServer()
 }
 
@@ -513,6 +565,18 @@ func (UnimplementedTenantProductServiceServer) SetWorkspacePurchaseEligibility(c
 }
 func (UnimplementedTenantProductServiceServer) ListWorkspacePurchaseEligibility(context.Context, *ListWorkspacePurchaseEligibilityRpcRequest) (*WorkspacePurchaseEligibilityList, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListWorkspacePurchaseEligibility not implemented")
+}
+func (UnimplementedTenantProductServiceServer) IssueServiceGrant(context.Context, *IssueServiceGrantRpcRequest) (*ServiceGrantResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method IssueServiceGrant not implemented")
+}
+func (UnimplementedTenantProductServiceServer) GetServiceGrantJWKS(context.Context, *GetServiceGrantJWKSRpcRequest) (*ServiceGrantJWKSResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetServiceGrantJWKS not implemented")
+}
+func (UnimplementedTenantProductServiceServer) SetServiceEntitlement(context.Context, *SetServiceEntitlementRpcRequest) (*ServiceEntitlementCommand, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetServiceEntitlement not implemented")
+}
+func (UnimplementedTenantProductServiceServer) ListServiceEntitlements(context.Context, *ListServiceEntitlementsRpcRequest) (*ServiceEntitlementList, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListServiceEntitlements not implemented")
 }
 func (UnimplementedTenantProductServiceServer) mustEmbedUnimplementedTenantProductServiceServer() {}
 func (UnimplementedTenantProductServiceServer) testEmbeddedByValue()                              {}
@@ -1057,6 +1121,78 @@ func _TenantProductService_ListWorkspacePurchaseEligibility_Handler(srv interfac
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TenantProductService_IssueServiceGrant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(IssueServiceGrantRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantProductServiceServer).IssueServiceGrant(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantProductService_IssueServiceGrant_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantProductServiceServer).IssueServiceGrant(ctx, req.(*IssueServiceGrantRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TenantProductService_GetServiceGrantJWKS_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetServiceGrantJWKSRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantProductServiceServer).GetServiceGrantJWKS(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantProductService_GetServiceGrantJWKS_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantProductServiceServer).GetServiceGrantJWKS(ctx, req.(*GetServiceGrantJWKSRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TenantProductService_SetServiceEntitlement_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetServiceEntitlementRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantProductServiceServer).SetServiceEntitlement(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantProductService_SetServiceEntitlement_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantProductServiceServer).SetServiceEntitlement(ctx, req.(*SetServiceEntitlementRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TenantProductService_ListServiceEntitlements_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListServiceEntitlementsRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantProductServiceServer).ListServiceEntitlements(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantProductService_ListServiceEntitlements_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantProductServiceServer).ListServiceEntitlements(ctx, req.(*ListServiceEntitlementsRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // TenantProductService_ServiceDesc is the grpc.ServiceDesc for TenantProductService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1179,6 +1315,22 @@ var TenantProductService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListWorkspacePurchaseEligibility",
 			Handler:    _TenantProductService_ListWorkspacePurchaseEligibility_Handler,
+		},
+		{
+			MethodName: "IssueServiceGrant",
+			Handler:    _TenantProductService_IssueServiceGrant_Handler,
+		},
+		{
+			MethodName: "GetServiceGrantJWKS",
+			Handler:    _TenantProductService_GetServiceGrantJWKS_Handler,
+		},
+		{
+			MethodName: "SetServiceEntitlement",
+			Handler:    _TenantProductService_SetServiceEntitlement_Handler,
+		},
+		{
+			MethodName: "ListServiceEntitlements",
+			Handler:    _TenantProductService_ListServiceEntitlements_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

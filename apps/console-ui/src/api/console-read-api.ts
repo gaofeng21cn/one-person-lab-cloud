@@ -30,6 +30,7 @@ import type {
   OperatorAccountCommandDTO,
   OperatorProvisionAccountCommandDTO,
   OperatorAccountPageDTO,
+  OperatorServiceEntitlementCommandDTO,
   OperatorWorkspacePurchaseEligibilityCommandDTO,
   OperatorAnnouncementPageDTO,
   OperatorHealthDTO,
@@ -527,6 +528,11 @@ export function operatorPurchaseEligibilityRoute(cloud: boolean, targetId: strin
     : `/api/operator/accounts/${encoded}/workspace-purchase-eligibility`;
 }
 
+export function operatorServiceEntitlementRoute(cloud: boolean, targetId: string, serviceId: string): string {
+  if (!cloud) throw new Error("service_entitlements_cloud_only");
+  return `/api/v2/operator/accounts/${encodeURIComponent(targetId)}/service-entitlements/${encodeURIComponent(serviceId)}`;
+}
+
 export function getOperatorAccounts(cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorAccountsData>> {
   return sourceGet<OperatorAccountsData>(`${operatorReadRoute(cloud)}/accounts`);
 }
@@ -589,6 +595,10 @@ export function disableOperatorAccount(accountId: string, reason: string, csrfTo
 
 export function setOperatorWorkspacePurchaseEligibility(accountId: string, enabled: boolean, reason: string, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperatorWorkspacePurchaseEligibilityCommandDTO> {
   return postJson<unknown>(operatorPurchaseEligibilityRoute(cloud, accountId), { confirmationAccountId: accountId, enabled, reason }, csrfToken, idempotencyKey).then(decodeDto<OperatorWorkspacePurchaseEligibilityCommandDTO>);
+}
+
+export function setOperatorServiceEntitlement(accountId: string, serviceId: string, enabled: boolean, reason: string, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperatorServiceEntitlementCommandDTO> {
+  return postJson<unknown>(operatorServiceEntitlementRoute(cloud, accountId, serviceId), { confirmationAccountId: accountId, enabled, reason }, csrfToken, idempotencyKey).then(decodeDto<OperatorServiceEntitlementCommandDTO>);
 }
 
 export function resolveBillingReview(resourceType: string, resourceId: string, input: BillingReviewResolutionRequest, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperationStatusDTO> {

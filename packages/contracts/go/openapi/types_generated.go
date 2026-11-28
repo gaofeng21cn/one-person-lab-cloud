@@ -143,6 +143,7 @@ const (
 	AuthorizationActionGetQuote                              AuthorizationAction = "getQuote"
 	AuthorizationActionGetReceipt                            AuthorizationAction = "getReceipt"
 	AuthorizationActionGetSelfUserExternalBinding            AuthorizationAction = "getSelfUserExternalBinding"
+	AuthorizationActionGetServiceGrantJWKS                   AuthorizationAction = "getServiceGrantJWKS"
 	AuthorizationActionGetSession                            AuthorizationAction = "getSession"
 	AuthorizationActionGetSubscription                       AuthorizationAction = "getSubscription"
 	AuthorizationActionGetTenant                             AuthorizationAction = "getTenant"
@@ -160,6 +161,7 @@ const (
 	AuthorizationActionGetWorkspaceTransactionTrend          AuthorizationAction = "getWorkspaceTransactionTrend"
 	AuthorizationActionInviteMember                          AuthorizationAction = "inviteMember"
 	AuthorizationActionIssueAcceptedOperationGrant           AuthorizationAction = "issueAcceptedOperationGrant"
+	AuthorizationActionIssueServiceGrant                     AuthorizationAction = "issueServiceGrant"
 	AuthorizationActionListAdminOperations                   AuthorizationAction = "listAdminOperations"
 	AuthorizationActionListAuditEvents                       AuthorizationAction = "listAuditEvents"
 	AuthorizationActionListBuildLogs                         AuthorizationAction = "listBuildLogs"
@@ -246,6 +248,7 @@ const (
 	AuthorizationActionSetBuildRuntimePolicy                 AuthorizationAction = "setBuildRuntimePolicy"
 	AuthorizationActionSetComputePlanAvailability            AuthorizationAction = "setComputePlanAvailability"
 	AuthorizationActionSetRuntimeVersionStatus               AuthorizationAction = "setRuntimeVersionStatus"
+	AuthorizationActionSetServiceEntitlement                 AuthorizationAction = "setServiceEntitlement"
 	AuthorizationActionSetStoragePlanAvailability            AuthorizationAction = "setStoragePlanAvailability"
 	AuthorizationActionSetWebuiVersionStatus                 AuthorizationAction = "setWebuiVersionStatus"
 	AuthorizationActionSetWorkspacePurchaseEligibility       AuthorizationAction = "setWorkspacePurchaseEligibility"
@@ -380,6 +383,8 @@ func (e AuthorizationAction) Valid() bool {
 		return true
 	case AuthorizationActionGetSelfUserExternalBinding:
 		return true
+	case AuthorizationActionGetServiceGrantJWKS:
+		return true
 	case AuthorizationActionGetSession:
 		return true
 	case AuthorizationActionGetSubscription:
@@ -413,6 +418,8 @@ func (e AuthorizationAction) Valid() bool {
 	case AuthorizationActionInviteMember:
 		return true
 	case AuthorizationActionIssueAcceptedOperationGrant:
+		return true
+	case AuthorizationActionIssueServiceGrant:
 		return true
 	case AuthorizationActionListAdminOperations:
 		return true
@@ -585,6 +592,8 @@ func (e AuthorizationAction) Valid() bool {
 	case AuthorizationActionSetComputePlanAvailability:
 		return true
 	case AuthorizationActionSetRuntimeVersionStatus:
+		return true
+	case AuthorizationActionSetServiceEntitlement:
 		return true
 	case AuthorizationActionSetStoragePlanAvailability:
 		return true
@@ -7675,6 +7684,63 @@ type RuntimeVersionPage struct {
 	NextCursor *OpaqueId `json:"nextCursor,omitempty"`
 }
 
+// ServiceEntitlementCommand Canonical receipt for one companion service entitlement update.
+type ServiceEntitlementCommand struct {
+	// AccountId 不透明string；新旧ID原样保留，不假定UUID。
+	AccountId        OpaqueId        `json:"accountId"`
+	EffectiveEnabled bool            `json:"effectiveEnabled"`
+	Enabled          bool            `json:"enabled"`
+	ExpiresAt        *time.Time      `json:"expiresAt,omitempty"`
+	Limits           *map[string]any `json:"limits,omitempty"`
+
+	// OperationId 不透明string；新旧ID原样保留，不假定UUID。
+	OperationId    OpaqueId `json:"operationId"`
+	Origin         *string  `json:"origin,omitempty"`
+	OriginOverride *string  `json:"originOverride,omitempty"`
+	Role           string   `json:"role"`
+	ServiceId      string   `json:"serviceId"`
+	Status         string   `json:"status"`
+}
+
+// ServiceGrantJWK Ed25519 OKP public verification key used by companion services to verify grant tokens offline.
+type ServiceGrantJWK struct {
+	Alg string `json:"alg"`
+	Crv string `json:"crv"`
+	Kid string `json:"kid"`
+	Kty string `json:"kty"`
+	Use string `json:"use"`
+	X   string `json:"x"`
+}
+
+// ServiceGrantJWKSResponse Public JWKS payload published by OPL Cloud for companion grant verification.
+type ServiceGrantJWKSResponse struct {
+	Keys []ServiceGrantJWK `json:"keys"`
+}
+
+// ServiceGrantRequest Client or edge bootstrap request for a short-lived companion service grant. Credentials use either email/password or Authorization Bearer token.
+type ServiceGrantRequest struct {
+	Email    *string `json:"email,omitempty"`
+	Password *string `json:"password,omitempty"`
+	Scope    *string `json:"scope,omitempty"`
+	Service  string  `json:"service"`
+	TotpCode *string `json:"totp_code,omitempty"`
+}
+
+// ServiceGrantResponse Dispatched companion service endpoint and short-lived Ed25519 grant token, or a 2FA challenge indicator.
+type ServiceGrantResponse struct {
+	// ActorId 不透明string；新旧ID原样保留，不假定UUID。
+	ActorId     *OpaqueId       `json:"actor_id,omitempty"`
+	Email       *string         `json:"email,omitempty"`
+	Enabled     *bool           `json:"enabled,omitempty"`
+	ExpiresAt   *time.Time      `json:"expires_at,omitempty"`
+	GrantToken  *string         `json:"grant_token,omitempty"`
+	Limits      *map[string]any `json:"limits,omitempty"`
+	Origin      *string         `json:"origin,omitempty"`
+	Requires2fa *bool           `json:"requires_2fa,omitempty"`
+	Role        *string         `json:"role,omitempty"`
+	Service     *string         `json:"service,omitempty"`
+}
+
 // ServiceIdentity defines model for ServiceIdentity.
 type ServiceIdentity string
 
@@ -7703,6 +7769,21 @@ type SetBuildRuntimePolicyRequest struct {
 
 	// RuntimeVersionId 不透明string；新旧ID原样保留，不假定UUID。
 	RuntimeVersionId OpaqueId `json:"runtimeVersionId"`
+}
+
+// SetServiceEntitlementRequest Platform administrator command to enable, disable, or override a companion service entitlement for one Gateway subject.
+type SetServiceEntitlementRequest struct {
+	ClearExpiresAt      *bool `json:"clearExpiresAt,omitempty"`
+	ClearOriginOverride *bool `json:"clearOriginOverride,omitempty"`
+
+	// ConfirmationAccountId 不透明string；新旧ID原样保留，不假定UUID。
+	ConfirmationAccountId OpaqueId        `json:"confirmationAccountId"`
+	Enabled               bool            `json:"enabled"`
+	ExpiresAt             *time.Time      `json:"expiresAt,omitempty"`
+	Limits                *map[string]any `json:"limits,omitempty"`
+	OriginOverride        *string         `json:"originOverride,omitempty"`
+	Reason                string          `json:"reason"`
+	Role                  *string         `json:"role,omitempty"`
 }
 
 // SetWorkspacePurchaseEligibilityRequest Platform administrator instruction to grant or revoke new Workspace purchase eligibility for one Gateway subject.
@@ -9371,6 +9452,15 @@ type ArchiveNamespaceParams struct {
 	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
 }
 
+// SetServiceEntitlementParams defines parameters for SetServiceEntitlement.
+type SetServiceEntitlementParams struct {
+	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+
+	// XCSRFToken 匹配同源session并校验Origin。
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
 // SetWorkspacePurchaseEligibilityParams defines parameters for SetWorkspacePurchaseEligibility.
 type SetWorkspacePurchaseEligibilityParams struct {
 	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
@@ -9740,6 +9830,9 @@ type LoginJSONRequestBody = LoginRequest
 // CreateBuildJSONRequestBody defines body for CreateBuild for application/json ContentType.
 type CreateBuildJSONRequestBody = CreateBuildRequest
 
+// IssueServiceGrantJSONRequestBody defines body for IssueServiceGrant for application/json ContentType.
+type IssueServiceGrantJSONRequestBody = ServiceGrantRequest
+
 // CreateGatewayKeyJSONRequestBody defines body for CreateGatewayKey for application/json ContentType.
 type CreateGatewayKeyJSONRequestBody = CreateGatewayKeyRequest
 
@@ -9754,6 +9847,9 @@ type CreateNamespaceJSONRequestBody = NamespaceWriteRequest
 
 // UpdateNamespaceJSONRequestBody defines body for UpdateNamespace for application/json ContentType.
 type UpdateNamespaceJSONRequestBody = NamespaceWriteRequest
+
+// SetServiceEntitlementJSONRequestBody defines body for SetServiceEntitlement for application/json ContentType.
+type SetServiceEntitlementJSONRequestBody = SetServiceEntitlementRequest
 
 // SetWorkspacePurchaseEligibilityJSONRequestBody defines body for SetWorkspacePurchaseEligibility for application/json ContentType.
 type SetWorkspacePurchaseEligibilityJSONRequestBody = SetWorkspacePurchaseEligibilityRequest

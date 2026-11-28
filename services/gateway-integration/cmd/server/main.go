@@ -108,6 +108,11 @@ func main() {
 		}
 		s.KeyIssuer = issuer
 		s.WorkspaceKeyGroup = group
+		catalog, grantSigner, err := identity.ConfigureServiceGrantsFromEnv(os.Getenv)
+		if err != nil {
+			return err
+		}
+		s.ConfigureServiceGrants(catalog, grantSigner)
 		if fabricAddr, fabricToken := strings.TrimSpace(os.Getenv("OPL_FABRIC_ADDR")), strings.TrimSpace(os.Getenv("OPL_FABRIC_TOKEN")); fabricAddr != "" && fabricToken != "" {
 			options, err := config.TLS.DialOptions(owneridentity.Tenant.Service(), owneridentity.Fabric.Service(), fabricToken)
 			if err != nil {

@@ -868,6 +868,22 @@ export interface BillingReceiptPageDTO {
   hasMore: boolean;
 }
 
+export interface OperatorServiceEntitlementDTO {
+  serviceId: string;
+  admissionMode: string;
+  hasExplicitOverride: boolean;
+  enabled: boolean;
+  effectiveEnabled: boolean;
+  role: string;
+  origin: string;
+  originOverride?: string;
+  limits?: Record<string, unknown>;
+  expiresAt?: string;
+  reason?: string;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
 export interface OperatorAccount {
   accountId: string;
   consoleUserId: string;
@@ -876,6 +892,7 @@ export interface OperatorAccount {
   email: string;
   status: "active" | "disabled";
   workspacePurchaseEnabled: boolean;
+  serviceEntitlements?: OperatorServiceEntitlementDTO[];
 }
 
 export interface OperatorAccountsData {
@@ -925,6 +942,17 @@ export interface OperatorProvisionAccountCommandDTO extends OperatorAccountComma
 
 export interface OperatorWorkspacePurchaseEligibilityCommandDTO extends OperatorAccountCommandDTO {
   workspacePurchaseEnabled: boolean;
+}
+
+export interface OperatorServiceEntitlementCommandDTO extends OperatorAccountCommandDTO {
+  serviceId: string;
+  enabled: boolean;
+  effectiveEnabled: boolean;
+  role: string;
+  origin?: string;
+  originOverride?: string;
+  limits?: Record<string, unknown>;
+  expiresAt?: string;
 }
 
 export interface ResourceFact {

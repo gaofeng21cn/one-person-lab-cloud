@@ -357,7 +357,15 @@
     "OPL_FABRIC_ADDR",
     "OPL_FABRIC_TOKEN"
    ],
-   "optionalEnv": [],
+   "optionalEnv": [
+    "OPL_GRANT_ADDITIONAL_PUBLIC_KEYS_JSON",
+    "OPL_GRANT_ISSUER",
+    "OPL_GRANT_SIGNING_KEY_ID",
+    "OPL_GRANT_SIGNING_PRIVATE_KEY",
+    "OPL_GRANT_SIGNING_PRIVATE_KEY_FILE",
+    "OPL_PUBLIC_URL",
+    "OPL_SERVICE_CATALOG_JSON"
+   ],
    "externalEnv": [],
    "registers": [
     "TenantProductService",
@@ -946,6 +954,14 @@
     ],
     "browserFacing": false,
     "evidence": "services/control-plane/internal/server/routes_core.go registers the retained Workspace root entry /ws."
+   },
+   {
+    "prefix": "/.well-known/",
+    "processes": [
+     "console-bff"
+    ],
+    "browserFacing": false,
+    "evidence": "apps/console-bff/internal/httpapi/client_service_grant.go registers GET /.well-known/opl-grant-jwks.json for companion-service Ed25519 grant verification."
    }
   ],
   "probes": [

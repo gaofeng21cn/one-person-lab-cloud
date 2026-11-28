@@ -58,7 +58,7 @@ func TestGeneratedPolicyCoversAssignedOwners(t *testing.T) {
 	for owner, want := range map[api.OwnerEnum]int{
 		api.OwnerEnum_OWNER_ENUM_CAPABILITY:       25,
 		api.OwnerEnum_OWNER_ENUM_BUILD:            5,
-		api.OwnerEnum_OWNER_ENUM_TENANT:           19,
+		api.OwnerEnum_OWNER_ENUM_TENANT:           20,
 		api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL:  5,
 		api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG: 14,
 		api.OwnerEnum_OWNER_ENUM_SERVE:            7,
@@ -119,6 +119,10 @@ func TestGeneratedPolicyAudienceAndRoles(t *testing.T) {
 	eligibility := policyFor(t, "SETWORKSPACEPURCHASEELIGIBILITY")
 	if eligibility.owner != api.OwnerEnum_OWNER_ENUM_TENANT || len(eligibility.roles) != 1 || eligibility.roles[0] != "platform_admin" {
 		t.Fatalf("SETWORKSPACEPURCHASEELIGIBILITY is %v/%v, expected the tenant platform administrator", eligibility.owner, eligibility.roles)
+	}
+	serviceEntitlement := policyFor(t, "SETSERVICEENTITLEMENT")
+	if serviceEntitlement.owner != api.OwnerEnum_OWNER_ENUM_TENANT || len(serviceEntitlement.roles) != 1 || serviceEntitlement.roles[0] != "platform_admin" {
+		t.Fatalf("SETSERVICEENTITLEMENT is %v/%v, expected the tenant platform administrator", serviceEntitlement.owner, serviceEntitlement.roles)
 	}
 	// The invitee-bound operation is deliberately not a grantable role row.
 	if _, ok := actions[api.AuthorizationActionEnum(api.AuthorizationActionEnum_value["AUTHORIZATION_ACTION_ENUM_ACCEPTINVITATION"])]; ok {

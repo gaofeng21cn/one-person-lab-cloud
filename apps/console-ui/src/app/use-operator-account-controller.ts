@@ -4,6 +4,7 @@ import {
   disableOperatorAccount as disableOperatorAccountCommand,
   getOperatorAccountsPage,
   provisionOperatorAccount,
+  setOperatorServiceEntitlement as setOperatorServiceEntitlementCommand,
   setOperatorWorkspacePurchaseEligibility as setOperatorWorkspacePurchaseEligibilityCommand
 } from "../api/console-read-api.ts";
 import type {
@@ -26,6 +27,7 @@ import {
   provisionReadbackMatches,
   resolveProvisionAccountIntent,
   sameAccountIdentity,
+  serviceEntitlementCommandSucceeded,
   type OperatorAccountIdentity,
   type ProvisionAccountIntent
 } from "./operator-account-controller-model.ts";
@@ -47,6 +49,11 @@ interface DisableIntent {
 }
 
 interface EligibilityIntent extends DisableIntent {
+  enabled: boolean;
+}
+
+interface ServiceEntitlementIntent extends DisableIntent {
+  serviceId: string;
   enabled: boolean;
 }
 
@@ -82,6 +89,7 @@ export function useOperatorAccountController({
   const provisionIntent = useRef<ProvisionAccountIntent | null>(null);
   const disableIntents = useRef(new Map<string, DisableIntent>());
   const eligibilityIntents = useRef(new Map<string, EligibilityIntent>());
+  const serviceEntitlementIntents = useRef(new Map<string, ServiceEntitlementIntent>());
   activeRef.current = active;
 
   const requestOwnsScope = useCallback((generation: number, userId: string, csrfToken: string) => {
@@ -100,6 +108,7 @@ export function useOperatorAccountController({
     provisionIntent.current = null;
     disableIntents.current.clear();
     eligibilityIntents.current.clear();
+    serviceEntitlementIntents.current.clear();
     setAccounts(emptyRemote());
     setPage(1);
     setProvisionOperation(null);
@@ -398,6 +407,83 @@ export function useOperatorAccountController({
     }
   }, [claimAccount, commitPage, currentAccount, currentSession, findAccountProjection, flash, mutationError, releaseAccount, requestOwnsScope]);
 
+  const setServiceEntitlement = useCallback(async (accountId: string, serviceId: string, enabled: boolean) => {
+    const session = currentSession();
+    const account = currentAccount(accountId);
+    if (!session || !activeRef.current || !account || !cloudIdentity) return;
+    const confirmed = await requestConfirm({
+      title: enabled ? `开通 ${serviceId} 服务` : `停用 ${serviceId} 服务`,
+      description: enabled
+        ? `确认为该账户开通 ${serviceId} 服务权限？`
+        : `确认停用该账户的 ${serviceId} 服务权限？已接入设备仍保持 Fail-Open，新登录与新接入将被拒绝。`,
+      confirmLabel: enabled ? "确认开通" : "确认停用",
+      tone: enabled ? "primary" : "danger"
+    });
+    if (!confirmed) return;
+    const claim = claimAccount(accountId);
+    if (!claim) return;
+    const identity = accountIdentity(account);
+    const reason = "operator_requested";
+    const intentKey = `${accountId}:${serviceId}`;
+    const current = serviceEntitlementIntents.current.get(intentKey);
+    const intent = current && current.enabled === enabled && current.reason === reason
+      && sameAccountIdentity(current.identity, account)
+      ? current
+      : {
+          accountId,
+          serviceId,
+          identity,
+          enabled,
+          reason,
+          idempotencyKey: `service-entitlement:${accountId}:${serviceId}:${crypto.randomUUID()}`
+        };
+    serviceEntitlementIntents.current.set(intentKey, intent);
+    const projectionPage = pageRef.current;
+    const projectionGeneration = listGeneration.current;
+    const scope = scopeGeneration.current;
+    const userId = session.user.id;
+    const csrfToken = session.csrfToken;
+    const targetId = String(account.sub2apiUserId).trim();
+    if (!targetId) {
+      releaseAccount(accountId, claim);
+      return;
+    }
+    try {
+      const result = await setOperatorServiceEntitlementCommand(
+        targetId,
+        serviceId,
+        enabled,
+        reason,
+        csrfToken,
+        intent.idempotencyKey
+      );
+      if (accountClaims.current.get(accountId) !== claim || !requestOwnsScope(scope, userId, csrfToken)) return;
+      if (!serviceEntitlementCommandSucceeded(result, targetId, serviceId, enabled)) {
+        throw new Error("operator_account_service_entitlement_identity_mismatch");
+      }
+      const readback = await findAccountProjection(
+        session,
+        scope,
+        (candidate) => sameAccountIdentity(intent.identity, candidate)
+          && candidate.serviceEntitlements?.some((entry) => entry.serviceId === serviceId && entry.effectiveEnabled === enabled) === true,
+        projectionPage
+      );
+      if (accountClaims.current.get(accountId) !== claim || !requestOwnsScope(scope, userId, csrfToken)) return;
+      if (!readback?.account) throw new Error("operator_account_service_entitlement_readback_mismatch");
+      if (projectionGeneration === listGeneration.current && pageRef.current === projectionPage) {
+        commitPage(readback.visibleResult);
+      }
+      if (serviceEntitlementIntents.current.get(intentKey) === intent) serviceEntitlementIntents.current.delete(intentKey);
+      flash(enabled ? `已开通 ${serviceId}` : `已停用 ${serviceId}`);
+    } catch (error) {
+      if (accountClaims.current.get(accountId) === claim && requestOwnsScope(scope, userId, csrfToken)) {
+        flash(mutationError(error), "danger");
+      }
+    } finally {
+      releaseAccount(accountId, claim);
+    }
+  }, [claimAccount, commitPage, currentAccount, currentSession, findAccountProjection, flash, mutationError, releaseAccount, requestOwnsScope]);
+
   const pages = accounts.value?.available
     ? Math.ceil(accounts.value.data.total / accounts.value.data.pageSize)
     : 0;
@@ -415,6 +501,7 @@ export function useOperatorAccountController({
     provision,
     disable,
     setWorkspacePurchaseEligibility,
+    setServiceEntitlement,
     load,
     reset
   };

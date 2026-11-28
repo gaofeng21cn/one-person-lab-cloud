@@ -227,6 +227,84 @@ func (g *Gateway) Login(ctx context.Context, user, password string) (GatewayIden
 	}
 	return out.User, out.AccessToken, delegatedExpiry(out.AccessToken, out.ExpiresIn, started), nil
 }
+
+// LoginForServiceGrant verifies a Gateway user's password (plus optional TOTP
+// code for 2FA-enabled accounts) without persisting passwords or upstream
+// refresh tokens. If the upstream account requires 2FA and no totpCode was
+// supplied, it returns requires2FA=true without an identity.
+func (g *Gateway) LoginForServiceGrant(ctx context.Context, user, password, totpCode string) (GatewayIdentity, bool, error) {
+	user = strings.ToLower(strings.TrimSpace(user))
+	totpCode = strings.TrimSpace(totpCode)
+	if user == "" || len(user) > 254 || password == "" || len(password) > 512 {
+		return GatewayIdentity{}, false, status.Error(codes.InvalidArgument, "credentials required")
+	}
+	var out struct {
+		Requires2FA  bool            `json:"requires_2fa"`
+		TempToken    string          `json:"temp_token"`
+		AccessToken  string          `json:"access_token"`
+		RefreshToken string          `json:"refresh_token"`
+		User         GatewayIdentity `json:"user"`
+	}
+	err := g.request(ctx, "/api/v1/auth/login", "", map[string]string{
+		"email":           user,
+		"password":        password,
+		"turnstile_token": "",
+	}, &out)
+	if err != nil {
+		return GatewayIdentity{}, false, err
+	}
+	if out.Requires2FA || strings.TrimSpace(out.TempToken) != "" {
+		if totpCode == "" {
+			return GatewayIdentity{}, true, nil
+		}
+		if strings.TrimSpace(out.TempToken) == "" {
+			return GatewayIdentity{}, false, status.Error(codes.Unavailable, "Gateway 2FA challenge missing temporary token")
+		}
+		var out2fa struct {
+			AccessToken  string          `json:"access_token"`
+			RefreshToken string          `json:"refresh_token"`
+			User         GatewayIdentity `json:"user"`
+		}
+		if err = g.request(ctx, "/api/v1/auth/login/2fa", "", map[string]string{
+			"temp_token": out.TempToken,
+			"totp_code":  totpCode,
+		}, &out2fa); err != nil {
+			return GatewayIdentity{}, false, err
+		}
+		out.AccessToken = out2fa.AccessToken
+		out.RefreshToken = out2fa.RefreshToken
+		out.User = out2fa.User
+	}
+	if out.RefreshToken != "" && out.AccessToken != "" {
+		logoutCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		var ignored json.RawMessage
+		_ = g.request(logoutCtx, "/api/v1/auth/logout", out.AccessToken, map[string]string{"refresh_token": out.RefreshToken}, &ignored)
+		cancel()
+	}
+	out.User.Email = strings.ToLower(strings.TrimSpace(out.User.Email))
+	if out.AccessToken == "" || out.User.ID <= 0 || out.User.Email != user || out.User.Status != "active" {
+		return GatewayIdentity{}, false, status.Error(codes.Unauthenticated, "Gateway identity rejected")
+	}
+	return out.User, false, nil
+}
+
+// AuthenticateBearer validates an existing Gateway bearer access token via
+// /api/v1/auth/me and ensures the subject is active.
+func (g *Gateway) AuthenticateBearer(ctx context.Context, token string) (GatewayIdentity, error) {
+	token = strings.TrimSpace(token)
+	if token == "" || len(token) > 4096 {
+		return GatewayIdentity{}, status.Error(codes.Unauthenticated, "Gateway bearer token required")
+	}
+	var out GatewayIdentity
+	if err := g.request(ctx, "/api/v1/auth/me", token, nil, &out); err != nil {
+		return GatewayIdentity{}, err
+	}
+	out.Email = strings.ToLower(strings.TrimSpace(out.Email))
+	if out.ID <= 0 || out.Email == "" || out.Status != "active" {
+		return GatewayIdentity{}, status.Error(codes.Unauthenticated, "Gateway identity is not active")
+	}
+	return out, nil
+}
 func (g *Gateway) Read(ctx context.Context, token, actor string) (GatewayIdentity, error) {
 	var out GatewayIdentity
 	err := g.request(ctx, "/api/v1/auth/me", token, nil, &out)
