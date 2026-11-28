@@ -124,6 +124,7 @@ const (
 	AuthorizationActionDeleteCapabilityVersion                AuthorizationAction = "deleteCapabilityVersion"
 	AuthorizationActionDeleteTenant                           AuthorizationAction = "deleteTenant"
 	AuthorizationActionDeleteWorkspace                        AuthorizationAction = "deleteWorkspace"
+	AuthorizationActionDownloadSoftwarePackage                AuthorizationAction = "downloadSoftwarePackage"
 	AuthorizationActionExecuteScheduledPlanChange             AuthorizationAction = "executeScheduledPlanChange"
 	AuthorizationActionFenceRouteEpoch                        AuthorizationAction = "fenceRouteEpoch"
 	AuthorizationActionGetAdminTenant                         AuthorizationAction = "getAdminTenant"
@@ -177,6 +178,7 @@ const (
 	AuthorizationActionListNamespaces                         AuthorizationAction = "listNamespaces"
 	AuthorizationActionListOperatorAccounts                   AuthorizationAction = "listOperatorAccounts"
 	AuthorizationActionListOperatorDeployments                AuthorizationAction = "listOperatorDeployments"
+	AuthorizationActionListOperatorSoftwarePackages           AuthorizationAction = "listOperatorSoftwarePackages"
 	AuthorizationActionListOperatorWorkspaces                 AuthorizationAction = "listOperatorWorkspaces"
 	AuthorizationActionListPackageVersions                    AuthorizationAction = "listPackageVersions"
 	AuthorizationActionListPackages                           AuthorizationAction = "listPackages"
@@ -192,6 +194,7 @@ const (
 	AuthorizationActionListRefundPolicyVersions               AuthorizationAction = "listRefundPolicyVersions"
 	AuthorizationActionListRetentionPolicyVersions            AuthorizationAction = "listRetentionPolicyVersions"
 	AuthorizationActionListRuntimeVersions                    AuthorizationAction = "listRuntimeVersions"
+	AuthorizationActionListSoftwareEntitlements               AuthorizationAction = "listSoftwareEntitlements"
 	AuthorizationActionListStoragePlans                       AuthorizationAction = "listStoragePlans"
 	AuthorizationActionListTenants                            AuthorizationAction = "listTenants"
 	AuthorizationActionListUsage                              AuthorizationAction = "listUsage"
@@ -251,6 +254,7 @@ const (
 	AuthorizationActionSetBuildRuntimePolicy                  AuthorizationAction = "setBuildRuntimePolicy"
 	AuthorizationActionSetComputePlanAvailability             AuthorizationAction = "setComputePlanAvailability"
 	AuthorizationActionSetLinkRelayEntitlement                AuthorizationAction = "setLinkRelayEntitlement"
+	AuthorizationActionSetPackageEntitlement                  AuthorizationAction = "setPackageEntitlement"
 	AuthorizationActionSetPlatformAdmin                       AuthorizationAction = "setPlatformAdmin"
 	AuthorizationActionSetRuntimeVersionStatus                AuthorizationAction = "setRuntimeVersionStatus"
 	AuthorizationActionSetServiceEntitlement                  AuthorizationAction = "setServiceEntitlement"
@@ -349,6 +353,8 @@ func (e AuthorizationAction) Valid() bool {
 	case AuthorizationActionDeleteTenant:
 		return true
 	case AuthorizationActionDeleteWorkspace:
+		return true
+	case AuthorizationActionDownloadSoftwarePackage:
 		return true
 	case AuthorizationActionExecuteScheduledPlanChange:
 		return true
@@ -456,6 +462,8 @@ func (e AuthorizationAction) Valid() bool {
 		return true
 	case AuthorizationActionListOperatorDeployments:
 		return true
+	case AuthorizationActionListOperatorSoftwarePackages:
+		return true
 	case AuthorizationActionListOperatorWorkspaces:
 		return true
 	case AuthorizationActionListPackageVersions:
@@ -485,6 +493,8 @@ func (e AuthorizationAction) Valid() bool {
 	case AuthorizationActionListRetentionPolicyVersions:
 		return true
 	case AuthorizationActionListRuntimeVersions:
+		return true
+	case AuthorizationActionListSoftwareEntitlements:
 		return true
 	case AuthorizationActionListStoragePlans:
 		return true
@@ -603,6 +613,8 @@ func (e AuthorizationAction) Valid() bool {
 	case AuthorizationActionSetComputePlanAvailability:
 		return true
 	case AuthorizationActionSetLinkRelayEntitlement:
+		return true
+	case AuthorizationActionSetPackageEntitlement:
 		return true
 	case AuthorizationActionSetPlatformAdmin:
 		return true
@@ -6391,6 +6403,19 @@ type PackageBuildInput struct {
 // PackageBuildInputContextName defines model for PackageBuildInput.ContextName.
 type PackageBuildInputContextName string
 
+// PackageEntitlementCommand Canonical receipt for one restricted software package entitlement update.
+type PackageEntitlementCommand struct {
+	// AccountId 不透明string；新旧ID原样保留，不假定UUID。
+	AccountId OpaqueId   `json:"accountId"`
+	Enabled   bool       `json:"enabled"`
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+
+	// OperationId 不透明string；新旧ID原样保留，不假定UUID。
+	OperationId OpaqueId `json:"operationId"`
+	PackageId   string   `json:"packageId"`
+	Status      string   `json:"status"`
+}
+
 // PackageFormatContractReference 引用Framework/OMA当前发布者验证器与schema，不在Cloud定义另一种包格式。生产准入必须Owner release/readback与签名收据吻合；例子的formatVersion/仓库都是合成fixture，不表示已发布标准。
 type PackageFormatContractReference struct {
 	AdmissionReceiptId string                              `json:"admissionReceiptId"`
@@ -7843,6 +7868,18 @@ type SetLinkRelayEntitlementRequest struct {
 	ConfirmationAccountId OpaqueId `json:"confirmationAccountId"`
 	Enabled               bool     `json:"enabled"`
 	Reason                string   `json:"reason"`
+}
+
+// SetPackageEntitlementRequest Platform administrator instruction to grant or revoke one restricted software package entitlement for a Gateway subject.
+type SetPackageEntitlementRequest struct {
+	ClearExpiresAt *bool `json:"clearExpiresAt,omitempty"`
+
+	// ConfirmationAccountId 不透明string；新旧ID原样保留，不假定UUID。
+	ConfirmationAccountId OpaqueId   `json:"confirmationAccountId"`
+	Enabled               bool       `json:"enabled"`
+	ExpiresAt             *time.Time `json:"expiresAt,omitempty"`
+	PackageId             string     `json:"packageId"`
+	Reason                string     `json:"reason"`
 }
 
 // SetPlatformAdminRequest Platform administrator instruction to grant or revoke delegated platform admin access for one Gateway subject.
@@ -9550,6 +9587,15 @@ type SetLinkRelayEntitlementParams struct {
 	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
 }
 
+// SetPackageEntitlementParams defines parameters for SetPackageEntitlement.
+type SetPackageEntitlementParams struct {
+	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+
+	// XCSRFToken 匹配同源session并校验Origin。
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
 // SetPlatformAdminParams defines parameters for SetPlatformAdmin.
 type SetPlatformAdminParams struct {
 	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
@@ -9966,6 +10012,9 @@ type UpdateNamespaceJSONRequestBody = NamespaceWriteRequest
 
 // SetLinkRelayEntitlementJSONRequestBody defines body for SetLinkRelayEntitlement for application/json ContentType.
 type SetLinkRelayEntitlementJSONRequestBody = SetLinkRelayEntitlementRequest
+
+// SetPackageEntitlementJSONRequestBody defines body for SetPackageEntitlement for application/json ContentType.
+type SetPackageEntitlementJSONRequestBody = SetPackageEntitlementRequest
 
 // SetPlatformAdminJSONRequestBody defines body for SetPlatformAdmin for application/json ContentType.
 type SetPlatformAdminJSONRequestBody = SetPlatformAdminRequest

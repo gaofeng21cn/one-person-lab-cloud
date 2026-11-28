@@ -58,6 +58,8 @@ const (
 	TenantProductService_SetLinkRelayEntitlement_FullMethodName                = "/opl.cloud.api.TenantProductService/SetLinkRelayEntitlement"
 	TenantProductService_SeedActiveGatewayLinkRelayEntitlements_FullMethodName = "/opl.cloud.api.TenantProductService/SeedActiveGatewayLinkRelayEntitlements"
 	TenantProductService_ReadCallerLinkRelayEntitlement_FullMethodName         = "/opl.cloud.api.TenantProductService/ReadCallerLinkRelayEntitlement"
+	TenantProductService_SetPackageEntitlement_FullMethodName                  = "/opl.cloud.api.TenantProductService/SetPackageEntitlement"
+	TenantProductService_ListCallerPackageEntitlements_FullMethodName          = "/opl.cloud.api.TenantProductService/ListCallerPackageEntitlements"
 )
 
 // TenantProductServiceClient is the client API for TenantProductService service.
@@ -102,6 +104,8 @@ type TenantProductServiceClient interface {
 	SetLinkRelayEntitlement(ctx context.Context, in *SetLinkRelayEntitlementRpcRequest, opts ...grpc.CallOption) (*LinkRelayEntitlementCommand, error)
 	SeedActiveGatewayLinkRelayEntitlements(ctx context.Context, in *SeedActiveGatewayLinkRelayEntitlementsRpcRequest, opts ...grpc.CallOption) (*SeedLinkRelayEntitlementsCommand, error)
 	ReadCallerLinkRelayEntitlement(ctx context.Context, in *ReadCallerLinkRelayEntitlementRpcRequest, opts ...grpc.CallOption) (*LinkRelayEntitlementReadback, error)
+	SetPackageEntitlement(ctx context.Context, in *SetPackageEntitlementRpcRequest, opts ...grpc.CallOption) (*PackageEntitlementCommand, error)
+	ListCallerPackageEntitlements(ctx context.Context, in *ListCallerPackageEntitlementsRpcRequest, opts ...grpc.CallOption) (*CallerPackageEntitlementsReadback, error)
 }
 
 type tenantProductServiceClient struct {
@@ -492,6 +496,26 @@ func (c *tenantProductServiceClient) ReadCallerLinkRelayEntitlement(ctx context.
 	return out, nil
 }
 
+func (c *tenantProductServiceClient) SetPackageEntitlement(ctx context.Context, in *SetPackageEntitlementRpcRequest, opts ...grpc.CallOption) (*PackageEntitlementCommand, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PackageEntitlementCommand)
+	err := c.cc.Invoke(ctx, TenantProductService_SetPackageEntitlement_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tenantProductServiceClient) ListCallerPackageEntitlements(ctx context.Context, in *ListCallerPackageEntitlementsRpcRequest, opts ...grpc.CallOption) (*CallerPackageEntitlementsReadback, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CallerPackageEntitlementsReadback)
+	err := c.cc.Invoke(ctx, TenantProductService_ListCallerPackageEntitlements_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TenantProductServiceServer is the server API for TenantProductService service.
 // All implementations must embed UnimplementedTenantProductServiceServer
 // for forward compatibility.
@@ -534,6 +558,8 @@ type TenantProductServiceServer interface {
 	SetLinkRelayEntitlement(context.Context, *SetLinkRelayEntitlementRpcRequest) (*LinkRelayEntitlementCommand, error)
 	SeedActiveGatewayLinkRelayEntitlements(context.Context, *SeedActiveGatewayLinkRelayEntitlementsRpcRequest) (*SeedLinkRelayEntitlementsCommand, error)
 	ReadCallerLinkRelayEntitlement(context.Context, *ReadCallerLinkRelayEntitlementRpcRequest) (*LinkRelayEntitlementReadback, error)
+	SetPackageEntitlement(context.Context, *SetPackageEntitlementRpcRequest) (*PackageEntitlementCommand, error)
+	ListCallerPackageEntitlements(context.Context, *ListCallerPackageEntitlementsRpcRequest) (*CallerPackageEntitlementsReadback, error)
 	mustEmbedUnimplementedTenantProductServiceServer()
 }
 
@@ -657,6 +683,12 @@ func (UnimplementedTenantProductServiceServer) SeedActiveGatewayLinkRelayEntitle
 }
 func (UnimplementedTenantProductServiceServer) ReadCallerLinkRelayEntitlement(context.Context, *ReadCallerLinkRelayEntitlementRpcRequest) (*LinkRelayEntitlementReadback, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReadCallerLinkRelayEntitlement not implemented")
+}
+func (UnimplementedTenantProductServiceServer) SetPackageEntitlement(context.Context, *SetPackageEntitlementRpcRequest) (*PackageEntitlementCommand, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetPackageEntitlement not implemented")
+}
+func (UnimplementedTenantProductServiceServer) ListCallerPackageEntitlements(context.Context, *ListCallerPackageEntitlementsRpcRequest) (*CallerPackageEntitlementsReadback, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListCallerPackageEntitlements not implemented")
 }
 func (UnimplementedTenantProductServiceServer) mustEmbedUnimplementedTenantProductServiceServer() {}
 func (UnimplementedTenantProductServiceServer) testEmbeddedByValue()                              {}
@@ -1363,6 +1395,42 @@ func _TenantProductService_ReadCallerLinkRelayEntitlement_Handler(srv interface{
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TenantProductService_SetPackageEntitlement_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetPackageEntitlementRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantProductServiceServer).SetPackageEntitlement(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantProductService_SetPackageEntitlement_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantProductServiceServer).SetPackageEntitlement(ctx, req.(*SetPackageEntitlementRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TenantProductService_ListCallerPackageEntitlements_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListCallerPackageEntitlementsRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantProductServiceServer).ListCallerPackageEntitlements(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantProductService_ListCallerPackageEntitlements_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantProductServiceServer).ListCallerPackageEntitlements(ctx, req.(*ListCallerPackageEntitlementsRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // TenantProductService_ServiceDesc is the grpc.ServiceDesc for TenantProductService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1521,6 +1589,14 @@ var TenantProductService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReadCallerLinkRelayEntitlement",
 			Handler:    _TenantProductService_ReadCallerLinkRelayEntitlement_Handler,
+		},
+		{
+			MethodName: "SetPackageEntitlement",
+			Handler:    _TenantProductService_SetPackageEntitlement_Handler,
+		},
+		{
+			MethodName: "ListCallerPackageEntitlements",
+			Handler:    _TenantProductService_ListCallerPackageEntitlements_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

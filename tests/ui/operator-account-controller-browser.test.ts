@@ -808,6 +808,17 @@ test("Cloud operator accounts list renders Gateway-only users, supports server s
     isBootstrapAdmin: true,
     workspacePurchaseEnabled: true,
     linkRelayEnabled: true,
+    serviceEntitlements: [
+      {
+        serviceId: "netfleet_cloud",
+        admissionMode: "active_gateway_default_with_overrides",
+        hasExplicitOverride: false,
+        enabled: true,
+        effectiveEnabled: true,
+        role: "user",
+        origin: "https://netfleet.example.test"
+      }
+    ],
     gatewayIdentity: { source: "sub2api", status: "available", available: true, fetchedAt, data: { userId: "43", email: "operator@example.com", status: "active" } },
     wallet: { source: "sub2api", status: "available", available: true, fetchedAt, data: { userId: "43", currency: "USD", usdMicros: "50000000", status: "active" } },
     workspaceCount: { source: "workspace", status: "unavailable", available: false, fetchedAt, reasonCode: "workspace_count_not_read" }
@@ -821,6 +832,7 @@ test("Cloud operator accounts list renders Gateway-only users, supports server s
     platformAdminEnabled: false,
     isBootstrapAdmin: false,
     linkRelayEnabled: false,
+    serviceEntitlements: [],
     gatewayIdentity: { source: "sub2api", status: "available", available: true, fetchedAt, data: { userId: "45", email: "gatewayonly@example.com", status: "active" } },
     wallet: { source: "sub2api", status: "available", available: true, fetchedAt, data: { userId: "45", currency: "USD", usdMicros: "12000000", status: "active" } },
     workspaceCount: { source: "workspace", status: "unavailable", available: false, fetchedAt, reasonCode: "workspace_count_not_read" }
@@ -828,6 +840,7 @@ test("Cloud operator accounts list renders Gateway-only users, supports server s
   const searchQueries: string[] = [];
   const adminCommands: Array<{ actorId: string; enabled: boolean }> = [];
   const relayCommands: Array<{ actorId: string; enabled: boolean }> = [];
+  const packageCommands: Array<{ actorId: string; packageId: string; enabled: boolean }> = [];
   let seedCalls = 0;
 
   try {
@@ -893,6 +906,50 @@ test("Cloud operator accounts list renders Gateway-only users, supports server s
           linkRelayEnabled: body.enabled
         });
       }
+      if (url.pathname === "/api/v2/operator/software-packages" && route.request().method() === "GET") {
+        return fulfill(route, {
+          source: "console-bff",
+          status: "available",
+          available: true,
+          fetchedAt,
+          data: {
+            configured: true,
+            items: [
+              {
+                packageId: "occ",
+                displayName: "OPL Claude Code",
+                summary: "受限 AI 命令行客户端",
+                version: "1.2.3",
+                sha256: "a".repeat(64)
+              },
+              {
+                packageId: "glkvm-native",
+                displayName: "GLKVM Native",
+                summary: "受限硬件控制客户端",
+                version: "2.0.0",
+                sha256: "b".repeat(64)
+              }
+            ]
+          }
+        });
+      }
+      const pkgMatch = /^\/api\/v2\/operator\/accounts\/([^/]+)\/package-entitlements$/.exec(url.pathname);
+      if (pkgMatch && route.request().method() === "POST") {
+        const actorId = decodeURIComponent(pkgMatch[1]);
+        const body = route.request().postDataJSON() as { confirmationAccountId: string; packageId: string; enabled: boolean; reason: string };
+        assert.equal(body.confirmationAccountId, actorId);
+        packageCommands.push({ actorId, packageId: body.packageId, enabled: body.enabled });
+        const existing = (gatewayUser.packageEntitlements ?? []).filter((entry) => entry.packageId !== body.packageId);
+        existing.push({ packageId: body.packageId, enabled: body.enabled, reason: body.reason });
+        gatewayUser = { ...gatewayUser, packageEntitlements: existing };
+        return fulfill(route, {
+          operationId: `pkg-entitlement-cloud-${actorId}-${body.packageId}`,
+          accountId: actorId,
+          packageId: body.packageId,
+          status: "succeeded",
+          enabled: body.enabled
+        });
+      }
       if (url.pathname === "/api/v2/operator/link-relay/seed-active-users" && route.request().method() === "POST") {
         seedCalls += 1;
         gatewayUser = { ...gatewayUser, linkRelayEnabled: true };
@@ -937,6 +994,27 @@ test("Cloud operator accounts list renders Gateway-only users, supports server s
     await page.getByRole("dialog", { name: "撤销 OPL Link Relay 转发准入" }).getByRole("button", { name: "确认撤销", exact: true }).click();
     await page.getByText("已撤销 OPL Link Relay 转发准入", { exact: true }).waitFor({ state: "visible" });
 
+    // Obsolete software-whitelist placeholder note is gone, while companion service catalog fallback and private software whitelist controls are live.
+    assert.equal(await gwInspector.getByText("私有软件（如 occ）白名单接入后，将统一在此管理。", { exact: true }).count(), 0);
+    await gwInspector.getByText("私有软件白名单", { exact: true }).waitFor({ state: "visible" });
+    await gwInspector.getByRole("button", { name: "授予 occ", exact: true }).click();
+    await page.getByRole("dialog", { name: "授予软件「occ」白名单" }).getByRole("button", { name: "确认授予", exact: true }).click();
+    await page.getByText("已授予 occ 准入", { exact: true }).waitFor({ state: "visible" });
+    await gwInspector.getByRole("button", { name: "撤销 occ", exact: true }).waitFor({ state: "visible" });
+    await accountRow(page, gatewayUser.email).getByText("occ", { exact: true }).waitFor({ state: "visible" });
+
+    const customPackageInput = gwInspector.getByRole("textbox", { name: "自定义受限软件包 ID" });
+    await customPackageInput.fill("custom-pack");
+    await gwInspector.getByRole("button", { name: "授予软件", exact: true }).click();
+    await page.getByRole("dialog", { name: "授予软件「custom-pack」白名单" }).getByRole("button", { name: "确认授予", exact: true }).click();
+    await page.getByText("已授予 custom-pack 准入", { exact: true }).waitFor({ state: "visible" });
+    await gwInspector.getByRole("button", { name: "撤销 custom-pack", exact: true }).waitFor({ state: "visible" });
+
+    await gwInspector.getByRole("button", { name: "撤销 occ", exact: true }).click();
+    await page.getByRole("dialog", { name: "撤销软件「occ」白名单" }).getByRole("button", { name: "确认撤销", exact: true }).click();
+    await page.getByText("已撤销 occ 准入", { exact: true }).waitFor({ state: "visible" });
+    await gwInspector.getByRole("button", { name: "授予 occ", exact: true }).waitFor({ state: "visible" });
+
     // Backfill active Gateway users into Link Relay allowlist and filter via Link Relay chip.
     await page.getByRole("button", { name: "补录存量 Relay 白名单", exact: true }).click();
     await page.getByRole("dialog", { name: "补录存量 Gateway 用户 Link Relay 白名单" }).getByRole("button", { name: "确认补录", exact: true }).click();
@@ -953,6 +1031,11 @@ test("Cloud operator accounts list renders Gateway-only users, supports server s
 
     assert.deepEqual(adminCommands, [{ actorId: "45", enabled: true }]);
     assert.deepEqual(relayCommands, [{ actorId: "45", enabled: true }, { actorId: "45", enabled: false }]);
+    assert.deepEqual(packageCommands, [
+      { actorId: "45", packageId: "occ", enabled: true },
+      { actorId: "45", packageId: "custom-pack", enabled: true },
+      { actorId: "45", packageId: "occ", enabled: false }
+    ]);
     assert.equal(seedCalls, 1);
     assert.ok(searchQueries.includes("gatewayonly"));
   } finally {

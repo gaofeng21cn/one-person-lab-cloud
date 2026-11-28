@@ -20,7 +20,12 @@ import {
 import { useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 
 import type { OperatorAnnouncementController, OperatorResourceReadController } from "../app/console-controller-types.ts";
-import { isOperatorBootstrapAdmin, isOperatorPlatformAdmin } from "../app/operator-account-controller-model.ts";
+import {
+  activePackageEntitlementIds,
+  isOperatorBootstrapAdmin,
+  isOperatorPlatformAdmin,
+  packageEntitlementIdPattern
+} from "../app/operator-account-controller-model.ts";
 import type { AdminConsoleRoute } from "../app/console-router.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
 import { cloudIdentity } from "../app/console-identity.ts";
@@ -405,22 +410,6 @@ function AccountFact<T>({ source, children }: { source: SourceEnvelope<T>; child
   return children(source.data);
 }
 
-function AccountStatusBadges({ account }: { account: OperatorAccountDTO }) {
-  const active = account.status === "active";
-  return (
-    <span className="account-status-stack">
-      <Badge color={statusTone(account.status)}>
-        <span aria-hidden="true" className={`ss-dot ${active ? "ss-dot--ok" : "ss-dot--bad"}`} />
-        {statusLabel(account.status)}
-      </Badge>
-      <Badge color={account.workspacePurchaseEnabled ? "success" : "secondary"}>
-        <span aria-hidden="true" className={`ss-dot ${account.workspacePurchaseEnabled ? "ss-dot--ok" : "ss-dot--muted"}`} />
-        {account.workspacePurchaseEnabled ? "可新购 Workspace" : "不可新购 Workspace"}
-      </Badge>
-    </span>
-  );
-}
-
 function serviceEntitlementMeta(serviceId: string): { title: string; subtitle: string } {
   switch (serviceId) {
     case "netfleet_cloud":
@@ -442,6 +431,9 @@ function serviceEntitlementMeta(serviceId: string): { title: string; subtitle: s
 }
 
 function AccountCapabilityTags({ account }: { account: OperatorAccountDTO }) {
+  const activePackages = activePackageEntitlementIds(account);
+  const visiblePackages = activePackages.slice(0, 2);
+  const overflowPackages = activePackages.length - visiblePackages.length;
   return (
     <span className="account-capabilities-stack">
       <span className="capability-pill">
@@ -458,6 +450,13 @@ function AccountCapabilityTags({ account }: { account: OperatorAccountDTO }) {
           {account.linkRelayEnabled ? "Link Relay" : "无 Relay"}
         </Badge>
       ) : null}
+      {visiblePackages.map((packageId) => (
+        <Badge color="info" key={packageId}>
+          <span aria-hidden="true" className="ss-dot ss-dot--sky" />
+          {packageId}
+        </Badge>
+      ))}
+      {overflowPackages > 0 ? <Badge color="secondary">+{overflowPackages} 软件</Badge> : null}
     </span>
   );
 }
@@ -481,7 +480,10 @@ function OperatorAccountMobileCard({ account, selected, onInspect }: {
             <code className="account-subject-chip">#{account.sub2apiUserId}</code>
           </small>
         </span>
-        <AccountStatusBadges account={account} />
+        <Badge color={statusTone(account.status)}>
+          <span aria-hidden="true" className={`ss-dot ${account.status === "active" ? "ss-dot--ok" : "ss-dot--bad"}`} />
+          {statusLabel(account.status)}
+        </Badge>
       </header>
       <dl className="operator-object-card__facts operator-account-mobile-facts">
         <div className="operator-object-card__wide"><dt>已开放能力</dt><dd><AccountCapabilityTags account={account} /></dd></div>
@@ -584,6 +586,11 @@ function AccountInspectorDrawer({ account, controller, onClose, onOpenWallet }: 
   onClose: () => void;
   onOpenWallet: (account: OperatorAccountDTO) => void;
 }) {
+  const [customPackageId, setCustomPackageId] = useState("");
+  useEffect(() => {
+    setCustomPackageId("");
+  }, [account?.accountId]);
+
   useEffect(() => {
     if (!account) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -779,6 +786,139 @@ function AccountInspectorDrawer({ account, controller, onClose, onOpenWallet }: 
                 当前实例尚未配置伴生服务目录；接入 Service Catalog 后将自动在此展示与控制各服务准入。
               </p>
             )}
+
+            {cloudIdentity ? (() => {
+              const catalogState = controller.operatorAccounts.softwarePackages;
+              const catalogItems = catalogState.value?.available ? catalogState.value.data.items : [];
+              const entitlementByPackage = new Map((account.packageEntitlements || []).map((entry) => [entry.packageId, entry]));
+              const packageRows: Array<{
+                packageId: string;
+                displayName: string;
+                summary: string;
+                version: string;
+                entitled: boolean;
+                expired: boolean;
+              }> = [];
+              const seenPackages = new Set<string>();
+              const nowMs = Date.now();
+              const isEntryActive = (enabled?: boolean, expiresAt?: string) => {
+                if (!enabled) return false;
+                if (!expiresAt) return true;
+                const ms = Date.parse(expiresAt);
+                return Number.isFinite(ms) && ms > nowMs;
+              };
+              const isEntryExpired = (enabled?: boolean, expiresAt?: string) => {
+                if (!enabled || !expiresAt) return false;
+                const ms = Date.parse(expiresAt);
+                return !Number.isFinite(ms) || ms <= nowMs;
+              };
+              for (const item of catalogItems) {
+                seenPackages.add(item.packageId);
+                const entry = entitlementByPackage.get(item.packageId);
+                packageRows.push({
+                  packageId: item.packageId,
+                  displayName: item.displayName || item.packageId,
+                  summary: item.summary || "",
+                  version: item.version ? `v${item.version}` : "",
+                  entitled: isEntryActive(entry?.enabled, entry?.expiresAt),
+                  expired: isEntryExpired(entry?.enabled, entry?.expiresAt)
+                });
+              }
+              for (const entry of account.packageEntitlements || []) {
+                if (seenPackages.has(entry.packageId)) continue;
+                seenPackages.add(entry.packageId);
+                packageRows.push({
+                  packageId: entry.packageId,
+                  displayName: entry.packageId,
+                  summary: "已按软件包 ID 单独授权（实例目录暂无说明）",
+                  version: "",
+                  entitled: isEntryActive(entry.enabled, entry.expiresAt),
+                  expired: isEntryExpired(entry.enabled, entry.expiresAt)
+                });
+              }
+              const trimmedCustomPackage = customPackageId.trim().toLowerCase();
+              const validCustomPackage = packageEntitlementIdPattern.test(trimmedCustomPackage);
+              const submitCustomPackage = (event: FormEvent) => {
+                event.preventDefault();
+                if (!validCustomPackage || !active || busy) return;
+                void controller.operatorAccounts.setPackageEntitlement(account.accountId, trimmedCustomPackage, true)
+                  .then(() => setCustomPackageId(""));
+              };
+              return (
+                <div className="inspector-package-panel">
+                  <div className="inspector-capability-row">
+                    <div className="inspector-capability-row__copy">
+                      <strong>私有软件白名单</strong>
+                      <small>控制软件中心仅授权包（如 occ）的可见性与 SHA-256 签名归档下载准入。</small>
+                    </div>
+                    <Badge color={packageRows.some((row) => row.entitled) ? "info" : "secondary"}>
+                      {`已授权 ${packageRows.filter((row) => row.entitled).length} 项`}
+                    </Badge>
+                  </div>
+                  {packageRows.length > 0 ? (
+                    <ul className="inspector-package-list">
+                      {packageRows.map((pkg) => (
+                        <li className="inspector-package-item" data-package-id={pkg.packageId} key={pkg.packageId}>
+                          <div className="inspector-package-item__meta">
+                            <span className="inspector-package-item__title">
+                              <strong>{pkg.displayName}</strong>
+                              {pkg.displayName !== pkg.packageId ? <code className="account-subject-chip">{pkg.packageId}</code> : null}
+                              {pkg.version ? <small className="inspector-package-item__version">{pkg.version}</small> : null}
+                            </span>
+                            {pkg.summary ? <small className="inspector-package-item__summary">{pkg.summary}</small> : null}
+                          </div>
+                          <div className="inspector-package-item__control">
+                            <Badge color={pkg.entitled ? "success" : pkg.expired ? "warning" : "secondary"}>
+                              <span aria-hidden="true" className={`ss-dot ${pkg.entitled ? "ss-dot--ok" : "ss-dot--muted"}`} />
+                              {pkg.entitled ? "已授权" : pkg.expired ? "已过期" : "未授权"}
+                            </Badge>
+                            {active ? (
+                              <Button
+                                aria-label={`${pkg.entitled ? "撤销" : "授予"} ${pkg.packageId}`}
+                                className="account-permission-toggle"
+                                color={pkg.entitled ? "danger" : "primary"}
+                                disabled={busy}
+                                onClick={() => void controller.operatorAccounts.setPackageEntitlement(account.accountId, pkg.packageId, !pkg.entitled)}
+                                size="sm"
+                                variant="outline"
+                              >
+                                {pkg.entitled ? <ShieldOff aria-hidden size={14} /> : <ShieldCheck aria-hidden size={14} />}
+                                {pkg.entitled ? "撤销" : "授予"}
+                              </Button>
+                            ) : <span className="account-read-only">账户已停用</span>}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="inspector-package-empty">
+                      {catalogState.loading ? "正在读取实例软件包目录…" : "当前实例暂未预设受限软件目录；可直接在下方输入软件包 ID 授予白名单。"}
+                    </p>
+                  )}
+                  {active ? (
+                    <form className="inspector-package-custom" onSubmit={submitCustomPackage}>
+                      <input
+                        aria-label="自定义受限软件包 ID"
+                        className="inspector-package-custom__input"
+                        onChange={(event) => setCustomPackageId(event.currentTarget.value)}
+                        placeholder="输入受限包 ID（如 occ）"
+                        value={customPackageId}
+                      />
+                      <Button
+                        color="secondary"
+                        disabled={busy || !validCustomPackage}
+                        size="sm"
+                        type="submit"
+                        variant="outline"
+                      >
+                        <Plus aria-hidden size={14} />
+                        授予软件
+                      </Button>
+                    </form>
+                  ) : null}
+                </div>
+              );
+            })() : null}
           </section>
 
           <section className="inspector-section">
@@ -983,7 +1123,7 @@ function AccountsPage({ controller }: { controller: ConsoleController }) {
           const disabledCount = items.filter((item) => item.status !== "active").length;
           const eligibleCount = items.filter((item) => item.workspacePurchaseEnabled).length;
           const relayCount = items.filter((item) => Boolean(item.linkRelayEnabled)).length;
-          const restrictedCount = items.filter((item) => !item.workspacePurchaseEnabled && !item.linkRelayEnabled && item.status === "active" && !isOperatorPlatformAdmin(item)).length;
+          const restrictedCount = items.filter((item) => !item.workspacePurchaseEnabled && !item.linkRelayEnabled && activePackageEntitlementIds(item).length === 0 && item.status === "active" && !isOperatorPlatformAdmin(item)).length;
           const adminCount = items.filter(isOperatorPlatformAdmin).length;
           const normalizedQuery = searchQuery.trim().toLowerCase();
           const filterOptions: Array<{ id: PermissionFilter; label: string; count: number }> = [
@@ -997,7 +1137,7 @@ function AccountsPage({ controller }: { controller: ConsoleController }) {
           const filteredItems = items.filter((item) => {
             if (permissionFilter === "eligible" && !item.workspacePurchaseEnabled) return false;
             if (permissionFilter === "relay" && !item.linkRelayEnabled) return false;
-            if (permissionFilter === "restricted" && (item.workspacePurchaseEnabled || Boolean(item.linkRelayEnabled) || item.status !== "active" || isOperatorPlatformAdmin(item))) return false;
+            if (permissionFilter === "restricted" && (item.workspacePurchaseEnabled || Boolean(item.linkRelayEnabled) || activePackageEntitlementIds(item).length > 0 || item.status !== "active" || isOperatorPlatformAdmin(item))) return false;
             if (permissionFilter === "admin" && !isOperatorPlatformAdmin(item)) return false;
             if (permissionFilter === "disabled" && item.status === "active") return false;
             if (!normalizedQuery) return true;

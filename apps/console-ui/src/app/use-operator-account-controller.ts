@@ -3,9 +3,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   disableOperatorAccount as disableOperatorAccountCommand,
   getOperatorAccountsPage,
+  getOperatorSoftwarePackages,
   provisionOperatorAccount,
   seedActiveGatewayLinkRelayEntitlements as seedActiveGatewayLinkRelayEntitlementsCommand,
   setOperatorLinkRelayEntitlement as setOperatorLinkRelayEntitlementCommand,
+  setOperatorPackageEntitlement as setOperatorPackageEntitlementCommand,
   setOperatorServiceEntitlement as setOperatorServiceEntitlementCommand,
   setOperatorPlatformAdmin as setOperatorPlatformAdminCommand,
   setOperatorWorkspacePurchaseEligibility as setOperatorWorkspacePurchaseEligibilityCommand
@@ -15,6 +17,7 @@ import type {
   OperatorAccountDTO,
   OperatorAccountPageDTO,
   OperatorProvisionAccountCommandDTO,
+  OperatorSoftwarePackageCatalogDTO,
   ProvisionAccountRequest,
   SourceEnvelope
 } from "../api/dtos.ts";
@@ -26,8 +29,11 @@ import {
   accountCommandSucceeded,
   accountIdentity,
   eligibilityCommandSucceeded,
+  hasActivePackageEntitlement,
   isOperatorPlatformAdmin,
   linkRelayCommandSucceeded,
+  packageEntitlementCommandSucceeded,
+  packageEntitlementIdPattern,
   platformAdminCommandSucceeded,
   provisionCommandSucceeded,
   provisionReadbackMatches,
@@ -81,6 +87,7 @@ export function useOperatorAccountController({
   unavailableSource
 }: OperatorAccountDependencies): OperatorAccountCapability {
   const [accounts, setAccounts] = useState<RemoteState<SourceEnvelope<OperatorAccountPageDTO>>>(emptyRemote);
+  const [softwarePackages, setSoftwarePackages] = useState<RemoteState<SourceEnvelope<OperatorSoftwarePackageCatalogDTO>>>(emptyRemote);
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [provisionOperation, setProvisionOperation] = useState<OperatorProvisionAccountCommandDTO | null>(null);
@@ -93,6 +100,7 @@ export function useOperatorAccountController({
   const searchRef = useRef("");
   const scopeGeneration = useRef(0);
   const listGeneration = useRef(0);
+  const catalogGeneration = useRef(0);
   const provisionGeneration = useRef(0);
   const provisionClaim = useRef<symbol | null>(null);
   const relaySeedClaim = useRef<symbol | null>(null);
@@ -103,6 +111,7 @@ export function useOperatorAccountController({
   const eligibilityIntents = useRef(new Map<string, ToggleIntent>());
   const platformAdminIntents = useRef(new Map<string, ToggleIntent>());
   const linkRelayIntents = useRef(new Map<string, ToggleIntent>());
+  const packageIntents = useRef(new Map<string, ToggleIntent>());
   const serviceEntitlementIntents = useRef(new Map<string, ServiceEntitlementIntent>());
   activeRef.current = active;
 
@@ -117,6 +126,7 @@ export function useOperatorAccountController({
   const reset = useCallback(() => {
     scopeGeneration.current += 1;
     listGeneration.current += 1;
+    catalogGeneration.current += 1;
     provisionGeneration.current += 1;
     pageRef.current = 1;
     searchRef.current = "";
@@ -128,8 +138,10 @@ export function useOperatorAccountController({
     eligibilityIntents.current.clear();
     platformAdminIntents.current.clear();
     linkRelayIntents.current.clear();
+    packageIntents.current.clear();
     serviceEntitlementIntents.current.clear();
     setAccounts(emptyRemote());
+    setSoftwarePackages(emptyRemote());
     setPage(1);
     setSearchQuery("");
     setProvisionOperation(null);
@@ -139,6 +151,7 @@ export function useOperatorAccountController({
   useEffect(() => {
     scopeGeneration.current += 1;
     listGeneration.current += 1;
+    catalogGeneration.current += 1;
     provisionGeneration.current += 1;
   }, [active]);
 
@@ -155,6 +168,28 @@ export function useOperatorAccountController({
   const queryForApi = useCallback(() => (
     cloudIdentity ? searchRef.current.trim() || undefined : undefined
   ), []);
+
+  const loadSoftwarePackages = useCallback(async (session: AuthSession) => {
+    if (!activeRef.current || !cloudIdentity) return;
+    const generation = ++catalogGeneration.current;
+    const scope = scopeGeneration.current;
+    const userId = session.user.id;
+    const csrfToken = session.csrfToken;
+    setSoftwarePackages((current) => ({ ...current, loading: true, error: "" }));
+    try {
+      const result = await getOperatorSoftwarePackages(undefined, cloudIdentity);
+      if (generation !== catalogGeneration.current || !requestOwnsScope(scope, userId, csrfToken)) return;
+      setSoftwarePackages({ value: result, loading: false, error: "" });
+    } catch (error) {
+      if (generation !== catalogGeneration.current || !requestOwnsScope(scope, userId, csrfToken)) return;
+      const authorization = authorizationFailureState(error);
+      setSoftwarePackages(authorization ?? {
+        value: unavailableSource("console-bff"),
+        loading: false,
+        error: friendlyError(error)
+      });
+    }
+  }, [friendlyError, requestOwnsScope, unavailableSource]);
 
   const loadPage = useCallback(async (session: AuthSession, requestedPage: number) => {
     if (!activeRef.current || requestedPage < 1) return;
@@ -184,8 +219,8 @@ export function useOperatorAccountController({
   const load = useCallback(async () => {
     const session = currentSession();
     if (!session || !activeRef.current) return;
-    await loadPage(session, pageRef.current);
-  }, [currentSession, loadPage]);
+    await Promise.all([loadPage(session, pageRef.current), loadSoftwarePackages(session)]);
+  }, [currentSession, loadPage, loadSoftwarePackages]);
 
   const changePage = useCallback(async (nextPage: number) => {
     const session = currentSession();
@@ -374,6 +409,7 @@ export function useOperatorAccountController({
     accountId,
     enabled,
     intents,
+    intentKey = accountId,
     intentPrefix,
     confirm,
     runCommand,
@@ -385,6 +421,7 @@ export function useOperatorAccountController({
     accountId: string;
     enabled: boolean;
     intents: Map<string, ToggleIntent>;
+    intentKey?: string;
     intentPrefix: string;
     confirm: { title: string; description: string; confirmLabel: string; tone: "primary" | "danger" };
     runCommand: (targetId: string, reason: string, csrfToken: string, idempotencyKey: string) => Promise<void>;
@@ -403,7 +440,7 @@ export function useOperatorAccountController({
     if (!claim) return;
     const identity = accountIdentity(account);
     const reason = "operator_requested";
-    const current = intents.get(accountId);
+    const current = intents.get(intentKey);
     const intent = current && current.enabled === enabled && current.reason === reason
       && sameAccountIdentity(current.identity, account)
       ? current
@@ -412,9 +449,9 @@ export function useOperatorAccountController({
           identity,
           enabled,
           reason,
-          idempotencyKey: `${intentPrefix}:${accountId}:${crypto.randomUUID()}`
+          idempotencyKey: `${intentPrefix}:${intentKey}:${crypto.randomUUID()}`
         };
-    intents.set(accountId, intent);
+    intents.set(intentKey, intent);
     const projectionPage = pageRef.current;
     const projectionGeneration = listGeneration.current;
     const scope = scopeGeneration.current;
@@ -439,7 +476,7 @@ export function useOperatorAccountController({
       if (projectionGeneration === listGeneration.current && pageRef.current === projectionPage) {
         commitPage(readback.visibleResult);
       }
-      if (intents.get(accountId) === intent) intents.delete(accountId);
+      if (intents.get(intentKey) === intent) intents.delete(intentKey);
       flash(successMessage);
     } catch (error) {
       if (accountClaims.current.get(accountId) === claim && requestOwnsScope(scope, userId, csrfToken)) {
@@ -651,12 +688,45 @@ export function useOperatorAccountController({
     }
   }, [currentSession, flash, loadPage, mutationError, requestOwnsScope]);
 
+  const setPackageEntitlement = useCallback(async (accountId: string, packageId: string, enabled: boolean) => {
+    const normalizedPackageId = packageId.trim().toLowerCase();
+    if (!packageEntitlementIdPattern.test(normalizedPackageId)) {
+      flash("软件包 ID 仅支持小写字母、数字、点、短横线或下划线", "danger");
+      return;
+    }
+    await executeToggle({
+      accountId,
+      enabled,
+      intents: packageIntents.current,
+      intentKey: `${accountId}:${normalizedPackageId}`,
+      intentPrefix: "package-entitlement",
+      confirm: {
+        title: enabled ? `授予软件「${normalizedPackageId}」白名单` : `撤销软件「${normalizedPackageId}」白名单`,
+        description: enabled
+          ? `确认允许该 Gateway 用户在软件中心下载并安装受限软件「${normalizedPackageId}」？`
+          : `确认撤销该用户对受限软件「${normalizedPackageId}」的下载与更新授权？`,
+        confirmLabel: enabled ? "确认授予" : "确认撤销",
+        tone: enabled ? "primary" : "danger"
+      },
+      runCommand: async (targetId, reason, csrfToken, idempotencyKey) => {
+        const result = await setOperatorPackageEntitlementCommand(targetId, normalizedPackageId, enabled, reason, csrfToken, idempotencyKey);
+        if (!packageEntitlementCommandSucceeded(result, targetId, normalizedPackageId, enabled)) {
+          throw new Error("operator_account_package_entitlement_identity_mismatch");
+        }
+      },
+      readbackMatches: (candidate) => hasActivePackageEntitlement(candidate, normalizedPackageId) === enabled,
+      readbackError: "operator_account_package_entitlement_readback_mismatch",
+      successMessage: enabled ? `已授予 ${normalizedPackageId} 准入` : `已撤销 ${normalizedPackageId} 准入`
+    });
+  }, [executeToggle, flash]);
+
   const pages = accounts.value?.available
     ? Math.ceil(accounts.value.data.total / accounts.value.data.pageSize)
     : 0;
 
   return {
     accounts,
+    softwarePackages,
     page,
     pages,
     searchQuery,
@@ -675,6 +745,7 @@ export function useOperatorAccountController({
     setPlatformAdmin,
     setLinkRelayEntitlement,
     seedActiveLinkRelayEntitlements,
+    setPackageEntitlement,
     load,
     reset
   };

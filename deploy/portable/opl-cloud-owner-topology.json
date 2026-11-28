@@ -557,7 +557,11 @@
     "OPL_LEDGER_TOKEN"
    ],
    "optionalEnv": [
-    "OPL_CONSOLE_DIST_DIR"
+    "OPL_CONSOLE_DIST_DIR",
+    "OPL_SOFTWARE_PACKAGES_JSON",
+    "OPL_SOFTWARE_REGISTRY_USERNAME",
+    "OPL_SOFTWARE_REGISTRY_TOKEN",
+    "OPL_SOFTWARE_CACHE_ROOT"
    ],
    "registers": [
     "Console BFF REST surface"

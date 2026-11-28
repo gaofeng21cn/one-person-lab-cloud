@@ -262,3 +262,42 @@ test("link relay entitlement write and seed routes target Cloud BFF and refuse l
     "/api/v2/operator/link-relay/seed-active-users"
   ]);
 });
+
+test("operator software package catalog and entitlement write routes target Cloud BFF and refuse legacy writes", async () => {
+  const calls: string[] = [];
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    calls.push(String(url));
+    if (String(url).endsWith("/software-packages")) {
+      return new Response(JSON.stringify({
+        source: "console-bff",
+        status: "available",
+        available: true,
+        fetchedAt: "2026-11-28T06:00:00Z",
+        data: { configured: true, items: [] }
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response(JSON.stringify({
+      operationId: "pkg-entitlement-1",
+      accountId: "45",
+      packageId: "occ",
+      status: "succeeded",
+      enabled: true
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+
+  await assert.rejects(
+    async () => operatorApi.setOperatorPackageEntitlement("45", "occ", true, "operator_requested", "csrf", "key", false),
+    /operator_write_unavailable/
+  );
+  await assert.rejects(
+    async () => operatorApi.getOperatorSoftwarePackages(undefined, false),
+    /operator_read_unavailable/
+  );
+  assert.deepEqual(calls, []);
+  await operatorApi.getOperatorSoftwarePackages(undefined, true);
+  await operatorApi.setOperatorPackageEntitlement("45", "occ", true, "operator_requested", "csrf", "key", true);
+  assert.deepEqual(calls, [
+    "/api/v2/operator/software-packages",
+    "/api/v2/operator/accounts/45/package-entitlements"
+  ]);
+});

@@ -897,6 +897,7 @@ export interface OperatorAccount {
   platformAdminEnabled?: boolean;
   isBootstrapAdmin?: boolean;
   linkRelayEnabled?: boolean;
+  packageEntitlements?: OperatorPackageEntitlementDTO[];
 }
 
 export interface OperatorAccountsData {
@@ -983,6 +984,36 @@ export interface LinkRelayEntitlementReadbackDTO {
   isPlatformAdmin: boolean;
   reason: string;
   updatedAt?: string;
+}
+
+export interface OperatorPackageEntitlementDTO {
+  packageId: string;
+  enabled: boolean;
+  reason: string;
+  expiresAt?: string;
+  updatedAt?: string;
+}
+
+export interface OperatorSoftwarePackageDTO {
+  packageId: string;
+  displayName: string;
+  summary?: string;
+  version: string;
+  sha256: string;
+  sizeBytes?: number;
+  filename?: string;
+}
+
+export interface OperatorSoftwarePackageCatalogDTO {
+  configured: boolean;
+  items: OperatorSoftwarePackageDTO[];
+}
+
+export interface OperatorPackageEntitlementCommandDTO extends OperationStatusDTO {
+  accountId: string;
+  packageId: string;
+  enabled: boolean;
+  expiresAt?: string;
 }
 
 export interface ResourceFact {

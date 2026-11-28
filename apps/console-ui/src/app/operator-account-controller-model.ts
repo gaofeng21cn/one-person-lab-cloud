@@ -2,6 +2,7 @@ import type {
   OperatorAccountCommandDTO,
   OperatorAccountDTO,
   OperatorLinkRelayEntitlementCommandDTO,
+  OperatorPackageEntitlementCommandDTO,
   OperatorPlatformAdminCommandDTO,
   OperatorProvisionAccountCommandDTO,
   OperatorSeedLinkRelayEntitlementsCommandDTO,
@@ -33,6 +34,40 @@ export function isOperatorPlatformAdmin(account: Pick<OperatorAccountDTO, "accou
 export function isOperatorBootstrapAdmin(account: Pick<OperatorAccountDTO, "accountId" | "isBootstrapAdmin">) {
   if (typeof account.isBootstrapAdmin === "boolean") return account.isBootstrapAdmin;
   return account.accountId === "acct-admin";
+}
+
+export const packageEntitlementIdPattern = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+
+export function hasActivePackageEntitlement(
+  account: Pick<OperatorAccountDTO, "packageEntitlements">,
+  packageId: string,
+  nowMs: number = Date.now()
+) {
+  const normalized = packageId.trim();
+  if (!normalized || !account.packageEntitlements?.length) return false;
+  return account.packageEntitlements.some((entry) => {
+    if (entry.packageId !== normalized || !entry.enabled) return false;
+    if (!entry.expiresAt) return true;
+    const expiresMs = Date.parse(entry.expiresAt);
+    return Number.isFinite(expiresMs) && expiresMs > nowMs;
+  });
+}
+
+export function activePackageEntitlementIds(
+  account: Pick<OperatorAccountDTO, "packageEntitlements">,
+  nowMs: number = Date.now()
+) {
+  if (!account.packageEntitlements?.length) return [];
+  const ids: string[] = [];
+  for (const entry of account.packageEntitlements) {
+    if (!entry.enabled) continue;
+    if (entry.expiresAt) {
+      const expiresMs = Date.parse(entry.expiresAt);
+      if (!Number.isFinite(expiresMs) || expiresMs <= nowMs) continue;
+    }
+    if (!ids.includes(entry.packageId)) ids.push(entry.packageId);
+  }
+  return ids;
 }
 
 export function expectedWorkspacePurchaseEligibility(input: ProvisionAccountRequest) {
@@ -144,6 +179,17 @@ export function seedLinkRelayCommandSucceeded(
     && Number.isInteger(command.seededCount) && command.seededCount >= 0
     && Number.isInteger(command.existingCount) && command.existingCount >= 0
     && command.seededCount + command.existingCount <= command.scannedCount;
+}
+
+export function packageEntitlementCommandSucceeded(
+  command: OperatorPackageEntitlementCommandDTO,
+  accountId: string,
+  packageId: string,
+  enabled: boolean
+) {
+  return accountCommandSucceeded(command, accountId)
+    && command.packageId === packageId
+    && command.enabled === enabled;
 }
 
 export function provisionReadbackMatches(
