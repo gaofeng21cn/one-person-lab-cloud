@@ -54,6 +54,7 @@ test("operator console reads resolve to the Cloud BFF under CloudIdentity", asyn
   await getOperatorAccounts(true);
   await getOperatorOverview(undefined, true);
   await getOperatorAccountsPage(2, 20, undefined, true);
+  await getOperatorAccountsPage(1, 20, undefined, true, "alice");
   await getOperatorWorkspaces(1, 20, undefined, true);
   await getOperatorWorkspace("ws/1", undefined, true);
   await getOperatorAnnouncements(1, 20, undefined, true);
@@ -62,6 +63,7 @@ test("operator console reads resolve to the Cloud BFF under CloudIdentity", asyn
     "/api/v2/operator/accounts",
     "/api/v2/operator/overview",
     "/api/v2/operator/accounts?page=2&pageSize=20",
+    "/api/v2/operator/accounts?page=1&pageSize=20&search=alice",
     "/api/v2/operator/workspaces?page=1&pageSize=20",
     "/api/v2/operator/workspaces/ws%2F1",
     "/api/v2/operator/announcements?page=1&pageSize=20",
@@ -196,4 +198,19 @@ test("activation uses its Cloud BFF owner and refuses the retired legacy route",
   assert.deepEqual(calls, []);
   await operatorApi.provisionOperatorAccount({} as never, "csrf", "key", true);
   assert.deepEqual(calls, ["/api/v2/operator/accounts"]);
+});
+
+test("platform admin delegation uses Cloud BFF route and refuses legacy builds", async () => {
+  const calls: string[] = [];
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    calls.push(String(url));
+    return new Response(JSON.stringify({
+      operationId: "platform-admin-1", accountId: "45", status: "succeeded",
+      platformAdminEnabled: true, isBootstrapAdmin: false
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  await assert.rejects(async () => operatorApi.setOperatorPlatformAdmin("45", true, "operator_requested", "csrf", "key", false), /operator_write_unavailable/);
+  assert.deepEqual(calls, []);
+  await operatorApi.setOperatorPlatformAdmin("45", true, "operator_requested", "csrf", "key", true);
+  assert.deepEqual(calls, ["/api/v2/operator/accounts/45/platform-admin"]);
 });

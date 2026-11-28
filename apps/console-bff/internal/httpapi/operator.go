@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -50,7 +51,7 @@ var errInvalidOperatorPage = errors.New("invalid operator pagination")
 
 func (s *Server) registerOperatorRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v2/operator/overview", s.operatorReadHandler("overview", "control-plane+workspace"))
-	mux.HandleFunc("GET /api/v2/operator/accounts", s.operatorReadHandler("accounts", "control-plane+sub2api"))
+	mux.HandleFunc("GET /api/v2/operator/accounts", s.operatorReadHandler("accounts", "tenant+sub2api"))
 	mux.HandleFunc("GET /api/v2/operator/workspaces", s.operatorReadHandler("workspaces", "workspace+fabric+serve"))
 	mux.HandleFunc("GET /api/v2/operator/workspaces/{workspaceId}", s.operatorReadHandler("workspace", "workspace+fabric+serve"))
 	mux.HandleFunc("GET /api/v2/operator/announcements", s.operatorReadHandler("announcements", "control-plane"))
@@ -78,9 +79,14 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 			writePublisherIdentityError(w, r, err)
 			return
 		}
-		page, pageSize := 1, operatorDefaultPageSize
+		page, pageSize, search := 1, operatorDefaultPageSize, ""
 		switch kind {
-		case "accounts", "workspaces", "announcements", "Reconciliation":
+		case "accounts":
+			if page, pageSize, search, err = operatorAccountsQuery(r); err != nil {
+				writePublisherError(w, r, 400, "invalid_pagination", "valid page, pageSize and search are required")
+				return
+			}
+		case "workspaces", "announcements", "Reconciliation":
 			if page, pageSize, err = operatorPage(r); err != nil {
 				writePublisherError(w, r, 400, "invalid_pagination", "one page and pageSize are required")
 				return
@@ -111,7 +117,7 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 				return
 			}
 		}
-		if s.operator == nil && kind != "workspaces" && kind != "workspace" && kind != "overview" {
+		if s.operator == nil && kind != "workspaces" && kind != "workspace" && kind != "overview" && kind != "accounts" {
 			writePublisherError(w, r, 503, "owner_unconfigured", "operator owner is not configured")
 			return
 		}
@@ -132,6 +138,10 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 			s.readOperatorOverview(w, r, ctx, caller)
 			return
 		}
+		if kind == "accounts" {
+			s.readOperatorAccounts(w, r, ctx, caller, page, pageSize, search)
+			return
+		}
 		if kind == "workspaces" || kind == "workspace" {
 			s.readOperatorWorkspaces(w, r, ctx, caller, workspaceID, page, pageSize)
 			return
@@ -144,14 +154,6 @@ func (s *Server) operatorReadHandler(kind, source string) http.HandlerFunc {
 		if (source != "" && !validOperatorEnvelope(raw, source)) || (source == "" && !validOperatorObject(raw)) {
 			writePublisherError(w, r, 502, "invalid_owner_response", "invalid operator owner response")
 			return
-		}
-		if kind == "accounts" {
-			projected, projErr := s.projectOperatorAccountEligibility(ctx, caller, r.Header.Get(requestIDHeader), raw)
-			if projErr != nil {
-				writeOwnerCallFailure(w, r, projErr)
-				return
-			}
-			raw = projected
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -186,6 +188,34 @@ func (s *Server) operatorRead(ctx context.Context, kind, session, workspaceID st
 	default:
 		return nil, status.Error(codes.Internal, "unknown operator read")
 	}
+}
+
+func operatorAccountsQuery(r *http.Request) (int, int, string, error) {
+	page, pageSize, search := 1, operatorDefaultPageSize, ""
+	query, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		return 0, 0, "", errInvalidOperatorPage
+	}
+	for key, values := range query {
+		if (key != "page" && key != "pageSize" && key != "search") || len(values) != 1 {
+			return 0, 0, "", errInvalidOperatorPage
+		}
+		switch key {
+		case "page":
+			page, err = strconv.Atoi(values[0])
+		case "pageSize":
+			pageSize, err = strconv.Atoi(values[0])
+		case "search":
+			search = strings.TrimSpace(values[0])
+			if utf8.RuneCountInString(search) > 100 {
+				return 0, 0, "", errInvalidOperatorPage
+			}
+		}
+		if err != nil || page < 1 || pageSize < 1 || pageSize > operatorMaxPageSize {
+			return 0, 0, "", errInvalidOperatorPage
+		}
+	}
+	return page, pageSize, search, nil
 }
 
 func operatorPage(r *http.Request) (int, int, error) {
