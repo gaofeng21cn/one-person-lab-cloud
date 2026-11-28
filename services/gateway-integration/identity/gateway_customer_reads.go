@@ -148,19 +148,32 @@ func (g *Gateway) customerBalanceHistoryPage(ctx context.Context, userID int64, 
 	return gatewayBalanceDisplayPage{Items: entries[start:end], Total: total, Page: page, PageSize: pageSize, Pages: pages}, nil
 }
 
+// gatewaySessionActor resolves the caller's own verified identity from the
+// session it presents. The session must be live — the owner's own fence refuses
+// a revoked, expired or suspended-Tenant session — and the actor the request
+// names must be the actor that session belongs to, so a caller cannot borrow
+// another identity's session.
+func (s *Service) gatewaySessionActor(ctx context.Context, call *api.CallContext) (*api.Session, error) {
+	if call.GetSessionId() == "" {
+		return nil, status.Error(codes.Unauthenticated, "active Cloud session required")
+	}
+	session, _, _, err := s.session(ctx, call.GetSessionId())
+	if err != nil {
+		return nil, err
+	}
+	if call.GetActorId() != "" && call.GetActorId() != session.GetActorId() {
+		return nil, denied()
+	}
+	return session, nil
+}
+
 // gatewaySubjectForSession resolves the Gateway subject of the caller's own
 // verified identity. The subject is never named by the request: a caller reads
 // the balance of the identity it owns.
 func (s *Service) gatewaySubjectForSession(ctx context.Context, call *api.CallContext) (int64, error) {
-	if call.GetSessionId() == "" {
-		return 0, status.Error(codes.Unauthenticated, "active Cloud session required")
-	}
-	session, _, _, err := s.session(ctx, call.GetSessionId())
+	session, err := s.gatewaySessionActor(ctx, call)
 	if err != nil {
 		return 0, err
-	}
-	if call.GetActorId() != "" && call.GetActorId() != session.GetActorId() {
-		return 0, denied()
 	}
 	binding, err := s.userBinding(ctx, session.GetActorId())
 	if err != nil {
@@ -215,12 +228,17 @@ func (s *Service) ListPersonalGatewayBalanceHistory(ctx context.Context, r *api.
 
 // GetPersonalGatewayEndpoint publishes the public Gateway origin this owner's
 // own configuration points at.
+//
+// The endpoint is a customer-facing fact, so the caller proves it owns the
+// identity it reads it for: its session must be live and the actor it names
+// must be that session's own actor. A revoked session or a borrowed session
+// reads nothing.
 func (s *Service) GetPersonalGatewayEndpoint(ctx context.Context, r *api.GetPersonalGatewayEndpointRpcRequest) (*api.PersonalGatewayEndpoint, error) {
 	if err := peer(ctx, owneridentity.ConsoleBFF); err != nil {
 		return nil, err
 	}
-	if r.GetContext().GetSessionId() == "" {
-		return nil, status.Error(codes.Unauthenticated, "active Cloud session required")
+	if _, err := s.gatewaySessionActor(ctx, r.GetContext()); err != nil {
+		return nil, err
 	}
 	if s.Gateway == nil {
 		return nil, status.Error(codes.Unavailable, "Gateway owner is not configured")

@@ -143,6 +143,43 @@ Git log.
   `/api/gateway/*` read routes stay only for the legacy Console build until
   Control Plane retirement.
 
+- **Tenant Lifecycle Ownership**: `CloudIdentity` (`services/gateway-integration`,
+  `tenant.tenants`) owns the Tenant lifecycle, because the owner's own fences
+  already read that status: a session, an authorization and a Tenant read all
+  require an active Tenant. Suspending a Tenant therefore suspends the
+  customer, and the owner writes the status, the durable Operation and the
+  audit evidence in one transaction before revoking the Tenant's live
+  sessions. A personal customer owns exactly one Tenant, so this is the
+  customer's account status rather than a second copy of it. The public surface
+  is the Console BFF route `POST /api/v2/admin/tenants/{tenantId}/suspend`,
+  which carries the platform administrator's command to the owner. The Control
+  Plane's `POST /api/operator/accounts/{accountId}/disable` stays only for the
+  retained legacy Console build until Control Plane retirement.
+- **Tenant Re-enable Ownership**: `CloudIdentity` (`services/gateway-integration`,
+  `tenant.tenants`) owns the re-enable half of the customer's account status,
+  because it already owns the suspend half and because the owner's own fences
+  read that status: a session, an authorization and a Tenant read all require
+  an active Tenant. Re-enabling a Tenant is therefore re-enabling the account,
+  and the owner writes the status, the durable Operation and the audit evidence
+  in one transaction before the owner's fences serve that customer again. The
+  revoked sessions stay revoked, because they are the history of why the
+  account was disabled, and the customer signs in again for a live session. The
+  public surface is the Console BFF route
+  `POST /api/v2/admin/tenants/{tenantId}/reenable`, which carries the platform
+  administrator's command to the owner over the typed client.
+  The Workspace resume continuation that the published re-enable contract
+  describes is deliberately **not** claimed here. It is not a missing line in
+  this command: the Workspace owner suspends a Workspace only for a paid term
+  that expired or a resource that went absent, and it recovers those on its own
+  sweep when the paid term is valid again and the resources are present. The
+  Cloud's tenant suspension pauses no Workspace and the Workspace owner never
+  reads the Tenant's status, so "the Workspaces that the tenant suspension
+  stopped" is an empty set today. The tenant-to-workspace coordination rpc
+  (`TenantWorkspaceCoordination`) and the `getTenantLifecycleOperation`
+  readback that would carry the sub-operations are published but implemented
+  nowhere; they are the next slice, and until they exist this command cannot
+  pretend to have resumed a Workspace.
+
 ## Non-Spending Publication & Incremental Retirement
 
 - **Non-Spending Release Admission**: Formal Cloud Candidate/Release

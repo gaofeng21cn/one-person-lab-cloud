@@ -148,6 +148,22 @@ Plane / delegated process-local custody onto canonical domain owners:
      `GET /internal/cloud/gateway/endpoint` bridges are retired with it; the
      retained `/api/gateway/*` read routes stay until the retained Control Plane
      Console build is retired.
+   - The customer's account status is bidirectional at the Tenant owner:
+     suspending a Tenant suspends that customer because a personal customer
+     owns exactly one Tenant and the owner's own fences refuse a suspended
+     Tenant, and the platform administrator re-enables a suspended account
+     through `POST /api/v2/admin/tenants/{tenantId}/reenable`, restoring the
+     Tenant, its permission version and its durable Operation in one
+     transaction. The Workspace resume continuation the re-enable contract
+     describes is still open, and it is open for a concrete reason: the
+     Workspace owner suspends a Workspace only for a paid term that expired or a
+     resource that went absent, and it recovers those on its own sweep when the
+     paid term is valid again and the resources are present. The Cloud's tenant
+     suspension pauses no Workspace, so "the Workspaces that the tenant
+     suspension stopped" is an empty set today, and the tenant-to-workspace
+     coordination rpc (`TenantWorkspaceCoordination`) plus the
+     `getTenantLifecycleOperation` readback that would carry the sub-operations
+     are published but implemented nowhere.
 2. **Billing & Announcements Extraction**: Retire retained Control Plane
    bridges (`/internal/cloud/legacy-billing/*`, `/internal/cloud/announcements`)
    once Cloud Ledger and Announcement owners serve authenticated CloudIdentity
@@ -159,6 +175,10 @@ Plane / delegated process-local custody onto canonical domain owners:
      migrated to `CloudIdentity` (`opl_tenant`). The legacy Control Plane
      endpoint `POST /api/operator/accounts/{accountId}/workspace-purchase-eligibility`
      stays only until the retained legacy Console build is retired.
+   - The legacy Control Plane endpoint `POST /api/operator/accounts/{accountId}/disable`
+     writes `control_plane_users.status` in the retiring service. The Cloud
+     build suspends the customer through the Tenant owner instead; the legacy
+     endpoint stays only until the retained legacy Console build is retired.
    - Preserve the retained deletion, refund, and renewal executors until their
      live clients have migrated and a current owner census can distinguish
      non-terminal operations from completed settlement. Include accepted
