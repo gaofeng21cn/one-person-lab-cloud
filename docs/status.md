@@ -32,6 +32,20 @@ chronological snapshots.
   the owner-topology contract tests read live in `tools/go/http-surface-scan` and
   `tools/go/route-scan`, so retiring the retained Control Plane directory
   removes no source check.
+- **Control Plane Retirement Residue Gate**: The retirement of
+  `services/control-plane` is proved by one instrument,
+  `tools/verify-no-control-plane.ts`, which runs in the `source` group of
+  `npm run verify:local`. It declares thirteen assertions, one per retirement
+  slice, and runs the assertions whose slice has arrived; the assertions of the
+  slices that have not arrived stay pending and are reported as pending rather
+  than as a pass. The declared stage table is checked against the assertions'
+  `fromSlice` markers, so a check cannot be postponed by editing one copy of
+  the plan. The gate scans the bridge implementation surface, the Local-Docker
+  gateway label, the published portable deployment surface, the product image
+  pipeline, the retired service directory, the local verification targets, the
+  compose files, the retired Control Plane environment variables, the retired
+  internal bridge prefix and every repository path that still names the retired
+  source directory; it does not scan the documentation layer.
 - **Slim Go-Only Image & 3-Container Composed Portable Topology**: `Dockerfile`
   compiles all Go binaries in one shared `go-build` stage onto a
   Node-free `debian:bookworm-slim` runtime carrying `/app/dist` and baked
@@ -123,6 +137,22 @@ chronological snapshots.
     customer signs in again. The Workspace resume continuation the re-enable
     contract describes stays open, because the Cloud's tenant suspension pauses
     no Workspace; that is recorded in [roadmap.md](roadmap.md).
+  - The historical OCI destinations are handed to the Gateway owner. At owner
+    startup, `Gateway Integration` (`services/gateway-integration`) reads the
+    frozen `tenant.tenant_repository_bindings` table and moves each destination
+    into the single live mapping `gateway.identity_mappings`. A destination is
+    attributed only to a Tenant that is `active` and has exactly one registered
+    owner (`tenant.tenant_members` with `role='owner'` and no revocation); that
+    owner's `actor_id` is the Gateway/Sub2API subject id, so the mapping's
+    `actor_id` and `sub2api_user_id` are the same value. A `retired` reservation
+    is reported as released, an inactive Tenant or any other owner count is
+    reported as unattributable, and a live mapping that holds a different
+    destination, is revoked, or lacks its destination verification is reported
+    as a conflict. The pass is read-only on the frozen table, is idempotent, and
+    never overwrites a live destination. It inherits the recorded reservation
+    fact and does not re-verify the destination against the OCI registry. The
+    runtime still reads the frozen table as a fallback for a historical
+    destination; that read is retired in the following slice.
   - Control Plane image-replacement creation/preview/worker commands and admin
     activation endpoints are retired; only the operator image-policy GET
     (`GET /api/operator/workspace-runtime-image-policy`), Fabric image

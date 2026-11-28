@@ -164,6 +164,15 @@ Plane / delegated process-local custody onto canonical domain owners:
      coordination rpc (`TenantWorkspaceCoordination`) plus the
      `getTenantLifecycleOperation` readback that would carry the sub-operations
      are published but implemented nowhere.
+   - The runtime still reads the frozen `tenant.tenant_repository_bindings` table as
+     a fallback for a historical destination. The one-time handover that moves
+     those destinations into `gateway.identity_mappings` runs at owner startup and
+     reports every row it could not attribute, so retiring that read is a separate
+     slice with explicit preconditions: the handover reports `unattributable=0`,
+     `conflicting=0` and `failed=0`, every row it reported has a recorded operator
+     decision, and the accepted Build executor references and artifact history keep
+     their own copies, because the frozen table stays readable for provenance and is
+     never deleted.
 2. **Billing & Announcements Extraction**: Retire retained Control Plane
    bridges (`/internal/cloud/legacy-billing/*`, `/internal/cloud/announcements`)
    once Cloud Ledger and Announcement owners serve authenticated CloudIdentity
@@ -195,6 +204,11 @@ Plane / delegated process-local custody onto canonical domain owners:
      `deploy/portable/opl-cloud-owner-topology.json`, which still names it as a
      Cloud backend unit member with its own HTTP surfaces, readiness criteria
      and peer addresses.
+   - Every retirement slice must leave no residue, and the instrument that
+     proves it is `tools/verify-no-control-plane.ts` in the `source` group of
+     `npm run verify:local`: a slice opens its own assertions, the gate turns
+     red when a slice leaves residue behind, and the assertions of the slices
+     that have not arrived stay pending and are reported as pending.
 4. **Module & DB-Role Coverage**: `tests/contracts/module-physical-boundaries.test.ts`
    now enforces package and SDK isolation across all 11 Go services under `services/`
    and `apps/console-bff`; extend PostgreSQL role-isolation checks to cover every
