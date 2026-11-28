@@ -26,7 +26,7 @@ const staticConsoleRoutes = [
   ["/console/announcements", "customer.announcements", "customer", "消息", true, "customer.announcements"],
   ["/admin", "admin.overview", "admin", "运维概览", true, "admin.overview"],
   ["/admin/overview", "admin.overview", "admin", "运维概览", true, "admin.overview"],
-  ["/admin/accounts", "admin.accounts", "admin", "客户与计费账户", true, "admin.accounts"],
+  ["/admin/accounts", "admin.accounts", "admin", "用户与权限", true, "admin.accounts"],
   ["/admin/billing", "admin.billing", "admin", "计费复核", true, "admin.billing"],
   ["/admin/resources", "admin.resources", "admin", "资源状态", true, "admin.resources"],
   ["/admin/system", "admin.system", "admin", "系统状态", true, "admin.system"],

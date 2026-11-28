@@ -234,7 +234,7 @@ test("Account and purchase labels keep their full text where the container has r
     const page = await browser.newPage({ viewport: { width: 1440, height: 950 } });
     await login(page, demo.origin, true);
     await page.goto(`${demo.origin}/admin/accounts`, { waitUntil: "networkidle" });
-    await page.getByRole("heading", { level: 2, name: "客户与计费账户", exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("heading", { level: 2, name: "用户与权限", exact: true }).waitFor({ state: "visible" });
     const labels = await page.evaluate(() => {
       const truncated = (el: Element) => (el as HTMLElement).scrollWidth > (el as HTMLElement).clientWidth + 1;
       const emails = Array.from(document.querySelectorAll(".operator-account-identity__text strong"))
