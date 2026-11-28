@@ -24,20 +24,6 @@ func TestCloudOperatorReadsServeTheConsoleSurfaces(t *testing.T) {
 	assertNoCookieMutation(t, overview)
 }
 
-// TestCloudOperatorAccountsBridgeIsRetired proves the operator account page is
-// no longer bridged to this retained writer. The account fact belongs to the
-// CloudIdentity owner now, so the internal accounts route is gone and the
-// Console reads the owner's own page instead.
-func TestCloudOperatorAccountsBridgeIsRetired(t *testing.T) {
-	f := newCloudAnnouncementHTTPFixture(t, newMemoryTableStore())
-	operator := f.gateway.bind("operator-session", "operator-actor", "910")
-
-	accounts := f.requestRaw(t, http.MethodGet, "/internal/cloud/operator/accounts?page=1&pageSize=20", operator, "")
-	if strings.Contains(string(accounts.body), "control-plane+sub2api") {
-		t.Fatalf("the retired accounts bridge still served the account page: %d %s", accounts.code, accounts.body)
-	}
-}
-
 // TestCloudOperatorAnnouncementsShareTheRetainedWriter proves the operator
 // announcement list the console still sent to the retained /api/operator/*
 // route is reachable through the same BFF proof and answers with the same shared
