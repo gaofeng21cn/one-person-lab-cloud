@@ -3,6 +3,7 @@ package module
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -86,6 +87,28 @@ func Run(ctx context.Context, env ownerservice.ModuleEnv) error {
 			return e
 		}
 		s.GatewayStore = store
+		// The historical OCI destinations live in the frozen Tenant table. This
+		// one-time pass moves them into the Gateway owner's single destination
+		// mapping, which is the only place a destination is written from now on.
+		// A row the owner cannot serve as recorded is reported for an operator
+		// and never blocks the service. An unavailable owner store is different:
+		// the pass cannot be trusted to have completed, so it fails the startup
+		// the same way the owner refuses to serve with an incomplete handover.
+		summary, handoverErr := s.HandoverRepositoryBindings(ctx)
+		slog.Info("repository binding handover",
+			"scanned", summary.Scanned, "moved", summary.Moved, "already", summary.Already,
+			"released", summary.Released, "unattributable", summary.Unattributable,
+			"conflicting", summary.Conflicting, "failed", summary.Failed,
+			"moved_refs", summary.MovedRefs)
+		if summary.Unattributable > 0 || summary.Conflicting > 0 || summary.Failed > 0 {
+			slog.Error("repository binding handover needs an operator",
+				"moved", summary.MovedRefs, "unattributable", summary.UnattributableRefs,
+				"conflicting", summary.ConflictingRefs, "failed", summary.FailedRefs)
+		}
+		if handoverErr != nil {
+			slog.Error("repository binding handover failed", "error", handoverErr.Error())
+			return handoverErr
+		}
 
 		group := strings.TrimSpace(env.Env("OPL_GATEWAY_WORKSPACE_KEY_GROUP"))
 		if group == "" {

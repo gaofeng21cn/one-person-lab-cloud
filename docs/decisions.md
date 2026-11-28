@@ -155,6 +155,20 @@ Git log.
   `GET /internal/cloud/gateway/endpoint` bridges are retired; its retained
   `/api/gateway/*` read routes stay only for the legacy Console build until
   Control Plane retirement.
+- **Historical OCI Destination Attribution And Handover**: A historical OCI
+  destination moves from the frozen `tenant.tenant_repository_bindings` table into
+  `gateway.identity_mappings` only when its Tenant is `active` and has exactly one
+  registered owner (`tenant.tenant_members` with `role='owner'` and no
+  revocation). That owner's `actor_id` is the Gateway/Sub2API subject id, so the
+  mapping's `actor_id` and `sub2api_user_id` are the same value. The handover runs
+  in the owner process, because the two tables live in two databases, and it writes
+  only through the owner's own storage action (`GatewayStore.bindAuthenticatedUser`).
+  It never guesses an actor, never overwrites a live destination, and never writes
+  to the frozen table: a `retired` reservation is released, an ambiguous or inactive
+  owner is unattributable, and a mapping that holds a different destination, is
+  revoked, or lacks its destination verification is a conflict for an operator. The
+  handover inherits the recorded reservation fact; it does not re-verify the
+  destination against the OCI registry, because the retired write path never did.
 
 - **Tenant Lifecycle Ownership**: `CloudIdentity` (`services/gateway-integration`,
   `tenant.tenants`) owns the Tenant lifecycle, because the owner's own fences
