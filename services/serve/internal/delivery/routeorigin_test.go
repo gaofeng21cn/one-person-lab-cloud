@@ -80,6 +80,43 @@ func TestServeRouteOriginRefusesToGuess(t *testing.T) {
 	}
 }
 
+// TestServeRouteOriginReadsTheDeclaredConsoleAddress proves the Console
+// address Serve states to an application is the installation's own declared
+// public address, and that an installation which declared none — or declared
+// one that is not an absolute http/https URL — declares none. The address is
+// never inferred from the Workspace domain.
+func TestServeRouteOriginReadsTheDeclaredConsoleAddress(t *testing.T) {
+	declared := func(value string) delivery.RouteOrigin {
+		return delivery.RouteOriginFromEnvWith(func(name string) string {
+			if name == "OPL_PUBLIC_URL" {
+				return value
+			}
+			return ""
+		})
+	}
+	if origin := declared("https://console.example"); origin.ConsoleURL != "https://console.example" {
+		t.Fatalf("console url=%q, want the declared address", origin.ConsoleURL)
+	}
+	// A declared address carries no trailing slash, so the application can
+	// append a Console path to it.
+	if origin := declared("https://console.example/"); origin.ConsoleURL != "https://console.example" {
+		t.Fatalf("console url=%q, want the declared address without its trailing slash", origin.ConsoleURL)
+	}
+	for _, invalid := range []string{
+		"",
+		"console.example",
+		"/console",
+		"ftp://console.example",
+		"https://",
+		"https://user:secret@console.example",
+		"https://console.example?x=1",
+	} {
+		if origin := declared(invalid); origin.ConsoleURL != "" {
+			t.Fatalf("console url=%q for the declared %q, want none", origin.ConsoleURL, invalid)
+		}
+	}
+}
+
 // TestServeGatewayUpstreamValidatesProviderDestination proves the in-cluster
 // destination is exactly one DNS label plus the declared port: an address, an
 // external host or a compound name is refused, never reinterpreted.

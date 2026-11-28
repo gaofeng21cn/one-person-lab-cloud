@@ -76,6 +76,28 @@ Git log.
   destinations (`Gateway.ReadUserExternalIdentity` / `PUBLISHER_NAMESPACE_MISMATCH`
   enforcement), preventing cross-tenant image overwrite.
 
+### The Console Facts A Workspace Application Receives
+
+- A Workspace application can only guide a customer back to the Console when it
+  knows the Console's absolute address and the Workspace it belongs to. The
+  Console and the Workspace entry run on separate hosts by installation
+  contract, so those two facts are published by Serve on the request it
+  forwards: `X-Opl-Console-Url` and `X-Opl-Console-Workspace-Id`.
+- **The Console address is the installation's declared one, or nothing at all.**
+  Serve publishes it only when the declaration is an absolute http/https URL. An
+  installation that declared none, or declared one a customer could not open,
+  states no address: no relative path, no Workspace domain, no inferred host. A
+  guessed Console address sends the customer to a page that does not exist and
+  reads as a broken product.
+- **The Workspace is the confirmed route's own.** The Workspace a request was
+  routed to is a fact Serve confirmed before it forwards anything; the caller's
+  own value for either name is replaced by Serve's, because an application that
+  builds a Console link from these headers must not be steerable by its caller.
+- **The names are new because `X-Opl-Workspace-Id` already means something
+  else.** That header is the caller's route selector, and Serve strips it
+  before forwarding. Repurposing it would change what an existing header means
+  and would let a caller appear to select a Workspace it did not reach.
+
 ## Identity, Gateway & Workspace Key Boundary
 
 - **Cloud Login Boundary**: Cloud login delegates identity verification to the

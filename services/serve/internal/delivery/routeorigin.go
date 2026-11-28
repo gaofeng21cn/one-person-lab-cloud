@@ -48,6 +48,13 @@ type RouteOrigin struct {
 	WorkspaceDomain string
 	// ApplicationDomain is the domain per-binding application origins live under.
 	ApplicationDomain string
+	// ConsoleURL is the installation's declared Console address: the absolute
+	// http/https URL the Console is served at. It is empty when the
+	// installation declared no such address, or declared one that is not an
+	// absolute http/https URL; the address is then simply unpublishable, so
+	// Serve states no Console address at all instead of a relative path or an
+	// inferred host.
+	ConsoleURL string
 }
 
 // RouteOriginFromEnvWith reads the installation's declared route origin via getenv.
@@ -55,10 +62,19 @@ func RouteOriginFromEnvWith(getenv func(string) string) RouteOrigin {
 	if getenv == nil {
 		getenv = os.Getenv
 	}
+	// OPL_PUBLIC_URL: the installation's own public address. Its scheme is the
+	// scheme every published entry uses, and the address itself is the Console
+	// the customer's browser opens, so both facts come from this one
+	// declaration and cannot disagree.
+	publicURL := strings.TrimSpace(getenv("OPL_PUBLIC_URL"))
 	return RouteOrigin{
 		// OPL_PUBLIC_URL: the installation's own public address; its scheme is the
 		// scheme every published entry uses, so the two cannot disagree.
-		Scheme: originScheme(getenv("OPL_PUBLIC_URL")),
+		Scheme: originScheme(publicURL),
+		// OPL_PUBLIC_URL: the same declared address in full. The Console is
+		// served there, so it is the one address Serve may state to an
+		// application; an installation that declared none states none.
+		ConsoleURL: consoleURL(publicURL),
 		// OPL_WORKSPACE_DOMAIN: the host Workspace entries are published under, for
 		// example the `/w/<workspaceId>/` route.
 		WorkspaceDomain: bareDomain(getenv("OPL_WORKSPACE_DOMAIN")),
@@ -204,6 +220,33 @@ func originScheme(publicURL string) string {
 		return ""
 	}
 	return scheme
+}
+
+// consoleURL reads the installation's declared Console address. It reports an
+// empty string for anything that is not an absolute http/https URL, so an
+// installation that declared none — or declared one a customer could not open —
+// states no Console address instead of a relative path or an inferred host.
+//
+// A query or a fragment is refused as well: the address is a base an
+// application appends a Console path to, so neither survives that
+// concatenation.
+func consoleURL(publicURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(publicURL))
+	if err != nil || parsed.User != nil || parsed.Hostname() == "" {
+		return ""
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return ""
+	}
+	if parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return ""
+	}
+	parsed.Scheme = scheme
+	parsed.Path = strings.TrimSuffix(parsed.Path, "/")
+	parsed.RawPath = ""
+	parsed.RawFragment = ""
+	return parsed.String()
 }
 
 // bareDomain normalizes a declared domain: no scheme, no path, lower case.

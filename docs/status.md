@@ -94,8 +94,13 @@ chronological snapshots.
   safe Markdown answers with code-block and reply copy, failed-turn retry, new
   chat thread reset, and Markdown conversation export. Console and model-config
   links render only when the Runtime explicitly publishes an absolute
-  `consoleUrl` (never guessed relative `/console/...` paths across hosts); that
-  upstream publication remains an open item in [roadmap.md](roadmap.md).
+  `consoleUrl` (never guessed relative `/console/...` paths across hosts). Serve
+  now states that Console address and the confirmed route's Workspace on every
+  request it forwards to a Workspace application (`X-Opl-Console-Url`,
+  `X-Opl-Console-Workspace-Id`), so the link facts have one named source
+  instead of a guessed relative URL; the Runtime still has to publish them in
+  `/api/auth/user`, which remains an open item in
+  [roadmap.md](roadmap.md).
 - **Console / BFF / Control Plane Boundary**:
   - CloudIdentity routes (`/api/v2/*`) serve Workspace, Quote, Launch, Capability
     upload/build, Serve delivery, Gateway wallet/usage summary, Agent read-only
