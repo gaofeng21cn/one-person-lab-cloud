@@ -125,6 +125,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerOperatorRoutes(mux)
 	s.registerOperatorActivationRoutes(mux)
 	s.registerOperatorPurchaseEligibilityRoutes(mux)
+	s.registerOperatorPlatformAdminRoutes(mux)
 	s.registerLegacyBillingRoutes(mux)
 	s.registerPersonalGatewayReadRoutes(mux)
 	s.registerPublisherRoutes(mux)

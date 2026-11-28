@@ -172,6 +172,7 @@ const (
 	AuthorizationActionListMembers                           AuthorizationAction = "listMembers"
 	AuthorizationActionListModels                            AuthorizationAction = "listModels"
 	AuthorizationActionListNamespaces                        AuthorizationAction = "listNamespaces"
+	AuthorizationActionListOperatorAccounts                  AuthorizationAction = "listOperatorAccounts"
 	AuthorizationActionListOperatorDeployments               AuthorizationAction = "listOperatorDeployments"
 	AuthorizationActionListOperatorWorkspaces                AuthorizationAction = "listOperatorWorkspaces"
 	AuthorizationActionListPackageVersions                   AuthorizationAction = "listPackageVersions"
@@ -245,6 +246,7 @@ const (
 	AuthorizationActionRollbackWorkspace                     AuthorizationAction = "rollbackWorkspace"
 	AuthorizationActionSetBuildRuntimePolicy                 AuthorizationAction = "setBuildRuntimePolicy"
 	AuthorizationActionSetComputePlanAvailability            AuthorizationAction = "setComputePlanAvailability"
+	AuthorizationActionSetPlatformAdmin                      AuthorizationAction = "setPlatformAdmin"
 	AuthorizationActionSetRuntimeVersionStatus               AuthorizationAction = "setRuntimeVersionStatus"
 	AuthorizationActionSetStoragePlanAvailability            AuthorizationAction = "setStoragePlanAvailability"
 	AuthorizationActionSetWebuiVersionStatus                 AuthorizationAction = "setWebuiVersionStatus"
@@ -438,6 +440,8 @@ func (e AuthorizationAction) Valid() bool {
 		return true
 	case AuthorizationActionListNamespaces:
 		return true
+	case AuthorizationActionListOperatorAccounts:
+		return true
 	case AuthorizationActionListOperatorDeployments:
 		return true
 	case AuthorizationActionListOperatorWorkspaces:
@@ -583,6 +587,8 @@ func (e AuthorizationAction) Valid() bool {
 	case AuthorizationActionSetBuildRuntimePolicy:
 		return true
 	case AuthorizationActionSetComputePlanAvailability:
+		return true
+	case AuthorizationActionSetPlatformAdmin:
 		return true
 	case AuthorizationActionSetRuntimeVersionStatus:
 		return true
@@ -7074,6 +7080,18 @@ type PlanChangePolicyProviderExecutionPlan string
 // PlanChangePolicyStorageShrink defines model for PlanChangePolicy.StorageShrink.
 type PlanChangePolicyStorageShrink string
 
+// PlatformAdminCommand Canonical receipt for one delegated platform administrator update.
+type PlatformAdminCommand struct {
+	// AccountId 不透明string；新旧ID原样保留，不假定UUID。
+	AccountId        OpaqueId `json:"accountId"`
+	IsBootstrapAdmin bool     `json:"isBootstrapAdmin"`
+
+	// OperationId 不透明string；新旧ID原样保留，不假定UUID。
+	OperationId          OpaqueId `json:"operationId"`
+	PlatformAdminEnabled bool     `json:"platformAdminEnabled"`
+	Status               string   `json:"status"`
+}
+
 // PricePolicyVersion 不可变Cloud套餐价格，不含Gateway模型价；无默认金额。 精确绑定computePlanId/storagePlanId组合；同pair+validFrom唯一；取validFrom<=now最大的版本后检查该版本validUntil，若过期则POLICY_UNCONFIGURED且不回落旧版，不以最新价格覆盖旧报价。先创建资源计划再创建价格，未定价不能报价。 固定已批准D17政策；旧基础退款policy和历史义务保持原样。
 type PricePolicyVersion struct {
 	// ComputeMonthlyUSDMicros 微美元非负int64，JSON十进制字符串，范围0..9223372036854775807；禁止浮点/前导零。
@@ -7703,6 +7721,14 @@ type SetBuildRuntimePolicyRequest struct {
 
 	// RuntimeVersionId 不透明string；新旧ID原样保留，不假定UUID。
 	RuntimeVersionId OpaqueId `json:"runtimeVersionId"`
+}
+
+// SetPlatformAdminRequest Platform administrator instruction to grant or revoke delegated platform admin access for one Gateway subject.
+type SetPlatformAdminRequest struct {
+	// ConfirmationAccountId 不透明string；新旧ID原样保留，不假定UUID。
+	ConfirmationAccountId OpaqueId `json:"confirmationAccountId"`
+	Enabled               bool     `json:"enabled"`
+	Reason                string   `json:"reason"`
 }
 
 // SetWorkspacePurchaseEligibilityRequest Platform administrator instruction to grant or revoke new Workspace purchase eligibility for one Gateway subject.
@@ -9371,6 +9397,22 @@ type ArchiveNamespaceParams struct {
 	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
 }
 
+// ListOperatorAccountsParams defines parameters for ListOperatorAccounts.
+type ListOperatorAccountsParams struct {
+	Page     *int    `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int    `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+	Search   *string `form:"search,omitempty" json:"search,omitempty"`
+}
+
+// SetPlatformAdminParams defines parameters for SetPlatformAdmin.
+type SetPlatformAdminParams struct {
+	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+
+	// XCSRFToken 匹配同源session并校验Origin。
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
 // SetWorkspacePurchaseEligibilityParams defines parameters for SetWorkspacePurchaseEligibility.
 type SetWorkspacePurchaseEligibilityParams struct {
 	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
@@ -9754,6 +9796,9 @@ type CreateNamespaceJSONRequestBody = NamespaceWriteRequest
 
 // UpdateNamespaceJSONRequestBody defines body for UpdateNamespace for application/json ContentType.
 type UpdateNamespaceJSONRequestBody = NamespaceWriteRequest
+
+// SetPlatformAdminJSONRequestBody defines body for SetPlatformAdmin for application/json ContentType.
+type SetPlatformAdminJSONRequestBody = SetPlatformAdminRequest
 
 // SetWorkspacePurchaseEligibilityJSONRequestBody defines body for SetWorkspacePurchaseEligibility for application/json ContentType.
 type SetWorkspacePurchaseEligibilityJSONRequestBody = SetWorkspacePurchaseEligibilityRequest

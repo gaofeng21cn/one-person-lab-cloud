@@ -12,10 +12,12 @@ import (
 	"math/big"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -39,6 +41,37 @@ type GatewayUsageStats struct {
 	TotalOutputTokens        int64
 	TotalTokens              int64
 	TotalActualCostUSDMicros int64
+}
+
+type GatewayDirectoryUser struct {
+	ID                 int64
+	Email              string
+	Status             string
+	BalanceUSDMicros   int64
+	BalanceUnavailable bool
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
+type GatewayDirectoryUserPage struct {
+	Items    []GatewayDirectoryUser
+	Total    int64
+	Page     int
+	PageSize int
+	Pages    int
+}
+
+type GatewayPlatformUsage struct {
+	Platform                 string
+	TodayActualCostUSDMicros int64
+	TotalActualCostUSDMicros int64
+}
+
+type GatewayBatchUserUsage struct {
+	UserID                   int64
+	TodayActualCostUSDMicros int64
+	TotalActualCostUSDMicros int64
+	ByPlatform               []GatewayPlatformUsage
 }
 
 type Gateway struct {
@@ -546,4 +579,258 @@ func delegatedExpiry(token string, raw json.RawMessage, started time.Time) time.
 		}
 	}
 	return until
+}
+
+// DirectoryUsers reads one paginated page of Sub2API users via the configured
+// administrative directory credential. No local user cache is maintained.
+func (g *Gateway) DirectoryUsers(ctx context.Context, page, pageSize int, search string) (GatewayDirectoryUserPage, error) {
+	trimmedSearch := strings.TrimSpace(search)
+	if page < 1 || pageSize < 1 || pageSize > 50 || utf8.RuneCountInString(trimmedSearch) > 100 {
+		return GatewayDirectoryUserPage{}, status.Error(codes.InvalidArgument, "valid directory pagination and search bounds are required")
+	}
+	if !g.DirectoryConfigured() {
+		return GatewayDirectoryUserPage{}, status.Error(codes.FailedPrecondition, "the Gateway directory identity is not configured")
+	}
+	token, err := g.directoryToken(ctx)
+	if err != nil {
+		return GatewayDirectoryUserPage{}, err
+	}
+	values := url.Values{
+		"page":       {strconv.Itoa(page)},
+		"page_size":  {strconv.Itoa(pageSize)},
+		"sort_by":    {"id"},
+		"sort_order": {"asc"},
+	}
+	if trimmedSearch != "" {
+		values.Set("search", trimmedSearch)
+	}
+	var data struct {
+		Items []struct {
+			ID        int64           `json:"id"`
+			Email     string          `json:"email"`
+			Balance   json.RawMessage `json:"balance"`
+			Status    string          `json:"status"`
+			CreatedAt time.Time       `json:"created_at"`
+			UpdatedAt time.Time       `json:"updated_at"`
+		} `json:"items"`
+		Total    int64 `json:"total"`
+		Page     int   `json:"page"`
+		PageSize int   `json:"page_size"`
+		Pages    int   `json:"pages"`
+	}
+	if err := g.request(ctx, "/api/v1/admin/users?"+values.Encode(), token, nil, &data); err != nil {
+		if status.Code(err) == codes.Unauthenticated {
+			g.invalidateDirectoryToken()
+		}
+		return GatewayDirectoryUserPage{}, err
+	}
+	if data.Total < 0 || data.Page != page || data.PageSize != pageSize || len(data.Items) > pageSize {
+		return GatewayDirectoryUserPage{}, status.Error(codes.Unavailable, "invalid Gateway user pagination")
+	}
+	expectedPages := int((data.Total + int64(pageSize) - 1) / int64(pageSize))
+	if expectedPages < 1 {
+		expectedPages = 1
+	}
+	if data.Total == 0 {
+		if (data.Pages != 0 && data.Pages != 1) || len(data.Items) != 0 {
+			return GatewayDirectoryUserPage{}, status.Error(codes.Unavailable, "invalid Gateway empty user pagination")
+		}
+		return GatewayDirectoryUserPage{Total: 0, Page: page, PageSize: pageSize, Pages: 1}, nil
+	}
+	if data.Pages != expectedPages || (page <= expectedPages && len(data.Items) == 0 && data.Total > 0) || (page > expectedPages && len(data.Items) != 0) {
+		return GatewayDirectoryUserPage{}, status.Error(codes.Unavailable, "invalid Gateway user pagination metadata")
+	}
+	out := GatewayDirectoryUserPage{
+		Items:    make([]GatewayDirectoryUser, 0, len(data.Items)),
+		Total:    data.Total,
+		Page:     data.Page,
+		PageSize: data.PageSize,
+		Pages:    data.Pages,
+	}
+	seen := make(map[int64]struct{}, len(data.Items))
+	for _, item := range data.Items {
+		email := strings.ToLower(strings.TrimSpace(item.Email))
+		_, dup := seen[item.ID]
+		if item.ID <= 0 || email == "" || (item.Status != "active" && item.Status != "disabled") || dup ||
+			(!item.CreatedAt.IsZero() && !item.UpdatedAt.IsZero() && item.UpdatedAt.Before(item.CreatedAt)) {
+			return GatewayDirectoryUserPage{}, status.Error(codes.Unavailable, "invalid Gateway user identity facts")
+		}
+		seen[item.ID] = struct{}{}
+		micros, balErr := floorJSONUSDMicros(item.Balance)
+		out.Items = append(out.Items, GatewayDirectoryUser{
+			ID:                 item.ID,
+			Email:              email,
+			Status:             item.Status,
+			BalanceUSDMicros:   micros,
+			BalanceUnavailable: balErr != nil,
+			CreatedAt:          item.CreatedAt.UTC(),
+			UpdatedAt:          item.UpdatedAt.UTC(),
+		})
+	}
+	return out, nil
+}
+
+// DirectoryBatchUsersUsage reads per-user aggregate and per-platform API spend
+// for a bounded page of Gateway user IDs.
+func (g *Gateway) DirectoryBatchUsersUsage(ctx context.Context, userIDs []int64) (map[int64]GatewayBatchUserUsage, error) {
+	ids, err := normalizeDirectoryUserIDs(userIDs)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return map[int64]GatewayBatchUserUsage{}, nil
+	}
+	if !g.DirectoryConfigured() {
+		return nil, status.Error(codes.FailedPrecondition, "the Gateway directory identity is not configured")
+	}
+	token, err := g.directoryToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var data struct {
+		Stats map[string]json.RawMessage `json:"stats"`
+	}
+	if err := g.request(ctx, "/api/v1/admin/dashboard/users-usage", token, map[string]any{"user_ids": ids}, &data); err != nil {
+		if status.Code(err) == codes.Unauthenticated {
+			g.invalidateDirectoryToken()
+		}
+		return nil, err
+	}
+	if data.Stats == nil {
+		return nil, status.Error(codes.Unavailable, "invalid Gateway batch usage response")
+	}
+	requested := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		requested[id] = struct{}{}
+	}
+	for rawID := range data.Stats {
+		parsed, parseErr := strconv.ParseInt(rawID, 10, 64)
+		if parseErr != nil || rawID != strconv.FormatInt(parsed, 10) {
+			return nil, status.Error(codes.Unavailable, "invalid Gateway batch usage key")
+		}
+		if _, ok := requested[parsed]; !ok {
+			return nil, status.Error(codes.Unavailable, "unexpected Gateway batch usage subject")
+		}
+	}
+	out := make(map[int64]GatewayBatchUserUsage, len(ids))
+	for _, id := range ids {
+		rawItem, ok := data.Stats[strconv.FormatInt(id, 10)]
+		if !ok {
+			continue
+		}
+		var item struct {
+			UserID          int64       `json:"user_id"`
+			TodayActualCost json.Number `json:"today_actual_cost"`
+			TotalActualCost json.Number `json:"total_actual_cost"`
+			ByPlatform      []struct {
+				Platform        string      `json:"platform"`
+				TodayActualCost json.Number `json:"today_actual_cost"`
+				TotalActualCost json.Number `json:"total_actual_cost"`
+			} `json:"by_platform"`
+		}
+		if json.Unmarshal(rawItem, &item) != nil || item.UserID != id {
+			continue
+		}
+		todayMicros, todayErr := floorUSDDecimalToMicros(item.TodayActualCost)
+		totalMicros, totalErr := floorUSDDecimalToMicros(item.TotalActualCost)
+		if todayErr != nil || totalErr != nil {
+			continue
+		}
+		entry := GatewayBatchUserUsage{
+			UserID:                   id,
+			TodayActualCostUSDMicros: todayMicros,
+			TotalActualCostUSDMicros: totalMicros,
+			ByPlatform:               make([]GatewayPlatformUsage, 0, len(item.ByPlatform)),
+		}
+		platforms := make(map[string]struct{}, len(item.ByPlatform))
+		valid := true
+		for _, p := range item.ByPlatform {
+			name := strings.TrimSpace(p.Platform)
+			pToday, e1 := floorUSDDecimalToMicros(p.TodayActualCost)
+			pTotal, e2 := floorUSDDecimalToMicros(p.TotalActualCost)
+			_, dup := platforms[name]
+			if name == "" || e1 != nil || e2 != nil || dup {
+				valid = false
+				break
+			}
+			platforms[name] = struct{}{}
+			entry.ByPlatform = append(entry.ByPlatform, GatewayPlatformUsage{
+				Platform:                 name,
+				TodayActualCostUSDMicros: pToday,
+				TotalActualCostUSDMicros: pTotal,
+			})
+		}
+		if valid {
+			out[id] = entry
+		}
+	}
+	return out, nil
+}
+
+// DirectoryUserKeyCount returns the total API key count held by one Gateway subject.
+func (g *Gateway) DirectoryUserKeyCount(ctx context.Context, userID int64) (int32, error) {
+	if userID <= 0 {
+		return 0, status.Error(codes.InvalidArgument, "a positive Gateway subject id is required")
+	}
+	if !g.DirectoryConfigured() {
+		return 0, status.Error(codes.FailedPrecondition, "the Gateway directory identity is not configured")
+	}
+	token, err := g.directoryToken(ctx)
+	if err != nil {
+		return 0, err
+	}
+	var data struct {
+		Total int `json:"total"`
+	}
+	if err := g.request(ctx, "/api/v1/admin/users/"+strconv.FormatInt(userID, 10)+"/api-keys?page=1&page_size=1", token, nil, &data); err != nil {
+		if status.Code(err) == codes.Unauthenticated {
+			g.invalidateDirectoryToken()
+		}
+		return 0, err
+	}
+	if data.Total < 0 || data.Total > math.MaxInt32 {
+		return 0, status.Error(codes.Unavailable, "invalid Gateway user key count")
+	}
+	return int32(data.Total), nil
+}
+
+func floorJSONUSDMicros(raw json.RawMessage) (int64, error) {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return 0, fmt.Errorf("missing balance")
+	}
+	if strings.HasPrefix(trimmed, `"`) {
+		var s string
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return 0, err
+		}
+		return floorUSDDecimalToMicros(json.Number(s))
+	}
+	var num json.Number
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	if err := dec.Decode(&num); err != nil {
+		return 0, err
+	}
+	return floorUSDDecimalToMicros(num)
+}
+
+func normalizeDirectoryUserIDs(input []int64) ([]int64, error) {
+	if len(input) > 100 {
+		return nil, status.Error(codes.InvalidArgument, "too many Gateway subjects requested")
+	}
+	seen := make(map[int64]struct{}, len(input))
+	ids := make([]int64, 0, len(input))
+	for _, id := range input {
+		if id <= 0 {
+			return nil, status.Error(codes.InvalidArgument, "Gateway user IDs must be positive")
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids, nil
 }
