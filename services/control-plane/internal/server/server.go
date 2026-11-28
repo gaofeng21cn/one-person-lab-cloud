@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -35,11 +36,11 @@ func (h *controlPlaneHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	// A binding origin belongs entirely to its application, so it is dispatched
 	// before the management route table. Otherwise this server's own routes would
 	// answer on a host that is supposed to serve only the application.
-	if _, _, ok := workspaceApplicationOriginRequest(r); ok {
+	if _, _, ok := h.app.workspaceApplicationOriginRequest(r); ok {
 		h.app.proxyWorkspaceApplicationOrigin(w, r, h.service)
 		return
 	}
-	if !isWorkspaceRequest(r) && retiredConsoleAPI(r.Method, r.URL.Path) {
+	if !h.app.isWorkspaceRequest(r) && retiredConsoleAPI(r.Method, r.URL.Path) {
 		http.NotFound(w, r)
 		return
 	}
@@ -53,7 +54,16 @@ func (h *controlPlaneHTTPHandler) Close() error {
 }
 
 func NewPersistentServer(service *controlplane.Service, store StateStore) (http.Handler, error) {
-	source, err := cloudAnnouncementSourceFromEnv(os.Getenv)
+	return NewPersistentServerWithEnv(service, store, os.Getenv, nil)
+}
+
+// NewPersistentServerWithEnv constructs the persistent Control Plane HTTP server
+// using scoped environment and optional in-process owner transport.
+func NewPersistentServerWithEnv(service *controlplane.Service, store StateStore, getenv func(string) string, inproc *owneridentity.InProcTransport) (http.Handler, error) {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	source, err := cloudAnnouncementSourceFromEnvWithInProc(getenv, inproc)
 	if err != nil {
 		return nil, err
 	}
@@ -63,11 +73,11 @@ func NewPersistentServer(service *controlplane.Service, store StateStore) (http.
 			_ = source.Close()
 		}
 	}()
-	app, err := newControlPlaneAppWithStore(store)
+	app, err := newControlPlaneAppWithStoreAndEnv(store, getenv)
 	if err != nil {
 		return nil, err
 	}
-	profile, err := deploymentProfileFromEnv()
+	profile, err := deploymentProfileFromEnvWith(getenv)
 	if err != nil {
 		return nil, err
 	}
@@ -81,21 +91,21 @@ func NewPersistentServer(service *controlplane.Service, store StateStore) (http.
 			return nil, err
 		}
 	} else {
-		if monthlyBillingWorkerEnabled() {
-			app.startMonthlyBillingWorker(context.Background(), service, monthlyBillingWorkerInterval())
+		if monthlyBillingWorkerEnabledWith(getenv) {
+			app.startMonthlyBillingWorker(context.Background(), service, monthlyBillingWorkerIntervalWith(getenv))
 		}
-		if workspaceLaunchWorkerEnabled() {
-			app.startWorkspaceLaunchWorker(context.Background(), service, workspaceLaunchWorkerInterval())
-			app.startWorkspaceDeleteWorker(context.Background(), service, workspaceLaunchWorkerInterval())
+		if workspaceLaunchWorkerEnabledWith(getenv) {
+			app.startWorkspaceLaunchWorker(context.Background(), service, workspaceLaunchWorkerIntervalWith(getenv))
+			app.startWorkspaceDeleteWorker(context.Background(), service, workspaceLaunchWorkerIntervalWith(getenv))
 		}
-		if workspaceApplicationDeploymentWorkerEnabled() {
+		if workspaceApplicationDeploymentWorkerEnabledWith(getenv) {
 			app.startWorkspaceApplicationDeploymentWorker(context.Background(), service, workspaceApplicationDeploymentWorkerInterval)
 		}
-		if providerReconcileWorkerEnabled() {
-			app.startProviderReconcileWorker(context.Background(), service, providerReconcileInterval())
+		if providerReconcileWorkerEnabledWith(getenv) {
+			app.startProviderReconcileWorker(context.Background(), service, providerReconcileIntervalWith(getenv))
 		}
-		if retentionWorkerEnabled() {
-			app.startRetentionWorker(context.Background(), retentionWorkerInterval())
+		if retentionWorkerEnabledWith(getenv) {
+			app.startRetentionWorker(context.Background(), retentionWorkerIntervalWith(getenv))
 		}
 	}
 	mux := http.NewServeMux()
@@ -184,7 +194,7 @@ func currentGatewayKeyAPI(method, path string) bool {
 }
 
 func (app *controlPlaneServer) consoleStatic(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
-	if isWorkspaceRequest(r) {
+	if app.isWorkspaceRequest(r) {
 		app.proxyWorkspaceRoot(w, r, service)
 		return
 	}
@@ -192,7 +202,7 @@ func (app *controlPlaneServer) consoleStatic(w http.ResponseWriter, r *http.Requ
 		http.NotFound(w, r)
 		return
 	}
-	dist := consoleDistDir()
+	dist := app.consoleDistDir()
 	if strings.HasPrefix(r.URL.Path, "/assets/") {
 		rel := strings.TrimPrefix(r.URL.Path, "/assets/")
 		if !filepath.IsLocal(rel) || !serveConsoleFile(w, r, filepath.Join(dist, "assets", rel), "public,max-age=31536000,immutable") {
@@ -283,8 +293,8 @@ func acceptsGzip(value string) bool {
 	return false
 }
 
-func consoleDistDir() string {
-	for _, dir := range []string{strings.TrimSpace(os.Getenv("OPL_CONSOLE_DIST_DIR")), "dist", "../../dist", "../../../../dist"} {
+func (app *controlPlaneServer) consoleDistDir() string {
+	for _, dir := range []string{strings.TrimSpace(app.env("OPL_CONSOLE_DIST_DIR")), "dist", "../../dist", "../../../../dist"} {
 		if dir == "" {
 			continue
 		}
@@ -623,7 +633,7 @@ func emptyMergeValue(value any) bool {
 	}
 }
 
-func workspaceRuntimeStatusResponse(runtime clients.WorkspaceRuntime, workspaceID string) (map[string]any, bool) {
+func (app *controlPlaneServer) workspaceRuntimeStatusResponse(runtime clients.WorkspaceRuntime, workspaceID string) (map[string]any, bool) {
 	if runtime.WorkspaceID != workspaceID || runtime.Status == "" || runtime.Checks == nil {
 		return nil, false
 	}
@@ -636,7 +646,7 @@ func workspaceRuntimeStatusResponse(runtime clients.WorkspaceRuntime, workspaceI
 		// A provider-published endpoint is already resolved. Otherwise this
 		// installation owns the customer route to the observed Service.
 		if entryURL == "" {
-			entryURL = workspaceGatewayEntryURL(workspaceID)
+			entryURL = app.workspaceGatewayEntryURL(workspaceID)
 		}
 	case "not_found", "destroyed":
 	default:

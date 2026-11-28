@@ -247,15 +247,15 @@ func (app *controlPlaneServer) startRiverWorkers(ctx context.Context, service *c
 	river.AddWorker(workers, &archiveRetentionSweepWorker{app: app})
 
 	var periodic []*river.PeriodicJob
-	if monthlyBillingWorkerEnabled() {
+	if monthlyBillingWorkerEnabledWith(app.env) {
 		periodic = append(periodic, river.NewPeriodicJob(
-			river.PeriodicInterval(monthlyBillingWorkerInterval()),
+			river.PeriodicInterval(monthlyBillingWorkerIntervalWith(app.env)),
 			func() (river.JobArgs, *river.InsertOpts) { return MonthlyBillingSweepJobArgs{}, nil },
 			&river.PeriodicJobOpts{RunOnStart: true},
 		))
 	}
-	if workspaceLaunchWorkerEnabled() {
-		interval := workspaceLaunchWorkerInterval()
+	if workspaceLaunchWorkerEnabledWith(app.env) {
+		interval := workspaceLaunchWorkerIntervalWith(app.env)
 		periodic = append(periodic,
 			river.NewPeriodicJob(
 				river.PeriodicInterval(interval),
@@ -269,23 +269,23 @@ func (app *controlPlaneServer) startRiverWorkers(ctx context.Context, service *c
 			),
 		)
 	}
-	if workspaceApplicationDeploymentWorkerEnabled() {
+	if workspaceApplicationDeploymentWorkerEnabledWith(app.env) {
 		periodic = append(periodic, river.NewPeriodicJob(
 			river.PeriodicInterval(workspaceApplicationDeploymentWorkerInterval),
 			func() (river.JobArgs, *river.InsertOpts) { return WorkspaceAppDeploySweepJobArgs{}, nil },
 			&river.PeriodicJobOpts{RunOnStart: true},
 		))
 	}
-	if providerReconcileWorkerEnabled() {
+	if providerReconcileWorkerEnabledWith(app.env) {
 		periodic = append(periodic, river.NewPeriodicJob(
-			river.PeriodicInterval(providerReconcileInterval()),
+			river.PeriodicInterval(providerReconcileIntervalWith(app.env)),
 			func() (river.JobArgs, *river.InsertOpts) { return ProviderReconcileSweepJobArgs{}, nil },
 			&river.PeriodicJobOpts{RunOnStart: true},
 		))
 	}
-	if retentionWorkerEnabled() {
+	if retentionWorkerEnabledWith(app.env) {
 		periodic = append(periodic, river.NewPeriodicJob(
-			river.PeriodicInterval(retentionWorkerInterval()),
+			river.PeriodicInterval(retentionWorkerIntervalWith(app.env)),
 			func() (river.JobArgs, *river.InsertOpts) { return ArchiveRetentionSweepJobArgs{}, nil },
 			&river.PeriodicJobOpts{RunOnStart: true},
 		))

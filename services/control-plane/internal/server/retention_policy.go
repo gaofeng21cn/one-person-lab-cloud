@@ -11,10 +11,10 @@ type retentionPolicy struct {
 	ProductionE2EDays int
 }
 
-func currentRetentionPolicy() retentionPolicy {
+func currentRetentionPolicyWith(getenv func(string) string) retentionPolicy {
 	return retentionPolicy{
-		AdminAuditDays:    envInt("OPL_RETENTION_ADMIN_AUDIT_DAYS", 180),
-		ProductionE2EDays: envInt("OPL_RETENTION_PRODUCTION_E2E_DAYS", 90),
+		AdminAuditDays:    envIntWith(getenv, "OPL_RETENTION_ADMIN_AUDIT_DAYS", 180),
+		ProductionE2EDays: envIntWith(getenv, "OPL_RETENTION_PRODUCTION_E2E_DAYS", 90),
 	}
 }
 
@@ -34,8 +34,11 @@ func (policy retentionPolicy) cutoff(days int) time.Time {
 	return time.Now().UTC().AddDate(0, 0, -days)
 }
 
-func envInt(name string, fallback int) int {
-	value, err := strconv.Atoi(os.Getenv(name))
+func envIntWith(getenv func(string) string, name string, fallback int) int {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	value, err := strconv.Atoi(getenv(name))
 	if err != nil || value <= 0 {
 		return fallback
 	}

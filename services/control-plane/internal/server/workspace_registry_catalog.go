@@ -53,7 +53,14 @@ type workspaceApplicationRegistryCatalog struct {
 //     pair complete; otherwise startup fails, because that is a misconfigured
 //     capability rather than an absent one.
 func workspaceRegistryCatalogFromEnv() (*workspaceApplicationRegistryCatalog, error) {
-	host := strings.TrimSpace(os.Getenv(workspaceRegistryHostEnv))
+	return workspaceRegistryCatalogFromEnvWith(os.Getenv)
+}
+
+func workspaceRegistryCatalogFromEnvWith(getenv func(string) string) (*workspaceApplicationRegistryCatalog, error) {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	host := strings.TrimSpace(getenv(workspaceRegistryHostEnv))
 	if host == "" {
 		return nil, nil
 	}
@@ -61,11 +68,11 @@ func workspaceRegistryCatalogFromEnv() (*workspaceApplicationRegistryCatalog, er
 	if err != nil {
 		return nil, err
 	}
-	declared, err := contracts.WorkspaceRegistryDeclaredRepositories(os.Getenv(workspaceRegistryRepositoriesEnv))
+	declared, err := contracts.WorkspaceRegistryDeclaredRepositories(getenv(workspaceRegistryRepositoriesEnv))
 	if err != nil {
 		return nil, err
 	}
-	username, password := os.Getenv(workspaceRegistryUsernameEnv), os.Getenv(workspaceRegistryPasswordEnv)
+	username, password := getenv(workspaceRegistryUsernameEnv), getenv(workspaceRegistryPasswordEnv)
 	if username != "" && password == "" || username == "" && password != "" {
 		return nil, errors.New("workspace_registry_credential_half_configured")
 	}
@@ -118,7 +125,7 @@ func (catalog *workspaceApplicationRegistryCatalog) tags(ctx context.Context, na
 }
 
 func registerWorkspaceRegistryCatalogRoutes(mux *http.ServeMux, app *controlPlaneServer) {
-	catalog, err := workspaceRegistryCatalogFromEnv()
+	catalog, err := workspaceRegistryCatalogFromEnvWith(app.env)
 	if err != nil {
 		// A registry misconfiguration must fail startup, not browse time.
 		panic(err)

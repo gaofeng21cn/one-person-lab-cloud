@@ -33,19 +33,26 @@ type deploymentProfile struct {
 }
 
 func deploymentProfileFromEnv() (deploymentProfile, error) {
-	mode := deploymentMode(strings.TrimSpace(os.Getenv("OPL_DEPLOYMENT_MODE")))
+	return deploymentProfileFromEnvWith(os.Getenv)
+}
+
+func deploymentProfileFromEnvWith(getenv func(string) string) (deploymentProfile, error) {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	mode := deploymentMode(strings.TrimSpace(getenv("OPL_DEPLOYMENT_MODE")))
 	if mode == "" {
 		return deploymentProfile{}, errors.New("OPL_DEPLOYMENT_MODE is required")
 	}
 	switch mode {
 	case deploymentPlatformOwned, deploymentManagedTKE, deploymentCustomerOwned:
-		if workspaceDomain() == "" {
+		if workspaceDomainWith(getenv) == "" {
 			return deploymentProfile{}, errors.New("OPL_WORKSPACE_DOMAIN is required")
 		}
-		if _, ok := workspacePublicURL(); !ok {
+		if _, ok := workspacePublicURLWith(getenv); !ok {
 			return deploymentProfile{}, errors.New("OPL_PUBLIC_URL is required and must be an http or https URL")
 		}
-		provider := fabricProvider(strings.TrimSpace(os.Getenv("OPL_FABRIC_PROVIDER")))
+		provider := fabricProvider(strings.TrimSpace(getenv("OPL_FABRIC_PROVIDER")))
 		if provider == "" {
 			return deploymentProfile{}, errors.New("OPL_FABRIC_PROVIDER is required")
 		}

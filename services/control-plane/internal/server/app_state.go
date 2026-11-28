@@ -32,6 +32,7 @@ type controlPlaneServer struct {
 	operationalAlertStates sync.Map
 	store                  StateStore
 	tables                 controlPlaneTableStore
+	getenv                 func(string) string
 	sessionCredentials     *SessionCredentialVault
 	cloudAnnouncements     *cloudAnnouncementSource
 	riverClient            *river.Client[pgx.Tx]
@@ -42,6 +43,13 @@ type controlPlaneServer struct {
 	// proxy's default transport; tests substitute it to prove a request
 	// genuinely reaches the destination the binding states.
 	workspaceProxyTransport http.RoundTripper
+}
+
+func (app *controlPlaneServer) env(key string) string {
+	if app != nil && app.getenv != nil {
+		return app.getenv(key)
+	}
+	return os.Getenv(key)
 }
 
 func (app *controlPlaneServer) lockResource(resourceType, id string) func() {
@@ -89,6 +97,13 @@ var (
 )
 
 func newControlPlaneAppWithStore(store StateStore) (*controlPlaneServer, error) {
+	return newControlPlaneAppWithStoreAndEnv(store, os.Getenv)
+}
+
+func newControlPlaneAppWithStoreAndEnv(store StateStore, getenv func(string) string) (*controlPlaneServer, error) {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
 	tableStore, ok := store.(controlPlaneTableStore)
 	if !ok {
 		return nil, errors.New("control_plane_store_must_implement_table_store")
@@ -96,6 +111,7 @@ func newControlPlaneAppWithStore(store StateStore) (*controlPlaneServer, error) 
 	app := &controlPlaneServer{
 		store:              store,
 		tables:             tableStore,
+		getenv:             getenv,
 		sessionCredentials: newSessionCredentialVault(time.Now),
 		loginRateLimits:    map[string]loginFailure{},
 	}
@@ -310,11 +326,20 @@ func (app *controlPlaneServer) runtimeOperationRows(query runtimeOperationQuery)
 // Workspace. The gateway is this server, so the route is this server's own shape
 // rather than a value an executing provider observes.
 func workspaceGatewayEntryURL(workspaceID string) string {
-	scheme := workspaceExternalScheme()
-	if scheme == "" || workspaceDomain() == "" {
+	return workspaceGatewayEntryURLWith(os.Getenv, workspaceID)
+}
+
+func workspaceGatewayEntryURLWith(getenv func(string) string, workspaceID string) string {
+	scheme := workspaceExternalSchemeWith(getenv)
+	domain := workspaceDomainWith(getenv)
+	if scheme == "" || domain == "" {
 		return ""
 	}
-	return scheme + "://" + workspaceDomain() + "/w/" + workspaceID + "/"
+	return scheme + "://" + domain + "/w/" + workspaceID + "/"
+}
+
+func (app *controlPlaneServer) workspaceGatewayEntryURL(workspaceID string) string {
+	return workspaceGatewayEntryURLWith(app.env, workspaceID)
 }
 
 // workspaceServiceTarget names the single in-cluster destination the workspace
@@ -351,7 +376,7 @@ func workspaceIDFromPath(path string) string {
 	return parts[0]
 }
 
-func workspaceIDFromGatewayRequest(r *http.Request) string {
+func (app *controlPlaneServer) workspaceIDFromGatewayRequest(r *http.Request) string {
 	if id := workspaceIDFromPath(r.URL.Path); strings.HasPrefix(r.URL.Path, "/w/") && id != "" {
 		return id
 	}
@@ -360,7 +385,7 @@ func workspaceIDFromGatewayRequest(r *http.Request) string {
 	}
 	if ref := r.Referer(); ref != "" {
 		parsed, err := url.Parse(ref)
-		if err == nil && isWorkspaceHost(parsed.Host) {
+		if err == nil && app.isWorkspaceHost(parsed.Host) {
 			return workspaceIDFromPath(parsed.Path)
 		}
 	}
@@ -371,12 +396,20 @@ func setWorkspaceGatewayRouteCookie(w http.ResponseWriter, workspaceID string) {
 	http.SetCookie(w, &http.Cookie{Name: "opl_ws_active", Value: workspaceID, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 }
 
-func isWorkspaceRequest(r *http.Request) bool {
-	return isWorkspaceHost(r.Host)
+func (app *controlPlaneServer) isWorkspaceRequest(r *http.Request) bool {
+	return app.isWorkspaceHost(r.Host)
 }
 
 func isWorkspaceHost(host string) bool {
-	return strings.Trim(strings.Split(host, ":")[0], " ") == workspaceDomain()
+	return isWorkspaceHostWith(os.Getenv, host)
+}
+
+func isWorkspaceHostWith(getenv func(string) string, host string) bool {
+	return strings.Trim(strings.Split(host, ":")[0], " ") == workspaceDomainWith(getenv)
+}
+
+func (app *controlPlaneServer) isWorkspaceHost(host string) bool {
+	return isWorkspaceHostWith(app.env, host)
 }
 
 func upsertProjectionByID(rows []controlPlaneRecord, row controlPlaneRecord) []controlPlaneRecord {
@@ -425,7 +458,14 @@ func computePoolsFromFabricCatalog(catalog clients.FabricCatalog) []any {
 }
 
 func workspaceDomain() string {
-	return strings.Trim(strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(os.Getenv("OPL_WORKSPACE_DOMAIN")), "https://"), "http://"), "/")
+	return workspaceDomainWith(os.Getenv)
+}
+
+func workspaceDomainWith(getenv func(string) string) string {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	return strings.Trim(strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(getenv("OPL_WORKSPACE_DOMAIN")), "https://"), "http://"), "/")
 }
 
 // workspacePublicURLEnv is the installation's own public address. The instance
@@ -434,11 +474,14 @@ func workspaceDomain() string {
 // scheme those entries use.
 const workspacePublicURLEnv = "OPL_PUBLIC_URL"
 
-// workspacePublicURL reads the installation's declared public address. It is
+// workspacePublicURLWith reads the installation's declared public address. It is
 // validated at startup, so a deployment that cannot state its external origin
 // fails before serving anything rather than inventing one.
-func workspacePublicURL() (*url.URL, bool) {
-	parsed, err := url.Parse(strings.TrimSpace(os.Getenv(workspacePublicURLEnv)))
+func workspacePublicURLWith(getenv func(string) string) (*url.URL, bool) {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	parsed, err := url.Parse(strings.TrimSpace(getenv(workspacePublicURLEnv)))
 	if err != nil || !validWebOrigin(parsed) {
 		return nil, false
 	}
@@ -456,7 +499,11 @@ func workspacePublicURL() (*url.URL, bool) {
 // declare an external origin; callers then publish no address at all instead of
 // one that cannot resolve.
 func workspaceExternalScheme() string {
-	origin, ok := workspacePublicURL()
+	return workspaceExternalSchemeWith(os.Getenv)
+}
+
+func workspaceExternalSchemeWith(getenv func(string) string) string {
+	origin, ok := workspacePublicURLWith(getenv)
 	if !ok {
 		return ""
 	}

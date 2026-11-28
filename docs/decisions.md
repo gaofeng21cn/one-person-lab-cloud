@@ -21,16 +21,29 @@ Git log.
   composed deployment unit while keeping separate database roles, single-writer
   boundaries, idempotency fences and privileged BuildKit / running Workspace
   execution outside the ordinary backend trust boundary.
-- **Slim Go-only runtime image**: `Dockerfile` compiles all Go binaries in a
-  single shared `go-build` stage and packages `debian:bookworm-slim` without
-  Node.js or `node_modules`, baking `/app/dist` and
-  `/app/contracts/opl-cloud-owner-topology.json` into the product image while
-  retaining `CMD ["/usr/local/bin/opl-control-plane"]` for existing deployment
-  profiles.
+- **Slim Go-only runtime image & single-binary packaging**: `Dockerfile`
+  compiles **4** stamped Go binaries in a single shared `go-build` stage
+  (`/usr/local/bin/opl-cloud` from `cmd/opl-cloud`, plus `opl-tencent-provisioner`,
+  `opl-node-image-retire` and `opl-owner-probe`) and **12** BusyBox-style
+  symlinks (`opl-cloud-composition` and every `opl-<service>` -> `opl-cloud`),
+  packaging `debian:bookworm-slim` without Node.js or `node_modules` while baking
+  `/app/dist` and `/app/contracts/opl-cloud-owner-topology.json` and retaining
+  `CMD ["/usr/local/bin/opl-control-plane"]` for existing deployment profiles.
+- **Single-binary in-process backend convergence (P1)**: `opl-cloud-composition`
+  runs all 11 declared domain modules (`services/*/module`, `apps/console-bff/module`)
+  in-process as concurrent goroutines inside **1 OS PID / 1 Go runtime** via
+  `composition.InProcStarter` with strict contract-allowlisted
+  `owneridentity.ModuleEnv`. Internal owner-to-owner gRPC traffic uses zero-copy
+  `owneridentity.InProcTransport` (`InProcAuthInfo` unforgeable caller identity +
+  bearer token + `CloudIdentity` authorization) instead of intra-pod loopback
+  TLS handshakes, while retaining external TCP+mTLS/HTTP listeners for health
+  probes, reverse proxy and Kubernetes Services, preserving separate per-owner
+  PostgreSQL databases/roles, and keeping `services/control-plane` in-process as
+  module 11 until v0.1.8 retirement obligations close.
 - **Unified 3-container portable Compose**: `deploy/portable/compose.cloud.yaml`
   standardizes single-host portable installations on 3 containers (`postgres`,
-  `cloud-backend` running `opl-cloud-composition`, and `cloud-local-v2` proxy)
-  instead of 11 separate backend service containers.
+  single-PID `cloud-backend` running `opl-cloud-composition`, and `cloud-local-v2`
+  proxy) instead of 11 separate backend service containers.
 - **Console SPA ownership**: `apps/console-bff` serves the compiled Console SPA
   static bundle (`/app/dist`) on `/` for the `cloud` Console identity so
   Console static delivery no longer depends on the retained `services/control-plane`.

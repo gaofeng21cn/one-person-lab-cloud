@@ -389,11 +389,11 @@ func (app *controlPlaneServer) proxyWorkspace(w http.ResponseWriter, r *http.Req
 }
 
 func (app *controlPlaneServer) proxyWorkspaceRoot(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
-	if !isWorkspaceRequest(r) {
+	if !app.isWorkspaceRequest(r) {
 		http.NotFound(w, r)
 		return
 	}
-	workspaceID := workspaceIDFromGatewayRequest(r)
+	workspaceID := app.workspaceIDFromGatewayRequest(r)
 	if workspaceID == "" {
 		http.NotFound(w, r)
 		return
@@ -411,7 +411,7 @@ func (app *controlPlaneServer) proxyWorkspaceRoot(w http.ResponseWriter, r *http
 // application, and serving the replacement under it would let the previous
 // application's browser state act on the new one.
 func (app *controlPlaneServer) proxyWorkspaceApplicationOrigin(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
-	workspaceID, applicationLabel, ok := workspaceApplicationOriginRequest(r)
+	workspaceID, applicationLabel, ok := app.workspaceApplicationOriginRequest(r)
 	if !ok {
 		http.NotFound(w, r)
 		return
@@ -552,7 +552,7 @@ func (app *controlPlaneServer) proxyWorkspaceTo(w http.ResponseWriter, r *http.R
 		req.URL.RawPath = ""
 		req.Host = target.Host
 		req.Header.Set("X-Forwarded-Host", externalHost)
-		req.Header.Set("X-Forwarded-Proto", workspaceExternalScheme())
+		req.Header.Set("X-Forwarded-Proto", workspaceExternalSchemeWith(app.env))
 	}
 	if credentials == workspaceProxyApplicationOrigin {
 		proxy.ModifyResponse = func(response *http.Response) error {

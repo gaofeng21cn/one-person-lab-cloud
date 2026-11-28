@@ -71,7 +71,7 @@ opl-instance-medopl (Instance profile + protected workflows)
 ### Deployment Model & Unit Composition
 
 - `OPL_DEPLOYMENT_MODE` (`platform_owned`, `managed_tke`, `customer_owned`) and `OPL_FABRIC_PROVIDER` (`local-docker`, `tencent-tke`) vary independently; `opl-instance-medopl` binds `managed_tke` + `tencent-tke`. macOS does not support `local-docker` project quotas for production Workspace verification.
-- Domain boundaries do not force separate deployment containers: Cloud ships a unified 3-container portable topology (`compose.cloud.yaml`: PostgreSQL + one composed `cloud-backend` container running all 11 owner processes via `opl-cloud-composition` against the image-baked `/app/contracts/opl-cloud-owner-topology.json` + same-origin proxy `cloud-local-v2`) while keeping BuildKit workers and running customer Workspace containers outside backend privileges. The runtime image (`debian:bookworm-slim`) contains no Node.js runtime or `node_modules`.
+- Domain boundaries do not force separate deployment containers: Cloud ships a unified 3-container portable topology (`compose.cloud.yaml`: PostgreSQL + single-PID `cloud-backend` running all 11 domain modules in-process via `opl-cloud-composition` -> `opl-cloud` over `owneridentity.InProcTransport` and external mTLS/HTTP listeners against the image-baked `/app/contracts/opl-cloud-owner-topology.json` + same-origin proxy `cloud-local-v2`) while keeping BuildKit workers and running customer Workspace containers outside backend privileges. The runtime image (`debian:bookworm-slim`) contains no Node.js runtime or `node_modules`.
 
 ## Candidate And Installation-Data Boundary
 

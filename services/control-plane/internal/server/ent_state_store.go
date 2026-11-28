@@ -34,8 +34,12 @@ type StateStore interface {
 	controlPlaneTableStore
 }
 
-func StateStoreFromEnv() (StateStore, error) {
-	if databaseURL := os.Getenv("DATABASE_URL"); databaseURL != "" {
+// StateStoreFromEnvWith opens the configured PostgreSQL state store using getenv.
+func StateStoreFromEnvWith(getenv func(string) string) (StateStore, error) {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	if databaseURL := getenv("DATABASE_URL"); databaseURL != "" {
 		return NewPostgresEntStateStore(databaseURL)
 	}
 	return nil, errors.New("DATABASE_URL is required for control-plane persistence")

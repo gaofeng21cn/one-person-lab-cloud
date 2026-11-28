@@ -118,6 +118,13 @@ func (s *Service) Register(server *ownerservice.Server) error {
 // A process without its own database has nothing to read and reports
 // handlers-not-implemented, exactly like an owner with no product group.
 func Configure(server *ownerservice.Server, database *ownerservice.Database, config ownerservice.Config) error {
+	return ConfigureWithEnv(server, database, config, os.Getenv)
+}
+
+func ConfigureWithEnv(server *ownerservice.Server, database *ownerservice.Database, config ownerservice.Config, getenv func(string) string) error {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
 	if database == nil {
 		return ownerservice.ErrHandlersNotImplemented
 	}
@@ -137,8 +144,8 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 	if conn != nil {
 		service.Identity = api.NewCloudIdentityAuthorizationClient(conn)
 	}
-	if address := os.Getenv("OPL_CAPABILITY_ADDR"); address != "" {
-		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Capability), os.Getenv("OPL_CAPABILITY_TOKEN"))
+	if address := getenv("OPL_CAPABILITY_ADDR"); address != "" {
+		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Capability), getenv("OPL_CAPABILITY_TOKEN"))
 		if err != nil {
 			return err
 		}
@@ -152,8 +159,8 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 		service.Capability = api.NewCapabilityProductServiceClient(conn)
 		service.References = api.NewCapabilityCoordinationClient(conn)
 	}
-	if address := os.Getenv("OPL_RUNTIME_CONTROL_ADDR"); address != "" {
-		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(owneridentity.RuntimeControl), os.Getenv("OPL_RUNTIME_CONTROL_TOKEN"))
+	if address := getenv("OPL_RUNTIME_CONTROL_ADDR"); address != "" {
+		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(owneridentity.RuntimeControl), getenv("OPL_RUNTIME_CONTROL_TOKEN"))
 		if err != nil {
 			return err
 		}
@@ -166,8 +173,8 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 		}
 		service.RuntimeReleases = api.NewRuntimeControlProductServiceClient(conn)
 	}
-	if address := os.Getenv("OPL_FABRIC_COORDINATION_ADDR"); address != "" {
-		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Fabric), os.Getenv("OPL_FABRIC_COORDINATION_TOKEN"))
+	if address := getenv("OPL_FABRIC_COORDINATION_ADDR"); address != "" {
+		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Fabric), getenv("OPL_FABRIC_COORDINATION_TOKEN"))
 		if err != nil {
 			return err
 		}
@@ -180,8 +187,8 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 		}
 		service.Resources = api.NewFabricCoordinationClient(conn)
 	}
-	if address := os.Getenv("OPL_GATEWAY_ADDR"); address != "" {
-		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Gateway), os.Getenv("OPL_GATEWAY_TOKEN"))
+	if address := getenv("OPL_GATEWAY_ADDR"); address != "" {
+		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Gateway), getenv("OPL_GATEWAY_TOKEN"))
 		if err != nil {
 			return err
 		}
@@ -194,17 +201,12 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 		}
 		service.Gateway = api.NewGatewayCoordinationClient(conn)
 	}
-	// Serve owns application execution, so this process binds the one execution
-	// boundary its installation declares: its own cluster facts, or the declared
-	// migration-source boundary for the provider whose executor has not moved yet.
-	// The declared route origin decides the publishable URL for a gateway-published
-	// entry; an installation that declares none publishes no address rather than a
-	// guessed host.
-	if err := configureAgentExecution(service, RouteOriginFromEnv()); err != nil {
+	origin := RouteOriginFromEnvWith(getenv)
+	if err := configureAgentExecutionWithEnv(service, origin, getenv); err != nil {
 		return err
 	}
-	if address := strings.TrimSpace(os.Getenv("OPL_LEDGER_ADDR")); address != "" {
-		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Ledger), os.Getenv("OPL_LEDGER_TOKEN"))
+	if address := strings.TrimSpace(getenv("OPL_LEDGER_ADDR")); address != "" {
+		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Ledger), getenv("OPL_LEDGER_TOKEN"))
 		if err != nil {
 			return err
 		}
@@ -217,17 +219,12 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 		}
 		service.LedgerInbox = api.NewDomainInboxClient(conn)
 	}
-	// Serve owns the Workspace application entry, so the process that commits the
-	// route also serves it. Binding the entry eagerly makes a missing or taken
-	// address a startup failure instead of an installation that quietly serves no
-	// application entry. The address is the installation's own declared fact and
-	// is named literally here so the installation contract can derive it.
-	accessEntry, err := NewAccessEntry(database.DB(), RouteOriginFromEnv())
+	accessEntry, err := NewAccessEntry(database.DB(), origin)
 	if err != nil {
 		return err
 	}
-	if address := strings.TrimSpace(os.Getenv("OPL_WORKSPACE_ADDR")); address != "" {
-		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Workspace), os.Getenv("OPL_WORKSPACE_TOKEN"))
+	if address := strings.TrimSpace(getenv("OPL_WORKSPACE_ADDR")); address != "" {
+		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.DeploymentUnitTransportPrincipal(owneridentity.Workspace), getenv("OPL_WORKSPACE_TOKEN"))
 		if err != nil {
 			return err
 		}
@@ -241,7 +238,7 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 		accessEntry.Entitlement = WorkspaceEntitlement{Client: api.NewWorkspaceAccessReadbackClient(conn)}
 	}
 	service.Access = accessEntry
-	if err := startAccessEntry(server, accessEntry, os.Getenv("OPL_SERVE_ACCESS_ADDR")); err != nil {
+	if err := startAccessEntry(server, accessEntry, getenv("OPL_SERVE_ACCESS_ADDR")); err != nil {
 		return err
 	}
 	if service.LedgerInbox != nil {

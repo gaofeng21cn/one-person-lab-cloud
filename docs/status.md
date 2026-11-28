@@ -16,19 +16,24 @@ chronological snapshots.
   live under the single root Go module `go.mod` (`module opl-cloud`), backed by
   typed `database/sql` PostgreSQL stores and `services/internal/postgresmigrate`
   (`ent` ORM has been retired).
-- **Slim Go-Only Image & 3-Container Composed Portable Topology**: `Dockerfile`
-  compiles all Go binaries in one shared `go-build` stage onto a
+- **Single-Binary In-Process Backend & 3-Container Portable Topology (P1)**:
+  `Dockerfile` compiles **4** stamped Go binaries (`cmd/opl-cloud` ->
+  `/usr/local/bin/opl-cloud` plus CLI helpers `opl-tencent-provisioner`,
+  `opl-node-image-retire`, `opl-owner-probe`) and **12** BusyBox-style symlinks
+  (`opl-cloud-composition` and all 11 `opl-<service>` -> `opl-cloud`) onto a
   Node-free `debian:bookworm-slim` runtime carrying `/app/dist` and baked
   `/app/contracts/opl-cloud-owner-topology.json`. Portable topology
-  `deploy/portable/compose.cloud.yaml` converges from 13 containers to 3
-  (`postgres` + single `cloud-backend` container running `opl-cloud-composition`
-  across all 11 owner processes + `cloud-local-v2` proxy), `apps/console-bff`
-  serves Console SPA static assets on `/`, `opl-owner-probe` supports
-  `OPL_GRPC_CERT_DIR`, and `tests/contracts/module-physical-boundaries.test.ts`
-  enforces package/SDK isolation across all 11 Go services and `console-bff`.
-  Clean-host `local-v2` verification passes `LOCAL_NO_CHARGE` lifecycle
-  qualification (`p0Ready: false`). Composed backend TKE deployment has been
-  verified for the installed Candidate, while formal public Release remains at
+  `deploy/portable/compose.cloud.yaml` runs a 3-container stack (`postgres` +
+  single-PID `cloud-backend` running all 11 domain modules in-process via
+  `opl-cloud-composition` over `owneridentity.InProcTransport` with retained
+  external TCP+mTLS/HTTP readiness listeners + `cloud-local-v2` proxy);
+  `apps/console-bff` serves Console SPA static assets on `/`, `opl-owner-probe`
+  supports `OPL_GRPC_CERT_DIR`, and
+  `tests/contracts/module-physical-boundaries.test.ts` enforces package/SDK
+  isolation across all 11 Go services, `console-bff`, `cmd/opl-cloud`, and
+  `*/module` `ModuleEnv` boundaries. Clean-host `local-v2` qualification and
+  `opl-instance-medopl` TKE rollout of the converged P1 single-binary Candidate
+  are verified / tracked separately, while formal public Release remains at
   `v0.1.8` (GitHub Releases).
 - **Fabric Provider Account Resolution**: Fabric resolves the ordering Tenant of
   an accepted plan to the provider account that runs its package. A binding in

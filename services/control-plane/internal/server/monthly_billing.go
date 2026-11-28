@@ -49,10 +49,10 @@ func monthlyPreflightConfirmed(input clients.MonthlyPreflightInput, result clien
 // preflight records. Fabric rejects a monthly preflight that names no zone, so
 // a profile outside this mapping fails closed here instead of dispatching a
 // zone-less request.
-func workspaceLaunchProviderZone(operation workspaceLaunchReconcileOperation) (string, error) {
+func workspaceLaunchProviderZone(operation workspaceLaunchReconcileOperation, getenv func(string) string) (string, error) {
 	switch fabricProvider(operation.stringFact("providerProfileRef")) {
 	case fabricTencentTKE:
-		zone := controlplane.ProviderAcceptanceLaunchZone()
+		zone := controlplane.ProviderAcceptanceLaunchZoneWith(getenv)
 		if zone == "" {
 			return "", errWorkspaceLaunchMonthlyPreflightInvalid
 		}
@@ -65,7 +65,7 @@ func workspaceLaunchProviderZone(operation workspaceLaunchReconcileOperation) (s
 }
 
 func (a *controlPlaneWorkspaceLaunchStageAdapter) preflightWorkspaceLaunchMonthly(ctx context.Context, operation workspaceLaunchReconcileOperation) error {
-	zone, err := workspaceLaunchProviderZone(operation)
+	zone, err := workspaceLaunchProviderZone(operation, a.app.env)
 	if err != nil {
 		return err
 	}
@@ -175,7 +175,14 @@ func requiredPositiveInteger(input map[string]any, key string) (int64, bool) {
 	return value, ok && value > 0
 }
 
-func monthlyEnvironment() string { return os.Getenv("NODE_ENV") }
+func monthlyEnvironment() string { return monthlyEnvironmentWith(os.Getenv) }
+
+func monthlyEnvironmentWith(getenv func(string) string) string {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	return getenv("NODE_ENV")
+}
 
 func nextBillingMonth(current time.Time, anchorDay int) time.Time {
 	current = current.UTC()

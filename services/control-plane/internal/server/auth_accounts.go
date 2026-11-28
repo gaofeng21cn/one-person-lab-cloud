@@ -149,7 +149,7 @@ func (app *controlPlaneServer) disableUser(input map[string]any) (map[string]any
 }
 
 func (app *controlPlaneServer) importBootstrapUsers() error {
-	users, err := bootstrapUsersFromEnv()
+	users, err := bootstrapUsersFromEnvWith(app.env)
 	if err != nil {
 		return err
 	}

@@ -22,6 +22,7 @@ type workspaceResourceReconcileMutation struct {
 	ExpectedOperationsVersion string
 	Missing                   clients.ProviderFact
 	CheckedAt                 time.Time
+	FreshnessWindow           time.Duration
 }
 
 func workspaceResourceReconcileVersion(workspace map[string]any) string {
@@ -63,12 +64,15 @@ func workspaceResourceReconcileBlocked(operations []map[string]any) bool {
 	return false
 }
 
-func workspaceResourceMissing(input clients.ProviderFactInput, fact clients.ProviderFact, checkedAt time.Time) bool {
+func workspaceResourceMissing(input clients.ProviderFactInput, fact clients.ProviderFact, checkedAt time.Time, freshness time.Duration) bool {
 	if !providerFactConfirmedAbsent(input, fact) {
 		return false
 	}
+	if freshness <= 0 {
+		freshness = providerFreshnessWindow()
+	}
 	readAt, ok := parseTimeString(fact.Facts.LastReadAt)
-	return ok && !readAt.After(checkedAt) && checkedAt.Sub(readAt) <= providerFreshnessWindow()
+	return ok && !readAt.After(checkedAt) && checkedAt.Sub(readAt) <= freshness
 }
 
 func prepareWorkspaceResourceReconcile(current map[string]any, operations []map[string]any, mutation workspaceResourceReconcileMutation) (map[string]any, map[string]any, error) {
@@ -89,7 +93,7 @@ func prepareWorkspaceResourceReconcile(current map[string]any, operations []map[
 	default:
 		return nil, nil, errWorkspaceResourceReconcileConflict
 	}
-	if !workspaceResourceMissing(input, mutation.Missing, mutation.CheckedAt) {
+	if !workspaceResourceMissing(input, mutation.Missing, mutation.CheckedAt, mutation.FreshnessWindow) {
 		return nil, nil, errProviderFactsInvalid
 	}
 	desired := cloneMap(current)
@@ -170,12 +174,13 @@ func (app *controlPlaneServer) reconcileWorkspaceResources(ctx context.Context, 
 	if readErr != nil {
 		return readErr
 	}
+	freshness := providerFreshnessWindowWith(app.env)
 	for _, input := range inputs {
 		fact := facts[providerFactKey(input)]
-		if !workspaceResourceMissing(input, fact, checkedAt) {
+		if !workspaceResourceMissing(input, fact, checkedAt, freshness) {
 			continue
 		}
-		mutation := workspaceResourceReconcileMutation{WorkspaceID: workspaceID, ExpectedWorkspaceVersion: workspaceResourceReconcileVersion(workspace), ExpectedOperationsVersion: runtimeOperationsVersion(operations, workspaceID), Missing: fact, CheckedAt: checkedAt}
+		mutation := workspaceResourceReconcileMutation{WorkspaceID: workspaceID, ExpectedWorkspaceVersion: workspaceResourceReconcileVersion(workspace), ExpectedOperationsVersion: runtimeOperationsVersion(operations, workspaceID), Missing: fact, CheckedAt: checkedAt, FreshnessWindow: freshness}
 		if err := app.tables.ApplyWorkspaceResourceReconcile(ctx, mutation); err != nil {
 			return err
 		}

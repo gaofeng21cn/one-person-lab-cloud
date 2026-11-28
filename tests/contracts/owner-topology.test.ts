@@ -154,20 +154,21 @@ async function envNamesRead(dir: string, declaredNames?: Set<string>): Promise<S
   const names = new Set<string>();
   for (const file of await goFiles(dir)) {
     const source = await readFile(file, "utf8");
-    for (const match of source.matchAll(/(?:\w+\.)?[gG]etenv\("([A-Z0-9_]+)"\)/g)) names.add(match[1]);
-    for (const match of source.matchAll(/(?:\w+\.)?LookupEnv\("([A-Z0-9_]+)"\)/g)) names.add(match[1]);
-    for (const match of source.matchAll(/(?:durationFromEnv|envInt)\("([A-Z0-9_]+)"/g)) names.add(match[1]);
+    for (const match of source.matchAll(/(?:\b\w+\.(?:Getenv|LookupEnv|Lookup|[eE]nv)|\b(?:[gG]etenv|[lL]ookupEnv))\("([A-Z0-9_]+)"\)/g)) {
+      names.add(match[1]);
+    }
+    for (const match of source.matchAll(/(?:durationFromEnv|envInt)(?:With)?\((?:[^,\n]+,\s*)?"([A-Z0-9_]+)"/g)) names.add(match[1]);
     for (const match of source.matchAll(/(?:intFromEnv|nonNegativeIntFromEnv)\(env,\s*"([A-Z0-9_]+)"/g)) names.add(match[1]);
-    if (/os\.Getenv\(key\)/.test(source)) {
+    if (/(?:os\.Getenv|(?:\w+\.)?[gG]etenv|\w+\.env)\(key\)/.test(source)) {
       for (const list of source.matchAll(/required\s*:=\s*\[\]string\{([^}]*)\}/g)) {
         for (const match of list[1].matchAll(/"([A-Z0-9_]+)"/g)) names.add(match[1]);
       }
     }
     // Provider constructors also read environment names through constants.
     for (const match of source.matchAll(/\b(?:const\s+)?(\w+)\s*=\s*"([A-Z0-9_]+)"/g)) {
-      if (new RegExp(`(?:Getenv|LookupEnv)\\(${match[1]}\\)`).test(source)) names.add(match[2]);
+      if (new RegExp(`(?:\\b\\w+\\.(?:Getenv|LookupEnv|Lookup|[eE]nv)|\\b(?:[gG]etenv|[lL]ookupEnv))\\(${match[1]}\\)`).test(source)) names.add(match[2]);
     }
-    if (/Getenv\(contracts\.WorkspaceImageReleasesEnv\)/.test(source)) {
+    if (/(?:Getenv|getenv)\(contracts\.WorkspaceImageReleasesEnv\)/.test(source)) {
       const contract = await readFile("packages/contracts/go/workspace_image_release.go", "utf8");
       const match = contract.match(/const WorkspaceImageReleasesEnv = "([A-Z0-9_]+)"/);
       assert.ok(match, "the Workspace image release environment must retain its contract declaration");
@@ -204,17 +205,17 @@ async function loadConfigCalls(): Promise<Map<string, { ownerConstant: string; d
   const scanned = new Set<string>();
   for (const entry of await readdir("services", { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    let commands: string[];
+    const candidates: string[] = [`services/${entry.name}/module/run.go`];
     try {
-      commands = (await readdir(`services/${entry.name}/cmd`, { withFileTypes: true })).filter((item) => item.isDirectory()).map((item) => item.name);
+      const commands = (await readdir(`services/${entry.name}/cmd`, { withFileTypes: true })).filter((item) => item.isDirectory()).map((item) => item.name);
+      for (const command of commands) candidates.push(`services/${entry.name}/cmd/${command}/main.go`);
     } catch {
-      continue;
+      // Directory may have no cmd/ subdir.
     }
-    for (const command of commands) {
-      const main = `services/${entry.name}/cmd/${command}/main.go`;
+    for (const candidate of candidates) {
       let source: string;
       try {
-        source = await readFile(main, "utf8");
+        source = await readFile(candidate, "utf8");
       } catch {
         continue;
       }
@@ -371,9 +372,9 @@ test("every process that is not an ownerservice entrypoint is declared with its 
   // These three own their own startup path rather than ownerservice.LoadConfig,
   // so the exact literal and default are asserted from the owning file.
   for (const [service, file, defaultAddress] of [
-    ["fabric", "services/fabric/cmd/fabric/main.go", ":8082"],
-    ["console-bff", "apps/console-bff/cmd/server/main.go", ":8190"],
-    ["control-plane", "services/control-plane/cmd/control-plane/main.go", ":8787"]
+    ["fabric", "services/fabric/module/run.go", ":8082"],
+    ["console-bff", "apps/console-bff/module/run.go", ":8190"],
+    ["control-plane", "services/control-plane/module/run.go", ":8787"]
   ] as const) {
     const process = byService.get(service);
     assert.ok(process, `${service} must be declared in ${topologyPath}`);
@@ -427,21 +428,21 @@ test("the Fabric process declares the Tencent credentials its provisioner consum
 test("the declaration covers every owner binary the product image builds", async () => {
   const topology = await loadTopology();
   const dockerfile = await readFile(dockerfilePath, "utf8");
-  const goBuild = dockerfile.slice(dockerfile.indexOf("AS go-build"), dockerfile.indexOf("FROM docker:"));
-  const loop = goBuild.match(/for service in ([^;]+); do/);
-  assert.ok(loop, "go-build must iterate its owner set");
-  const byService = new Map(topology.processes.map((process) => [process.service, process]));
-  for (const service of [...loop[1].trim().split(/\s+/), "console-bff"].sort()) {
-    const process = byService.get(service);
-    assert.ok(process, `${service} is built into the product image and must be declared in ${topologyPath}`);
-    assert.ok(goBuild.includes(`-o /out/opl-${service} `) || goBuild.includes("-o /out/opl-$service "),
-      `go-build must emit opl-${service}`);
-    assert.equal(process.binary, `/usr/local/bin/opl-${service}`);
+  const goBuild = dockerfile.slice(dockerfile.indexOf("AS go-build"), dockerfile.indexOf("FROM docker:")).replace(/\\\r?\n/g, " ");
+  assert.ok(goBuild.includes("-o /out/opl-cloud ./cmd/opl-cloud"), "go-build must compile unified /out/opl-cloud");
+  const symlinkLoop = goBuild.match(/for bin in ([^;]+); do\s+ln -s opl-cloud "\/out\/\$bin"/);
+  assert.ok(symlinkLoop, "go-build must symlink every declared owner binary to opl-cloud");
+  const symlinked = new Set(symlinkLoop[1].trim().split(/\s+/));
+  const byBinary = new Map(topology.processes.map((process) => [path.posix.basename(process.binary), process]));
+  for (const binary of symlinked) {
+    const process = byBinary.get(binary);
+    assert.ok(process, `${binary} is shipped in the product image and must be declared in ${topologyPath}`);
+    assert.equal(process.binary, `/usr/local/bin/${binary}`);
   }
-  for (const [service, binary] of [["control-plane", "opl-control-plane"], ["fabric", "opl-fabric"], ["ledger", "opl-ledger"]] as const) {
-    assert.equal(byService.get(service)?.binary, `/usr/local/bin/${binary}`);
-    assert.ok(dockerfile.includes(`-o /out/${binary} `) && dockerfile.includes("COPY --from=go-build /out/ /usr/local/bin/"),
-      `the runtime stage must ship ${binary}`);
+  for (const process of topology.processes) {
+    const binary = path.posix.basename(process.binary);
+    assert.ok(symlinked.has(binary), `Dockerfile must ship symlink for ${binary}`);
+    assert.ok(dockerfile.includes("COPY --from=go-build /out/ /usr/local/bin/"), `the runtime stage must ship ${binary}`);
   }
 });
 
@@ -824,7 +825,7 @@ function dialTargetsFromSource(source: string, byPrefix: Map<string, string>): S
     // A process that composes the owner environment name from the owner it is
     // looping over names no address literal to find, so the owner set it loops
     // over is the only place that call is written down.
-    if (/os\.Getenv\("OPL_"\s*\+/.test(source)) {
+    if (/(?:os\.Getenv|env\.Env|getenv)\("OPL_"\s*\+/.test(source)) {
       for (const helper of source.matchAll(/func\s+(\w+)\([^\n]*target owneridentity\.Owner/g)) {
         for (const call of source.matchAll(new RegExp(`\\b${helper[1]}\\([^\\n]*?owneridentity\\.(\\w+)`, "g"))) {
           const target = byPrefix.get(`Owner${call[1]}`);
@@ -1317,8 +1318,9 @@ function parseDockerfileStages(dockerfile: string): DockerfileBuildStage[] {
     }
     const loop = /for service in ([^;]+); do/.exec(line);
     const loopServices = loop ? loop[1].trim().split(/\s+/) : [];
-    for (const rule of line.matchAll(/-C (\S+) build\b.*?-o \/out\/(\S+) (\.\/cmd\/\S+)/g)) {
-      const [, moduleDir, binary, packageDir] = rule;
+    for (const rule of line.matchAll(/go (?:-C (\S+) )?build\b.*?-o \/out\/(\S+) (\.\/cmd\/\S+)/g)) {
+      const [, maybeModuleDir, binary, packageDir] = rule;
+      const moduleDir = maybeModuleDir ?? (stage.workdir.replace(/^\/src\/?/, "") || ".");
       if (binary.includes("$")) {
         for (const service of loopServices) {
           stage.binaries.set(binary.replace("$service", service), {
@@ -1330,10 +1332,19 @@ function parseDockerfileStages(dockerfile: string): DockerfileBuildStage[] {
       }
       stage.binaries.set(binary, { moduleDir, package: packageDir });
     }
-    for (const rule of line.matchAll(/go build\b.*?-o \/out\/(\S+) (\.\/cmd\/\S+)/g)) {
-      const [, binary, packageDir] = rule;
-      if (stage.binaries.has(binary)) continue;
-      stage.binaries.set(binary, { moduleDir: stage.workdir.replace(/^\/src\//, ""), package: packageDir });
+    for (const link of line.matchAll(/ln -s (\S+) \/out\/([a-z0-9-]+)\b/g)) {
+      const [, targetBinary, linkBinary] = link;
+      const targetSpec = stage.binaries.get(targetBinary);
+      if (targetSpec) stage.binaries.set(linkBinary, targetSpec);
+    }
+    const binLoop = /for bin in ([^;]+); do\s+ln -s (\S+) "\/out\/\$bin"/.exec(line);
+    if (binLoop) {
+      const targetSpec = stage.binaries.get(binLoop[2]);
+      if (targetSpec) {
+        for (const linkBinary of binLoop[1].trim().split(/\s+/)) {
+          stage.binaries.set(linkBinary, targetSpec);
+        }
+      }
     }
   }
   return stages;
@@ -1521,6 +1532,8 @@ test("every member of the Cloud backend unit has a start path the product image 
   const dockerfile = await readFile(dockerfilePath, "utf8");
   const stages = parseDockerfileStages(dockerfile);
   const shipped = shippedBinaries(dockerfile, stages);
+  const singleBinaryMain = await readFile("cmd/opl-cloud/main.go", "utf8");
+  assert.match(singleBinaryMain, /^package main\b/m, "cmd/opl-cloud/main.go must be package main");
   for (const process of topology.processes) {
     const binary = path.posix.basename(process.binary);
     const rule = stages.flatMap((stage) => [...stage.binaries.entries()]
@@ -1528,16 +1541,16 @@ test("every member of the Cloud backend unit has a start path the product image 
       .find((entry) => entry.name === binary);
     assert.ok(rule, `${process.service} declares ${process.binary}, which the product image does not build`);
     const startPath = path.posix.join(rule.value.moduleDir, rule.value.package, "main.go");
+    const source = await readFile(startPath, "utf8");
+    assert.match(source, /^package main\b/m, `${startPath} must be package main`);
     const directory = ownerProcessDirectory(process.service);
-    assert.ok(startPath.startsWith(`${directory}/`),
-      `${process.service} must start from its own source tree, but the image builds it from ${startPath}`);
-    let source: string;
-    try {
-      source = await readFile(startPath, "utf8");
-    } catch {
-      assert.fail(`${process.service} declares no real start path: ${startPath} does not exist`);
-    }
-    assert.match(source, /^package main\b/m, `${startPath} must be the main package of ${process.service}`);
+    assert.ok(singleBinaryMain.includes(`"opl-cloud/${directory}/module"`),
+      `${process.service} must register opl-cloud/${directory}/module in ${startPath}`);
+    assert.ok(singleBinaryMain.includes(`"${binary}"`),
+      `${process.service} symlink binary ${binary} must be dispatched in ${startPath}`);
+    const moduleRun = await readFile(`${directory}/module/run.go`, "utf8");
+    assert.match(moduleRun, /^package module\b/m, `${directory}/module/run.go must declare package module`);
+    assert.ok(moduleRun.includes("func Run("), `${directory}/module/run.go must export Run`);
     assert.ok(shipped.has(binary), `the product image must ship ${binary}`);
   }
 });
@@ -1560,8 +1573,8 @@ test("the Cloud backend unit declares the composition entrypoint the product ima
     .map(([name, value]) => ({ name, value })))
     .find((entry) => entry.name === binary);
   assert.ok(rule, `the product image must build ${binary}`);
-  assert.equal(rule.value.moduleDir, "services/cloud-composition",
-    "the unit's entrypoint must be the composition entrypoint the product builds");
+  assert.equal(rule.value.package, "./cmd/opl-cloud",
+    "the unit's entrypoint must resolve to the unified single-binary composition root");
   const startPath = path.posix.join(rule.value.moduleDir, rule.value.package, "main.go");
   let source: string;
   try {
@@ -1625,8 +1638,8 @@ test("every declared dependency of the Cloud backend unit is proved against the 
       assert.ok(capability, "the Capability owner must be a declared process");
       assert.ok(capability.env.includes(boundaryEnv),
         "the object store boundary must be an environment name the Capability owner declares");
-      const source = await readFile("services/capability/cmd/server/main.go", "utf8");
-      assert.ok(source.includes(`os.Getenv("${boundaryEnv}")`),
+      const source = await readFile("services/capability/module/run.go", "utf8");
+      assert.ok(source.includes(`env.Env("${boundaryEnv}")`),
         "the Capability owner must read the declared storage kind");
       const cosBranch = source.slice(source.indexOf('case "cos":'), source.indexOf("default:"));
       assert.ok(cosBranch.includes("NewCOSObjects"), "the cos kind must build the instance bucket store");
@@ -1657,8 +1670,8 @@ test("every declared dependency of the Cloud backend unit is proved against the 
       assert.ok(fabric, "the Fabric owner must be a declared process");
       assert.ok(fabric.env.includes(boundaryEnv),
         "the resource API boundary must be an environment name the Fabric owner declares");
-      const main = await readFile("services/fabric/cmd/fabric/main.go", "utf8");
-      assert.ok(main.includes(`getenv("${boundaryEnv}")`),
+      const main = await readFile("services/fabric/module/run.go", "utf8");
+      assert.ok(main.includes(`env.Env("${boundaryEnv}")`),
         "the Fabric owner must read the declared provider selection");
       const port = await readFile("services/fabric/internal/fabric/provider_port.go", "utf8");
       assert.match(port, /type Provider interface \{/,
@@ -1752,7 +1765,7 @@ test("a boundary entry this contract does not support is refused", () => {
   const entry = (over: Partial<UnitEntry>): UnitEntry => ({
     id: "fixture", kind: "objectStore",
     outsideUnit: { reason: "notAProcessOfThisUnit", reachedThrough: "the fixture boundary", boundaryEnv: "OPL_CAPABILITY_STORAGE_KIND" },
-    evidence: ["services/capability/cmd/server/main.go:158 reads the storage kind"],
+    evidence: ["services/capability/module/run.go:159 reads the storage kind"],
     ...over
   });
   const base = entry({});
