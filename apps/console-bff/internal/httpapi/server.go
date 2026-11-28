@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -43,6 +44,7 @@ type Server struct {
 	gatewayCoordination api.GatewayCoordinationClient
 	workspace           api.WorkspaceProductServiceClient
 	fabric              api.FabricCoordinationClient
+	getenv              func(string) string
 }
 
 // OwnerReader is the typed read surface the BFF needs. It is satisfied by the
@@ -56,7 +58,15 @@ type OwnerReader interface {
 // caller must also supply the CloudIdentity identity reader the browser session
 // and authorization preconditions are resolved through.
 func NewServer(reader OwnerReader, identity IdentityReader) *Server {
-	s := &Server{reader: reader, identity: identity}
+	return NewServerWithEnv(reader, identity, os.Getenv)
+}
+
+// NewServerWithEnv returns the BFF REST server configured with a scoped environment getter.
+func NewServerWithEnv(reader OwnerReader, identity IdentityReader, getenv func(string) string) *Server {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	s := &Server{reader: reader, identity: identity, getenv: getenv}
 	if b, ok := reader.(LegacyBillingReader); ok {
 		s.legacyBilling = b
 	}

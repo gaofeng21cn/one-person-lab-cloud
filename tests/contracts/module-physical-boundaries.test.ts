@@ -92,6 +92,46 @@ test("Go services and Console BFF remain physically isolated behind typed owner 
       );
     }
   }
+
+  // The unified single-binary composition root imports only the composition
+  // supervisor, shared contracts, and thin <unit>/module entrypoints—never
+  // service internals or infrastructure SDKs.
+  const allowedModuleImports = new Set([
+    `${rootModulePath}/services/cloud-composition/composition`,
+    ...units.map((unit) => `${unit.modulePath}/module`),
+  ]);
+  for (const file of await filesUnder("cmd/opl-cloud", (path) => path.endsWith(".go") && !path.endsWith("_test.go"))) {
+    const source = await text(file);
+    for (const imported of goImports(source)) {
+      if (imported.startsWith(`${rootModulePath}/services/`) || imported.startsWith(`${rootModulePath}/apps/`)) {
+        assert.equal(allowedModuleImports.has(imported), true, `${file} must import only thin module packages or composition, saw ${imported}`);
+      }
+      assert.equal(imported.includes("/internal/"), false, `${file} bypasses module boundary by importing ${imported}`);
+      assert.equal(imported.startsWith("github.com/tencentcloud/"), false, `${file} imports Tencent Cloud SDK ${imported}`);
+      assert.equal(imported.startsWith("github.com/moby/"), false, `${file} imports Docker SDK ${imported}`);
+      assert.equal(imported.startsWith("k8s.io/"), false, `${file} imports raw k8s.io SDK ${imported}`);
+    }
+  }
+
+  // Domain modules read configuration strictly through injected ModuleEnv so
+  // in-process composition enforces allowlisted environment isolation.
+  const cliSubcommandFiles = new Set([
+    "services/serve/module/probe.go",
+    "services/workspace/module/retry_initial_runtime.go",
+  ]);
+  for (const unit of units) {
+    let moduleFiles: string[] = [];
+    try {
+      moduleFiles = await filesUnder(`${unit.directory}/module`, (path) => path.endsWith(".go") && !path.endsWith("_test.go"));
+    } catch {
+      continue;
+    }
+    for (const file of moduleFiles) {
+      if (cliSubcommandFiles.has(file)) continue;
+      const source = await text(file);
+      assert.doesNotMatch(source, /\bos\.(?:Getenv|LookupEnv)\(/, `${file} must read environment via ModuleEnv, not direct os.Getenv/os.LookupEnv`);
+    }
+  }
 });
 
 test("Console UI reaches services only through the same-origin Control Plane API adapter", async () => {

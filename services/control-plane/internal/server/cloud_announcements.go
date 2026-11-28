@@ -30,6 +30,10 @@ type cloudAnnouncementSource struct {
 }
 
 func cloudAnnouncementSourceFromEnv(getenv func(string) string) (*cloudAnnouncementSource, error) {
+	return cloudAnnouncementSourceFromEnvWithInProc(getenv, nil)
+}
+
+func cloudAnnouncementSourceFromEnvWithInProc(getenv func(string) string, inproc *owneridentity.InProcTransport) (*cloudAnnouncementSource, error) {
 	token := strings.TrimSpace(getenv("OPL_CONTROL_PLANE_BFF_TOKEN"))
 	address := strings.TrimSpace(getenv("OPL_CLOUD_IDENTITY_URL"))
 	upstreamToken := strings.TrimSpace(getenv("OPL_CLOUD_IDENTITY_TOKEN"))
@@ -44,7 +48,9 @@ func cloudAnnouncementSourceFromEnv(getenv func(string) string) (*cloudAnnouncem
 			return nil, fmt.Errorf("OPL_CONTROL_PLANE_BFF_TOKEN must be independent of outbound service credentials")
 		}
 	}
-	options, err := owneridentity.TLSFromEnv(getenv).DialOptions(owneridentity.ControlPlane, owneridentity.Tenant.Service(), upstreamToken)
+	tlsConfig := owneridentity.TLSFromEnv(getenv)
+	tlsConfig.InProc = inproc
+	options, err := tlsConfig.DialOptions(owneridentity.ControlPlane, owneridentity.Tenant.Service(), upstreamToken)
 	if err != nil {
 		return nil, err
 	}

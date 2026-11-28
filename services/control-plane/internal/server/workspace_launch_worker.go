@@ -127,13 +127,16 @@ func (scheduler *workspaceLaunchScheduler) dispatch(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-func workspaceLaunchWorkerEnabled() bool {
-	value := strings.TrimSpace(os.Getenv("OPL_WORKSPACE_LAUNCH_WORKER_ENABLED"))
+func workspaceLaunchWorkerEnabledWith(getenv func(string) string) bool {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	value := strings.TrimSpace(getenv("OPL_WORKSPACE_LAUNCH_WORKER_ENABLED"))
 	return value == "1" || strings.EqualFold(value, "true") || strings.EqualFold(value, "yes")
 }
 
-func workspaceLaunchWorkerInterval() time.Duration {
-	return durationFromEnv("OPL_WORKSPACE_LAUNCH_INTERVAL_MS", defaultWorkspaceLaunchInterval)
+func workspaceLaunchWorkerIntervalWith(getenv func(string) string) time.Duration {
+	return durationFromEnvWith(getenv, "OPL_WORKSPACE_LAUNCH_INTERVAL_MS", defaultWorkspaceLaunchInterval)
 }
 
 func (app *controlPlaneServer) startWorkspaceLaunchWorker(ctx context.Context, service *controlplane.Service, interval time.Duration) {

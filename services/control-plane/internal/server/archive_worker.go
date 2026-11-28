@@ -12,15 +12,25 @@ import (
 const defaultRetentionInterval = 24 * time.Hour
 
 func retentionWorkerEnabled() bool {
-	value := strings.TrimSpace(os.Getenv("OPL_ARCHIVE_RETENTION_WORKER_ENABLED"))
+	return retentionWorkerEnabledWith(os.Getenv)
+}
+
+func retentionWorkerEnabledWith(getenv func(string) string) bool {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	value := strings.TrimSpace(getenv("OPL_ARCHIVE_RETENTION_WORKER_ENABLED"))
 	if value == "0" || strings.EqualFold(value, "false") || strings.EqualFold(value, "no") {
 		return false
 	}
 	return value == "" || value == "1" || strings.EqualFold(value, "true") || strings.EqualFold(value, "yes")
 }
 
-func retentionWorkerInterval() time.Duration {
-	raw := strings.TrimSpace(os.Getenv("OPL_ARCHIVE_RETENTION_INTERVAL_MS"))
+func retentionWorkerIntervalWith(getenv func(string) string) time.Duration {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	raw := strings.TrimSpace(getenv("OPL_ARCHIVE_RETENTION_INTERVAL_MS"))
 	if raw == "" {
 		return defaultRetentionInterval
 	}

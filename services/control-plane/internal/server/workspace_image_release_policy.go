@@ -48,9 +48,12 @@ type workspaceImageReleasePolicyDTO struct {
 	Reason           string                     `json:"reason,omitempty"`
 }
 
-func configuredWorkspaceImageReleaseCatalog() (contracts.WorkspaceImageReleaseCatalog, contracts.WorkspaceImageRelease, error) {
-	installedImage := currentWorkspaceImageDigest()
-	catalog, err := contracts.DecodeWorkspaceImageReleaseCatalog(os.Getenv(contracts.WorkspaceImageReleasesEnv), installedImage)
+func configuredWorkspaceImageReleaseCatalogWith(getenv func(string) string) (contracts.WorkspaceImageReleaseCatalog, contracts.WorkspaceImageRelease, error) {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	installedImage := currentWorkspaceImageDigestWith(getenv)
+	catalog, err := contracts.DecodeWorkspaceImageReleaseCatalog(getenv(contracts.WorkspaceImageReleasesEnv), installedImage)
 	if err != nil {
 		return contracts.WorkspaceImageReleaseCatalog{}, contracts.WorkspaceImageRelease{}, err
 	}
@@ -93,7 +96,7 @@ func validateWorkspaceImageReleasePolicy(policy workspaceImageReleasePolicy, cat
 }
 
 func (app *controlPlaneServer) currentWorkspaceImageReleasePolicy(ctx context.Context) (workspaceImageReleasePolicy, contracts.WorkspaceImageReleaseCatalog, contracts.WorkspaceImageRelease, error) {
-	catalog, installed, err := configuredWorkspaceImageReleaseCatalog()
+	catalog, installed, err := configuredWorkspaceImageReleaseCatalogWith(app.env)
 	if err != nil {
 		return workspaceImageReleasePolicy{}, contracts.WorkspaceImageReleaseCatalog{}, contracts.WorkspaceImageRelease{}, err
 	}

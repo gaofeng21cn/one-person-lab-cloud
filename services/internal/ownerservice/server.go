@@ -29,16 +29,17 @@ type ReadyCheck func(context.Context) error
 
 // Server is one owner process's gRPC server.
 type Server struct {
-	config   Config
-	server   *grpc.Server
-	health   *health.Server
-	listener net.Listener
-	products map[string]bool
-	required []string
-	checks   map[string]ReadyCheck
-	mu       sync.Mutex
-	serving  bool
-	closers  []interface{ Close() error }
+	config         Config
+	server         *grpc.Server
+	health         *health.Server
+	listener       net.Listener
+	inprocListener net.Listener
+	products       map[string]bool
+	required       []string
+	checks         map[string]ReadyCheck
+	mu             sync.Mutex
+	serving        bool
+	closers        []interface{ Close() error }
 }
 
 // TrackCloser registers a dependency opened while wiring product handlers. The
@@ -231,10 +232,37 @@ func (s *Server) setServing(serving bool) {
 	s.mu.Unlock()
 }
 
-// Serve blocks on the owner's listener.
+func (s *Server) startInProcListener() error {
+	if s.config.TLS.InProc == nil {
+		return nil
+	}
+	principal := owneridentity.DeploymentUnitTransportPrincipal(s.config.Owner)
+	inprocLn, err := s.config.TLS.InProc.Listen(principal)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.inprocListener = inprocLn
+	s.mu.Unlock()
+	go func() {
+		_ = s.server.Serve(inprocLn)
+	}()
+	return nil
+}
+
+// Serve blocks on the owner's listener (and optional in-process listener).
 func (s *Server) Serve() error {
+	if err := s.startInProcListener(); err != nil {
+		return err
+	}
 	listener, err := Listen(s.config.Addr)
 	if err != nil {
+		s.mu.Lock()
+		inprocLn := s.inprocListener
+		s.mu.Unlock()
+		if inprocLn != nil {
+			_ = inprocLn.Close()
+		}
 		return err
 	}
 	s.listener = listener
@@ -242,15 +270,26 @@ func (s *Server) Serve() error {
 	return s.server.Serve(listener)
 }
 
-// ServeOn blocks on a caller-supplied listener, which tests use to take an
-// ephemeral port without a fixed address.
+// ServeOn blocks on a caller-supplied listener (plus any configured in-process
+// listener), which tests use to take an ephemeral port without a fixed address.
 func (s *Server) ServeOn(listener net.Listener) error {
+	if err := s.startInProcListener(); err != nil {
+		return err
+	}
 	s.listener = listener
 	return s.server.Serve(listener)
 }
 
 // Stop gracefully stops the server.
-func (s *Server) Stop() { s.server.GracefulStop() }
+func (s *Server) Stop() {
+	s.server.GracefulStop()
+	s.mu.Lock()
+	inprocLn := s.inprocListener
+	s.mu.Unlock()
+	if inprocLn != nil {
+		_ = inprocLn.Close()
+	}
+}
 
 // identityInterceptor refuses a call whose peer identity is not in the owner's
 // allowlist, then records the verified peer on the request context.

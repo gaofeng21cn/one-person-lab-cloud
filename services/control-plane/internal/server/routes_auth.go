@@ -5,7 +5,6 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 
@@ -15,7 +14,7 @@ import (
 
 func registerAuthRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
 	mux.HandleFunc("POST /api/auth/login", func(w http.ResponseWriter, r *http.Request) {
-		if !validLoginRequest(w, r) {
+		if !app.validLoginRequest(w, r) {
 			return
 		}
 		if !limitJSONBody(w, r) {
@@ -100,7 +99,7 @@ func registerAuthRoutes(mux *http.ServeMux, app *controlPlaneServer, service *co
 	}))
 }
 
-func validLoginRequest(w http.ResponseWriter, r *http.Request) bool {
+func (app *controlPlaneServer) validLoginRequest(w http.ResponseWriter, r *http.Request) bool {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || !strings.EqualFold(mediaType, "application/json") {
 		writeError(w, http.StatusUnsupportedMediaType, "json_content_type_required")
@@ -111,7 +110,7 @@ func validLoginRequest(w http.ResponseWriter, r *http.Request) bool {
 	if origin == "" && referer == "" {
 		return true
 	}
-	expected, ok := loginRequestOrigin(r)
+	expected, ok := app.loginRequestOrigin(r)
 	if !ok || origin != "" && !sameWebOrigin(origin, expected) || referer != "" && !sameWebOrigin(referer, expected) {
 		writeError(w, http.StatusForbidden, "login_origin_forbidden")
 		return false
@@ -119,8 +118,8 @@ func validLoginRequest(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-func loginRequestOrigin(r *http.Request) (*url.URL, bool) {
-	if configured := strings.TrimSpace(os.Getenv("OPL_PUBLIC_URL")); configured != "" {
+func (app *controlPlaneServer) loginRequestOrigin(r *http.Request) (*url.URL, bool) {
+	if configured := strings.TrimSpace(app.env("OPL_PUBLIC_URL")); configured != "" {
 		parsed, err := url.Parse(configured)
 		if err != nil || !validWebOrigin(parsed) {
 			return nil, false

@@ -117,10 +117,10 @@ func (app *controlPlaneServer) readWorkspaceCurrentApplication(ctx context.Conte
 		}
 		current.EntryURL = entry.URL
 	} else if entry != nil {
-		if originURL, ok := workspaceApplicationOriginURL(intent.WorkspaceID, intent.ApplicationID); ok {
+		if originURL, ok := app.workspaceApplicationOriginURL(intent.WorkspaceID, intent.ApplicationID); ok {
 			current.EntryURL = originURL
 		} else {
-			current.EntryURL = workspaceGatewayEntryURL(intent.WorkspaceID)
+			current.EntryURL = app.workspaceGatewayEntryURL(intent.WorkspaceID)
 		}
 	}
 	current.Status = observation.Status

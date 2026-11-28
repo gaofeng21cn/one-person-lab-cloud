@@ -52,6 +52,7 @@ export const goModules = Object.freeze([
   "services/resource-catalog",
   "services/serve",
   "services/cloud-composition",
+  "cmd/opl-cloud",
   "apps/console-bff",
   "tools/go"
 ]);
@@ -135,6 +136,7 @@ export const databaseFreeGoTestSpecs: readonly DatabaseFreeGoTestSpec[] = Object
   // declared owner processes; its order, dependency and readiness rules hold
   // without a database.
   { cwd: "services/cloud-composition", packages: ["./..."] },
+  { cwd: "cmd/opl-cloud", packages: ["./..."] },
   { cwd: "services/internal/postgresmigrate", packages: ["./..."] },
   // The owner runtime's startup and Operation readback rules hold without a
   // database; its PostgreSQL-gated isolation proof declares the capability it

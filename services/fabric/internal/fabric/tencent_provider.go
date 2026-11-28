@@ -117,6 +117,14 @@ type TencentProvider struct {
 	namespace       string
 	provisionerPath string
 	installationErr error
+	getenv          func(string) string
+}
+
+func (p *TencentProvider) env(key string) string {
+	if p != nil && p.getenv != nil {
+		return p.getenv(key)
+	}
+	return os.Getenv(key)
 }
 
 func normalizeWorkspaceDomain(value string) string {
@@ -213,13 +221,20 @@ type monthlyPreflightEvaluation struct {
 }
 
 func NewTencentProvider() *TencentProvider {
-	raw := []byte(strings.TrimSpace(os.Getenv(tencentProviderProfileEnv)))
+	return NewTencentProviderWithEnv(os.Getenv)
+}
+
+func NewTencentProviderWithEnv(getenv func(string) string) *TencentProvider {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	raw := []byte(strings.TrimSpace(getenv(tencentProviderProfileEnv)))
 	profile, plans, profileErr := decodeTencentProviderProfile(raw)
-	workspaceImage := strings.TrimSpace(os.Getenv("OPL_WORKSPACE_IMAGE"))
-	workspaceImages, workspaceImagesErr := contracts.DecodeWorkspaceImageReleaseCatalog(os.Getenv(contracts.WorkspaceImageReleasesEnv), workspaceImage)
-	workspaceDomain := normalizeWorkspaceDomain(os.Getenv("OPL_WORKSPACE_DOMAIN"))
-	namespaceValue := strings.TrimSpace(os.Getenv("OPL_K8S_NAMESPACE"))
-	provisionerPath := strings.TrimSpace(os.Getenv("OPL_TENCENT_PROVISIONER_BIN"))
+	workspaceImage := strings.TrimSpace(getenv("OPL_WORKSPACE_IMAGE"))
+	workspaceImages, workspaceImagesErr := contracts.DecodeWorkspaceImageReleaseCatalog(getenv(contracts.WorkspaceImageReleasesEnv), workspaceImage)
+	workspaceDomain := normalizeWorkspaceDomain(getenv("OPL_WORKSPACE_DOMAIN"))
+	namespaceValue := strings.TrimSpace(getenv("OPL_K8S_NAMESPACE"))
+	provisionerPath := strings.TrimSpace(getenv("OPL_TENCENT_PROVISIONER_BIN"))
 	installationErr := tencentInstallationConfigError(workspaceDomain, workspaceImage, namespaceValue, provisionerPath)
 	if workspaceImagesErr != nil {
 		installationErr = workspaceImagesErr
@@ -228,21 +243,22 @@ func NewTencentProvider() *TencentProvider {
 	// provider's own source, so the facts this process requires stay part of the
 	// installation contract instead of hiding behind a shared default.
 	guard := protectedresource.FromMap(map[string]string{
-		"OPL_SYSTEM_COMPUTE_NODE_POOL_ID":              os.Getenv("OPL_SYSTEM_COMPUTE_NODE_POOL_ID"),
-		"OPL_SYSTEM_COMPUTE_MACHINE_ID":                os.Getenv("OPL_SYSTEM_COMPUTE_MACHINE_ID"),
-		"OPL_SYSTEM_COMPUTE_NODE_NAME":                 os.Getenv("OPL_SYSTEM_COMPUTE_NODE_NAME"),
-		"OPL_SYSTEM_COMPUTE_MACHINE_TYPE":              os.Getenv("OPL_SYSTEM_COMPUTE_MACHINE_TYPE"),
-		"OPL_SYSTEM_COMPUTE_CVM_ID":                    os.Getenv("OPL_SYSTEM_COMPUTE_CVM_ID"),
-		"OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON": os.Getenv("OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON"),
+		"OPL_SYSTEM_COMPUTE_NODE_POOL_ID":              getenv("OPL_SYSTEM_COMPUTE_NODE_POOL_ID"),
+		"OPL_SYSTEM_COMPUTE_MACHINE_ID":                getenv("OPL_SYSTEM_COMPUTE_MACHINE_ID"),
+		"OPL_SYSTEM_COMPUTE_NODE_NAME":                 getenv("OPL_SYSTEM_COMPUTE_NODE_NAME"),
+		"OPL_SYSTEM_COMPUTE_MACHINE_TYPE":              getenv("OPL_SYSTEM_COMPUTE_MACHINE_TYPE"),
+		"OPL_SYSTEM_COMPUTE_CVM_ID":                    getenv("OPL_SYSTEM_COMPUTE_CVM_ID"),
+		"OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON": getenv("OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON"),
 	})
 	provider := &TencentProvider{
 		guard:           guard,
 		convergenceWait: boundedClaimReadbackWait,
-		profile:         profile, plans: plans, region: strings.TrimSpace(os.Getenv(tencentProviderRegionEnv)),
-		storageDiskType: strings.TrimSpace(os.Getenv("TENCENT_CBS_DISK_TYPE")), profileErr: profileErr,
+		profile:         profile, plans: plans, region: strings.TrimSpace(getenv(tencentProviderRegionEnv)),
+		storageDiskType: strings.TrimSpace(getenv("TENCENT_CBS_DISK_TYPE")), profileErr: profileErr,
 		workspaceImage: workspaceImage, workspaceImages: workspaceImages, workspaceDomain: workspaceDomain, namespace: namespaceValue,
 		provisionerPath: provisionerPath,
 		installationErr: installationErr,
+		getenv:          getenv,
 	}
 	provider.provision = func(ctx context.Context, request provisionerRequest) (provisionerResponse, error) {
 		if err := provider.validateInstallationConfig(); err != nil {
@@ -251,7 +267,7 @@ func NewTencentProvider() *TencentProvider {
 		return executeProvisionerAt(ctx, provisionerPath, request)
 	}
 	provider.kubectl = func(ctx context.Context, args []string, stdin []byte) ([]byte, error) {
-		return executeKubectlAt(ctx, namespaceValue, args, stdin)
+		return executeKubectlAtWith(ctx, namespaceValue, args, stdin, getenv)
 	}
 	return provider
 }
@@ -460,7 +476,7 @@ func boundedClaimReadbackWait(ctx context.Context, attempt int) error {
 }
 
 func (p *TencentProvider) MonthlyPreflight(ctx context.Context, input MonthlyPreflightInput) (MonthlyPreflight, error) {
-	if os.Getenv("RUN_TENCENT_CREATE_RELEASE_EXECUTION") != "1" {
+	if p.env("RUN_TENCENT_CREATE_RELEASE_EXECUTION") != "1" {
 		return MonthlyPreflight{}, errors.New("live_mutation_flag_required")
 	}
 	evaluation := p.evaluateMonthlyPreflight(ctx, input)
@@ -605,8 +621,8 @@ func (p *TencentProvider) requireNodePatchRBAC(ctx context.Context) error {
 
 func (p *TencentProvider) MonthlyPreflightReport(ctx context.Context, input MonthlyPreflightReportInput) (MonthlyPreflightReport, error) {
 	items := []MonthlyPreflightStage{
-		monthlyPreflightEnvironmentStage("launch_permission", "RUN_TENCENT_CREATE_RELEASE_EXECUTION", "1"),
-		monthlyPreflightCredentialsStage(),
+		monthlyPreflightEnvironmentStageWith("launch_permission", "RUN_TENCENT_CREATE_RELEASE_EXECUTION", "1", p.env),
+		monthlyPreflightCredentialsStageWith(p.env),
 	}
 	if strings.TrimSpace(input.Zone) == "" || input.Zone != strings.TrimSpace(input.Zone) {
 		return MonthlyPreflightReport{}, ErrInvalidMonthlyPreflight
@@ -674,18 +690,24 @@ func preflightStatus(items []MonthlyPreflightStage) string {
 	return "passed"
 }
 
-func monthlyPreflightEnvironmentStage(stage, key, expected string) MonthlyPreflightStage {
+func monthlyPreflightEnvironmentStageWith(stage, key, expected string, getenv func(string) string) MonthlyPreflightStage {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
 	status, code := "passed", ""
-	if os.Getenv(key) != expected {
+	if getenv(key) != expected {
 		status, code = "failed", "live_mutation_flag_required"
 	}
 	return MonthlyPreflightStage{Stage: stage, Status: status, ErrorCode: code, BlockedBy: []string{}, SafeFacts: map[string]any{"enabled": status == "passed"}}
 }
 
-func monthlyPreflightCredentialsStage() MonthlyPreflightStage {
+func monthlyPreflightCredentialsStageWith(getenv func(string) string) MonthlyPreflightStage {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
 	missing := []string{}
 	for _, key := range []string{"TENCENTCLOUD_SECRET_ID", "TENCENTCLOUD_SECRET_KEY", "TENCENTCLOUD_REGION", "TENCENT_DEPLOY_CLUSTER_ID"} {
-		if strings.TrimSpace(os.Getenv(key)) == "" {
+		if strings.TrimSpace(getenv(key)) == "" {
 			missing = append(missing, key)
 		}
 	}
@@ -735,7 +757,7 @@ func reportStages(response provisionerResponse, err error, expected []string) []
 
 func (p *TencentProvider) MonthlyProviderTruth(ctx context.Context, compute ComputeAllocation, storage StorageVolume) (MonthlyProviderTruth, error) {
 	truth := unknownMonthlyProviderTruth(compute, storage)
-	clusterID := strings.TrimSpace(os.Getenv("TENCENT_DEPLOY_CLUSTER_ID"))
+	clusterID := strings.TrimSpace(p.env("TENCENT_DEPLOY_CLUSTER_ID"))
 	if !validMonthlyProviderTruthIdentity(compute, storage) || clusterID == "" {
 		return truth, ErrInvalidMonthlyProviderTruth
 	}
@@ -1267,6 +1289,13 @@ func StoragePVCName(volume StorageVolume) string {
 }
 
 func workspaceManifestWithGatewayPlan(input WorkspaceRuntimeInput, workspaceName string, credentialSeed string, runtimeID string, serviceName string, compute ComputeAllocation, storage StorageVolume, tags map[string]string, gateway tencentWorkspaceRuntimeGatewayBinding, plan plan) []byte {
+	return workspaceManifestWithGatewayPlanWith(os.Getenv, input, workspaceName, credentialSeed, runtimeID, serviceName, compute, storage, tags, gateway, plan)
+}
+
+func workspaceManifestWithGatewayPlanWith(getenv func(string) string, input WorkspaceRuntimeInput, workspaceName string, credentialSeed string, runtimeID string, serviceName string, compute ComputeAllocation, storage StorageVolume, tags map[string]string, gateway tencentWorkspaceRuntimeGatewayBinding, plan plan) []byte {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
 	workspaceID := input.WorkspaceID
 	gatewaySecretRef := input.GatewaySecretRef
 	selectorLabels := stringAnyMap(runtimeSelectorLabels(serviceName, compute))
@@ -1282,8 +1311,8 @@ func workspaceManifestWithGatewayPlan(input WorkspaceRuntimeInput, workspaceName
 	}
 	labels := stringAnyMap(mergeStringMaps(runtimeSelectorLabels(serviceName, compute), identityLabels, k8sCostLabels(tags)))
 	pvcName := StoragePVCName(storage)
-	password := deriveWorkspaceAdminPassword(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"), workspaceID, credentialSeed)
-	secretData := map[string]any{"webui_password": b64(password), "webui_session_secret": b64(deriveWorkspaceSessionSecret(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"), workspaceID, credentialSeed))}
+	password := deriveWorkspaceAdminPassword(getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"), workspaceID, credentialSeed)
+	secretData := map[string]any{"webui_password": b64(password), "webui_session_secret": b64(deriveWorkspaceSessionSecret(getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"), workspaceID, credentialSeed))}
 	secretItems := []any{map[string]any{"key": "webui_password", "path": "opl_webui_password"}, map[string]any{"key": "webui_session_secret", "path": "webui_session_secret"}}
 	workspaceEnv := []any{
 		map[string]any{"name": "OPL_WEBUI_DEPLOYMENT_MODE", "value": "cloud"},
@@ -1291,9 +1320,9 @@ func workspaceManifestWithGatewayPlan(input WorkspaceRuntimeInput, workspaceName
 		map[string]any{"name": "OPL_WEBUI_USERNAME", "value": webuiUsername},
 		map[string]any{"name": "OPL_WEBUI_PASSWORD_FILE", "value": "/run/secrets/opl_webui_password"},
 		map[string]any{"name": "OPL_WEBUI_SESSION_SECRET_FILE", "value": "/run/secrets/webui_session_secret"},
-		map[string]any{"name": "OPL_CODEX_MODEL", "value": os.Getenv("OPL_CODEX_MODEL")},
-		map[string]any{"name": "OPL_CODEX_REASONING_EFFORT", "value": os.Getenv("OPL_CODEX_REASONING_EFFORT")},
-		map[string]any{"name": "OPL_CODEX_PROVIDER_NAME", "value": os.Getenv("OPL_CODEX_PROVIDER_NAME")},
+		map[string]any{"name": "OPL_CODEX_MODEL", "value": getenv("OPL_CODEX_MODEL")},
+		map[string]any{"name": "OPL_CODEX_REASONING_EFFORT", "value": getenv("OPL_CODEX_REASONING_EFFORT")},
+		map[string]any{"name": "OPL_CODEX_PROVIDER_NAME", "value": getenv("OPL_CODEX_PROVIDER_NAME")},
 		map[string]any{"name": "OPL_WORKSPACE_ID", "value": workspaceID},
 		map[string]any{"name": "OPL_WORKSPACE_NAME", "value": workspaceName},
 		map[string]any{"name": "OPL_COMPUTE_ALLOCATION_ID", "value": compute.ID},
@@ -1325,7 +1354,7 @@ func workspaceManifestWithGatewayPlan(input WorkspaceRuntimeInput, workspaceName
 		podAnnotations["opl.medopl.cn/gateway-key-id"] = strconv.FormatInt(gateway.WorkspaceAPIKeyID, 10)
 		podAnnotations["opl.medopl.cn/gateway-fingerprint"] = gateway.Fingerprint
 	}
-	deployment := map[string]any{"apiVersion": "apps/v1", "kind": "Deployment", "metadata": map[string]any{"name": serviceName, "labels": labels, "annotations": tags}, "spec": map[string]any{"replicas": 1, "strategy": map[string]any{"type": "Recreate"}, "selector": map[string]any{"matchLabels": selectorLabels}, "template": map[string]any{"metadata": map[string]any{"labels": labels, "annotations": podAnnotations}, "spec": map[string]any{"automountServiceAccountToken": false, "dnsPolicy": "ClusterFirst", "securityContext": map[string]any{"runAsNonRoot": true, "runAsUser": 10001, "runAsGroup": 10001, "fsGroup": 10001, "fsGroupChangePolicy": tencentWorkspaceFSGroupPolicy, "seccompProfile": map[string]any{"type": "RuntimeDefault"}}, "imagePullSecrets": []any{map[string]any{"name": os.Getenv("OPL_IMAGE_PULL_SECRET_NAME")}}, "nodeSelector": map[string]any{"kubernetes.io/hostname": compute.NodeName}, "tolerations": workspaceNodeTolerations(compute.PackageID), "containers": []any{workspaceContainer}, "volumes": []any{map[string]any{"name": "workspace-data", "persistentVolumeClaim": map[string]any{"claimName": pvcName}}, secretVolume}}}}}
+	deployment := map[string]any{"apiVersion": "apps/v1", "kind": "Deployment", "metadata": map[string]any{"name": serviceName, "labels": labels, "annotations": tags}, "spec": map[string]any{"replicas": 1, "strategy": map[string]any{"type": "Recreate"}, "selector": map[string]any{"matchLabels": selectorLabels}, "template": map[string]any{"metadata": map[string]any{"labels": labels, "annotations": podAnnotations}, "spec": map[string]any{"automountServiceAccountToken": false, "dnsPolicy": "ClusterFirst", "securityContext": map[string]any{"runAsNonRoot": true, "runAsUser": 10001, "runAsGroup": 10001, "fsGroup": 10001, "fsGroupChangePolicy": tencentWorkspaceFSGroupPolicy, "seccompProfile": map[string]any{"type": "RuntimeDefault"}}, "imagePullSecrets": []any{map[string]any{"name": getenv("OPL_IMAGE_PULL_SECRET_NAME")}}, "nodeSelector": map[string]any{"kubernetes.io/hostname": compute.NodeName}, "tolerations": workspaceNodeTolerations(compute.PackageID), "containers": []any{workspaceContainer}, "volumes": []any{map[string]any{"name": "workspace-data", "persistentVolumeClaim": map[string]any{"claimName": pvcName}}, secretVolume}}}}}
 	service := map[string]any{"apiVersion": "v1", "kind": "Service", "metadata": map[string]any{"name": serviceName, "labels": labels, "annotations": tags}, "spec": map[string]any{"type": "ClusterIP", "selector": selectorLabels, "ports": []any{map[string]any{"name": "http", "port": tencentWorkspaceRuntimeWebUIPort, "targetPort": "http"}}}}
 	networkPolicy := map[string]any{"apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy", "metadata": map[string]any{"name": serviceName, "labels": labels, "annotations": tags}, "spec": map[string]any{"podSelector": map[string]any{"matchLabels": selectorLabels}, "policyTypes": []any{"Ingress", "Egress"}, "ingress": []any{map[string]any{"from": []any{map[string]any{"podSelector": map[string]any{"matchLabels": map[string]any{"app.kubernetes.io/name": "opl-cloud", "app.kubernetes.io/component": "control-plane"}}}}, "ports": []any{map[string]any{"protocol": "TCP", "port": tencentWorkspaceRuntimeWebUIPort}}}}, "egress": workspaceEgressRules()}}
 	return mustJSON(map[string]any{"apiVersion": "v1", "kind": "List", "items": []any{secret, deployment, service, networkPolicy}})
@@ -1449,11 +1478,18 @@ func executeKubectl(ctx context.Context, args []string, stdin []byte) ([]byte, e
 }
 
 func executeKubectlAt(ctx context.Context, namespaceValue string, args []string, stdin []byte) ([]byte, error) {
+	return executeKubectlAtWith(ctx, namespaceValue, args, stdin, os.Getenv)
+}
+
+func executeKubectlAtWith(ctx context.Context, namespaceValue string, args []string, stdin []byte, getenv func(string) string) ([]byte, error) {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
 	namespaceValue = strings.TrimSpace(namespaceValue)
 	if namespaceValue == "" {
 		return nil, fmt.Errorf("OPL_K8S_NAMESPACE is required")
 	}
-	kubeconfig := os.Getenv("TENCENT_DEPLOY_KUBECONFIG_REF")
+	kubeconfig := getenv("TENCENT_DEPLOY_KUBECONFIG_REF")
 	base := []string{}
 	if kubeconfig != "" {
 		base = append(base, "--kubeconfig", kubeconfig)

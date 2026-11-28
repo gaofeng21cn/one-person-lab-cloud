@@ -25,7 +25,7 @@ func (s *Server) handleConsoleStatic(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	dist := consoleDistDir()
+	dist := s.consoleDistDir()
 	if strings.HasPrefix(r.URL.Path, "/assets/") {
 		rel := strings.TrimPrefix(r.URL.Path, "/assets/")
 		if !filepath.IsLocal(rel) || !serveConsoleStaticFile(w, r, filepath.Join(dist, "assets", rel), "public,max-age=31536000,immutable") {
@@ -62,8 +62,8 @@ func containsDotDotSegment(rawPath string) bool {
 	return false
 }
 
-func consoleDistDir() string {
-	for _, dir := range []string{strings.TrimSpace(os.Getenv("OPL_CONSOLE_DIST_DIR")), "/app/dist", "dist", "../../dist", "../../../../dist"} {
+func (s *Server) consoleDistDir() string {
+	for _, dir := range []string{strings.TrimSpace(s.env("OPL_CONSOLE_DIST_DIR")), "/app/dist", "dist", "../../dist", "../../../../dist"} {
 		if dir == "" {
 			continue
 		}

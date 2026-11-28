@@ -29,7 +29,14 @@ func workspaceLaunchOperationID(accountID, key string) string {
 }
 
 func currentWorkspaceImageDigest() string {
-	value := strings.TrimSpace(os.Getenv("OPL_WORKSPACE_IMAGE"))
+	return currentWorkspaceImageDigestWith(os.Getenv)
+}
+
+func currentWorkspaceImageDigestWith(getenv func(string) string) string {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	value := strings.TrimSpace(getenv("OPL_WORKSPACE_IMAGE"))
 	repository, digest, ok := strings.Cut(value, "@")
 	if ok && strings.TrimSpace(repository) != "" && !strings.Contains(repository, "@") && workspaceImageDigestPattern.MatchString(digest) {
 		return value

@@ -54,19 +54,22 @@ type controlledBasicPilotAdmission struct {
 	MaxInFlight int
 }
 
-func controlledBasicPilotAdmissionFromEnv() controlledBasicPilotAdmission {
+func controlledBasicPilotAdmissionFromEnvWith(getenv func(string) string) controlledBasicPilotAdmission {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
 	admission := controlledBasicPilotAdmission{
 		MaxInFlight: controlledBasicPilotDefaultLimit,
 	}
 	valid := true
-	switch strings.TrimSpace(os.Getenv(controlledBasicPilotEnabledEnv)) {
+	switch strings.TrimSpace(getenv(controlledBasicPilotEnabledEnv)) {
 	case "", "0":
 	case "1":
 		admission.Enabled = true
 	default:
 		valid = false
 	}
-	if raw := strings.TrimSpace(os.Getenv(controlledBasicPilotMaxInFlightEnv)); raw != "" {
+	if raw := strings.TrimSpace(getenv(controlledBasicPilotMaxInFlightEnv)); raw != "" {
 		limit, err := strconv.Atoi(raw)
 		if err != nil || limit <= 0 {
 			valid = false
@@ -92,8 +95,8 @@ func validWorkspaceLaunchAcceptanceBIdentityDigests(value workspaceLaunchAccepta
 		productionAcceptanceBIdentityDigestPattern.MatchString(value.ProviderIdentitySHA256)
 }
 
-func controlledBasicPilotMetrics(ctx context.Context, store controlPlaneTableStore) (map[string]any, error) {
-	admission := controlledBasicPilotAdmissionFromEnv()
+func controlledBasicPilotMetricsWith(ctx context.Context, store controlPlaneTableStore, getenv func(string) string) (map[string]any, error) {
+	admission := controlledBasicPilotAdmissionFromEnvWith(getenv)
 	rows, err := queryRuntimeOperations(ctx, store, runtimeOperationQuery{})
 	if err != nil {
 		return nil, err
