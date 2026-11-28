@@ -195,6 +195,11 @@ Plane / delegated process-local custody onto canonical domain owners:
      `deploy/portable/opl-cloud-owner-topology.json`, which still names it as a
      Cloud backend unit member with its own HTTP surfaces, readiness criteria
      and peer addresses.
+   - Every retirement slice must leave no residue, and the instrument that
+     proves it is `tools/verify-no-control-plane.ts` in the `source` group of
+     `npm run verify:local`: a slice opens its own assertions, the gate turns
+     red when a slice leaves residue behind, and the assertions of the slices
+     that have not arrived stay pending and are reported as pending.
 4. **Module & DB-Role Coverage**: `tests/contracts/module-physical-boundaries.test.ts`
    now enforces package and SDK isolation across all 11 Go services under `services/`
    and `apps/console-bff`; extend PostgreSQL role-isolation checks to cover every

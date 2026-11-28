@@ -189,6 +189,10 @@ export const localVerificationSteps: readonly LocalVerificationStep[] = Object.f
   { group: "source", name: "TypeScript typecheck", command: "npm", args: ["run", "typecheck"] },
   { group: "source", name: "TypeScript lint", command: "npm", args: ["run", "lint"] },
   { group: "source", name: "Console build", command: "npm", args: ["run", "build"] },
+  // The Control Plane retirement is proved by one instrument. It spans Go,
+  // TypeScript, YAML and JSON, so it belongs to the source group: the Go
+  // group cannot reach it.
+  { group: "source", name: "Control Plane retirement residue", command: "node", args: ["tools/verify-no-control-plane.ts"] },
   ...goModules.map((cwd) =>
     ({ group: "go" as const, name: `${cwd} compile`, command: "go", args: ["test", "-run", "^$", "./..."], cwd })
   ),
