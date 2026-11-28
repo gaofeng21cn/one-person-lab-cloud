@@ -164,6 +164,17 @@ Plane / delegated process-local custody onto canonical domain owners:
      coordination rpc (`TenantWorkspaceCoordination`) plus the
      `getTenantLifecycleOperation` readback that would carry the sub-operations
      are published but implemented nowhere.
+   - The retired runtime read of the frozen `tenant.tenant_repository_bindings`
+     table now has a closed precondition instead of an open one: the owner
+     startup gate refuses to serve while the one-time handover leaves any
+     historical destination unheld — an unattributable, conflicting or failed
+     row, and a released row whose destination the owner does not hold. The
+     slice is not closed until an acceptance environment has read a handover
+     report with `unattributable=0`, `conflicting=0`, `failed=0` and
+     `released_unheld=0` and every reported row has a recorded operator
+     decision. The frozen table stays as provenance and is never deleted, and
+     the accepted Build executor references and artifact history keep their own
+     copies.
 2. **Billing & Announcements Extraction**: Retire retained Control Plane
    bridges (`/internal/cloud/legacy-billing/*`, `/internal/cloud/announcements`)
    once Cloud Ledger and Announcement owners serve authenticated CloudIdentity

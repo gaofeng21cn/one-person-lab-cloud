@@ -137,6 +137,37 @@ chronological snapshots.
     customer signs in again. The Workspace resume continuation the re-enable
     contract describes stays open, because the Cloud's tenant suspension pauses
     no Workspace; that is recorded in [roadmap.md](roadmap.md).
+  - The historical OCI destinations are handed to the Gateway owner. At owner
+    startup, `Gateway Integration` (`services/gateway-integration`) reads the
+    frozen `tenant.tenant_repository_bindings` table and moves each destination
+    into the single live mapping `gateway.identity_mappings`. A destination is
+    attributed only to a Tenant that is `active` and has exactly one registered
+    owner (`tenant.tenant_members` with `role='owner'` and no revocation); that
+    owner's `actor_id` is the Gateway/Sub2API subject id, so the mapping's
+    `actor_id` and `sub2api_user_id` are the same value. A `retired` reservation
+    is reported as released, an inactive Tenant or any other owner count is
+    reported as unattributable, and a live mapping that holds a different
+    destination, is revoked, or lacks its destination verification is reported
+    as a conflict. The pass is read-only on the frozen table, is idempotent, and
+    never overwrites a live destination. It inherits the recorded reservation
+    fact and does not re-verify the destination against the OCI registry.
+  - The runtime fallback read of the frozen `tenant.tenant_repository_bindings`
+    table is retired. The Gateway owner holds the only live destination mapping
+    (`gateway.identity_mappings`), and its unique index
+    `identity_mappings_destination` decides which actor may hold a destination:
+    a second actor for a destination that is already held is refused with
+    `AlreadyExists` on the login path and on the platform-admin command path.
+    The runtime resolution path reads the owner alone and no longer consults the
+    historical table, and the second reader that guarded a historical
+    reservation is gone with it. The owner startup gate now holds one uniform
+    rule: every historical row that records a destination the owner does not
+    hold is a residual, whether the row was unattributable, conflicting, failed
+    to move, or released without a holder. A released row still records a
+    destination — no code in this repository ever wrote the `retired` status — so
+    it is resolved against the owner's live mapping and refused to serve when
+    nobody holds it. The gate names how many rows need an operator and shows the
+    first ones. The frozen table stays readable for provenance and is never
+    deleted.
   - Control Plane image-replacement creation/preview/worker commands and admin
     activation endpoints are retired; only the operator image-policy GET
     (`GET /api/operator/workspace-runtime-image-policy`), Fabric image
