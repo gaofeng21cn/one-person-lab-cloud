@@ -130,7 +130,7 @@ func (s *Server) callerLinkRelayEntitlementHandler(w http.ResponseWriter, r *htt
 		return
 	}
 	hasAuthHeader := len(r.Header.Values("Authorization")) != 0
-	if r.Header.Get("Sec-Fetch-Site") == "cross-site" || (r.Header.Get("Origin") != "" && !sameOrigin(r)) {
+	if r.Header.Get("Sec-Fetch-Site") == "cross-site" || (r.Header.Get("Origin") != "" && !s.sameOrigin(r)) {
 		writePublisherError(w, r, http.StatusForbidden, "origin_rejected", "cross-site request rejected")
 		return
 	}
