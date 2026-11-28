@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -64,6 +65,32 @@ func (s *activationSub2API) resolve(email string) int64 {
 	return s.nextID
 }
 
+// emailOf reads the account the directory holds under this subject id.
+func (s *activationSub2API) emailOf(id int64) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for email, candidate := range s.users {
+		if candidate == id {
+			return email
+		}
+	}
+	return ""
+}
+
+// accounts lists the directory accounts, newest subject last.
+func (s *activationSub2API) accounts() []map[string]any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]map[string]any, 0, len(s.users))
+	for email, id := range s.users {
+		out = append(out, map[string]any{"id": id, "email": email, "status": "active"})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i]["id"].(int64) < out[j]["id"].(int64)
+	})
+	return out
+}
+
 func (s *activationSub2API) handler() http.Handler {
 	envelope := func(w http.ResponseWriter, payload map[string]any) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": payload})
@@ -91,13 +118,74 @@ func (s *activationSub2API) handler() http.Handler {
 		}
 		envelope(w, map[string]any{"id": s.resolve(email), "email": email, "status": "active"})
 	})
+	mux.HandleFunc("GET /api/v1/admin/users", func(w http.ResponseWriter, r *http.Request) {
+		search := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("search")))
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		if page < 1 {
+			page = 1
+		}
+		pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
+		if pageSize < 1 {
+			pageSize = 100
+		}
+		matches := make([]map[string]any, 0, 1)
+		for _, account := range s.accounts() {
+			if search != "" && !strings.Contains(strings.ToLower(account["email"].(string)), search) {
+				continue
+			}
+			matches = append(matches, account)
+		}
+		total := int64(len(matches))
+		pages := int((total + int64(pageSize) - 1) / int64(pageSize))
+		if pages < 1 {
+			pages = 1
+		}
+		start := (page - 1) * pageSize
+		if start > len(matches) {
+			start = len(matches)
+		}
+		end := start + pageSize
+		if end > len(matches) {
+			end = len(matches)
+		}
+		envelope(w, map[string]any{
+			"items": matches[start:end], "total": total, "page": page, "page_size": pageSize, "pages": pages,
+		})
+	})
+	mux.HandleFunc("POST /api/v1/admin/users", func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		email := strings.ToLower(strings.TrimSpace(body["email"]))
+		if email == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		id := s.resolve(email)
+		envelope(w, map[string]any{"id": id, "email": email, "status": "active"})
+	})
 	mux.HandleFunc("GET /api/v1/admin/users/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 		if err != nil || id <= 0 {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		envelope(w, map[string]any{"id": id, "balance": "0", "status": "active"})
+		envelope(w, map[string]any{"id": id, "email": s.emailOf(id), "balance": "0", "status": "active"})
+	})
+	mux.HandleFunc("GET /api/v1/admin/users/{id}/api-keys", func(w http.ResponseWriter, r *http.Request) {
+		envelope(w, map[string]any{"items": []map[string]any{}})
+	})
+	mux.HandleFunc("POST /api/v1/admin/dashboard/users-usage", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			UserIDs []int64 `json:"user_ids"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		stats := map[string]any{}
+		for _, id := range body.UserIDs {
+			stats[strconv.FormatInt(id, 10)] = map[string]any{
+				"user_id": id, "today_actual_cost": "0", "total_actual_cost": "0", "by_platform": []any{},
+			}
+		}
+		envelope(w, map[string]any{"stats": stats})
 	})
 	mux.HandleFunc("GET /v1/models", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"object":"list","data":[]}`))
@@ -250,6 +338,16 @@ func (s *activationSystem) login(t *testing.T, username string) (string, string)
 		return cookie, session.GetCsrfToken()
 	}
 	return "", ""
+}
+
+// tenantOf reads the Tenant the given owner admitted.
+func (s *activationSystem) tenantOf(t *testing.T, actorID string) string {
+	t.Helper()
+	var tenantID string
+	if err := s.tenantDB.QueryRowContext(t.Context(), `SELECT id FROM tenant.tenants WHERE id IN (SELECT tenant_id FROM tenant.tenant_members WHERE actor_id=$1 AND role='owner' AND revoked_at IS NULL)`, actorID).Scan(&tenantID); err != nil {
+		t.Fatalf("tenant of %s: %v", actorID, err)
+	}
+	return tenantID
 }
 
 func (s *activationSystem) read(handler http.Handler, cookie, path string) *httptest.ResponseRecorder {

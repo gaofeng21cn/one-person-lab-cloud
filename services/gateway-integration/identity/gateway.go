@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -74,6 +75,16 @@ type GatewayBatchUserUsage struct {
 	ByPlatform               []GatewayPlatformUsage
 }
 
+// ErrGatewayAccountUnknown reports that the Gateway directory holds no account
+// for the requested email.
+var ErrGatewayAccountUnknown = errors.New("gateway account not found")
+
+// ErrGatewayAccountConflict reports that the Gateway directory holds more than
+// one account for the requested email, so no single account can be adopted.
+var ErrGatewayAccountConflict = errors.New("gateway account is ambiguous")
+
+// gatewayUserPageSize is the page size the Gateway account list is read with.
+const gatewayUserPageSize = 100
 type Gateway struct {
 	base   string
 	client *http.Client
@@ -240,6 +251,93 @@ func (g *Gateway) request(ctx context.Context, path, token string, body any, out
 	}
 	return nil
 }
+
+// UserByEmail resolves the Gateway account that carries this exact email.
+//
+// The directory search is the native readback an account-opening command
+// converges on: Sub2API has no idempotency key for account creation, so the
+// owner confirms an account it may already have created by reading it back
+// instead of writing a second one.
+func (g *Gateway) UserByEmail(ctx context.Context, email string) (GatewayIdentity, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return GatewayIdentity{}, status.Error(codes.InvalidArgument, "an email is required")
+	}
+	if !g.DirectoryConfigured() {
+		return GatewayIdentity{}, status.Error(codes.FailedPrecondition, "the Gateway directory identity is not configured")
+	}
+	token, err := g.directoryToken(ctx)
+	if err != nil {
+		return GatewayIdentity{}, err
+	}
+	matches := make([]GatewayIdentity, 0, 1)
+	for page := 1; ; page++ {
+		values := url.Values{
+			"page": {strconv.Itoa(page)}, "page_size": {strconv.Itoa(gatewayUserPageSize)},
+			"search": {email}, "sort_by": {"id"}, "sort_order": {"asc"},
+		}
+		var data struct {
+			Items    []GatewayIdentity `json:"items"`
+			Total    int64             `json:"total"`
+			Page     int               `json:"page"`
+			PageSize int               `json:"page_size"`
+			Pages    int               `json:"pages"`
+		}
+		if err = g.request(ctx, "/api/v1/admin/users?"+values.Encode(), token, nil, &data); err != nil {
+			if status.Code(err) == codes.Unauthenticated {
+				g.invalidateDirectoryToken()
+			}
+			return GatewayIdentity{}, err
+		}
+		if data.Page != page || data.PageSize != gatewayUserPageSize || data.Total < 0 || data.Pages < 1 {
+			return GatewayIdentity{}, status.Error(codes.Unavailable, "invalid Gateway account page")
+		}
+		for _, item := range data.Items {
+			if strings.ToLower(strings.TrimSpace(item.Email)) == email {
+				matches = append(matches, item)
+			}
+		}
+		if page >= data.Pages {
+			break
+		}
+	}
+	switch len(matches) {
+	case 1:
+		if matches[0].ID <= 0 || (matches[0].Status != "active" && matches[0].Status != "disabled") {
+			return GatewayIdentity{}, status.Error(codes.FailedPrecondition, "the Gateway returned an invalid account")
+		}
+		return matches[0], nil
+	case 0:
+		return GatewayIdentity{}, ErrGatewayAccountUnknown
+	default:
+		return GatewayIdentity{}, ErrGatewayAccountConflict
+	}
+}
+
+// CreateUser creates one Gateway account for a customer.
+//
+// The Gateway provider has no idempotency key for account creation, so this
+// write is dispatched at most once per owner command: the caller confirms the
+// outcome with UserByEmail instead of repeating it.
+func (g *Gateway) CreateUser(ctx context.Context, email, password string) (GatewayIdentity, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" || password == "" {
+		return GatewayIdentity{}, status.Error(codes.InvalidArgument, "an email and a password are required")
+	}
+	if !g.DirectoryConfigured() {
+		return GatewayIdentity{}, status.Error(codes.FailedPrecondition, "the Gateway directory identity is not configured")
+	}
+	token, err := g.directoryToken(ctx)
+	if err != nil {
+		return GatewayIdentity{}, err
+	}
+	var out GatewayIdentity
+	if err = g.request(ctx, "/api/v1/admin/users", token, map[string]string{"email": email, "password": password, "role": "user"}, &out); err != nil {
+		return GatewayIdentity{}, err
+	}
+	return out, nil
+}
+
 func (g *Gateway) Login(ctx context.Context, user, password string) (GatewayIdentity, string, time.Time, error) {
 	var out struct {
 		AccessToken string          `json:"access_token"`

@@ -277,9 +277,11 @@ func operatorPagination(w http.ResponseWriter, r *http.Request) (int, int, bool)
 	return page, pageSize, true
 }
 
-// The operator read writers below are the single read path for a surface. The
-// retained /api/operator/* route and the BFF-facing /internal/cloud/operator/*
-// route both call them, so the console cannot grow a second projection.
+// The operator read writers below are the single read path for a surface, so
+// the console cannot grow a second projection. The BFF-facing
+// /internal/cloud/operator/* bridge for accounts is retired with the account
+// owner; the retained /api/operator/* route stays only for the retained legacy
+// Console build and is retired with the retained Control Plane.
 func (app *controlPlaneServer) writeOperatorAccounts(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
 	page, pageSize, ok := operatorPagination(w, r)
 	if !ok {
@@ -292,7 +294,6 @@ func (app *controlPlaneServer) writeOperatorAccounts(w http.ResponseWriter, r *h
 	}
 	writeSourceEnvelope(w, http.StatusOK, "control-plane+sub2api", status, data)
 }
-
 func (app *controlPlaneServer) writeOperatorOverview(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
 	data, err := app.operatorOverview(r.Context(), service)
 	if err != nil {
@@ -326,86 +327,6 @@ func (app *controlPlaneServer) writeOperatorWorkspaceDetail(w http.ResponseWrite
 		return
 	}
 	writeSourceEnvelope(w, http.StatusOK, "control-plane+fabric+ledger", "available", data)
-}
-
-// provisionOperatorAccount is the one activation writer. The Console BFF's
-// internal route runs it. It creates the account and the Gateway user exactly
-// once by one implementation. The receipt reads back the Gateway subject the
-// account was bound to: the BFF needs that subject to create the Tenant whose
-// owner it already is.
-func (app *controlPlaneServer) provisionOperatorAccount(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
-	key, ok := requiredMutationKey(w, r)
-	if !ok {
-		return
-	}
-	input := decodeJSON(r)
-	if !operatorProvisionShapeValid(input) {
-		writeError(w, http.StatusBadRequest, "invalid_provision")
-		return
-	}
-	email, err := canonicalEmail(stringValue(input["email"]))
-	if err != nil {
-		writeCreateUserError(w, err)
-		return
-	}
-	accountID := "acct-" + stableID("account", email)[:18]
-	admission := firstNonEmpty(stringValue(input["admission"]), "full_cloud_customer")
-	workspaceEligibility := admission == "full_cloud_customer"
-	user, err := app.createUser(r.Context(), service, map[string]any{
-		"email": email, "password": input["password"], "accountId": accountID, "role": "owner",
-		"workspacePurchaseEnabled": workspaceEligibility,
-	})
-	if err != nil {
-		writeCreateUserError(w, err)
-		return
-	}
-	account, found, err := app.tables.GetAccount(r.Context(), accountID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "state_read_failed")
-		return
-	}
-	sub2apiUserID, mapped := positiveIntegerField(account, "sub2apiUserId")
-	if !found || !mapped {
-		writeError(w, http.StatusInternalServerError, "account_identity_unverified")
-		return
-	}
-	result := map[string]any{
-		"operationId": "account-provision-" + stableID(key, email)[:18], "accountId": accountID,
-		"sub2apiUserId": strconv.FormatInt(sub2apiUserID, 10), "status": "succeeded", "workspacePurchaseEnabled": workspaceEligibility,
-	}
-	if err := app.appendAuditEvent(r, "account.provision", "account", accountID, accountID, nil, map[string]any{"userId": user["id"], "email": email, "sub2apiUserId": sub2apiUserID, "workspacePurchaseEnabled": workspaceEligibility, "admission": admission}, "succeeded"); err != nil {
-		writeError(w, http.StatusInternalServerError, "state_persist_failed")
-		return
-	}
-	writeJSON(w, http.StatusCreated, result)
-}
-
-func operatorProvisionShapeValid(input map[string]any) bool {
-	if len(input) < 2 || len(input) > 4 {
-		return false
-	}
-	for key := range input {
-		if key != "email" && key != "password" && key != "name" && key != "admission" {
-			return false
-		}
-	}
-	password, passwordOK := input["password"].(string)
-	if _, emailOK := input["email"].(string); !emailOK || !passwordOK || password == "" {
-		return false
-	}
-	if raw, exists := input["name"]; exists {
-		name, ok := raw.(string)
-		if !ok || name != strings.TrimSpace(name) || name == "" || len([]rune(name)) > 100 {
-			return false
-		}
-	}
-	if raw, exists := input["admission"]; exists {
-		admission, ok := raw.(string)
-		if !ok || (admission != "full_cloud_customer" && admission != "gateway_only") {
-			return false
-		}
-	}
-	return true
 }
 
 func operatorDisableShapeValid(input map[string]any, accountID string) bool {
@@ -546,7 +467,6 @@ func (app *controlPlaneServer) operatorAccountPage(ctx context.Context, service 
 	}
 	return map[string]any{"items": items, "total": accountPage.Total, "page": page, "pageSize": pageSize}, status, nil
 }
-
 func operatorPageReadPermit(ctx context.Context, gates ...chan struct{}) (func(), bool) {
 	acquired := make([]chan struct{}, 0, len(gates))
 	for _, gate := range gates {

@@ -417,19 +417,6 @@ func writeUserLifecycleError(w http.ResponseWriter, err error) {
 	}
 }
 
-func writeCreateUserError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, errUserExists), errors.Is(err, errAccountIdentityConflict), errors.Is(err, errSub2APIAccountMappingConflict):
-		writeError(w, http.StatusConflict, err.Error())
-	case errors.Is(err, errSub2APIUserMappingUnverified):
-		writeError(w, http.StatusBadGateway, err.Error())
-	case errors.Is(err, errCallerSuppliedSub2APIUserID), errors.Is(err, errInvalidRole), errors.Is(err, errInvalidEmail), errors.Is(err, errInvalidAccountID), errors.Is(err, errMissingPassword):
-		writeError(w, http.StatusBadRequest, err.Error())
-	default:
-		writeError(w, http.StatusInternalServerError, "state_persist_failed")
-	}
-}
-
 func requestIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err == nil && host != "" {

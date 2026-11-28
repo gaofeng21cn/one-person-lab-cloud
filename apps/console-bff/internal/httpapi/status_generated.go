@@ -126,6 +126,7 @@ var successStatus = map[api.AuthorizationActionEnum]int{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVOKEPUBLISHERNAMESPACE:               200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REENABLETENANT:                         202,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORACCOUNTS:                   200,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONOPERATORACCOUNT:               202,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETWORKSPACEPURCHASEELIGIBILITY:        200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETSERVICEENTITLEMENT:                  200,
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETPLATFORMADMIN:                       200,

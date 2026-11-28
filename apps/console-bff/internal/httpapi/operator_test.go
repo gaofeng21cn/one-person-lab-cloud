@@ -108,9 +108,6 @@ func TestOperatorRoutesAuthorizePlatformOperatorBeforeOwnerRead(t *testing.T) {
 	}
 }
 
-// TestOperatorRoutesRefuseTenantAdministratorWithoutOwnerRead proves a live
-// CloudIdentity session with a tenant admin role is not an operator: the denial
-// stays a 403 and no owner data is read or synthesized as unavailable.
 func TestOperatorRoutesRefuseTenantAdministratorWithoutOwnerRead(t *testing.T) {
 	const token = "operator-reader-test-token-000002"
 	denied := allowOperatorDecision("tenant-admin-1")

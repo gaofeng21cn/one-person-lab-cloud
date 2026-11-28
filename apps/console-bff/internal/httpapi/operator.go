@@ -24,7 +24,6 @@ import (
 // whether the caller is a CloudIdentity platform operator.
 type OperatorReader interface {
 	OperatorOverview(context.Context, string) ([]byte, error)
-	OperatorAccounts(context.Context, string, int, int) ([]byte, error)
 	OperatorAnnouncements(context.Context, string, int, int) ([]byte, error)
 	OperatorHealth(context.Context, string) ([]byte, error)
 	OperatorRuntimeObservations(context.Context, string) ([]byte, error)
@@ -165,8 +164,6 @@ func (s *Server) operatorRead(ctx context.Context, kind, session, workspaceID st
 	switch kind {
 	case "overview":
 		return s.operator.OperatorOverview(ctx, session)
-	case "accounts":
-		return s.operator.OperatorAccounts(ctx, session, page, pageSize)
 	case "announcements":
 		return s.operator.OperatorAnnouncements(ctx, session, page, pageSize)
 	case "Health":

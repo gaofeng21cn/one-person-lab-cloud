@@ -206,6 +206,7 @@ const (
 	AuthorizationActionObserveResources                       AuthorizationAction = "observeResources"
 	AuthorizationActionObserveRoute                           AuthorizationAction = "observeRoute"
 	AuthorizationActionProvisionAcceptedResources             AuthorizationAction = "provisionAcceptedResources"
+	AuthorizationActionProvisionOperatorAccount               AuthorizationAction = "provisionOperatorAccount"
 	AuthorizationActionPublishOfficialPackage                 AuthorizationAction = "publishOfficialPackage"
 	AuthorizationActionReadApplicationCredentials             AuthorizationAction = "readApplicationCredentials"
 	AuthorizationActionReadApprovedPlanTransition             AuthorizationAction = "readApprovedPlanTransition"
@@ -517,6 +518,8 @@ func (e AuthorizationAction) Valid() bool {
 	case AuthorizationActionObserveRoute:
 		return true
 	case AuthorizationActionProvisionAcceptedResources:
+		return true
+	case AuthorizationActionProvisionOperatorAccount:
 		return true
 	case AuthorizationActionPublishOfficialPackage:
 		return true
@@ -1798,6 +1801,7 @@ const (
 	OperationKindDeleteTenant             OperationKind = "delete_tenant"
 	OperationKindDeleteWorkspace          OperationKind = "delete_workspace"
 	OperationKindMigration                OperationKind = "migration"
+	OperationKindProvisionAccount         OperationKind = "provision_account"
 	OperationKindReconcile                OperationKind = "reconcile"
 	OperationKindReenableTenant           OperationKind = "reenable_tenant"
 	OperationKindRefundSupplementOnDelete OperationKind = "refund_supplement_on_delete"
@@ -1849,6 +1853,8 @@ func (e OperationKind) Valid() bool {
 	case OperationKindDeleteWorkspace:
 		return true
 	case OperationKindMigration:
+		return true
+	case OperationKindProvisionAccount:
 		return true
 	case OperationKindReconcile:
 		return true
@@ -2980,6 +2986,24 @@ const (
 func (e PricePolicyVersionPlanChangePolicyVersion) Valid() bool {
 	switch e {
 	case PricePolicyVersionPlanChangePolicyVersionWorkspacePlanChangeV1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProvisionAccountRequestAdmission.
+const (
+	FullCloudCustomer ProvisionAccountRequestAdmission = "full_cloud_customer"
+	GatewayOnly       ProvisionAccountRequestAdmission = "gateway_only"
+)
+
+// Valid indicates whether the value is a known member of the ProvisionAccountRequestAdmission enum.
+func (e ProvisionAccountRequestAdmission) Valid() bool {
+	switch e {
+	case FullCloudCustomer:
+		return true
+	case GatewayOnly:
 		return true
 	default:
 		return false
@@ -6314,6 +6338,18 @@ type OperationOwner string
 // OperationStage defines model for OperationStage.
 type OperationStage string
 
+// OperatorAccountCommand Canonical receipt for one account-opening command. The owner opens the account, its single-tenant owner and its Gateway wallet binding as one command, so this receipt reads the opened account back and names the operation the browser polls.
+type OperatorAccountCommand struct {
+	// AccountId 不透明string；新旧ID原样保留，不假定UUID。
+	AccountId OpaqueId `json:"accountId"`
+
+	// OperationId 不透明string；新旧ID原样保留，不假定UUID。
+	OperationId              OpaqueId `json:"operationId"`
+	PollAfterSeconds         *int     `json:"pollAfterSeconds,omitempty"`
+	Status                   string   `json:"status"`
+	WorkspacePurchaseEnabled bool     `json:"workspacePurchaseEnabled"`
+}
+
 // OperatorWorkspace Workspace-owner management read; resourceSetId is an opaque reference, not a copied Fabric state.
 type OperatorWorkspace struct {
 	CreatedBy     string `json:"createdBy"`
@@ -7208,6 +7244,17 @@ type PricePolicyVersionPage struct {
 	// NextCursor 不透明string；新旧ID原样保留，不假定UUID。
 	NextCursor *OpaqueId `json:"nextCursor,omitempty"`
 }
+
+// ProvisionAccountRequest platform_admin开户命令；password是客户自己的Gateway凭据，Cloud不存储也不回显。
+type ProvisionAccountRequest struct {
+	Admission *ProvisionAccountRequestAdmission `json:"admission,omitempty"`
+	Email     openapi_types.Email               `json:"email"`
+	Name      *string                           `json:"name,omitempty"`
+	Password  string                            `json:"password"`
+}
+
+// ProvisionAccountRequestAdmission defines model for ProvisionAccountRequest.Admission.
+type ProvisionAccountRequestAdmission string
 
 // PublishPackageRequest platform_admin准入官方Package；普通客户不发布公开Marketplace。
 type PublishPackageRequest struct {
@@ -9578,6 +9625,15 @@ type ListOperatorAccountsParams struct {
 	Search   *string `form:"search,omitempty" json:"search,omitempty"`
 }
 
+// ProvisionOperatorAccountParams defines parameters for ProvisionOperatorAccount.
+type ProvisionOperatorAccountParams struct {
+	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+
+	// XCSRFToken 匹配同源session并校验Origin。
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
 // SetLinkRelayEntitlementParams defines parameters for SetLinkRelayEntitlement.
 type SetLinkRelayEntitlementParams struct {
 	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
@@ -10009,6 +10065,9 @@ type CreateNamespaceJSONRequestBody = NamespaceWriteRequest
 
 // UpdateNamespaceJSONRequestBody defines body for UpdateNamespace for application/json ContentType.
 type UpdateNamespaceJSONRequestBody = NamespaceWriteRequest
+
+// ProvisionOperatorAccountJSONRequestBody defines body for ProvisionOperatorAccount for application/json ContentType.
+type ProvisionOperatorAccountJSONRequestBody = ProvisionAccountRequest
 
 // SetLinkRelayEntitlementJSONRequestBody defines body for SetLinkRelayEntitlement for application/json ContentType.
 type SetLinkRelayEntitlementJSONRequestBody = SetLinkRelayEntitlementRequest

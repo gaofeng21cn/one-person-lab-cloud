@@ -11,7 +11,6 @@
 package bff
 
 import (
-	"context"
 	"net/http"
 
 	"opl-cloud/apps/console-bff/internal/clients"
@@ -22,16 +21,16 @@ import (
 
 // OperatorActivationClient is a dialed activation composition: the BFF's own
 // delivery reads, the CloudIdentity session/authorization boundary, the Tenant
-// owner, the Gateway owner's binding surface, and the retained Control Plane
-// activation command. It is a bff-owned interface so a caller outside this module
-// never names the internal transport type.
+// owner and the Gateway owner's binding surface. The account-opening command
+// itself is the Tenant owner's own now, so this composition no longer names a
+// retained Control Plane activation writer. It is a bff-owned interface so a
+// caller outside this module never names the internal transport type.
 type OperatorActivationClient interface {
 	httpapi.OwnerReader
 	IdentityReader
 	httpapi.LoginReader
 	TenantClient() api.TenantProductServiceClient
 	GatewayCoordinationClient() api.GatewayCoordinationClient
-	OperatorProvisionAccount(context.Context, string, string, []byte) ([]byte, error)
 	Close()
 }
 
@@ -43,8 +42,7 @@ func NewOperatorActivationHandler(reader OperatorActivationClient) http.Handler 
 }
 
 // DialOperatorActivationReader dials the Tenant and Gateway owners plus the
-// CloudIdentity boundary for the activation composition, and points the retained
-// activation command at the supplied Control Plane origin.
+// CloudIdentity boundary for the activation composition.
 func DialOperatorActivationReader(controlPlaneURL, controlPlaneToken, address, ownerToken, cloudIdentityToken string, tls owneridentity.TLSConfig) (OperatorActivationClient, error) {
 	return clients.Dial(clients.Config{
 		ControlPlaneURL:    controlPlaneURL,

@@ -224,6 +224,31 @@ Git log.
   nowhere; they are the next slice, and until they exist this command cannot
   pretend to have resumed a Workspace.
 
+- **Customer Account Ownership And Opening**: The customer account (email,
+  display name, admission, status, opened-at) is a Cloud account fact, so it
+  lives in `tenant.customer_accounts` next to the contract's `x-owner: tenant`
+  surface, while the Gateway identity binding and the Gateway wallet binding
+  stay in the gateway schema where the contract already places them. That table
+  records the accounts this product opened; it is not the operator account list.
+  The operator list is the Gateway directory read the tenant owner serves, so it
+  shows every active OPL Gateway user joined with the owner's eligibility and
+  entitlement policies instead of hiding the pre-existing accounts this product
+  never opened. The two schemas cannot commit together, so the command converges
+  by reading the Gateway account back instead of writing it twice. The published
+  activation receipt is a dedicated `OperatorAccountCommand` (operation id,
+  account id, status, Workspace purchase eligibility, poll cadence) rather than
+  the generic `Operation`: the Console controller requires the opened account and
+  the granted eligibility to read the command back, and the owner reports both as
+  its own facts. Each owner step re-authorizes its own action against the live
+  session, because an authorization context issued for one action is not evidence
+  for another. The Control Plane's BFF-facing `/internal/cloud/operator/accounts`
+  read and write bridges are retired, so it no longer answers the Console BFF
+  and no longer opens customer accounts. Its retained
+  `GET /api/operator/accounts` route remains only for the retained legacy
+  Console build until Control Plane retirement, the same way the retained
+  personal-Gateway and account-status routes remained when their bridges were
+  retired.
+
 ## Non-Spending Publication & Incremental Retirement
 
 - **Non-Spending Release Admission**: Formal Cloud Candidate/Release

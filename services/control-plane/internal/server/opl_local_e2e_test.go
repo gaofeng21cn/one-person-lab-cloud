@@ -20,9 +20,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/packages/contracts/go/api"
-	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -473,32 +471,26 @@ func localE2EUserIdentity(prefix string) (string, string) {
 	return prefix + "-" + suffix + "@example.com", "Local-E2E-" + suffix + "-Aa1!"
 }
 
-func provisionLocalE2EUser(t *testing.T, admin *localE2EAPI, prefix string) localE2EUser {
+// provisionLocalE2EUser seeds the customer fact this local E2E needs. The
+// account-opening write belongs to the CloudIdentity owner now, so the retained
+// Control Plane no longer opens accounts: the fixture writes the customer
+// account it logs in with through its own store and the Gateway fixture.
+func provisionLocalE2EUser(t *testing.T, process *localE2EProcess, service *controlplane.Service, prefix string) localE2EUser {
 	t.Helper()
-	operator := localE2EData(t, localE2EMustRequest(t, admin, http.MethodGet, "/api/auth/me", nil, "", http.StatusOK), "activation operator")
-	subject := stringValue(operator["sub2apiUserId"])
-	if id, err := strconv.ParseInt(subject, 10, 64); err != nil || id <= 0 || stringValue(operator["consoleUserId"]) == "" ||
-		operator["role"] != "admin" || operator["status"] != "active" || admin.gateway == nil {
-		t.Fatal("local E2E activation requires an authenticated operator and Gateway session-proof fixture")
-	}
 	email, password := localE2EUserIdentity(prefix)
-	key := "account-provision-" + prefix + "-" + strconv.FormatInt(time.Now().UnixNano(), 10)
-	ref := admin.gateway.bind(key, stringValue(operator["consoleUserId"]), subject)
-	// The internal owner call uses its own peer/token/session proof. Retained
-	// browser cookies and CSRF are only used for the operator readback above.
-	client := *admin.client
-	client.Jar = nil
-	activation := &localE2EAPI{baseURL: admin.baseURL, client: &client, headers: http.Header{}}
-	activation.headers.Set(owneridentity.PeerHeader, owneridentity.ConsoleBFF.String())
-	activation.headers.Set(owneridentity.TokenHeader, cloudAnnouncementFixtureToken)
-	activation.headers.Set(contracts.CloudSessionHeader, ref)
-	response := localE2EMustRequest(t, activation, http.MethodPost, "/internal/cloud/operator/accounts", map[string]any{
-		"email": email, "password": password, "name": "Local E2E",
-	}, key, http.StatusCreated)
-	body := localE2EMap(t, response.body, "account provision")
-	accountID := stringValue(body["accountId"])
-	if accountID == "" || stringValue(body["status"]) != "succeeded" {
-		t.Fatal("local E2E account provisioning did not return a mapped account")
+	identity, err := service.ResolveOrCreateSub2APIUser(t.Context(), email, password)
+	if err != nil || identity.ID <= 0 || normalizeEmail(identity.Email) != normalizeEmail(email) || identity.Status != "active" {
+		t.Fatalf("local E2E customer Gateway identity: identity=%+v err=%v", identity, err)
+	}
+	accountID := "acct-" + stableID("account", email)[:18]
+	userID := "usr-" + stableID("customer", email)[:18]
+	account := map[string]any{
+		"id": accountID, "ownerUserId": userID, "status": "active",
+		"sub2apiUserId": identity.ID, "workspacePurchaseEnabled": true,
+	}
+	user := map[string]any{"id": userID, "email": email, "accountId": accountID, "role": "owner", "status": "active"}
+	if err := process.store.CreateProvisionedAccount(t.Context(), account, user); err != nil {
+		t.Fatalf("local E2E customer account: %v", err)
 	}
 	return localE2EUser{accountID: accountID, email: email, password: password}
 }
@@ -516,16 +508,12 @@ func TestLocalE2EUserActivationAndLoginSurviveRestart(t *testing.T) {
 	process := startLocalE2EProcess(t, databaseURL, service)
 	admin := process.newAPI(t)
 	admin.login(t, adminEmail, adminPassword)
-	user := provisionLocalE2EUser(t, admin, "activation")
+	user := provisionLocalE2EUser(t, process, service, "activation")
 	_ = loginLocalE2EUser(t, process, &user)
 	subject := user.sub2APIUser
 	account, found, err := process.store.GetAccount(t.Context(), user.accountID)
 	if err != nil || !found || numberField(account, "sub2apiUserId", 0) != float64(subject) || account["workspacePurchaseEnabled"] != true {
 		t.Fatalf("local E2E activation mapping found=%v account=%v err=%v", found, account, err)
-	}
-	events, err := process.store.ListAuditEvents(t.Context(), user.accountID)
-	if err != nil || len(events) != 1 || events[0]["action"] != "account.provision" {
-		t.Fatalf("local E2E activation audit events=%v err=%v", events, err)
 	}
 	process.Close()
 	restarted := startLocalE2EProcess(t, databaseURL, service)

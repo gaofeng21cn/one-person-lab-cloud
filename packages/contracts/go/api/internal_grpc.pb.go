@@ -60,6 +60,7 @@ const (
 	TenantProductService_ReadCallerLinkRelayEntitlement_FullMethodName         = "/opl.cloud.api.TenantProductService/ReadCallerLinkRelayEntitlement"
 	TenantProductService_SetPackageEntitlement_FullMethodName                  = "/opl.cloud.api.TenantProductService/SetPackageEntitlement"
 	TenantProductService_ListCallerPackageEntitlements_FullMethodName          = "/opl.cloud.api.TenantProductService/ListCallerPackageEntitlements"
+	TenantProductService_ProvisionOperatorAccount_FullMethodName               = "/opl.cloud.api.TenantProductService/ProvisionOperatorAccount"
 )
 
 // TenantProductServiceClient is the client API for TenantProductService service.
@@ -106,6 +107,7 @@ type TenantProductServiceClient interface {
 	ReadCallerLinkRelayEntitlement(ctx context.Context, in *ReadCallerLinkRelayEntitlementRpcRequest, opts ...grpc.CallOption) (*LinkRelayEntitlementReadback, error)
 	SetPackageEntitlement(ctx context.Context, in *SetPackageEntitlementRpcRequest, opts ...grpc.CallOption) (*PackageEntitlementCommand, error)
 	ListCallerPackageEntitlements(ctx context.Context, in *ListCallerPackageEntitlementsRpcRequest, opts ...grpc.CallOption) (*CallerPackageEntitlementsReadback, error)
+	ProvisionOperatorAccount(ctx context.Context, in *ProvisionOperatorAccountRpcRequest, opts ...grpc.CallOption) (*OperatorAccountCommand, error)
 }
 
 type tenantProductServiceClient struct {
@@ -516,6 +518,16 @@ func (c *tenantProductServiceClient) ListCallerPackageEntitlements(ctx context.C
 	return out, nil
 }
 
+func (c *tenantProductServiceClient) ProvisionOperatorAccount(ctx context.Context, in *ProvisionOperatorAccountRpcRequest, opts ...grpc.CallOption) (*OperatorAccountCommand, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperatorAccountCommand)
+	err := c.cc.Invoke(ctx, TenantProductService_ProvisionOperatorAccount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TenantProductServiceServer is the server API for TenantProductService service.
 // All implementations must embed UnimplementedTenantProductServiceServer
 // for forward compatibility.
@@ -560,6 +572,7 @@ type TenantProductServiceServer interface {
 	ReadCallerLinkRelayEntitlement(context.Context, *ReadCallerLinkRelayEntitlementRpcRequest) (*LinkRelayEntitlementReadback, error)
 	SetPackageEntitlement(context.Context, *SetPackageEntitlementRpcRequest) (*PackageEntitlementCommand, error)
 	ListCallerPackageEntitlements(context.Context, *ListCallerPackageEntitlementsRpcRequest) (*CallerPackageEntitlementsReadback, error)
+	ProvisionOperatorAccount(context.Context, *ProvisionOperatorAccountRpcRequest) (*OperatorAccountCommand, error)
 	mustEmbedUnimplementedTenantProductServiceServer()
 }
 
@@ -689,6 +702,9 @@ func (UnimplementedTenantProductServiceServer) SetPackageEntitlement(context.Con
 }
 func (UnimplementedTenantProductServiceServer) ListCallerPackageEntitlements(context.Context, *ListCallerPackageEntitlementsRpcRequest) (*CallerPackageEntitlementsReadback, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListCallerPackageEntitlements not implemented")
+}
+func (UnimplementedTenantProductServiceServer) ProvisionOperatorAccount(context.Context, *ProvisionOperatorAccountRpcRequest) (*OperatorAccountCommand, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProvisionOperatorAccount not implemented")
 }
 func (UnimplementedTenantProductServiceServer) mustEmbedUnimplementedTenantProductServiceServer() {}
 func (UnimplementedTenantProductServiceServer) testEmbeddedByValue()                              {}
@@ -1431,6 +1447,24 @@ func _TenantProductService_ListCallerPackageEntitlements_Handler(srv interface{}
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TenantProductService_ProvisionOperatorAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProvisionOperatorAccountRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantProductServiceServer).ProvisionOperatorAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantProductService_ProvisionOperatorAccount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantProductServiceServer).ProvisionOperatorAccount(ctx, req.(*ProvisionOperatorAccountRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // TenantProductService_ServiceDesc is the grpc.ServiceDesc for TenantProductService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1597,6 +1631,10 @@ var TenantProductService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListCallerPackageEntitlements",
 			Handler:    _TenantProductService_ListCallerPackageEntitlements_Handler,
+		},
+		{
+			MethodName: "ProvisionOperatorAccount",
+			Handler:    _TenantProductService_ProvisionOperatorAccount_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

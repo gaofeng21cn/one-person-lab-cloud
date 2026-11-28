@@ -175,6 +175,30 @@ chronological snapshots.
     nobody holds it. The gate names how many rows need an operator and shows the
     first ones. The frozen table stays readable for provenance and is never
     deleted.
+  - The platform operator account-opening command is now one CloudIdentity owner
+    command. `POST /api/v2/operator/accounts` publishes `provisionOperatorAccount`
+    (202, `OperatorAccountCommand`, `Retry-After` while the command is open) and
+    belongs to the tenant owner. The owner opens the Gateway account, admits the
+    single-tenant Workspace owner, grants the Workspace purchase eligibility and
+    binds the Gateway wallet under one persistent operation record and one
+    `Idempotency-Key`, so any replay converges on the same account, Tenant and
+    wallet binding and the external Gateway account write is dispatched at most
+    once. The Console BFF no longer bridges the account write through
+    `/internal/cloud/operator/accounts`, and the retained Control Plane no longer
+    opens customer accounts. The operator account *list*
+    (`GET /api/v2/operator/accounts`) is not this slice: the tenant owner serves
+    it over the OPL Gateway directory, joined with the owner's eligibility and
+    entitlement policies, so it lists every active OPL Gateway user rather than
+    only the accounts this product opened. The Control Plane account bridges are
+    retired with this slice, so Control Plane no longer answers the Console BFF
+    for accounts and no longer opens them. The retained
+    `GET /api/operator/accounts` route stays for the legacy Console build and is
+    retired with the retained Control Plane. Verified against real PostgreSQL: five
+    owner behaviour cases and two live Console activation cases pass, including
+    the customer's own workspace read after activation. Not proven here:
+    production deployment, Instance installation receipts, and downstream
+    adoption of the new published receipt beyond the existing controller
+    contract.
   - Control Plane image-replacement creation/preview/worker commands and admin
     activation endpoints are retired; only the operator image-policy GET
     (`GET /api/operator/workspace-runtime-image-policy`), Fabric image
