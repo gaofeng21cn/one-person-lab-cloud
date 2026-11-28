@@ -67,6 +67,12 @@ in [roadmap.md](roadmap.md); durable boundaries live in
   Cloud instance database (e.g., `cloud.medopl.com`), never in git deployment
   repositories such as `opl-instance-medopl`. Self-hosted OPL Cloud instances
   bind their own `OPL_SUB2API_URL` and govern their own entitlements locally.
+- **Unified Companion Service Catalog & Grant Discovery**: General companion
+  service admission (`tenant.service_entitlements`, covering multi-tenant
+  services such as `netfleet_cloud` and `link_relay`), dynamic endpoint
+  dispatch, and short-lived Ed25519 `service-grant` token issuance live in
+  [service-entitlements-and-discovery.md](service-entitlements-and-discovery.md),
+  while this document retains restricted Software Center package delivery.
 
 ## Client Contract And Two-Stage Physical Delivery
 

@@ -1,25 +1,25 @@
 :root {
   color-scheme: light;
-  --ink: #0f172a;
-  --muted: #64748b;
-  --line: #e2e8f0;
+  --ink: #171717;
+  --muted: #525252;
+  --line: #e5e5e5;
   --panel: #ffffff;
-  --surface: #f8fafc;
-  --accent: #0f766e;
-  --accent-hover: #0d9488;
-  --accent-soft: #eef9f7;
-  --ok: #067647;
-  --ok-bg: #ecfdf3;
-  --ok-line: #abefc6;
-  --warn: #b45309;
+  --surface: #f6f7f9;
+  --accent: #0284c7;
+  --accent-hover: #0369a1;
+  --accent-soft: #f0f9ff;
+  --ok: #16a34a;
+  --ok-bg: #f0fdf4;
+  --ok-line: #bbf7d0;
+  --warn: #d97706;
   --warn-bg: #fffbeb;
   --warn-line: #fde68a;
-  --danger: #b42318;
-  --danger-bg: #fff6f5;
-  --danger-line: #fecdca;
+  --danger: #dc2626;
+  --danger-bg: #fef2f2;
+  --danger-line: #fecaca;
   --radius-sm: 8px;
   --radius-md: 12px;
-  --radius-lg: 16px;
+  --radius-lg: 14px;
 }
 
 * {
@@ -152,7 +152,7 @@ body {
 
 .btn-secondary:hover:not(:disabled),
 .btn-link:hover {
-  border-color: #cbd5e1;
+  border-color: #d4d4d4;
   background: var(--surface);
 }
 
@@ -167,7 +167,7 @@ body {
 
 .btn-ghost:hover:not(:disabled) {
   color: var(--ink);
-  background: #f1f5f9;
+  background: #f5f5f5;
 }
 
 button:disabled {
@@ -296,7 +296,7 @@ summary:focus-visible {
 
 .message.user {
   background: var(--accent-soft);
-  border: 1px solid #ccebe6;
+  border: 1px solid #99f6e4;
   color: var(--ink);
   white-space: pre-wrap;
 }
@@ -356,7 +356,8 @@ summary:focus-visible {
 .md-inline-code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.9em;
-  background: #e2e8f0;
+  background: #f5f5f5;
+  border: 1px solid var(--line);
   padding: 1px 5px;
   border-radius: 4px;
 }
@@ -372,8 +373,8 @@ summary:focus-visible {
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   overflow: hidden;
-  background: #0f172a;
-  color: #f8fafc;
+  background: #111111;
+  color: #fafafa;
 }
 
 .md-code-header {
@@ -381,16 +382,16 @@ summary:focus-visible {
   justify-content: space-between;
   align-items: center;
   padding: 6px 10px;
-  background: #1e293b;
+  background: #1f1f1f;
   font-size: 12px;
-  color: #cbd5e1;
+  color: #d4d4d4;
 }
 
 .md-code-copy {
-  border: 1px solid #334155;
+  border: 1px solid #404040;
   border-radius: 6px;
   background: transparent;
-  color: #e2e8f0;
+  color: #e5e5e5;
   padding: 3px 8px;
   font-size: 11px;
   font-weight: 600;
@@ -398,7 +399,7 @@ summary:focus-visible {
 }
 
 .md-code-copy:hover {
-  background: #334155;
+  background: #262626;
 }
 
 .md-code-block pre {
@@ -408,7 +409,7 @@ summary:focus-visible {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12.5px;
   line-height: 1.55;
-  color: #f8fafc;
+  color: #fafafa;
 }
 
 .composer {

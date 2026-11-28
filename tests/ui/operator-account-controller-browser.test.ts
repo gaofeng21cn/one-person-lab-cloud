@@ -110,11 +110,20 @@ async function login(page: Page, origin: string) {
 
 async function openAccounts(page: Page, origin: string) {
   await page.goto(`${origin}/admin/accounts`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("heading", { level: 2, name: "客户与计费账户", exact: true }).waitFor({ state: "visible" });
+  await page.getByRole("heading", { level: 2, name: "用户与权限", exact: true }).waitFor({ state: "visible" });
 }
 
 function accountRow(page: Page, email: string) {
   return page.locator(".operator-account-table tbody tr").filter({ hasText: email });
+}
+
+async function openInspector(page: Page, email: string) {
+  const row = accountRow(page, email);
+  await row.waitFor({ state: "visible" });
+  await row.click();
+  const inspector = page.locator(".account-inspector-drawer");
+  await inspector.waitFor({ state: "visible" });
+  return inspector;
 }
 
 async function settle(page: Page) {
@@ -198,7 +207,7 @@ test("Operator Account invalidates a pending list completion after route exit", 
     releaseFirstRequest.resolve();
     await firstRequestSettled.promise;
 
-    await page.locator(".side-nav").getByRole("link", { name: "客户与计费账户", exact: true }).click();
+    await page.locator(".side-nav").getByRole("link", { name: "用户与权限", exact: true }).click();
     await secondRequestHeld.promise;
     assert.equal(await accountRow(page, "old-route@example.com").count(), 0);
     releaseSecondRequest.resolve();
@@ -240,7 +249,8 @@ test("Operator Account suppresses a pending command completion after route exit"
 
     await login(page, demo.origin);
     await openAccounts(page, demo.origin);
-    await accountRow(page, active.email).getByRole("button", { name: "撤销新购", exact: true }).click();
+    const inspector = await openInspector(page, active.email);
+    await inspector.getByRole("button", { name: "撤销新购", exact: true }).click();
     await page.getByRole("dialog", { name: "撤销工作空间购买资格" }).getByRole("button", { name: "确认撤销", exact: true }).click();
     await commandHeld.promise;
     await page.locator(".side-nav").getByRole("link", { name: "运维概览", exact: true }).click();
@@ -417,12 +427,13 @@ test("Operator Account disable retains its key until identity, status, and readb
 
     await login(page, demo.origin);
     await openAccounts(page, demo.origin);
+    const inspector = await openInspector(page, active.email);
     for (let attempt = 1; attempt <= 3; attempt += 1) {
-      await accountRow(page, active.email).getByRole("button", { name: "停用", exact: true }).click();
+      await inspector.getByRole("button", { name: "停用", exact: true }).click();
       await page.getByRole("dialog", { name: "停用客户账号" }).getByRole("button", { name: "确认停用", exact: true }).click();
       await page.getByText(unknownWriteMessage, { exact: true }).waitFor({ state: "visible" });
     }
-    await accountRow(page, active.email).getByRole("button", { name: "停用", exact: true }).click();
+    await inspector.getByRole("button", { name: "停用", exact: true }).click();
     await page.getByRole("dialog", { name: "停用客户账号" }).getByRole("button", { name: "确认停用", exact: true }).click();
     await page.getByText("客户已停用", { exact: true }).waitFor({ state: "visible" });
 
@@ -485,25 +496,24 @@ test("Operator Account keeps a pending disable claimed across route exit and re-
     await login(page, demo.origin);
     await openAccounts(page, demo.origin);
     await page.getByRole("navigation", { name: "账号分页" }).getByRole("button", { name: "下一页" }).click();
-    await accountRow(page, active.email).waitFor({ state: "visible" });
-    await accountRow(page, active.email).getByRole("button", { name: "停用", exact: true }).click();
+    const firstInspector = await openInspector(page, active.email);
+    await firstInspector.getByRole("button", { name: "停用", exact: true }).click();
     await page.getByRole("dialog", { name: "停用客户账号" }).getByRole("button", { name: "确认停用", exact: true }).click();
     await firstRequestHeld.promise;
 
     await page.locator(".side-nav").getByRole("link", { name: "运维概览", exact: true }).click();
     await page.waitForFunction(() => window.location.pathname === "/admin/overview");
-    await page.locator(".side-nav").getByRole("link", { name: "客户与计费账户", exact: true }).click();
-    await accountRow(page, active.email).waitFor({ state: "visible" });
-    const reenteredDisable = accountRow(page, active.email).getByRole("button", { name: "停用", exact: true });
+    await page.locator(".side-nav").getByRole("link", { name: "用户与权限", exact: true }).click();
+    const reenteredInspector = await openInspector(page, active.email);
+    const reenteredDisable = reenteredInspector.getByRole("button", { name: "停用", exact: true });
     assert.equal(await reenteredDisable.isDisabled(), true);
     assert.equal(keys.length, 1);
 
     releaseFirstRequest.resolve();
     await firstRequestSettled.promise;
     await page.waitForFunction(() => {
-      const row = [...document.querySelectorAll<HTMLTableRowElement>(".operator-account-table tbody tr")]
-        .find((candidate) => candidate.textContent?.includes("disable-claim@example.com"));
-      const button = [...(row?.querySelectorAll<HTMLButtonElement>("button") || [])]
+      const drawer = document.querySelector<HTMLElement>(".account-inspector-drawer");
+      const button = [...(drawer?.querySelectorAll<HTMLButtonElement>("button") || [])]
         .find((candidate) => candidate.textContent?.trim() === "停用");
       return Boolean(button && !button.disabled);
     });
@@ -567,9 +577,9 @@ test("Operator Account removes a stale origin row when disable readback finds a 
     await login(page, demo.origin);
     await openAccounts(page, demo.origin);
     await page.getByRole("navigation", { name: "账号分页" }).getByRole("button", { name: "下一页" }).click();
-    await accountRow(page, active.email).waitFor({ state: "visible" });
+    const inspector = await openInspector(page, active.email);
     const commandReadStart = readPages.length;
-    await accountRow(page, active.email).getByRole("button", { name: "停用", exact: true }).click();
+    await inspector.getByRole("button", { name: "停用", exact: true }).click();
     await page.getByRole("dialog", { name: "停用客户账号" }).getByRole("button", { name: "确认停用", exact: true }).click();
     await page.getByText("客户已停用", { exact: true }).waitFor({ state: "visible" });
 
@@ -616,7 +626,8 @@ test("Operator Account eligibility retains its key across command and readback m
 
     await login(page, demo.origin);
     await openAccounts(page, demo.origin);
-    const revoke = accountRow(page, eligible.email).getByRole("button", { name: "撤销新购", exact: true });
+    const inspector = await openInspector(page, eligible.email);
+    const revoke = inspector.getByRole("button", { name: "撤销新购", exact: true });
     const confirmRevoke = async () => {
       await revoke.click();
       await page.getByRole("dialog", { name: "撤销工作空间购买资格" }).getByRole("button", { name: "确认撤销", exact: true }).click();
@@ -673,7 +684,8 @@ test("Operator Account session reset discards a stale eligibility intent", { tim
 
     await login(page, demo.origin);
     await openAccounts(page, demo.origin);
-    await accountRow(page, ineligible.email).getByRole("button", { name: "授予新购", exact: true }).click();
+    const firstInspector = await openInspector(page, ineligible.email);
+    await firstInspector.getByRole("button", { name: "授予新购", exact: true }).click();
     await page.getByRole("dialog", { name: "授予工作空间购买资格" }).getByRole("button", { name: "确认授予", exact: true }).click();
     await page.getByText(unknownWriteMessage, { exact: true }).waitFor({ state: "visible" });
 
@@ -681,7 +693,8 @@ test("Operator Account session reset discards a stale eligibility intent", { tim
     await page.waitForFunction(() => window.location.pathname === "/");
     await login(page, demo.origin);
     await openAccounts(page, demo.origin);
-    await accountRow(page, ineligible.email).getByRole("button", { name: "授予新购", exact: true }).click();
+    const secondInspector = await openInspector(page, ineligible.email);
+    await secondInspector.getByRole("button", { name: "授予新购", exact: true }).click();
     await page.getByRole("dialog", { name: "授予工作空间购买资格" }).getByRole("button", { name: "确认授予", exact: true }).click();
     await page.getByText("已授予 Workspace 新购资格", { exact: true }).waitFor({ state: "visible" });
 
@@ -760,7 +773,13 @@ test("Cloud operator pages expose reads, activation and purchase eligibility wit
       }
       if (path === "accounts") {
         await page.getByRole("button", { name: "开通用户", exact: true }).waitFor();
-        await page.getByRole("button", { name: "撤销新购", exact: true }).first().click();
+        await page.locator(".operator-account-table tbody tr").first().click();
+        const inspector = page.locator(".account-inspector-drawer");
+        await inspector.waitFor({ state: "visible" });
+        for (const forbidden of ["余额操作", "停用"]) {
+          assert.equal(await inspector.getByRole("button", { name: forbidden, exact: true }).count(), 0, `drawer: ${forbidden}`);
+        }
+        await inspector.getByRole("button", { name: "撤销新购", exact: true }).click();
         await page.getByRole("button", { name: "确认撤销", exact: true }).click();
         await page.getByText("已撤销 Workspace 新购资格", { exact: true }).waitFor();
       }
