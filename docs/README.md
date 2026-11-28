@@ -94,3 +94,4 @@ cannot yet follow is an explicit roadmap gap, not a competing SSOT.
 - [`opl-connect.md`](./opl-connect.md): logical external-access capability inside Fabric.
 - [`opl-ledger.md`](./opl-ledger.md): append-only financial/deletion receipts, reconciliation and opaque provenance.
 - [`software-package-entitlements.md`](./software-package-entitlements.md): per-subject Cloud entitlement governance and controlled delivery for restricted Software Center packages.
+- [`service-entitlements-and-discovery.md`](./service-entitlements-and-discovery.md): unified per-subject companion-service entitlements (`tenant.service_entitlements`), instance service catalog dispatch, and short-lived Ed25519 `service-grant` discovery protocol.
