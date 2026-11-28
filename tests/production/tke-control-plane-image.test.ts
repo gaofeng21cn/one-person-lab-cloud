@@ -9,13 +9,15 @@ test("OPL Cloud product image contains all three control-service binaries", asyn
     .map((line) => line.trim())
     .filter(Boolean);
 
-  for (const [serviceDir, buildTarget, binary] of [
-    ["services/control-plane", "./cmd/control-plane", "opl-control-plane"],
-    ["services/fabric", "./cmd/fabric", "opl-fabric"],
-    ["services/ledger", "./cmd/ledger", "opl-ledger"]
+  const singleBinary = await readFile("cmd/opl-cloud/main.go", "utf8");
+  assert.match(dockerfile, /go build[^\n]*-ldflags "-X opl-cloud\/packages\/contracts\/go\.ProductSourceSHA=\$OPL_SOURCE_SHA" -o \/out\/opl-cloud \.\/cmd\/opl-cloud/);
+  for (const [serviceModule, binary] of [
+    ["opl-cloud/services/control-plane/module", "opl-control-plane"],
+    ["opl-cloud/services/fabric/module", "opl-fabric"],
+    ["opl-cloud/services/ledger/module", "opl-ledger"]
   ]) {
-    // The build carries the product revision stamp and shares the single go-build stage.
-    assert.match(dockerfile, new RegExp(`go -C ${serviceDir.replaceAll("/", "\\/")} build[^\\n]*-o /out/${binary.replaceAll("-", "\\-")} ${buildTarget.replaceAll("/", "\\/")}`));
+    assert.ok(dockerfile.includes(binary), `Dockerfile must ship symlink for ${binary}`);
+    assert.ok(singleBinary.includes(serviceModule), `cmd/opl-cloud must register ${serviceModule} for ${binary}`);
   }
   assert.match(dockerfile, /COPY --from=go-build \/out\/ \/usr\/local\/bin\//);
   assert.match(dockerfile, /ARG TARGETARCH/);
@@ -50,7 +52,7 @@ test("Go build stage uses the unified root go.mod and copies Go contracts before
     "go-build must copy root go.mod/go.sum before downloading modules"
   );
   assert.ok(
-    goBuildStage.indexOf(contractsCopy) < goBuildStage.indexOf("go -C services/fabric build"),
+    goBuildStage.indexOf(contractsCopy) < goBuildStage.indexOf("go build"),
     "go-build must copy local Go contracts before compiling"
   );
 });

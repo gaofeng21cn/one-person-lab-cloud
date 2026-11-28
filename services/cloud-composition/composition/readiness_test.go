@@ -19,7 +19,7 @@ import (
 // behaviour against the declared facts and not against a copy of them.
 func contractPath(t *testing.T) string {
 	t.Helper()
-	return "../../../../deploy/portable/opl-cloud-owner-topology.json"
+	return "../../../deploy/portable/opl-cloud-owner-topology.json"
 }
 
 // environment is an installation's environment for one test.

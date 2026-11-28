@@ -886,6 +886,7 @@ export interface OperatorServiceEntitlementDTO {
 
 export interface OperatorAccount {
   accountId: string;
+  actorId?: string;
   consoleUserId: string;
   role: string;
   sub2apiUserId: string;
@@ -893,6 +894,8 @@ export interface OperatorAccount {
   status: "active" | "disabled";
   workspacePurchaseEnabled: boolean;
   serviceEntitlements?: OperatorServiceEntitlementDTO[];
+  platformAdminEnabled?: boolean;
+  isBootstrapAdmin?: boolean;
 }
 
 export interface OperatorAccountsData {
@@ -937,6 +940,7 @@ export interface OperatorAccountCommandDTO extends OperationStatusDTO {
 }
 
 export interface OperatorProvisionAccountCommandDTO extends OperatorAccountCommandDTO {
+  sub2apiUserId?: string;
   workspacePurchaseEnabled: boolean;
 }
 
@@ -953,6 +957,11 @@ export interface OperatorServiceEntitlementCommandDTO extends OperatorAccountCom
   originOverride?: string;
   limits?: Record<string, unknown>;
   expiresAt?: string;
+}
+
+export interface OperatorPlatformAdminCommandDTO extends OperatorAccountCommandDTO {
+  platformAdminEnabled: boolean;
+  isBootstrapAdmin: boolean;
 }
 
 export interface ResourceFact {

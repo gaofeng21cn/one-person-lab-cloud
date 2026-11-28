@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { createServer } from "node:net";
 import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import test from "node:test";
 
@@ -152,10 +152,6 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
   const nodeFixtureImage = dockerfileSource.match(/^FROM\s+(?:--platform=\S+\s+)?(node:[^\s]+@sha256:[0-9a-f]{64})\s+AS\s+build$/m)?.[1];
   assert.ok(nodeFixtureImage, "Dockerfile must pin the multi-arch Node build image");
   const revision = command(["git", "rev-parse", "HEAD"]).stdout.trim();
-
-  // The per-owner name the composition reads one owner's own secret by.
-  const ownerAlias = (process: ContractProcess) =>
-    `OPL_${process.transportPrincipal.toUpperCase().replace(/-/g, "_")}`;
 
   // This fixture injects explicit real binds; probes use the effective input
   // and the contract default only when the input is absent.
@@ -596,9 +592,9 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
     docker(containerArguments(shared, backendName, "3m", topologyPath));
 
     const declaredServices = contract.processes.map((process) => process.service);
-    // The container holds the evidence while it lives: the composition stops
-    // the container as soon as an owner never becomes ready, so the owners'
-    // own environment and the container's listeners are read while it runs.
+    // The container holds the evidence while it lives: the single-binary
+    // entrypoint runs all declared owner modules as goroutines inside one OS PID,
+    // so we capture the process table and listening socket owners while it runs.
     const captureEvidence = () => {
       const processList = docker([
         "exec", backendName, "sh", "-c",
@@ -614,29 +610,12 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
         "inode=$(printf '%s' \"$link\" | sed -n 's/^socket:\\[\\([0-9]*\\)\\]$/\\1/p'); " +
         "[ -n \"$inode\" ] && printf '%s %s %s\\n' \"$inode\" \"$pid\" \"$cmd\"; done; done"
       ], false).stdout;
-      const ownerEnvironments = new Map<string, Record<string, string>>();
-      for (const process of contract.processes) {
-        const entry = processList.find((line) => line.split(" ")[1] === process.binary);
-        if (!entry) continue;
-        const pid = entry.split(" ")[0];
-        const raw = docker([
-          "exec", backendName, "sh", "-c", `tr '\\0' '\\n' < /proc/${pid}/environ`
-        ], false).stdout;
-        const environment: Record<string, string> = {};
-        for (const line of raw.split("\n")) {
-          const separator = line.indexOf("=");
-          if (separator > 0) environment[line.slice(0, separator)] = line.slice(separator + 1);
-        }
-        if (Object.keys(environment).length === 0) continue;
-        ownerEnvironments.set(process.service, environment);
-      }
-      return { processList, sockets, socketOwners, ownerEnvironments };
+      return { processList, sockets, socketOwners };
     };
     let evidence = {
       processList: [] as string[],
       sockets: "",
-      socketOwners: "",
-      ownerEnvironments: new Map<string, Record<string, string>>()
+      socketOwners: ""
     };
     // The composition reports that an owner never became ready. The cause is
     // the owner's own answer, so the wait reads the Fabric owner's readiness
@@ -716,13 +695,7 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
       attempts += 1;
       if (containerRunning(backendName)) {
         const captured = captureEvidence();
-        // The composition stops its owners when one never becomes ready, so a
-        // read can race with that stop. The richest capture wins, and an owner
-        // keeps the environment a previous capture read.
-        for (const [service, environment] of captured.ownerEnvironments) {
-          evidence.ownerEnvironments.set(service, environment);
-        }
-        if (captured.processList.length > evidence.processList.length) {
+        if (evidence.processList.length === 0 || captured.socketOwners.length >= evidence.socketOwners.length) {
           evidence.processList = captured.processList;
           evidence.sockets = captured.sockets;
           evidence.socketOwners = captured.socketOwners;
@@ -754,18 +727,21 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
       return !containerRunning(backendName);
     }, "the composition did not bring every declared owner up");
 
+    if (containerRunning(backendName)) {
+      evidence = captureEvidence();
+    }
+
     const logs = containerLogs(backendName);
-    const { processList, sockets, socketOwners, ownerEnvironments } = evidence;
+    const { processList, sockets, socketOwners } = evidence;
 
     // The owner set the entrypoint started is the contract's declared process
-    // set, in the contract's declared order. The composition starts an owner
-    // once the owners it depends on are ready, so the owners it started are
-    // the declared owners in the declared order.
+    // set, in the contract's declared order. The composition starts each module
+    // in-process once the modules it depends on are ready.
     const started = [...logs.matchAll(/starting owner (\S+)/g)].map((match) => match[1]);
     assert.ok(started.length > 0, "the entrypoint started no owner");
     assert.deepEqual(started, declaredServices.slice(0, started.length),
       "the entrypoint started a different owner set or order");
-    assert.match(logs, new RegExp(`composing ${contract.processes.length} owner processes`));
+    assert.match(logs, new RegExp(`composing ${contract.processes.length} owner processes .*\\(in-process\\)`));
 
     // One Cloud container: no second container runs the product image. The
     // Sub2API fixture stands for the installation's external authority and is
@@ -823,24 +799,38 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
     assert.deepEqual(undeclared.map((entry) => entry.port), [],
       `the composed container listens on an address the contract does not declare: ${undeclared.map((entry) => `${entry.port} at ${entry.local} (${socketOwner.get(entry.inode)})`).join(", ")}`);
 
-    // The excluded workloads stay outside the composed unit. The container
-    // runs the composition entrypoint and the declared owner processes and
-    // nothing else: no privileged build executor, no customer application.
-    const allowedBinaries = new Set<string>([
-      "/usr/local/bin/opl-cloud-composition",
-      ...contract.processes.map((process) => process.binary)
+    // Single-binary in-process convergence: inside the composed Cloud backend
+    // container, exactly one long-lived backend OS process runs
+    // (/usr/local/bin/opl-cloud-composition) with zero spawned child owner PIDs
+    // and zero undeclared workloads, and that single PID owns every declared
+    // listening socket. Per-module environment allowlist isolation is enforced
+    // in-memory by composition.InProcStarter (verified in inproc_starter_test.go
+    // and module-physical-boundaries.test.ts).
+    const ephemeralProbeBinaries = new Set<string>([
+      "sh", "dash", "basename", "dirname", "cat", "tr", "sed", "readlink", "curl", "opl-owner-probe"
     ]);
-    for (const line of processList) {
-      const binary = line.split(" ")[1];
-      if (binary === "/bin/sh" || binary === "sh") continue;
-      assert.ok(allowedBinaries.has(binary),
-        `the composed container runs a process the contract does not declare: ${line}`);
-    }
-    for (const process of contract.processes) {
-      if (!started.includes(process.service)) continue;
+    const longLivedProcesses = processList.filter((line) => {
+      const binary = line.split(/\s+/)[1];
+      return Boolean(binary) && !ephemeralProbeBinaries.has(basename(binary));
+    });
+    assert.equal(
+      longLivedProcesses.length,
+      1,
+      `expected exactly one long-lived backend OS process inside cloud-backend, saw: ${longLivedProcesses.join(" | ")}`
+    );
+    const [singleBackendPid, singleBackendBinary] = longLivedProcesses[0].split(/\s+/);
+    assert.equal(
+      singleBackendBinary,
+      "/usr/local/bin/opl-cloud-composition",
+      `the single backend OS process must be the composition entrypoint, saw: ${longLivedProcesses[0]}`
+    );
+    for (const entry of listeningSockets) {
+      if (!declaredPorts.has(entry.port)) continue;
+      const owner = socketOwner.get(entry.inode);
+      if (!owner) continue;
       assert.ok(
-        processList.some((line) => line.split(" ")[1] === process.binary),
-        `${process.service} does not run inside the composed container: ${processList.join(" | ")}`
+        owner.startsWith(`${singleBackendPid} `),
+        `declared listener port ${entry.port} must be owned by single backend PID ${singleBackendPid}, saw: ${owner}`
       );
     }
     assert.equal(
@@ -850,117 +840,6 @@ if (enabled) test("the Cloud backend container is one deployable business unit",
       1,
       "a customer application container was deployed beside the composed unit"
     );
-
-    // The projection keeps every owner inside its own contract declaration.
-    // The environments are read from the running container, not from the
-    // fixture: an owner receives the environment its own declaration allows,
-    // and no owner receives another owner's service token, peer token
-    // allowlist or database DSN.
-    const running = contract.processes.filter((process) => ownerEnvironments.has(process.service));
-    assert.deepEqual(running.map((process) => process.service), started,
-      "the composed container does not run every owner the composition started");
-
-    // The owner, its peers and probes must agree on the effective bind.
-    // Only wildcard binds are reached through the corresponding loopback.
-    const ownerByPrincipal = new Map(contract.processes.map((process) => [process.transportPrincipal, process]));
-    const declaredPeerListener = (target: ContractProcess): string => {
-      const name = target.rpcAddressEnv ?? (target.kind === "ownerservice" ? target.addressEnv : undefined);
-      return effectiveListener(target, name);
-    };
-    for (const process of running) {
-      const environment = ownerEnvironments.get(process.service) as Record<string, string>;
-      for (const name of [
-        process.addressEnv, process.rpcAddressEnv,
-        ...(process.additionalListeners ?? []).map((listener) => listener.addressEnv)
-      ]) {
-        if (!name) continue;
-        const declared = effectiveListener(process, name);
-        if (!declared) continue;
-        assert.equal(environment[name], declared,
-          `${process.service} does not bind the configured listener for ${name}; it received ${Object.keys(environment).join(",")}`);
-      }
-      for (const edge of contract.communication.edges) {
-        if (edge.caller !== process.transportPrincipal || !edge.addressEnv) continue;
-        const target = ownerByPrincipal.get(edge.target);
-        assert.ok(target, `the contract declares no owner ${edge.target}`);
-        assert.equal(environment[edge.addressEnv], loopback(declaredPeerListener(target)),
-          `${process.service} does not reach ${edge.target} at its effective listener`);
-      }
-      for (const peer of contract.peerAddresses?.entries ?? []) {
-        if (peer.caller !== process.transportPrincipal || !peer.addressEnv) continue;
-        const target = ownerByPrincipal.get(peer.target);
-        assert.ok(target, `the contract declares no owner ${peer.target}`);
-        const listener = effectiveListener(target, peer.targetAddressEnv);
-        assert.ok(listener, `the contract declares no listener ${peer.targetAddressEnv} for ${peer.target}`);
-        assert.equal(environment[peer.addressEnv], `http://${loopback(listener)}`,
-          `${process.service} does not reach ${peer.target} at its effective listener`);
-      }
-    }
-
-    // Every name an owner receives is one its own declaration allows, and no
-    // owner receives another owner's service token, peer token allowlist or
-    // database DSN.
-    for (const process of running) {
-      const environment = ownerEnvironments.get(process.service) as Record<string, string>;
-      const allowed = new Set<string>();
-      for (const value of Object.values(contract.sharedEnv ?? {})) {
-        for (const name of Array.isArray(value) ? value : [value]) allowed.add(name);
-      }
-      for (const name of [
-        process.addressEnv, process.addressPortEnv, process.peerTokensEnv, process.rpcAddressEnv,
-        process.rpcDatabaseEnv, process.rpcEnabledByEnv, process.databaseEnv,
-        ...(process.env ?? []), ...(process.optionalEnv ?? []), ...(process.externalEnv ?? [])
-      ]) {
-        if (name) allowed.add(name);
-      }
-      for (const listener of process.additionalListeners ?? []) allowed.add(listener.addressEnv);
-      for (const edge of contract.communication.edges) {
-        if (edge.caller !== process.transportPrincipal) continue;
-        for (const name of [edge.addressEnv, edge.tokenEnv, ...(edge.activationEnvs ?? [])]) {
-          if (name) allowed.add(name);
-        }
-      }
-      for (const peer of contract.peerAddresses?.entries ?? []) {
-        if (peer.caller !== process.transportPrincipal) continue;
-        for (const name of [peer.addressEnv, peer.tokenEnv]) if (name) allowed.add(name);
-      }
-      allowed.add("OPL_GRPC_CERT_FILE");
-      allowed.add("OPL_GRPC_KEY_FILE");
-      for (const name of Object.keys(environment)) {
-        assert.ok(allowed.has(name),
-          `${process.service} received ${name}, which its own contract declaration does not allow`);
-      }
-      for (const other of contract.processes) {
-        if (other.service === process.service) continue;
-        const otherToken = shared[`${ownerAlias(other)}_SERVICE_TOKEN`];
-        if (otherToken) {
-          assert.notEqual(environment["OPL_INTERNAL_SERVICE_TOKEN"], otherToken,
-            `${process.service} received the ${other.service} service token`);
-        }
-        if (other.peerTokensEnv && other.peerTokensEnv !== process.peerTokensEnv) {
-          assert.equal(environment[other.peerTokensEnv], undefined,
-            `${process.service} received the ${other.service} peer token allowlist`);
-        }
-        const otherDatabase = other.compositionDatabaseEnv;
-        if (!otherDatabase || otherDatabase === process.compositionDatabaseEnv) continue;
-        const otherDSN = shared[otherDatabase];
-        if (otherDSN) {
-          assert.ok(!Object.values(environment).includes(otherDSN),
-            `${process.service} received the ${other.service} database DSN`);
-        }
-        if (otherDatabase !== process.databaseEnv && otherDatabase !== process.rpcDatabaseEnv && !(process.env ?? []).includes(otherDatabase)) {
-          assert.ok(environment[otherDatabase] === undefined,
-            `${process.service} received the ${other.service} database credential`);
-        }
-      }
-      if (process.databaseEnv) {
-        assert.ok(environment[process.databaseEnv] === shared[process.compositionDatabaseEnv!],
-          `${process.service} did not receive its own database`);
-      } else {
-        assert.ok(environment["DATABASE_URL"] === undefined,
-          `${process.service} received a database DSN it does not consume`);
-      }
-    }
 
     // A failure is a failure. One owner that never becomes ready stops the
     // composition, and the composition names that owner.

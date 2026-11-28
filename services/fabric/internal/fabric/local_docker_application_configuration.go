@@ -182,10 +182,17 @@ func (p *LocalDockerProvider) applicationGatewayVersion(secretRef, version strin
 }
 
 func applicationWebUICredentials(input WorkspaceApplicationRuntimeInput) (localDockerWebUICredentials, error) {
+	return applicationWebUICredentialsWith(input, os.Getenv)
+}
+
+func applicationWebUICredentialsWith(input WorkspaceApplicationRuntimeInput, getenv func(string) string) (localDockerWebUICredentials, error) {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
 	if !workspaceApplicationRequiresDerivedCredentials(input.Revision) {
 		return localDockerWebUICredentials{}, errors.New("workspace_application_credentials_unavailable")
 	}
-	seed := strings.TrimSpace(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"))
+	seed := strings.TrimSpace(getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"))
 	if seed == "" {
 		return localDockerWebUICredentials{}, errors.New("workspace_application_webui_credential_seed_required")
 	}
@@ -199,7 +206,7 @@ func (p *LocalDockerProvider) applicationCredentialFiles(input WorkspaceApplicat
 	if !workspaceApplicationRequiresDerivedCredentials(input.Revision) {
 		return nil
 	}
-	credentials, err := applicationWebUICredentials(input)
+	credentials, err := applicationWebUICredentialsWith(input, p.env)
 	if err != nil {
 		return err
 	}

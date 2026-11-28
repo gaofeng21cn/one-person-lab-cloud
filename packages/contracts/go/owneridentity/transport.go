@@ -1,9 +1,11 @@
 package owneridentity
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,6 +51,7 @@ type TLSConfig struct {
 	CertFile           string
 	KeyFile            string
 	AllowInsecureLocal bool
+	InProc             *InProcTransport
 }
 
 func TLSFromEnv(getenv func(string) string) TLSConfig {
@@ -140,6 +143,9 @@ func (c TLSConfig) load(identity Service) (*tls.Config, error) {
 }
 func (c TLSConfig) ServerCredentials(identity Service) (credentials.TransportCredentials, error) {
 	if c.AllowInsecureLocal {
+		if c.InProc != nil {
+			return newInProcAwareCreds(insecure.NewCredentials()), nil
+		}
 		return nil, nil
 	}
 	config, err := c.load(identity)
@@ -147,7 +153,7 @@ func (c TLSConfig) ServerCredentials(identity Service) (credentials.TransportCre
 		return nil, err
 	}
 	config.ClientAuth = tls.RequireAndVerifyClientCert
-	return credentials.NewTLS(config), nil
+	return newInProcAwareCreds(credentials.NewTLS(config)), nil
 }
 func (c TLSConfig) DialOptions(caller, target Service, token string) ([]grpc.DialOption, error) {
 	if !caller.Valid() || !target.Valid() {
@@ -155,6 +161,16 @@ func (c TLSConfig) DialOptions(caller, target Service, token string) ([]grpc.Dia
 	}
 	if len(strings.TrimSpace(token)) < MinimumTokenLength {
 		return nil, fmt.Errorf("calling service token must contain at least %d characters", MinimumTokenLength)
+	}
+	if c.InProc != nil {
+		transport := c.InProc
+		return []grpc.DialOption{
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+				return transport.Dial(ctx, caller, target)
+			}),
+			grpc.WithChainUnaryInterceptor(OutboundInterceptor(caller, token)),
+		}, nil
 	}
 	var creds credentials.TransportCredentials
 	if c.AllowInsecureLocal {

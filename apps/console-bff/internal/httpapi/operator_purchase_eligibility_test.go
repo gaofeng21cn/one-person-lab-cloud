@@ -19,12 +19,15 @@ import (
 
 type eligibilityTenantProbe struct {
 	api.TenantProductServiceClient
-	setReq  *api.SetWorkspacePurchaseEligibilityRpcRequest
-	setResp *api.WorkspacePurchaseEligibilityCommand
-	setErr  error
-	listReq *api.ListWorkspacePurchaseEligibilityRpcRequest
-	listMap map[string]bool
-	listErr error
+	setReq          *api.SetWorkspacePurchaseEligibilityRpcRequest
+	setResp         *api.WorkspacePurchaseEligibilityCommand
+	setErr          error
+	listAccountsReq *api.ListOperatorAccountsRpcRequest
+	accountsPage    *api.OperatorGatewayAccountPage
+	accountsErr     error
+	listReq         *api.ListWorkspacePurchaseEligibilityRpcRequest
+	listMap         map[string]bool
+	listErr         error
 }
 
 func (p *eligibilityTenantProbe) SetWorkspacePurchaseEligibility(_ context.Context, r *api.SetWorkspacePurchaseEligibilityRpcRequest, _ ...grpc.CallOption) (*api.WorkspacePurchaseEligibilityCommand, error) {
@@ -61,6 +64,20 @@ func (p *eligibilityTenantProbe) ListWorkspacePurchaseEligibility(_ context.Cont
 
 func (p *eligibilityTenantProbe) ListServiceEntitlements(_ context.Context, _ *api.ListServiceEntitlementsRpcRequest, _ ...grpc.CallOption) (*api.ServiceEntitlementList, error) {
 	return &api.ServiceEntitlementList{}, nil
+}
+
+func (p *eligibilityTenantProbe) ListOperatorAccounts(_ context.Context, r *api.ListOperatorAccountsRpcRequest, _ ...grpc.CallOption) (*api.OperatorGatewayAccountPage, error) {
+	p.listAccountsReq = r
+	if p.accountsErr != nil {
+		return nil, p.accountsErr
+	}
+	if p.accountsPage != nil {
+		return p.accountsPage, nil
+	}
+	return &api.OperatorGatewayAccountPage{
+		Page:     r.GetPage(),
+		PageSize: r.GetPageSize(),
+	}, nil
 }
 
 func TestOperatorPurchaseEligibilityWriteRoute(t *testing.T) {
@@ -146,24 +163,10 @@ func TestOperatorPurchaseEligibilityWriteRoute(t *testing.T) {
 
 func TestOperatorAccountsProjectsAuthoritativePurchaseEligibility(t *testing.T) {
 	const token = "operator-elig-proj-test-token-0001"
+	cpCalls := 0
 	cpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/internal/cloud/operator/accounts" {
-			http.NotFound(w, r)
-			return
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"source":    "control-plane+sub2api",
-			"status":    "available",
-			"available": true,
-			"fetchedAt": "2026-11-27T00:00:00Z",
-			"data": map[string]any{
-				"items": []map[string]any{
-					{"accountId": "acct-42", "sub2apiUserId": "42", "workspacePurchaseEnabled": false},
-					{"accountId": "acct-43", "sub2apiUserId": "43", "workspacePurchaseEnabled": true},
-				},
-				"total": 2, "page": 1, "pageSize": 20,
-			},
-		})
+		cpCalls++
+		http.Error(w, "retained control plane accounts must not be consulted", http.StatusInternalServerError)
 	}))
 	defer cpServer.Close()
 
@@ -173,12 +176,22 @@ func TestOperatorAccountsProjectsAuthoritativePurchaseEligibility(t *testing.T) 
 	}
 	defer readers.Close()
 
-	tenant := &eligibilityTenantProbe{listMap: map[string]bool{"42": true, "43": false}}
+	tenant := &eligibilityTenantProbe{
+		accountsPage: &api.OperatorGatewayAccountPage{
+			Total:    2,
+			Page:     1,
+			PageSize: 20,
+			Items: []*api.OperatorGatewayAccount{
+				{ActorId: "42", Email: "u42@example.test", Status: "active", WorkspacePurchaseEnabled: true, WalletAvailable: true, WalletUsdMicros: 5000000},
+				{ActorId: "43", Email: "u43@example.test", Status: "active", WorkspacePurchaseEnabled: false, PlatformAdminEnabled: true, IsBootstrapAdmin: true},
+			},
+		},
+	}
 	identity := &fakeIdentity{
 		session: &api.Session{ActorId: "admin-1", CsrfToken: "csrf-admin"},
 		decisions: map[api.AuthorizationActionEnum]*api.AuthorizationDecision{
 			operatorPrivilegeAction: activationPlatformDecision(operatorPrivilegeAction, api.OwnerEnum_OWNER_ENUM_CAPABILITY, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "", "op-1"),
-			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTTENANTS: activationPlatformDecision(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTTENANTS, api.OwnerEnum_OWNER_ENUM_TENANT, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", "list-1"),
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORACCOUNTS: activationPlatformDecision(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORACCOUNTS, api.OwnerEnum_OWNER_ENUM_TENANT, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PLATFORM, "", "list-accounts-1"),
 		},
 	}
 	srv := NewServer(readers, identity)
@@ -193,26 +206,32 @@ func TestOperatorAccountsProjectsAuthoritativePurchaseEligibility(t *testing.T) 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
+	if cpCalls != 0 {
+		t.Fatalf("expected 0 retained Control Plane calls, got %d", cpCalls)
+	}
 	var env struct {
-		Data struct {
+		Source string `json:"source"`
+		Data   struct {
 			Items []struct {
 				AccountID                string `json:"accountId"`
 				WorkspacePurchaseEnabled bool   `json:"workspacePurchaseEnabled"`
+				PlatformAdminEnabled     bool   `json:"platformAdminEnabled"`
+				IsBootstrapAdmin         bool   `json:"isBootstrapAdmin"`
 			} `json:"items"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &env); err != nil {
 		t.Fatal(err)
 	}
-	if len(env.Data.Items) != 2 || !env.Data.Items[0].WorkspacePurchaseEnabled || env.Data.Items[1].WorkspacePurchaseEnabled {
-		t.Fatalf("expected authoritative CloudIdentity eligibility projection, got %+v", env.Data.Items)
+	if env.Source != "tenant+sub2api" || len(env.Data.Items) != 2 || !env.Data.Items[0].WorkspacePurchaseEnabled || env.Data.Items[1].WorkspacePurchaseEnabled || !env.Data.Items[1].IsBootstrapAdmin {
+		t.Fatalf("expected authoritative CloudIdentity projection, got %+v", env)
 	}
 
-	// Fails closed when CloudIdentity eligibility readback fails.
-	tenant.listErr = status.Error(codes.Unavailable, "tenant db unavailable")
+	// Fails closed when CloudIdentity ListOperatorAccounts readback fails.
+	tenant.accountsErr = status.Error(codes.Unavailable, "tenant db unavailable")
 	failRec := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(failRec, accountsReq())
 	if failRec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503 when eligibility projection fails, got %d body=%s", failRec.Code, failRec.Body.String())
+		t.Fatalf("expected 503 when operator accounts read fails, got %d body=%s", failRec.Code, failRec.Body.String())
 	}
 }

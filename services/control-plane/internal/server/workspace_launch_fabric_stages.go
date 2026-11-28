@@ -30,7 +30,7 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) readWorkspaceLaunchFabricStage
 	if err != nil {
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, err
 	}
-	return workspaceLaunchFabricObservation(operation, input, result)
+	return workspaceLaunchFabricObservationWithEnv(a.app.env, operation, input, result)
 }
 
 func (a *controlPlaneWorkspaceLaunchStageAdapter) mutateWorkspaceLaunchFabricStage(ctx context.Context, operation workspaceLaunchReconcileOperation, idempotencyKey string) error {
@@ -180,6 +180,10 @@ func workspaceLaunchRuntimeImageRevisionProof(operation workspaceLaunchReconcile
 }
 
 func workspaceLaunchFabricObservation(operation workspaceLaunchReconcileOperation, input clients.WorkspaceLaunchStageInput, result clients.WorkspaceLaunchStageResult) (workspaceLaunchStageObservation, error) {
+	return workspaceLaunchFabricObservationWithEnv(nil, operation, input, result)
+}
+
+func workspaceLaunchFabricObservationWithEnv(getenv func(string) string, operation workspaceLaunchReconcileOperation, input clients.WorkspaceLaunchStageInput, result clients.WorkspaceLaunchStageResult) (workspaceLaunchStageObservation, error) {
 	state := contracts.StageState(result.State)
 	if result.SchemaVersion != clients.WorkspaceLaunchFabricSchemaVersion || result.Binding != input.Binding ||
 		!workspaceLaunchResourcesPreserveIdentity(input.Resources, result.Resources) ||
@@ -200,7 +204,7 @@ func workspaceLaunchFabricObservation(operation workspaceLaunchReconcileOperatio
 	case operation.Stage == contracts.StageCompute && state == workspaceLaunchStagePending && result.Reason == "ownership_pending":
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageOwnershipPending}, nil
 	case state == workspaceLaunchStageReady && result.Reason == "none":
-		facts, err := workspaceLaunchFabricStageFacts(operation.Stage, result.Resources, operation)
+		facts, err := workspaceLaunchFabricStageFactsWithEnv(getenv, operation.Stage, result.Resources, operation)
 		if err != nil {
 			return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, nil
 		}
@@ -248,7 +252,7 @@ func validWorkspaceLaunchFabricDiagnostic(stage, state string, diagnostic *clien
 	return true
 }
 
-func workspaceLaunchFabricStageFacts(stage contracts.Stage, resources clients.WorkspaceLaunchResources, operation workspaceLaunchReconcileOperation) (map[string]any, error) {
+func workspaceLaunchFabricStageFactsWithEnv(getenv func(string) string, stage contracts.Stage, resources clients.WorkspaceLaunchResources, operation workspaceLaunchReconcileOperation) (map[string]any, error) {
 	switch stage {
 	case contracts.StageCompute:
 		return map[string]any{"computeAllocationId": resources.ComputeAllocationID, "computeBindingRef": resources.ComputeBindingRef}, nil
@@ -268,7 +272,7 @@ func workspaceLaunchFabricStageFacts(stage contracts.Stage, resources clients.Wo
 		// wins; otherwise the entry is this server's own Workspace route.
 		url := resources.RuntimeURL
 		if url == "" {
-			url = workspaceGatewayEntryURL(operation.stringFact("workspaceId"))
+			url = workspaceGatewayEntryURLWith(getenv, operation.stringFact("workspaceId"))
 		}
 		return map[string]any{
 			"runtimeId": resources.RuntimeID, "runtimeReady": true, "runtimeServiceName": resources.RuntimeServiceName,

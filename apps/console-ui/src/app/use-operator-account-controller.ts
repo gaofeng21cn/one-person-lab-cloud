@@ -5,6 +5,7 @@ import {
   getOperatorAccountsPage,
   provisionOperatorAccount,
   setOperatorServiceEntitlement as setOperatorServiceEntitlementCommand,
+  setOperatorPlatformAdmin as setOperatorPlatformAdminCommand,
   setOperatorWorkspacePurchaseEligibility as setOperatorWorkspacePurchaseEligibilityCommand
 } from "../api/console-read-api.ts";
 import type {
@@ -23,6 +24,8 @@ import {
   accountCommandSucceeded,
   accountIdentity,
   eligibilityCommandSucceeded,
+  isOperatorPlatformAdmin,
+  platformAdminCommandSucceeded,
   provisionCommandSucceeded,
   provisionReadbackMatches,
   resolveProvisionAccountIntent,
@@ -48,7 +51,7 @@ interface DisableIntent {
   idempotencyKey: string;
 }
 
-interface EligibilityIntent extends DisableIntent {
+interface ToggleIntent extends DisableIntent {
   enabled: boolean;
 }
 
@@ -75,12 +78,14 @@ export function useOperatorAccountController({
 }: OperatorAccountDependencies): OperatorAccountCapability {
   const [accounts, setAccounts] = useState<RemoteState<SourceEnvelope<OperatorAccountPageDTO>>>(emptyRemote);
   const [page, setPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
   const [provisionOperation, setProvisionOperation] = useState<OperatorProvisionAccountCommandDTO | null>(null);
   const [provisionBusy, setProvisionBusy] = useState(false);
   const [busyAccountIds, setBusyAccountIds] = useState<string[]>([]);
 
   const activeRef = useRef(active);
   const pageRef = useRef(1);
+  const searchRef = useRef("");
   const scopeGeneration = useRef(0);
   const listGeneration = useRef(0);
   const provisionGeneration = useRef(0);
@@ -88,7 +93,8 @@ export function useOperatorAccountController({
   const accountClaims = useRef(new Map<string, symbol>());
   const provisionIntent = useRef<ProvisionAccountIntent | null>(null);
   const disableIntents = useRef(new Map<string, DisableIntent>());
-  const eligibilityIntents = useRef(new Map<string, EligibilityIntent>());
+  const eligibilityIntents = useRef(new Map<string, ToggleIntent>());
+  const platformAdminIntents = useRef(new Map<string, ToggleIntent>());
   const serviceEntitlementIntents = useRef(new Map<string, ServiceEntitlementIntent>());
   activeRef.current = active;
 
@@ -105,12 +111,15 @@ export function useOperatorAccountController({
     listGeneration.current += 1;
     provisionGeneration.current += 1;
     pageRef.current = 1;
+    searchRef.current = "";
     provisionIntent.current = null;
     disableIntents.current.clear();
     eligibilityIntents.current.clear();
+    platformAdminIntents.current.clear();
     serviceEntitlementIntents.current.clear();
     setAccounts(emptyRemote());
     setPage(1);
+    setSearchQuery("");
     setProvisionOperation(null);
   }, []);
 
@@ -130,6 +139,10 @@ export function useOperatorAccountController({
     }
   }, []);
 
+  const queryForApi = useCallback(() => (
+    cloudIdentity ? searchRef.current.trim() || undefined : undefined
+  ), []);
+
   const loadPage = useCallback(async (session: AuthSession, requestedPage: number) => {
     if (!activeRef.current || requestedPage < 1) return;
     const generation = ++listGeneration.current;
@@ -138,7 +151,7 @@ export function useOperatorAccountController({
     const csrfToken = session.csrfToken;
     setAccounts((current) => ({ ...current, loading: true, error: "" }));
     try {
-      const result = await getOperatorAccountsPage(requestedPage, pageSize);
+      const result = await getOperatorAccountsPage(requestedPage, pageSize, undefined, cloudIdentity, queryForApi());
       if (generation !== listGeneration.current || !requestOwnsScope(scope, userId, csrfToken)) return;
       if (result.available && (result.data.page !== requestedPage || result.data.pageSize !== pageSize)) {
         throw new Error("operator_account_page_mismatch");
@@ -148,12 +161,12 @@ export function useOperatorAccountController({
       if (generation !== listGeneration.current || !requestOwnsScope(scope, userId, csrfToken)) return;
       const authorization = authorizationFailureState(error);
       setAccounts(authorization ?? {
-        value: unavailableSource("control-plane+sub2api"),
+        value: unavailableSource(cloudIdentity ? "tenant+sub2api" : "control-plane+sub2api"),
         loading: false,
         error: friendlyError(error)
       });
     }
-  }, [commitPage, friendlyError, requestOwnsScope, unavailableSource]);
+  }, [commitPage, friendlyError, queryForApi, requestOwnsScope, unavailableSource]);
 
   const load = useCallback(async () => {
     const session = currentSession();
@@ -168,6 +181,17 @@ export function useOperatorAccountController({
     await loadPage(session, nextPage);
   }, [currentSession, loadPage]);
 
+  const searchAccounts = useCallback(async (query: string) => {
+    const normalized = query.trim();
+    searchRef.current = normalized;
+    setSearchQuery(query);
+    if (!cloudIdentity) return;
+    const session = currentSession();
+    if (!session || !activeRef.current) return;
+    pageRef.current = 1;
+    await loadPage(session, 1);
+  }, [currentSession, loadPage]);
+
   const findAccountProjection = useCallback(async (
     session: AuthSession,
     scope: number,
@@ -175,8 +199,9 @@ export function useOperatorAccountController({
     preferredPage?: number
   ) => {
     const firstPage = preferredPage ?? 1;
+    const activeSearch = queryForApi();
     const readPage = async (requestedPage: number) => {
-      const result = await getOperatorAccountsPage(requestedPage, pageSize);
+      const result = await getOperatorAccountsPage(requestedPage, pageSize, undefined, cloudIdentity, activeSearch);
       if (!requestOwnsScope(scope, session.user.id, session.csrfToken)) return null;
       if (!result.available) return null;
       if (result.data.page !== requestedPage || result.data.pageSize !== pageSize) {
@@ -202,7 +227,7 @@ export function useOperatorAccountController({
       }
     }
     return null;
-  }, [requestOwnsScope]);
+  }, [queryForApi, requestOwnsScope]);
 
   const setProvisionOperationProjection = useCallback((operation: OperatorProvisionAccountCommandDTO | null) => {
     setProvisionOperation(operation);
@@ -332,25 +357,40 @@ export function useOperatorAccountController({
     }
   }, [claimAccount, commitPage, currentAccount, currentSession, findAccountProjection, flash, mutationError, releaseAccount, requestOwnsScope]);
 
-  const setWorkspacePurchaseEligibility = useCallback(async (accountId: string, enabled: boolean) => {
+  const executeToggle = useCallback(async ({
+    accountId,
+    enabled,
+    intents,
+    intentPrefix,
+    confirm,
+    runCommand,
+    commandMatches,
+    readbackMatches,
+    readbackError,
+    successMessage
+  }: {
+    accountId: string;
+    enabled: boolean;
+    intents: Map<string, ToggleIntent>;
+    intentPrefix: string;
+    confirm: { title: string; description: string; confirmLabel: string; tone: "primary" | "danger" };
+    runCommand: (targetId: string, reason: string, csrfToken: string, idempotencyKey: string) => Promise<void>;
+    commandMatches?: never;
+    readbackMatches: (candidate: OperatorAccountDTO) => boolean;
+    readbackError: string;
+    successMessage: string;
+  }) => {
+    void commandMatches;
     const session = currentSession();
     const account = currentAccount(accountId);
-    const confirmation = enabled
-      ? "确认授予该账户新购工作空间的资格？"
-      : "确认撤销该账户新购工作空间的资格？已有工作空间不会受影响。";
     if (!session || !activeRef.current || !account) return;
-    const confirmed = await requestConfirm({
-      title: enabled ? "授予工作空间购买资格" : "撤销工作空间购买资格",
-      description: confirmation,
-      confirmLabel: enabled ? "确认授予" : "确认撤销",
-      tone: enabled ? "primary" : "danger"
-    });
+    const confirmed = await requestConfirm(confirm);
     if (!confirmed) return;
     const claim = claimAccount(accountId);
     if (!claim) return;
     const identity = accountIdentity(account);
     const reason = "operator_requested";
-    const current = eligibilityIntents.current.get(accountId);
+    const current = intents.get(accountId);
     const intent = current && current.enabled === enabled && current.reason === reason
       && sameAccountIdentity(current.identity, account)
       ? current
@@ -359,9 +399,9 @@ export function useOperatorAccountController({
           identity,
           enabled,
           reason,
-          idempotencyKey: `workspace-purchase-eligibility:${accountId}:${crypto.randomUUID()}`
+          idempotencyKey: `${intentPrefix}:${accountId}:${crypto.randomUUID()}`
         };
-    eligibilityIntents.current.set(accountId, intent);
+    intents.set(accountId, intent);
     const projectionPage = pageRef.current;
     const projectionGeneration = listGeneration.current;
     const scope = scopeGeneration.current;
@@ -373,31 +413,21 @@ export function useOperatorAccountController({
       return;
     }
     try {
-      const result = await setOperatorWorkspacePurchaseEligibilityCommand(
-        targetId,
-        enabled,
-        reason,
-        csrfToken,
-        intent.idempotencyKey
-      );
+      await runCommand(targetId, reason, csrfToken, intent.idempotencyKey);
       if (accountClaims.current.get(accountId) !== claim || !requestOwnsScope(scope, userId, csrfToken)) return;
-      if (!eligibilityCommandSucceeded(result, targetId, enabled)) {
-        throw new Error("operator_account_eligibility_identity_mismatch");
-      }
       const readback = await findAccountProjection(
         session,
         scope,
-        (candidate) => sameAccountIdentity(intent.identity, candidate)
-          && candidate.workspacePurchaseEnabled === enabled,
+        (candidate) => sameAccountIdentity(intent.identity, candidate) && readbackMatches(candidate),
         projectionPage
       );
       if (accountClaims.current.get(accountId) !== claim || !requestOwnsScope(scope, userId, csrfToken)) return;
-      if (!readback?.account) throw new Error("operator_account_eligibility_readback_mismatch");
+      if (!readback?.account) throw new Error(readbackError);
       if (projectionGeneration === listGeneration.current && pageRef.current === projectionPage) {
         commitPage(readback.visibleResult);
       }
-      if (eligibilityIntents.current.get(accountId) === intent) eligibilityIntents.current.delete(accountId);
-      flash(enabled ? "已授予 Workspace 新购资格" : "已撤销 Workspace 新购资格");
+      if (intents.get(accountId) === intent) intents.delete(accountId);
+      flash(successMessage);
     } catch (error) {
       if (accountClaims.current.get(accountId) === claim && requestOwnsScope(scope, userId, csrfToken)) {
         flash(mutationError(error), "danger");
@@ -484,6 +514,58 @@ export function useOperatorAccountController({
     }
   }, [claimAccount, commitPage, currentAccount, currentSession, findAccountProjection, flash, mutationError, releaseAccount, requestOwnsScope]);
 
+  const setWorkspacePurchaseEligibility = useCallback(async (accountId: string, enabled: boolean) => {
+    await executeToggle({
+      accountId,
+      enabled,
+      intents: eligibilityIntents.current,
+      intentPrefix: "workspace-purchase-eligibility",
+      confirm: {
+        title: enabled ? "授予工作空间购买资格" : "撤销工作空间购买资格",
+        description: enabled
+          ? "确认授予该账户新购工作空间的资格？"
+          : "确认撤销该账户新购工作空间的资格？已有工作空间不会受影响。",
+        confirmLabel: enabled ? "确认授予" : "确认撤销",
+        tone: enabled ? "primary" : "danger"
+      },
+      runCommand: async (targetId, reason, csrfToken, idempotencyKey) => {
+        const result = await setOperatorWorkspacePurchaseEligibilityCommand(targetId, enabled, reason, csrfToken, idempotencyKey);
+        if (!eligibilityCommandSucceeded(result, targetId, enabled)) {
+          throw new Error("operator_account_eligibility_identity_mismatch");
+        }
+      },
+      readbackMatches: (candidate) => candidate.workspacePurchaseEnabled === enabled,
+      readbackError: "operator_account_eligibility_readback_mismatch",
+      successMessage: enabled ? "已授予 Workspace 新购资格" : "已撤销 Workspace 新购资格"
+    });
+  }, [executeToggle]);
+
+  const setPlatformAdmin = useCallback(async (accountId: string, enabled: boolean) => {
+    await executeToggle({
+      accountId,
+      enabled,
+      intents: platformAdminIntents.current,
+      intentPrefix: "platform-admin",
+      confirm: {
+        title: enabled ? "授予平台管理员角色" : "撤销平台管理员角色",
+        description: enabled
+          ? "确认授予该 Gateway 账户平台管理员权限？该账户将获得用户管理、权限委派与运营控制台访问权限。"
+          : "确认撤销该账户的平台管理员权限？撤销后将保留普通 Gateway 身份与工作空间使用权限。",
+        confirmLabel: enabled ? "确认授予" : "确认撤销",
+        tone: enabled ? "primary" : "danger"
+      },
+      runCommand: async (targetId, reason, csrfToken, idempotencyKey) => {
+        const result = await setOperatorPlatformAdminCommand(targetId, enabled, reason, csrfToken, idempotencyKey);
+        if (!platformAdminCommandSucceeded(result, targetId, enabled)) {
+          throw new Error("operator_account_platform_admin_identity_mismatch");
+        }
+      },
+      readbackMatches: (candidate) => isOperatorPlatformAdmin(candidate) === enabled,
+      readbackError: "operator_account_platform_admin_readback_mismatch",
+      successMessage: enabled ? "已授予平台管理员权限" : "已撤销平台管理员权限"
+    });
+  }, [executeToggle]);
+
   const pages = accounts.value?.available
     ? Math.ceil(accounts.value.data.total / accounts.value.data.pageSize)
     : 0;
@@ -492,16 +574,19 @@ export function useOperatorAccountController({
     accounts,
     page,
     pages,
+    searchQuery,
     provisionOperation,
     provisionBusy,
     busyAccountIds,
     refresh: load,
     changePage,
+    searchAccounts,
     setProvisionOperation: setProvisionOperationProjection,
     provision,
     disable,
     setWorkspacePurchaseEligibility,
     setServiceEntitlement,
+    setPlatformAdmin,
     load,
     reset
   };

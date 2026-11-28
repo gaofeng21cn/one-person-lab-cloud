@@ -28,6 +28,7 @@ import type {
   BillingReviewResolutionRequest,
   ProvisionAccountRequest,
   OperatorAccountCommandDTO,
+  OperatorPlatformAdminCommandDTO,
   OperatorProvisionAccountCommandDTO,
   OperatorAccountPageDTO,
   OperatorServiceEntitlementCommandDTO,
@@ -533,6 +534,11 @@ export function operatorServiceEntitlementRoute(cloud: boolean, targetId: string
   return `/api/v2/operator/accounts/${encodeURIComponent(targetId)}/service-entitlements/${encodeURIComponent(serviceId)}`;
 }
 
+export function operatorPlatformAdminRoute(cloud: boolean, targetId: string): string {
+  if (!cloud) throw new Error("operator_write_unavailable");
+  return `/api/v2/operator/accounts/${encodeURIComponent(targetId)}/platform-admin`;
+}
+
 export function getOperatorAccounts(cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorAccountsData>> {
   return sourceGet<OperatorAccountsData>(`${operatorReadRoute(cloud)}/accounts`);
 }
@@ -541,8 +547,10 @@ export function getOperatorOverview(signal?: AbortSignal, cloud: boolean = cloud
   return sourceGet<OperatorOverviewDTO>(`${operatorReadRoute(cloud)}/overview`, signal);
 }
 
-export function getOperatorAccountsPage(page = 1, pageSize = 20, signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorAccountPageDTO>> {
+export function getOperatorAccountsPage(page = 1, pageSize = 20, signal?: AbortSignal, cloud: boolean = cloudIdentity, search?: string): Promise<SourceEnvelope<OperatorAccountPageDTO>> {
   const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  const trimmedSearch = search?.trim();
+  if (trimmedSearch) params.set("search", trimmedSearch);
   return sourceGet<OperatorAccountPageDTO>(`${operatorReadRoute(cloud)}/accounts?${params}`, signal);
 }
 
@@ -599,6 +607,10 @@ export function setOperatorWorkspacePurchaseEligibility(accountId: string, enabl
 
 export function setOperatorServiceEntitlement(accountId: string, serviceId: string, enabled: boolean, reason: string, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperatorServiceEntitlementCommandDTO> {
   return postJson<unknown>(operatorServiceEntitlementRoute(cloud, accountId, serviceId), { confirmationAccountId: accountId, enabled, reason }, csrfToken, idempotencyKey).then(decodeDto<OperatorServiceEntitlementCommandDTO>);
+}
+
+export function setOperatorPlatformAdmin(accountId: string, enabled: boolean, reason: string, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperatorPlatformAdminCommandDTO> {
+  return postJson<unknown>(operatorPlatformAdminRoute(cloud, accountId), { confirmationAccountId: accountId, enabled, reason }, csrfToken, idempotencyKey).then(decodeDto<OperatorPlatformAdminCommandDTO>);
 }
 
 export function resolveBillingReview(resourceType: string, resourceId: string, input: BillingReviewResolutionRequest, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperationStatusDTO> {

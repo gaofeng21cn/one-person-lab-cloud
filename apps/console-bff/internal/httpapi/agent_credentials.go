@@ -95,7 +95,7 @@ func (s *Server) registerAgentCredentialRoutes(mux *http.ServeMux) {
 				writePublisherIdentityError(w, r, err)
 				return
 			}
-			if r.Method != http.MethodGet && (!sameOrigin(r) || caller.Session.GetCsrfToken() == "" || subtle.ConstantTimeCompare([]byte(caller.Session.GetCsrfToken()), []byte(r.Header.Get("X-CSRF-Token"))) != 1) {
+			if r.Method != http.MethodGet && (!s.sameOrigin(r) || caller.Session.GetCsrfToken() == "" || subtle.ConstantTimeCompare([]byte(caller.Session.GetCsrfToken()), []byte(r.Header.Get("X-CSRF-Token"))) != 1) {
 				writePublisherError(w, r, 403, "csrf_required", "same-origin session CSRF required")
 				return
 			}

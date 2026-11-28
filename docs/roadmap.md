@@ -216,12 +216,6 @@ Plane / delegated process-local custody onto canonical domain owners:
    and `apps/console-bff`; extend PostgreSQL role-isolation checks to cover every
    extracted service and Console BFF.
 
-## Backend Single-Binary Convergence (P1)
+## Backend Single-Binary Follow-Up
 
-- Evolve `opl-cloud-composition` (currently 1 container supervising 11 separate Go
-  processes over loopback gRPC/mTLS) into a single in-process modular Go binary
-  (`opl-cloud`) preserving `services/<domain>/` package boundaries, per-owner
-  PostgreSQL schema/role isolation, and external BuildKit/Workspace trust boundaries,
-  while eliminating intra-container process orchestration, redundant Go runtimes,
-  and intra-pod mTLS overhead alongside retiring `services/control-plane` and
-  legacy root `compose.yaml`.
+- Roll out the converged single-binary `opl-cloud-composition` Candidate to `opl-instance-medopl` (keeping `entrypoint: /usr/local/bin/opl-cloud-composition`), and retire `services/control-plane` plus legacy root `compose.yaml` once open v0.1.8 lifecycle/billing obligations and legacy distribution contracts close.

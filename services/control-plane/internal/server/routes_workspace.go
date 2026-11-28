@@ -137,7 +137,7 @@ func registerWorkspaceRoutes(mux *http.ServeMux, app *controlPlaneServer, servic
 			writeSourceEnvelope(w, http.StatusBadGateway, "fabric", "unavailable", nil)
 			return
 		}
-		body, ok := workspaceRuntimeStatusResponse(runtime, workspaceID)
+		body, ok := app.workspaceRuntimeStatusResponse(runtime, workspaceID)
 		if !ok {
 			writeSourceEnvelope(w, http.StatusBadGateway, "fabric", "unavailable", nil)
 			return

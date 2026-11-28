@@ -5881,6 +5881,54 @@ paths:
             schema:
               $ref: '#/components/schemas/ReenableTenantRequest'
       x-operation-kind: reenable_tenant
+  /api/v2/operator/accounts:
+    get:
+      operationId: listOperatorAccounts
+      summary: List all OPL Gateway users and their Cloud entitlement projections
+      tags:
+      - tenant
+      x-feature-id:
+      - F15
+      x-owner: tenant
+      x-permission:
+      - platform_admin
+      x-tables:
+      - tenant.workspace_purchase_eligibility
+      - tenant.platform_admins
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+      - name: search
+        in: query
+        schema:
+          type: string
+          maxLength: 100
+      responses:
+        '200':
+          description: Gateway-native operator account page projected with CloudIdentity entitlements.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
   /api/v2/operator/accounts/{actorId}/workspace-purchase-eligibility:
     post:
       operationId: setWorkspacePurchaseEligibility
@@ -5980,6 +6028,58 @@ paths:
         '404':
           $ref: '#/components/responses/ErrorResponse'
         '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v2/operator/accounts/{actorId}/platform-admin:
+    post:
+      operationId: setPlatformAdmin
+      summary: Grant or revoke delegated platform administrator role for a Gateway subject
+      tags:
+      - tenant
+      x-feature-id:
+      - F15
+      x-owner: tenant
+      x-permission:
+      - platform_admin
+      x-tables:
+      - tenant.platform_admins
+      - tenant.audit_events
+      - tenant.idempotency_records
+      parameters:
+      - name: actorId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetPlatformAdminRequest'
+      responses:
+        '200':
+          description: Updated delegated platform administrator status for the named Gateway subject
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformAdminCommand'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '412':
+          $ref: '#/components/responses/ErrorResponse'
+        '422':
           $ref: '#/components/responses/ErrorResponse'
         '503':
           $ref: '#/components/responses/ErrorResponse'
@@ -7524,6 +7624,45 @@ components:
       - effectiveEnabled
       - role
       description: Canonical receipt for one companion service entitlement update.
+    SetPlatformAdminRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        confirmationAccountId:
+          $ref: '#/components/schemas/OpaqueId'
+        enabled:
+          type: boolean
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 200
+      required:
+      - confirmationAccountId
+      - enabled
+      - reason
+      description: Platform administrator instruction to grant or revoke delegated platform admin access for one Gateway subject.
+    PlatformAdminCommand:
+      type: object
+      additionalProperties: false
+      properties:
+        operationId:
+          $ref: '#/components/schemas/OpaqueId'
+        accountId:
+          $ref: '#/components/schemas/OpaqueId'
+        status:
+          type: string
+          minLength: 1
+        platformAdminEnabled:
+          type: boolean
+        isBootstrapAdmin:
+          type: boolean
+      required:
+      - operationId
+      - accountId
+      - status
+      - platformAdminEnabled
+      - isBootstrapAdmin
+      description: Canonical receipt for one delegated platform administrator update.
     CreateTenantRequest:
       type: object
       additionalProperties: false
@@ -12568,6 +12707,8 @@ components:
       - revealPersonalGatewayKey
       - revokePersonalGatewayKey
       - setWorkspacePurchaseEligibility
+      - listOperatorAccounts
+      - setPlatformAdmin
       - setServiceEntitlement
       - issueServiceGrant
       - getServiceGrantJWKS

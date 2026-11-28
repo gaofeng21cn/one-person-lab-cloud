@@ -53,6 +53,8 @@ const (
 	TenantProductService_GetServiceGrantJWKS_FullMethodName              = "/opl.cloud.api.TenantProductService/GetServiceGrantJWKS"
 	TenantProductService_SetServiceEntitlement_FullMethodName            = "/opl.cloud.api.TenantProductService/SetServiceEntitlement"
 	TenantProductService_ListServiceEntitlements_FullMethodName          = "/opl.cloud.api.TenantProductService/ListServiceEntitlements"
+	TenantProductService_ListOperatorAccounts_FullMethodName             = "/opl.cloud.api.TenantProductService/ListOperatorAccounts"
+	TenantProductService_SetPlatformAdmin_FullMethodName                 = "/opl.cloud.api.TenantProductService/SetPlatformAdmin"
 )
 
 // TenantProductServiceClient is the client API for TenantProductService service.
@@ -92,6 +94,8 @@ type TenantProductServiceClient interface {
 	GetServiceGrantJWKS(ctx context.Context, in *GetServiceGrantJWKSRpcRequest, opts ...grpc.CallOption) (*ServiceGrantJWKSResponse, error)
 	SetServiceEntitlement(ctx context.Context, in *SetServiceEntitlementRpcRequest, opts ...grpc.CallOption) (*ServiceEntitlementCommand, error)
 	ListServiceEntitlements(ctx context.Context, in *ListServiceEntitlementsRpcRequest, opts ...grpc.CallOption) (*ServiceEntitlementList, error)
+	ListOperatorAccounts(ctx context.Context, in *ListOperatorAccountsRpcRequest, opts ...grpc.CallOption) (*OperatorGatewayAccountPage, error)
+	SetPlatformAdmin(ctx context.Context, in *SetPlatformAdminRpcRequest, opts ...grpc.CallOption) (*PlatformAdminCommand, error)
 }
 
 type tenantProductServiceClient struct {
@@ -432,6 +436,26 @@ func (c *tenantProductServiceClient) ListServiceEntitlements(ctx context.Context
 	return out, nil
 }
 
+func (c *tenantProductServiceClient) ListOperatorAccounts(ctx context.Context, in *ListOperatorAccountsRpcRequest, opts ...grpc.CallOption) (*OperatorGatewayAccountPage, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperatorGatewayAccountPage)
+	err := c.cc.Invoke(ctx, TenantProductService_ListOperatorAccounts_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *tenantProductServiceClient) SetPlatformAdmin(ctx context.Context, in *SetPlatformAdminRpcRequest, opts ...grpc.CallOption) (*PlatformAdminCommand, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PlatformAdminCommand)
+	err := c.cc.Invoke(ctx, TenantProductService_SetPlatformAdmin_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TenantProductServiceServer is the server API for TenantProductService service.
 // All implementations must embed UnimplementedTenantProductServiceServer
 // for forward compatibility.
@@ -469,6 +493,8 @@ type TenantProductServiceServer interface {
 	GetServiceGrantJWKS(context.Context, *GetServiceGrantJWKSRpcRequest) (*ServiceGrantJWKSResponse, error)
 	SetServiceEntitlement(context.Context, *SetServiceEntitlementRpcRequest) (*ServiceEntitlementCommand, error)
 	ListServiceEntitlements(context.Context, *ListServiceEntitlementsRpcRequest) (*ServiceEntitlementList, error)
+	ListOperatorAccounts(context.Context, *ListOperatorAccountsRpcRequest) (*OperatorGatewayAccountPage, error)
+	SetPlatformAdmin(context.Context, *SetPlatformAdminRpcRequest) (*PlatformAdminCommand, error)
 	mustEmbedUnimplementedTenantProductServiceServer()
 }
 
@@ -577,6 +603,12 @@ func (UnimplementedTenantProductServiceServer) SetServiceEntitlement(context.Con
 }
 func (UnimplementedTenantProductServiceServer) ListServiceEntitlements(context.Context, *ListServiceEntitlementsRpcRequest) (*ServiceEntitlementList, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListServiceEntitlements not implemented")
+}
+func (UnimplementedTenantProductServiceServer) ListOperatorAccounts(context.Context, *ListOperatorAccountsRpcRequest) (*OperatorGatewayAccountPage, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListOperatorAccounts not implemented")
+}
+func (UnimplementedTenantProductServiceServer) SetPlatformAdmin(context.Context, *SetPlatformAdminRpcRequest) (*PlatformAdminCommand, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetPlatformAdmin not implemented")
 }
 func (UnimplementedTenantProductServiceServer) mustEmbedUnimplementedTenantProductServiceServer() {}
 func (UnimplementedTenantProductServiceServer) testEmbeddedByValue()                              {}
@@ -1193,6 +1225,42 @@ func _TenantProductService_ListServiceEntitlements_Handler(srv interface{}, ctx 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TenantProductService_ListOperatorAccounts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListOperatorAccountsRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantProductServiceServer).ListOperatorAccounts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantProductService_ListOperatorAccounts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantProductServiceServer).ListOperatorAccounts(ctx, req.(*ListOperatorAccountsRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TenantProductService_SetPlatformAdmin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetPlatformAdminRpcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantProductServiceServer).SetPlatformAdmin(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantProductService_SetPlatformAdmin_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantProductServiceServer).SetPlatformAdmin(ctx, req.(*SetPlatformAdminRpcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // TenantProductService_ServiceDesc is the grpc.ServiceDesc for TenantProductService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1331,6 +1399,14 @@ var TenantProductService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListServiceEntitlements",
 			Handler:    _TenantProductService_ListServiceEntitlements_Handler,
+		},
+		{
+			MethodName: "ListOperatorAccounts",
+			Handler:    _TenantProductService_ListOperatorAccounts_Handler,
+		},
+		{
+			MethodName: "SetPlatformAdmin",
+			Handler:    _TenantProductService_SetPlatformAdmin_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

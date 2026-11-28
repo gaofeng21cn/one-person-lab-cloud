@@ -2095,6 +2095,64 @@ message ServiceEntitlementList {
  repeated ServiceEntitlementReadback items = 1;
 }
 
+message SetPlatformAdminRequest {
+ string confirmation_account_id = 1;
+ bool enabled = 2;
+ string reason = 3;
+}
+
+message SetPlatformAdminRpcRequest {
+ CallContext context = 1;
+ string target_actor_id = 2;
+ SetPlatformAdminRequest body = 3;
+}
+
+message PlatformAdminCommand {
+ string operation_id = 1;
+ string account_id = 2;
+ string status = 3;
+ bool platform_admin_enabled = 4;
+ bool is_bootstrap_admin = 5;
+}
+
+message ListOperatorAccountsRpcRequest {
+ CallContext context = 1;
+ int32 page = 2;
+ int32 page_size = 3;
+ string search = 4;
+}
+
+message OperatorGatewayPlatformUsage {
+ string platform = 1;
+ int64 today_actual_cost_usd_micros = 2;
+ int64 total_actual_cost_usd_micros = 3;
+}
+
+message OperatorGatewayAccount {
+ string actor_id = 1;
+ string email = 2;
+ string status = 3;
+ bool workspace_purchase_enabled = 4;
+ bool platform_admin_enabled = 5;
+ bool is_bootstrap_admin = 6;
+ bool wallet_available = 7;
+ int64 wallet_usd_micros = 8;
+ bool usage_available = 9;
+ int64 today_actual_cost_usd_micros = 10;
+ int64 total_actual_cost_usd_micros = 11;
+ repeated OperatorGatewayPlatformUsage usage_by_platform = 12;
+ bool key_count_available = 13;
+ int32 key_count = 14;
+ google.protobuf.Timestamp gateway_updated_at = 15;
+}
+
+message OperatorGatewayAccountPage {
+ repeated OperatorGatewayAccount items = 1;
+ int64 total = 2;
+ int32 page = 3;
+ int32 page_size = 4;
+}
+
 message CreateTenantRpcRequest {
  CallContext context = 1;
  CreateTenantRequest body = 2;
@@ -2393,6 +2451,8 @@ service TenantProductService {
  rpc GetServiceGrantJWKS(GetServiceGrantJWKSRpcRequest) returns (ServiceGrantJWKSResponse);
  rpc SetServiceEntitlement(SetServiceEntitlementRpcRequest) returns (ServiceEntitlementCommand);
  rpc ListServiceEntitlements(ListServiceEntitlementsRpcRequest) returns (ServiceEntitlementList);
+ rpc ListOperatorAccounts(ListOperatorAccountsRpcRequest) returns (OperatorGatewayAccountPage);
+ rpc SetPlatformAdmin(SetPlatformAdminRpcRequest) returns (PlatformAdminCommand);
 }
 
 service CapabilityProductService {
@@ -3626,9 +3686,11 @@ AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES = 153;
  AUTHORIZATION_ACTION_ENUM_REVEALPERSONALGATEWAYKEY = 171;
  AUTHORIZATION_ACTION_ENUM_REVOKEPERSONALGATEWAYKEY = 172;
  AUTHORIZATION_ACTION_ENUM_SETWORKSPACEPURCHASEELIGIBILITY = 173;
- AUTHORIZATION_ACTION_ENUM_SETSERVICEENTITLEMENT = 174;
- AUTHORIZATION_ACTION_ENUM_ISSUESERVICEGRANT = 175;
- AUTHORIZATION_ACTION_ENUM_GETSERVICEGRANTJWKS = 176;
+ AUTHORIZATION_ACTION_ENUM_LISTOPERATORACCOUNTS = 174;
+ AUTHORIZATION_ACTION_ENUM_SETPLATFORMADMIN = 175;
+ AUTHORIZATION_ACTION_ENUM_SETSERVICEENTITLEMENT = 176;
+ AUTHORIZATION_ACTION_ENUM_ISSUESERVICEGRANT = 177;
+ AUTHORIZATION_ACTION_ENUM_GETSERVICEGRANTJWKS = 178;
 }
 
 enum ServiceIdentityEnum {

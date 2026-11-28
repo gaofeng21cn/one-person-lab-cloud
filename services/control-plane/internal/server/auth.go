@@ -54,7 +54,14 @@ func sanitizeUser(user map[string]any) map[string]any {
 }
 
 func bootstrapUsersFromEnv() ([]map[string]any, error) {
-	if os.Getenv("OPL_CONSOLE_USERS_JSON") == "" {
+	return bootstrapUsersFromEnvWith(os.Getenv)
+}
+
+func bootstrapUsersFromEnvWith(getenv func(string) string) ([]map[string]any, error) {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	if getenv("OPL_CONSOLE_USERS_JSON") == "" {
 		return nil, nil
 	}
 	return nil, errors.New("OPL_CONSOLE_USERS_JSON is retired")

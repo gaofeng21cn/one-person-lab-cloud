@@ -26,16 +26,23 @@ type LoginReader interface {
 	Logout(context.Context, string) error
 }
 
+func (s *Server) env(key string) string {
+	if s != nil && s.getenv != nil {
+		return s.getenv(key)
+	}
+	return os.Getenv(key)
+}
+
 func setIdentityCookie(w http.ResponseWriter, name, value string, age int) {
 	http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: "/api/v2/auth", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode, MaxAge: age})
 }
-func sameOrigin(r *http.Request) bool {
+func (s *Server) sameOrigin(r *http.Request) bool {
 	u, e := url.Parse(r.Header.Get("Origin"))
 	scheme := "https"
 	if r.TLS == nil {
 		scheme = "http"
 	}
-	if configured := os.Getenv("OPL_PUBLIC_URL"); configured != "" {
+	if configured := s.env("OPL_PUBLIC_URL"); configured != "" {
 		expected, err := url.Parse(configured)
 		if err != nil || expected.Host == "" || (expected.Scheme != "https" && expected.Scheme != "http") {
 			return false
@@ -76,7 +83,7 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 		challenge, e := r.Cookie("opl_login_context")
 		csrf, e2 := r.Cookie("opl_login_csrf")
 		hash := sha256.Sum256([]byte(r.Header.Get("X-CSRF-Token")))
-		if e != nil || e2 != nil || subtle.ConstantTimeCompare([]byte(csrf.Value), []byte(hex.EncodeToString(hash[:]))) != 1 || !sameOrigin(r) {
+		if e != nil || e2 != nil || subtle.ConstantTimeCompare([]byte(csrf.Value), []byte(hex.EncodeToString(hash[:]))) != 1 || !s.sameOrigin(r) {
 			writePublisherError(w, r, 403, "csrf_required", "same-origin login context required")
 			return
 		}
@@ -123,7 +130,7 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 			writePublisherIdentityError(w, r, e)
 			return
 		}
-		if !sameOrigin(r) || subtle.ConstantTimeCompare([]byte(caller.Session.CsrfToken), []byte(r.Header.Get("X-CSRF-Token"))) != 1 {
+		if !s.sameOrigin(r) || subtle.ConstantTimeCompare([]byte(caller.Session.CsrfToken), []byte(r.Header.Get("X-CSRF-Token"))) != 1 {
 			writePublisherError(w, r, 403, "csrf_required", "same-origin session CSRF required")
 			return
 		}

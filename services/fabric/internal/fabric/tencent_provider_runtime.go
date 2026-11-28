@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
 	"os/exec"
 	"reflect"
 	"slices"
@@ -167,7 +166,7 @@ func (p *TencentProvider) createWorkspaceRuntime(ctx context.Context, input Work
 				if dispatchErr := mutation.markReplayDispatch(ctx); dispatchErr != nil {
 					return WorkspaceRuntime{}, dispatchErr
 				}
-				if _, readErr = p.callKubectl(ctx, []string{"apply", "-f", "-"}, workspaceManifestWithGatewayPlan(input, input.WorkspaceID, credentialSeed, runtimeID, serviceName, compute, volume, tags, gateway, workspacePlan.Compute), runtimeTarget); readErr == nil {
+				if _, readErr = p.callKubectl(ctx, []string{"apply", "-f", "-"}, workspaceManifestWithGatewayPlanWith(p.env, input, input.WorkspaceID, credentialSeed, runtimeID, serviceName, compute, volume, tags, gateway, workspacePlan.Compute), runtimeTarget); readErr == nil {
 					runtime, readErr = p.readWorkspaceRuntime(ctx, input, runtimeID, serviceName, tags, gateway)
 				}
 			}
@@ -183,7 +182,7 @@ func (p *TencentProvider) createWorkspaceRuntime(ctx context.Context, input Work
 				if dispatchErr := mutation.markReplayDispatch(ctx); dispatchErr != nil {
 					return WorkspaceRuntime{}, dispatchErr
 				}
-				if _, readErr = p.callKubectl(ctx, []string{"apply", "-f", "-"}, workspaceManifestWithGatewayPlan(input, input.WorkspaceID, credentialSeed, runtimeID, serviceName, compute, volume, tags, gateway, workspacePlan.Compute), runtimeTarget); readErr == nil {
+				if _, readErr = p.callKubectl(ctx, []string{"apply", "-f", "-"}, workspaceManifestWithGatewayPlanWith(p.env, input, input.WorkspaceID, credentialSeed, runtimeID, serviceName, compute, volume, tags, gateway, workspacePlan.Compute), runtimeTarget); readErr == nil {
 					runtime, readErr = p.readWorkspaceRuntime(ctx, input, runtimeID, serviceName, tags, gateway)
 				}
 			}
@@ -200,7 +199,7 @@ func (p *TencentProvider) createWorkspaceRuntime(ctx context.Context, input Work
 		}
 		return runtime, nil
 	}
-	if _, err := p.callKubectl(ctx, []string{"apply", "-f", "-"}, workspaceManifestWithGatewayPlan(input, input.WorkspaceID, credentialSeed, runtimeID, serviceName, compute, volume, tags, gateway, workspacePlan.Compute), runtimeTarget); err != nil {
+	if _, err := p.callKubectl(ctx, []string{"apply", "-f", "-"}, workspaceManifestWithGatewayPlanWith(p.env, input, input.WorkspaceID, credentialSeed, runtimeID, serviceName, compute, volume, tags, gateway, workspacePlan.Compute), runtimeTarget); err != nil {
 		_ = mutation.complete(ctx, "", WorkspaceRuntime{ID: runtimeID, WorkspaceID: input.WorkspaceID}, err)
 		return WorkspaceRuntime{}, err
 	}
@@ -732,11 +731,11 @@ func (p *TencentProvider) Readiness(ctx context.Context) (FabricReadiness, error
 	required := []string{"OPL_WORKSPACE_DOMAIN", "OPL_CLOUD_IMAGE", "OPL_WORKSPACE_IMAGE", "OPL_K8S_NAMESPACE", "OPL_IMAGE_PULL_SECRET_NAME", "OPL_WORKSPACE_STORAGE_CLASS", "OPL_TENCENT_PROVISIONER_BIN", "TENCENT_DEPLOY_KUBECONFIG_REF", "RUN_TENCENT_CREATE_RELEASE_EXECUTION"}
 	missing := []string{}
 	for _, key := range required {
-		if strings.TrimSpace(os.Getenv(key)) == "" {
+		if strings.TrimSpace(p.env(key)) == "" {
 			missing = append(missing, key)
 		}
 	}
-	if os.Getenv("RUN_TENCENT_CREATE_RELEASE_EXECUTION") != "1" {
+	if p.env("RUN_TENCENT_CREATE_RELEASE_EXECUTION") != "1" {
 		missing = append(missing, "RUN_TENCENT_CREATE_RELEASE_EXECUTION=1")
 	}
 	if p == nil || p.installationErr != nil {
@@ -773,8 +772,8 @@ func (p *TencentProvider) Readiness(ctx context.Context) (FabricReadiness, error
 	if podErr != nil {
 		failedChecks = append(failedChecks, "ready_pod_image_ids")
 	} else {
-		cloudImage := os.Getenv("OPL_CLOUD_IMAGE")
-		if composed, ready := composedCloudImageReadiness(pods, cloudImage, os.Getenv("OPL_CLOUD_IMAGE_AMD64_DIGEST")); composed {
+		cloudImage := p.env("OPL_CLOUD_IMAGE")
+		if composed, ready := composedCloudImageReadiness(pods, cloudImage, p.env("OPL_CLOUD_IMAGE_AMD64_DIGEST")); composed {
 			if !ready {
 				failedChecks = append(failedChecks, "cloud_backend_image_id")
 			}

@@ -71,7 +71,7 @@ func (s *Server) markAnnouncementRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	expected := caller.Session.GetCsrfToken()
-	if expected == "" || !sameOrigin(r) || subtle.ConstantTimeCompare([]byte(expected), []byte(r.Header.Get("X-CSRF-Token"))) != 1 {
+	if expected == "" || !s.sameOrigin(r) || subtle.ConstantTimeCompare([]byte(expected), []byte(r.Header.Get("X-CSRF-Token"))) != 1 {
 		writePublisherError(w, r, 403, "csrf_required", "same-origin session CSRF required")
 		return
 	}

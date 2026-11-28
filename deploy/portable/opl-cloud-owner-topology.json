@@ -604,7 +604,7 @@
     },
     "note": "The local kind keeps the bytes on a volume mounted into the composed Cloud backend container itself, which is this unit's own container. The cos kind keeps them in the instance's COS bucket and reads no local root, so an installation that selects the cos kind deploys no storage container for objects.",
     "evidence": [
-     "services/capability/cmd/server/main.go:158 selects the store from OPL_CAPABILITY_STORAGE_KIND: the local kind builds it on a root path at services/capability/cmd/server/main.go:168 and the cos kind builds the instance bucket store at services/capability/cmd/server/main.go:170",
+     "services/capability/module/run.go:159 selects the store from OPL_CAPABILITY_STORAGE_KIND: the local kind builds it on a root path at services/capability/module/run.go:169 and the cos kind builds the instance bucket store at services/capability/module/run.go:171",
      "services/capability/catalog/cos_storage.go:52 binds that store as an HTTP client of the instance's bucket URL, so the cos kind is a remote service and not a container",
      "deploy/portable/compose.cloud.yaml:233 mounts the local object store as a volume of the composed Cloud backend container, so the installation deploys no object-storage service"
     ]
@@ -618,7 +618,7 @@
      "boundaryEnv": "OPL_FABRIC_PROVIDER"
     },
     "evidence": [
-     "services/fabric/cmd/fabric/main.go:94 selects the provider from OPL_FABRIC_PROVIDER and services/fabric/internal/fabric/provider_port.go:174 declares the Provider port every adapter implements",
+     "services/fabric/module/run.go:104 selects the provider from OPL_FABRIC_PROVIDER and services/fabric/internal/fabric/provider_port.go:174 declares the Provider port every adapter implements",
      "services/fabric/internal/fabric/tencent_provider.go:1419 runs the installation's provisioner executable, which reaches the Tencent Cloud CVM endpoint at services/fabric/cmd/opl-tencent-provisioner/tencent_client.go:567, so the resource API is outside this unit"
     ]
    }
@@ -636,7 +636,7 @@
     "distinction": "The build owner service is a member of this unit; the privileged BuildKit builder it invokes is not. The unit ships the build client, not the builder.",
     "evidence": [
      "services/build/internal/build/runner.go:640 builds the docker buildx command for the installation's builder and services/build/internal/build/runner.go:643 runs that client as an external executable",
-     "Dockerfile:81 ships the docker client and Dockerfile:86 ships its buildx plugin; neither ships a BuildKit daemon"
+     "Dockerfile:79 ships the docker client and Dockerfile:84 ships its buildx plugin; neither ships a BuildKit daemon"
     ]
    },
    {
@@ -671,7 +671,7 @@
       "method": "Check"
      }
     ],
-    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/capability/cmd/server/main.go starts that server."
+    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/capability/module/run.go starts that server."
    },
    {
     "process": "build",
@@ -685,7 +685,7 @@
       "method": "Check"
      }
     ],
-    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/build/cmd/server/main.go starts that server."
+    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/build/module/run.go starts that server."
    },
    {
     "process": "runtime-control",
@@ -699,7 +699,7 @@
       "method": "Check"
      }
     ],
-    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/runtime-control/cmd/server/main.go starts that server."
+    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/runtime-control/module/run.go starts that server."
    },
    {
     "process": "workspace",
@@ -713,7 +713,7 @@
       "method": "Check"
      }
     ],
-    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/workspace/cmd/server/main.go starts that server."
+    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/workspace/module/run.go starts that server."
    },
    {
     "process": "serve",
@@ -727,7 +727,7 @@
       "method": "Check"
      }
     ],
-    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/serve/cmd/server/main.go starts that server."
+    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/serve/module/run.go starts that server."
    },
    {
     "process": "resource-catalog",
@@ -741,7 +741,7 @@
       "method": "Check"
      }
     ],
-    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/resource-catalog/cmd/server/main.go starts that server."
+    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/resource-catalog/module/run.go starts that server."
    },
    {
     "process": "gateway-integration",
@@ -755,7 +755,7 @@
       "method": "Check"
      }
     ],
-    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/gateway-integration/cmd/server/main.go starts that server."
+    "evidence": "services/internal/ownerservice/server.go registers the gRPC health service on the owner server and marks it SERVING only after the owner's product groups and dependency checks pass; services/gateway-integration/module/run.go starts that server."
    },
    {
     "process": "ledger",
@@ -1421,13 +1421,13 @@
    "apps/console-bff/internal/clients/clients.go",
    "services/internal/ownerservice/authorization.go",
    "services/internal/ownerservice/bootstrap.go",
-   "services/capability/cmd/server/main.go",
-   "services/build/cmd/server/main.go",
-   "services/runtime-control/cmd/server/main.go",
-   "services/workspace/cmd/server/main.go",
+   "services/capability/module/run.go",
+   "services/build/module/run.go",
+   "services/runtime-control/module/run.go",
+   "services/workspace/module/run.go",
    "services/serve/internal/delivery/service.go",
-   "services/resource-catalog/cmd/server/main.go",
-   "services/gateway-integration/cmd/server/main.go",
+   "services/resource-catalog/module/run.go",
+   "services/gateway-integration/module/run.go",
    "services/fabric/coordination/process.go",
    "services/ledger/eventconsumer/configure.go",
    "packages/contracts/go/owneridentity/transport.go",

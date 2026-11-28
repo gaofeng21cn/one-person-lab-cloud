@@ -41,10 +41,13 @@ type workspaceApplicationActivationMutation struct {
 	Intent          workspaceApplicationDeploymentIntent
 }
 
-// workspaceApplicationDeploymentWorkerEnabled follows the launch worker
+// workspaceApplicationDeploymentWorkerEnabledWith follows the launch worker
 // convention: the recovery scan is explicitly enabled per deployment.
-func workspaceApplicationDeploymentWorkerEnabled() bool {
-	value := strings.TrimSpace(os.Getenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED"))
+func workspaceApplicationDeploymentWorkerEnabledWith(getenv func(string) string) bool {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	value := strings.TrimSpace(getenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED"))
 	return value == "1" || strings.EqualFold(value, "true") || strings.EqualFold(value, "yes")
 }
 

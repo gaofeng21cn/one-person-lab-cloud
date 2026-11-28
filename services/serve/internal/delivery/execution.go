@@ -50,17 +50,24 @@ type applicationExecutor interface {
 // configureAgentExecution binds the one execution boundary this installation
 // declares, or leaves the execution capability absent.
 func configureAgentExecution(service *Service, origin RouteOrigin) error {
+	return configureAgentExecutionWithEnv(service, origin, os.Getenv)
+}
+
+func configureAgentExecutionWithEnv(service *Service, origin RouteOrigin, getenv func(string) string) error {
 	if service == nil {
 		return errors.New("serve service is required")
 	}
-	namespace := strings.TrimSpace(os.Getenv("OPL_K8S_NAMESPACE"))
-	bridge := strings.TrimSpace(os.Getenv("OPL_FABRIC_APPLICATION_URL"))
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	namespace := strings.TrimSpace(getenv("OPL_K8S_NAMESPACE"))
+	bridge := strings.TrimSpace(getenv("OPL_FABRIC_APPLICATION_URL"))
 	if namespace != "" && bridge != "" {
 		return errors.New("serve Agent execution is declared twice: OPL_K8S_NAMESPACE and OPL_FABRIC_APPLICATION_URL cannot both name this installation's execution boundary")
 	}
 	switch {
 	case namespace != "":
-		installation, err := installationFromEnv(namespace)
+		installation, err := installationFromEnvWith(namespace, getenv)
 		if err != nil {
 			return err
 		}
@@ -72,18 +79,18 @@ func configureAgentExecution(service *Service, origin RouteOrigin) error {
 				return service.frozenModelConfiguration(ctx, nextOwnerCall(command.GetContext()), command)
 			},
 			Executor: &tkeapply.Executor{
-				Client: tkeapply.NewClusterClient(os.Getenv("TENCENT_DEPLOY_KUBECONFIG_REF"), namespace),
+				Client: tkeapply.NewClusterClient(getenv("TENCENT_DEPLOY_KUBECONFIG_REF"), namespace),
 				// The installation's protected-compute declaration is the same fact
 				// set that bounds Fabric's provider. Serve reads it explicitly in its
 				// own source so this process's requirement stays part of the
 				// installation contract instead of hiding behind a shared default.
 				Guard: protectedresource.FromMap(map[string]string{
-					"OPL_SYSTEM_COMPUTE_NODE_POOL_ID":              os.Getenv("OPL_SYSTEM_COMPUTE_NODE_POOL_ID"),
-					"OPL_SYSTEM_COMPUTE_MACHINE_ID":                os.Getenv("OPL_SYSTEM_COMPUTE_MACHINE_ID"),
-					"OPL_SYSTEM_COMPUTE_NODE_NAME":                 os.Getenv("OPL_SYSTEM_COMPUTE_NODE_NAME"),
-					"OPL_SYSTEM_COMPUTE_MACHINE_TYPE":              os.Getenv("OPL_SYSTEM_COMPUTE_MACHINE_TYPE"),
-					"OPL_SYSTEM_COMPUTE_CVM_ID":                    os.Getenv("OPL_SYSTEM_COMPUTE_CVM_ID"),
-					"OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON": os.Getenv("OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON"),
+					"OPL_SYSTEM_COMPUTE_NODE_POOL_ID":              getenv("OPL_SYSTEM_COMPUTE_NODE_POOL_ID"),
+					"OPL_SYSTEM_COMPUTE_MACHINE_ID":                getenv("OPL_SYSTEM_COMPUTE_MACHINE_ID"),
+					"OPL_SYSTEM_COMPUTE_NODE_NAME":                 getenv("OPL_SYSTEM_COMPUTE_NODE_NAME"),
+					"OPL_SYSTEM_COMPUTE_MACHINE_TYPE":              getenv("OPL_SYSTEM_COMPUTE_MACHINE_TYPE"),
+					"OPL_SYSTEM_COMPUTE_CVM_ID":                    getenv("OPL_SYSTEM_COMPUTE_CVM_ID"),
+					"OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON": getenv("OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON"),
 				}),
 				Installation: installation,
 			},
@@ -91,25 +98,24 @@ func configureAgentExecution(service *Service, origin RouteOrigin) error {
 		}
 	case bridge != "":
 		service.Runtime = &agentExecutionAdapter{
-			Executor: &fabricApplicationBridge{BaseURL: bridge, Token: os.Getenv("OPL_FABRIC_SERVE_SERVICE_TOKEN"), CapabilityKey: os.Getenv("OPL_FABRIC_SERVE_CAPABILITY_KEY")},
+			Executor: &fabricApplicationBridge{BaseURL: bridge, Token: getenv("OPL_FABRIC_SERVE_SERVICE_TOKEN"), CapabilityKey: getenv("OPL_FABRIC_SERVE_CAPABILITY_KEY")},
 			Origin:   origin,
 		}
 	}
 	return nil
 }
 
-// installationFromEnv reads the installation-owned facts the in-process executor
-// applies a workload with. Every absent fact stays absent: the executor fails
-// closed at the step that needs it rather than substituting a default.
-func installationFromEnv(namespace string) (tkeapply.Installation, error) {
-	peers, err := applicationIngressPeers(os.Getenv("OPL_WORKSPACE_APPLICATION_INGRESS_PEERS"))
+// installationFromEnvWith reads the installation-owned facts the in-process
+// executor applies a workload with.
+func installationFromEnvWith(namespace string, getenv func(string) string) (tkeapply.Installation, error) {
+	peers, err := applicationIngressPeers(getenv("OPL_WORKSPACE_APPLICATION_INGRESS_PEERS"))
 	if err != nil {
 		return tkeapply.Installation{}, err
 	}
 	return tkeapply.Installation{
 		Namespace:               strings.TrimSpace(namespace),
-		ImagePullSecretName:     strings.TrimSpace(os.Getenv("OPL_IMAGE_PULL_SECRET_NAME")),
-		AdminPasswordSeed:       strings.TrimSpace(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED")),
+		ImagePullSecretName:     strings.TrimSpace(getenv("OPL_IMAGE_PULL_SECRET_NAME")),
+		AdminPasswordSeed:       strings.TrimSpace(getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED")),
 		ApplicationIngressPeers: peers,
 	}, nil
 }

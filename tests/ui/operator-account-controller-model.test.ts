@@ -4,6 +4,7 @@ import test from "node:test";
 import type {
   OperatorAccountDTO,
   OperatorAccountCommandDTO,
+  OperatorPlatformAdminCommandDTO,
   OperatorProvisionAccountCommandDTO,
   OperatorServiceEntitlementCommandDTO,
   OperatorWorkspacePurchaseEligibilityCommandDTO,
@@ -13,6 +14,9 @@ import {
   accountCommandSucceeded,
   eligibilityCommandSucceeded,
   expectedWorkspacePurchaseEligibility,
+  isOperatorBootstrapAdmin,
+  isOperatorPlatformAdmin,
+  platformAdminCommandSucceeded,
   provisionCommandSucceeded,
   provisionReadbackMatches,
   resolveProvisionAccountIntent,
@@ -224,4 +228,46 @@ test("provision readback requires the complete authoritative account identity", 
   for (const mismatch of mismatches) {
     assert.equal(provisionReadbackMatches(mismatch, provisionCommand, fullCustomerInput), false);
   }
+});
+
+test("gateway-first provision readback matches without legacy console user id and validates platform admin commands", () => {
+  const cloudProvisionCommand: OperatorProvisionAccountCommandDTO = {
+    operationId: "account-provision-cloud-45",
+    accountId: "acct-cloud-45",
+    sub2apiUserId: "45",
+    status: "succeeded",
+    workspacePurchaseEnabled: true
+  };
+  const gatewayFirstAccount: OperatorAccountDTO = {
+    ...account,
+    accountId: "45",
+    actorId: "45",
+    consoleUserId: "",
+    role: "user",
+    sub2apiUserId: "45",
+    platformAdminEnabled: false,
+    isBootstrapAdmin: false,
+    gatewayIdentity: {
+      ...account.gatewayIdentity,
+      data: { userId: "45", email: "owner@example.com", status: "active" }
+    }
+  };
+  assert.equal(provisionReadbackMatches(gatewayFirstAccount, cloudProvisionCommand, fullCustomerInput), true);
+  assert.equal(provisionReadbackMatches({ ...gatewayFirstAccount, sub2apiUserId: "46", accountId: "46" }, cloudProvisionCommand, fullCustomerInput), false);
+
+  const adminCmd: OperatorPlatformAdminCommandDTO = {
+    operationId: "platform-admin-45",
+    accountId: "45",
+    status: "succeeded",
+    platformAdminEnabled: true,
+    isBootstrapAdmin: false
+  };
+  assert.equal(platformAdminCommandSucceeded(adminCmd, "45", true), true);
+  assert.equal(platformAdminCommandSucceeded(adminCmd, "46", true), false);
+  assert.equal(platformAdminCommandSucceeded(adminCmd, "45", false), false);
+
+  assert.equal(isOperatorPlatformAdmin(gatewayFirstAccount), false);
+  assert.equal(isOperatorPlatformAdmin({ ...gatewayFirstAccount, platformAdminEnabled: true, role: "admin" }), true);
+  assert.equal(isOperatorBootstrapAdmin({ ...gatewayFirstAccount, platformAdminEnabled: true, isBootstrapAdmin: false }), false);
+  assert.equal(isOperatorBootstrapAdmin({ accountId: "43", isBootstrapAdmin: true }), true);
 });

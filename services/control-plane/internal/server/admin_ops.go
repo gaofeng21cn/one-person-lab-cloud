@@ -48,7 +48,7 @@ func (app *controlPlaneServer) managementState(includeDeleted bool, computePools
 		"auditEvents":            rowsAsAnyFromMaps(app.listAuditEvents("")),
 		"billingReconciliation":  app.reconciliationProjectionLocked(),
 		"archive":                app.archiveStateLocked(),
-		"retentionPolicy":        currentRetentionPolicy().dto(),
+		"retentionPolicy":        currentRetentionPolicyWith(app.env).dto(),
 	}
 }
 
@@ -117,13 +117,14 @@ func (app *controlPlaneServer) archiveStateLocked() map[string]any {
 	return map[string]any{
 		"adminAuditEvents": []any{},
 		"productionE2E":    productionE2ESummary(nil),
-		"retentionPolicy":  currentRetentionPolicy().dto(),
+		"retentionPolicy":  currentRetentionPolicyWith(app.env).dto(),
 	}
 }
 
 func (app *controlPlaneServer) applyRetention(ctx context.Context) (map[string]any, error) {
+	policy := currentRetentionPolicyWith(app.env)
 	if store, ok := app.store.(retentionStore); ok {
-		return store.ApplyRetention(ctx, currentRetentionPolicy())
+		return store.ApplyRetention(ctx, policy)
 	}
-	return map[string]any{"retentionPolicy": currentRetentionPolicy().dto()}, nil
+	return map[string]any{"retentionPolicy": policy.dto()}, nil
 }

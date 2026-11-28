@@ -249,11 +249,13 @@ export interface OperatorAccountController {
   accounts: RemoteState<SourceEnvelope<OperatorAccountPageDTO>>;
   page: number;
   pages: number;
+  searchQuery: string;
   provisionOperation: OperatorProvisionAccountCommandDTO | null;
   provisionBusy: boolean;
   busyAccountIds: string[];
   refresh: () => Promise<void>;
   changePage: (page: number) => Promise<void>;
+  searchAccounts: (query: string) => Promise<void>;
   setProvisionOperation: (operation: OperatorProvisionAccountCommandDTO | null) => void;
   provision: (input: ProvisionAccountRequest) => Promise<{
     operation: OperatorProvisionAccountCommandDTO;
@@ -262,6 +264,7 @@ export interface OperatorAccountController {
   disable: (accountId: string) => Promise<void>;
   setWorkspacePurchaseEligibility: (accountId: string, enabled: boolean) => Promise<void>;
   setServiceEntitlement: (accountId: string, serviceId: string, enabled: boolean) => Promise<void>;
+  setPlatformAdmin: (accountId: string, enabled: boolean) => Promise<void>;
 }
 
 export interface OperatorAnnouncementController {

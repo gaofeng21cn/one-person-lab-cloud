@@ -333,6 +333,10 @@ func workspaceRenewalOperationID(workspaceID string, paidThrough time.Time) stri
 }
 
 func newWorkspaceRenewalOperation(workspace map[string]any, now time.Time) (workspaceRenewalOperation, error) {
+	return newWorkspaceRenewalOperationWithEnv(nil, workspace, now)
+}
+
+func newWorkspaceRenewalOperationWithEnv(getenv func(string) string, workspace map[string]any, now time.Time) (workspaceRenewalOperation, error) {
 	paidThrough, err := time.Parse(time.RFC3339, stringValue(workspace["paidThrough"]))
 	if err != nil {
 		return workspaceRenewalOperation{}, errInvalidWorkspaceBillingState
@@ -340,6 +344,7 @@ func newWorkspaceRenewalOperation(workspace map[string]any, now time.Time) (work
 	anchor := int(numberField(workspace, "billingAnchorDay", float64(paidThrough.Day())))
 	renewedThrough := nextBillingMonth(paidThrough, anchor)
 	id := workspaceRenewalOperationID(stringValue(workspace["id"]), paidThrough)
+	environment := monthlyEnvironmentWith(getenv)
 	operation := workspaceRenewalOperation{
 		ID: id, Status: "claimed", CreatedAt: now.UTC().Format(time.RFC3339Nano), Phase: "preflight_compute",
 		AccountID: stringValue(workspace["accountId"]), OwnerUserID: stringValue(workspace["ownerUserId"]), WorkspaceID: stringValue(workspace["id"]),
@@ -347,7 +352,7 @@ func newWorkspaceRenewalOperation(workspace map[string]any, now time.Time) (work
 		ComputeID: stringValue(workspace["computeAllocationId"]), StorageID: stringValue(workspace["storageId"]), PriceVersion: stringValue(workspace["priceVersion"]),
 		ComputeUSDMicros: int64(numberField(workspace, "computeUsdMicros", 0)), StorageUSDMicros: int64(numberField(workspace, "storageUsdMicros", 0)), TotalUSDMicros: int64(numberField(workspace, "totalUsdMicros", 0)),
 		PeriodStart: stringValue(workspace["periodStart"]), PaidThrough: paidThrough.UTC().Format(time.RFC3339Nano), RenewedThrough: renewedThrough.UTC().Format(time.RFC3339Nano),
-		RedeemCode: monthlyRedeemCode(monthlyEnvironment(), id), RefundCode: monthlyRefundCode(monthlyEnvironment(), id),
+		RedeemCode: monthlyRedeemCode(environment, id), RefundCode: monthlyRefundCode(environment, id),
 	}
 	operation.RequestHash = stableID(
 		"workspace-renewal-v1", operation.AccountID, operation.OwnerUserID, operation.WorkspaceID, operation.PackageID,
@@ -452,7 +457,7 @@ func (app *controlPlaneServer) processWorkspaceRenewal(ctx context.Context, serv
 		if deleteActive {
 			return nil
 		}
-		expected, err := newWorkspaceRenewalOperation(workspace, now)
+		expected, err := newWorkspaceRenewalOperationWithEnv(app.env, workspace, now)
 		if err != nil {
 			return err
 		}
@@ -1498,7 +1503,7 @@ func (app *controlPlaneServer) workspaceRenewalRecoveryState(ctx context.Context
 	if now.Before(paidThrough) {
 		return result("not_required", "workspace_paid_period_active")
 	}
-	operation, err := newWorkspaceRenewalOperation(workspace, now)
+	operation, err := newWorkspaceRenewalOperationWithEnv(app.env, workspace, now)
 	if err != nil {
 		return result("unavailable", "workspace_renewal_identity_mismatch")
 	}

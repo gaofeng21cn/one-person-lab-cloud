@@ -280,7 +280,10 @@ func (s *Service) storedSession(ctx context.Context, ref string) (*api.Session, 
 		v := api.TenantRoleEnum(api.TenantRoleEnum_value["TENANT_ROLE_ENUM_"+strings.ToUpper(role.String)])
 		out.Role = &v
 	}
-	admin := s.admins[out.ActorId]
+	admin, err := s.isPlatformAdmin(ctx, out.ActorId)
+	if err != nil {
+		return nil, 0, false, err
+	}
 	for a, p := range actions {
 		if permitted(p, role.String, admin) {
 			out.Permissions = append(out.Permissions, a)

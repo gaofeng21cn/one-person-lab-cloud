@@ -103,6 +103,21 @@ func (p *serviceEntitlementTenantProbe) ListServiceEntitlements(_ context.Contex
 	return &api.ServiceEntitlementList{Items: p.listItems}, nil
 }
 
+func (p *serviceEntitlementTenantProbe) ListOperatorAccounts(_ context.Context, r *api.ListOperatorAccountsRpcRequest, _ ...grpc.CallOption) (*api.OperatorGatewayAccountPage, error) {
+	return &api.OperatorGatewayAccountPage{
+		Total:    1,
+		Page:     r.GetPage(),
+		PageSize: r.GetPageSize(),
+		Items: []*api.OperatorGatewayAccount{
+			{
+				ActorId: "42",
+				Email:   "u42@example.test",
+				Status:  "active",
+			},
+		},
+	}, nil
+}
+
 func TestClientServiceGrantAndJWKSRoutes(t *testing.T) {
 	probe := &serviceEntitlementTenantProbe{}
 	handler := (&Server{identity: &fakeIdentity{}, tenant: probe}).Handler()
@@ -204,7 +219,7 @@ func TestOperatorServiceEntitlementRouteAndProjection(t *testing.T) {
 		session: &api.Session{ActorId: "admin-1", TenantId: proto.String("tenant-1"), CsrfToken: "csrf-admin"},
 		decisions: map[api.AuthorizationActionEnum]*api.AuthorizationDecision{
 			operatorPrivilegeAction: activationPlatformDecision(operatorPrivilegeAction, api.OwnerEnum_OWNER_ENUM_CAPABILITY, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "", "op-1"),
-			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTTENANTS: activationPlatformDecision(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTTENANTS, api.OwnerEnum_OWNER_ENUM_TENANT, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", "list-1"),
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORACCOUNTS: activationPlatformDecision(api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORACCOUNTS, api.OwnerEnum_OWNER_ENUM_TENANT, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PLATFORM, "", "list-1"),
 			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETSERVICEENTITLEMENT: activationPlatformDecision(
 				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETSERVICEENTITLEMENT,
 				api.OwnerEnum_OWNER_ENUM_TENANT,
@@ -215,23 +230,7 @@ func TestOperatorServiceEntitlementRouteAndProjection(t *testing.T) {
 		},
 	}
 
-	cpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"source":    "control-plane+sub2api",
-			"status":    "available",
-			"available": true,
-			"fetchedAt": "2026-11-28T00:00:00Z",
-			"data": map[string]any{
-				"items": []map[string]any{
-					{"accountId": "acct-42", "sub2apiUserId": "42", "workspacePurchaseEnabled": false},
-				},
-				"total": 1, "page": 1, "pageSize": 20,
-			},
-		})
-	}))
-	defer cpServer.Close()
-
-	readers, err := clients.Dial(clients.Config{ControlPlaneURL: cpServer.URL, ControlPlaneToken: token})
+	readers, err := clients.Dial(clients.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}

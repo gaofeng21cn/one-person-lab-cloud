@@ -7,6 +7,7 @@ import type {
   OperatorAccountCommandDTO,
   OperatorAccountDTO,
   OperatorAccountPageDTO,
+  OperatorPlatformAdminCommandDTO,
   OperatorProvisionAccountCommandDTO,
   OperatorWorkspacePurchaseEligibilityCommandDTO,
   SourceEnvelope
@@ -788,4 +789,126 @@ test("Cloud operator pages expose reads, activation and purchase eligibility wit
     assert.match(cloudEligibilityWrites[0], /^\/api\/v2\/operator\/accounts\/[^/]+\/workspace-purchase-eligibility$/);
     assert.deepEqual(legacyWrites, []);
   } finally { await browser.close(); await demo.close(); }
+});
+
+test("Cloud operator accounts list renders Gateway-only users, supports server search and delegated platform admin toggle", { timeout: 60_000 }, async (t) => {
+  const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
+  process.env.VITE_CONSOLE_IDENTITY = "cloud";
+  t.after(() => { if (previousIdentity === undefined) delete process.env.VITE_CONSOLE_IDENTITY; else process.env.VITE_CONSOLE_IDENTITY = previousIdentity; });
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await launchBrowser({ headless: true });
+
+  const rootAdmin: OperatorAccountDTO = {
+    ...account("43", "operator@example.com"),
+    actorId: "43",
+    consoleUserId: "",
+    role: "admin",
+    sub2apiUserId: "43",
+    platformAdminEnabled: true,
+    isBootstrapAdmin: true,
+    workspacePurchaseEnabled: true,
+    gatewayIdentity: { source: "sub2api", status: "available", available: true, fetchedAt, data: { userId: "43", email: "operator@example.com", status: "active" } },
+    wallet: { source: "sub2api", status: "available", available: true, fetchedAt, data: { userId: "43", currency: "USD", usdMicros: "50000000", status: "active" } },
+    workspaceCount: { source: "workspace", status: "unavailable", available: false, fetchedAt, reasonCode: "workspace_count_not_read" }
+  };
+  let gatewayUser: OperatorAccountDTO = {
+    ...account("45", "gatewayonly@example.com", { workspacePurchaseEnabled: false }),
+    actorId: "45",
+    consoleUserId: "",
+    role: "user",
+    sub2apiUserId: "45",
+    platformAdminEnabled: false,
+    isBootstrapAdmin: false,
+    gatewayIdentity: { source: "sub2api", status: "available", available: true, fetchedAt, data: { userId: "45", email: "gatewayonly@example.com", status: "active" } },
+    wallet: { source: "sub2api", status: "available", available: true, fetchedAt, data: { userId: "45", currency: "USD", usdMicros: "12000000", status: "active" } },
+    workspaceCount: { source: "workspace", status: "unavailable", available: false, fetchedAt, reasonCode: "workspace_count_not_read" }
+  };
+  const searchQueries: string[] = [];
+  const adminCommands: Array<{ actorId: string; enabled: boolean }> = [];
+
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await page.route("**/api/v2/**", async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/v2/auth/session") {
+        return fulfill(route, {
+          actorId: "43",
+          displayName: "Operator",
+          email: "operator@example.com",
+          permissions: ["createPublisherNamespace", "listOperatorAccounts", "setPlatformAdmin", "setWorkspacePurchaseEligibility"],
+          csrfToken: "csrf-fixture",
+          expiresAt: "2099-01-01T00:00:00Z"
+        });
+      }
+      if (url.pathname === "/api/v2/operator/accounts" && route.request().method() === "GET") {
+        const search = url.searchParams.get("search") || "";
+        searchQueries.push(search);
+        const all = [rootAdmin, gatewayUser];
+        const filtered = search
+          ? all.filter((item) => item.email.includes(search) || item.sub2apiUserId === search)
+          : all;
+        return fulfill(route, {
+          source: "tenant+sub2api",
+          status: filtered.length ? "available" : "empty",
+          available: true,
+          fetchedAt,
+          data: { items: filtered, total: filtered.length, page: 1, pageSize: 20 }
+        });
+      }
+      const adminMatch = /^\/api\/v2\/operator\/accounts\/([^/]+)\/platform-admin$/.exec(url.pathname);
+      if (adminMatch && route.request().method() === "POST") {
+        const actorId = decodeURIComponent(adminMatch[1]);
+        const body = route.request().postDataJSON() as { confirmationAccountId: string; enabled: boolean; reason: string };
+        assert.equal(body.confirmationAccountId, actorId);
+        adminCommands.push({ actorId, enabled: body.enabled });
+        gatewayUser = {
+          ...gatewayUser,
+          platformAdminEnabled: body.enabled,
+          role: body.enabled ? "admin" : "user"
+        };
+        const result: OperatorPlatformAdminCommandDTO = {
+          operationId: "platform-admin-cloud-45",
+          accountId: actorId,
+          status: "succeeded",
+          platformAdminEnabled: body.enabled,
+          isBootstrapAdmin: false
+        };
+        return fulfill(route, result);
+      }
+      return fulfill(route, { error: "fixture_read_unavailable" }, 503);
+    });
+
+    await openAccounts(page, demo.origin);
+
+    // Bootstrap root admin is immutable.
+    const rootInspector = await openInspector(page, rootAdmin.email);
+    await rootInspector.getByText("引导根管理员", { exact: true }).first().waitFor({ state: "visible" });
+    await rootInspector.getByText("根管理员不可撤销", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await rootInspector.getByRole("button", { name: "撤销管理员", exact: true }).count(), 0);
+
+    // Gateway-only user omits legacy Control Plane mapping ids and allows granting delegated admin.
+    const gwInspector = await openInspector(page, gatewayUser.email);
+    await gwInspector.getByText("技术映射与来源读回").click();
+    await gwInspector.getByText("OPL Gateway 主体映射", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await gwInspector.getByText("Control Plane 映射", { exact: true }).count(), 0);
+
+    await gwInspector.getByRole("button", { name: "授予管理员", exact: true }).click();
+    await page.getByRole("dialog", { name: "授予平台管理员角色" }).getByRole("button", { name: "确认授予", exact: true }).click();
+    await page.getByText("已授予平台管理员权限", { exact: true }).waitFor({ state: "visible" });
+    await gwInspector.getByRole("button", { name: "撤销管理员", exact: true }).waitFor({ state: "visible" });
+    await gwInspector.getByRole("button", { name: "授予新购", exact: true }).waitFor({ state: "visible" });
+
+    // Search input submits server search in Cloud mode.
+    const searchBox = page.getByRole("searchbox", { name: "筛选当前页用户" });
+    await searchBox.fill("gatewayonly");
+    await searchBox.press("Enter");
+    await accountRow(page, gatewayUser.email).waitFor({ state: "visible" });
+    await page.waitForFunction(() => document.querySelectorAll(".operator-account-table tbody tr").length === 1);
+
+    assert.deepEqual(adminCommands, [{ actorId: "45", enabled: true }]);
+    assert.ok(searchQueries.includes("gatewayonly"));
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
 });
