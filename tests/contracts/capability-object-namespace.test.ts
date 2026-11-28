@@ -16,7 +16,7 @@ import test from "node:test";
 const capabilityDirectory = "services/capability";
 const buildRunner = "services/build/internal/build/runner.go";
 const topologyPath = "deploy/portable/opl-cloud-owner-topology.json";
-const routeScan = "services/control-plane/internal/server/testdata/http-surface-scan.go";
+const routeScan = "tools/go/http-surface-scan/main.go";
 
 async function goFiles(directory: string): Promise<string[]> {
   const found: string[] = [];

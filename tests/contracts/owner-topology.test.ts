@@ -619,7 +619,7 @@ const ownerProcessDirectories: Array<[string, string]> = [
 // Computed patterns are outside this source inventory; owner runtime tests
 // remain necessary. Quoted response metadata cannot claim another HTTP owner.
 function registeredLiteralPaths(files: string[]): string[] {
-  return JSON.parse(execFileSync("go", ["run", "services/control-plane/internal/server/testdata/http-surface-scan.go"], {
+  return JSON.parse(execFileSync("go", ["run", "tools/go/http-surface-scan/main.go"], {
     input: JSON.stringify(files), encoding: "utf8", maxBuffer: 4 * 1024 * 1024,
   })) as string[];
 }

@@ -690,10 +690,6 @@ func preflightStatus(items []MonthlyPreflightStage) string {
 	return "passed"
 }
 
-func monthlyPreflightEnvironmentStage(stage, key, expected string) MonthlyPreflightStage {
-	return monthlyPreflightEnvironmentStageWith(stage, key, expected, os.Getenv)
-}
-
 func monthlyPreflightEnvironmentStageWith(stage, key, expected string, getenv func(string) string) MonthlyPreflightStage {
 	if getenv == nil {
 		getenv = os.Getenv
@@ -703,10 +699,6 @@ func monthlyPreflightEnvironmentStageWith(stage, key, expected string, getenv fu
 		status, code = "failed", "live_mutation_flag_required"
 	}
 	return MonthlyPreflightStage{Stage: stage, Status: status, ErrorCode: code, BlockedBy: []string{}, SafeFacts: map[string]any{"enabled": status == "passed"}}
-}
-
-func monthlyPreflightCredentialsStage() MonthlyPreflightStage {
-	return monthlyPreflightCredentialsStageWith(os.Getenv)
 }
 
 func monthlyPreflightCredentialsStageWith(getenv func(string) string) MonthlyPreflightStage {

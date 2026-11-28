@@ -84,10 +84,6 @@ func localDockerWebUICredentialsForWith(metadata localDockerGatewayMetadata, get
 	return localDockerWebUICredentials{Password: []byte(password), SessionSecret: []byte(sessionSecret)}, nil
 }
 
-func localDockerRuntimeAccess(metadata localDockerGatewayMetadata) (RuntimeAccess, error) {
-	return localDockerRuntimeAccessWith(metadata, os.Getenv)
-}
-
 func localDockerRuntimeAccessWith(metadata localDockerGatewayMetadata, getenv func(string) string) (RuntimeAccess, error) {
 	credentials, err := localDockerWebUICredentialsForWith(metadata, getenv)
 	if err != nil {

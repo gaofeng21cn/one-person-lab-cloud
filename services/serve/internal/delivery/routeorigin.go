@@ -50,11 +50,6 @@ type RouteOrigin struct {
 	ApplicationDomain string
 }
 
-// RouteOriginFromEnv reads the installation's declared route origin.
-func RouteOriginFromEnv() RouteOrigin {
-	return RouteOriginFromEnvWith(os.Getenv)
-}
-
 // RouteOriginFromEnvWith reads the installation's declared route origin via getenv.
 func RouteOriginFromEnvWith(getenv func(string) string) RouteOrigin {
 	if getenv == nil {

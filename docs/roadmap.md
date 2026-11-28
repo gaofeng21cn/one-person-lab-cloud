@@ -184,6 +184,17 @@ Plane / delegated process-local custody onto canonical domain owners:
      non-terminal operations from completed settlement. Include accepted
      refunds that still need their first execution and renewals whose expiry
      or Ledger settlement is incomplete.
+   - The retained Control Plane's own repository tooling no longer lives inside
+     `services/control-plane`: the dead-code boundary tool is
+     `tools/go/deadcode` and the HTTP surface scanners are
+     `tools/go/http-surface-scan` and `tools/go/route-scan`, and the boundary
+     now covers every production package under `services/` and
+     `apps/console-bff` rather than the retained Control Plane package alone.
+     The directory deletion itself stays open until the Control Plane entry
+     leaves the published owner topology declaration in
+     `deploy/portable/opl-cloud-owner-topology.json`, which still names it as a
+     Cloud backend unit member with its own HTTP surfaces, readiness criteria
+     and peer addresses.
 4. **Module & DB-Role Coverage**: `tests/contracts/module-physical-boundaries.test.ts`
    now enforces package and SDK isolation across all 11 Go services under `services/`
    and `apps/console-bff`; extend PostgreSQL role-isolation checks to cover every

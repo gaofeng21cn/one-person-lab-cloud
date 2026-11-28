@@ -9,11 +9,6 @@ import (
 	"opl-cloud/services/control-plane/internal/clients"
 )
 
-// ProviderAcceptanceLaunchZone returns OPL_TENCENT_ZONE from the process environment.
-func ProviderAcceptanceLaunchZone() string {
-	return ProviderAcceptanceLaunchZoneWith(os.Getenv)
-}
-
 // ProviderAcceptanceLaunchZoneWith preserves the legacy create-only zone configuration
 // through the OPL_TENCENT_ZONE environment variable as an explicit external
 // Instance/Fabric cutover shim. The Instance owner supplies the value and the Fabric
