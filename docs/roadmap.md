@@ -148,6 +148,13 @@ Plane / delegated process-local custody onto canonical domain owners:
      `GET /internal/cloud/gateway/endpoint` bridges are retired with it; the
      retained `/api/gateway/*` read routes stay until the retained Control Plane
      Console build is retired.
+   - The customer's account status has moved to the Tenant owner: suspending a
+     Tenant suspends that customer, because a personal customer owns exactly
+     one Tenant and the owner's own fences refuse a suspended Tenant. The
+     re-enable half and the Workspace resume continuation it depends on are
+     still open, because the published re-enable contract restores the Tenant
+     first and then has the Workspace owner resume the Workspaces that
+     suspension stopped.
 2. **Billing & Announcements Extraction**: Retire retained Control Plane
    bridges (`/internal/cloud/legacy-billing/*`, `/internal/cloud/announcements`)
    once Cloud Ledger and Announcement owners serve authenticated CloudIdentity
@@ -159,6 +166,10 @@ Plane / delegated process-local custody onto canonical domain owners:
      migrated to `CloudIdentity` (`opl_tenant`). The legacy Control Plane
      endpoint `POST /api/operator/accounts/{accountId}/workspace-purchase-eligibility`
      stays only until the retained legacy Console build is retired.
+   - The legacy Control Plane endpoint `POST /api/operator/accounts/{accountId}/disable`
+     writes `control_plane_users.status` in the retiring service. The Cloud
+     build suspends the customer through the Tenant owner instead; the legacy
+     endpoint stays only until the retained legacy Console build is retired.
    - Preserve the retained deletion, refund, and renewal executors until their
      live clients have migrated and a current owner census can distinguish
      non-terminal operations from completed settlement. Include accepted
