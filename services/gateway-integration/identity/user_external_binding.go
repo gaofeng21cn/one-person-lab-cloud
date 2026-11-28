@@ -81,6 +81,23 @@ func validateUserDestination(host, namespace, repository string) error {
 	return nil
 }
 
+// destinationHolder reports the actor that holds a destination in the owner's
+// single live mapping. The unique index on gateway.identity_mappings gives a
+// destination to at most one actor, so this is the occupancy fact the owner
+// stores, and the only place it is decided. A destination the owner does not
+// hold is a destination any new actor could take.
+func (s *GatewayStore) destinationHolder(ctx context.Context, host, namespace, repository string) (string, bool, error) {
+	var actorID string
+	err := s.db.QueryRowContext(ctx, `SELECT actor_id FROM gateway.identity_mappings WHERE registry_host=$1 AND registry_namespace=$2 AND repository=$3`, host, namespace, repository).Scan(&actorID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, bindingPersistence(err)
+	}
+	return actorID, true, nil
+}
+
 // ReadUserExternalBinding reads durable state on every call. It never derives an
 // identity from an actor id, a Tenant, an email, or an installation default.
 func (s *GatewayStore) ReadUserExternalBinding(ctx context.Context, actorID string) (UserExternalBinding, error) {
@@ -149,6 +166,9 @@ func (s *GatewayStore) bindAuthenticatedUser(ctx context.Context, actorID, subje
 
 // BindUserExternalDestination assigns a destination to an already authenticated
 // identity. It never fabricates an identity mapping or replaces a destination.
+// The owner's unique index on gateway.identity_mappings refuses a destination
+// another actor already holds, so the occupancy of a destination is decided by
+// the owner that stores it and not by a second reader of a retired table.
 func (s *GatewayStore) BindUserExternalDestination(ctx context.Context, actorID, subjectID, host, namespace, repository string) (UserExternalBinding, error) {
 	if err := validateUserDestination(host, namespace, repository); err != nil {
 		return UserExternalBinding{}, err
@@ -303,9 +323,12 @@ func (s *Service) BindUserExternalIdentity(ctx context.Context, r *api.UserExter
 	if _, err := s.userBinding(ctx, r.GetActorId()); err != nil {
 		return nil, err
 	}
-	if err := s.checkHistoricalDestination(ctx, r.GetActorId(), r.GetRegistryHost(), r.GetRegistryNamespace(), r.GetRepository()); err != nil {
-		return nil, err
-	}
+	// The destination occupancy is the owner's own fact. Its unique index on
+	// gateway.identity_mappings refuses a second actor for a destination that
+	// is already held, so a destination the owner handed to another actor
+	// cannot be taken over. The frozen Tenant history no longer guards
+	// anything: it stays as provenance, and the startup gate refuses to serve
+	// while a historical destination is still unowned.
 	b, err := s.GatewayStore.BindUserExternalDestination(ctx, r.GetActorId(), r.GetSub2ApiUserId(), r.GetRegistryHost(), r.GetRegistryNamespace(), r.GetRepository())
 	if err != nil {
 		return nil, err

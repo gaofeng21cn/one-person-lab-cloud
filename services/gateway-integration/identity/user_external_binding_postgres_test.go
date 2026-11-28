@@ -252,17 +252,30 @@ func seedHistoricalDestination(t *testing.T, db *sql.DB, owners []string, reposi
 	}
 }
 
-func TestUserExternalBindingPreservesHistoricalOwnerDestination(t *testing.T) {
+// The destination of an actor is the Gateway owner's fact. The one-time
+// handover moved the historical destination into that owner, and the runtime
+// resolution path reads the owner alone: the frozen history is provenance, not
+// an input to the answer.
+func TestUserExternalBindingKeepsHandoverDestinationWithoutReadingHistory(t *testing.T) {
 	s, tenant, address := bindingSystemWithHistory(t, func(db *sql.DB) { seedHistoricalDestination(t, db, []string{"201"}, "old-approved-path", "reserved") })
+	summary, err := s.HandoverRepositoryBindings(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Moved != 1 || summary.Unattributable != 0 || summary.Conflicting != 0 || summary.Failed != 0 {
+		t.Fatalf("summary=%+v", summary)
+	}
 	call := bindingUserLogin(t, tenant, "testcloud4@medopl.com")
 	b := selfBinding(t, bindingClient(t, address, owneridentity.ConsoleBFF), call)
 	if b.Repository != "old-approved-path" {
-		t.Fatalf("historical path lost: %v", b)
+		t.Fatalf("handover destination lost: %v", b)
 	}
 	renamed := bindingUserLogin(t, tenant, "renamed@medopl.com")
 	if got := selfBinding(t, bindingClient(t, address, owneridentity.ConsoleBFF), renamed).Repository; got != "old-approved-path" {
-		t.Fatalf("rename changed historical path: %s", got)
+		t.Fatalf("rename changed the handover destination: %s", got)
 	}
+	// The handover reads the history and never writes it: the frozen table
+	// keeps every column it had, as provenance.
 	var preserved string
 	if err := s.DB.QueryRowContext(t.Context(), `SELECT repository FROM tenant.tenant_repository_bindings WHERE tenant_id='tenant-history'`).Scan(&preserved); err != nil || preserved != "old-approved-path" {
 		t.Fatalf("history=%q err=%v", preserved, err)
@@ -280,32 +293,44 @@ func TestUserExternalBindingPreservesHistoricalOwnerDestination(t *testing.T) {
 	}
 }
 
-func TestUserExternalBindingRejectsHistoricalPathTakeover(t *testing.T) {
-	for _, tc := range []struct {
-		name                      string
-		owners                    []string
-		repository, status, email string
-	}{
-		{"another owner", []string{"202"}, "testcloud4", "reserved", "testcloud4@medopl.com"},
-		{"multiple owners", []string{"201", "202"}, "old-shared-path", "active", "testcloud4@medopl.com"},
-		{"no owner", nil, "testcloud4", "reserved", "testcloud4@medopl.com"},
-		{"retired path", []string{"202"}, "testcloud4", "retired", "testcloud4@medopl.com"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			s, c, _ := bindingSystemWithHistory(t, func(db *sql.DB) { seedHistoricalDestination(t, db, tc.owners, tc.repository, tc.status) })
-			var header metadata.MD
-			if _, err := c.GetLoginContext(t.Context(), &api.GetLoginContextRpcRequest{}, grpc.Header(&header)); err != nil {
-				t.Fatal(err)
-			}
-			challenge := header.Get(owneridentity.SessionCookieHeader)[0]
-			if _, err := c.Login(t.Context(), &api.LoginRpcRequest{Context: &api.CallContext{SessionId: &challenge}, Body: &api.LoginRequest{Username: tc.email, Password: "password"}}); status.Code(err) != codes.FailedPrecondition {
-				t.Fatalf("historical takeover was not rejected: %v", err)
-			}
-			var count int
-			if err := s.GatewayStore.DB().QueryRowContext(t.Context(), `SELECT count(*) FROM gateway.identity_mappings WHERE actor_id='201'`).Scan(&count); err != nil || count != 0 {
-				t.Fatalf("failed login persisted User destination: %d %v", count, err)
-			}
-		})
+// A destination is occupied by the actor the Gateway owner gave it to. The
+// owner's unique index refuses a second actor, so a historical destination the
+// handover placed with its registered owner cannot be taken by a new actor.
+func TestUserExternalBindingRejectsDestinationHeldByAnotherActor(t *testing.T) {
+	s, tenant, _ := bindingSystemWithHistory(t, func(db *sql.DB) { seedHistoricalDestination(t, db, []string{"202"}, "testcloud4", "reserved") })
+	summary, err := s.HandoverRepositoryBindings(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Moved != 1 {
+		t.Fatalf("summary=%+v", summary)
+	}
+	// The handover placed the historical destination with its registered owner.
+	var owner, host, namespace, repository string
+	if err = s.GatewayStore.DB().QueryRowContext(t.Context(), `SELECT actor_id,COALESCE(registry_host,''),COALESCE(registry_namespace,''),COALESCE(repository,'')
+	 FROM gateway.identity_mappings WHERE registry_host='uswccr.ccs.tencentyun.com' AND registry_namespace='oplcloud' AND repository='testcloud4'`).Scan(&owner, &host, &namespace, &repository); err != nil {
+		t.Fatalf("the historical destination did not reach the owner: %v", err)
+	}
+	if owner != "202" || host != "uswccr.ccs.tencentyun.com" || namespace != "oplcloud" || repository != "testcloud4" {
+		t.Fatalf("owner=%s destination=%s/%s/%s", owner, host, namespace, repository)
+	}
+	// A new actor whose candidate names the same destination is refused by the
+	// owner, which holds that destination for another actor.
+	var header metadata.MD
+	if _, err := tenant.GetLoginContext(t.Context(), &api.GetLoginContextRpcRequest{}, grpc.Header(&header)); err != nil {
+		t.Fatal(err)
+	}
+	challenge := header.Get(owneridentity.SessionCookieHeader)[0]
+	if _, err := tenant.Login(t.Context(), &api.LoginRpcRequest{Context: &api.CallContext{SessionId: &challenge}, Body: &api.LoginRequest{Username: "testcloud4@medopl.com", Password: "password"}}); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("the occupied destination was taken: %v", err)
+	}
+	var count int
+	if err := s.GatewayStore.DB().QueryRowContext(t.Context(), `SELECT count(*) FROM gateway.identity_mappings WHERE actor_id='201'`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("the refused login persisted a User destination: %d %v", count, err)
+	}
+	// The destination stays with the actor the owner gave it to.
+	if err := s.GatewayStore.DB().QueryRowContext(t.Context(), `SELECT count(*) FROM gateway.identity_mappings WHERE actor_id='202' AND registry_host='uswccr.ccs.tencentyun.com' AND registry_namespace='oplcloud' AND repository='testcloud4'`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("the owner lost the destination: %d %v", count, err)
 	}
 }
 

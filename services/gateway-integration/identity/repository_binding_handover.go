@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -20,8 +21,9 @@ const repositoryBindingHandoverSelect = `SELECT b.tenant_id,b.registry_host,b.re
  ORDER BY b.tenant_id`
 
 // RepositoryBindingHandoverSummary reports what one handover pass did with the
-// frozen historical destination table. It is operator evidence about history,
-// not a service readiness signal.
+// frozen historical destination table. It is operator evidence about history and
+// the input of the startup gate: a residual row is a destination the owner does
+// not hold, so the service refuses to serve while one exists.
 type RepositoryBindingHandoverSummary struct {
 	// Scanned counts every historical row the pass read.
 	Scanned int
@@ -29,8 +31,14 @@ type RepositoryBindingHandoverSummary struct {
 	Moved int
 	// Already counts rows whose destination the Gateway owner already held.
 	Already int
-	// Released counts retired historical rows, which carry no destination.
+	// Released counts retired historical rows, which the pass did not move.
 	Released int
+	// ReleasedUnheld counts the released rows whose destination the Gateway
+	// owner does not hold. A released row still records a destination, and the
+	// retired runtime guard is gone, so such a destination is one any new
+	// actor could take. It stays a release in the receipt and is a residual as
+	// well.
+	ReleasedUnheld int
 	// Unattributable counts rows with no single registered owner.
 	Unattributable int
 	// Conflicting counts rows the Gateway owner cannot serve as recorded.
@@ -39,14 +47,70 @@ type RepositoryBindingHandoverSummary struct {
 	Failed int
 	// The reference lists name the rows an operator still has to resolve.
 	// UnattributableRefs and ConflictingRefs are conclusions this pass reached;
-	// FailedRefs are rows whose own move failed.
+	// FailedRefs are rows whose own move failed; ReleasedUnheldRefs are the
+	// released destinations nobody holds.
 	UnattributableRefs []string
 	ConflictingRefs    []string
 	FailedRefs         []string
+	ReleasedUnheldRefs []string
 	// MovedRefs is the receipt of what this pass moved. It names a Tenant, the
 	// owner actor and the OCI destination. A destination is a deployment fact,
 	// not a credential: no key, password or customer data is recorded here.
 	MovedRefs []string
+}
+
+// handoverResidualRefLimit bounds how many rows one gate message names. The
+// full lists stay in the summary and in the startup log; the message tells an
+// operator how many rows need a decision and shows the first ones.
+const handoverResidualRefLimit = 5
+
+// residualRows counts the historical rows this pass could not attribute or
+// serve. Every one of them is a destination the owner does not hold: a
+// released row whose destination nobody holds is as unowned as an ambiguous
+// one, and the retired runtime guard no longer protects either.
+func (s RepositoryBindingHandoverSummary) residualRows() int {
+	return s.Unattributable + s.Conflicting + s.Failed + s.ReleasedUnheld
+}
+
+// ResidualError reports the rows an operator still has to resolve, or nil when
+// the handover left nothing behind.
+//
+// A residual is not a cosmetic report. The runtime fallback read is retired, so
+// a historical destination nobody owns is held by nobody: the frozen table
+// keeps it as provenance and the owner's unique index knows nothing about it,
+// so a new actor could take that destination and then reach another Tenant's
+// OCI artifacts. The service therefore refuses to start while a residual
+// exists, instead of trusting the deployment order to have run the handover
+// before the first login.
+func (s RepositoryBindingHandoverSummary) ResidualError() error {
+	if s.residualRows() == 0 {
+		return nil
+	}
+	counts := fmt.Sprintf("%d unattributable, %d conflicting, %d failed, %d released without a holder", s.Unattributable, s.Conflicting, s.Failed, s.ReleasedUnheld)
+	rows := "rows"
+	if s.residualRows() == 1 {
+		rows = "row"
+	}
+	return fmt.Errorf("repository binding handover left %d unresolved historical destination %s (%s); the Gateway owner refuses to serve while a destination is unowned: unattributable=[%s] conflicting=[%s] failed=[%s] released_unheld=[%s]",
+		s.residualRows(), rows, counts,
+		handoverResidualRefs(s.UnattributableRefs), handoverResidualRefs(s.ConflictingRefs),
+		handoverResidualRefs(s.FailedRefs), handoverResidualRefs(s.ReleasedUnheldRefs))
+}
+
+// handoverResidualRefs renders the first rows of one residual list.
+func handoverResidualRefs(refs []string) string {
+	if len(refs) == 0 {
+		return "none"
+	}
+	shown := refs
+	if len(shown) > handoverResidualRefLimit {
+		shown = shown[:handoverResidualRefLimit]
+	}
+	suffix := ""
+	if len(refs) > len(shown) {
+		suffix = fmt.Sprintf(" (+%d more)", len(refs)-len(shown))
+	}
+	return strings.Join(shown, "; ") + suffix
 }
 
 // repositoryBindingHandoverRow is one historical destination and the
@@ -93,6 +157,10 @@ const (
 //
 // The pass is idempotent. Running it again over the same history moves
 // nothing, creates no row, and reports the destinations it already holds.
+//
+// The pass reports; the startup gate decides. ResidualError turns the reported
+// rows into a refusal to serve, because the runtime fallback read is retired
+// and a destination nobody owns is a destination any new actor could take.
 func (s *Service) HandoverRepositoryBindings(ctx context.Context) (RepositoryBindingHandoverSummary, error) {
 	var summary RepositoryBindingHandoverSummary
 	if s == nil || s.DB == nil {
@@ -133,9 +201,30 @@ func (s *Service) HandoverRepositoryBindings(ctx context.Context) (RepositoryBin
 func (s *Service) handoverRepositoryBinding(ctx context.Context, summary *RepositoryBindingHandoverSummary, row repositoryBindingHandoverRow) error {
 	switch row.Status {
 	case "retired":
-		// A released reservation carries no destination. Nothing is written and
-		// the historical row stays as it was.
+		// A released reservation was not moved: the owner holds no destination
+		// for it. The row still records a destination, and the retired runtime
+		// guard no longer protects it, so a destination nobody holds is one any
+		// new actor could take and reach another Tenant's OCI artifacts. The row
+		// stays a release in the receipt, and it is a residual as well unless
+		// the owner already holds that destination.
 		summary.Released++
+		_, held, err := s.GatewayStore.destinationHolder(ctx, row.RegistryHost, row.RegistryNamespace, row.Repository)
+		if err != nil {
+			summary.Failed++
+			summary.FailedRefs = append(summary.FailedRefs, fmt.Sprintf("tenant=%s destination=%s/%s/%s error=%v", row.TenantID, row.RegistryHost, row.RegistryNamespace, row.Repository, err))
+			if status.Code(err) == codes.Unavailable {
+				// The owner store is unavailable, so this pass cannot be trusted
+				// to have completed. The startup fails on it.
+				return err
+			}
+			return nil
+		}
+		if held {
+			// The owner holds the destination, so no new actor can take it.
+			return nil
+		}
+		summary.ReleasedUnheld++
+		summary.ReleasedUnheldRefs = append(summary.ReleasedUnheldRefs, fmt.Sprintf("tenant=%s registered_owners=%d destination=%s/%s/%s reason=destination_unheld", row.TenantID, row.OwnerCount, row.RegistryHost, row.RegistryNamespace, row.Repository))
 		return nil
 	case "reserved", "active":
 	default:
