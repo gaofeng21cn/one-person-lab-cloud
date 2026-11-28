@@ -16,7 +16,7 @@ export interface SegmentedControlProps<T extends string> {
 
 export function SegmentedControl<T extends string>({ ariaLabel, block, onChange, options, value }: SegmentedControlProps<T>) {
   return (
-    <div role="radiogroup" aria-label={ariaLabel}>
+    <div className="console-segmented" data-block={block ? "true" : undefined} role="radiogroup" aria-label={ariaLabel}>
       <AppsSegmentedControl aria-label={ariaLabel} block={block} onChange={onChange} pill={false} value={value}>
         {options.map((option) => (
           <AppsSegmentedControl.Option disabled={option.disabled} key={option.value} value={option.value}>

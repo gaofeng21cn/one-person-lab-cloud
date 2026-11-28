@@ -193,6 +193,30 @@ func TestGatewayOwnerRefusesAForgedActor(t *testing.T) {
 	}
 }
 
+func TestGatewayOwnerRefusesARevokedSession(t *testing.T) {
+	fixture := &balanceHistoryFixture{streams: map[string]balanceHistoryStream{
+		"admin_balance": {records: []map[string]any{}},
+		"balance":       {records: []map[string]any{}},
+	}}
+	gatewayClient, tenantClient, owner := gatewayProductSystemWithUpstream(t, fixture.handle)
+	raw, session := login(t, tenantClient)
+	ref := owneridentity.SessionReference(raw)
+
+	// The session is the caller's own, and it names its own actor, but it is
+	// no longer live. The endpoint is still the customer's fact to read, so a
+	// revoked session must read nothing at all.
+	if _, err := owner.DB.ExecContext(t.Context(), `UPDATE tenant.sessions SET revoked_at=now() WHERE id=$1`, ref); err != nil {
+		t.Fatal(err)
+	}
+	call := &api.CallContext{ActorId: session.GetActorId(), SessionId: proto.String(ref)}
+	if _, err := gatewayClient.GetPersonalGatewayEndpoint(t.Context(), &api.GetPersonalGatewayEndpointRpcRequest{Context: call}); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("a revoked session still read the endpoint: %v", err)
+	}
+	if _, err := gatewayClient.ListPersonalGatewayBalanceHistory(t.Context(), &api.ListPersonalGatewayBalanceHistoryRpcRequest{Context: call, Page: 1, PageSize: 20}); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("a revoked session still read the balance history: %v", err)
+	}
+}
+
 func TestGatewayOwnerRefusesAnUnidentifiedCaller(t *testing.T) {
 	fixture := &balanceHistoryFixture{streams: map[string]balanceHistoryStream{
 		"admin_balance": {records: []map[string]any{}},

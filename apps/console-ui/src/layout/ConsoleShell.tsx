@@ -4,6 +4,7 @@ import {
   ChevronDown,
   CircleDollarSign,
   Database,
+  HardDrive,
   LayoutDashboard,
   LogOut,
   Megaphone,
@@ -11,6 +12,7 @@ import {
   ReceiptText,
   RefreshCw,
   Server,
+  ShieldCheck,
   UserRound,
   UsersRound,
   X
@@ -28,10 +30,12 @@ const icons: Record<string, ComponentType<{ size?: number; "aria-hidden"?: boole
   Bot,
   CircleDollarSign,
   Database,
+  HardDrive,
   LayoutDashboard,
   Megaphone,
   ReceiptText,
   Server,
+  ShieldCheck,
   UsersRound
 };
 
@@ -70,6 +74,9 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
   const { sidebarOpen, globalSlide, setSidebarOpen, setGlobalSlide } = controller;
   const adminSurface = controller.route?.surface === "admin";
   const accountStatus = presentAccountStatus(controller.session?.user.status);
+  const unreadAnnouncementCount = !adminSurface && controller.customerAnnouncements.announcements.value?.available
+    ? controller.customerAnnouncements.announcements.value.data.items.filter((item) => !item.read).length
+    : 0;
   const mobileItems = adminSurface
     ? adminMenu.filter((item) => item.id !== "admin.announcements")
     : customerMenu;
@@ -148,12 +155,12 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
         </div>
 
         <nav className="side-nav">
-          {controller.session?.isOperator ? <div className="nav-section-label">Console</div> : null}
+          {controller.session?.isOperator ? <div className="nav-section-label">控制台</div> : null}
           {customerMenu.map((item) => <NavigationLink controller={controller} item={item} key={item.path} />)}
 
           {controller.session?.isOperator ? (
             <div className="operator-nav">
-              <div className="nav-section-label">Admin</div>
+              <div className="nav-section-label">平台管理</div>
               {adminMenu.map((item) => <NavigationLink controller={controller} item={item} key={item.path} />)}
             </div>
           ) : null}
@@ -164,7 +171,7 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
             {(controller.session?.user.email?.[0] || "?").toUpperCase()}
           </span>
           <span>
-            <strong>{controller.session?.user.email || "-"}</strong>
+            <strong title={controller.session?.user.email || "-"}>{controller.session?.user.email || "-"}</strong>
             <small>{controller.session?.isOperator ? "管理员" : "客户"}</small>
           </span>
           <Tooltip content="账号信息">
@@ -189,9 +196,10 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
           </div>
           <div className="topbar-actions">
             {!adminSurface ? (
-              <Tooltip content="消息">
+              <Tooltip content={unreadAnnouncementCount > 0 ? `消息（${unreadAnnouncementCount} 条未读）` : "消息"}>
                 <Button aria-label="消息" onClick={() => controller.navigate("/console/announcements")} size="sm" uniform variant="ghost">
                   <Megaphone aria-hidden size={17} />
+                  {unreadAnnouncementCount > 0 ? <span aria-hidden="true" className="topbar-unread-dot" /> : null}
                 </Button>
               </Tooltip>
             ) : null}
