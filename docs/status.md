@@ -16,6 +16,36 @@ chronological snapshots.
   live under the single root Go module `go.mod` (`module opl-cloud`), backed by
   typed `database/sql` PostgreSQL stores and `services/internal/postgresmigrate`
   (`ent` ORM has been retired).
+- **Dead-Code Boundary Over The Owner Packages**: The repository's dead-code
+  boundary is the tool `tools/go/deadcode`, not a service artifact. It runs
+  `golang.org/x/tools/cmd/deadcode` over the whole module from the repository
+  root, keeps only production declarations in the packages
+  `tools/go/deadcode/targets.txt` declares, and compares the unreachable set
+  against `tools/go/deadcode/allowlist.txt`. The declared list covers the 43
+  production packages under `services/` and `apps/console-bff` — every owner
+  package, not one service — and the tool refuses to run when that list no
+  longer equals the packages the tree contains, so a package cannot leave the
+  boundary unnoticed. Allowlist keys are package-qualified
+  (`<import path>.<Symbol>` for a package-level symbol,
+  `<import path>.<ReceiverType>.<name>` for a method) and every entry carries
+  the reason its declaration cannot simply be deleted. The HTTP surface scanners
+  the owner-topology contract tests read live in `tools/go/http-surface-scan` and
+  `tools/go/route-scan`, so retiring the retained Control Plane directory
+  removes no source check.
+- **Control Plane Retirement Residue Gate**: The retirement of
+  `services/control-plane` is proved by one instrument,
+  `tools/verify-no-control-plane.ts`, which runs in the `source` group of
+  `npm run verify:local`. It declares thirteen assertions, one per retirement
+  slice, and runs the assertions whose slice has arrived; the assertions of the
+  slices that have not arrived stay pending and are reported as pending rather
+  than as a pass. The declared stage table is checked against the assertions'
+  `fromSlice` markers, so a check cannot be postponed by editing one copy of
+  the plan. The gate scans the bridge implementation surface, the Local-Docker
+  gateway label, the published portable deployment surface, the product image
+  pipeline, the retired service directory, the local verification targets, the
+  compose files, the retired Control Plane environment variables, the retired
+  internal bridge prefix and every repository path that still names the retired
+  source directory; it does not scan the documentation layer.
 - **Slim Go-Only Image & 3-Container Composed Portable Topology**: `Dockerfile`
   compiles all Go binaries in one shared `go-build` stage onto a
   Node-free `debian:bookworm-slim` runtime carrying `/app/dist` and baked
@@ -88,6 +118,25 @@ chronological snapshots.
     `GET /api/gateway/balance-history` and `GET /api/gateway/endpoint` routes
     stay for the legacy Console build and are retired with the retained
     Control Plane.
+  - A platform administrator can suspend a customer account through the Tenant
+    owner: `POST /api/v2/admin/tenants/{tenantId}/suspend` is served by the BFF
+    and forwards to `TenantProductService.SuspendTenant`. The owner writes the
+    Tenant's status, its durable Operation and its audit evidence in one
+    transaction, revokes the Tenant's live sessions and advances its permission
+    version, so the owner's own fences refuse that customer afterwards. A
+    personal customer owns exactly one Tenant, so suspending that Tenant is
+    what disables the account.
+  - A platform administrator can re-enable a customer account through the Tenant
+    owner: `POST /api/v2/admin/tenants/{tenantId}/reenable` is served by the BFF
+    and forwards to `TenantProductService.ReenableTenant`. The owner restores
+    the Tenant's status, clears its suspension and advances its permission
+    version in one transaction together with the durable Operation and the
+    audit evidence, so the owner's own fences serve that customer again. A
+    personal customer owns exactly one Tenant, so re-enabling that Tenant is
+    what brings the account back. The revoked sessions stay revoked and the
+    customer signs in again. The Workspace resume continuation the re-enable
+    contract describes stays open, because the Cloud's tenant suspension pauses
+    no Workspace; that is recorded in [roadmap.md](roadmap.md).
   - The historical OCI destinations are handed to the Gateway owner. At owner
     startup, `Gateway Integration` (`services/gateway-integration`) reads the
     frozen `tenant.tenant_repository_bindings` table and moves each destination

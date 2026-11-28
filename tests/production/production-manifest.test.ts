@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { validateProductionManifest } from "../../services/control-plane/ops/production-manifest.ts";
+import { validateProductionManifest } from "../../tools/ops/production-manifest.ts";
 
 const cloudImage = `registry.example.com/opl/opl-cloud@sha256:${"a".repeat(64)}`;
 const workspaceImage = `registry.example.com/opl/one-person-lab-app@sha256:${"b".repeat(64)}`;

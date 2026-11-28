@@ -1,4 +1,4 @@
-import { decodeWorkspaceImageReleaseCatalog } from "../../../packages/contracts/workspace-image-release.ts";
+import { decodeWorkspaceImageReleaseCatalog } from "../../packages/contracts/workspace-image-release.ts";
 
 const PROVIDERS = {
   TENCENT_TKE: "tencent-tke"

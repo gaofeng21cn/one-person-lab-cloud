@@ -86,15 +86,18 @@
   width: 52px;
   height: 52px;
   flex: 0 0 52px;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: var(--color-surface-secondary);
+  border-radius: 13px;
+  box-shadow: var(--elevation-100);
+}
+
+.nowrap-brand {
+  white-space: nowrap;
 }
 
 .access-hero h1 {
   margin: 0;
   color: var(--color-text);
-  font-size: clamp(36px, 4.4vw, 54px);
+  font-size: clamp(36px, 4.4vw, 52px);
   font-weight: 650;
   letter-spacing: -0.03em;
   line-height: 1.06;
@@ -148,46 +151,26 @@
   min-width: 0;
   margin: 0;
   border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border-radius: 14px;
+  padding: 12px;
   background: var(--color-surface);
-  box-shadow: var(--elevation-100);
-  overflow: hidden;
-}
-
-.access-showcase__bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface);
-}
-
-.access-showcase__dots {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.access-showcase__dots span {
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-full);
-  background: var(--color-border-strong);
-}
-
-.access-showcase__label {
-  color: var(--color-text-secondary);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.03em;
+  box-shadow: var(--shadow-showcase);
 }
 
 .access-showcase img {
   display: block;
   width: 100%;
   height: auto;
+  border-radius: 8px;
+}
+
+.access-showcase__caption {
+  padding: 10px 4px 2px;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-align: center;
 }
 
 .access-features-section {
@@ -204,18 +187,14 @@
   text-wrap: balance;
 }
 
-/* 共享 1px 细线分隔的 Bento 能力条，替代独立浮动阴影卡片 */
 .access-features {
   display: grid;
   width: 100%;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
   margin: 0;
   padding: 0;
   list-style: none;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: var(--color-surface);
-  overflow: hidden;
 }
 
 .access-features li {
@@ -223,12 +202,16 @@
   min-width: 0;
   align-content: start;
   gap: 14px;
-  padding: 24px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 22px;
   background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  transition: border-color var(--motion-fast) ease;
 }
 
-.access-features li + li {
-  border-left: 1px solid var(--color-border);
+.access-features li:hover {
+  border-color: var(--color-border-strong);
 }
 
 .access-features__head {
@@ -240,13 +223,25 @@
 
 .access-features__icon {
   display: inline-grid;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   place-items: center;
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: 9px;
   background: var(--color-surface-secondary);
+  color: var(--color-text-secondary);
+}
+
+.access-features__icon--sky {
+  border-color: var(--color-border-info);
+  background: var(--color-background-info-soft);
   color: var(--color-text-primary);
+}
+
+.access-features__icon--emerald {
+  border-color: var(--color-border-success);
+  background: var(--color-background-success-soft);
+  color: var(--color-text-success);
 }
 
 .access-features__tag {
@@ -254,7 +249,7 @@
   border-radius: var(--radius-full);
   padding: 2px 9px;
   background: var(--color-surface-secondary);
-  color: var(--color-text-secondary);
+  color: var(--color-text-tertiary);
   font-family: var(--font-mono);
   font-size: 11px;
 }
@@ -267,22 +262,20 @@
 
 .access-features strong {
   color: var(--color-text);
-  font-size: 16px;
+  font-size: 15.5px;
   font-weight: 600;
 }
 
 .access-features span {
   color: var(--color-text-secondary);
-  font-size: 14px;
+  font-size: 13.5px;
   line-height: 1.6;
   text-wrap: pretty;
 }
 
 .public-footer {
   border-top: 1px solid var(--color-border);
-  background:
-    radial-gradient(var(--color-border-strong) 1px, transparent 1px) 0 0 / 18px 18px,
-    var(--color-surface-secondary);
+  background: var(--color-surface-secondary);
 }
 
 .public-footer__inner {
@@ -345,38 +338,36 @@
 
 .login-back-link {
   display: inline-flex;
-  min-height: 36px;
+  min-height: 34px;
   align-items: center;
-  gap: 6px;
-  border: 1px solid var(--color-border);
+  gap: 5px;
+  border: 0;
   border-radius: 8px;
-  padding: 0 12px;
-  background: var(--color-surface);
+  padding: 0 10px;
+  background: transparent;
   color: var(--color-text-secondary);
   font-size: 13px;
   font-weight: 500;
-  transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease, color var(--motion-fast) ease;
+  transition: background-color var(--motion-fast) ease, color var(--motion-fast) ease;
 }
 
 .login-back-link:hover {
-  border-color: var(--color-border-strong);
-  background: var(--color-surface-secondary);
+  background: rgb(0 0 0 / 5%);
   color: var(--color-text);
 }
 
 .login-back-link:focus-visible {
   outline: 0;
-  border-color: var(--focus-accent);
   box-shadow: 0 0 0 3px var(--color-ring);
 }
 
 .login-showcase__main {
   display: grid;
-  width: min(460px, 100%);
+  width: min(490px, 100%);
   align-content: center;
-  gap: 24px;
+  gap: 20px;
   margin: auto 0;
-  padding: 28px 0;
+  padding: 24px 0;
 }
 
 .login-showcase__copy {
@@ -387,10 +378,10 @@
 .login-showcase__copy h2 {
   margin: 0;
   color: var(--color-text);
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 650;
   letter-spacing: -0.025em;
-  line-height: 1.2;
+  line-height: 1.25;
   text-wrap: balance;
 }
 
@@ -400,6 +391,60 @@
   font-size: 14px;
   line-height: 1.6;
   text-wrap: pretty;
+}
+
+.login-metrics-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.login-metric-card {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: var(--color-surface);
+}
+
+.login-metric-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.login-metric-card strong {
+  color: var(--color-text);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.login-metric-card small {
+  color: var(--color-text-tertiary);
+  font-size: 11.5px;
+}
+
+.login-led {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+}
+
+.login-led--ok {
+  background: var(--ss-dot-ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ss-dot-ok) 22%, transparent);
+}
+
+.login-led--sky {
+  background: var(--action);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--action) 20%, transparent);
 }
 
 .login-ledger {
@@ -443,7 +488,7 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  padding: 14px 16px;
+  padding: 13px 16px;
 }
 
 .login-ledger__row + .login-ledger__row {
@@ -458,7 +503,19 @@
   border: 1px solid var(--color-border);
   border-radius: 7px;
   background: var(--color-surface-secondary);
+  color: var(--color-text-secondary);
+}
+
+.login-ledger__icon--sky {
+  border-color: var(--color-border-info);
+  background: var(--color-background-info-soft);
   color: var(--color-text-primary);
+}
+
+.login-ledger__icon--emerald {
+  border-color: var(--color-border-success);
+  background: var(--color-background-success-soft);
+  color: var(--color-text-success);
 }
 
 .login-ledger__text {
@@ -484,39 +541,10 @@
   border-radius: var(--radius-full);
   padding: 2px 8px;
   background: var(--color-surface-secondary);
-  color: var(--color-text-secondary);
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
   font-size: 11px;
   white-space: nowrap;
-}
-
-.login-facts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: var(--color-surface);
-  overflow: hidden;
-}
-
-.login-facts > div {
-  display: grid;
-  gap: 3px;
-  padding: 12px 16px;
-}
-
-.login-facts > div + div {
-  border-left: 1px solid var(--color-border);
-}
-
-.login-facts span {
-  color: var(--color-text-tertiary);
-  font-size: 11.5px;
-}
-
-.login-facts strong {
-  color: var(--color-text);
-  font-size: 13px;
-  font-weight: 600;
 }
 
 .login-showcase__foot {
@@ -588,10 +616,10 @@
 .login-input {
   width: 100%;
   min-height: 42px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-strong);
   border-radius: 8px;
   outline: 0;
-  background: var(--color-surface-secondary);
+  background: var(--color-surface);
   color: var(--color-text);
   padding: 0 12px;
   font-size: 14px;
@@ -604,7 +632,7 @@
 }
 
 .login-input:hover:not(:focus):not(:disabled) {
-  border-color: var(--color-border-strong);
+  border-color: var(--gray-300);
 }
 
 .login-input:focus {
@@ -717,19 +745,50 @@
 
 .status-card {
   display: grid;
-  width: min(420px, 100%);
+  width: min(392px, 100%);
   justify-items: center;
   gap: 10px;
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  padding: 36px 28px;
+  padding: 32px 28px;
   background: var(--color-surface);
   color: var(--color-text-secondary);
   text-align: center;
 }
 
+.status-card__icon {
+  display: inline-grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface-tertiary);
+  color: var(--color-text);
+}
+
+.status-card__icon--warning {
+  border-color: var(--color-border-warning);
+  background: var(--color-background-warning-soft);
+  color: var(--color-text-warning);
+}
+
+.status-card__icon--danger {
+  border-color: var(--color-border-danger);
+  background: var(--color-background-danger-soft);
+  color: var(--color-text-danger);
+}
+
+.status-card__code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--color-text-tertiary);
+}
+
 .status-card h1 {
-  margin: 6px 0 0;
+  margin: 2px 0 0;
   color: var(--color-text);
   font-size: 20px;
   font-weight: 650;
@@ -738,7 +797,7 @@
 }
 
 .status-card p {
-  margin: 0 0 10px;
+  margin: 0 0 12px;
   color: var(--color-text-secondary);
   font-size: 14px;
   line-height: 1.6;
@@ -753,11 +812,6 @@
 
   .access-features {
     grid-template-columns: 1fr;
-  }
-
-  .access-features li + li {
-    border-top: 1px solid var(--color-border);
-    border-left: 0;
   }
 }
 
