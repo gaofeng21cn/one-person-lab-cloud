@@ -29,10 +29,12 @@ import type {
   ProvisionAccountRequest,
   OperatorAccountCommandDTO,
   OperatorLinkRelayEntitlementCommandDTO,
+  OperatorPackageEntitlementCommandDTO,
   OperatorPlatformAdminCommandDTO,
   OperatorProvisionAccountCommandDTO,
   OperatorAccountPageDTO,
   OperatorSeedLinkRelayEntitlementsCommandDTO,
+  OperatorSoftwarePackageCatalogDTO,
   OperatorServiceEntitlementCommandDTO,
   OperatorWorkspacePurchaseEligibilityCommandDTO,
   OperatorAnnouncementPageDTO,
@@ -551,6 +553,16 @@ export function operatorLinkRelaySeedRoute(cloud: boolean): string {
   return "/api/v2/operator/link-relay/seed-active-users";
 }
 
+export function operatorSoftwarePackagesRoute(cloud: boolean): "/api/v2/operator/software-packages" {
+  if (!cloud) throw new Error("operator_read_unavailable");
+  return "/api/v2/operator/software-packages";
+}
+
+export function operatorPackageEntitlementRoute(cloud: boolean, targetId: string): string {
+  if (!cloud) throw new Error("operator_write_unavailable");
+  return `/api/v2/operator/accounts/${encodeURIComponent(targetId)}/package-entitlements`;
+}
+
 export function getOperatorAccounts(cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorAccountsData>> {
   return sourceGet<OperatorAccountsData>(`${operatorReadRoute(cloud)}/accounts`);
 }
@@ -631,6 +643,14 @@ export function setOperatorLinkRelayEntitlement(accountId: string, enabled: bool
 
 export function seedActiveGatewayLinkRelayEntitlements(reason: string, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperatorSeedLinkRelayEntitlementsCommandDTO> {
   return postJson<unknown>(operatorLinkRelaySeedRoute(cloud), { reason }, csrfToken, idempotencyKey).then(decodeDto<OperatorSeedLinkRelayEntitlementsCommandDTO>);
+}
+
+export function getOperatorSoftwarePackages(signal?: AbortSignal, cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorSoftwarePackageCatalogDTO>> {
+  return sourceGet<OperatorSoftwarePackageCatalogDTO>(operatorSoftwarePackagesRoute(cloud), signal);
+}
+
+export function setOperatorPackageEntitlement(accountId: string, packageId: string, enabled: boolean, reason: string, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperatorPackageEntitlementCommandDTO> {
+  return postJson<unknown>(operatorPackageEntitlementRoute(cloud, accountId), { confirmationAccountId: accountId, packageId, enabled, reason }, csrfToken, idempotencyKey).then(decodeDto<OperatorPackageEntitlementCommandDTO>);
 }
 
 export function resolveBillingReview(resourceType: string, resourceId: string, input: BillingReviewResolutionRequest, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperationStatusDTO> {

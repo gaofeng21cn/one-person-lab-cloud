@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -118,6 +119,22 @@ func (s *Server) readOperatorAccounts(w http.ResponseWriter, r *http.Request, ct
 			keyCount = operatorSource("sub2api", nil, "key_count_unavailable", "")
 		}
 
+		entitlements := make([]any, 0, len(entry.GetPackageEntitlements()))
+		for _, pkg := range entry.GetPackageEntitlements() {
+			rec := map[string]any{
+				"packageId": pkg.GetPackageId(),
+				"enabled":   pkg.GetEnabled(),
+				"reason":    pkg.GetReason(),
+			}
+			if pkg.GetExpiresAt() != nil {
+				rec["expiresAt"] = pkg.GetExpiresAt().AsTime().UTC().Format(time.RFC3339Nano)
+			}
+			if pkg.GetUpdatedAt() != nil {
+				rec["updatedAt"] = pkg.GetUpdatedAt().AsTime().UTC().Format(time.RFC3339Nano)
+			}
+			entitlements = append(entitlements, rec)
+		}
+
 		items = append(items, map[string]any{
 			"accountId":                actorID,
 			"actorId":                  actorID,
@@ -130,6 +147,7 @@ func (s *Server) readOperatorAccounts(w http.ResponseWriter, r *http.Request, ct
 			"platformAdminEnabled":     entry.GetPlatformAdminEnabled(),
 			"isBootstrapAdmin":         entry.GetIsBootstrapAdmin(),
 			"linkRelayEnabled":         entry.GetLinkRelayEnabled(),
+			"packageEntitlements":      entitlements,
 			"serviceEntitlements": func() []map[string]any {
 				if entries := serviceEntitlementsByActor[actorID]; entries != nil {
 					return entries

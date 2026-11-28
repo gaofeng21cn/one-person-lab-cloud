@@ -73,6 +73,10 @@ func (s *Service) ListOperatorAccounts(ctx context.Context, r *api.ListOperatorA
 	if err != nil {
 		return nil, err
 	}
+	packageMap, err := s.packageEntitlementStates(ctx, actorIDs)
+	if err != nil {
+		return nil, err
+	}
 
 	usageMap, keyCounts := s.enrichGatewayDirectoryUsers(ctx, userIDs)
 
@@ -97,6 +101,7 @@ func (s *Service) ListOperatorAccounts(ctx context.Context, r *api.ListOperatorA
 			PlatformAdminEnabled:     isAdmin,
 			IsBootstrapAdmin:         isBootstrap,
 			LinkRelayEnabled:         relayEnabled,
+			PackageEntitlements:      packageMap[actorID],
 			WalletAvailable:          !user.BalanceUnavailable,
 			WalletUsdMicros:          user.BalanceUSDMicros,
 		}

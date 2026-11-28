@@ -230,6 +230,18 @@ chronological snapshots.
   confirmed resource and data deletion, Key closeout, the Ledger deletion
   receipt, and the original-charge refund on the same deletion operation after
   an operator released its recycled CBS. See Instance readback run `45639384732`.
+- **Gateway-First User Directory & Fail-Closed Entitlement Center**: In Cloud
+  mode, `TenantProductService` lists and searches Gateway (`Sub2API`) users
+  directly via `GET /api/v2/operator/accounts` without requiring a legacy
+  Control Plane account binding, manages immutable bootstrap root admins vs
+  DB-delegated platform administrators (`tenant.platform_admins`), governs
+  fail-closed OPL Link Relay admission (`tenant.link_relay_entitlements` with
+  one-click active Gateway backfill and Bearer/session readback), and manages
+  restricted Software Center package whitelists (`tenant.package_entitlements`
+  + `POST /api/v2/operator/accounts/{actorId}/package-entitlements`,
+  `GET /api/v2/operator/software-packages`, `GET /api/v2/software/entitlements`,
+  and Stage 1 `sha256`-verified GHCR-to-PVC archive streaming at
+  `POST /api/v2/software/packages/{packageId}/download`).
 - **Manual Workspace Renewal At The Workspace Owner**: The Workspace owner accepts
   one manual renewal of a paid Workspace and carries it as its own accepted
   obligation: it asks the identity owner for the renewal grant, accepts the

@@ -5,6 +5,7 @@ import type {
   OperatorAccountDTO,
   OperatorAccountCommandDTO,
   OperatorLinkRelayEntitlementCommandDTO,
+  OperatorPackageEntitlementCommandDTO,
   OperatorPlatformAdminCommandDTO,
   OperatorProvisionAccountCommandDTO,
   OperatorSeedLinkRelayEntitlementsCommandDTO,
@@ -14,11 +15,14 @@ import type {
 } from "../../apps/console-ui/src/api/dtos.ts";
 import {
   accountCommandSucceeded,
+  activePackageEntitlementIds,
   eligibilityCommandSucceeded,
   expectedWorkspacePurchaseEligibility,
+  hasActivePackageEntitlement,
   isOperatorBootstrapAdmin,
   isOperatorPlatformAdmin,
   linkRelayCommandSucceeded,
+  packageEntitlementCommandSucceeded,
   platformAdminCommandSucceeded,
   provisionCommandSucceeded,
   provisionReadbackMatches,
@@ -295,4 +299,32 @@ test("gateway-first provision readback matches without legacy console user id an
   assert.equal(seedLinkRelayCommandSucceeded(seedCmd), true);
   assert.equal(seedLinkRelayCommandSucceeded({ ...seedCmd, existingCount: 3 }), false);
   assert.equal(seedLinkRelayCommandSucceeded({ ...seedCmd, status: "failed" }), false);
+
+  const pkgCmd: OperatorPackageEntitlementCommandDTO = {
+    operationId: "pkg-entitlement-45-occ",
+    accountId: "45",
+    packageId: "occ",
+    status: "succeeded",
+    enabled: true
+  };
+  assert.equal(packageEntitlementCommandSucceeded(pkgCmd, "45", "occ", true), true);
+  assert.equal(packageEntitlementCommandSucceeded(pkgCmd, "46", "occ", true), false);
+  assert.equal(packageEntitlementCommandSucceeded(pkgCmd, "45", "glkvm-native", true), false);
+  assert.equal(packageEntitlementCommandSucceeded(pkgCmd, "45", "occ", false), false);
+
+  const nowMs = Date.parse("2026-11-28T06:00:00Z");
+  const pkgAccount: OperatorAccountDTO = {
+    ...gatewayFirstAccount,
+    packageEntitlements: [
+      { packageId: "occ", enabled: true, reason: "granted" },
+      { packageId: "glkvm-native", enabled: true, reason: "expiring", expiresAt: "2026-11-28T05:59:59Z" },
+      { packageId: "future-pkg", enabled: true, reason: "expiring", expiresAt: "2026-11-29T00:00:00Z" },
+      { packageId: "revoked-pkg", enabled: false, reason: "revoked" }
+    ]
+  };
+  assert.equal(hasActivePackageEntitlement(pkgAccount, "occ", nowMs), true);
+  assert.equal(hasActivePackageEntitlement(pkgAccount, "glkvm-native", nowMs), false);
+  assert.equal(hasActivePackageEntitlement(pkgAccount, "future-pkg", nowMs), true);
+  assert.equal(hasActivePackageEntitlement(pkgAccount, "revoked-pkg", nowMs), false);
+  assert.deepEqual(activePackageEntitlementIds(pkgAccount, nowMs), ["occ", "future-pkg"]);
 });

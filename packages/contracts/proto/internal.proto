@@ -2128,6 +2128,14 @@ message OperatorGatewayPlatformUsage {
  int64 total_actual_cost_usd_micros = 3;
 }
 
+message OperatorPackageEntitlement {
+ string package_id = 1;
+ bool enabled = 2;
+ string reason = 3;
+ google.protobuf.Timestamp expires_at = 4;
+ google.protobuf.Timestamp updated_at = 5;
+}
+
 message OperatorGatewayAccount {
  string actor_id = 1;
  string email = 2;
@@ -2145,6 +2153,7 @@ message OperatorGatewayAccount {
  int32 key_count = 14;
  google.protobuf.Timestamp gateway_updated_at = 15;
  bool link_relay_enabled = 16;
+ repeated OperatorPackageEntitlement package_entitlements = 17;
 }
 
 message OperatorGatewayAccountPage {
@@ -2207,6 +2216,41 @@ message LinkRelayEntitlementReadback {
  bool is_platform_admin = 5;
  string reason = 6;
  google.protobuf.Timestamp updated_at = 7;
+}
+
+message SetPackageEntitlementRequest {
+ string confirmation_account_id = 1;
+ string package_id = 2;
+ bool enabled = 3;
+ string reason = 4;
+ google.protobuf.Timestamp expires_at = 5;
+ bool clear_expires_at = 6;
+}
+
+message SetPackageEntitlementRpcRequest {
+ CallContext context = 1;
+ string target_actor_id = 2;
+ SetPackageEntitlementRequest body = 3;
+}
+
+message PackageEntitlementCommand {
+ string operation_id = 1;
+ string account_id = 2;
+ string package_id = 3;
+ string status = 4;
+ bool enabled = 5;
+ google.protobuf.Timestamp expires_at = 6;
+}
+
+message ListCallerPackageEntitlementsRpcRequest {
+ CallContext context = 1;
+ string bearer_token = 2;
+}
+
+message CallerPackageEntitlementsReadback {
+ string actor_id = 1;
+ string email = 2;
+ repeated OperatorPackageEntitlement items = 3;
 }
 
 message CreateTenantRpcRequest {
@@ -2512,6 +2556,8 @@ service TenantProductService {
  rpc SetLinkRelayEntitlement(SetLinkRelayEntitlementRpcRequest) returns (LinkRelayEntitlementCommand);
  rpc SeedActiveGatewayLinkRelayEntitlements(SeedActiveGatewayLinkRelayEntitlementsRpcRequest) returns (SeedLinkRelayEntitlementsCommand);
  rpc ReadCallerLinkRelayEntitlement(ReadCallerLinkRelayEntitlementRpcRequest) returns (LinkRelayEntitlementReadback);
+ rpc SetPackageEntitlement(SetPackageEntitlementRpcRequest) returns (PackageEntitlementCommand);
+ rpc ListCallerPackageEntitlements(ListCallerPackageEntitlementsRpcRequest) returns (CallerPackageEntitlementsReadback);
 }
 
 service CapabilityProductService {
@@ -3748,12 +3794,16 @@ AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES = 153;
  AUTHORIZATION_ACTION_ENUM_SETWORKSPACEPURCHASEELIGIBILITY = 173;
  AUTHORIZATION_ACTION_ENUM_LISTOPERATORACCOUNTS = 174;
  AUTHORIZATION_ACTION_ENUM_SETPLATFORMADMIN = 175;
-	AUTHORIZATION_ACTION_ENUM_SETSERVICEENTITLEMENT = 176;
-	AUTHORIZATION_ACTION_ENUM_ISSUESERVICEGRANT = 177;
-	AUTHORIZATION_ACTION_ENUM_GETSERVICEGRANTJWKS = 178;
-	AUTHORIZATION_ACTION_ENUM_SETLINKRELAYENTITLEMENT = 179;
-	AUTHORIZATION_ACTION_ENUM_SEEDACTIVEGATEWAYLINKRELAYENTITLEMENTS = 180;
-	AUTHORIZATION_ACTION_ENUM_GETLINKRELAYENTITLEMENT = 181;
+ AUTHORIZATION_ACTION_ENUM_SETSERVICEENTITLEMENT = 176;
+ AUTHORIZATION_ACTION_ENUM_ISSUESERVICEGRANT = 177;
+ AUTHORIZATION_ACTION_ENUM_GETSERVICEGRANTJWKS = 178;
+ AUTHORIZATION_ACTION_ENUM_SETLINKRELAYENTITLEMENT = 179;
+ AUTHORIZATION_ACTION_ENUM_SEEDACTIVEGATEWAYLINKRELAYENTITLEMENTS = 180;
+ AUTHORIZATION_ACTION_ENUM_GETLINKRELAYENTITLEMENT = 181;
+ AUTHORIZATION_ACTION_ENUM_SETPACKAGEENTITLEMENT = 182;
+ AUTHORIZATION_ACTION_ENUM_LISTOPERATORSOFTWAREPACKAGES = 183;
+ AUTHORIZATION_ACTION_ENUM_LISTSOFTWAREENTITLEMENTS = 184;
+ AUTHORIZATION_ACTION_ENUM_DOWNLOADSOFTWAREPACKAGE = 185;
 }
 
 enum ServiceIdentityEnum {

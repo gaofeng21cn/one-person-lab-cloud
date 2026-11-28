@@ -298,29 +298,23 @@ func (s *Service) SeedActiveGatewayLinkRelayEntitlements(ctx context.Context, r 
 	return out, nil
 }
 
-// ReadCallerLinkRelayEntitlement answers OPL Link Relay admission for the authenticated caller
-// using either a live Gateway bearer token or an active Console session reference.
-func (s *Service) ReadCallerLinkRelayEntitlement(ctx context.Context, r *api.ReadCallerLinkRelayEntitlementRpcRequest) (*api.LinkRelayEntitlementReadback, error) {
-	if err := peer(ctx, owneridentity.ConsoleBFF); err != nil {
-		return nil, err
-	}
-	if token := strings.TrimSpace(r.GetBearerToken()); token != "" {
+func (s *Service) resolveCallerGatewaySubject(ctx context.Context, c *api.CallContext, bearerToken string) (string, string, bool, error) {
+	if token := strings.TrimSpace(bearerToken); token != "" {
 		user, err := s.Gateway.VerifyBearer(ctx, token)
 		if err != nil {
-			return nil, err
+			return "", "", false, err
 		}
-		return s.buildLinkRelayReadback(ctx, strconv.FormatInt(user.ID, 10), user.Email, true)
+		return strconv.FormatInt(user.ID, 10), user.Email, true, nil
 	}
-	c := r.GetContext()
 	if c == nil || c.GetSessionId() == "" {
-		return nil, status.Error(codes.Unauthenticated, "active Cloud session or Gateway bearer required")
+		return "", "", false, status.Error(codes.Unauthenticated, "active Cloud session or Gateway bearer required")
 	}
 	session, _, _, err := s.session(ctx, c.GetSessionId())
 	if err != nil {
-		return nil, err
+		return "", "", false, err
 	}
 	if c.GetActorId() != "" && c.GetActorId() != session.GetActorId() {
-		return nil, denied()
+		return "", "", false, denied()
 	}
 	subjectID := session.GetActorId()
 	if binding, bindErr := s.userBinding(ctx, session.GetActorId()); bindErr == nil && strings.TrimSpace(binding.Sub2APIUserID) != "" {
@@ -328,9 +322,22 @@ func (s *Service) ReadCallerLinkRelayEntitlement(ctx context.Context, r *api.Rea
 	}
 	user, err := s.Gateway.directoryIdentity(ctx, subjectID)
 	if err != nil {
+		return "", "", false, err
+	}
+	return subjectID, user.Email, user.Status == "active", nil
+}
+
+// ReadCallerLinkRelayEntitlement answers OPL Link Relay admission for the authenticated caller
+// using either a live Gateway bearer token or an active Console session reference.
+func (s *Service) ReadCallerLinkRelayEntitlement(ctx context.Context, r *api.ReadCallerLinkRelayEntitlementRpcRequest) (*api.LinkRelayEntitlementReadback, error) {
+	if err := peer(ctx, owneridentity.ConsoleBFF); err != nil {
 		return nil, err
 	}
-	return s.buildLinkRelayReadback(ctx, subjectID, user.Email, user.Status == "active")
+	actorID, email, active, err := s.resolveCallerGatewaySubject(ctx, r.GetContext(), r.GetBearerToken())
+	if err != nil {
+		return nil, err
+	}
+	return s.buildLinkRelayReadback(ctx, actorID, email, active)
 }
 
 // ReadLinkRelayEntitlement answers internal service peer inquiries for one Gateway actor ID.

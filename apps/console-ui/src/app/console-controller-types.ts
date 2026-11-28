@@ -18,6 +18,7 @@ import type {
   OperatorAccountDTO,
   OperatorProvisionAccountCommandDTO,
   OperatorSeedLinkRelayEntitlementsCommandDTO,
+  OperatorSoftwarePackageCatalogDTO,
   ProvisionAccountRequest,
   OperatorAnnouncementPageDTO,
   OperatorHealthDTO,
@@ -248,6 +249,7 @@ export interface BillingController {
 
 export interface OperatorAccountController {
   accounts: RemoteState<SourceEnvelope<OperatorAccountPageDTO>>;
+  softwarePackages: RemoteState<SourceEnvelope<OperatorSoftwarePackageCatalogDTO>>;
   page: number;
   pages: number;
   searchQuery: string;
@@ -269,6 +271,7 @@ export interface OperatorAccountController {
   setPlatformAdmin: (accountId: string, enabled: boolean) => Promise<void>;
   setLinkRelayEntitlement: (accountId: string, enabled: boolean) => Promise<void>;
   seedActiveLinkRelayEntitlements: () => Promise<OperatorSeedLinkRelayEntitlementsCommandDTO | null>;
+  setPackageEntitlement: (accountId: string, packageId: string, enabled: boolean) => Promise<void>;
 }
 
 export interface OperatorAnnouncementController {

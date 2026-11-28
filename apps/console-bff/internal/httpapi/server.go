@@ -48,6 +48,8 @@ type Server struct {
 	grantLimiterOnce    sync.Once
 	grantLimiter        *fixedWindowLimiter
 	getenv              func(string) string
+	softwareStore       softwareBlobStore
+	softwareHTTPClient  *http.Client
 }
 
 // OwnerReader is the typed read surface the BFF needs. It is satisfied by the
@@ -142,6 +144,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerClientServiceGrantRoutes(mux)
 	s.registerOperatorPlatformAdminRoutes(mux)
 	s.registerOperatorLinkRelayRoutes(mux)
+	s.registerSoftwareDeliveryRoutes(mux)
 	s.registerLegacyBillingRoutes(mux)
 	s.registerPersonalGatewayReadRoutes(mux)
 	s.registerPublisherRoutes(mux)
@@ -168,7 +171,7 @@ func (s *Server) Handler() http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		if len(r.Header.Values("Authorization")) != 0 && r.URL.Path != "/api/v2/mcp" && r.URL.Path != "/api/v2/client/service-grant" && r.URL.Path != "/api/v2/link-relay/entitlement" {
+		if len(r.Header.Values("Authorization")) != 0 && !allowsGatewayBearerPath(r.URL.Path) {
 			writePublisherIdentityError(w, r, ErrSessionRequired)
 			return
 		}
