@@ -228,16 +228,20 @@ Git log.
   display name, admission, status, opened-at) is a Cloud account fact, so it
   lives in `tenant.customer_accounts` next to the contract's `x-owner: tenant`
   surface, while the Gateway identity binding and the Gateway wallet binding
-  stay in the gateway schema where the contract already places them. The two
-  schemas cannot commit together, so the command converges by reading the
-  Gateway account back instead of writing it twice. The published activation
-  receipt is a dedicated `OperatorAccountCommand` (operation id, account id,
-  status, Workspace purchase eligibility, poll cadence) rather than the generic
-  `Operation`: the Console controller requires the opened account and the granted
-  eligibility to read the command back, and the owner reports both as its own
-  facts. Each owner step re-authorizes its own action against the live session,
-  because an authorization context issued for one action is not evidence for
-  another.
+  stay in the gateway schema where the contract already places them. That table
+  records the accounts this product opened; it is not the operator account list.
+  The operator list is the Gateway directory read the tenant owner serves, so it
+  shows every active OPL Gateway user joined with the owner's eligibility and
+  entitlement policies instead of hiding the pre-existing accounts this product
+  never opened. The two schemas cannot commit together, so the command converges
+  by reading the Gateway account back instead of writing it twice. The published
+  activation receipt is a dedicated `OperatorAccountCommand` (operation id,
+  account id, status, Workspace purchase eligibility, poll cadence) rather than
+  the generic `Operation`: the Console controller requires the opened account and
+  the granted eligibility to read the command back, and the owner reports both as
+  its own facts. Each owner step re-authorizes its own action against the live
+  session, because an authorization context issued for one action is not evidence
+  for another.
 
 ## Non-Spending Publication & Incremental Retirement
 

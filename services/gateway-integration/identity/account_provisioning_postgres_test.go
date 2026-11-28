@@ -379,22 +379,6 @@ func TestProvisionOperatorAccountOpensOneAccountTenantAndBinding(t *testing.T) {
 	if kind != "provision_account" || status != "succeeded" || stage != "succeeded" {
 		t.Fatalf("operation record kind=%q status=%q stage=%q", kind, status, stage)
 	}
-
-	// The account is listed by the owner that holds it.
-	page, err := system.client.ListOperatorAccounts(t.Context(), &api.ListOperatorAccountsRpcRequest{
-		Context: provisionCall(session, cookie, "provision-list-1"), Page: 1, PageSize: 20,
-	})
-	if err != nil {
-		t.Fatalf("list accounts: %v", err)
-	}
-	if page.GetTotal() != 1 || len(page.GetItems()) != 1 {
-		t.Fatalf("account page=%+v", page)
-	}
-	item := page.GetItems()[0]
-	if item.GetEmail() != "newcomer@example.test" || item.GetActorId() != actorID ||
-		!item.GetWorkspacePurchaseEnabled() || item.GetDisplayName() != "New Comer" {
-		t.Fatalf("account item=%+v", item)
-	}
 }
 
 // TestProvisionOperatorAccountReplayConvergesAfterAMidwayFailure proves the

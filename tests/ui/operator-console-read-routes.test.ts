@@ -73,13 +73,26 @@ test("operator console reads resolve to the Cloud BFF under CloudIdentity", asyn
 test("a retained build keeps the Control Plane operator reads", async () => {
   const requests = stubSourceEnvelope();
   await getOperatorOverview(undefined, false);
-  await getOperatorAccounts(false);
   await getOperatorAnnouncements(1, 20, undefined, false);
   assert.deepEqual(requests, [
     "/api/operator/overview",
-    "/api/operator/accounts",
     "/api/operator/announcements?page=1&pageSize=20",
   ]);
+});
+
+// The operator account list moved to the CloudIdentity owner over the Gateway
+// directory and the retained Control Plane no longer reads accounts, so the
+// retained build refuses the account read instead of asking for a route that
+// does not exist.
+test("a retained build refuses the operator account reads", async () => {
+  const requests = stubSourceEnvelope();
+  for (const read of [
+    () => getOperatorAccounts(false),
+    () => getOperatorAccountsPage(1, 20, undefined, false),
+  ]) {
+    assert.throws(read, /operator_read_unavailable/, "the retained build must refuse the account read");
+  }
+  assert.deepEqual(requests, [], "a refused account read must not reach the retained owner");
 });
 
 // #996: the last two operator reads must select the BFF route in a Cloud build.
@@ -90,9 +103,7 @@ test("console-read-api.ts keeps no hardcoded operator read path", () => {
   const source = readFileSync(new URL("../../apps/console-ui/src/api/console-read-api.ts", import.meta.url), "utf8");
   // Every live operator GET selects the identity route at build time.
   for (const name of [
-    "getOperatorAccounts",
     "getOperatorOverview",
-    "getOperatorAccountsPage",
     "getOperatorWorkspaces",
     "getOperatorWorkspace",
     "getOperatorAnnouncements",
@@ -108,6 +119,16 @@ test("console-read-api.ts keeps no hardcoded operator read path", () => {
     const body = source.slice(start, end === -1 ? undefined : end);
     assert.doesNotMatch(body, /`\/api\/operator\//, `${name} must not hardcode a retained operator read`);
     assert.match(body, /operatorReadRoute\(cloud\)/, `${name} must select the build-time operator route`);
+  }
+  // The account list is served by the CloudIdentity owner over the Gateway
+  // directory, so it selects the cloud-only route and never the retained one.
+  for (const name of ["getOperatorAccounts", "getOperatorAccountsPage"]) {
+    const start = source.indexOf(`export function ${name}`);
+    assert.notEqual(start, -1, `${name} must exist`);
+    const end = source.indexOf("\nexport ", start + 1);
+    const body = source.slice(start, end === -1 ? undefined : end);
+    assert.doesNotMatch(body, /operatorReadRoute\(cloud\)/, `${name} must not select the retained operator route`);
+    assert.match(body, /operatorAccountsRoute\(cloud\)/, `${name} must select the cloud-only operator route`);
   }
 });
 

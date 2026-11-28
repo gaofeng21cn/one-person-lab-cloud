@@ -484,29 +484,6 @@ func TestOperatorProjectionUsesBatchAPIs(t *testing.T) {
 	}
 	operator := reservedOperatorSessionForTest(t, server)
 
-	accounts := requestWithSession(t, server, operator, http.MethodGet, "/api/operator/accounts?page=1&pageSize=20", "")
-	if accounts.Code != http.StatusOK {
-		t.Fatalf("operator accounts = %d: %s", accounts.Code, accounts.Body.String())
-	}
-	accountData := mapField(decodeOperatorEnvelope(t, accounts), "data")
-	items := accountData["items"].([]any)
-	if accountData["total"] != float64(3) || accountData["page"] != float64(1) || accountData["pageSize"] != float64(20) || len(items) != 3 {
-		t.Fatalf("account page = %#v", accountData)
-	}
-	alpha := operatorAccountItem(items, "acct-alpha")
-	if mapField(mapField(alpha, "wallet"), "data")["usdMicros"] != "10000000" || mapField(mapField(alpha, "usage"), "data")["totalActualCostUsdMicros"] != float64(100) {
-		t.Fatalf("account projection = %#v", alpha)
-	}
-	if keyCount := mapField(alpha, "keyCount"); keyCount["available"] != true || keyCount["data"] != float64(2) {
-		t.Fatalf("authoritative key count = %#v", keyCount)
-	}
-	if mapField(alpha, "wallet")["sourceUpdatedAt"] != operatorProjectionTime.Format(time.RFC3339Nano) {
-		t.Fatalf("wallet source timestamp = %#v", mapField(alpha, "wallet"))
-	}
-	if _, exists := mapField(alpha, "workspaceCount")["sourceUpdatedAt"]; exists {
-		t.Fatalf("workspace count borrowed unrelated source timestamp: %#v", mapField(alpha, "workspaceCount"))
-	}
-
 	workspaces := requestWithSession(t, server, operator, http.MethodGet, "/api/operator/workspaces?page=1&pageSize=20", "")
 	if workspaces.Code != http.StatusOK {
 		t.Fatalf("operator workspaces = %d: %s", workspaces.Code, workspaces.Body.String())
@@ -517,7 +494,10 @@ func TestOperatorProjectionUsesBatchAPIs(t *testing.T) {
 	if mapField(keyUsage, "data")["totalActualCostUsdMicros"] != float64(70) {
 		t.Fatalf("workspace key usage = %#v", workspaceItems[0])
 	}
-	if client.adminUsersCalls != 0 || client.adminUserCalls != 3 || client.batchUsersCalls != 1 || client.batchKeysCalls != 1 || client.singleUserCalls != 0 || len(client.keyCountCalls) != 3 {
+	// The operator account page is retired with the account bridges, so the
+	// remaining workspace projection is the only surface here: it reads the
+	// workspace key usage through the batch API and no per-item user read.
+	if client.adminUsersCalls != 0 || client.adminUserCalls != 0 || client.batchUsersCalls != 0 || client.batchKeysCalls != 1 || client.singleUserCalls != 0 || len(client.keyCountCalls) != 0 {
 		t.Fatalf("projection calls userPages=%d exactUsers=%d batchUsers=%d batchKeys=%d identityUsers=%d keyCounts=%#v", client.adminUsersCalls, client.adminUserCalls, client.batchUsersCalls, client.batchKeysCalls, client.singleUserCalls, client.keyCountCalls)
 	}
 }
@@ -611,171 +591,6 @@ func TestOperatorWorkspaceListAndDetailUseBoundedStoreReads(t *testing.T) {
 	}
 }
 
-func TestOperatorAccountsReadsOnlyMappedCurrentPageUsers(t *testing.T) {
-	store := newMemoryTableStore()
-	seedOperatorProjectionAccount(t, store, "acct-alpha", "usr-alpha", "alpha@example.com", 99)
-	users := make([]clients.Sub2APIUser, 0, 52)
-	for id := int64(1); id <= 50; id++ {
-		users = append(users, operatorProjectionUser(id, fmt.Sprintf("unrelated-%d@example.com", id), "active", 0))
-	}
-	users = append(users, operatorProjectionUser(98, "alpha@example.com.invalid", "active", 0))
-	users = append(users, operatorProjectionUser(99, "alpha@example.com", "active", 10_000_000))
-	client := newOperatorProjectionClient(users...)
-	client.userUsage[99] = clients.Sub2APIBatchUserUsage{UserID: 99, TotalActualCostUSDMicros: 123}
-	server, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, &fakeFabricClient{}, client), store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response := requestWithSession(t, server, reservedOperatorSessionForTest(t, server), http.MethodGet, "/api/operator/accounts", "")
-	if response.Code != http.StatusOK {
-		t.Fatalf("operator accounts status=%d body=%s", response.Code, response.Body.String())
-	}
-	items := mapField(decodeOperatorEnvelope(t, response), "data")["items"].([]any)
-	alpha := operatorAccountItem(items, "acct-alpha")
-	if len(items) != 2 || mapField(alpha, "wallet")["available"] != true || mapField(alpha, "usage")["available"] != true {
-		t.Fatalf("mapped later-page customer=%#v", items)
-	}
-	if client.adminUsersCalls != 0 || client.adminUserCalls != 2 || client.batchUsersCalls != 1 || client.singleUserCalls != 0 {
-		t.Fatalf("calls pages=%d exact=%d batch=%d identity=%d", client.adminUsersCalls, client.adminUserCalls, client.batchUsersCalls, client.singleUserCalls)
-	}
-	exactIDs := append([]int64(nil), client.exactUserIDs...)
-	slices.Sort(exactIDs)
-	if !slices.Equal(exactIDs, []int64{1, 99}) {
-		t.Fatalf("operator account projection read outside current page: %#v", exactIDs)
-	}
-}
-
-func TestOperatorAccountsReadOnlyCurrentPageOwners(t *testing.T) {
-	store := &operatorWorkspacePagingStore{memoryTableStore: newMemoryTableStore()}
-	client := newOperatorProjectionClient(operatorProjectionUser(1, "admin@opl.local", "active", 0))
-	client.userUsage[1] = clients.Sub2APIBatchUserUsage{UserID: 1}
-	for index := 1; index <= 25; index++ {
-		accountID := fmt.Sprintf("acct-%04d", index)
-		userID := fmt.Sprintf("usr-%04d", index)
-		email := fmt.Sprintf("user-%04d@example.com", index)
-		remoteID := int64(1000 + index)
-		seedOperatorProjectionAccount(t, store, accountID, userID, email, remoteID)
-		client.users = append(client.users, operatorProjectionUser(remoteID, email, "active", 0))
-		client.userUsage[remoteID] = clients.Sub2APIBatchUserUsage{UserID: remoteID}
-	}
-	store.accountLists = nil
-	store.accountPages = nil
-	store.userLists = 0
-	store.getUserIDs = nil
-
-	app := &controlPlaneServer{tables: store}
-	data, status, err := app.operatorAccountPage(context.Background(), controlplane.NewService(fakeLedgerClient{}, &fakeFabricClient{}, client), 1, 20)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status != "available" || data["total"] != 26 || len(data["items"].([]any)) != 20 {
-		t.Fatalf("operator account page=%#v", data)
-	}
-	if len(store.accountLists) != 0 || !reflect.DeepEqual(store.accountPages, []tablePageQuery{{Offset: 0, Limit: 20}}) || store.userLists != 0 || len(store.getUserIDs) != 20 {
-		t.Fatalf("operator account owner reads scanned outside page: accountLists=%#v accountPages=%#v userLists=%d getUserIDs=%#v", store.accountLists, store.accountPages, store.userLists, store.getUserIDs)
-	}
-	wantUserIDs := []string{}
-	for index := 1; index <= 20; index++ {
-		wantUserIDs = append(wantUserIDs, fmt.Sprintf("usr-%04d", index))
-	}
-	if !reflect.DeepEqual(store.getUserIDs, wantUserIDs) {
-		t.Fatalf("operator account owner reads=%#v want=%#v", store.getUserIDs, wantUserIDs)
-	}
-}
-
-func TestOperatorAccountsKeepsIdentityWhenMappedWalletHasSubMicroBalance(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		write := func(data any) {
-			w.Header().Set("Content-Type", "application/json")
-			if err := json.NewEncoder(w).Encode(map[string]any{"code": 0, "message": "success", "data": data}); err != nil {
-				t.Errorf("encode Sub2API response: %v", err)
-			}
-		}
-		switch r.URL.Path {
-		case "/api/v1/auth/login":
-			write(map[string]any{"access_token": "admin-access", "refresh_token": "admin-refresh"})
-		case "/api/v1/admin/users/1":
-			write(map[string]any{"id": 1, "email": "admin@opl.local", "balance": 0, "status": "active", "created_at": "2026-07-18T01:02:03Z", "updated_at": "2026-07-19T04:05:06Z"})
-		case "/api/v1/admin/users/41":
-			write(map[string]any{"id": 41, "email": "alpha@example.com", "balance": 10, "status": "active", "created_at": "2026-07-18T01:02:03Z", "updated_at": "2026-07-19T04:05:06Z"})
-		case "/api/v1/admin/users/42":
-			write(map[string]any{"id": 42, "email": "beta@example.com", "balance": json.RawMessage("0.00000001"), "status": "active", "created_at": "2026-07-18T01:02:03Z", "updated_at": "2026-07-19T04:05:06Z"})
-		case "/api/v1/admin/dashboard/users-usage":
-			write(map[string]any{"stats": map[string]any{
-				"1":  map[string]any{"user_id": 1, "today_actual_cost": 0, "total_actual_cost": 0, "by_platform": []any{}},
-				"41": map[string]any{"user_id": 41, "today_actual_cost": 0, "total_actual_cost": 0, "by_platform": []any{}},
-				"42": map[string]any{"user_id": 42, "today_actual_cost": 0, "total_actual_cost": 0, "by_platform": []any{}},
-			}})
-		case "/api/v1/admin/users/1/api-keys", "/api/v1/admin/users/41/api-keys", "/api/v1/admin/users/42/api-keys":
-			write(map[string]any{"items": []any{}, "total": 0, "page": 1, "page_size": 1, "pages": 1})
-		default:
-			t.Errorf("unexpected Sub2API route %s %s", r.Method, r.URL.String())
-		}
-	}))
-	t.Cleanup(upstream.Close)
-	client, err := clients.NewSub2APIHTTPClient(clients.Sub2APIConfig{
-		BaseURL: upstream.URL, AdminEmail: "admin@opl.local", AdminPassword: "admin-secret", Timeout: time.Second,
-	}, upstream.Client())
-	if err != nil {
-		t.Fatal(err)
-	}
-	store := newMemoryTableStore()
-	seedOperatorProjectionAccount(t, store, "acct-alpha", "usr-alpha", "alpha@example.com", 41)
-	seedOperatorProjectionAccount(t, store, "acct-beta", "usr-beta", "beta@example.com", 42)
-	app := &controlPlaneServer{tables: store}
-	data, status, err := app.operatorAccountPage(context.Background(), controlplane.NewService(fakeLedgerClient{}, &fakeFabricClient{}, client), 1, 20)
-	if err != nil {
-		t.Fatalf("operator account projection: %v", err)
-	}
-	items := data["items"].([]any)
-	admin, alpha, beta := operatorAccountItem(items, "acct-admin"), operatorAccountItem(items, "acct-alpha"), operatorAccountItem(items, "acct-beta")
-	if status != "available" || len(items) != 3 || mapField(admin, "wallet")["available"] != true || mapField(alpha, "wallet")["available"] != true ||
-		mapField(beta, "gatewayIdentity")["available"] != true || mapField(beta, "usage")["available"] != true {
-		t.Fatalf("operator account sources status=%s items=%#v", status, items)
-	}
-	wallet := mapField(beta, "wallet")
-	if wallet["status"] != "available" || wallet["available"] != true || mapField(wallet, "data")["usdMicros"] != "0" {
-		t.Fatalf("sub-micro wallet source = %#v", wallet)
-	}
-}
-
-func TestOperatorAccountsFreshInstallIncludesReservedAdmin(t *testing.T) {
-	client := newOperatorProjectionClient(operatorProjectionUser(99, "unrelated@example.com", "active", 0))
-	server, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, &fakeFabricClient{}, client), newMemoryTableStore())
-	if err != nil {
-		t.Fatal(err)
-	}
-	response := requestWithSession(t, server, reservedOperatorSessionForTest(t, server), http.MethodGet, "/api/operator/accounts", "")
-	if response.Code != http.StatusOK {
-		t.Fatalf("operator accounts status=%d body=%s", response.Code, response.Body.String())
-	}
-	envelope := decodeOperatorEnvelope(t, response)
-	data := mapField(envelope, "data")
-	items := data["items"].([]any)
-	admin := operatorAccountItem(items, "acct-admin")
-	if envelope["status"] != "available" || data["total"] != float64(1) || len(items) != 1 || admin["role"] != "admin" || mapField(admin, "wallet")["status"] != "unavailable" || client.adminUsersCalls != 0 || client.adminUserCalls != 1 || client.batchUsersCalls != 1 {
-		t.Fatalf("fresh projection envelope=%#v calls=%d/%d/%d", envelope, client.adminUsersCalls, client.adminUserCalls, client.batchUsersCalls)
-	}
-}
-
-func TestOperatorAccountsIncludesReservedAdminOwner(t *testing.T) {
-	client := newOperatorProjectionClient(operatorProjectionUser(1, "admin@opl.local", "active", 60_000_000))
-	client.userUsage[1] = clients.Sub2APIBatchUserUsage{UserID: 1, TotalActualCostUSDMicros: 123}
-	server, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, &fakeFabricClient{}, client), newMemoryTableStore())
-	if err != nil {
-		t.Fatal(err)
-	}
-	response := requestWithSession(t, server, reservedOperatorSessionForTest(t, server), http.MethodGet, "/api/operator/accounts", "")
-	if response.Code != http.StatusOK {
-		t.Fatalf("operator accounts status=%d body=%s", response.Code, response.Body.String())
-	}
-	data := mapField(decodeOperatorEnvelope(t, response), "data")
-	items := data["items"].([]any)
-	if data["total"] != float64(1) || len(items) != 1 || items[0].(map[string]any)["accountId"] != "acct-admin" || items[0].(map[string]any)["role"] != "admin" {
-		t.Fatalf("reserved admin projection=%#v", data)
-	}
-}
-
 func TestOperatorOverviewRejectsMoneyAggregationOverflow(t *testing.T) {
 	store := newMemoryTableStore()
 	seedOperatorProjectionAccount(t, store, "acct-alpha", "usr-alpha", "alpha@example.com", 41)
@@ -811,92 +626,6 @@ func TestOperatorOverviewRejectsMoneyAggregationOverflow(t *testing.T) {
 	}
 }
 
-func TestOperatorProjectionPartialFailure(t *testing.T) {
-	store := newMemoryTableStore()
-	seedOperatorProjectionAccount(t, store, "acct-alpha", "usr-alpha", "alpha@example.com", 41)
-	client := newOperatorProjectionClient(operatorProjectionUser(41, "alpha@example.com", "active", 10_000_000))
-	client.batchUsersErr = errors.New("batch usage unavailable")
-	server, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, &fakeFabricClient{}, client), store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response := requestWithSession(t, server, reservedOperatorSessionForTest(t, server), http.MethodGet, "/api/operator/accounts", "")
-	if response.Code != http.StatusOK {
-		t.Fatalf("partial projection = %d: %s", response.Code, response.Body.String())
-	}
-	item := operatorAccountItem(mapField(decodeOperatorEnvelope(t, response), "data")["items"].([]any), "acct-alpha")
-	if mapField(item, "wallet")["available"] != true {
-		t.Fatalf("wallet should remain available: %#v", item)
-	}
-	usage := mapField(item, "usage")
-	if usage["status"] != "unavailable" || usage["available"] != false {
-		t.Fatalf("usage source = %#v", usage)
-	}
-	if _, exists := usage["data"]; exists {
-		t.Fatalf("unavailable usage must not contain zero data: %#v", usage)
-	}
-}
-
-func TestOperatorProjectionRemoteReadsAreBoundedToCurrentPage(t *testing.T) {
-	store := newMemoryTableStore()
-	client := newOperatorProjectionClient()
-	for i := int64(1); i <= 5; i++ {
-		accountID, userID := "acct-"+string(rune('a'+i-1)), "usr-"+string(rune('a'+i-1))
-		email := userID + "@example.com"
-		remoteID := 40 + i
-		seedOperatorProjectionAccount(t, store, accountID, userID, email, remoteID)
-		client.users = append(client.users, operatorProjectionUser(remoteID, email, "active", i*1_000_000))
-		client.userUsage[remoteID] = clients.Sub2APIBatchUserUsage{UserID: remoteID}
-	}
-	server, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, &fakeFabricClient{}, client), store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response := requestWithSession(t, server, reservedOperatorSessionForTest(t, server), http.MethodGet, "/api/operator/accounts", "")
-	if response.Code != http.StatusOK {
-		t.Fatalf("five-account projection = %d: %s", response.Code, response.Body.String())
-	}
-	if client.adminUsersCalls != 0 || client.adminUserCalls != 6 || client.batchUsersCalls != 1 || client.singleUserCalls != 0 || len(client.requestedUserIDs) != 1 || len(client.requestedUserIDs[0]) != 6 || client.userReadMax > 4 {
-		t.Fatalf("current-page calls pages=%d exact=%d batch=%d identity=%d ids=%#v maxConcurrent=%d", client.adminUsersCalls, client.adminUserCalls, client.batchUsersCalls, client.singleUserCalls, client.requestedUserIDs, client.userReadMax)
-	}
-}
-
-func TestOperatorAccountUserReadFailureIsIsolated(t *testing.T) {
-	store := newMemoryTableStore()
-	seedOperatorProjectionAccount(t, store, "acct-alpha", "usr-alpha", "alpha@example.com", 41)
-	seedOperatorProjectionAccount(t, store, "acct-beta", "usr-beta", "beta@example.com", 42)
-	client := newOperatorProjectionClient(
-		operatorProjectionUser(1, "admin@opl.local", "active", 0),
-		operatorProjectionUser(41, "alpha@example.com", "active", 10_000_000),
-		operatorProjectionUser(42, "beta@example.com", "active", 20_000_000),
-	)
-	client.adminUserErrs[41] = errors.New("user read unavailable")
-	client.userUsage[1] = clients.Sub2APIBatchUserUsage{UserID: 1}
-	client.userUsage[41] = clients.Sub2APIBatchUserUsage{UserID: 41}
-	client.userUsage[42] = clients.Sub2APIBatchUserUsage{UserID: 42}
-	server, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, &fakeFabricClient{}, client), store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response := requestWithSession(t, server, reservedOperatorSessionForTest(t, server), http.MethodGet, "/api/operator/accounts", "")
-	if response.Code != http.StatusOK {
-		t.Fatalf("partial user read=%d body=%s", response.Code, response.Body.String())
-	}
-	items := mapField(decodeOperatorEnvelope(t, response), "data")["items"].([]any)
-	alpha, beta := operatorAccountItem(items, "acct-alpha"), operatorAccountItem(items, "acct-beta")
-	for _, field := range []string{"gatewayIdentity", "wallet", "usage"} {
-		if envelope := mapField(alpha, field); envelope["available"] != false || envelope["status"] != "unavailable" {
-			t.Fatalf("failed account %s=%#v", field, envelope)
-		}
-	}
-	if mapField(beta, "wallet")["available"] != true || mapField(beta, "usage")["available"] != true {
-		t.Fatalf("healthy account lost sources: %#v", beta)
-	}
-	if client.adminUsersCalls != 0 || client.adminUserCalls != 3 || client.batchUsersCalls != 1 {
-		t.Fatalf("partial read calls pages=%d exact=%d batch=%d", client.adminUsersCalls, client.adminUserCalls, client.batchUsersCalls)
-	}
-}
-
 func TestOperatorProjectionReadSurfaces(t *testing.T) {
 	store := newMemoryTableStore()
 	seedOperatorProjectionAccount(t, store, "acct-alpha", "usr-alpha", "alpha@example.com", 41)
@@ -921,9 +650,11 @@ func TestOperatorProjectionReadSurfaces(t *testing.T) {
 			t.Fatalf("GET %s data = %#v", path, envelope)
 		}
 	}
-	invalid := requestWithSession(t, server, operator, http.MethodGet, "/api/operator/accounts?pageSize=51", "")
-	if invalid.Code != http.StatusBadRequest {
-		t.Fatalf("invalid operator pagination = %d: %s", invalid.Code, invalid.Body.String())
+	// The retained account page is retired with the account bridges: Control
+	// Plane serves no operator account list at all, so the route is gone.
+	retired := requestWithSession(t, server, operator, http.MethodGet, "/api/operator/accounts?page=1&pageSize=20", "")
+	if retired.Code != http.StatusNotFound {
+		t.Fatalf("retired operator accounts route = %d: %s", retired.Code, retired.Body.String())
 	}
 }
 
@@ -1285,63 +1016,6 @@ func TestOperatorOverviewDoesNotCountUnavailableProviderFacts(t *testing.T) {
 	}
 }
 
-func TestOperatorAccountFirstPageRemoteReadsStayBoundedAtScale(t *testing.T) {
-	requestCounts := map[int]int{}
-	for _, accountCount := range []int{100, 1000} {
-		store := newMemoryTableStore()
-		client := newOperatorProjectionClient()
-		client.testSub2APIClient.identities = map[string]clients.Sub2APIIdentity{}
-		for i := 1; i <= accountCount; i++ {
-			accountID := fmt.Sprintf("acct-%04d", i)
-			userID := fmt.Sprintf("usr-%04d", i)
-			email := fmt.Sprintf("user-%04d@example.com", i)
-			remoteID := int64(1000 + i)
-			seedOperatorProjectionAccount(t, store, accountID, userID, email, remoteID)
-			identity := clients.Sub2APIIdentity{ID: remoteID, Email: email, Status: "active"}
-			client.testSub2APIClient.identities[email] = identity
-			client.users = append(client.users, operatorProjectionUser(remoteID, email, "active", int64(i)))
-			client.userUsage[remoteID] = clients.Sub2APIBatchUserUsage{UserID: remoteID}
-			client.keyCounts[remoteID] = 1001
-		}
-		server, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, &fakeFabricClient{}, client), store)
-		if err != nil {
-			t.Fatal(err)
-		}
-		response := requestWithSession(t, server, reservedOperatorSessionForTest(t, server), http.MethodGet, "/api/operator/accounts?page=1&pageSize=20", "")
-		if response.Code != http.StatusOK {
-			t.Fatalf("%d-account first page = %d: %s", accountCount, response.Code, response.Body.String())
-		}
-		data := mapField(decodeOperatorEnvelope(t, response), "data")
-		if data["total"] != float64(accountCount+1) || len(data["items"].([]any)) != 20 {
-			t.Fatalf("%d-account page = %#v", accountCount, data)
-		}
-		for _, ids := range client.requestedUserIDs {
-			if len(ids) > 50 {
-				t.Fatalf("%d-account batch exceeded 50: %d", accountCount, len(ids))
-			}
-		}
-		if client.adminUsersCalls != 0 || client.adminUserCalls != 20 || client.batchUsersCalls != 1 || len(client.requestedUserIDs) != 1 || len(client.requestedUserIDs[0]) != 20 || client.userReadMax > 4 {
-			t.Fatalf("%d-account current-page reads pages=%d exact=%d batch=%d ids=%#v maxConcurrent=%d", accountCount, client.adminUsersCalls, client.adminUserCalls, client.batchUsersCalls, client.requestedUserIDs, client.userReadMax)
-		}
-		exactIDs := append([]int64(nil), client.exactUserIDs...)
-		slices.Sort(exactIDs)
-		wantIDs := []int64{}
-		for id := int64(1001); id <= 1020; id++ {
-			wantIDs = append(wantIDs, id)
-		}
-		if !slices.Equal(exactIDs, wantIDs) {
-			t.Fatalf("%d-account page-outside exact reads: got=%#v want=%#v", accountCount, exactIDs, wantIDs)
-		}
-		if len(client.keyCountCalls) != 20 || mapField(operatorAccountItem(data["items"].([]any), "acct-0001"), "keyCount")["data"] != float64(1001) {
-			t.Fatalf("%d-account key count reads=%#v page=%#v", accountCount, client.keyCountCalls, data)
-		}
-		requestCounts[accountCount] = client.adminUserCalls + client.batchUsersCalls + client.batchKeysCalls + client.singleUserCalls + len(client.keyCountCalls)
-	}
-	if requestCounts[100] != 41 || requestCounts[1000] != 41 {
-		t.Fatalf("first-page remote request count must be fixed and bounded: %#v", requestCounts)
-	}
-}
-
 func TestOperatorWorkspaceFirstPageKeyUsageStaysOneBatchAtScale(t *testing.T) {
 	requestCounts := map[int]int{}
 	for _, workspaceCount := range []int{100, 1000} {
@@ -1374,98 +1048,6 @@ func TestOperatorWorkspaceFirstPageKeyUsageStaysOneBatchAtScale(t *testing.T) {
 	}
 	if requestCounts[100] != 1 || requestCounts[1000] != 1 {
 		t.Fatalf("workspace key usage request count must stay fixed: %#v", requestCounts)
-	}
-}
-
-func TestOperatorAccountKeyCountFailureIsIsolated(t *testing.T) {
-	store := newMemoryTableStore()
-	seedOperatorProjectionAccount(t, store, "acct-alpha", "usr-alpha", "alpha@example.com", 41)
-	seedOperatorProjectionAccount(t, store, "acct-beta", "usr-beta", "beta@example.com", 42)
-	client := newOperatorProjectionClient(
-		operatorProjectionUser(1, "admin@opl.local", "active", 0),
-		operatorProjectionUser(41, "alpha@example.com", "active", 10_000_000),
-		operatorProjectionUser(42, "beta@example.com", "active", 20_000_000),
-	)
-	client.userUsage[1] = clients.Sub2APIBatchUserUsage{UserID: 1}
-	client.userUsage[41] = clients.Sub2APIBatchUserUsage{UserID: 41}
-	client.userUsage[42] = clients.Sub2APIBatchUserUsage{UserID: 42}
-	client.keyCounts[1], client.keyCounts[42] = 1, 7
-	client.keyCountErrs[41] = errors.New("key count unavailable")
-	server, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, &fakeFabricClient{}, client), store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response := requestWithSession(t, server, reservedOperatorSessionForTest(t, server), http.MethodGet, "/api/operator/accounts", "")
-	if response.Code != http.StatusOK {
-		t.Fatalf("partial key count=%d body=%s", response.Code, response.Body.String())
-	}
-	items := mapField(decodeOperatorEnvelope(t, response), "data")["items"].([]any)
-	alpha, beta := operatorAccountItem(items, "acct-alpha"), operatorAccountItem(items, "acct-beta")
-	if source := mapField(alpha, "keyCount"); source["available"] != false || source["status"] != "unavailable" {
-		t.Fatalf("failed key count source = %#v", source)
-	}
-	if source := mapField(beta, "keyCount"); source["available"] != true || source["data"] != float64(7) {
-		t.Fatalf("healthy key count source = %#v", source)
-	}
-}
-
-func TestOperatorAccountPageSharesDeadlineAndBoundsCombinedFanout(t *testing.T) {
-	store := newMemoryTableStore()
-	base := newOperatorProjectionClient()
-	for index := 1; index <= 20; index++ {
-		accountID := fmt.Sprintf("acct-%04d", index)
-		userID := fmt.Sprintf("usr-%04d", index)
-		email := fmt.Sprintf("user-%04d@example.com", index)
-		remoteID := int64(1000 + index)
-		seedOperatorProjectionAccount(t, store, accountID, userID, email, remoteID)
-		base.users = append(base.users, operatorProjectionUser(remoteID, email, "active", int64(index)))
-		base.userUsage[remoteID] = clients.Sub2APIBatchUserUsage{UserID: remoteID}
-		base.keyCounts[remoteID] = index
-	}
-	release := make(chan struct{})
-	client := &boundedOperatorPageSub2API{
-		operatorProjectionSub2API: base,
-		started:                   make(chan string, 40),
-		release:                   release,
-	}
-	t.Cleanup(func() {
-		select {
-		case <-release:
-		default:
-			close(release)
-		}
-	})
-	result := make(chan error, 1)
-	go func() {
-		_, _, err := (&controlPlaneServer{tables: store}).operatorAccountPage(
-			context.Background(), controlplane.NewService(fakeLedgerClient{}, &fakeFabricClient{}, client), 1, 20,
-		)
-		result <- err
-	}()
-	started := make([]string, 0, 8)
-	for len(started) < 8 {
-		select {
-		case kind := <-client.started:
-			started = append(started, kind)
-		case <-time.After(500 * time.Millisecond):
-			close(release)
-			<-result
-			t.Fatalf("current-page reads did not share the bounded fanout: started=%v", started)
-		}
-	}
-	close(release)
-	if err := <-result; err != nil {
-		t.Fatal(err)
-	}
-	client.mu.Lock()
-	defer client.mu.Unlock()
-	if client.userMax != 4 || client.keyMax != 4 || client.maxActive > 8 || client.missingDeadline || len(client.deadlines) != 40 {
-		t.Fatalf("bounded page reads user=%d key=%d total=%d missingDeadline=%t deadlines=%d", client.userMax, client.keyMax, client.maxActive, client.missingDeadline, len(client.deadlines))
-	}
-	for _, deadline := range client.deadlines[1:] {
-		if !deadline.Equal(client.deadlines[0]) {
-			t.Fatalf("page reads used different deadlines: first=%s next=%s", client.deadlines[0], deadline)
-		}
 	}
 }
 

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -14,7 +13,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/services/internal/ownerstore"
@@ -41,8 +39,6 @@ const (
 	maxAccountEmailRunes    = 254
 	maxAccountNameRunes     = 100
 	maxAccountPasswordRunes = 200
-	accountListMaxPageSize  = 50
-	accountListDefaultSize  = 20
 	// accountPollSeconds is the cadence the owner reports for a command whose
 	// external outcome is not confirmed yet.
 	accountPollSeconds = 5
@@ -107,7 +103,6 @@ type customerAccountRow struct {
 	Admission   string
 	Status      string
 	OpenedAt    time.Time
-	CreatedAt   time.Time
 }
 
 // ProvisionOperatorAccount opens one customer account: it creates the Gateway
@@ -758,166 +753,4 @@ func (s *Service) writeCustomerAccount(ctx context.Context, row customerAccountR
 		return status.Error(codes.AlreadyExists, "the customer account is already bound to another Gateway identity")
 	}
 	return nil
-}
-
-// ListOperatorAccounts returns the customer account facts this owner holds,
-// with the Gateway observations it reads natively.
-func (s *Service) ListOperatorAccounts(ctx context.Context, r *api.ListOperatorAccountsRpcRequest) (*api.OperatorAccountPage, error) {
-	if e := peer(ctx, owneridentity.ConsoleBFF); e != nil {
-		return nil, e
-	}
-	c := r.GetContext()
-	if c == nil || c.GetScope().GetPlatform() == nil || strings.TrimSpace(c.GetActorId()) == "" || c.GetSessionId() == "" || strings.TrimSpace(c.GetRequestId()) == "" {
-		return nil, denied()
-	}
-	decision, e := s.AuthorizeAction(ctx, &api.AuthorizationRequest{
-		Scope:         c.GetScope(),
-		ActorId:       c.GetActorId(),
-		SessionId:     c.SessionId,
-		AudienceOwner: api.OwnerEnum_OWNER_ENUM_TENANT,
-		Action:        api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORACCOUNTS,
-		Resource:      &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PLATFORM},
-		RequestId:     c.GetRequestId(),
-	})
-	if e != nil {
-		return nil, e
-	}
-	if decision.GetResult() != api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED {
-		return nil, status.Error(codes.PermissionDenied, "platform administrator authorization required")
-	}
-	page, pageSize := int(r.GetPage()), int(r.GetPageSize())
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 {
-		pageSize = accountListDefaultSize
-	}
-	if pageSize > accountListMaxPageSize {
-		return nil, status.Error(codes.InvalidArgument, "too many accounts requested")
-	}
-	rows, total, e := s.readCustomerAccounts(ctx, page, pageSize)
-	if e != nil {
-		return nil, e
-	}
-	eligibility, e := s.readAccountEligibility(ctx, rows)
-	if e != nil {
-		return nil, e
-	}
-	items := make([]*api.OperatorAccount, 0, len(rows))
-	for _, row := range rows {
-		item := &api.OperatorAccount{
-			AccountId:                row.ID,
-			ActorId:                  row.ActorID,
-			Email:                    row.Email,
-			DisplayName:              row.DisplayName,
-			Status:                   row.Status,
-			WorkspacePurchaseEnabled: eligibility[row.ActorID],
-			OpenedAt:                 timestamppb.New(row.OpenedAt),
-			CreatedAt:                timestamppb.New(row.CreatedAt),
-		}
-		s.readAccountGatewayFacts(ctx, item, row.ActorID)
-		items = append(items, item)
-	}
-	return &api.OperatorAccountPage{Items: items, Total: int32(total), Page: int32(page), PageSize: int32(pageSize)}, nil
-}
-
-// readCustomerAccounts reads one page of account facts.
-func (s *Service) readCustomerAccounts(ctx context.Context, page, pageSize int) ([]customerAccountRow, int64, error) {
-	var total int64
-	if e := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM tenant.customer_accounts`).Scan(&total); e != nil {
-		return nil, 0, persistence(e)
-	}
-	rows, e := s.DB.QueryContext(ctx, `
-		SELECT id,actor_id,email,display_name,admission,status,opened_at,created_at
-		FROM tenant.customer_accounts ORDER BY opened_at DESC, id DESC LIMIT $1 OFFSET $2`, pageSize, (page-1)*pageSize)
-	if e != nil {
-		return nil, 0, persistence(e)
-	}
-	defer rows.Close()
-	out := make([]customerAccountRow, 0, pageSize)
-	for rows.Next() {
-		var row customerAccountRow
-		var openedAt, createdAt time.Time
-		if e := rows.Scan(&row.ID, &row.ActorID, &row.Email, &row.DisplayName, &row.Admission, &row.Status, &openedAt, &createdAt); e != nil {
-			return nil, 0, persistence(e)
-		}
-		row.OpenedAt = openedAt
-		row.CreatedAt = createdAt
-		out = append(out, row)
-	}
-	if e := rows.Err(); e != nil {
-		return nil, 0, persistence(e)
-	}
-	return out, total, nil
-}
-
-// readAccountEligibility reads the Workspace purchase policy of the listed
-// accounts. A missing row is not eligible.
-func (s *Service) readAccountEligibility(ctx context.Context, rows []customerAccountRow) (map[string]bool, error) {
-	out := make(map[string]bool, len(rows))
-	if len(rows) == 0 {
-		return out, nil
-	}
-	placeholders := make([]string, 0, len(rows))
-	args := make([]any, 0, len(rows))
-	for _, row := range rows {
-		args = append(args, row.ActorID)
-		placeholders = append(placeholders, fmt.Sprintf("$%d", len(args)))
-		out[row.ActorID] = s.admins[row.ActorID]
-	}
-	query := `SELECT actor_id,workspace_purchase_enabled FROM tenant.workspace_purchase_eligibility WHERE actor_id IN (` + strings.Join(placeholders, ",") + `)`
-	queryRows, e := s.DB.QueryContext(ctx, query, args...)
-	if e != nil {
-		return nil, persistence(e)
-	}
-	defer queryRows.Close()
-	for queryRows.Next() {
-		var actorID string
-		var enabled bool
-		if e := queryRows.Scan(&actorID, &enabled); e != nil {
-			return nil, persistence(e)
-		}
-		out[actorID] = enabled
-	}
-	if e := queryRows.Err(); e != nil {
-		return nil, persistence(e)
-	}
-	return out, nil
-}
-
-// readAccountGatewayFacts reads the Gateway observations of one account. A
-// fact the Gateway cannot answer stays absent instead of being invented.
-func (s *Service) readAccountGatewayFacts(ctx context.Context, item *api.OperatorAccount, actorID string) {
-	if s.Gateway == nil {
-		return
-	}
-	identity, e := s.Gateway.directoryIdentity(ctx, actorID)
-	if e == nil {
-		item.GatewayEmail = proto.String(identity.Email)
-		item.GatewayStatus = proto.String(identity.Status)
-	}
-	if balance, e := s.Gateway.Balance(ctx, actorID); e == nil {
-		micros := balance.USDMicros
-		item.BalanceUsdMicros = &micros
-	}
-	if count, e := s.Gateway.KeyCount(ctx, actorID); e == nil {
-		value := int32(count)
-		item.KeyCount = &value
-	}
-	usage, e := s.Gateway.BatchUsersUsage(ctx, []string{actorID})
-	if e == nil {
-		if entry, ok := usage[actorID]; ok {
-			today := entry.TodayActualCostUSDMicros
-			total := entry.TotalActualCostUSDMicros
-			item.TodayActualCostUsdMicros = &today
-			item.TotalActualCostUsdMicros = &total
-			for _, platform := range entry.ByPlatform {
-				item.PlatformUsage = append(item.PlatformUsage, &api.GatewayPlatformUsage{
-					Platform:                 platform.Platform,
-					TodayActualCostUsdMicros: platform.TodayActualCostUSDMicros,
-					TotalActualCostUsdMicros: platform.TotalActualCostUSDMicros,
-				})
-			}
-		}
-	}
 }

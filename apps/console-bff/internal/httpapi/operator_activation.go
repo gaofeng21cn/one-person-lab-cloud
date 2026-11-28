@@ -7,10 +7,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"opl-cloud/apps/console-bff/internal/clients"
 	api "opl-cloud/packages/contracts/go/api"
@@ -158,24 +156,6 @@ func decodeActivationInput(w http.ResponseWriter, r *http.Request) (activationIn
 		return activationInput{}, false
 	}
 	return input, true
-}
-
-// activationCall is the platform-scoped call the operator's own session already
-// carries. The request id and the session are the operator's; only the scope and
-// the derived idempotency key are set here.
-func activationCall(caller Caller, requestID string, scope *api.AuthorizationScope, key string) *api.CallContext {
-	call := &api.CallContext{
-		ActorId: caller.Session.GetActorId(), SessionId: proto.String(caller.SessionID),
-		Scope: scope, RequestId: requestID, DeadlineAt: timestamppb.New(time.Now().Add(30 * time.Second)),
-	}
-	if key != "" {
-		call.IdempotencyKey = key
-	}
-	return call
-}
-
-func platformScope() *api.AuthorizationScope {
-	return &api.AuthorizationScope{Scope: &api.AuthorizationScope_Platform{Platform: &api.PlatformScope{}}}
 }
 
 func stringValueOf(value *string) string {
