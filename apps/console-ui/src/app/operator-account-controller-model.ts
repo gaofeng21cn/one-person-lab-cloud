@@ -1,6 +1,7 @@
 import type {
   OperatorAccountCommandDTO,
   OperatorAccountDTO,
+  OperatorPlatformAdminCommandDTO,
   OperatorProvisionAccountCommandDTO,
   OperatorWorkspacePurchaseEligibilityCommandDTO,
   ProvisionAccountRequest
@@ -20,6 +21,15 @@ export interface OperatorAccountIdentity {
 
 function normalizedEmail(value: string) {
   return value.trim().toLowerCase();
+}
+
+export function isOperatorPlatformAdmin(account: Pick<OperatorAccountDTO, "accountId" | "role" | "platformAdminEnabled">) {
+  return Boolean(account.platformAdminEnabled) || account.role === "admin" || account.accountId === "acct-admin";
+}
+
+export function isOperatorBootstrapAdmin(account: Pick<OperatorAccountDTO, "accountId" | "isBootstrapAdmin">) {
+  if (typeof account.isBootstrapAdmin === "boolean") return account.isBootstrapAdmin;
+  return account.accountId === "acct-admin";
 }
 
 export function expectedWorkspacePurchaseEligibility(input: ProvisionAccountRequest) {
@@ -93,17 +103,33 @@ export function eligibilityCommandSucceeded(
     && command.workspacePurchaseEnabled === enabled;
 }
 
+export function platformAdminCommandSucceeded(
+  command: OperatorPlatformAdminCommandDTO,
+  accountId: string,
+  enabled: boolean
+) {
+  return accountCommandSucceeded(command, accountId)
+    && command.platformAdminEnabled === enabled;
+}
+
 export function provisionReadbackMatches(
   account: OperatorAccountDTO,
   command: OperatorProvisionAccountCommandDTO,
   input: ProvisionAccountRequest
 ) {
   const email = normalizedEmail(input.email);
-  return account.accountId === command.accountId
+  const gatewayFirstProjection = Boolean(command.sub2apiUserId)
+    && !account.consoleUserId
+    && account.sub2apiUserId === command.sub2apiUserId
+    && account.accountId === command.sub2apiUserId;
+  const identityMatches = gatewayFirstProjection
+    ? (account.role === "user" || account.role === "owner" || account.role === "admin")
+    : account.accountId === command.accountId
+      && account.role === "owner"
+      && Boolean(account.consoleUserId);
+  return identityMatches
     && normalizedEmail(account.email) === email
     && account.status === "active"
-    && account.role === "owner"
-    && Boolean(account.consoleUserId)
     && Boolean(account.sub2apiUserId)
     && account.workspacePurchaseEnabled === expectedWorkspacePurchaseEligibility(input)
     && account.gatewayIdentity.available

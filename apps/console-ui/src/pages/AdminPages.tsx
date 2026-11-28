@@ -20,6 +20,7 @@ import {
 import { useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 
 import type { OperatorAnnouncementController, OperatorResourceReadController } from "../app/console-controller-types.ts";
+import { isOperatorBootstrapAdmin, isOperatorPlatformAdmin } from "../app/operator-account-controller-model.ts";
 import type { AdminConsoleRoute } from "../app/console-router.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
 import { cloudIdentity } from "../app/console-identity.ts";
@@ -440,7 +441,7 @@ function OperatorAccountMobileCard({ account, selected, onInspect }: {
   selected: boolean;
   onInspect: (account: OperatorAccountDTO) => void;
 }) {
-  const isAdmin = account.role === "admin" || account.accountId === "acct-admin";
+  const isAdmin = isOperatorPlatformAdmin(account);
   return (
     <article
       className={`operator-object-card operator-account-mobile-card ${selected ? "is-selected" : ""}`}
@@ -516,9 +517,9 @@ function ProvisionAccountModal({ controller, onClose, open }: { controller: Cons
           <div className="inline-notice"><span>账户映射已完成权威读回</span></div>
           <dl className="data-list">
             <div><dt>登录邮箱</dt><dd>{submittedEmail}</dd></div>
-            <div><dt>Account ID</dt><dd>{account?.accountId || "暂不可用"}</dd></div>
-            <div><dt>Console User ID</dt><dd>{account?.consoleUserId || "暂不可用"}</dd></div>
-            <div><dt>Sub2API User ID</dt><dd>{account?.gatewayIdentity.available ? account.gatewayIdentity.data.userId : "暂不可用"}</dd></div>
+            {account?.consoleUserId ? <div><dt>Account ID</dt><dd>{account.accountId}</dd></div> : null}
+            {account?.consoleUserId ? <div><dt>Console User ID</dt><dd>{account.consoleUserId}</dd></div> : null}
+            <div><dt>Sub2API User ID</dt><dd>{account?.gatewayIdentity.available ? account.gatewayIdentity.data.userId : account?.sub2apiUserId || "暂不可用"}</dd></div>
             <div><dt>operation ID</dt><dd>{controller.operatorAccounts.provisionOperation?.operationId || "暂不可用"}</dd></div>
             <div><dt>状态</dt><dd>{controller.operatorAccounts.provisionOperation?.status || "暂不可用"}</dd></div>
             <div><dt>phase</dt><dd>{controller.operatorAccounts.provisionOperation?.phase || "暂不可用"}</dd></div>
@@ -570,7 +571,15 @@ function AccountInspectorDrawer({ account, controller, onClose, onOpenWallet }: 
   }, [account, onClose]);
 
   if (!account) return null;
-  const reservedAdmin = account.accountId === "acct-admin" || account.role === "admin";
+  const isAdmin = isOperatorPlatformAdmin(account);
+  const bootstrapAdmin = isOperatorBootstrapAdmin(account);
+  const selfAccount = Boolean(
+    controller.session && (
+      (account.sub2apiUserId && account.sub2apiUserId === controller.session.user.id)
+      || account.email.toLowerCase() === controller.session.user.email.toLowerCase()
+    )
+  );
+  const hasLegacyMapping = Boolean(account.consoleUserId) || (Boolean(account.accountId) && account.accountId !== account.sub2apiUserId);
   const busy = controller.operatorAccounts.busyAccountIds.includes(account.accountId);
   const active = account.status === "active";
 
@@ -580,13 +589,13 @@ function AccountInspectorDrawer({ account, controller, onClose, onOpenWallet }: 
       <aside aria-label="用户详情与权限" className="account-inspector-drawer" data-slide="A-ACC-03">
         <header className="account-inspector-drawer__header">
           <div className="account-inspector-drawer__identity">
-            <span aria-hidden="true" className={`account-avatar account-avatar--lg ${reservedAdmin ? "account-avatar--admin" : ""}`}>
+            <span aria-hidden="true" className={`account-avatar account-avatar--lg ${isAdmin ? "account-avatar--admin" : ""}`}>
               {(account.email[0] || "?").toUpperCase()}
             </span>
             <div className="account-inspector-drawer__title">
               <strong>{account.email}</strong>
               <span className="account-identity-meta">
-                <span className={`account-role-pill ${reservedAdmin ? "account-role-pill--admin" : ""}`}>{reservedAdmin ? "管理员" : "普通用户"}</span>
+                <span className={`account-role-pill ${isAdmin ? "account-role-pill--admin" : ""}`}>{bootstrapAdmin ? "引导根管理员" : isAdmin ? "管理员" : "普通用户"}</span>
                 <code className="account-subject-chip">Sub2API #{account.sub2apiUserId}</code>
                 <Badge color={statusTone(account.status)}>
                   <span aria-hidden="true" className={`ss-dot ${active ? "ss-dot--ok" : "ss-dot--bad"}`} />
@@ -610,9 +619,30 @@ function AccountInspectorDrawer({ account, controller, onClose, onOpenWallet }: 
             <div className="inspector-capability-row">
               <div className="inspector-capability-row__copy">
                 <strong>平台角色</strong>
-                <small>{reservedAdmin ? "保留管理员为普通 Gateway 账户附加平台管理页面与权限。" : "普通 OPL Gateway 用户，可按需叠加平台管理角色。"}</small>
+                <small>{bootstrapAdmin ? "引导根管理员（环境配置固定，不可撤销）。" : isAdmin ? "委派平台管理员：拥有普通 Gateway 账户能力与平台管理界面权限。" : "普通 OPL Gateway 用户，可按需叠加平台管理角色。"}</small>
               </div>
-              <span className={`account-role-pill ${reservedAdmin ? "account-role-pill--admin" : ""}`}>{reservedAdmin ? "管理员" : "普通用户"}</span>
+              <div className="inspector-capability-row__control">
+                <span className={`account-role-pill ${isAdmin ? "account-role-pill--admin" : ""}`}>{bootstrapAdmin ? "引导根管理员" : isAdmin ? "管理员" : "普通用户"}</span>
+                {bootstrapAdmin
+                  ? <span className="account-read-only">根管理员不可撤销</span>
+                  : cloudIdentity
+                    ? isAdmin && selfAccount
+                      ? <span className="account-read-only">不可撤销当前登录账户</span>
+                      : active
+                        ? <Button
+                            className="account-permission-toggle"
+                            color={isAdmin ? "danger" : "secondary"}
+                            disabled={busy}
+                            onClick={() => void controller.operatorAccounts.setPlatformAdmin(account.accountId, !isAdmin)}
+                            size="sm"
+                            variant="outline"
+                          >
+                            {isAdmin ? <ShieldOff aria-hidden size={14} /> : <ShieldCheck aria-hidden size={14} />}
+                            {isAdmin ? "撤销管理员" : "授予管理员"}
+                          </Button>
+                        : <span className="account-read-only">账户已停用</span>
+                    : null}
+              </div>
             </div>
 
             <div className="inspector-capability-row">
@@ -636,7 +666,7 @@ function AccountInspectorDrawer({ account, controller, onClose, onOpenWallet }: 
                   <span aria-hidden="true" className={`ss-dot ${account.workspacePurchaseEnabled ? "ss-dot--ok" : "ss-dot--muted"}`} />
                   {account.workspacePurchaseEnabled ? "可新购 Workspace" : "不可新购 Workspace"}
                 </Badge>
-                {reservedAdmin
+                {bootstrapAdmin
                   ? <span className="account-read-only">默认拥有平台权限</span>
                   : active
                     ? <Button
@@ -655,7 +685,7 @@ function AccountInspectorDrawer({ account, controller, onClose, onOpenWallet }: 
             </div>
 
             <p className="inspector-roadmap-note">
-              OPL Link Relay 转发准入、私有软件（如 occ）白名单与管理员角色委派接入后端后，将统一在此管理。
+              OPL Link Relay 转发准入与私有软件（如 occ）白名单接入后，将统一在此管理。
             </p>
           </section>
 
@@ -675,7 +705,7 @@ function AccountInspectorDrawer({ account, controller, onClose, onOpenWallet }: 
                   <WalletCards aria-hidden size={14} />
                   余额操作
                 </Button>
-                {!reservedAdmin && active ? (
+                {!bootstrapAdmin && active ? (
                   <Button color="danger" disabled={busy} onClick={() => void controller.operatorAccounts.disable(account.accountId)} size="sm" variant="outline">
                     <Ban aria-hidden size={14} />
                     停用
@@ -691,12 +721,20 @@ function AccountInspectorDrawer({ account, controller, onClose, onOpenWallet }: 
               <ChevronDown aria-hidden size={15} />
             </summary>
             <div className="inspector-tech-details__content">
-              <section className="data-section"><h4>Control Plane 映射</h4><dl className="data-list">
-                <div><dt>Account</dt><dd>{account.accountId}</dd></div>
-                <div><dt>Console User</dt><dd>{account.consoleUserId}</dd></div>
-                <div><dt>Sub2API User 记录</dt><dd>{account.sub2apiUserId}</dd></div>
-                <div><dt>角色</dt><dd>{account.role}</dd></div>
-              </dl></section>
+              {hasLegacyMapping ? (
+                <section className="data-section"><h4>Control Plane 映射</h4><dl className="data-list">
+                  <div><dt>Account</dt><dd>{account.accountId}</dd></div>
+                  {account.consoleUserId ? <div><dt>Console User</dt><dd>{account.consoleUserId}</dd></div> : null}
+                  <div><dt>Sub2API User 记录</dt><dd>{account.sub2apiUserId}</dd></div>
+                  <div><dt>角色</dt><dd>{account.role}</dd></div>
+                </dl></section>
+              ) : (
+                <section className="data-section"><h4>OPL Gateway 主体映射</h4><dl className="data-list">
+                  <div><dt>Gateway Subject ID</dt><dd>{account.sub2apiUserId}</dd></div>
+                  <div><dt>平台角色</dt><dd>{bootstrapAdmin ? "引导根管理员" : isAdmin ? "委派管理员" : "普通用户"}</dd></div>
+                  <div><dt>来源</dt><dd>{account.gatewayIdentity.source}</dd></div>
+                </dl></section>
+              )}
               <section className="data-section"><h4>Gateway 与 Workspace 权威读回</h4><dl className="data-list">
                 <div><dt>Sub2API 实时映射</dt><dd><SourceValue source={account.gatewayIdentity}>{(data) => `${data.userId} · ${data.email} · ${data.status}`}</SourceValue></dd></div>
                 <div><dt>钱包余额</dt><dd><SourceValue source={account.wallet}>{(data) => `${formatUsdMicros(data.usdMicros)} · ${data.status}`}</SourceValue></dd></div>
@@ -830,6 +868,9 @@ function AccountsPage({ controller }: { controller: ConsoleController }) {
   const resetFilters = () => {
     setSearchQuery("");
     setPermissionFilter("all");
+    if (cloudIdentity && accountController.searchQuery) {
+      void accountController.searchAccounts("");
+    }
   };
   return (
     <>
@@ -842,15 +883,14 @@ function AccountsPage({ controller }: { controller: ConsoleController }) {
               <Button hidden={!cloudIdentity} color="primary" onClick={() => setDialog("provision")}><Plus aria-hidden size={16} />开通用户</Button>
             </div>
           </div>
-      <SourceState empty={accounts.length === 0} emptyTitle="暂无用户" error={accountController.accounts.error} loading={accountController.accounts.loading} onRetry={() => void accountController.refresh()} source={accountController.accounts.value} unavailableTitle="账户数据暂不可用">
+      <SourceState empty={accounts.length === 0 && !accountController.searchQuery} emptyTitle="暂无用户" error={accountController.accounts.error} loading={accountController.accounts.loading} onRetry={() => void accountController.refresh()} source={accountController.accounts.value} unavailableTitle="账户数据暂不可用">
         {(data) => {
           const items = data.items;
-          const isReservedAdmin = (item: OperatorAccountDTO) => item.accountId === "acct-admin" || item.role === "admin";
           const activeCount = items.filter((item) => item.status === "active").length;
           const disabledCount = items.filter((item) => item.status !== "active").length;
           const eligibleCount = items.filter((item) => item.workspacePurchaseEnabled).length;
-          const restrictedCount = items.filter((item) => !item.workspacePurchaseEnabled && item.status === "active" && !isReservedAdmin(item)).length;
-          const adminCount = items.filter(isReservedAdmin).length;
+          const restrictedCount = items.filter((item) => !item.workspacePurchaseEnabled && item.status === "active" && !isOperatorPlatformAdmin(item)).length;
+          const adminCount = items.filter(isOperatorPlatformAdmin).length;
           const normalizedQuery = searchQuery.trim().toLowerCase();
           const filterOptions: Array<{ id: PermissionFilter; label: string; count: number }> = [
             { id: "all", label: "全部", count: items.length },
@@ -861,8 +901,8 @@ function AccountsPage({ controller }: { controller: ConsoleController }) {
           ];
           const filteredItems = items.filter((item) => {
             if (permissionFilter === "eligible" && !item.workspacePurchaseEnabled) return false;
-            if (permissionFilter === "restricted" && (item.workspacePurchaseEnabled || item.status !== "active" || isReservedAdmin(item))) return false;
-            if (permissionFilter === "admin" && !isReservedAdmin(item)) return false;
+            if (permissionFilter === "restricted" && (item.workspacePurchaseEnabled || item.status !== "active" || isOperatorPlatformAdmin(item))) return false;
+            if (permissionFilter === "admin" && !isOperatorPlatformAdmin(item)) return false;
             if (permissionFilter === "disabled" && item.status === "active") return false;
             if (!normalizedQuery) return true;
             return [item.email, item.accountId, item.consoleUserId, item.sub2apiUserId]
@@ -893,23 +933,37 @@ function AccountsPage({ controller }: { controller: ConsoleController }) {
               </div>
             </div>
 
-            {items.length > 0 ? (
+            {items.length > 0 || accountController.searchQuery ? (
               <div className="operator-accounts-toolbar">
-                <div className="operator-accounts-search">
+                <form
+                  className="operator-accounts-search"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (cloudIdentity) void accountController.searchAccounts(searchQuery);
+                  }}
+                >
                   <Search aria-hidden size={15} />
                   <input
                     aria-label="筛选当前页用户"
                     onChange={(event) => setSearchQuery(event.currentTarget.value)}
-                    placeholder="搜索邮箱、Gateway ID 或 Account ID…"
+                    placeholder={cloudIdentity ? "搜索邮箱或 Gateway ID（回车查全库）…" : "搜索邮箱、Gateway ID 或 Account ID…"}
                     type="search"
                     value={searchQuery}
                   />
                   {searchQuery ? (
-                    <button aria-label="清除搜索" className="operator-accounts-search__clear" onClick={() => setSearchQuery("")} type="button">
+                    <button
+                      aria-label="清除搜索"
+                      className="operator-accounts-search__clear"
+                      onClick={() => {
+                        setSearchQuery("");
+                        if (cloudIdentity && accountController.searchQuery) void accountController.searchAccounts("");
+                      }}
+                      type="button"
+                    >
                       <X aria-hidden size={14} />
                     </button>
                   ) : null}
-                </div>
+                </form>
                 <div aria-label="按权限与状态筛选" className="ss-filter-bar" role="group">
                   {filterOptions.map((option) => (
                     <button
@@ -929,12 +983,12 @@ function AccountsPage({ controller }: { controller: ConsoleController }) {
 
             {filteredItems.length === 0 ? (
               <div className="operator-accounts-filter-empty">
-                <span>当前页没有匹配筛选条件的用户</span>
+                <span>{accountController.searchQuery ? "全量用户检索无匹配结果" : "当前页没有匹配筛选条件的用户"}</span>
                 <Button onClick={resetFilters} size="sm" variant="outline">重置筛选</Button>
               </div>
             ) : <>
               <div aria-label="用户与权限列表" className="table-wrap operator-account-table" role="region" tabIndex={0}><table className="ops-table"><thead><tr><th>用户</th><th>已开放能力</th><th>余额与消费</th><th>状态</th><th>操作</th></tr></thead><tbody>{filteredItems.map((account) => {
-                const isAdmin = isReservedAdmin(account);
+                const isAdmin = isOperatorPlatformAdmin(account);
                 const selected = inspectedAccount?.accountId === account.accountId;
                 const active = account.status === "active";
                 return (

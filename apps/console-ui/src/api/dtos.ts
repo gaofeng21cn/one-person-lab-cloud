@@ -870,12 +870,15 @@ export interface BillingReceiptPageDTO {
 
 export interface OperatorAccount {
   accountId: string;
+  actorId?: string;
   consoleUserId: string;
   role: string;
   sub2apiUserId: string;
   email: string;
   status: "active" | "disabled";
   workspacePurchaseEnabled: boolean;
+  platformAdminEnabled?: boolean;
+  isBootstrapAdmin?: boolean;
 }
 
 export interface OperatorAccountsData {
@@ -920,11 +923,17 @@ export interface OperatorAccountCommandDTO extends OperationStatusDTO {
 }
 
 export interface OperatorProvisionAccountCommandDTO extends OperatorAccountCommandDTO {
+  sub2apiUserId?: string;
   workspacePurchaseEnabled: boolean;
 }
 
 export interface OperatorWorkspacePurchaseEligibilityCommandDTO extends OperatorAccountCommandDTO {
   workspacePurchaseEnabled: boolean;
+}
+
+export interface OperatorPlatformAdminCommandDTO extends OperatorAccountCommandDTO {
+  platformAdminEnabled: boolean;
+  isBootstrapAdmin: boolean;
 }
 
 export interface ResourceFact {

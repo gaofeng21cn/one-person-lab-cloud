@@ -28,7 +28,6 @@ func TestOperatorRoutesAuthorizePlatformOperatorBeforeOwnerRead(t *testing.T) {
 		decision: allowOperatorDecision("operator-1"),
 	}
 	paths := map[string]string{
-		"/internal/cloud/operator/accounts":                           "control-plane+sub2api",
 		"/internal/cloud/operator/announcements":                      "control-plane",
 		"/internal/cloud/operator/health":                             "control-plane",
 		"/internal/cloud/operator/runtime-observations":               "control-plane+fabric",
@@ -73,7 +72,6 @@ func TestOperatorRoutesAuthorizePlatformOperatorBeforeOwnerRead(t *testing.T) {
 	handler := NewServer(readers, identity).Handler()
 
 	for _, route := range []string{
-		"/api/v2/operator/accounts?page=2&pageSize=3",
 		"/api/v2/operator/announcements?page=1&pageSize=20",
 		"/api/v2/operator/health",
 		"/api/v2/operator/runtime-observations",
@@ -210,6 +208,7 @@ func TestOperatorRoutesRejectUndeclaredSelectors(t *testing.T) {
 		"/api/v2/operator/accounts?pageSize=51",
 		"/api/v2/operator/accounts?page=1&page=2",
 		"/api/v2/operator/accounts?page=1&pageSize=20&actorId=other",
+		"/api/v2/operator/accounts?search=a&search=b",
 		"/api/v2/operator/announcements?accountId=acct-other",
 		"/api/v2/operator/announcements?page=1&page=2",
 	} {

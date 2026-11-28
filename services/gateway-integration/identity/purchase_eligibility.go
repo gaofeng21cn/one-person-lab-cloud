@@ -25,7 +25,7 @@ func (s *Service) readActorPurchaseEligibility(ctx context.Context, actorID stri
 	var enabled bool
 	err := s.DB.QueryRowContext(ctx, `SELECT workspace_purchase_enabled FROM tenant.workspace_purchase_eligibility WHERE actor_id=$1`, actorID).Scan(&enabled)
 	if errors.Is(err, sql.ErrNoRows) {
-		return s.admins[actorID], nil
+		return s.isPlatformAdmin(ctx, actorID)
 	}
 	if err != nil {
 		return false, persistence(err)
@@ -243,11 +243,15 @@ func (s *Service) ListWorkspacePurchaseEligibility(ctx context.Context, r *api.L
 	if err := rows.Err(); err != nil {
 		return nil, persistence(err)
 	}
+	adminStates, err := s.platformAdminStates(ctx, unique)
+	if err != nil {
+		return nil, err
+	}
 	items := make([]*api.WorkspacePurchaseEligibilityReadback, 0, len(unique))
 	for _, actorID := range unique {
 		enabled, found := stored[actorID]
 		if !found {
-			enabled = s.admins[actorID]
+			enabled = adminStates[actorID]
 		}
 		items = append(items, &api.WorkspacePurchaseEligibilityReadback{
 			ActorId:                  actorID,
