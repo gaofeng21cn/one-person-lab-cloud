@@ -64,7 +64,7 @@ func TestGeneratedPolicyCoversAssignedOwners(t *testing.T) {
 		api.OwnerEnum_OWNER_ENUM_SERVE:            7,
 		api.OwnerEnum_OWNER_ENUM_WORKSPACE:        20,
 		api.OwnerEnum_OWNER_ENUM_FABRIC:           1,
-		api.OwnerEnum_OWNER_ENUM_GATEWAY:          10,
+		api.OwnerEnum_OWNER_ENUM_GATEWAY:          11,
 		api.OwnerEnum_OWNER_ENUM_LEDGER:           4,
 	} {
 		if counts[owner] != want {
@@ -128,6 +128,19 @@ func TestGeneratedPolicyAudienceAndRoles(t *testing.T) {
 		policy := policyFor(t, action)
 		if policy.owner != api.OwnerEnum_OWNER_ENUM_TENANT || len(policy.roles) != 1 || policy.roles[0] != "platform_admin" {
 			t.Fatalf("%s is %v/%v, expected the tenant platform administrator", action, policy.owner, policy.roles)
+		}
+	}
+	// The administrator's balance change is the Gateway owner's money command, so
+	// its audience is the Gateway owner and only the platform administrator. A
+	// tenant role must never inherit it, or one workspace could move another
+	// tenant's spendable balance.
+	adjustment := policyFor(t, "ADJUSTTENANTWALLET")
+	if adjustment.owner != api.OwnerEnum_OWNER_ENUM_GATEWAY || len(adjustment.roles) != 1 || adjustment.roles[0] != "platform_admin" {
+		t.Fatalf("ADJUSTTENANTWALLET is %v/%v, expected the Gateway platform administrator", adjustment.owner, adjustment.roles)
+	}
+	for _, role := range []string{"member", "admin", "owner"} {
+		if permitted(adjustment, role, false) {
+			t.Fatalf("tenant role %s may change a tenant's balance", role)
 		}
 	}
 	// The invitee-bound operation is deliberately not a grantable role row.
