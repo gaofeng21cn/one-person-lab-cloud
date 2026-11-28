@@ -111,6 +111,15 @@ Git log.
   Console `/operator` with audit + idempotency + last-admin lockout protection,
   keeping `OPL_PLATFORM_ADMIN_SUBJECTS` as immutable bootstrap/break-glass root
   admins) ([software-package-entitlements.md](software-package-entitlements.md)).
+- **Unified Companion Service Entitlements & Endpoint Discovery Ownership**:
+  `CloudIdentity` (`opl_tenant`, `tenant.service_entitlements`) is the single
+  authority for companion-service admission (`allowlist_only` or
+  `active_gateway_default_with_overrides`), per-instance service-origin
+  dispatch, and short-lived Ed25519 `service-grant` token issuance over
+  `POST /api/v2/client/service-grant` and `/.well-known/opl-grant-jwks.json`,
+  allowing companion services to verify grants offline and isolate tenants by
+  immutable numeric `actor_id` without static email allowlists or client-side
+  endpoint configuration ([service-entitlements-and-discovery.md](service-entitlements-and-discovery.md)).
 - **Personal Gateway Key Write Ownership**: `Gateway Integration` owns the native
   personal Gateway Key create/update/reveal/revoke capability over the delegated
   Sub2API authority, projecting the same `PersonalGatewayKey` fact the personal

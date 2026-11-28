@@ -254,14 +254,17 @@ export function WorkspaceLaunchPage({
   }
 
   return (
-    <section className="workspace-launch-page" data-slide="C-WS-02" data-testid="workspace-launch-retired">
+    <section className="workspace-launch-page workspace-launch-page--retired" data-slide="C-WS-02" data-testid="workspace-launch-retired">
       <Button className="workspace-launch-back" onClick={onBack} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />返回工作空间列表</Button>
-      <Alert
-        color="warning"
-        indicator={<AlertCircle size={18} />}
-        title="该购买入口已停用"
-        description="请使用新版 Cloud 控制台购买工作空间。历史订单仍由原服务保留，可通过历史工作空间和运维页面查看与核对。"
-      />
+      <section className="panel workspace-launch-retired-panel">
+        <div className="panel-title"><div><h2>新建工作空间</h2><span>历史入口状态说明</span></div></div>
+        <div className="source-notice" data-notice-kind="info" role="status">
+          <span className="source-notice__icon" aria-hidden="true"><AlertCircle size={20} /></span>
+          <h3>该购买入口已停用</h3>
+          <p>请使用新版 Cloud 控制台购买工作空间。历史订单仍由原服务保留，可通过历史工作空间和运维页面查看与核对。</p>
+          <div className="source-notice__action"><Button onClick={onBack} size="sm" variant="outline">返回工作空间列表</Button></div>
+        </div>
+      </section>
     </section>
   );
 }

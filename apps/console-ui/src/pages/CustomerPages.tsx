@@ -73,25 +73,44 @@ function TrendChart({ trend }: { trend: WorkspaceSettlementTrend }) {
   const chartLabel = incomplete
     ? `工作空间近 ${trend.days.length} 天每日净扣款条形图（已确认部分），另有 ${trend.unconfirmedCount} 笔资金结果待确认`
     : `工作空间近 ${trend.days.length} 天每日净扣款条形图，最高 ${peak > 0n ? formatUsdMicros(peak) : "无扣款"}`;
+  const peakLabel = peak > 0n ? formatUsdMicros(peak) : "$0.00";
+  const midLabel = peak > 0n ? formatUsdMicros(peak / 2n) : "";
+  const hasRefundDay = trend.days.some((day) => (parseUsdMicros(day.netUsdMicros) ?? 0n) < 0n);
+  const axisTicks = settlementAxisTicks(trend.days);
   return <>
-    <div className="trend-chart" role="img" aria-label={chartLabel}>
-      {trend.days.map((day, index) => (
-        <div className="trend-col" key={day.date} title={`${settlementDayLabel(day.date)} · 扣款 ${formatUsdMicros(day.chargedUsdMicros)} · 退款 ${formatUsdMicros(day.refundedUsdMicros)} · 净额 ${formatUsdMicros(day.netUsdMicros)}`}>
-          <span
-            className="trend-bar"
-            data-empty={parseUsdMicros(day.netUsdMicros) === 0n}
-            data-refund={(parseUsdMicros(day.netUsdMicros) ?? 0n) < 0n}
-            style={(() => {
-              const value = parseUsdMicros(day.netUsdMicros);
-              if (value === null || value === 0n || peak === 0n) return undefined;
-              const absolute = value < 0n ? -value : value;
-              const height = Number((absolute * 100n) / peak);
-              return { height: `${Math.max(6, Math.min(100, height))}%` };
-            })()}
-          />
-          <small>{settlementDayShortLabel(day.date, index, trend.days.length)}</small>
-        </div>
-      ))}
+    <div className="trend-chart-header" aria-hidden="true">
+      <div className="trend-legend">
+        <span><i className="ss-dot ss-dot--sky" />净扣款</span>
+        {hasRefundDay ? <span><i className="ss-dot ss-dot--ok" />净退款</span> : null}
+        <span><i className="ss-dot ss-dot--muted" />无变动</span>
+      </div>
+      <span className="trend-peak-label">峰值 {peakLabel}</span>
+    </div>
+    <div className="trend-chart-frame">
+      <div className="trend-y-axis" aria-hidden="true">
+        <span>{peakLabel}</span>
+        <span>{midLabel}</span>
+        <span>$0.00</span>
+      </div>
+      <div className="trend-chart" role="img" aria-label={chartLabel}>
+        {trend.days.map((day) => (
+          <div className="trend-col" key={day.date} title={`${settlementDayLabel(day.date)} · 扣款 ${formatUsdMicros(day.chargedUsdMicros)} · 退款 ${formatUsdMicros(day.refundedUsdMicros)} · 净额 ${formatUsdMicros(day.netUsdMicros)}`}>
+            <span
+              className="trend-bar"
+              data-empty={parseUsdMicros(day.netUsdMicros) === 0n}
+              data-refund={(parseUsdMicros(day.netUsdMicros) ?? 0n) < 0n}
+              style={(() => {
+                const value = parseUsdMicros(day.netUsdMicros);
+                if (value === null || value === 0n || peak === 0n) return undefined;
+                const absolute = value < 0n ? -value : value;
+                const height = Number((absolute * 100n) / peak);
+                return { height: `${Math.max(6, Math.min(100, height))}%` };
+              })()}
+            />
+          </div>
+        ))}
+      </div>
+      {axisTicks.length > 0 ? <div className="trend-x-axis" aria-hidden="true">{axisTicks.map((tick) => <span key={tick.date}>{tick.label}</span>)}</div> : null}
     </div>
     <p className={`trend-note${incomplete ? " trend-note--warning" : ""}`}>
       近 {trend.days.length} 天{incomplete ? "已确认部分：" : ""}扣款 {formatUsdMicros(trend.chargedUsdMicros)}、退款 {formatUsdMicros(trend.refundedUsdMicros)}，净额 {formatUsdMicros(trend.netUsdMicros)}
@@ -118,11 +137,18 @@ function settlementDayLabel(date: string): string {
   return year && month && day ? `${Number(month)}/${Number(day)}` : date;
 }
 
-function settlementDayShortLabel(date: string, index: number, total: number): string {
-  const day = Number(date.split("-")[2]);
-  if (!Number.isFinite(day)) return "";
-  const offset = total - 1 - index;
-  return offset % 2 === 0 || offset === total - 1 ? `${day}` : "";
+function settlementAxisTicks(days: WorkspaceSettlementTrend["days"]): Array<{ date: string; label: string }> {
+  const n = days.length;
+  if (n === 0) return [];
+  const raw = n === 1 ? [0] : [0, Math.floor((n - 1) / 3), Math.floor(((n - 1) * 2) / 3), n - 1];
+  const seen = new Set<number>();
+  const ticks: Array<{ date: string; label: string }> = [];
+  for (const idx of raw) {
+    if (seen.has(idx) || !days[idx]) continue;
+    seen.add(idx);
+    ticks.push({ date: days[idx].date, label: settlementDayLabel(days[idx].date) });
+  }
+  return ticks;
 }
 
 function PageLink({ children, controller, path, className = "" }: { children: ReactNode; controller: ConsoleController; path: string; className?: string }) {
@@ -193,6 +219,8 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
             </div>
           </div>
           <SourceState
+            empty={workspaceRead.workspaces.value?.status === "empty" || Boolean(workspaces && workspaces.items.length === 0)}
+            emptyDescription="当前账号暂无运行中的工作空间，可前往工作空间列表查看详情。"
             emptyTitle="暂无工作空间"
             error={workspaceRead.workspaces.error}
             errorDescription="暂时无法读取工作空间，请稍后重试。"
@@ -337,7 +365,7 @@ function BillingPage({ controller }: { controller: ConsoleController }) {
   const workspacesRestricted = workspaceRead.access === "not_enabled" || workspacesForbidden;
   return <section className="billing-page">
     <p>工作空间月费与 API 用量从同一账户余额扣除；退款退回原账户余额。<PageLink controller={controller} path="/console/api/usage">查看 API 用量</PageLink></p>
-    <SegmentedControl ariaLabel="费用视图" block onChange={(value) => billing.setView(value)} options={[{ value: "terms", label: "订阅与续费" }, { value: "receipts", label: cloudIdentity ? "个人历史账单" : "账单记录" }]} value={billing.view} />
+    <SegmentedControl ariaLabel="费用视图" onChange={(value) => billing.setView(value)} options={[{ value: "terms", label: "订阅与续费" }, { value: "receipts", label: cloudIdentity ? "个人历史账单" : "账单记录" }]} value={billing.view} />
     {billing.view === "terms" ? <section className="panel billing-surface" data-slide="C-BIL-01"><div className="panel-title"><h2>订阅与续费</h2></div><SourceState source={workspaceRead.workspaces.value} empty={workspaceRead.workspaces.value?.status === "empty"} emptyTitle="暂无订阅" error={workspaceRead.workspaces.error} errorDescription="暂时无法读取订阅与续费信息，请稍后重试。" loading={workspaceRead.workspaces.loading} notice={workspacesRestricted} noticeDescription={workspacesForbidden ? "当前账号暂无工作空间访问权限，请联系管理员。" : "当前账号尚未开通工作空间白名单，暂无订阅与续费信息；API 用量与余额仍可正常使用。"} noticeKind="permission" noticeTitle={workspacesForbidden ? "无权查看工作空间订阅" : "工作空间订阅尚未开通"} onRetry={() => void workspaceRead.refresh()} unavailableDescription="暂时无法读取订阅与续费信息，请稍后重试。" unavailableTitle="订阅与续费暂不可用">{(data) => <>{cloudIdentity ? <div className="billing-subscriptions" role="list">{data.items.map((item) => <article className="billing-subscription-row" key={item.id} role="listitem"><header className="billing-subscription-row__heading"><h3><PageLink controller={controller} path={`/console/workspaces/${encodeURIComponent(item.id)}`}>{item.name || "未命名工作空间"}</PageLink></h3></header><WorkspaceSubscriptionPanel layout="billing" plans={subscriptionPlans} session={controller.session} workspace={item} /></article>)}</div> : <><div className="table-wrap billing-table-desktop"><table><thead><tr><th>工作空间</th><th>套餐</th><th>月度总价</th><th>计费周期</th><th>续费状态</th><th>自动续费</th></tr></thead><tbody>{data.items.map((item) => <tr key={item.id}><td><PageLink controller={controller} path={`/console/workspaces/${encodeURIComponent(item.id)}`}>{item.name || "未命名工作空间"}</PageLink></td><td>{item.packageId?.toUpperCase() || "-"}</td><td>{formatUsdMicros(item.totalUsdMicros)}</td><td>{item.periodStart && item.paidThrough ? `${formatDate(item.periodStart)} 至 ${formatDate(item.paidThrough)}` : "-"}</td><td>{presentWorkspaceRenewal(item.renewalStatus).label}</td><td>{item.autoRenew === true ? "开启" : item.autoRenew === false ? "关闭" : "-"}</td></tr>)}</tbody></table></div><div className="billing-list-mobile" role="list">{data.items.map((item) => {
       const path = item.id ? `/console/workspaces/${encodeURIComponent(item.id)}` : null;
       const card = <>
@@ -368,7 +396,7 @@ function ReceiptDetail({ controller, workspaceName }: { controller: BillingContr
 }
 
 function AnnouncementRows({ announcements, compact, controller }: { announcements: AnnouncementDTO[]; compact?: boolean; controller: CustomerAnnouncementController }) {
-  return <div className={compact ? "compact-announcement-list" : "announcement-list"}>{announcements.map((announcement) => <article className="announcement-item" key={announcement.id}><header><div><h3>{announcement.title}</h3><Badge color={announcement.read ? "secondary" : "info"}>{announcement.read ? "已读" : "未读"}</Badge></div><span>{formatDate(announcement.publishedAt || announcement.startsAt || announcement.updatedAt, true)}</span></header><p>{announcement.body}</p>{announcement.read ? null : <Button busy={controller.busyAnnouncementId === announcement.id} onClick={() => void controller.markRead(announcement.id)} size="sm" variant="outline">标记已读</Button>}</article>)}</div>;
+  return <div className={compact ? "compact-announcement-list" : "announcement-list"}>{announcements.map((announcement) => <article className="announcement-item" key={announcement.id}><header><div><h3>{announcement.title}</h3><Badge color={announcement.read ? "secondary" : "info"}><span aria-hidden="true" className={`ss-dot ${announcement.read ? "ss-dot--muted" : "ss-dot--info"}`} />{announcement.read ? "已读" : "未读"}</Badge></div><span>{formatDate(announcement.publishedAt || announcement.startsAt || announcement.updatedAt, true)}</span></header><p>{announcement.body}</p>{announcement.read ? null : <Button busy={controller.busyAnnouncementId === announcement.id} onClick={() => void controller.markRead(announcement.id)} size="sm" variant="outline">标记已读</Button>}</article>)}</div>;
 }
 
 function AnnouncementsPage({ controller }: { controller: ConsoleController }) {

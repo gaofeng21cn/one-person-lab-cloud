@@ -59,10 +59,16 @@ are fixed as Build inputs).
   Workspace stops at runtime, the `local-v2-native-evidence` artifact records
   the exact purchase's Workspace saga and Serve status and error codes before
   cleanup. The qualification result remains `NOT_READY`.
-- **Non-Spending Publication (`source_verified`)**: Formal Release promotion reuses
-  exact Candidate digests without rebuilding and records `paidBusinessExecuted: false`
-  and `customerReadsExecuted: false` unless optional protected Instance runs
-  separately verify customer execution.
+- **Instance Installation Verification**: The Instance owner verifies that the
+  exact Candidate is installed and healthy. Formal Release requires the separate
+  `deployment-verify.yml` run on Instance `main` with a `deployment_verified`
+  receipt bound to the same Candidate receipt, source commit and tree, and image
+  digest. Use the Instance [production runbook](https://github.com/gaofeng21cn/opl-instance-medopl/blob/main/docs/runtime/production-runbook.md)
+  for installation and verification.
+- **Source Paths (`source_verified`)**: The publication workflow binds the
+  business entry paths to the exact source and records
+  `paidBusinessExecuted: false` and `customerReadsExecuted: false`. Formal Release
+  promotes the qualified Candidate digest without rebuilding.
 
 ## Optional Operational Qualification
 
@@ -84,3 +90,9 @@ The Framework daily release status reads the Cloud continuation run for the
 frozen tag. The continuation receipt includes the exact tag and Product commit
 once their version and canonical ancestry have been verified, including when a
 later step blocks. Public publication is confirmed through the GitHub Release.
+
+When the result is `qualification_pending`, retain the Candidate and Clean Host
+run IDs. After the Instance owner produces the matching standalone installation
+receipt, resume the Cloud `daily-release.yml` workflow on `main` with the same
+`release_tag`. Check the current public Release before resuming a pending tag
+after a newer version has been published.

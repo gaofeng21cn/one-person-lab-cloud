@@ -18,7 +18,8 @@ export function WorkspaceSummaryRow({ controller, workspace }: { controller: Wor
   // The Workspace owner delivers the Workspace and states the delivery model;
   // the Control Plane projection instead states the purchased plan.
   const delivery = cloudIdentity ? presentWorkspaceDeliveryModel(workspace.deliveryModel) : workspace.packageId?.toUpperCase() || "暂不可用";
-  return <tr><td><PageLink controller={controller} path={path}><strong>{workspace.name || "未命名工作空间"}</strong></PageLink></td><td>{delivery}</td><td><Badge color="secondary">{presentWorkspaceLifecycle(workspace.state).label}</Badge></td><td>{formatDate(workspace.paidThrough)}</td><td><PageLink controller={controller} path={path}><span className="workspace-detail-link">查看详情</span><ChevronRight aria-hidden size={17} /></PageLink></td></tr>;
+  const running = workspace.state === "running" || workspace.state === "active";
+  return <tr><td><PageLink controller={controller} path={path}><strong>{workspace.name || "未命名工作空间"}</strong></PageLink></td><td>{delivery}</td><td><Badge color={running ? "success" : "secondary"}><span aria-hidden="true" className={`ss-dot ${running ? "ss-dot--ok" : "ss-dot--muted"}`} />{presentWorkspaceLifecycle(workspace.state).label}</Badge></td><td>{formatDate(workspace.paidThrough)}</td><td><PageLink controller={controller} path={path}><span className="workspace-detail-link">查看详情</span><ChevronRight aria-hidden size={17} /></PageLink></td></tr>;
 }
 
 export function WorkspaceListPage({ controller }: { controller: WorkspaceListController }) {
@@ -57,18 +58,21 @@ export function WorkspaceListPage({ controller }: { controller: WorkspaceListCon
           source={workspaceRead.workspaces.value}
           unavailableDescription="暂时无法读取工作空间，请稍后重试。"
         >
-          {(data) => <div className="workspace-list" role="list">{data.items.map((workspace) => (
-            <PageLink className="workspace-list-row" controller={controller} key={workspace.id} path={`/console/workspaces/${encodeURIComponent(workspace.id)}`}>
-              <span className="workspace-list-name"><strong>{workspace.name || "未命名工作空间"}</strong></span>
-              {cloudIdentity
-                ? <span><strong>{presentWorkspaceDeliveryModel(workspace.deliveryModel)}</strong><small>资源：{presentWorkspaceResourceReadiness(workspace.resourceReadiness)}</small></span>
-                : <span><strong>{workspace.packageId?.toUpperCase() || "暂不可用"}</strong><small>{workspace.storageGb ? `${workspace.storageGb} GB` : "规格暂不可用"}</small></span>}
-              <span><strong>{presentWorkspaceLifecycle(workspace.state).label}</strong><small>当前状态</small></span>
-              <span><strong>{formatDate(workspace.paidThrough)}</strong><small>权益截止</small></span>
-              <span className="workspace-detail-link">查看详情</span>
-              <ChevronRight aria-hidden size={18} />
-            </PageLink>
-          ))}</div>}
+          {(data) => <div className="workspace-list" role="list">{data.items.map((workspace) => {
+            const running = workspace.state === "running" || workspace.state === "active";
+            return (
+              <PageLink className="workspace-list-row" controller={controller} key={workspace.id} path={`/console/workspaces/${encodeURIComponent(workspace.id)}`}>
+                <span className="workspace-list-name"><strong>{workspace.name || "未命名工作空间"}</strong></span>
+                {cloudIdentity
+                  ? <span><strong>{presentWorkspaceDeliveryModel(workspace.deliveryModel)}</strong><small>资源：{presentWorkspaceResourceReadiness(workspace.resourceReadiness)}</small></span>
+                  : <span><strong>{workspace.packageId?.toUpperCase() || "暂不可用"}</strong><small>{workspace.storageGb ? `${workspace.storageGb} GB` : "规格暂不可用"}</small></span>}
+                <span><Badge color={running ? "success" : "secondary"}><span aria-hidden="true" className={`ss-dot ${running ? "ss-dot--ok" : "ss-dot--muted"}`} />{presentWorkspaceLifecycle(workspace.state).label}</Badge><small className="workspace-row-mobile-hint">当前状态</small></span>
+                <span><strong>{formatDate(workspace.paidThrough)}</strong><small className="workspace-row-mobile-hint">权益截止</small></span>
+                <span className="workspace-detail-link">查看详情<ChevronRight aria-hidden size={16} /></span>
+                <ChevronRight aria-hidden className="workspace-row-mobile-chevron" size={18} />
+              </PageLink>
+            );
+          })}</div>}
         </SourceState>
         <Pagination current={workspaceRead.page} label="工作空间分页" onChange={(page) => void workspaceRead.changePage(page)} pages={workspaceRead.pages} />
       </section>
