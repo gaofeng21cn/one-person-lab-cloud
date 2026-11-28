@@ -85,6 +85,29 @@ hosts by installation contract and the Runtime does not yet publish those
 fields, closing direct cross-host navigation requires one named upstream fact
 rather than a guessed relative URL.
 
+### Private Software Package Entitlements & Controlled Delivery
+
+Deliver the Cloud-governed restricted Software Center package authorization flow
+defined in [software-package-entitlements.md](software-package-entitlements.md)
+after Framework v2 Wave 1 single-writer source storage lands:
+
+- `CloudIdentity` (`opl_tenant`): add `tenant.package_entitlements` and
+  `tenant.link_relay_entitlements` (both fail-closed allowlists with atomic
+  operator grant/revoke commands, audit/idempotency records, and an initial
+  active-Gateway-user allowlist seed step for OPL Link Relay), plus planned
+  DB-backed `tenant.platform_admins` delegation preserving
+  `OPL_PLATFORM_ADMIN_SUBJECTS` as immutable bootstrap/break-glass roots.
+- Console BFF & Operator UI: expose operator package, Link Relay, and
+  delegated-admin governance alongside Workspace purchase eligibility, and add
+  `GET /api/v2/software/entitlements` plus
+  `POST /api/v2/software/packages/{packageId}/download` (Stage 1 server-only
+  GHCR fetch with PVC `sha256` blob cache; Stage 2 private COS Presigned URLs).
+- Cross-repo alignment: wire OPL Link control-plane admission against
+  `CloudIdentity` (`403` -> `companion_access_denied` without touching the WS
+  data plane), wire `@opl/pack` Gateway-session source consumption in
+  `one-person-lab`, and simplify `opl-studio` Software Center to use the active
+  OPL Gateway account by default while keeping public packages zero-login.
+
 ## Workspace Key And Customer Read Boundaries
 
 Complete migration of remaining transitional customer reads off legacy Control
@@ -123,5 +146,17 @@ Plane / delegated process-local custody onto canonical domain owners:
      non-terminal operations from completed settlement. Include accepted
      refunds that still need their first execution and renewals whose expiry
      or Ledger settlement is incomplete.
-4. **Module & DB-Role Coverage**: Expand `tests/contracts/module-physical-boundaries.test.ts`
-   and PostgreSQL role-isolation checks to cover every extracted service and Console BFF.
+4. **Module & DB-Role Coverage**: `tests/contracts/module-physical-boundaries.test.ts`
+   now enforces package and SDK isolation across all 11 Go services under `services/`
+   and `apps/console-bff`; extend PostgreSQL role-isolation checks to cover every
+   extracted service and Console BFF.
+
+## Backend Single-Binary Convergence (P1)
+
+- Evolve `opl-cloud-composition` (currently 1 container supervising 11 separate Go
+  processes over loopback gRPC/mTLS) into a single in-process modular Go binary
+  (`opl-cloud`) preserving `services/<domain>/` package boundaries, per-owner
+  PostgreSQL schema/role isolation, and external BuildKit/Workspace trust boundaries,
+  while eliminating intra-container process orchestration, redundant Go runtimes,
+  and intra-pod mTLS overhead alongside retiring `services/control-plane` and
+  legacy root `compose.yaml`.

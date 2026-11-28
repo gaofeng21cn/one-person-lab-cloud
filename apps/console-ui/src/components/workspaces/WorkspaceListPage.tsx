@@ -23,15 +23,19 @@ export function WorkspaceSummaryRow({ controller, workspace }: { controller: Wor
 
 export function WorkspaceListPage({ controller }: { controller: WorkspaceListController }) {
   const workspaceRead = controller.customerWorkspaceRead;
-  const workspacesUnavailable = workspaceRead.workspaces.value?.status === "unavailable" || Boolean(workspaceRead.workspaces.error);
-  const workspacesPending = !workspaceRead.workspaces.value || workspaceRead.workspaces.loading;
+  const workspacesForbidden = workspaceRead.access === "forbidden";
+  const workspacesRestricted = workspaceRead.access === "not_enabled" || workspacesForbidden;
+  const workspacesUnavailable = !workspacesRestricted && (workspaceRead.workspaces.value?.status === "unavailable" || Boolean(workspaceRead.workspaces.error));
+  const workspacesPending = !workspacesRestricted && (!workspaceRead.workspaces.value || workspaceRead.workspaces.loading);
   return (
     <section className="workspace-list-page" data-slide="C-WS-01">
       <div className="page-toolbar">
-        <p>工作空间总数：{workspaceRead.workspaces.value?.available ? formatCount(workspaceRead.workspaces.value.data.total) : "暂不可用"}</p>
+        <p>{workspacesRestricted
+          ? (workspacesForbidden ? "工作空间状态：无访问权限" : "工作空间状态：尚未开通白名单")
+          : `工作空间总数：${workspaceRead.workspaces.value?.available ? formatCount(workspaceRead.workspaces.value.data.total) : "暂不可用"}`}</p>
         <div className="workspace-actions">
-          {cloudIdentity ? <Button onClick={() => controller.navigate("/console/publisher")} variant="outline">上传智能体</Button> : null}
-          {cloudIdentity || workspacesUnavailable ? <Button color="primary" disabled={workspacesPending && !workspacesUnavailable} onClick={() => workspacesUnavailable ? void workspaceRead.refresh() : controller.navigate("/console/workspaces/new")}>{workspacesUnavailable ? <RefreshCw aria-hidden size={16} /> : <Plus aria-hidden size={16} />}{workspacesUnavailable ? "重试读取" : workspacesPending ? "正在读取" : "新建工作空间"}</Button> : null}
+          {cloudIdentity && !workspacesRestricted ? <Button onClick={() => controller.navigate("/console/publisher")} variant="outline">上传智能体</Button> : null}
+          {(cloudIdentity && !workspacesRestricted) || workspacesUnavailable ? <Button color="primary" disabled={workspacesPending && !workspacesUnavailable} onClick={() => workspacesUnavailable ? void workspaceRead.refresh() : controller.navigate("/console/workspaces/new")}>{workspacesUnavailable ? <RefreshCw aria-hidden size={16} /> : <Plus aria-hidden size={16} />}{workspacesUnavailable ? "重试读取" : workspacesPending ? "正在读取" : "新建工作空间"}</Button> : null}
         </div>
       </div>
       {controller.workspaceLaunch.launchOperation && !["succeeded", "failed", "refunded"].includes(controller.workspaceLaunch.launchOperation.status) ? (
@@ -45,6 +49,10 @@ export function WorkspaceListPage({ controller }: { controller: WorkspaceListCon
           error={workspaceRead.workspaces.error}
           errorDescription="暂时无法读取工作空间，请稍后重试。"
           loading={workspaceRead.workspaces.loading}
+          notice={workspacesRestricted}
+          noticeDescription={workspacesForbidden ? "当前账号角色暂无工作空间访问权限，请联系管理员。" : "工作空间按白名单开通，当前账号可正常使用 OPL Gateway 与 API 余额；如需开通请联系管理员。"}
+          noticeKind="permission"
+          noticeTitle={workspacesForbidden ? "无权查看工作空间" : "工作空间尚未开通"}
           onRetry={() => void workspaceRead.refresh()}
           source={workspaceRead.workspaces.value}
           unavailableDescription="暂时无法读取工作空间，请稍后重试。"

@@ -34,27 +34,50 @@ function goModulePath(source) {
   return match[1];
 }
 
-test("Go services remain physically isolated behind typed owner contracts", async () => {
+test("Go services and Console BFF remain physically isolated behind typed owner contracts", async () => {
   const rootModulePath = goModulePath(await text("go.mod"));
   assert.equal(rootModulePath, "opl-cloud", "root Go module owner");
   const sharedModules = ["postgresmigrate", "ownerservice", "ownerstore", "protectedresource", "tkeapply"];
   const sharedModulePaths = sharedModules.map((name) => `${rootModulePath}/services/internal/${name}`);
-  const cloudSDKImportPrefixes = ["github.com/tencentcloud/", "k8s.io/"];
-  for (const service of ["control-plane", "fabric", "ledger"]) {
-    const directory = `services/${service}`;
-    const modulePath = `${rootModulePath}/services/${service}`;
 
-    const files = await filesUnder(directory, (path) => path.endsWith(".go"));
+  const domainServices = (await readdir(new URL("services", root), { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory() && entry.name !== "internal")
+    .map((entry) => entry.name)
+    .sort();
+  assert.ok(domainServices.length >= 10, `expected all domain services, saw ${domainServices.join(",")}`);
+
+  const units: Array<{ name: string; directory: string; modulePath: string; isFabric: boolean }> = [
+    ...domainServices.map((service) => ({
+      name: service,
+      directory: `services/${service}`,
+      modulePath: `${rootModulePath}/services/${service}`,
+      isFabric: service === "fabric",
+    })),
+    {
+      name: "console-bff",
+      directory: "apps/console-bff",
+      modulePath: `${rootModulePath}/apps/console-bff`,
+      isFabric: false,
+    },
+  ];
+
+  // Production Go sources (excluding _test.go cross-owner live integration fixtures)
+  // must stay physically isolated behind packages/contracts and allowlisted shared
+  // domain-neutral internals.
+  for (const unit of units) {
+    const files = await filesUnder(unit.directory, (path) => path.endsWith(".go") && !path.endsWith("_test.go"));
     for (const file of files) {
       const source = await text(file);
       for (const imported of goImports(source)) {
-        if (imported.startsWith(`${rootModulePath}/services/`)) {
-          const owned = imported === modulePath || imported.startsWith(`${modulePath}/`);
+        if (imported.startsWith(`${rootModulePath}/services/`) || imported.startsWith(`${rootModulePath}/apps/`)) {
+          const owned = imported === unit.modulePath || imported.startsWith(`${unit.modulePath}/`);
           const shared = sharedModulePaths.some((path) => imported === path || imported.startsWith(`${path}/`));
           assert.equal(owned || shared, true, `${file} crosses into ${imported}`);
         }
-        if (service !== "fabric") {
-          assert.equal(cloudSDKImportPrefixes.some((prefix) => imported.startsWith(prefix)), false, `${file} imports cloud SDK ${imported} outside Fabric`);
+        if (!unit.isFabric) {
+          assert.equal(imported.startsWith("github.com/tencentcloud/"), false, `${file} imports Tencent Cloud SDK ${imported} outside Fabric`);
+          assert.equal(imported.startsWith("github.com/moby/"), false, `${file} imports Docker SDK ${imported} outside Fabric`);
+          assert.equal(imported.startsWith("k8s.io/"), false, `${file} imports raw k8s.io SDK ${imported} directly; use tkeapply`);
         }
       }
     }
@@ -62,7 +85,11 @@ test("Go services remain physically isolated behind typed owner contracts", asyn
 
   for (const module of sharedModules) {
     for (const file of await filesUnder(`services/internal/${module}`, (path) => path.endsWith(".go"))) {
-      assert.doesNotMatch(await text(file), /opl-cloud\/services\/(?:control-plane|fabric|ledger)/, `${file} must remain domain-neutral`);
+      assert.doesNotMatch(
+        await text(file),
+        /opl-cloud\/(?:services\/(?!internal\/)|apps\/)/,
+        `${file} must remain domain-neutral`,
+      );
     }
   }
 });
