@@ -1,0 +1,61 @@
+{
+  "schema_version": "opl.release.v1",
+  "subject_id": "opl-cloud",
+  "kind": "product",
+  "repository": "gaofeng21cn/one-person-lab-cloud",
+  "schedule": "daily_patch",
+  "trigger": "tag",
+  "tag_prefix": "v",
+  "delivery_paths": [
+    "apps",
+    "services",
+    "packages",
+    "deploy",
+    "tools",
+    "product-version.json",
+    "package.json",
+    "package-lock.json",
+    ".github/workflows/build-opl-cloud-candidate.yml",
+    ".github/workflows/clean-host-qualification.yml",
+    ".github/workflows/release-opl-cloud-image.yml",
+    ".github/workflows/daily-release.yml"
+  ],
+  "version_files": [
+    {
+      "path": "product-version.json",
+      "kind": "json"
+    },
+    {
+      "path": "package.json",
+      "kind": "json"
+    },
+    {
+      "path": "package-lock.json",
+      "kind": "json"
+    }
+  ],
+  "prepare": [],
+  "verify": [],
+  "lanes": [
+    {
+      "lane": "stable",
+      "workflow": "daily-release.yml",
+      "primary": true,
+      "recheck_after_success": true,
+      "channel": {
+        "kind": "github_release"
+      }
+    },
+    {
+      "lane": "qualification-and-publication",
+      "workflow": "daily-release.yml",
+      "primary": false,
+      "event": "workflow_dispatch",
+      "title_from_tag": "Cloud product {tag}",
+      "receipt_required": true,
+      "channel": {
+        "kind": "github_release"
+      }
+    }
+  ]
+}
