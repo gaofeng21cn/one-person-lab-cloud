@@ -1864,6 +1864,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/operator/accounts/{actorId}/link-relay-entitlement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Grant or revoke OPL Link Relay admission for a Gateway subject */
+        post: operations["setLinkRelayEntitlement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/operator/link-relay/seed-active-users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Backfill active OPL Gateway subjects into the Link Relay allowlist without overwriting existing rows */
+        post: operations["seedActiveGatewayLinkRelayEntitlements"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/link-relay/entitlement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read effective OPL Link Relay admission for the authenticated caller */
+        get: operations["getLinkRelayEntitlement"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/client/service-grant": {
         parameters: {
             query?: never;
@@ -2411,6 +2462,45 @@ export interface components {
             status: string;
             platformAdminEnabled: boolean;
             isBootstrapAdmin: boolean;
+        };
+        /** @description Platform administrator instruction to grant or revoke OPL Link Relay admission for one Gateway subject. */
+        SetLinkRelayEntitlementRequest: {
+            confirmationAccountId: components["schemas"]["OpaqueId"];
+            enabled: boolean;
+            reason: string;
+        };
+        /** @description Canonical receipt for one OPL Link Relay entitlement update. */
+        LinkRelayEntitlementCommand: {
+            operationId: components["schemas"]["OpaqueId"];
+            accountId: components["schemas"]["OpaqueId"];
+            status: string;
+            linkRelayEnabled: boolean;
+        };
+        /** @description Platform administrator instruction to backfill active Gateway users into OPL Link Relay admission. */
+        SeedActiveGatewayLinkRelayEntitlementsRequest: {
+            reason: string;
+        };
+        /** @description Canonical receipt for backfilling active Gateway subjects into Link Relay admission. */
+        SeedLinkRelayEntitlementsCommand: {
+            operationId: components["schemas"]["OpaqueId"];
+            status: string;
+            /** Format: int32 */
+            scannedCount: number;
+            /** Format: int32 */
+            seededCount: number;
+            /** Format: int32 */
+            existingCount: number;
+        };
+        /** @description Authoritative OPL Link Relay admission state for an authenticated Gateway subject. */
+        LinkRelayEntitlementReadback: {
+            actorId: components["schemas"]["OpaqueId"];
+            email: string;
+            linkRelayEnabled: boolean;
+            isBootstrapAdmin: boolean;
+            isPlatformAdmin: boolean;
+            reason: string;
+            /** Format: date-time */
+            updatedAt?: string;
         };
         /** @description platform_admin创建Tenant；Gateway确认身份/钱包委托存在，不创建外部身份密码。 */
         CreateTenantRequest: {
@@ -3894,7 +3984,7 @@ export interface components {
             pageSize: number;
         };
         /** @enum {string} */
-        AuthorizationAction: "acceptInvitation" | "acquireReference" | "activateRoute" | "adoptWorkspace" | "appendPlanChangeEvidence" | "appendReceipt" | "archiveNamespace" | "archivePackage" | "bindManagedSecret" | "bindReference" | "bindTenantWallet" | "cancelAcceptedObligation" | "cancelPlanChange" | "chargeAcceptedObligation" | "chargePlanChangeSupplement" | "claimNextPeriodObligation" | "closeoutAcceptedObligation" | "completeAcceptedObligation" | "completeUpload" | "createBuild" | "createComputePlan" | "createGatewayKey" | "createNamespace" | "createPackage" | "createPricePolicyVersion" | "createPublisherNamespace" | "createQuote" | "createRefundPolicyVersion" | "createRetentionPolicyVersion" | "createStoragePlan" | "createTenant" | "createUpload" | "createUploadPart" | "createWorkspace" | "deleteAcceptedResources" | "deleteCapabilityVersion" | "deleteTenant" | "deleteWorkspace" | "executeScheduledPlanChange" | "fenceRouteEpoch" | "getAdminTenant" | "getBuild" | "getBuildRuntimePolicy" | "getCapabilityVersion" | "getDeployment" | "getLoginContext" | "getOperation" | "getPackage" | "getPackageVersion" | "getPlanChange" | "getQuote" | "getReceipt" | "getWorkspaceFinancialReceipt" | "getSession" | "getSelfUserExternalBinding" | "getSubscription" | "getTenant" | "getTenantAssetCustody" | "getTenantLifecycleOperation" | "getTenantWallet" | "getUpload" | "getWallet" | "getWorkspace" | "getWorkspaceAccess" | "getWorkspaceDeletion" | "getWorkspaceModels" | "inviteMember" | "issueAcceptedOperationGrant" | "listAdminOperations" | "listAuditEvents" | "listBuildLogs" | "listBuilds" | "listCapabilityVersions" | "listComputePlans" | "listDeployments" | "listGatewayKeys" | "listInvitations" | "listMembers" | "listModels" | "listNamespaces" | "listPackageVersions" | "listPackages" | "listPlanChanges" | "listPricePolicyVersions" | "listPublisherNamespaces" | "listQualifications" | "listReceipts" | "listRechargeRecords" | "listRefundPolicyVersions" | "listRetentionPolicyVersions" | "listRuntimeVersions" | "listStoragePlans" | "listTenants" | "getUsageSummary" | "listUsage" | "listWebuiVersions" | "listWorkspaceTransactions" | "getWorkspaceTransactionTrend" | "listWorkspaces" | "listOperatorWorkspaces" | "getOperatorWorkspace" | "readOperatorResources" | "listOperatorDeployments" | "getOperatorWorkspaceAccess" | "login" | "logout" | "observeResources" | "observeRoute" | "provisionAcceptedResources" | "publishOfficialPackage" | "readApplicationCredentials" | "readApprovedPlanTransition" | "readArtifact" | "readAuthorizationContext" | "readClaimUsage" | "readNextPeriodObligation" | "readOwnerCommit" | "readRenewalConsent" | "readSubscriptionPlanState" | "readWalletAction" | "reconcileOperation" | "reenableTenant" | "refundConfirmedDeletion" | "refundPlanChangeCompensation" | "refundSupplementOnDeletion" | "registerRuntimeVersion" | "registerWebuiVersion" | "releaseReference" | "removeMember" | "renewAcceptedResources" | "renewWorkspace" | "reserveRuntime" | "resizeAcceptedResources" | "resizeWorkspace" | "resolveBuildInput" | "resolvePublisherContract" | "restoreTenant" | "resumeTenantWorkspaces" | "retireRuntime" | "retryBuild" | "revealGatewayKey" | "revealWorkspaceApplicationCredentials" | "revokeGatewayKey" | "revokeInvitation" | "revokePublisherNamespace" | "rollbackRoute" | "rollbackWorkspace" | "setBuildRuntimePolicy" | "setComputePlanAvailability" | "setRuntimeVersionStatus" | "setStoragePlanAvailability" | "setWebuiVersionStatus" | "suspendTenant" | "updateMemberRole" | "updateNamespace" | "updatePackage" | "updateRenewalSettings" | "updateWorkspaceModels" | "updateWorkspaceVersion" | "readExecutionPlan" | "restoreAfterResourceChange" | "debitScheduledPeriod" | "readPlanChangeFailure" | "listPersonalGatewayKeys" | "getPersonalGatewayKey" | "listPersonalGatewayGroups" | "listPersonalGatewayKeyUsage" | "getPersonalGatewayKeyUsageSummary" | "createPersonalGatewayKey" | "updatePersonalGatewayKey" | "revealPersonalGatewayKey" | "revokePersonalGatewayKey" | "setWorkspacePurchaseEligibility" | "listOperatorAccounts" | "setPlatformAdmin" | "setServiceEntitlement" | "issueServiceGrant" | "getServiceGrantJWKS";
+        AuthorizationAction: "acceptInvitation" | "acquireReference" | "activateRoute" | "adoptWorkspace" | "appendPlanChangeEvidence" | "appendReceipt" | "archiveNamespace" | "archivePackage" | "bindManagedSecret" | "bindReference" | "bindTenantWallet" | "cancelAcceptedObligation" | "cancelPlanChange" | "chargeAcceptedObligation" | "chargePlanChangeSupplement" | "claimNextPeriodObligation" | "closeoutAcceptedObligation" | "completeAcceptedObligation" | "completeUpload" | "createBuild" | "createComputePlan" | "createGatewayKey" | "createNamespace" | "createPackage" | "createPricePolicyVersion" | "createPublisherNamespace" | "createQuote" | "createRefundPolicyVersion" | "createRetentionPolicyVersion" | "createStoragePlan" | "createTenant" | "createUpload" | "createUploadPart" | "createWorkspace" | "deleteAcceptedResources" | "deleteCapabilityVersion" | "deleteTenant" | "deleteWorkspace" | "executeScheduledPlanChange" | "fenceRouteEpoch" | "getAdminTenant" | "getBuild" | "getBuildRuntimePolicy" | "getCapabilityVersion" | "getDeployment" | "getLoginContext" | "getOperation" | "getPackage" | "getPackageVersion" | "getPlanChange" | "getQuote" | "getReceipt" | "getWorkspaceFinancialReceipt" | "getSession" | "getSelfUserExternalBinding" | "getSubscription" | "getTenant" | "getTenantAssetCustody" | "getTenantLifecycleOperation" | "getTenantWallet" | "getUpload" | "getWallet" | "getWorkspace" | "getWorkspaceAccess" | "getWorkspaceDeletion" | "getWorkspaceModels" | "inviteMember" | "issueAcceptedOperationGrant" | "listAdminOperations" | "listAuditEvents" | "listBuildLogs" | "listBuilds" | "listCapabilityVersions" | "listComputePlans" | "listDeployments" | "listGatewayKeys" | "listInvitations" | "listMembers" | "listModels" | "listNamespaces" | "listPackageVersions" | "listPackages" | "listPlanChanges" | "listPricePolicyVersions" | "listPublisherNamespaces" | "listQualifications" | "listReceipts" | "listRechargeRecords" | "listRefundPolicyVersions" | "listRetentionPolicyVersions" | "listRuntimeVersions" | "listStoragePlans" | "listTenants" | "getUsageSummary" | "listUsage" | "listWebuiVersions" | "listWorkspaceTransactions" | "getWorkspaceTransactionTrend" | "listWorkspaces" | "listOperatorWorkspaces" | "getOperatorWorkspace" | "readOperatorResources" | "listOperatorDeployments" | "getOperatorWorkspaceAccess" | "login" | "logout" | "observeResources" | "observeRoute" | "provisionAcceptedResources" | "publishOfficialPackage" | "readApplicationCredentials" | "readApprovedPlanTransition" | "readArtifact" | "readAuthorizationContext" | "readClaimUsage" | "readNextPeriodObligation" | "readOwnerCommit" | "readRenewalConsent" | "readSubscriptionPlanState" | "readWalletAction" | "reconcileOperation" | "reenableTenant" | "refundConfirmedDeletion" | "refundPlanChangeCompensation" | "refundSupplementOnDeletion" | "registerRuntimeVersion" | "registerWebuiVersion" | "releaseReference" | "removeMember" | "renewAcceptedResources" | "renewWorkspace" | "reserveRuntime" | "resizeAcceptedResources" | "resizeWorkspace" | "resolveBuildInput" | "resolvePublisherContract" | "restoreTenant" | "resumeTenantWorkspaces" | "retireRuntime" | "retryBuild" | "revealGatewayKey" | "revealWorkspaceApplicationCredentials" | "revokeGatewayKey" | "revokeInvitation" | "revokePublisherNamespace" | "rollbackRoute" | "rollbackWorkspace" | "setBuildRuntimePolicy" | "setComputePlanAvailability" | "setRuntimeVersionStatus" | "setStoragePlanAvailability" | "setWebuiVersionStatus" | "suspendTenant" | "updateMemberRole" | "updateNamespace" | "updatePackage" | "updateRenewalSettings" | "updateWorkspaceModels" | "updateWorkspaceVersion" | "readExecutionPlan" | "restoreAfterResourceChange" | "debitScheduledPeriod" | "readPlanChangeFailure" | "listPersonalGatewayKeys" | "getPersonalGatewayKey" | "listPersonalGatewayGroups" | "listPersonalGatewayKeyUsage" | "getPersonalGatewayKeyUsageSummary" | "createPersonalGatewayKey" | "updatePersonalGatewayKey" | "revealPersonalGatewayKey" | "revokePersonalGatewayKey" | "setWorkspacePurchaseEligibility" | "listOperatorAccounts" | "setPlatformAdmin" | "setServiceEntitlement" | "issueServiceGrant" | "getServiceGrantJWKS" | "setLinkRelayEntitlement" | "seedActiveGatewayLinkRelayEntitlements" | "getLinkRelayEntitlement";
         /** @enum {string} */
         ServiceIdentity: "console_bff" | "capability" | "build" | "workspace" | "runtime_control" | "fabric" | "gateway_integration" | "resource_catalog" | "ledger";
         WorkspaceApplicationExecution: {
@@ -8923,6 +9013,100 @@ export interface operations {
             409: components["responses"]["ErrorResponse"];
             412: components["responses"]["ErrorResponse"];
             422: components["responses"]["ErrorResponse"];
+            503: components["responses"]["ErrorResponse"];
+        };
+    };
+    setLinkRelayEntitlement: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description 匹配同源session并校验Origin。 */
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path: {
+                actorId: components["schemas"]["OpaqueId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetLinkRelayEntitlementRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated OPL Link Relay admission status for the named Gateway subject */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkRelayEntitlementCommand"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
+            503: components["responses"]["ErrorResponse"];
+        };
+    };
+    seedActiveGatewayLinkRelayEntitlements: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description 匹配同源session并校验Origin。 */
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeedActiveGatewayLinkRelayEntitlementsRequest"];
+            };
+        };
+        responses: {
+            /** @description Result summary for seeding active Gateway subjects into Link Relay allowlist */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedLinkRelayEntitlementsCommand"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
+            503: components["responses"]["ErrorResponse"];
+        };
+    };
+    getLinkRelayEntitlement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Effective OPL Link Relay entitlement for the authenticated caller */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkRelayEntitlementReadback"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
             503: components["responses"]["ErrorResponse"];
         };
     };

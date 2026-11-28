@@ -4,6 +4,8 @@ import {
   disableOperatorAccount as disableOperatorAccountCommand,
   getOperatorAccountsPage,
   provisionOperatorAccount,
+  seedActiveGatewayLinkRelayEntitlements as seedActiveGatewayLinkRelayEntitlementsCommand,
+  setOperatorLinkRelayEntitlement as setOperatorLinkRelayEntitlementCommand,
   setOperatorServiceEntitlement as setOperatorServiceEntitlementCommand,
   setOperatorPlatformAdmin as setOperatorPlatformAdminCommand,
   setOperatorWorkspacePurchaseEligibility as setOperatorWorkspacePurchaseEligibilityCommand
@@ -25,11 +27,13 @@ import {
   accountIdentity,
   eligibilityCommandSucceeded,
   isOperatorPlatformAdmin,
+  linkRelayCommandSucceeded,
   platformAdminCommandSucceeded,
   provisionCommandSucceeded,
   provisionReadbackMatches,
   resolveProvisionAccountIntent,
   sameAccountIdentity,
+  seedLinkRelayCommandSucceeded,
   serviceEntitlementCommandSucceeded,
   type OperatorAccountIdentity,
   type ProvisionAccountIntent
@@ -81,6 +85,7 @@ export function useOperatorAccountController({
   const [searchQuery, setSearchQuery] = useState("");
   const [provisionOperation, setProvisionOperation] = useState<OperatorProvisionAccountCommandDTO | null>(null);
   const [provisionBusy, setProvisionBusy] = useState(false);
+  const [relaySeedBusy, setRelaySeedBusy] = useState(false);
   const [busyAccountIds, setBusyAccountIds] = useState<string[]>([]);
 
   const activeRef = useRef(active);
@@ -90,11 +95,14 @@ export function useOperatorAccountController({
   const listGeneration = useRef(0);
   const provisionGeneration = useRef(0);
   const provisionClaim = useRef<symbol | null>(null);
+  const relaySeedClaim = useRef<symbol | null>(null);
   const accountClaims = useRef(new Map<string, symbol>());
   const provisionIntent = useRef<ProvisionAccountIntent | null>(null);
+  const relaySeedIntent = useRef<{ reason: string; idempotencyKey: string } | null>(null);
   const disableIntents = useRef(new Map<string, DisableIntent>());
   const eligibilityIntents = useRef(new Map<string, ToggleIntent>());
   const platformAdminIntents = useRef(new Map<string, ToggleIntent>());
+  const linkRelayIntents = useRef(new Map<string, ToggleIntent>());
   const serviceEntitlementIntents = useRef(new Map<string, ServiceEntitlementIntent>());
   activeRef.current = active;
 
@@ -112,15 +120,20 @@ export function useOperatorAccountController({
     provisionGeneration.current += 1;
     pageRef.current = 1;
     searchRef.current = "";
+    provisionClaim.current = null;
+    relaySeedClaim.current = null;
     provisionIntent.current = null;
+    relaySeedIntent.current = null;
     disableIntents.current.clear();
     eligibilityIntents.current.clear();
     platformAdminIntents.current.clear();
+    linkRelayIntents.current.clear();
     serviceEntitlementIntents.current.clear();
     setAccounts(emptyRemote());
     setPage(1);
     setSearchQuery("");
     setProvisionOperation(null);
+    setRelaySeedBusy(false);
   }, []);
 
   useEffect(() => {
@@ -566,6 +579,78 @@ export function useOperatorAccountController({
     });
   }, [executeToggle]);
 
+  const setLinkRelayEntitlement = useCallback(async (accountId: string, enabled: boolean) => {
+    await executeToggle({
+      accountId,
+      enabled,
+      intents: linkRelayIntents.current,
+      intentPrefix: "link-relay-entitlement",
+      confirm: {
+        title: enabled ? "授予 OPL Link Relay 转发准入" : "撤销 OPL Link Relay 转发准入",
+        description: enabled
+          ? "确认将该 Gateway 用户纳入 OPL Link Relay 允许名单？"
+          : "确认撤销该用户的 OPL Link Relay 转发准入？撤销后将无法新注册设备或绑定主机。",
+        confirmLabel: enabled ? "确认授予" : "确认撤销",
+        tone: enabled ? "primary" : "danger"
+      },
+      runCommand: async (targetId, reason, csrfToken, idempotencyKey) => {
+        const result = await setOperatorLinkRelayEntitlementCommand(targetId, enabled, reason, csrfToken, idempotencyKey);
+        if (!linkRelayCommandSucceeded(result, targetId, enabled)) {
+          throw new Error("operator_account_link_relay_identity_mismatch");
+        }
+      },
+      readbackMatches: (candidate) => Boolean(candidate.linkRelayEnabled) === enabled,
+      readbackError: "operator_account_link_relay_readback_mismatch",
+      successMessage: enabled ? "已授予 OPL Link Relay 转发准入" : "已撤销 OPL Link Relay 转发准入"
+    });
+  }, [executeToggle]);
+
+  const seedActiveLinkRelayEntitlements = useCallback(async () => {
+    const session = currentSession();
+    if (!session || !activeRef.current || !cloudIdentity || relaySeedClaim.current) return null;
+    const confirmed = await requestConfirm({
+      title: "补录存量 Gateway 用户 Link Relay 白名单",
+      description: "将当前 OPL Gateway 中所有正常状态的活跃用户批量纳入 Link Relay 白名单；已被显式撤销的用户记录不会被覆盖。确认执行？",
+      confirmLabel: "确认补录",
+      tone: "primary"
+    });
+    if (!confirmed) return null;
+    const reason = "initial_active_gateway_seed";
+    const intent = relaySeedIntent.current?.reason === reason
+      ? relaySeedIntent.current
+      : { reason, idempotencyKey: `link-relay-seed:${crypto.randomUUID()}` };
+    relaySeedIntent.current = intent;
+    const claim = Symbol("link-relay-seed");
+    relaySeedClaim.current = claim;
+    setRelaySeedBusy(true);
+    const scope = scopeGeneration.current;
+    const userId = session.user.id;
+    const csrfToken = session.csrfToken;
+    const projectionPage = pageRef.current;
+    try {
+      const result = await seedActiveGatewayLinkRelayEntitlementsCommand(intent.reason, csrfToken, intent.idempotencyKey);
+      if (!seedLinkRelayCommandSucceeded(result)) {
+        throw new Error("operator_account_link_relay_seed_invalid");
+      }
+      if (relaySeedClaim.current !== claim || !requestOwnsScope(scope, userId, csrfToken)) return null;
+      if (relaySeedIntent.current === intent) relaySeedIntent.current = null;
+      await loadPage(session, projectionPage);
+      if (relaySeedClaim.current !== claim || !requestOwnsScope(scope, userId, csrfToken)) return null;
+      flash(`已扫描 ${result.scannedCount} 位活跃用户：新增 ${result.seededCount} 位，已有 ${result.existingCount} 位`);
+      return result;
+    } catch (error) {
+      if (relaySeedClaim.current === claim && requestOwnsScope(scope, userId, csrfToken)) {
+        flash(mutationError(error), "danger");
+      }
+      return null;
+    } finally {
+      if (relaySeedClaim.current === claim) {
+        relaySeedClaim.current = null;
+        setRelaySeedBusy(false);
+      }
+    }
+  }, [currentSession, flash, loadPage, mutationError, requestOwnsScope]);
+
   const pages = accounts.value?.available
     ? Math.ceil(accounts.value.data.total / accounts.value.data.pageSize)
     : 0;
@@ -577,6 +662,7 @@ export function useOperatorAccountController({
     searchQuery,
     provisionOperation,
     provisionBusy,
+    relaySeedBusy,
     busyAccountIds,
     refresh: load,
     changePage,
@@ -587,6 +673,8 @@ export function useOperatorAccountController({
     setWorkspacePurchaseEligibility,
     setServiceEntitlement,
     setPlatformAdmin,
+    setLinkRelayEntitlement,
+    seedActiveLinkRelayEntitlements,
     load,
     reset
   };

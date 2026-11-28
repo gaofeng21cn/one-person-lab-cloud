@@ -58,7 +58,7 @@ func TestGeneratedPolicyCoversAssignedOwners(t *testing.T) {
 	for owner, want := range map[api.OwnerEnum]int{
 		api.OwnerEnum_OWNER_ENUM_CAPABILITY:       25,
 		api.OwnerEnum_OWNER_ENUM_BUILD:            5,
-		api.OwnerEnum_OWNER_ENUM_TENANT:           22,
+		api.OwnerEnum_OWNER_ENUM_TENANT:           24,
 		api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL:  5,
 		api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG: 14,
 		api.OwnerEnum_OWNER_ENUM_SERVE:            7,
@@ -124,7 +124,7 @@ func TestGeneratedPolicyAudienceAndRoles(t *testing.T) {
 	if serviceEntitlement.owner != api.OwnerEnum_OWNER_ENUM_TENANT || len(serviceEntitlement.roles) != 1 || serviceEntitlement.roles[0] != "platform_admin" {
 		t.Fatalf("SETSERVICEENTITLEMENT is %v/%v, expected the tenant platform administrator", serviceEntitlement.owner, serviceEntitlement.roles)
 	}
-	for _, action := range []string{"LISTOPERATORACCOUNTS", "SETPLATFORMADMIN"} {
+	for _, action := range []string{"LISTOPERATORACCOUNTS", "SETPLATFORMADMIN", "SETLINKRELAYENTITLEMENT", "SEEDACTIVEGATEWAYLINKRELAYENTITLEMENTS"} {
 		policy := policyFor(t, action)
 		if policy.owner != api.OwnerEnum_OWNER_ENUM_TENANT || len(policy.roles) != 1 || policy.roles[0] != "platform_admin" {
 			t.Fatalf("%s is %v/%v, expected the tenant platform administrator", action, policy.owner, policy.roles)

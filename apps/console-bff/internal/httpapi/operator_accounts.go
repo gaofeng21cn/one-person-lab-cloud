@@ -129,6 +129,7 @@ func (s *Server) readOperatorAccounts(w http.ResponseWriter, r *http.Request, ct
 			"workspacePurchaseEnabled": entry.GetWorkspacePurchaseEnabled(),
 			"platformAdminEnabled":     entry.GetPlatformAdminEnabled(),
 			"isBootstrapAdmin":         entry.GetIsBootstrapAdmin(),
+			"linkRelayEnabled":         entry.GetLinkRelayEnabled(),
 			"serviceEntitlements": func() []map[string]any {
 				if entries := serviceEntitlementsByActor[actorID]; entries != nil {
 					return entries

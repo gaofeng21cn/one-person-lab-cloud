@@ -17,6 +17,7 @@ import type {
   OperatorAccountPageDTO,
   OperatorAccountDTO,
   OperatorProvisionAccountCommandDTO,
+  OperatorSeedLinkRelayEntitlementsCommandDTO,
   ProvisionAccountRequest,
   OperatorAnnouncementPageDTO,
   OperatorHealthDTO,
@@ -252,6 +253,7 @@ export interface OperatorAccountController {
   searchQuery: string;
   provisionOperation: OperatorProvisionAccountCommandDTO | null;
   provisionBusy: boolean;
+  relaySeedBusy: boolean;
   busyAccountIds: string[];
   refresh: () => Promise<void>;
   changePage: (page: number) => Promise<void>;
@@ -265,6 +267,8 @@ export interface OperatorAccountController {
   setWorkspacePurchaseEligibility: (accountId: string, enabled: boolean) => Promise<void>;
   setServiceEntitlement: (accountId: string, serviceId: string, enabled: boolean) => Promise<void>;
   setPlatformAdmin: (accountId: string, enabled: boolean) => Promise<void>;
+  setLinkRelayEntitlement: (accountId: string, enabled: boolean) => Promise<void>;
+  seedActiveLinkRelayEntitlements: () => Promise<OperatorSeedLinkRelayEntitlementsCommandDTO | null>;
 }
 
 export interface OperatorAnnouncementController {

@@ -236,3 +236,29 @@ test("platform admin delegation uses Cloud BFF route and refuses legacy builds",
   await operatorApi.setOperatorPlatformAdmin("45", true, "operator_requested", "csrf", "key", true);
   assert.deepEqual(calls, ["/api/v2/operator/accounts/45/platform-admin"]);
 });
+
+test("link relay entitlement write and seed routes target Cloud BFF and refuse legacy builds", async () => {
+  const calls: string[] = [];
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    calls.push(String(url));
+    if (String(url).endsWith("/seed-active-users")) {
+      return new Response(JSON.stringify({
+        operationId: "link-relay-seed-1", status: "succeeded",
+        scannedCount: 5, seededCount: 4, existingCount: 1
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response(JSON.stringify({
+      operationId: "link-relay-1", accountId: "45", status: "succeeded",
+      linkRelayEnabled: true
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  await assert.rejects(async () => operatorApi.setOperatorLinkRelayEntitlement("45", true, "operator_requested", "csrf", "key", false), /operator_write_unavailable/);
+  await assert.rejects(async () => operatorApi.seedActiveGatewayLinkRelayEntitlements("initial_seed", "csrf", "key", false), /operator_write_unavailable/);
+  assert.deepEqual(calls, []);
+  await operatorApi.setOperatorLinkRelayEntitlement("45", true, "operator_requested", "csrf", "key", true);
+  await operatorApi.seedActiveGatewayLinkRelayEntitlements("initial_seed", "csrf", "key", true);
+  assert.deepEqual(calls, [
+    "/api/v2/operator/accounts/45/link-relay-entitlement",
+    "/api/v2/operator/link-relay/seed-active-users"
+  ]);
+});

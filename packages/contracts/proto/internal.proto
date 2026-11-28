@@ -2144,6 +2144,7 @@ message OperatorGatewayAccount {
  bool key_count_available = 13;
  int32 key_count = 14;
  google.protobuf.Timestamp gateway_updated_at = 15;
+ bool link_relay_enabled = 16;
 }
 
 message OperatorGatewayAccountPage {
@@ -2151,6 +2152,61 @@ message OperatorGatewayAccountPage {
  int64 total = 2;
  int32 page = 3;
  int32 page_size = 4;
+}
+
+message SetLinkRelayEntitlementRequest {
+ string confirmation_account_id = 1;
+ bool enabled = 2;
+ string reason = 3;
+}
+
+message SetLinkRelayEntitlementRpcRequest {
+ CallContext context = 1;
+ string target_actor_id = 2;
+ SetLinkRelayEntitlementRequest body = 3;
+}
+
+message LinkRelayEntitlementCommand {
+ string operation_id = 1;
+ string account_id = 2;
+ string status = 3;
+ bool link_relay_enabled = 4;
+}
+
+message SeedActiveGatewayLinkRelayEntitlementsRequest {
+ string reason = 1;
+}
+
+message SeedActiveGatewayLinkRelayEntitlementsRpcRequest {
+ CallContext context = 1;
+ SeedActiveGatewayLinkRelayEntitlementsRequest body = 2;
+}
+
+message SeedLinkRelayEntitlementsCommand {
+ string operation_id = 1;
+ string status = 2;
+ int32 scanned_count = 3;
+ int32 seeded_count = 4;
+ int32 existing_count = 5;
+}
+
+message ReadCallerLinkRelayEntitlementRpcRequest {
+ CallContext context = 1;
+ string bearer_token = 2;
+}
+
+message ReadLinkRelayEntitlementRequest {
+ string actor_id = 1;
+}
+
+message LinkRelayEntitlementReadback {
+ string actor_id = 1;
+ string email = 2;
+ bool link_relay_enabled = 3;
+ bool is_bootstrap_admin = 4;
+ bool is_platform_admin = 5;
+ string reason = 6;
+ google.protobuf.Timestamp updated_at = 7;
 }
 
 message CreateTenantRpcRequest {
@@ -2453,6 +2509,9 @@ service TenantProductService {
  rpc ListServiceEntitlements(ListServiceEntitlementsRpcRequest) returns (ServiceEntitlementList);
  rpc ListOperatorAccounts(ListOperatorAccountsRpcRequest) returns (OperatorGatewayAccountPage);
  rpc SetPlatformAdmin(SetPlatformAdminRpcRequest) returns (PlatformAdminCommand);
+ rpc SetLinkRelayEntitlement(SetLinkRelayEntitlementRpcRequest) returns (LinkRelayEntitlementCommand);
+ rpc SeedActiveGatewayLinkRelayEntitlements(SeedActiveGatewayLinkRelayEntitlementsRpcRequest) returns (SeedLinkRelayEntitlementsCommand);
+ rpc ReadCallerLinkRelayEntitlement(ReadCallerLinkRelayEntitlementRpcRequest) returns (LinkRelayEntitlementReadback);
 }
 
 service CapabilityProductService {
@@ -2673,6 +2732,7 @@ service CloudIdentityAuthorization {
  rpc GetAuthorizationContext(GetAuthorizationContextRequest) returns (AuthorizationDecision);
  rpc IssueAcceptedOperationGrant(AcceptedOperationGrantRequest) returns (AcceptedOperationGrant);
  rpc ReadWorkspacePurchaseEligibility(ReadWorkspacePurchaseEligibilityRequest) returns (WorkspacePurchaseEligibilityReadback);
+ rpc ReadLinkRelayEntitlement(ReadLinkRelayEntitlementRequest) returns (LinkRelayEntitlementReadback);
 }
 message AdmissionRequest { CallContext context = 1; string workspace_id = 2; string capability_version_id = 3; string compute_plan_id = 4; string storage_plan_id = 5; repeated ModelSelection model_selections = 6; string purpose = 7; }
 message AdmissionResult { Observation outcome = 1; string admission_id = 2; string capability_snapshot_digest = 3; string provider_capability_version = 4; string policy_version_id = 5; string error_code = 6; google.protobuf.Timestamp expires_at = 7; string expected_interruption = 8; }
@@ -3688,9 +3748,12 @@ AUTHORIZATION_ACTION_ENUM_DELETEACCEPTEDRESOURCES = 153;
  AUTHORIZATION_ACTION_ENUM_SETWORKSPACEPURCHASEELIGIBILITY = 173;
  AUTHORIZATION_ACTION_ENUM_LISTOPERATORACCOUNTS = 174;
  AUTHORIZATION_ACTION_ENUM_SETPLATFORMADMIN = 175;
- AUTHORIZATION_ACTION_ENUM_SETSERVICEENTITLEMENT = 176;
- AUTHORIZATION_ACTION_ENUM_ISSUESERVICEGRANT = 177;
- AUTHORIZATION_ACTION_ENUM_GETSERVICEGRANTJWKS = 178;
+	AUTHORIZATION_ACTION_ENUM_SETSERVICEENTITLEMENT = 176;
+	AUTHORIZATION_ACTION_ENUM_ISSUESERVICEGRANT = 177;
+	AUTHORIZATION_ACTION_ENUM_GETSERVICEGRANTJWKS = 178;
+	AUTHORIZATION_ACTION_ENUM_SETLINKRELAYENTITLEMENT = 179;
+	AUTHORIZATION_ACTION_ENUM_SEEDACTIVEGATEWAYLINKRELAYENTITLEMENTS = 180;
+	AUTHORIZATION_ACTION_ENUM_GETLINKRELAYENTITLEMENT = 181;
 }
 
 enum ServiceIdentityEnum {

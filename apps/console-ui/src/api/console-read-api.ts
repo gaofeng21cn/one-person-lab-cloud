@@ -28,9 +28,11 @@ import type {
   BillingReviewResolutionRequest,
   ProvisionAccountRequest,
   OperatorAccountCommandDTO,
+  OperatorLinkRelayEntitlementCommandDTO,
   OperatorPlatformAdminCommandDTO,
   OperatorProvisionAccountCommandDTO,
   OperatorAccountPageDTO,
+  OperatorSeedLinkRelayEntitlementsCommandDTO,
   OperatorServiceEntitlementCommandDTO,
   OperatorWorkspacePurchaseEligibilityCommandDTO,
   OperatorAnnouncementPageDTO,
@@ -539,6 +541,16 @@ export function operatorPlatformAdminRoute(cloud: boolean, targetId: string): st
   return `/api/v2/operator/accounts/${encodeURIComponent(targetId)}/platform-admin`;
 }
 
+export function operatorLinkRelayEntitlementRoute(cloud: boolean, targetId: string): string {
+  if (!cloud) throw new Error("operator_write_unavailable");
+  return `/api/v2/operator/accounts/${encodeURIComponent(targetId)}/link-relay-entitlement`;
+}
+
+export function operatorLinkRelaySeedRoute(cloud: boolean): string {
+  if (!cloud) throw new Error("operator_write_unavailable");
+  return "/api/v2/operator/link-relay/seed-active-users";
+}
+
 export function getOperatorAccounts(cloud: boolean = cloudIdentity): Promise<SourceEnvelope<OperatorAccountsData>> {
   return sourceGet<OperatorAccountsData>(`${operatorReadRoute(cloud)}/accounts`);
 }
@@ -611,6 +623,14 @@ export function setOperatorServiceEntitlement(accountId: string, serviceId: stri
 
 export function setOperatorPlatformAdmin(accountId: string, enabled: boolean, reason: string, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperatorPlatformAdminCommandDTO> {
   return postJson<unknown>(operatorPlatformAdminRoute(cloud, accountId), { confirmationAccountId: accountId, enabled, reason }, csrfToken, idempotencyKey).then(decodeDto<OperatorPlatformAdminCommandDTO>);
+}
+
+export function setOperatorLinkRelayEntitlement(accountId: string, enabled: boolean, reason: string, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperatorLinkRelayEntitlementCommandDTO> {
+  return postJson<unknown>(operatorLinkRelayEntitlementRoute(cloud, accountId), { confirmationAccountId: accountId, enabled, reason }, csrfToken, idempotencyKey).then(decodeDto<OperatorLinkRelayEntitlementCommandDTO>);
+}
+
+export function seedActiveGatewayLinkRelayEntitlements(reason: string, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperatorSeedLinkRelayEntitlementsCommandDTO> {
+  return postJson<unknown>(operatorLinkRelaySeedRoute(cloud), { reason }, csrfToken, idempotencyKey).then(decodeDto<OperatorSeedLinkRelayEntitlementsCommandDTO>);
 }
 
 export function resolveBillingReview(resourceType: string, resourceId: string, input: BillingReviewResolutionRequest, csrfToken: string, idempotencyKey: string, cloud: boolean = cloudIdentity): Promise<OperationStatusDTO> {

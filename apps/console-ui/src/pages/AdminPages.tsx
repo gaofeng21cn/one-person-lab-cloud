@@ -430,8 +430,8 @@ function serviceEntitlementMeta(serviceId: string): { title: string; subtitle: s
       };
     case "link_relay":
       return {
-        title: "OPL Link Relay",
-        subtitle: "受控跨网中继与远程桌面访问服务准入控制。"
+        title: "OPL Link Relay（服务目录 Grant）",
+        subtitle: "伴生服务目录发现与 Ed25519 短期 Grant 令牌准入控制。"
       };
     default:
       return {
@@ -452,6 +452,12 @@ function AccountCapabilityTags({ account }: { account: OperatorAccountDTO }) {
         <span aria-hidden="true" className={`ss-dot ${account.workspacePurchaseEnabled ? "ss-dot--ok" : "ss-dot--muted"}`} />
         {account.workspacePurchaseEnabled ? "可新购 Workspace" : "不可新购 Workspace"}
       </Badge>
+      {(cloudIdentity || typeof account.linkRelayEnabled === "boolean") ? (
+        <Badge color={account.linkRelayEnabled ? "success" : "secondary"}>
+          <span aria-hidden="true" className={`ss-dot ${account.linkRelayEnabled ? "ss-dot--ok" : "ss-dot--muted"}`} />
+          {account.linkRelayEnabled ? "Link Relay" : "无 Relay"}
+        </Badge>
+      ) : null}
     </span>
   );
 }
@@ -570,7 +576,7 @@ function ProvisionAccountModal({ controller, onClose, open }: { controller: Cons
   );
 }
 
-type PermissionFilter = "all" | "eligible" | "restricted" | "admin" | "disabled";
+type PermissionFilter = "all" | "eligible" | "relay" | "restricted" | "admin" | "disabled";
 
 function AccountInspectorDrawer({ account, controller, onClose, onOpenWallet }: {
   account: OperatorAccountDTO | null;
@@ -701,6 +707,36 @@ function AccountInspectorDrawer({ account, controller, onClose, onOpenWallet }: 
                         {account.workspacePurchaseEnabled ? "撤销新购" : "授予新购"}
                       </Button>
                     : <span className="account-read-only">账户已停用</span>}
+              </div>
+            </div>
+
+            <div className="inspector-capability-row">
+              <div className="inspector-capability-row__copy">
+                <strong>OPL Link Relay 转发准入</strong>
+                <small>控制该 Gateway 主体是否可注册设备与接入 Link 跨网转发控制面。</small>
+              </div>
+              <div className="inspector-capability-row__control">
+                <Badge color={account.linkRelayEnabled ? "success" : "secondary"}>
+                  <span aria-hidden="true" className={`ss-dot ${account.linkRelayEnabled ? "ss-dot--ok" : "ss-dot--muted"}`} />
+                  {account.linkRelayEnabled ? "已允许转发" : "未允许转发"}
+                </Badge>
+                {bootstrapAdmin && account.linkRelayEnabled
+                  ? <span className="account-read-only">默认拥有平台权限</span>
+                  : cloudIdentity
+                    ? active
+                      ? <Button
+                          className="account-permission-toggle"
+                          color={account.linkRelayEnabled ? "danger" : "primary"}
+                          disabled={busy}
+                          onClick={() => void controller.operatorAccounts.setLinkRelayEntitlement(account.accountId, !account.linkRelayEnabled)}
+                          size="sm"
+                          variant="outline"
+                        >
+                          {account.linkRelayEnabled ? <ShieldOff aria-hidden size={14} /> : <ShieldCheck aria-hidden size={14} />}
+                          {account.linkRelayEnabled ? "撤销 Relay" : "授予 Relay"}
+                        </Button>
+                      : <span className="account-read-only">账户已停用</span>
+                    : <span className="account-read-only">仅 Cloud 模式可配置</span>}
               </div>
             </div>
 
@@ -936,6 +972,7 @@ function AccountsPage({ controller }: { controller: ConsoleController }) {
             <div className="operator-accounts-title"><h2>用户与权限</h2></div>
             <div className="operator-accounts-panel-actions">
               <Button aria-label="刷新账户列表" disabled={accountController.accounts.loading} onClick={() => void accountController.refresh()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />刷新</Button>
+              <Button disabled={accountController.relaySeedBusy || accountController.accounts.loading} hidden={!cloudIdentity} onClick={() => void accountController.seedActiveLinkRelayEntitlements()} size="sm" variant="outline"><ShieldCheck aria-hidden size={14} />{accountController.relaySeedBusy ? "补录中…" : "补录存量 Relay 白名单"}</Button>
               <Button hidden={!cloudIdentity} color="primary" onClick={() => setDialog("provision")}><Plus aria-hidden size={16} />开通用户</Button>
             </div>
           </div>
@@ -945,19 +982,22 @@ function AccountsPage({ controller }: { controller: ConsoleController }) {
           const activeCount = items.filter((item) => item.status === "active").length;
           const disabledCount = items.filter((item) => item.status !== "active").length;
           const eligibleCount = items.filter((item) => item.workspacePurchaseEnabled).length;
-          const restrictedCount = items.filter((item) => !item.workspacePurchaseEnabled && item.status === "active" && !isOperatorPlatformAdmin(item)).length;
+          const relayCount = items.filter((item) => Boolean(item.linkRelayEnabled)).length;
+          const restrictedCount = items.filter((item) => !item.workspacePurchaseEnabled && !item.linkRelayEnabled && item.status === "active" && !isOperatorPlatformAdmin(item)).length;
           const adminCount = items.filter(isOperatorPlatformAdmin).length;
           const normalizedQuery = searchQuery.trim().toLowerCase();
           const filterOptions: Array<{ id: PermissionFilter; label: string; count: number }> = [
             { id: "all", label: "全部", count: items.length },
             { id: "eligible", label: "已开放 Workspace", count: eligibleCount },
+            ...(cloudIdentity ? [{ id: "relay" as const, label: "Link Relay", count: relayCount }] : []),
             { id: "restricted", label: "仅 Gateway", count: restrictedCount },
             { id: "admin", label: "管理员", count: adminCount },
             { id: "disabled", label: "已停用", count: disabledCount }
           ];
           const filteredItems = items.filter((item) => {
             if (permissionFilter === "eligible" && !item.workspacePurchaseEnabled) return false;
-            if (permissionFilter === "restricted" && (item.workspacePurchaseEnabled || item.status !== "active" || isOperatorPlatformAdmin(item))) return false;
+            if (permissionFilter === "relay" && !item.linkRelayEnabled) return false;
+            if (permissionFilter === "restricted" && (item.workspacePurchaseEnabled || Boolean(item.linkRelayEnabled) || item.status !== "active" || isOperatorPlatformAdmin(item))) return false;
             if (permissionFilter === "admin" && !isOperatorPlatformAdmin(item)) return false;
             if (permissionFilter === "disabled" && item.status === "active") return false;
             if (!normalizedQuery) return true;
@@ -980,7 +1020,7 @@ function AccountsPage({ controller }: { controller: ConsoleController }) {
               <div className="operator-accounts-summary__cell">
                 <span className="operator-accounts-summary__label">Workspace 白名单</span>
                 <strong className="operator-accounts-summary__value">{formatCount(eligibleCount)} / {formatCount(items.length)}</strong>
-                <span className="ss-telemetry-note"><span aria-hidden="true" className="ss-dot ss-dot--ok" />显式白名单放行</span>
+                <span className="ss-telemetry-note"><span aria-hidden="true" className="ss-dot ss-dot--ok" />{cloudIdentity ? `Relay ${formatCount(relayCount)} 位` : "显式白名单放行"}</span>
               </div>
               <div className="operator-accounts-summary__cell">
                 <span className="operator-accounts-summary__label">平台管理员</span>

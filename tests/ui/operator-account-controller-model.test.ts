@@ -4,8 +4,10 @@ import test from "node:test";
 import type {
   OperatorAccountDTO,
   OperatorAccountCommandDTO,
+  OperatorLinkRelayEntitlementCommandDTO,
   OperatorPlatformAdminCommandDTO,
   OperatorProvisionAccountCommandDTO,
+  OperatorSeedLinkRelayEntitlementsCommandDTO,
   OperatorServiceEntitlementCommandDTO,
   OperatorWorkspacePurchaseEligibilityCommandDTO,
   ProvisionAccountRequest
@@ -16,11 +18,13 @@ import {
   expectedWorkspacePurchaseEligibility,
   isOperatorBootstrapAdmin,
   isOperatorPlatformAdmin,
+  linkRelayCommandSucceeded,
   platformAdminCommandSucceeded,
   provisionCommandSucceeded,
   provisionReadbackMatches,
   resolveProvisionAccountIntent,
   sameProvisionInput,
+  seedLinkRelayCommandSucceeded,
   serviceEntitlementCommandSucceeded,
   type ProvisionAccountIntent
 } from "../../apps/console-ui/src/app/operator-account-controller-model.ts";
@@ -270,4 +274,25 @@ test("gateway-first provision readback matches without legacy console user id an
   assert.equal(isOperatorPlatformAdmin({ ...gatewayFirstAccount, platformAdminEnabled: true, role: "admin" }), true);
   assert.equal(isOperatorBootstrapAdmin({ ...gatewayFirstAccount, platformAdminEnabled: true, isBootstrapAdmin: false }), false);
   assert.equal(isOperatorBootstrapAdmin({ accountId: "43", isBootstrapAdmin: true }), true);
+
+  const relayCmd: OperatorLinkRelayEntitlementCommandDTO = {
+    operationId: "link-relay-45",
+    accountId: "45",
+    status: "succeeded",
+    linkRelayEnabled: true
+  };
+  assert.equal(linkRelayCommandSucceeded(relayCmd, "45", true), true);
+  assert.equal(linkRelayCommandSucceeded(relayCmd, "46", true), false);
+  assert.equal(linkRelayCommandSucceeded(relayCmd, "45", false), false);
+
+  const seedCmd: OperatorSeedLinkRelayEntitlementsCommandDTO = {
+    operationId: "link-relay-seed-1",
+    status: "succeeded",
+    scannedCount: 5,
+    seededCount: 3,
+    existingCount: 2
+  };
+  assert.equal(seedLinkRelayCommandSucceeded(seedCmd), true);
+  assert.equal(seedLinkRelayCommandSucceeded({ ...seedCmd, existingCount: 3 }), false);
+  assert.equal(seedLinkRelayCommandSucceeded({ ...seedCmd, status: "failed" }), false);
 });
