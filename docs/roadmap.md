@@ -108,6 +108,24 @@ after Framework v2 Wave 1 single-writer source storage lands:
   `one-person-lab`, and simplify `opl-studio` Software Center to use the active
   OPL Gateway account by default while keeping public packages zero-login.
 
+### Unified Service Entitlements & Endpoint Discovery
+
+Implement Cloud-governed companion admission and zero-URL client bootstrap as
+specified in [service-entitlements-and-discovery.md](service-entitlements-and-discovery.md):
+
+- `CloudIdentity` (`opl_tenant`): add `tenant.service_entitlements` migration,
+  admission evaluator (`allowlist_only` and
+  `active_gateway_default_with_overrides`), Console `/operator` grant/revoke and
+  override governance, and Ed25519 `grant_token` signing with JWKS publication
+  (`GET /.well-known/opl-grant-jwks.json`).
+- Instance Service Catalog & Console BFF: bind instance-owned `service_id ->
+  { default_origin, audience, admission_mode }` configuration and expose
+  non-browser `POST /api/v2/client/service-grant` (supporting direct Gateway
+  login with optional 2FA challenge or existing Gateway Bearer session).
+- Consumer Cutover: adopt `service-grant` verification and `actor_id` isolation
+  across `opl-netfleet-cloud` / `site-sync` and unify `opl-link` admission on the
+  same entitlement boundary.
+
 ## Workspace Key And Customer Read Boundaries
 
 Complete migration of remaining transitional customer reads off legacy Control
