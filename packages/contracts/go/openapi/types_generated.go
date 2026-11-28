@@ -84,181 +84,184 @@ func (e AuditEventOutcome) Valid() bool {
 
 // Defines values for AuthorizationAction.
 const (
-	AuthorizationActionAcceptInvitation                      AuthorizationAction = "acceptInvitation"
-	AuthorizationActionAcquireReference                      AuthorizationAction = "acquireReference"
-	AuthorizationActionActivateRoute                         AuthorizationAction = "activateRoute"
-	AuthorizationActionAdoptWorkspace                        AuthorizationAction = "adoptWorkspace"
-	AuthorizationActionAppendPlanChangeEvidence              AuthorizationAction = "appendPlanChangeEvidence"
-	AuthorizationActionAppendReceipt                         AuthorizationAction = "appendReceipt"
-	AuthorizationActionArchiveNamespace                      AuthorizationAction = "archiveNamespace"
-	AuthorizationActionArchivePackage                        AuthorizationAction = "archivePackage"
-	AuthorizationActionBindManagedSecret                     AuthorizationAction = "bindManagedSecret"
-	AuthorizationActionBindReference                         AuthorizationAction = "bindReference"
-	AuthorizationActionBindTenantWallet                      AuthorizationAction = "bindTenantWallet"
-	AuthorizationActionCancelAcceptedObligation              AuthorizationAction = "cancelAcceptedObligation"
-	AuthorizationActionCancelPlanChange                      AuthorizationAction = "cancelPlanChange"
-	AuthorizationActionChargeAcceptedObligation              AuthorizationAction = "chargeAcceptedObligation"
-	AuthorizationActionChargePlanChangeSupplement            AuthorizationAction = "chargePlanChangeSupplement"
-	AuthorizationActionClaimNextPeriodObligation             AuthorizationAction = "claimNextPeriodObligation"
-	AuthorizationActionCloseoutAcceptedObligation            AuthorizationAction = "closeoutAcceptedObligation"
-	AuthorizationActionCompleteAcceptedObligation            AuthorizationAction = "completeAcceptedObligation"
-	AuthorizationActionCompleteUpload                        AuthorizationAction = "completeUpload"
-	AuthorizationActionCreateBuild                           AuthorizationAction = "createBuild"
-	AuthorizationActionCreateComputePlan                     AuthorizationAction = "createComputePlan"
-	AuthorizationActionCreateGatewayKey                      AuthorizationAction = "createGatewayKey"
-	AuthorizationActionCreateNamespace                       AuthorizationAction = "createNamespace"
-	AuthorizationActionCreatePackage                         AuthorizationAction = "createPackage"
-	AuthorizationActionCreatePersonalGatewayKey              AuthorizationAction = "createPersonalGatewayKey"
-	AuthorizationActionCreatePricePolicyVersion              AuthorizationAction = "createPricePolicyVersion"
-	AuthorizationActionCreatePublisherNamespace              AuthorizationAction = "createPublisherNamespace"
-	AuthorizationActionCreateQuote                           AuthorizationAction = "createQuote"
-	AuthorizationActionCreateRefundPolicyVersion             AuthorizationAction = "createRefundPolicyVersion"
-	AuthorizationActionCreateRetentionPolicyVersion          AuthorizationAction = "createRetentionPolicyVersion"
-	AuthorizationActionCreateStoragePlan                     AuthorizationAction = "createStoragePlan"
-	AuthorizationActionCreateTenant                          AuthorizationAction = "createTenant"
-	AuthorizationActionCreateUpload                          AuthorizationAction = "createUpload"
-	AuthorizationActionCreateUploadPart                      AuthorizationAction = "createUploadPart"
-	AuthorizationActionCreateWorkspace                       AuthorizationAction = "createWorkspace"
-	AuthorizationActionDebitScheduledPeriod                  AuthorizationAction = "debitScheduledPeriod"
-	AuthorizationActionDeleteAcceptedResources               AuthorizationAction = "deleteAcceptedResources"
-	AuthorizationActionDeleteCapabilityVersion               AuthorizationAction = "deleteCapabilityVersion"
-	AuthorizationActionDeleteTenant                          AuthorizationAction = "deleteTenant"
-	AuthorizationActionDeleteWorkspace                       AuthorizationAction = "deleteWorkspace"
-	AuthorizationActionExecuteScheduledPlanChange            AuthorizationAction = "executeScheduledPlanChange"
-	AuthorizationActionFenceRouteEpoch                       AuthorizationAction = "fenceRouteEpoch"
-	AuthorizationActionGetAdminTenant                        AuthorizationAction = "getAdminTenant"
-	AuthorizationActionGetBuild                              AuthorizationAction = "getBuild"
-	AuthorizationActionGetBuildRuntimePolicy                 AuthorizationAction = "getBuildRuntimePolicy"
-	AuthorizationActionGetCapabilityVersion                  AuthorizationAction = "getCapabilityVersion"
-	AuthorizationActionGetDeployment                         AuthorizationAction = "getDeployment"
-	AuthorizationActionGetLoginContext                       AuthorizationAction = "getLoginContext"
-	AuthorizationActionGetOperation                          AuthorizationAction = "getOperation"
-	AuthorizationActionGetOperatorWorkspace                  AuthorizationAction = "getOperatorWorkspace"
-	AuthorizationActionGetOperatorWorkspaceAccess            AuthorizationAction = "getOperatorWorkspaceAccess"
-	AuthorizationActionGetPackage                            AuthorizationAction = "getPackage"
-	AuthorizationActionGetPackageVersion                     AuthorizationAction = "getPackageVersion"
-	AuthorizationActionGetPersonalGatewayKey                 AuthorizationAction = "getPersonalGatewayKey"
-	AuthorizationActionGetPersonalGatewayKeyUsageSummary     AuthorizationAction = "getPersonalGatewayKeyUsageSummary"
-	AuthorizationActionGetPlanChange                         AuthorizationAction = "getPlanChange"
-	AuthorizationActionGetQuote                              AuthorizationAction = "getQuote"
-	AuthorizationActionGetReceipt                            AuthorizationAction = "getReceipt"
-	AuthorizationActionGetSelfUserExternalBinding            AuthorizationAction = "getSelfUserExternalBinding"
-	AuthorizationActionGetSession                            AuthorizationAction = "getSession"
-	AuthorizationActionGetSubscription                       AuthorizationAction = "getSubscription"
-	AuthorizationActionGetTenant                             AuthorizationAction = "getTenant"
-	AuthorizationActionGetTenantAssetCustody                 AuthorizationAction = "getTenantAssetCustody"
-	AuthorizationActionGetTenantLifecycleOperation           AuthorizationAction = "getTenantLifecycleOperation"
-	AuthorizationActionGetTenantWallet                       AuthorizationAction = "getTenantWallet"
-	AuthorizationActionGetUpload                             AuthorizationAction = "getUpload"
-	AuthorizationActionGetUsageSummary                       AuthorizationAction = "getUsageSummary"
-	AuthorizationActionGetWallet                             AuthorizationAction = "getWallet"
-	AuthorizationActionGetWorkspace                          AuthorizationAction = "getWorkspace"
-	AuthorizationActionGetWorkspaceAccess                    AuthorizationAction = "getWorkspaceAccess"
-	AuthorizationActionGetWorkspaceDeletion                  AuthorizationAction = "getWorkspaceDeletion"
-	AuthorizationActionGetWorkspaceFinancialReceipt          AuthorizationAction = "getWorkspaceFinancialReceipt"
-	AuthorizationActionGetWorkspaceModels                    AuthorizationAction = "getWorkspaceModels"
-	AuthorizationActionGetWorkspaceTransactionTrend          AuthorizationAction = "getWorkspaceTransactionTrend"
-	AuthorizationActionInviteMember                          AuthorizationAction = "inviteMember"
-	AuthorizationActionIssueAcceptedOperationGrant           AuthorizationAction = "issueAcceptedOperationGrant"
-	AuthorizationActionListAdminOperations                   AuthorizationAction = "listAdminOperations"
-	AuthorizationActionListAuditEvents                       AuthorizationAction = "listAuditEvents"
-	AuthorizationActionListBuildLogs                         AuthorizationAction = "listBuildLogs"
-	AuthorizationActionListBuilds                            AuthorizationAction = "listBuilds"
-	AuthorizationActionListCapabilityVersions                AuthorizationAction = "listCapabilityVersions"
-	AuthorizationActionListComputePlans                      AuthorizationAction = "listComputePlans"
-	AuthorizationActionListDeployments                       AuthorizationAction = "listDeployments"
-	AuthorizationActionListGatewayKeys                       AuthorizationAction = "listGatewayKeys"
-	AuthorizationActionListInvitations                       AuthorizationAction = "listInvitations"
-	AuthorizationActionListMembers                           AuthorizationAction = "listMembers"
-	AuthorizationActionListModels                            AuthorizationAction = "listModels"
-	AuthorizationActionListNamespaces                        AuthorizationAction = "listNamespaces"
-	AuthorizationActionListOperatorAccounts                  AuthorizationAction = "listOperatorAccounts"
-	AuthorizationActionListOperatorDeployments               AuthorizationAction = "listOperatorDeployments"
-	AuthorizationActionListOperatorWorkspaces                AuthorizationAction = "listOperatorWorkspaces"
-	AuthorizationActionListPackageVersions                   AuthorizationAction = "listPackageVersions"
-	AuthorizationActionListPackages                          AuthorizationAction = "listPackages"
-	AuthorizationActionListPersonalGatewayGroups             AuthorizationAction = "listPersonalGatewayGroups"
-	AuthorizationActionListPersonalGatewayKeyUsage           AuthorizationAction = "listPersonalGatewayKeyUsage"
-	AuthorizationActionListPersonalGatewayKeys               AuthorizationAction = "listPersonalGatewayKeys"
-	AuthorizationActionListPlanChanges                       AuthorizationAction = "listPlanChanges"
-	AuthorizationActionListPricePolicyVersions               AuthorizationAction = "listPricePolicyVersions"
-	AuthorizationActionListPublisherNamespaces               AuthorizationAction = "listPublisherNamespaces"
-	AuthorizationActionListQualifications                    AuthorizationAction = "listQualifications"
-	AuthorizationActionListReceipts                          AuthorizationAction = "listReceipts"
-	AuthorizationActionListRechargeRecords                   AuthorizationAction = "listRechargeRecords"
-	AuthorizationActionListRefundPolicyVersions              AuthorizationAction = "listRefundPolicyVersions"
-	AuthorizationActionListRetentionPolicyVersions           AuthorizationAction = "listRetentionPolicyVersions"
-	AuthorizationActionListRuntimeVersions                   AuthorizationAction = "listRuntimeVersions"
-	AuthorizationActionListStoragePlans                      AuthorizationAction = "listStoragePlans"
-	AuthorizationActionListTenants                           AuthorizationAction = "listTenants"
-	AuthorizationActionListUsage                             AuthorizationAction = "listUsage"
-	AuthorizationActionListWebuiVersions                     AuthorizationAction = "listWebuiVersions"
-	AuthorizationActionListWorkspaceTransactions             AuthorizationAction = "listWorkspaceTransactions"
-	AuthorizationActionListWorkspaces                        AuthorizationAction = "listWorkspaces"
-	AuthorizationActionLogin                                 AuthorizationAction = "login"
-	AuthorizationActionLogout                                AuthorizationAction = "logout"
-	AuthorizationActionObserveResources                      AuthorizationAction = "observeResources"
-	AuthorizationActionObserveRoute                          AuthorizationAction = "observeRoute"
-	AuthorizationActionProvisionAcceptedResources            AuthorizationAction = "provisionAcceptedResources"
-	AuthorizationActionPublishOfficialPackage                AuthorizationAction = "publishOfficialPackage"
-	AuthorizationActionReadApplicationCredentials            AuthorizationAction = "readApplicationCredentials"
-	AuthorizationActionReadApprovedPlanTransition            AuthorizationAction = "readApprovedPlanTransition"
-	AuthorizationActionReadArtifact                          AuthorizationAction = "readArtifact"
-	AuthorizationActionReadAuthorizationContext              AuthorizationAction = "readAuthorizationContext"
-	AuthorizationActionReadClaimUsage                        AuthorizationAction = "readClaimUsage"
-	AuthorizationActionReadExecutionPlan                     AuthorizationAction = "readExecutionPlan"
-	AuthorizationActionReadNextPeriodObligation              AuthorizationAction = "readNextPeriodObligation"
-	AuthorizationActionReadOperatorResources                 AuthorizationAction = "readOperatorResources"
-	AuthorizationActionReadOwnerCommit                       AuthorizationAction = "readOwnerCommit"
-	AuthorizationActionReadPlanChangeFailure                 AuthorizationAction = "readPlanChangeFailure"
-	AuthorizationActionReadRenewalConsent                    AuthorizationAction = "readRenewalConsent"
-	AuthorizationActionReadSubscriptionPlanState             AuthorizationAction = "readSubscriptionPlanState"
-	AuthorizationActionReadWalletAction                      AuthorizationAction = "readWalletAction"
-	AuthorizationActionReconcileOperation                    AuthorizationAction = "reconcileOperation"
-	AuthorizationActionReenableTenant                        AuthorizationAction = "reenableTenant"
-	AuthorizationActionRefundConfirmedDeletion               AuthorizationAction = "refundConfirmedDeletion"
-	AuthorizationActionRefundPlanChangeCompensation          AuthorizationAction = "refundPlanChangeCompensation"
-	AuthorizationActionRefundSupplementOnDeletion            AuthorizationAction = "refundSupplementOnDeletion"
-	AuthorizationActionRegisterRuntimeVersion                AuthorizationAction = "registerRuntimeVersion"
-	AuthorizationActionRegisterWebuiVersion                  AuthorizationAction = "registerWebuiVersion"
-	AuthorizationActionReleaseReference                      AuthorizationAction = "releaseReference"
-	AuthorizationActionRemoveMember                          AuthorizationAction = "removeMember"
-	AuthorizationActionRenewAcceptedResources                AuthorizationAction = "renewAcceptedResources"
-	AuthorizationActionRenewWorkspace                        AuthorizationAction = "renewWorkspace"
-	AuthorizationActionReserveRuntime                        AuthorizationAction = "reserveRuntime"
-	AuthorizationActionResizeAcceptedResources               AuthorizationAction = "resizeAcceptedResources"
-	AuthorizationActionResizeWorkspace                       AuthorizationAction = "resizeWorkspace"
-	AuthorizationActionResolveBuildInput                     AuthorizationAction = "resolveBuildInput"
-	AuthorizationActionResolvePublisherContract              AuthorizationAction = "resolvePublisherContract"
-	AuthorizationActionRestoreAfterResourceChange            AuthorizationAction = "restoreAfterResourceChange"
-	AuthorizationActionRestoreTenant                         AuthorizationAction = "restoreTenant"
-	AuthorizationActionResumeTenantWorkspaces                AuthorizationAction = "resumeTenantWorkspaces"
-	AuthorizationActionRetireRuntime                         AuthorizationAction = "retireRuntime"
-	AuthorizationActionRetryBuild                            AuthorizationAction = "retryBuild"
-	AuthorizationActionRevealGatewayKey                      AuthorizationAction = "revealGatewayKey"
-	AuthorizationActionRevealPersonalGatewayKey              AuthorizationAction = "revealPersonalGatewayKey"
-	AuthorizationActionRevealWorkspaceApplicationCredentials AuthorizationAction = "revealWorkspaceApplicationCredentials"
-	AuthorizationActionRevokeGatewayKey                      AuthorizationAction = "revokeGatewayKey"
-	AuthorizationActionRevokeInvitation                      AuthorizationAction = "revokeInvitation"
-	AuthorizationActionRevokePersonalGatewayKey              AuthorizationAction = "revokePersonalGatewayKey"
-	AuthorizationActionRevokePublisherNamespace              AuthorizationAction = "revokePublisherNamespace"
-	AuthorizationActionRollbackRoute                         AuthorizationAction = "rollbackRoute"
-	AuthorizationActionRollbackWorkspace                     AuthorizationAction = "rollbackWorkspace"
-	AuthorizationActionSetBuildRuntimePolicy                 AuthorizationAction = "setBuildRuntimePolicy"
-	AuthorizationActionSetComputePlanAvailability            AuthorizationAction = "setComputePlanAvailability"
-	AuthorizationActionSetPlatformAdmin                      AuthorizationAction = "setPlatformAdmin"
-	AuthorizationActionSetRuntimeVersionStatus               AuthorizationAction = "setRuntimeVersionStatus"
-	AuthorizationActionSetStoragePlanAvailability            AuthorizationAction = "setStoragePlanAvailability"
-	AuthorizationActionSetWebuiVersionStatus                 AuthorizationAction = "setWebuiVersionStatus"
-	AuthorizationActionSetWorkspacePurchaseEligibility       AuthorizationAction = "setWorkspacePurchaseEligibility"
-	AuthorizationActionSuspendTenant                         AuthorizationAction = "suspendTenant"
-	AuthorizationActionUpdateMemberRole                      AuthorizationAction = "updateMemberRole"
-	AuthorizationActionUpdateNamespace                       AuthorizationAction = "updateNamespace"
-	AuthorizationActionUpdatePackage                         AuthorizationAction = "updatePackage"
-	AuthorizationActionUpdatePersonalGatewayKey              AuthorizationAction = "updatePersonalGatewayKey"
-	AuthorizationActionUpdateRenewalSettings                 AuthorizationAction = "updateRenewalSettings"
-	AuthorizationActionUpdateWorkspaceModels                 AuthorizationAction = "updateWorkspaceModels"
-	AuthorizationActionUpdateWorkspaceVersion                AuthorizationAction = "updateWorkspaceVersion"
+	AuthorizationActionAcceptInvitation                       AuthorizationAction = "acceptInvitation"
+	AuthorizationActionAcquireReference                       AuthorizationAction = "acquireReference"
+	AuthorizationActionActivateRoute                          AuthorizationAction = "activateRoute"
+	AuthorizationActionAdoptWorkspace                         AuthorizationAction = "adoptWorkspace"
+	AuthorizationActionAppendPlanChangeEvidence               AuthorizationAction = "appendPlanChangeEvidence"
+	AuthorizationActionAppendReceipt                          AuthorizationAction = "appendReceipt"
+	AuthorizationActionArchiveNamespace                       AuthorizationAction = "archiveNamespace"
+	AuthorizationActionArchivePackage                         AuthorizationAction = "archivePackage"
+	AuthorizationActionBindManagedSecret                      AuthorizationAction = "bindManagedSecret"
+	AuthorizationActionBindReference                          AuthorizationAction = "bindReference"
+	AuthorizationActionBindTenantWallet                       AuthorizationAction = "bindTenantWallet"
+	AuthorizationActionCancelAcceptedObligation               AuthorizationAction = "cancelAcceptedObligation"
+	AuthorizationActionCancelPlanChange                       AuthorizationAction = "cancelPlanChange"
+	AuthorizationActionChargeAcceptedObligation               AuthorizationAction = "chargeAcceptedObligation"
+	AuthorizationActionChargePlanChangeSupplement             AuthorizationAction = "chargePlanChangeSupplement"
+	AuthorizationActionClaimNextPeriodObligation              AuthorizationAction = "claimNextPeriodObligation"
+	AuthorizationActionCloseoutAcceptedObligation             AuthorizationAction = "closeoutAcceptedObligation"
+	AuthorizationActionCompleteAcceptedObligation             AuthorizationAction = "completeAcceptedObligation"
+	AuthorizationActionCompleteUpload                         AuthorizationAction = "completeUpload"
+	AuthorizationActionCreateBuild                            AuthorizationAction = "createBuild"
+	AuthorizationActionCreateComputePlan                      AuthorizationAction = "createComputePlan"
+	AuthorizationActionCreateGatewayKey                       AuthorizationAction = "createGatewayKey"
+	AuthorizationActionCreateNamespace                        AuthorizationAction = "createNamespace"
+	AuthorizationActionCreatePackage                          AuthorizationAction = "createPackage"
+	AuthorizationActionCreatePersonalGatewayKey               AuthorizationAction = "createPersonalGatewayKey"
+	AuthorizationActionCreatePricePolicyVersion               AuthorizationAction = "createPricePolicyVersion"
+	AuthorizationActionCreatePublisherNamespace               AuthorizationAction = "createPublisherNamespace"
+	AuthorizationActionCreateQuote                            AuthorizationAction = "createQuote"
+	AuthorizationActionCreateRefundPolicyVersion              AuthorizationAction = "createRefundPolicyVersion"
+	AuthorizationActionCreateRetentionPolicyVersion           AuthorizationAction = "createRetentionPolicyVersion"
+	AuthorizationActionCreateStoragePlan                      AuthorizationAction = "createStoragePlan"
+	AuthorizationActionCreateTenant                           AuthorizationAction = "createTenant"
+	AuthorizationActionCreateUpload                           AuthorizationAction = "createUpload"
+	AuthorizationActionCreateUploadPart                       AuthorizationAction = "createUploadPart"
+	AuthorizationActionCreateWorkspace                        AuthorizationAction = "createWorkspace"
+	AuthorizationActionDebitScheduledPeriod                   AuthorizationAction = "debitScheduledPeriod"
+	AuthorizationActionDeleteAcceptedResources                AuthorizationAction = "deleteAcceptedResources"
+	AuthorizationActionDeleteCapabilityVersion                AuthorizationAction = "deleteCapabilityVersion"
+	AuthorizationActionDeleteTenant                           AuthorizationAction = "deleteTenant"
+	AuthorizationActionDeleteWorkspace                        AuthorizationAction = "deleteWorkspace"
+	AuthorizationActionExecuteScheduledPlanChange             AuthorizationAction = "executeScheduledPlanChange"
+	AuthorizationActionFenceRouteEpoch                        AuthorizationAction = "fenceRouteEpoch"
+	AuthorizationActionGetAdminTenant                         AuthorizationAction = "getAdminTenant"
+	AuthorizationActionGetBuild                               AuthorizationAction = "getBuild"
+	AuthorizationActionGetBuildRuntimePolicy                  AuthorizationAction = "getBuildRuntimePolicy"
+	AuthorizationActionGetCapabilityVersion                   AuthorizationAction = "getCapabilityVersion"
+	AuthorizationActionGetDeployment                          AuthorizationAction = "getDeployment"
+	AuthorizationActionGetLinkRelayEntitlement                AuthorizationAction = "getLinkRelayEntitlement"
+	AuthorizationActionGetLoginContext                        AuthorizationAction = "getLoginContext"
+	AuthorizationActionGetOperation                           AuthorizationAction = "getOperation"
+	AuthorizationActionGetOperatorWorkspace                   AuthorizationAction = "getOperatorWorkspace"
+	AuthorizationActionGetOperatorWorkspaceAccess             AuthorizationAction = "getOperatorWorkspaceAccess"
+	AuthorizationActionGetPackage                             AuthorizationAction = "getPackage"
+	AuthorizationActionGetPackageVersion                      AuthorizationAction = "getPackageVersion"
+	AuthorizationActionGetPersonalGatewayKey                  AuthorizationAction = "getPersonalGatewayKey"
+	AuthorizationActionGetPersonalGatewayKeyUsageSummary      AuthorizationAction = "getPersonalGatewayKeyUsageSummary"
+	AuthorizationActionGetPlanChange                          AuthorizationAction = "getPlanChange"
+	AuthorizationActionGetQuote                               AuthorizationAction = "getQuote"
+	AuthorizationActionGetReceipt                             AuthorizationAction = "getReceipt"
+	AuthorizationActionGetSelfUserExternalBinding             AuthorizationAction = "getSelfUserExternalBinding"
+	AuthorizationActionGetSession                             AuthorizationAction = "getSession"
+	AuthorizationActionGetSubscription                        AuthorizationAction = "getSubscription"
+	AuthorizationActionGetTenant                              AuthorizationAction = "getTenant"
+	AuthorizationActionGetTenantAssetCustody                  AuthorizationAction = "getTenantAssetCustody"
+	AuthorizationActionGetTenantLifecycleOperation            AuthorizationAction = "getTenantLifecycleOperation"
+	AuthorizationActionGetTenantWallet                        AuthorizationAction = "getTenantWallet"
+	AuthorizationActionGetUpload                              AuthorizationAction = "getUpload"
+	AuthorizationActionGetUsageSummary                        AuthorizationAction = "getUsageSummary"
+	AuthorizationActionGetWallet                              AuthorizationAction = "getWallet"
+	AuthorizationActionGetWorkspace                           AuthorizationAction = "getWorkspace"
+	AuthorizationActionGetWorkspaceAccess                     AuthorizationAction = "getWorkspaceAccess"
+	AuthorizationActionGetWorkspaceDeletion                   AuthorizationAction = "getWorkspaceDeletion"
+	AuthorizationActionGetWorkspaceFinancialReceipt           AuthorizationAction = "getWorkspaceFinancialReceipt"
+	AuthorizationActionGetWorkspaceModels                     AuthorizationAction = "getWorkspaceModels"
+	AuthorizationActionGetWorkspaceTransactionTrend           AuthorizationAction = "getWorkspaceTransactionTrend"
+	AuthorizationActionInviteMember                           AuthorizationAction = "inviteMember"
+	AuthorizationActionIssueAcceptedOperationGrant            AuthorizationAction = "issueAcceptedOperationGrant"
+	AuthorizationActionListAdminOperations                    AuthorizationAction = "listAdminOperations"
+	AuthorizationActionListAuditEvents                        AuthorizationAction = "listAuditEvents"
+	AuthorizationActionListBuildLogs                          AuthorizationAction = "listBuildLogs"
+	AuthorizationActionListBuilds                             AuthorizationAction = "listBuilds"
+	AuthorizationActionListCapabilityVersions                 AuthorizationAction = "listCapabilityVersions"
+	AuthorizationActionListComputePlans                       AuthorizationAction = "listComputePlans"
+	AuthorizationActionListDeployments                        AuthorizationAction = "listDeployments"
+	AuthorizationActionListGatewayKeys                        AuthorizationAction = "listGatewayKeys"
+	AuthorizationActionListInvitations                        AuthorizationAction = "listInvitations"
+	AuthorizationActionListMembers                            AuthorizationAction = "listMembers"
+	AuthorizationActionListModels                             AuthorizationAction = "listModels"
+	AuthorizationActionListNamespaces                         AuthorizationAction = "listNamespaces"
+	AuthorizationActionListOperatorAccounts                   AuthorizationAction = "listOperatorAccounts"
+	AuthorizationActionListOperatorDeployments                AuthorizationAction = "listOperatorDeployments"
+	AuthorizationActionListOperatorWorkspaces                 AuthorizationAction = "listOperatorWorkspaces"
+	AuthorizationActionListPackageVersions                    AuthorizationAction = "listPackageVersions"
+	AuthorizationActionListPackages                           AuthorizationAction = "listPackages"
+	AuthorizationActionListPersonalGatewayGroups              AuthorizationAction = "listPersonalGatewayGroups"
+	AuthorizationActionListPersonalGatewayKeyUsage            AuthorizationAction = "listPersonalGatewayKeyUsage"
+	AuthorizationActionListPersonalGatewayKeys                AuthorizationAction = "listPersonalGatewayKeys"
+	AuthorizationActionListPlanChanges                        AuthorizationAction = "listPlanChanges"
+	AuthorizationActionListPricePolicyVersions                AuthorizationAction = "listPricePolicyVersions"
+	AuthorizationActionListPublisherNamespaces                AuthorizationAction = "listPublisherNamespaces"
+	AuthorizationActionListQualifications                     AuthorizationAction = "listQualifications"
+	AuthorizationActionListReceipts                           AuthorizationAction = "listReceipts"
+	AuthorizationActionListRechargeRecords                    AuthorizationAction = "listRechargeRecords"
+	AuthorizationActionListRefundPolicyVersions               AuthorizationAction = "listRefundPolicyVersions"
+	AuthorizationActionListRetentionPolicyVersions            AuthorizationAction = "listRetentionPolicyVersions"
+	AuthorizationActionListRuntimeVersions                    AuthorizationAction = "listRuntimeVersions"
+	AuthorizationActionListStoragePlans                       AuthorizationAction = "listStoragePlans"
+	AuthorizationActionListTenants                            AuthorizationAction = "listTenants"
+	AuthorizationActionListUsage                              AuthorizationAction = "listUsage"
+	AuthorizationActionListWebuiVersions                      AuthorizationAction = "listWebuiVersions"
+	AuthorizationActionListWorkspaceTransactions              AuthorizationAction = "listWorkspaceTransactions"
+	AuthorizationActionListWorkspaces                         AuthorizationAction = "listWorkspaces"
+	AuthorizationActionLogin                                  AuthorizationAction = "login"
+	AuthorizationActionLogout                                 AuthorizationAction = "logout"
+	AuthorizationActionObserveResources                       AuthorizationAction = "observeResources"
+	AuthorizationActionObserveRoute                           AuthorizationAction = "observeRoute"
+	AuthorizationActionProvisionAcceptedResources             AuthorizationAction = "provisionAcceptedResources"
+	AuthorizationActionPublishOfficialPackage                 AuthorizationAction = "publishOfficialPackage"
+	AuthorizationActionReadApplicationCredentials             AuthorizationAction = "readApplicationCredentials"
+	AuthorizationActionReadApprovedPlanTransition             AuthorizationAction = "readApprovedPlanTransition"
+	AuthorizationActionReadArtifact                           AuthorizationAction = "readArtifact"
+	AuthorizationActionReadAuthorizationContext               AuthorizationAction = "readAuthorizationContext"
+	AuthorizationActionReadClaimUsage                         AuthorizationAction = "readClaimUsage"
+	AuthorizationActionReadExecutionPlan                      AuthorizationAction = "readExecutionPlan"
+	AuthorizationActionReadNextPeriodObligation               AuthorizationAction = "readNextPeriodObligation"
+	AuthorizationActionReadOperatorResources                  AuthorizationAction = "readOperatorResources"
+	AuthorizationActionReadOwnerCommit                        AuthorizationAction = "readOwnerCommit"
+	AuthorizationActionReadPlanChangeFailure                  AuthorizationAction = "readPlanChangeFailure"
+	AuthorizationActionReadRenewalConsent                     AuthorizationAction = "readRenewalConsent"
+	AuthorizationActionReadSubscriptionPlanState              AuthorizationAction = "readSubscriptionPlanState"
+	AuthorizationActionReadWalletAction                       AuthorizationAction = "readWalletAction"
+	AuthorizationActionReconcileOperation                     AuthorizationAction = "reconcileOperation"
+	AuthorizationActionReenableTenant                         AuthorizationAction = "reenableTenant"
+	AuthorizationActionRefundConfirmedDeletion                AuthorizationAction = "refundConfirmedDeletion"
+	AuthorizationActionRefundPlanChangeCompensation           AuthorizationAction = "refundPlanChangeCompensation"
+	AuthorizationActionRefundSupplementOnDeletion             AuthorizationAction = "refundSupplementOnDeletion"
+	AuthorizationActionRegisterRuntimeVersion                 AuthorizationAction = "registerRuntimeVersion"
+	AuthorizationActionRegisterWebuiVersion                   AuthorizationAction = "registerWebuiVersion"
+	AuthorizationActionReleaseReference                       AuthorizationAction = "releaseReference"
+	AuthorizationActionRemoveMember                           AuthorizationAction = "removeMember"
+	AuthorizationActionRenewAcceptedResources                 AuthorizationAction = "renewAcceptedResources"
+	AuthorizationActionRenewWorkspace                         AuthorizationAction = "renewWorkspace"
+	AuthorizationActionReserveRuntime                         AuthorizationAction = "reserveRuntime"
+	AuthorizationActionResizeAcceptedResources                AuthorizationAction = "resizeAcceptedResources"
+	AuthorizationActionResizeWorkspace                        AuthorizationAction = "resizeWorkspace"
+	AuthorizationActionResolveBuildInput                      AuthorizationAction = "resolveBuildInput"
+	AuthorizationActionResolvePublisherContract               AuthorizationAction = "resolvePublisherContract"
+	AuthorizationActionRestoreAfterResourceChange             AuthorizationAction = "restoreAfterResourceChange"
+	AuthorizationActionRestoreTenant                          AuthorizationAction = "restoreTenant"
+	AuthorizationActionResumeTenantWorkspaces                 AuthorizationAction = "resumeTenantWorkspaces"
+	AuthorizationActionRetireRuntime                          AuthorizationAction = "retireRuntime"
+	AuthorizationActionRetryBuild                             AuthorizationAction = "retryBuild"
+	AuthorizationActionRevealGatewayKey                       AuthorizationAction = "revealGatewayKey"
+	AuthorizationActionRevealPersonalGatewayKey               AuthorizationAction = "revealPersonalGatewayKey"
+	AuthorizationActionRevealWorkspaceApplicationCredentials  AuthorizationAction = "revealWorkspaceApplicationCredentials"
+	AuthorizationActionRevokeGatewayKey                       AuthorizationAction = "revokeGatewayKey"
+	AuthorizationActionRevokeInvitation                       AuthorizationAction = "revokeInvitation"
+	AuthorizationActionRevokePersonalGatewayKey               AuthorizationAction = "revokePersonalGatewayKey"
+	AuthorizationActionRevokePublisherNamespace               AuthorizationAction = "revokePublisherNamespace"
+	AuthorizationActionRollbackRoute                          AuthorizationAction = "rollbackRoute"
+	AuthorizationActionRollbackWorkspace                      AuthorizationAction = "rollbackWorkspace"
+	AuthorizationActionSeedActiveGatewayLinkRelayEntitlements AuthorizationAction = "seedActiveGatewayLinkRelayEntitlements"
+	AuthorizationActionSetBuildRuntimePolicy                  AuthorizationAction = "setBuildRuntimePolicy"
+	AuthorizationActionSetComputePlanAvailability             AuthorizationAction = "setComputePlanAvailability"
+	AuthorizationActionSetLinkRelayEntitlement                AuthorizationAction = "setLinkRelayEntitlement"
+	AuthorizationActionSetPlatformAdmin                       AuthorizationAction = "setPlatformAdmin"
+	AuthorizationActionSetRuntimeVersionStatus                AuthorizationAction = "setRuntimeVersionStatus"
+	AuthorizationActionSetStoragePlanAvailability             AuthorizationAction = "setStoragePlanAvailability"
+	AuthorizationActionSetWebuiVersionStatus                  AuthorizationAction = "setWebuiVersionStatus"
+	AuthorizationActionSetWorkspacePurchaseEligibility        AuthorizationAction = "setWorkspacePurchaseEligibility"
+	AuthorizationActionSuspendTenant                          AuthorizationAction = "suspendTenant"
+	AuthorizationActionUpdateMemberRole                       AuthorizationAction = "updateMemberRole"
+	AuthorizationActionUpdateNamespace                        AuthorizationAction = "updateNamespace"
+	AuthorizationActionUpdatePackage                          AuthorizationAction = "updatePackage"
+	AuthorizationActionUpdatePersonalGatewayKey               AuthorizationAction = "updatePersonalGatewayKey"
+	AuthorizationActionUpdateRenewalSettings                  AuthorizationAction = "updateRenewalSettings"
+	AuthorizationActionUpdateWorkspaceModels                  AuthorizationAction = "updateWorkspaceModels"
+	AuthorizationActionUpdateWorkspaceVersion                 AuthorizationAction = "updateWorkspaceVersion"
 )
 
 // Valid indicates whether the value is a known member of the AuthorizationAction enum.
@@ -357,6 +360,8 @@ func (e AuthorizationAction) Valid() bool {
 	case AuthorizationActionGetCapabilityVersion:
 		return true
 	case AuthorizationActionGetDeployment:
+		return true
+	case AuthorizationActionGetLinkRelayEntitlement:
 		return true
 	case AuthorizationActionGetLoginContext:
 		return true
@@ -584,9 +589,13 @@ func (e AuthorizationAction) Valid() bool {
 		return true
 	case AuthorizationActionRollbackWorkspace:
 		return true
+	case AuthorizationActionSeedActiveGatewayLinkRelayEntitlements:
+		return true
 	case AuthorizationActionSetBuildRuntimePolicy:
 		return true
 	case AuthorizationActionSetComputePlanAvailability:
+		return true
+	case AuthorizationActionSetLinkRelayEntitlement:
 		return true
 	case AuthorizationActionSetPlatformAdmin:
 		return true
@@ -5814,6 +5823,29 @@ type InviteMemberRequest struct {
 // InviteMemberRequestRole defines model for InviteMemberRequest.Role.
 type InviteMemberRequestRole string
 
+// LinkRelayEntitlementCommand Canonical receipt for one OPL Link Relay entitlement update.
+type LinkRelayEntitlementCommand struct {
+	// AccountId 不透明string；新旧ID原样保留，不假定UUID。
+	AccountId        OpaqueId `json:"accountId"`
+	LinkRelayEnabled bool     `json:"linkRelayEnabled"`
+
+	// OperationId 不透明string；新旧ID原样保留，不假定UUID。
+	OperationId OpaqueId `json:"operationId"`
+	Status      string   `json:"status"`
+}
+
+// LinkRelayEntitlementReadback Authoritative OPL Link Relay admission state for an authenticated Gateway subject.
+type LinkRelayEntitlementReadback struct {
+	// ActorId 不透明string；新旧ID原样保留，不假定UUID。
+	ActorId          OpaqueId   `json:"actorId"`
+	Email            string     `json:"email"`
+	IsBootstrapAdmin bool       `json:"isBootstrapAdmin"`
+	IsPlatformAdmin  bool       `json:"isPlatformAdmin"`
+	LinkRelayEnabled bool       `json:"linkRelayEnabled"`
+	Reason           string     `json:"reason"`
+	UpdatedAt        *time.Time `json:"updatedAt,omitempty"`
+}
+
 // LoginContext 匿名同源CSRF上下文；no-store。
 type LoginContext struct {
 	CsrfToken string    `json:"csrfToken"`
@@ -7693,6 +7725,22 @@ type RuntimeVersionPage struct {
 	NextCursor *OpaqueId `json:"nextCursor,omitempty"`
 }
 
+// SeedActiveGatewayLinkRelayEntitlementsRequest Platform administrator instruction to backfill active Gateway users into OPL Link Relay admission.
+type SeedActiveGatewayLinkRelayEntitlementsRequest struct {
+	Reason string `json:"reason"`
+}
+
+// SeedLinkRelayEntitlementsCommand Canonical receipt for backfilling active Gateway subjects into Link Relay admission.
+type SeedLinkRelayEntitlementsCommand struct {
+	ExistingCount int32 `json:"existingCount"`
+
+	// OperationId 不透明string；新旧ID原样保留，不假定UUID。
+	OperationId  OpaqueId `json:"operationId"`
+	ScannedCount int32    `json:"scannedCount"`
+	SeededCount  int32    `json:"seededCount"`
+	Status       string   `json:"status"`
+}
+
 // ServiceIdentity defines model for ServiceIdentity.
 type ServiceIdentity string
 
@@ -7721,6 +7769,14 @@ type SetBuildRuntimePolicyRequest struct {
 
 	// RuntimeVersionId 不透明string；新旧ID原样保留，不假定UUID。
 	RuntimeVersionId OpaqueId `json:"runtimeVersionId"`
+}
+
+// SetLinkRelayEntitlementRequest Platform administrator instruction to grant or revoke OPL Link Relay admission for one Gateway subject.
+type SetLinkRelayEntitlementRequest struct {
+	// ConfirmationAccountId 不透明string；新旧ID原样保留，不假定UUID。
+	ConfirmationAccountId OpaqueId `json:"confirmationAccountId"`
+	Enabled               bool     `json:"enabled"`
+	Reason                string   `json:"reason"`
 }
 
 // SetPlatformAdminRequest Platform administrator instruction to grant or revoke delegated platform admin access for one Gateway subject.
@@ -9404,6 +9460,15 @@ type ListOperatorAccountsParams struct {
 	Search   *string `form:"search,omitempty" json:"search,omitempty"`
 }
 
+// SetLinkRelayEntitlementParams defines parameters for SetLinkRelayEntitlement.
+type SetLinkRelayEntitlementParams struct {
+	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+
+	// XCSRFToken 匹配同源session并校验Origin。
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
 // SetPlatformAdminParams defines parameters for SetPlatformAdmin.
 type SetPlatformAdminParams struct {
 	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
@@ -9415,6 +9480,15 @@ type SetPlatformAdminParams struct {
 
 // SetWorkspacePurchaseEligibilityParams defines parameters for SetWorkspacePurchaseEligibility.
 type SetWorkspacePurchaseEligibilityParams struct {
+	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+
+	// XCSRFToken 匹配同源session并校验Origin。
+	XCSRFToken CsrfToken `json:"X-CSRF-Token"`
+}
+
+// SeedActiveGatewayLinkRelayEntitlementsParams defines parameters for SeedActiveGatewayLinkRelayEntitlements.
+type SeedActiveGatewayLinkRelayEntitlementsParams struct {
 	// IdempotencyKey tenant+actor+operationId作用域；相同规范化body返回同一身份；异body 409，保留覆盖业务义务。
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 
@@ -9797,11 +9871,17 @@ type CreateNamespaceJSONRequestBody = NamespaceWriteRequest
 // UpdateNamespaceJSONRequestBody defines body for UpdateNamespace for application/json ContentType.
 type UpdateNamespaceJSONRequestBody = NamespaceWriteRequest
 
+// SetLinkRelayEntitlementJSONRequestBody defines body for SetLinkRelayEntitlement for application/json ContentType.
+type SetLinkRelayEntitlementJSONRequestBody = SetLinkRelayEntitlementRequest
+
 // SetPlatformAdminJSONRequestBody defines body for SetPlatformAdmin for application/json ContentType.
 type SetPlatformAdminJSONRequestBody = SetPlatformAdminRequest
 
 // SetWorkspacePurchaseEligibilityJSONRequestBody defines body for SetWorkspacePurchaseEligibility for application/json ContentType.
 type SetWorkspacePurchaseEligibilityJSONRequestBody = SetWorkspacePurchaseEligibilityRequest
+
+// SeedActiveGatewayLinkRelayEntitlementsJSONRequestBody defines body for SeedActiveGatewayLinkRelayEntitlements for application/json ContentType.
+type SeedActiveGatewayLinkRelayEntitlementsJSONRequestBody = SeedActiveGatewayLinkRelayEntitlementsRequest
 
 // CreatePackageJSONRequestBody defines body for CreatePackage for application/json ContentType.
 type CreatePackageJSONRequestBody = CreatePackageRequest

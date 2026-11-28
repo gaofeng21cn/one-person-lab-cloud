@@ -126,6 +126,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerOperatorActivationRoutes(mux)
 	s.registerOperatorPurchaseEligibilityRoutes(mux)
 	s.registerOperatorPlatformAdminRoutes(mux)
+	s.registerOperatorLinkRelayRoutes(mux)
 	s.registerLegacyBillingRoutes(mux)
 	s.registerPersonalGatewayReadRoutes(mux)
 	s.registerPublisherRoutes(mux)
@@ -152,7 +153,7 @@ func (s *Server) Handler() http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		if len(r.Header.Values("Authorization")) != 0 && r.URL.Path != "/api/v2/mcp" {
+		if len(r.Header.Values("Authorization")) != 0 && r.URL.Path != "/api/v2/mcp" && r.URL.Path != "/api/v2/link-relay/entitlement" {
 			writePublisherIdentityError(w, r, ErrSessionRequired)
 			return
 		}

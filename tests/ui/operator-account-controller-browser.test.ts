@@ -807,6 +807,7 @@ test("Cloud operator accounts list renders Gateway-only users, supports server s
     platformAdminEnabled: true,
     isBootstrapAdmin: true,
     workspacePurchaseEnabled: true,
+    linkRelayEnabled: true,
     gatewayIdentity: { source: "sub2api", status: "available", available: true, fetchedAt, data: { userId: "43", email: "operator@example.com", status: "active" } },
     wallet: { source: "sub2api", status: "available", available: true, fetchedAt, data: { userId: "43", currency: "USD", usdMicros: "50000000", status: "active" } },
     workspaceCount: { source: "workspace", status: "unavailable", available: false, fetchedAt, reasonCode: "workspace_count_not_read" }
@@ -819,12 +820,15 @@ test("Cloud operator accounts list renders Gateway-only users, supports server s
     sub2apiUserId: "45",
     platformAdminEnabled: false,
     isBootstrapAdmin: false,
+    linkRelayEnabled: false,
     gatewayIdentity: { source: "sub2api", status: "available", available: true, fetchedAt, data: { userId: "45", email: "gatewayonly@example.com", status: "active" } },
     wallet: { source: "sub2api", status: "available", available: true, fetchedAt, data: { userId: "45", currency: "USD", usdMicros: "12000000", status: "active" } },
     workspaceCount: { source: "workspace", status: "unavailable", available: false, fetchedAt, reasonCode: "workspace_count_not_read" }
   };
   const searchQueries: string[] = [];
   const adminCommands: Array<{ actorId: string; enabled: boolean }> = [];
+  const relayCommands: Array<{ actorId: string; enabled: boolean }> = [];
+  let seedCalls = 0;
 
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -875,6 +879,31 @@ test("Cloud operator accounts list renders Gateway-only users, supports server s
         };
         return fulfill(route, result);
       }
+      const relayMatch = /^\/api\/v2\/operator\/accounts\/([^/]+)\/link-relay-entitlement$/.exec(url.pathname);
+      if (relayMatch && route.request().method() === "POST") {
+        const actorId = decodeURIComponent(relayMatch[1]);
+        const body = route.request().postDataJSON() as { confirmationAccountId: string; enabled: boolean; reason: string };
+        assert.equal(body.confirmationAccountId, actorId);
+        relayCommands.push({ actorId, enabled: body.enabled });
+        gatewayUser = { ...gatewayUser, linkRelayEnabled: body.enabled };
+        return fulfill(route, {
+          operationId: "link-relay-cloud-45",
+          accountId: actorId,
+          status: "succeeded",
+          linkRelayEnabled: body.enabled
+        });
+      }
+      if (url.pathname === "/api/v2/operator/link-relay/seed-active-users" && route.request().method() === "POST") {
+        seedCalls += 1;
+        gatewayUser = { ...gatewayUser, linkRelayEnabled: true };
+        return fulfill(route, {
+          operationId: "link-relay-seed-cloud-1",
+          status: "succeeded",
+          scannedCount: 2,
+          seededCount: 1,
+          existingCount: 1
+        });
+      }
       return fulfill(route, { error: "fixture_read_unavailable" }, 503);
     });
 
@@ -886,7 +915,7 @@ test("Cloud operator accounts list renders Gateway-only users, supports server s
     await rootInspector.getByText("根管理员不可撤销", { exact: true }).waitFor({ state: "visible" });
     assert.equal(await rootInspector.getByRole("button", { name: "撤销管理员", exact: true }).count(), 0);
 
-    // Gateway-only user omits legacy Control Plane mapping ids and allows granting delegated admin.
+    // Gateway-only user omits legacy Control Plane mapping ids and allows granting delegated admin & Link Relay.
     const gwInspector = await openInspector(page, gatewayUser.email);
     await gwInspector.getByText("技术映射与来源读回").click();
     await gwInspector.getByText("OPL Gateway 主体映射", { exact: true }).waitFor({ state: "visible" });
@@ -898,6 +927,23 @@ test("Cloud operator accounts list renders Gateway-only users, supports server s
     await gwInspector.getByRole("button", { name: "撤销管理员", exact: true }).waitFor({ state: "visible" });
     await gwInspector.getByRole("button", { name: "授予新购", exact: true }).waitFor({ state: "visible" });
 
+    // Grant & revoke Link Relay entitlement from the Inspector Drawer.
+    await gwInspector.getByRole("button", { name: "授予 Relay", exact: true }).click();
+    await page.getByRole("dialog", { name: "授予 OPL Link Relay 转发准入" }).getByRole("button", { name: "确认授予", exact: true }).click();
+    await page.getByText("已授予 OPL Link Relay 转发准入", { exact: true }).waitFor({ state: "visible" });
+    await gwInspector.getByRole("button", { name: "撤销 Relay", exact: true }).waitFor({ state: "visible" });
+
+    await gwInspector.getByRole("button", { name: "撤销 Relay", exact: true }).click();
+    await page.getByRole("dialog", { name: "撤销 OPL Link Relay 转发准入" }).getByRole("button", { name: "确认撤销", exact: true }).click();
+    await page.getByText("已撤销 OPL Link Relay 转发准入", { exact: true }).waitFor({ state: "visible" });
+
+    // Backfill active Gateway users into Link Relay allowlist and filter via Link Relay chip.
+    await page.getByRole("button", { name: "补录存量 Relay 白名单", exact: true }).click();
+    await page.getByRole("dialog", { name: "补录存量 Gateway 用户 Link Relay 白名单" }).getByRole("button", { name: "确认补录", exact: true }).click();
+    await page.getByText("已扫描 2 位活跃用户：新增 1 位，已有 1 位", { exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("button", { name: /Link Relay/ }).click();
+    await accountRow(page, gatewayUser.email).waitFor({ state: "visible" });
+
     // Search input submits server search in Cloud mode.
     const searchBox = page.getByRole("searchbox", { name: "筛选当前页用户" });
     await searchBox.fill("gatewayonly");
@@ -906,6 +952,8 @@ test("Cloud operator accounts list renders Gateway-only users, supports server s
     await page.waitForFunction(() => document.querySelectorAll(".operator-account-table tbody tr").length === 1);
 
     assert.deepEqual(adminCommands, [{ actorId: "45", enabled: true }]);
+    assert.deepEqual(relayCommands, [{ actorId: "45", enabled: true }, { actorId: "45", enabled: false }]);
+    assert.equal(seedCalls, 1);
     assert.ok(searchQueries.includes("gatewayonly"));
   } finally {
     await browser.close();

@@ -40,8 +40,9 @@ type directoryUserFixture struct {
 }
 
 type platformAdminSystem struct {
-	db        *sql.DB
-	bffClient api.TenantProductServiceClient
+	db          *sql.DB
+	bffClient   api.TenantProductServiceClient
+	authzClient api.CloudIdentityAuthorizationClient
 }
 
 func newPlatformAdminSystem(t *testing.T, bootstrapAdmins []string, directoryUsers []directoryUserFixture) platformAdminSystem {
@@ -81,6 +82,23 @@ func newPlatformAdminSystem(t *testing.T, bootstrapAdmins []string, directoryUse
 
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.URL.Path == "/api/v1/auth/me":
+			const prefix = "Bearer isolated-gateway-"
+			authHeader := r.Header.Get("Authorization")
+			if !strings.HasPrefix(authHeader, prefix) {
+				w.WriteHeader(401)
+				return
+			}
+			email := strings.TrimPrefix(authHeader, prefix)
+			user, ok := actorsByEmail[email]
+			if !ok {
+				w.WriteHeader(401)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"code": 0,
+				"data": identity.GatewayIdentity{ID: user.id, Email: user.email, Status: user.status},
+			})
 		case r.URL.Path == "/api/v1/auth/login":
 			var body struct {
 				Email    string `json:"email"`
@@ -253,7 +271,11 @@ func newPlatformAdminSystem(t *testing.T, bootstrapAdmins []string, directoryUse
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conn.Close() })
-	return platformAdminSystem{db: db, bffClient: api.NewTenantProductServiceClient(conn)}
+	return platformAdminSystem{
+		db:          db,
+		bffClient:   api.NewTenantProductServiceClient(conn),
+		authzClient: api.NewCloudIdentityAuthorizationClient(conn),
+	}
 }
 
 func TestPlatformAdminDelegationAndOperatorAccountsPostgresLifecycle(t *testing.T) {

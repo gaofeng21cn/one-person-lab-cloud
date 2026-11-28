@@ -1,8 +1,10 @@
 import type {
   OperatorAccountCommandDTO,
   OperatorAccountDTO,
+  OperatorLinkRelayEntitlementCommandDTO,
   OperatorPlatformAdminCommandDTO,
   OperatorProvisionAccountCommandDTO,
+  OperatorSeedLinkRelayEntitlementsCommandDTO,
   OperatorWorkspacePurchaseEligibilityCommandDTO,
   ProvisionAccountRequest
 } from "../api/dtos.ts";
@@ -110,6 +112,26 @@ export function platformAdminCommandSucceeded(
 ) {
   return accountCommandSucceeded(command, accountId)
     && command.platformAdminEnabled === enabled;
+}
+
+export function linkRelayCommandSucceeded(
+  command: OperatorLinkRelayEntitlementCommandDTO,
+  accountId: string,
+  enabled: boolean
+) {
+  return accountCommandSucceeded(command, accountId)
+    && command.linkRelayEnabled === enabled;
+}
+
+export function seedLinkRelayCommandSucceeded(
+  command: OperatorSeedLinkRelayEntitlementsCommandDTO
+) {
+  return command.status === "succeeded"
+    && Boolean(command.operationId.trim())
+    && Number.isInteger(command.scannedCount) && command.scannedCount >= 0
+    && Number.isInteger(command.seededCount) && command.seededCount >= 0
+    && Number.isInteger(command.existingCount) && command.existingCount >= 0
+    && command.seededCount + command.existingCount <= command.scannedCount;
 }
 
 export function provisionReadbackMatches(

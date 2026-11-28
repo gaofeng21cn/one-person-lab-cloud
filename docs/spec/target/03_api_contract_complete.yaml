@@ -6029,6 +6029,122 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
         '503':
           $ref: '#/components/responses/ErrorResponse'
+  /api/v2/operator/accounts/{actorId}/link-relay-entitlement:
+    post:
+      operationId: setLinkRelayEntitlement
+      summary: Grant or revoke OPL Link Relay admission for a Gateway subject
+      tags:
+      - tenant
+      x-feature-id:
+      - F15
+      x-owner: tenant
+      x-permission:
+      - platform_admin
+      x-tables:
+      - tenant.link_relay_entitlements
+      - tenant.audit_events
+      - tenant.idempotency_records
+      parameters:
+      - name: actorId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetLinkRelayEntitlementRequest'
+      responses:
+        '200':
+          description: Updated OPL Link Relay admission status for the named Gateway subject
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinkRelayEntitlementCommand'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v2/operator/link-relay/seed-active-users:
+    post:
+      operationId: seedActiveGatewayLinkRelayEntitlements
+      summary: Backfill active OPL Gateway subjects into the Link Relay allowlist without overwriting existing rows
+      tags:
+      - tenant
+      x-feature-id:
+      - F15
+      x-owner: tenant
+      x-permission:
+      - platform_admin
+      x-tables:
+      - tenant.link_relay_entitlements
+      - tenant.audit_events
+      - tenant.idempotency_records
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeedActiveGatewayLinkRelayEntitlementsRequest'
+      responses:
+        '200':
+          description: Result summary for seeding active Gateway subjects into Link Relay allowlist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeedLinkRelayEntitlementsCommand'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v2/link-relay/entitlement:
+    get:
+      operationId: getLinkRelayEntitlement
+      summary: Read effective OPL Link Relay admission for the authenticated caller
+      tags:
+      - tenant
+      x-feature-id:
+      - F15
+      x-owner: tenant
+      x-permission:
+      - authenticated
+      x-tables:
+      - tenant.link_relay_entitlements
+      - tenant.platform_admins
+      responses:
+        '200':
+          description: Effective OPL Link Relay entitlement for the authenticated caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinkRelayEntitlementReadback'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
   /api/v2/admin/tenants/{tenantId}/operations/{operationId}:
     get:
       operationId: getTenantLifecycleOperation
@@ -7399,6 +7515,108 @@ components:
       - platformAdminEnabled
       - isBootstrapAdmin
       description: Canonical receipt for one delegated platform administrator update.
+    SetLinkRelayEntitlementRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        confirmationAccountId:
+          $ref: '#/components/schemas/OpaqueId'
+        enabled:
+          type: boolean
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 200
+      required:
+      - confirmationAccountId
+      - enabled
+      - reason
+      description: Platform administrator instruction to grant or revoke OPL Link Relay admission for one Gateway subject.
+    LinkRelayEntitlementCommand:
+      type: object
+      additionalProperties: false
+      properties:
+        operationId:
+          $ref: '#/components/schemas/OpaqueId'
+        accountId:
+          $ref: '#/components/schemas/OpaqueId'
+        status:
+          type: string
+          minLength: 1
+        linkRelayEnabled:
+          type: boolean
+      required:
+      - operationId
+      - accountId
+      - status
+      - linkRelayEnabled
+      description: Canonical receipt for one OPL Link Relay entitlement update.
+    SeedActiveGatewayLinkRelayEntitlementsRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 200
+      required:
+      - reason
+      description: Platform administrator instruction to backfill active Gateway users into OPL Link Relay admission.
+    SeedLinkRelayEntitlementsCommand:
+      type: object
+      additionalProperties: false
+      properties:
+        operationId:
+          $ref: '#/components/schemas/OpaqueId'
+        status:
+          type: string
+          minLength: 1
+        scannedCount:
+          type: integer
+          format: int32
+          minimum: 0
+        seededCount:
+          type: integer
+          format: int32
+          minimum: 0
+        existingCount:
+          type: integer
+          format: int32
+          minimum: 0
+      required:
+      - operationId
+      - status
+      - scannedCount
+      - seededCount
+      - existingCount
+      description: Canonical receipt for backfilling active Gateway subjects into Link Relay admission.
+    LinkRelayEntitlementReadback:
+      type: object
+      additionalProperties: false
+      properties:
+        actorId:
+          $ref: '#/components/schemas/OpaqueId'
+        email:
+          type: string
+        linkRelayEnabled:
+          type: boolean
+        isBootstrapAdmin:
+          type: boolean
+        isPlatformAdmin:
+          type: boolean
+        reason:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - actorId
+      - email
+      - linkRelayEnabled
+      - isBootstrapAdmin
+      - isPlatformAdmin
+      - reason
+      description: Authoritative OPL Link Relay admission state for an authenticated Gateway subject.
     CreateTenantRequest:
       type: object
       additionalProperties: false
@@ -12445,6 +12663,9 @@ components:
       - setWorkspacePurchaseEligibility
       - listOperatorAccounts
       - setPlatformAdmin
+      - setLinkRelayEntitlement
+      - seedActiveGatewayLinkRelayEntitlements
+      - getLinkRelayEntitlement
     ServiceIdentity:
       type: string
       enum:

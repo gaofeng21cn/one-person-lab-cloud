@@ -69,6 +69,10 @@ func (s *Service) ListOperatorAccounts(ctx context.Context, r *api.ListOperatorA
 	if err != nil {
 		return nil, err
 	}
+	relayMap, err := s.linkRelayEntitlementStates(ctx, actorIDs)
+	if err != nil {
+		return nil, err
+	}
 
 	usageMap, keyCounts := s.enrichGatewayDirectoryUsers(ctx, userIDs)
 
@@ -81,6 +85,10 @@ func (s *Service) ListOperatorAccounts(ctx context.Context, r *api.ListOperatorA
 		if !hasPurchaseRow {
 			purchaseEnabled = isAdmin
 		}
+		relayEnabled, hasRelayRow := relayMap[actorID]
+		if !hasRelayRow {
+			relayEnabled = isAdmin
+		}
 		account := &api.OperatorGatewayAccount{
 			ActorId:                  actorID,
 			Email:                    user.Email,
@@ -88,6 +96,7 @@ func (s *Service) ListOperatorAccounts(ctx context.Context, r *api.ListOperatorA
 			WorkspacePurchaseEnabled: purchaseEnabled,
 			PlatformAdminEnabled:     isAdmin,
 			IsBootstrapAdmin:         isBootstrap,
+			LinkRelayEnabled:         relayEnabled,
 			WalletAvailable:          !user.BalanceUnavailable,
 			WalletUsdMicros:          user.BalanceUSDMicros,
 		}

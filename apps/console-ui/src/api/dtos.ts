@@ -879,6 +879,7 @@ export interface OperatorAccount {
   workspacePurchaseEnabled: boolean;
   platformAdminEnabled?: boolean;
   isBootstrapAdmin?: boolean;
+  linkRelayEnabled?: boolean;
 }
 
 export interface OperatorAccountsData {
@@ -934,6 +935,26 @@ export interface OperatorWorkspacePurchaseEligibilityCommandDTO extends Operator
 export interface OperatorPlatformAdminCommandDTO extends OperatorAccountCommandDTO {
   platformAdminEnabled: boolean;
   isBootstrapAdmin: boolean;
+}
+
+export interface OperatorLinkRelayEntitlementCommandDTO extends OperatorAccountCommandDTO {
+  linkRelayEnabled: boolean;
+}
+
+export interface OperatorSeedLinkRelayEntitlementsCommandDTO extends OperationStatusDTO {
+  scannedCount: number;
+  seededCount: number;
+  existingCount: number;
+}
+
+export interface LinkRelayEntitlementReadbackDTO {
+  actorId: string;
+  email: string;
+  linkRelayEnabled: boolean;
+  isBootstrapAdmin: boolean;
+  isPlatformAdmin: boolean;
+  reason: string;
+  updatedAt?: string;
 }
 
 export interface ResourceFact {

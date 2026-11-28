@@ -115,6 +115,7 @@ func (s *Server) readOperatorAccounts(w http.ResponseWriter, r *http.Request, ct
 			"workspacePurchaseEnabled": entry.GetWorkspacePurchaseEnabled(),
 			"platformAdminEnabled":     entry.GetPlatformAdminEnabled(),
 			"isBootstrapAdmin":         entry.GetIsBootstrapAdmin(),
+			"linkRelayEnabled":         entry.GetLinkRelayEnabled(),
 			"gatewayIdentity":          gatewayIdentity,
 			"wallet":                   wallet,
 			"keyCount":                 keyCount,

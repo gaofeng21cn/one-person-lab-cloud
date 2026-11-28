@@ -272,6 +272,28 @@ func (g *Gateway) Read(ctx context.Context, token, actor string) (GatewayIdentit
 	return out, nil
 }
 
+// VerifyBearer authenticates a live OPL Gateway bearer token against /api/v1/auth/me
+// and ensures the Gateway subject is currently active.
+func (g *Gateway) VerifyBearer(ctx context.Context, token string) (GatewayIdentity, error) {
+	var out GatewayIdentity
+	if g == nil || strings.TrimSpace(g.base) == "" {
+		return out, status.Error(codes.Unavailable, "Gateway owner is not configured")
+	}
+	trimmed := strings.TrimSpace(token)
+	if trimmed == "" {
+		return out, status.Error(codes.Unauthenticated, "Gateway bearer token is required")
+	}
+	if err := g.request(ctx, "/api/v1/auth/me", trimmed, nil, &out); err != nil {
+		return out, err
+	}
+	email := strings.ToLower(strings.TrimSpace(out.Email))
+	if out.ID <= 0 || email == "" || out.Status != "active" {
+		return out, status.Error(codes.Unauthenticated, "Gateway identity is no longer active")
+	}
+	out.Email = email
+	return out, nil
+}
+
 // Balance reads the spendable balance from the real Sub2API admin user
 // readback. Decimal conversion floors to whole USD micros, matching the retained
 // Control Plane adapter's money semantics.
