@@ -2,7 +2,6 @@ package identity
 
 import (
 	"context"
-	"database/sql"
 	"regexp"
 	"strings"
 
@@ -50,9 +49,16 @@ func repositorySlugCandidate(email string) string {
 	return slug
 }
 
-// authenticatedUserDestination performs the historical handover within the
-// CloudIdentity owner. GatewayStore never reads the Tenant database. The old
-// table is read-only; an ambiguous historical owner is never guessed.
+// authenticatedUserDestination resolves the OCI destination of the actor that
+// just authenticated.
+//
+// The Gateway owner holds the only live destination mapping, so the answer
+// comes from there alone: either the owner already holds a usable destination
+// for this actor, or the installation registry derives a candidate from the
+// verified email. The frozen Tenant history is not read here. The one-time
+// handover moved the attributable historical destinations into the owner, and
+// a historical destination nobody owns is a residual the startup gate refuses
+// to serve rather than a fact this path may fall back to.
 func (s *Service) authenticatedUserDestination(ctx context.Context, actorID, email string) (string, string, string, error) {
 	existing, err := s.GatewayStore.ReadUserExternalBinding(ctx, actorID)
 	if err == nil && existing.RegistryHost != "" {
@@ -67,65 +73,5 @@ func (s *Service) authenticatedUserDestination(ctx context.Context, actorID, ema
 	if s.registryHost == "" || s.registryNamespace == "" {
 		return "", "", "", nil
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT b.registry_host,b.registry_namespace,b.repository,b.status,t.status,
-  (SELECT count(*) FROM tenant.tenant_members owners WHERE owners.tenant_id=t.id AND owners.role='owner' AND owners.revoked_at IS NULL)
-  FROM tenant.tenant_members m JOIN tenant.tenants t ON t.id=m.tenant_id
-  JOIN tenant.tenant_repository_bindings b ON b.tenant_id=t.id
-  WHERE m.actor_id=$1 AND m.role='owner' AND m.revoked_at IS NULL`, actorID)
-	if err != nil {
-		return "", "", "", persistence(err)
-	}
-	var host, namespace, repository string
-	count := 0
-	for rows.Next() {
-		var bindingStatus, tenantStatus string
-		var owners int
-		if err = rows.Scan(&host, &namespace, &repository, &bindingStatus, &tenantStatus, &owners); err != nil {
-			rows.Close()
-			return "", "", "", persistence(err)
-		}
-		count++
-		if count > 1 || owners != 1 || tenantStatus != "active" || (bindingStatus != "reserved" && bindingStatus != "active") {
-			rows.Close()
-			return "", "", "", status.Error(codes.FailedPrecondition, "historical OCI destination has ambiguous or inactive ownership")
-		}
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return "", "", "", persistence(err)
-	}
-	if count == 1 {
-		if host != s.registryHost || namespace != s.registryNamespace {
-			return "", "", "", status.Error(codes.FailedPrecondition, "historical OCI destination conflicts with installation registry")
-		}
-		return host, namespace, repository, nil
-	}
-	repository = repositorySlugCandidate(email)
-	if err = s.checkHistoricalDestination(ctx, actorID, s.registryHost, s.registryNamespace, repository); err != nil {
-		return "", "", "", err
-	}
-	return s.registryHost, s.registryNamespace, repository, nil
-}
-
-// checkHistoricalDestination protects every historical reservation, including a
-// retired or ownerless Tenant. Only its single active owner may adopt its path.
-func (s *Service) checkHistoricalDestination(ctx context.Context, actorID, host, namespace, repository string) error {
-	var tenantStatus, bindingStatus string
-	var owners, matchingOwners int
-	err := s.DB.QueryRowContext(ctx, `SELECT t.status,b.status,
-  (SELECT count(*) FROM tenant.tenant_members m WHERE m.tenant_id=t.id AND m.role='owner' AND m.revoked_at IS NULL),
-  (SELECT count(*) FROM tenant.tenant_members m WHERE m.tenant_id=t.id AND m.role='owner' AND m.revoked_at IS NULL AND m.actor_id=$4)
-  FROM tenant.tenant_repository_bindings b JOIN tenant.tenants t ON t.id=b.tenant_id
-  WHERE b.registry_host=$1 AND b.registry_namespace=$2 AND b.repository=$3`, host, namespace, repository, actorID).Scan(&tenantStatus, &bindingStatus, &owners, &matchingOwners)
-	if err == sql.ErrNoRows {
-		return nil
-	}
-	if err != nil {
-		return persistence(err)
-	}
-	if tenantStatus != "active" || (bindingStatus != "active" && bindingStatus != "reserved") || owners != 1 || matchingOwners != 1 {
-		return status.Error(codes.FailedPrecondition, "OCI destination is reserved by historical Tenant ownership")
-	}
-	return nil
+	return s.registryHost, s.registryNamespace, repositorySlugCandidate(email), nil
 }

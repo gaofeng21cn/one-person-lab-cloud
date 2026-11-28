@@ -35,6 +35,16 @@ func bindingSystem(t *testing.T) (*identity.Service, api.TenantProductServiceCli
 
 func bindingSystemWithHistory(t *testing.T, seed func(*sql.DB)) (*identity.Service, api.TenantProductServiceClient, string) {
 	t.Helper()
+	service, client, address, _ := bindingSystemWithOwnerHistory(t, seed)
+	return service, client, address
+}
+
+// bindingSystemWithOwnerHistory serves the Tenant owner and also hands back the
+// owner connection. The runtime login may only read the frozen history, so a
+// test that has to change a historical row — to prove a runtime path ignores
+// it — needs the connection the schema owner holds.
+func bindingSystemWithOwnerHistory(t *testing.T, seed func(*sql.DB)) (*identity.Service, api.TenantProductServiceClient, string, *sql.DB) {
+	t.Helper()
 	ctx := t.Context()
 	dsn := ownerstoretest.EnsureAdminDSNOrSkip(os.Getenv, t.Skip)
 	h, e := ownerstoretest.Setup(ctx, ownerstoretest.Config{AdminDSN: dsn, Owner: "tenant", Database: "opl_tenant", SchemaOwnerRole: "opl_tenant_owner", WriterRole: "opl_tenant_writer", RuntimeRole: "opl_tenant_runtime"})
@@ -49,13 +59,13 @@ func bindingSystemWithHistory(t *testing.T, seed func(*sql.DB)) (*identity.Servi
 	if e = h.Install(ctx, h.OwnerDSN, h.DatabaseName(), source); e != nil {
 		t.Fatal(e)
 	}
+	ownerDB, err := h.Open(ctx, h.OwnerDSN, h.DatabaseName())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ownerDB.Close() })
 	if seed != nil {
-		ownerDB, err := h.Open(ctx, h.OwnerDSN, h.DatabaseName())
-		if err != nil {
-			t.Fatal(err)
-		}
 		seed(ownerDB)
-		ownerDB.Close()
 	}
 	db, e := h.Open(ctx, h.RuntimeDSN, h.DatabaseName())
 	if e != nil {
@@ -137,7 +147,7 @@ func bindingSystemWithHistory(t *testing.T, seed func(*sql.DB)) (*identity.Servi
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { conn.Close() })
-	return s, api.NewTenantProductServiceClient(conn), l.Addr().String()
+	return s, api.NewTenantProductServiceClient(conn), l.Addr().String(), ownerDB
 }
 
 // platformAdminCall creates a platform-admin session and returns the call
