@@ -143,6 +143,22 @@ Git log.
   `/api/gateway/*` read routes stay only for the legacy Console build until
   Control Plane retirement.
 
+- **Tenant Lifecycle Ownership**: `CloudIdentity` (`services/gateway-integration`,
+  `tenant.tenants`) owns the Tenant lifecycle, because the owner's own fences
+  already read that status: a session, an authorization and a Tenant read all
+  require an active Tenant. Suspending a Tenant therefore suspends the
+  customer, and the owner writes the status, the durable Operation and the
+  audit evidence in one transaction before revoking the Tenant's live
+  sessions. A personal customer owns exactly one Tenant, so this is the
+  customer's account status rather than a second copy of it. The public surface
+  is the Console BFF route `POST /api/v2/admin/tenants/{tenantId}/suspend`,
+  which carries the platform administrator's command to the owner. The
+  re-enable half is not claimed here: the published contract restores the
+  Tenant first and then has the Workspace owner resume the Workspaces that
+  suspension stopped, and that continuation is not implemented anywhere yet.
+  The Control Plane's `POST /api/operator/accounts/{accountId}/disable` stays
+  only for the retained legacy Console build until Control Plane retirement.
+
 ## Non-Spending Publication & Incremental Retirement
 
 - **Non-Spending Release Admission**: Formal Cloud Candidate/Release
