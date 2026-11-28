@@ -38,7 +38,7 @@ const BROWSER_FACE_PROCESS_DIRECTORIES: Record<string, string> = {
   "control-plane": CONTROL_PLANE_SERVER_DIR,
   "console-bff": "apps/console-bff/internal/httpapi",
 };
-const ROUTE_SCAN = `${CONTROL_PLANE_SERVER_DIR}/testdata/route-scan/main.go`;
+const ROUTE_SCAN = "tools/go/route-scan/main.go";
 const TOPOLOGY_PATH = "deploy/portable/opl-cloud-owner-topology.json";
 
 // A path segment whose value the source does not spell out. It still matches
