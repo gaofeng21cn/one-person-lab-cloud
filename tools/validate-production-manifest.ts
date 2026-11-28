@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 
 import { installationFailure, installationSecurity, validateInstallationManifest } from "./ops/installation-manifest.ts";
 
-import { validateProductionManifest } from "../services/control-plane/ops/production-manifest.ts";
+import { validateProductionManifest } from "./ops/production-manifest.ts";
 
 function optionValue(value) {
   return value === undefined ? undefined : String(value || "true");

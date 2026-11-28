@@ -1,0 +1,60 @@
+# Declared target packages for the Cloud dead-code boundary.
+#
+# One Go import path per line. The dead-code tool reads this list, runs
+# golang.org/x/tools/cmd/deadcode over the whole module, and reports every
+# unreachable production declaration in these packages. A symbol key is
+# package-qualified, so an entry names "<import path>.<Symbol>" or
+# "<import path>.<ReceiverType>.<name>".
+#
+# The list is derived from the tree by this rule: every package under
+# opl-cloud/services/... and every package under opl-cloud/apps/console-bff/...,
+# except a cmd/ entry-point package, which is a program root rather than a
+# subject, and except opl-cloud/packages/contracts/go/..., which is the
+# generated contract client rather than an owner implementation.
+#
+# The tool refuses to run when this list no longer equals that derived set, so
+# a package cannot leave the boundary without this file being updated.
+
+opl-cloud/apps/console-bff
+opl-cloud/apps/console-bff/internal/clients
+opl-cloud/apps/console-bff/internal/httpapi
+opl-cloud/services/build/internal/build
+opl-cloud/services/build/migrations
+opl-cloud/services/capability/catalog
+opl-cloud/services/capability/migrations
+opl-cloud/services/cloud-composition/internal/composition
+opl-cloud/services/control-plane/internal/arch
+opl-cloud/services/control-plane/internal/clients
+opl-cloud/services/control-plane/internal/controlplane
+opl-cloud/services/control-plane/internal/domain
+opl-cloud/services/control-plane/internal/domain/application
+opl-cloud/services/control-plane/internal/domain/provisioning
+opl-cloud/services/control-plane/internal/server
+opl-cloud/services/control-plane/internal/server/sqlcgen
+opl-cloud/services/control-plane/migrations
+opl-cloud/services/fabric/coordination
+opl-cloud/services/fabric/internal/fabric
+opl-cloud/services/fabric/internal/fabric/sqlcgen
+opl-cloud/services/fabric/internal/http
+opl-cloud/services/fabric/ownermigrations
+opl-cloud/services/gateway-integration/gatewaymigrations
+opl-cloud/services/gateway-integration/identity
+opl-cloud/services/gateway-integration/migrations
+opl-cloud/services/internal/ownerservice
+opl-cloud/services/internal/ownerstore
+opl-cloud/services/internal/ownerstore/ownerstoretest
+opl-cloud/services/internal/postgresmigrate
+opl-cloud/services/internal/protectedresource
+opl-cloud/services/internal/tkeapply
+opl-cloud/services/ledger/eventconsumer
+opl-cloud/services/ledger/internal/http
+opl-cloud/services/ledger/internal/ledger
+opl-cloud/services/ledger/internal/ledger/sqlcgen
+opl-cloud/services/resource-catalog/catalog
+opl-cloud/services/resource-catalog/migrations
+opl-cloud/services/runtime-control/catalog
+opl-cloud/services/runtime-control/migrations
+opl-cloud/services/serve/internal/delivery
+opl-cloud/services/serve/migrations
+opl-cloud/services/workspace/internal/launch
+opl-cloud/services/workspace/migrations
