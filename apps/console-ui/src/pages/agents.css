@@ -1,24 +1,24 @@
-.agents-page { max-width: 980px; padding: 24px; }
-.agents-page > .panel-title { padding: 0 0 20px; margin-bottom: 24px; }
-.agents-page [role="status"] { margin-top: 20px; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--accent-soft); }
+.agents-page { max-width: 1040px; padding: 24px; }
+.agents-page > .panel-title { padding: 0 0 18px; margin-bottom: 20px; border-bottom: 1px solid var(--color-border); }
+.agents-page [role="status"] { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface-secondary); color: var(--color-text); }
 .agents-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.agent-card, .agent-version, .agent-summary { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; }
+.agent-card, .agent-version, .agent-summary { border: 1px solid var(--color-border); border-radius: 12px; padding: 18px; background: var(--color-surface); }
 .agent-card { display: grid; gap: 14px; }
-.agent-card h3, .agent-version h4, .agent-summary h3 { margin: 0; }
-.agent-card p { color: var(--text-muted); min-height: 2.4em; margin: 6px 0 0; }
+.agent-card h3, .agent-version h4, .agent-summary h3 { margin: 0; color: var(--color-text); font-weight: 600; }
+.agent-card p { color: var(--color-text-secondary); min-height: 2.4em; margin: 6px 0 0; font-size: 13px; line-height: 1.55; }
 .agent-card__actions { display: flex; justify-content: flex-start; }
 .agent-card dl, .agent-summary dl, .agent-version dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; }
 .agent-card dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .agent-summary dl { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.agent-card dt, .agent-summary dt, .agent-version dt { color: var(--text-muted); font-size: 12px; }
-.agent-card dd, .agent-summary dd, .agent-version dd { margin: 4px 0 0; overflow-wrap: anywhere; }
-.agent-status { font-weight: 600; }
+.agent-card dt, .agent-summary dt, .agent-version dt { color: var(--color-text-tertiary); font-size: 12px; }
+.agent-card dd, .agent-summary dd, .agent-version dd { margin: 4px 0 0; color: var(--color-text); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.agent-status { font-weight: 600; color: var(--color-text); }
 .agent-detail-page > .panel-title { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .agent-detail-page > .panel-title > div { display: grid; gap: 8px; }
 .agent-version-list { display: grid; gap: 12px; }
 .agent-version { display: grid; gap: 14px; }
 .agent-version__head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
-.agent-version__head p { margin: 4px 0 0; color: var(--text-muted); font-size: 13px; }
+.agent-version__head p { margin: 4px 0 0; color: var(--color-text-secondary); font-size: 13px; }
 .agent-version__actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .agent-page-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 @media (max-width: 700px) {

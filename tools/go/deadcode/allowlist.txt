@@ -1,0 +1,32 @@
+# Allowlisted unreferenced implementations in the Cloud production packages
+# declared by tools/go/deadcode/targets.txt.
+#
+# The dead-code check reports every production declaration that no source in
+# the declared packages can reach. This file is the explicit, reviewed list of
+# the declarations that are allowed to stay unreachable. Every entry carries the
+# reason it cannot simply be deleted.
+#
+# Adding an entry is a deliberate act that needs the same review as deleting
+# the implementation would. Removing an entry is the point of the check.
+#
+# Format: one symbol key per line, followed by a "#" reason. The key is
+# package-qualified, because a bare name can collide across packages: a
+# package-level symbol is "<import path>.<Symbol>" and a method is
+# "<import path>.<ReceiverType>.<name>".
+#
+# Every entry below is a pre-existing finding that this boundary now covers.
+# None of them was introduced by the boundary's relocation.
+opl-cloud/apps/console-bff.NewAgentReadHandler # published composition seam for an isolated carrier that supplies its own owner transports; the production process reaches the same handler through the shared client set
+opl-cloud/apps/console-bff.NewCatalogHandler # published composition seam for an isolated cross-owner catalog; the production process reaches the catalog through the shared client set
+opl-cloud/apps/console-bff.NewServeDeliveryHandler # published composition seam for an isolated cross-owner Serve read; the production process registers the mux itself
+opl-cloud/apps/console-bff.DialServeReader # published dial seam so an isolated composition drives the real Serve client path; the production process uses the shared client set
+opl-cloud/services/fabric/internal/fabric.newMobyDockerClientFromAPI # injection seam for a caller-supplied Docker API client; the live local-Docker provider builds its client from the environment, so no caller injects one and this constructor is a deletion candidate
+opl-cloud/services/fabric/internal/fabric.scanPostgresMachineOwnership # row scanner left behind when the machine-ownership read moved to the generated sqlc query; the live read is machineOwnershipFromSQLC, so this scanner is a deletion candidate
+opl-cloud/services/fabric/internal/fabric.workspaceDomain # duplicate of the inline OPL_WORKSPACE_DOMAIN read in the same provider, where the environment variable is still read; this wrapper is a deletion candidate
+opl-cloud/services/fabric/internal/fabric.applicationPersistentSubPath # legacy schema-0 and legacy_application data-layout helper of the historical runtime owner, duplicated from services/internal/tkeapply where the live layout rule lives; this copy is a deletion candidate
+opl-cloud/services/internal/ownerservice.OutboundIdentityInterceptor # exported outbound identity interceptor of the shared owner runtime, superseded by owneridentity.TLSConfig.DialOptions that every in-repo caller uses; this export is a deletion candidate
+opl-cloud/services/internal/ownerservice.DialOptions # exported client credentials helper of the shared owner runtime, superseded by owneridentity.TLSConfig.DialOptions that every in-repo caller uses; this export is a deletion candidate
+opl-cloud/services/internal/tkeapply.firstNonEmpty # helper whose last caller moved to the contract helper; no caller remains, so this is a deletion candidate
+opl-cloud/services/internal/tkeapply.workspaceApplicationRequiresDerivedCredentials # helper for the derived-credential requirement, superseded by the direct contract helper the live credential path reads; this wrapper is a deletion candidate
+opl-cloud/services/workspace/internal/launch.Service.fundingProof # entry point that resolves the owner commit before delegating, superseded by fundingProofFor that the live runtime path calls with an already-resolved commit; this wrapper is a deletion candidate
+opl-cloud/services/workspace/internal/launch.Service.latestModelConfigurationVersion # non-transactional variant, superseded by latestModelConfigurationTx that the live model-update path reads under the same locked snapshot; this variant is a deletion candidate

@@ -208,6 +208,26 @@ type localDockerRuntimeReplayRunner struct {
 	secretArchive          []byte
 }
 
+type localDockerRuntimeExecCall struct {
+	containerID string
+	command     []string
+	stdin       []byte
+}
+
+type localDockerRuntimeCodexRunner struct {
+	*localDockerRuntimeReplayRunner
+	execCalls []localDockerRuntimeExecCall
+}
+
+func (r *localDockerRuntimeCodexRunner) ContainerExec(_ context.Context, containerID string, command []string, stdin []byte) ([]byte, error) {
+	r.execCalls = append(r.execCalls, localDockerRuntimeExecCall{
+		containerID: containerID,
+		command:     slices.Clone(command),
+		stdin:       bytes.Clone(stdin),
+	})
+	return nil, nil
+}
+
 func (r *localDockerRuntimeReplayRunner) Info(context.Context) (system.Info, error) {
 	r.calls = append(r.calls, "Info")
 	return system.Info{NCPU: 64, MemTotal: 274877906944}, nil
@@ -2243,6 +2263,29 @@ func TestLocalDockerRuntimeUsesExactReadOnlySecretBindAndIdentityLabels(t *testi
 		if m.Type == mount.TypeVolume && m.Source == input.GatewaySecretRef {
 			t.Fatalf("runtime used legacy secret volume: %#v", created.HostConfig.Mounts)
 		}
+	}
+}
+
+func TestLocalDockerRuntimeConfiguresCodexWithFrameworkV2Command(t *testing.T) {
+	provider, replay, ctx, _, input, compute, volume := localDockerRuntimeReplayFixture(t, 0)
+	runner := &localDockerRuntimeCodexRunner{localDockerRuntimeReplayRunner: replay}
+	provider.docker = runner
+	provider.configureRuntimeGatewayEnabled = true
+
+	runtime, err := provider.CreateWorkspaceRuntime(ctx, input, compute, volume)
+	if err != nil || !runtime.Ready {
+		t.Fatalf("runtime=%#v err=%v", runtime, err)
+	}
+	if len(runner.execCalls) != 1 {
+		t.Fatalf("ContainerExec called %d times, want 1", len(runner.execCalls))
+	}
+	call := runner.execCalls[0]
+	wantCommand := []string{"opl", "connect", "configure-codex", "--api-key-stdin", "--json"}
+	if call.containerID != localRuntimeName(input.WorkspaceID) || !slices.Equal(call.command, wantCommand) {
+		t.Fatalf("ContainerExec container=%q command=%q", call.containerID, call.command)
+	}
+	if string(call.stdin) != "runtime-gateway-key" {
+		t.Fatal("ContainerExec stdin did not match the bound Gateway key")
 	}
 }
 
