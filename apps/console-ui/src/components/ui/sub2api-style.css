@@ -1372,10 +1372,12 @@ table {
 }
 
 .operator-accounts-summary__label {
+  min-width: 0;
   color: var(--color-text-tertiary);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
   text-transform: uppercase;
 }
 
@@ -2014,8 +2016,16 @@ table {
     width: 100vw;
   }
 
+  .operator-accounts-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .operator-accounts-summary__cell {
     padding: 10px 14px;
+  }
+
+  .ss-telemetry-note {
+    flex-wrap: wrap;
   }
 
   .operator-accounts-toolbar {
