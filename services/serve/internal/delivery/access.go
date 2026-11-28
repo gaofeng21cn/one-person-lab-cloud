@@ -123,7 +123,9 @@ func (e *AccessEntry) Handler() http.Handler {
 
 // serve resolves the request against Serve's own binding and proxies it. The
 // application sees its own paths, cookies and streaming behavior: the entry
-// forwards the external host and scheme and never rewrites the body.
+// forwards the external host and scheme and never rewrites the body. It also
+// states the Console facts the application needs to guide a customer back to
+// the Console.
 func (e *AccessEntry) serve(w http.ResponseWriter, r *http.Request) {
 	route, err := e.Resolve(r.Context(), r.Host, r.URL.Path)
 	if err != nil {
@@ -135,8 +137,15 @@ func (e *AccessEntry) serve(w http.ResponseWriter, r *http.Request) {
 		writeAccessRefusal(w, r, accessRefusal{status: http.StatusServiceUnavailable, code: "workspace_application_route_unavailable"})
 		return
 	}
+	e.accessProxy(route).ServeHTTP(w, r)
+}
+
+// accessProxy builds the proxy that forwards one resolved request to the
+// confirmed target. The route is already confirmed: this function decides
+// nothing about which Workspace or which instance answers.
+func (e *AccessEntry) accessProxy(route accessRoute) *httputil.ReverseProxy {
 	target := &url.URL{Scheme: "http", Host: net.JoinHostPort(route.upstreamService, strconv.Itoa(route.upstreamPort))}
-	proxy := &httputil.ReverseProxy{
+	return &httputil.ReverseProxy{
 		Transport: e.Transport,
 		// Streaming responses (SSE, chunked logs) must reach the client as they
 		// arrive instead of being buffered by the entry.
@@ -156,13 +165,13 @@ func (e *AccessEntry) serve(w http.ResponseWriter, r *http.Request) {
 			sanitizeAccessRequest(request.Out, route.pathBased)
 			request.Out.Header.Del("X-Opl-Workspace-Id")
 			request.Out.Header.Del("X-Opl-Route-Generation")
+			publishConsoleFacts(request.Out.Header, route.WorkspaceID, e.Origin.ConsoleURL)
 		},
 		ModifyResponse: confineAccessResponseCookies,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			writeAccessRefusal(w, r, accessRefusal{status: http.StatusBadGateway, code: "workspace_application_upstream_failed"})
 		},
 	}
-	proxy.ServeHTTP(w, r)
 }
 
 // Resolve maps one request to the confirmed target it must be served from. It is
@@ -295,6 +304,44 @@ func writeAccessRefusal(w http.ResponseWriter, _ *http.Request, refusal accessRe
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(refusal.status)
 	_, _ = fmt.Fprintf(w, `{"error":%q,"retryable":%t}`, refusal.code, refusal.status == http.StatusServiceUnavailable)
+}
+
+// The Console facts Serve states on the request it forwards to the
+// application. The application turns them into the links that bring a customer
+// back to the Console, so both values are Serve's own facts: the
+// installation's declared Console address and the Workspace the confirmed route
+// belongs to.
+//
+// The names are new because X-Opl-Workspace-Id names the caller's own route
+// selector, which Serve strips: reusing it would change what an existing
+// header means.
+const (
+	consoleURLHeader         = "X-Opl-Console-Url"
+	consoleWorkspaceIDHeader = "X-Opl-Console-Workspace-Id"
+)
+
+// publishConsoleFacts states the Console facts on a forwarded request: the
+// installation's declared Console address and the Workspace of the confirmed
+// route. The Workspace is the confirmed route's own, never the caller's.
+//
+// A caller's own value for either name is replaced by Serve's, because an
+// application that builds a Console link from these headers must not be
+// steerable by its caller.
+//
+// The Console address is stated only when it is an absolute http/https URL.
+// The entry checks that here, at the boundary that states it, so an
+// installation that declared none — or declared something a customer could not
+// open — states no address at all: no relative path, no Workspace domain, no
+// guess.
+func publishConsoleFacts(header http.Header, workspaceID, address string) {
+	header.Del(consoleURLHeader)
+	if declared := consoleURL(address); declared != "" {
+		header.Set(consoleURLHeader, declared)
+	}
+	header.Del(consoleWorkspaceIDHeader)
+	if workspaceID != "" {
+		header.Set(consoleWorkspaceIDHeader, workspaceID)
+	}
 }
 
 // sanitizeAccessRequest removes platform credentials at the trusted proxy

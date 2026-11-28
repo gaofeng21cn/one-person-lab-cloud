@@ -85,6 +85,15 @@ hosts by installation contract and the Runtime does not yet publish those
 fields, closing direct cross-host navigation requires one named upstream fact
 rather than a guessed relative URL.
 
+Serve now states that fact. It publishes the installation's declared Console
+address (`OPL_PUBLIC_URL`) and the confirmed route's Workspace on the request it
+forwards to a Workspace application, as `X-Opl-Console-Url` and
+`X-Opl-Console-Workspace-Id`. The address is published only when it is an
+absolute http/https URL: an installation that declared none states none, and a
+caller's own value for either name is replaced by Serve's own. What remains is
+the Runtime reading those two headers and publishing them in `/api/auth/user`,
+which is where the WebUI reads them from.
+
 ### Private Software Package Entitlements & Controlled Delivery
 
 Deliver the Cloud-governed restricted Software Center package authorization flow

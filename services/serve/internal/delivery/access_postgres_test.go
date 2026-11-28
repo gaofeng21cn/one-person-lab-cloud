@@ -20,7 +20,7 @@ import (
 
 // accessOrigin is the installation-declared route origin under test.
 func accessOrigin() delivery.RouteOrigin {
-	return delivery.RouteOrigin{Scheme: "https", WorkspaceDomain: "workspace.example", ApplicationDomain: "apps.example"}
+	return delivery.RouteOrigin{Scheme: "https", WorkspaceDomain: "workspace.example", ApplicationDomain: "apps.example", ConsoleURL: "https://console.example"}
 }
 
 // serviceTransport routes a proxied request to the test server that plays the
@@ -79,6 +79,8 @@ func TestServeAccessEntryServesConfirmedTarget(t *testing.T) {
 		if r.Header.Get("X-Opl-Workspace-Id") != "" {
 			t.Errorf("the entry must not forward a workspace selector header")
 		}
+		w.Header().Set("X-Seen-Console-Url", r.Header.Get("X-Opl-Console-Url"))
+		w.Header().Set("X-Seen-Console-Workspace", r.Header.Get("X-Opl-Console-Workspace-Id"))
 		_, _ = io.WriteString(w, "application-response")
 	}))
 	defer upstream.Close()
@@ -93,8 +95,13 @@ func TestServeAccessEntryServesConfirmedTarget(t *testing.T) {
 	defer server.Close()
 
 	// The binding's own origin reaches the confirmed target and keeps the
-	// application's own path, host and scheme.
-	response := accessGet(t, server.URL, applicationHost(t, workspace), "/console/static/app.js")
+	// application's own path, host and scheme. The caller's own route selector
+	// and Console facts are replaced by the entry's own.
+	response := accessGetWithHeaders(t, server.URL, applicationHost(t, workspace), "/console/static/app.js", map[string]string{
+		"X-Opl-Workspace-Id":         "forged-workspace",
+		"X-Opl-Console-Url":          "https://forged.example",
+		"X-Opl-Console-Workspace-Id": "forged-workspace",
+	})
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("origin request status=%d body=%s", response.StatusCode, response.Body)
 	}
@@ -103,6 +110,15 @@ func TestServeAccessEntryServesConfirmedTarget(t *testing.T) {
 	}
 	if response.ForwardedHost != applicationHost(t, workspace) {
 		t.Fatalf("X-Forwarded-Host=%q", response.ForwardedHost)
+	}
+	// The application learns the Console address the installation declared and
+	// the Workspace of the confirmed route, so it can link a customer back to
+	// the Console without guessing either.
+	if response.ConsoleURL != "https://console.example" {
+		t.Fatalf("published console url=%q, want the installation's declared address", response.ConsoleURL)
+	}
+	if response.ConsoleWorkspace != workspace {
+		t.Fatalf("published console workspace=%q, want the confirmed route's Workspace %q", response.ConsoleWorkspace, workspace)
 	}
 
 	// The retained path entry serves the same confirmed target and strips its own
@@ -552,19 +568,31 @@ func TestServeAccessEntryRefusesUnverifiedEntitlement(t *testing.T) {
 }
 
 type accessResponse struct {
-	StatusCode    int
-	Body          string
-	SeenPath      string
-	ForwardedHost string
+	StatusCode       int
+	Body             string
+	SeenPath         string
+	ForwardedHost    string
+	ConsoleURL       string
+	ConsoleWorkspace string
 }
 
 func accessGet(t *testing.T, serverURL, host, path string) accessResponse {
+	t.Helper()
+	return accessGetWithHeaders(t, serverURL, host, path, nil)
+}
+
+// accessGetWithHeaders sends the caller's own headers, so a test can prove the
+// entry replaces them with its own facts.
+func accessGetWithHeaders(t *testing.T, serverURL, host, path string, headers map[string]string) accessResponse {
 	t.Helper()
 	request, err := http.NewRequest(http.MethodGet, serverURL+path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	request.Host = host
+	for name, value := range headers {
+		request.Header.Set(name, value)
+	}
 	response, err := (&http.Client{Timeout: 10 * time.Second}).Do(request)
 	if err != nil {
 		t.Fatal(err)
@@ -575,9 +603,11 @@ func accessGet(t *testing.T, serverURL, host, path string) accessResponse {
 		t.Fatal(err)
 	}
 	return accessResponse{
-		StatusCode:    response.StatusCode,
-		Body:          string(raw),
-		SeenPath:      response.Header.Get("X-Seen-Path"),
-		ForwardedHost: response.Header.Get("X-Seen-Forwarded-Host"),
+		StatusCode:       response.StatusCode,
+		Body:             string(raw),
+		SeenPath:         response.Header.Get("X-Seen-Path"),
+		ForwardedHost:    response.Header.Get("X-Seen-Forwarded-Host"),
+		ConsoleURL:       response.Header.Get("X-Seen-Console-Url"),
+		ConsoleWorkspace: response.Header.Get("X-Seen-Console-Workspace"),
 	}
 }
