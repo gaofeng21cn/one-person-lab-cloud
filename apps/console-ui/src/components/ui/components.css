@@ -50,8 +50,14 @@
 .ui-button[data-variant="soft"][data-color="danger"] { background: var(--color-background-danger-soft); color: var(--color-text-danger); }
 .ui-button[data-variant="outline"] { border-color: var(--color-border); background: var(--color-surface); }
 .ui-button[data-variant="outline"]:hover:not(:disabled) { border-color: var(--color-border-strong); background: var(--color-surface-secondary); }
+.ui-button[data-variant="outline"][data-color="primary"] { border-color: var(--color-border-primary); background: var(--color-surface); color: var(--color-text-primary); }
+.ui-button[data-variant="outline"][data-color="primary"]:hover:not(:disabled) { border-color: var(--action); background: var(--color-background-primary-soft); }
+.ui-button[data-variant="outline"][data-color="danger"] { border-color: var(--color-border-danger); background: var(--color-surface); color: var(--color-text-danger); }
+.ui-button[data-variant="outline"][data-color="danger"]:hover:not(:disabled) { border-color: var(--red-300); background: var(--color-background-danger-soft); color: var(--color-text-danger); }
 .ui-button[data-variant="ghost"] { color: var(--color-text-secondary); }
 .ui-button[data-variant="ghost"]:hover:not(:disabled) { background: var(--color-surface-tertiary); color: var(--color-text); }
+.ui-button[data-variant="ghost"][data-color="danger"] { color: var(--color-text-danger); }
+.ui-button[data-variant="ghost"][data-color="danger"]:hover:not(:disabled) { background: var(--color-background-danger-soft); color: var(--color-text-danger); }
 .ui-button:focus-visible,
 .ui-field__control:focus-visible,
 .ui-select__control:focus-visible,
