@@ -57,7 +57,7 @@ test("the gate runs for the changes that can break the runtime claim", async () 
   for (const required of [
     // The product image the composed unit runs.
     "Dockerfile", ".dockerignore", "package.json", "package-lock.json",
-    "index.html", "vite.config.ts", "public/**", "apps/**", "packages/**", "services/**",
+    "index.html", "vite.config.ts", "public/**", "apps/**", "cmd/**", "packages/**", "services/**",
     // The published installation and the owner topology contract.
     "deploy/portable/**", "docs/spec/target/contracts/**",
     // The suite and the gate itself.

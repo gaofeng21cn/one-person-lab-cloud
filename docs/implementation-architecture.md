@@ -59,8 +59,12 @@ transitional customer read fences and ephemeral Secret handling.
 ## Physical Module And Dependency Map
 
 `one-person-lab-cloud` builds and versions all Go services under **one root Go
-module** (`go.mod`, `module opl-cloud`). Domain isolation is enforced by package
-boundaries, independent PostgreSQL databases/roles and boundary tests
+module** (`go.mod`, `module opl-cloud`) and compiles all 11 domain modules
+(`services/<domain>/module`, `apps/console-bff/module`) into one unified
+multi-call binary (`/usr/local/bin/opl-cloud` built from `cmd/opl-cloud/`, with
+BusyBox-style symlinks for `opl-cloud-composition` and every `opl-<service>`).
+Domain isolation is enforced by package boundaries, independent PostgreSQL
+databases/roles and boundary tests
 (`tests/contracts/module-physical-boundaries.test.ts`), not separate `go.mod`
 files or per-service repositories.
 
@@ -92,9 +96,9 @@ reads are forbidden.
 
 ## Deployment & Diagnostic Units
 
-- **Single-Stage Build & Slim Runtime Image**: `Dockerfile` compiles all Go binaries in a single shared `go-build` stage (`golang:1.27-bookworm`) and runs on `debian:bookworm-slim` without Node.js or `node_modules`, baking `/app/dist` and `/app/contracts/opl-cloud-owner-topology.json` directly into the product image.
-- **Composed Backend**: `deploy/portable/compose.cloud.yaml` packages a 3-container host unit (`postgres`, single composed `cloud-backend` running `opl-cloud-composition` for all 11 owner processes over loopback, and same-origin `cloud-local-v2` reverse proxy). Clean-host verification runs via `npm run verify:local-v2`.
-- **Module Boundary Enforcement**: `tests/contracts/module-physical-boundaries.test.ts` enforces package and SDK isolation across all 11 Go services under `services/`, `apps/console-bff/`, and `services/internal/*`.
+- **Single-Stage Build & Slim Runtime Image**: `Dockerfile` compiles **4** stamped Go binaries in a single shared `go-build` stage (`golang:1.27-bookworm`) — the unified multi-call `/usr/local/bin/opl-cloud` (`cmd/opl-cloud`) plus 3 standalone CLI helpers (`opl-tencent-provisioner`, `opl-node-image-retire`, `opl-owner-probe`) — alongside **12** BusyBox-style symlinks (`opl-cloud-composition` and all 11 `opl-<service>` names -> `opl-cloud`), running on `debian:bookworm-slim` without Node.js or `node_modules` and baking `/app/dist` and `/app/contracts/opl-cloud-owner-topology.json`.
+- **Single-Binary In-Process Composed Backend**: `deploy/portable/compose.cloud.yaml` packages a 3-container host unit (`postgres`, single `cloud-backend` running `/usr/local/bin/opl-cloud-composition` -> `opl-cloud`, and same-origin `cloud-local-v2` reverse proxy). `composition.InProcStarter` launches all 11 domain modules in-process as goroutines inside **1 OS PID / 1 Go runtime** with contract-allowlisted `owneridentity.ModuleEnv`, routing intra-unit owner RPCs over zero-copy `owneridentity.InProcTransport` (preserving caller identity verification, bearer tokens, and `CloudIdentity` authorization) while keeping external TCP+mTLS/HTTP listeners for `opl-owner-probe`, reverse proxy, and Kubernetes readiness probes. Clean-host verification runs via `npm run verify:local-v2`.
+- **Module Boundary Enforcement**: `tests/contracts/module-physical-boundaries.test.ts` enforces package and SDK isolation across all 11 Go services under `services/`, `apps/console-bff/`, and `services/internal/*`, restricts `cmd/opl-cloud` imports strictly to `packages/contracts/go`, `services/cloud-composition/composition`, and thin `<unit>/module` packages, and forbids direct `os.Getenv`/`os.LookupEnv` in domain `module/` runtime packages.
 - **Instance Separation**: `opl-instance-medopl` owns TKE manifests, Secrets,
   domains and install/rollback receipts; protected Cloud diagnostic scripts live
   in `tools/` (`workspace-fabric-dispatch-error-readback.ts`,

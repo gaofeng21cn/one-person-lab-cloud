@@ -45,6 +45,7 @@ type Runner struct {
 	MaxPackageBytes, MaxExpandedBytes int64
 	MaxFiles                          int
 	Timeout                           time.Duration
+	PathEnv                           string
 	HTTP                              *http.Client
 	AllowHTTP                         bool
 	// InsecureHTTPHosts lists registry hosts that are reachable only over plain
@@ -641,7 +642,11 @@ func (r *Runner) Execute(ctx context.Context, jobID, repository string, in *api.
 	bounded, cancel := context.WithTimeout(ctx, r.Timeout)
 	defer cancel()
 	cmd := exec.CommandContext(bounded, "docker", args...)
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + dir, "DOCKER_CONFIG=" + r.DockerConfig, "BUILDX_NO_DEFAULT_ATTESTATIONS=1"}
+	pathEnv := r.PathEnv
+	if pathEnv == "" {
+		pathEnv = os.Getenv("PATH")
+	}
+	cmd.Env = []string{"PATH=" + pathEnv, "HOME=" + dir, "DOCKER_CONFIG=" + r.DockerConfig, "BUILDX_NO_DEFAULT_ATTESTATIONS=1"}
 	writer := &progressWriter{log: log}
 	cmd.Stdout = writer
 	cmd.Stderr = writer

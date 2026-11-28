@@ -45,11 +45,10 @@ test("every product binary in the image carries the build-time product revision"
   const dockerfile = await readFile("Dockerfile", "utf8");
   const buildCommands = [...dockerfile.matchAll(/go (?:-C [^ ]+ )?build[^\n]*/g)].map((match) => match[0]);
   const productBuilds = buildCommands.filter((command) => command.includes("-o /out/opl-"));
-  // Three Fabric binaries, Control Plane, Ledger, the owner loop, the Console
-  // BFF and the composition entrypoint. The owner loop emits one binary per
-  // owner, so the fourteen product binaries plus the installer probe come from
-  // nine build commands.
-  assert.equal(productBuilds.length, 9, `expected nine product build commands, saw ${productBuilds.length}`);
+  // Unified multi-call opl-cloud binary plus three specialized helper binaries
+  // (opl-tencent-provisioner, opl-node-image-retire, opl-owner-probe); the
+  // remaining 12 opl-* names are symlinks to opl-cloud.
+  assert.equal(productBuilds.length, 4, `expected four product build commands, saw ${productBuilds.length}`);
 
   for (const command of productBuilds) {
     assert.ok(
@@ -58,10 +57,11 @@ test("every product binary in the image carries the build-time product revision"
     );
   }
 
-  // The composition entrypoint is a product binary: it is built with the stamp
-  // and the runtime stage ships the whole go-build output.
-  const compositionBuild = productBuilds.find((command) => command.includes("-o /out/opl-cloud-composition "));
-  assert.ok(compositionBuild, "the composition entrypoint must be built as a product binary");
+  // The unified opl-cloud binary (with opl-cloud-composition symlink) carries
+  // the stamp and the runtime stage ships the whole go-build output.
+  const unifiedBuild = productBuilds.find((command) => command.includes("-o /out/opl-cloud ./cmd/opl-cloud"));
+  assert.ok(unifiedBuild, "the unified opl-cloud entrypoint must be built as a product binary");
+  assert.ok(dockerfile.includes("ln -s opl-cloud /out/opl-cloud-composition"), "opl-cloud-composition must symlink to opl-cloud");
   assert.ok(
     dockerfile.includes("COPY --from=go-build /out/ /usr/local/bin/"),
     "the runtime stage must ship the composition entrypoint"
@@ -73,7 +73,7 @@ test("every product binary in the image carries the build-time product revision"
   assert.ok(goBuildStart > 0 && goBuildEnd > goBuildStart);
   const goBuildStage = dockerfile.slice(goBuildStart, goBuildEnd);
   const goBuilds = [...goBuildStage.matchAll(/go (?:-C [^ ]+ )?build[^\n]*/g)].map((match) => match[0]);
-  assert.ok(goBuilds.length >= 9, "the go-build stage must build all product binaries");
+  assert.ok(goBuilds.length >= 4, "the go-build stage must build all product binaries");
   for (const command of goBuilds) {
     assert.ok(command.includes(STAMP), `the go-build stage builds a binary without the stamp: ${command}`);
   }

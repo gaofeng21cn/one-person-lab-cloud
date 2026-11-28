@@ -26,6 +26,7 @@ on:
       - "vite.config.ts"
       - "public/**"
       - "apps/**"
+      - "cmd/**"
       - "packages/**"
       - "services/**"
       # The published installation the composed unit reads, and the owner

@@ -19,17 +19,15 @@ RUN GOPROXY="$GOPROXY" go mod download
 COPY packages/contracts/go /src/packages/contracts/go
 COPY services /src/services
 COPY apps/console-bff /src/apps/console-bff
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/fabric build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-tencent-provisioner ./cmd/opl-tencent-provisioner \
-    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/fabric build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-fabric ./cmd/fabric \
+COPY cmd/opl-cloud /src/cmd/opl-cloud
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-cloud ./cmd/opl-cloud \
+    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/fabric build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-tencent-provisioner ./cmd/opl-tencent-provisioner \
     && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/fabric build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-node-image-retire ./cmd/opl-node-image-retire \
-    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/control-plane build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-control-plane ./cmd/control-plane \
-    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/ledger build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-ledger ./cmd/ledger \
-    && for service in capability build runtime-control workspace resource-catalog serve gateway-integration; do \
-      CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/$service build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-$service ./cmd/server || exit 1; \
-    done \
-    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C apps/console-bff build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-console-bff ./cmd/server \
     && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C packages/contracts/go build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-owner-probe ./cmd/opl-owner-probe \
-    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/cloud-composition build -ldflags "-X opl-cloud/packages/contracts/go.ProductSourceSHA=$OPL_SOURCE_SHA" -o /out/opl-cloud-composition ./cmd/opl-cloud-composition
+    && ln -s opl-cloud /out/opl-cloud-composition \
+    && for bin in opl-capability opl-build opl-runtime-control opl-workspace opl-resource-catalog opl-serve opl-gateway-integration opl-fabric opl-ledger opl-console-bff opl-control-plane; do \
+      ln -s opl-cloud "/out/$bin" || exit 1; \
+    done
 
 FROM docker:29.10.0-cli@sha256:34507eb5069d8be82c95dd3b6987d4250fd5fee49b82e2509b7d7a7030740d6d AS docker-cli
 

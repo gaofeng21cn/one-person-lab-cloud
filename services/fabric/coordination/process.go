@@ -16,6 +16,12 @@ import (
 // Its database is explicitly separate from the legacy operation-store setting;
 // absence disables this surface without changing the legacy HTTP lifecycle.
 func Start(ctx context.Context, getenv func(string) string, dispatcher ResourceDispatcher) (*ownerservice.Bootstrap, error) {
+	return StartWithEnv(ctx, ownerservice.ModuleEnv{Getenv: getenv}, dispatcher)
+}
+
+// StartWithEnv configures the target gRPC surface with isolated module transport and env.
+func StartWithEnv(ctx context.Context, env ownerservice.ModuleEnv, dispatcher ResourceDispatcher) (*ownerservice.Bootstrap, error) {
+	getenv := env.Env
 	if strings.TrimSpace(getenv("OPL_FABRIC_DATABASE_URL")) == "" {
 		return nil, nil
 	}
@@ -29,6 +35,7 @@ func Start(ctx context.Context, getenv func(string) string, dispatcher ResourceD
 	if err != nil {
 		return nil, err
 	}
+	config.TLS.InProc = env.InProc
 	catalogAddr := strings.TrimSpace(getenv("OPL_RESOURCE_CATALOG_ADDR"))
 	if catalogAddr == "" {
 		return nil, errors.New("OPL_RESOURCE_CATALOG_ADDR is required for Fabric resource acceptance")

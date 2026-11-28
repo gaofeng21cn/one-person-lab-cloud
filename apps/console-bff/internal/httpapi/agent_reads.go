@@ -25,7 +25,7 @@ func (s *Server) registerAgentReadRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/v2/mcp", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		bearer := len(r.Header.Values("Authorization")) != 0
-		if r.Header.Get("Sec-Fetch-Site") == "cross-site" || ((!bearer || r.Header.Get("Origin") != "") && !sameOrigin(r)) {
+		if r.Header.Get("Sec-Fetch-Site") == "cross-site" || ((!bearer || r.Header.Get("Origin") != "") && !s.sameOrigin(r)) {
 			writePublisherError(w, r, 403, "origin_rejected", "same-origin request required")
 			return
 		}

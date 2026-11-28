@@ -8,59 +8,73 @@ import test from "node:test";
 // capability. The expected owner set is derived from the repository layout, not
 // restated here, so this tracks the source tree instead of a copied list.
 
-async function ownerServicesWithServer() {
+async function ownerModulePackages(): Promise<Array<{ name: string; binary: string; importPath: string }>> {
+  const modules: Array<{ name: string; binary: string; importPath: string }> = [];
   const entries = await readdir("services", { withFileTypes: true });
-  const services = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     try {
-      await access(`services/${entry.name}/cmd/server/main.go`);
-      services.push(entry.name);
+      await access(`services/${entry.name}/module/run.go`);
+      modules.push({
+        name: entry.name,
+        binary: `opl-${entry.name}`,
+        importPath: `opl-cloud/services/${entry.name}/module`
+      });
     } catch {
-      // A service without a server entrypoint is not an independently runnable owner.
+      // Skip non-daemon support directories such as internal/ or cloud-composition/.
     }
   }
-  return services.sort();
+  await access("apps/console-bff/module/run.go");
+  modules.push({
+    name: "console-bff",
+    binary: "opl-console-bff",
+    importPath: "opl-cloud/apps/console-bff/module"
+  });
+  return modules.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-test("the product image builds every service and control binary in the single go-build stage without Node runtime bloat", async () => {
+test("the product image compiles the unified opl-cloud binary with owner symlinks and no Node runtime bloat", async () => {
   const dockerfile = await readFile("Dockerfile", "utf8");
   const goBuildStart = dockerfile.indexOf("AS go-build");
   const goBuildEnd = dockerfile.indexOf("FROM docker:");
   assert.ok(goBuildStart > 0 && goBuildEnd > goBuildStart, "Dockerfile must keep a single go-build stage before the docker-cli stage");
-  const goBuildStage = dockerfile.slice(goBuildStart, goBuildEnd);
+  const goBuildStage = dockerfile.slice(goBuildStart, goBuildEnd).replace(/\\\r?\n/g, " ");
 
-  // control-plane, fabric and ledger are built explicitly alongside the owner
-  // server loop inside the single shared Go build stage.
-  const dedicated = new Set(["control-plane", "fabric", "ledger"]);
-  const expected = (await ownerServicesWithServer()).filter((service) => !dedicated.has(service));
-  assert.ok(expected.length >= 7, `expected the target owner set, saw ${expected.join(",")}`);
+  assert.match(goBuildStage, /COPY cmd\/opl-cloud \/src\/cmd\/opl-cloud/, "go-build must copy the single-binary composition root");
+  assert.match(goBuildStage, /-o \/out\/opl-cloud \.\/cmd\/opl-cloud\b/, "go-build must build the unified /out/opl-cloud binary");
+  assert.match(goBuildStage, /ln -s opl-cloud \/out\/opl-cloud-composition\b/, "go-build must symlink opl-cloud-composition to opl-cloud");
 
-  const loop = goBuildStage.match(/for service in ([^;]+); do/);
-  assert.ok(loop, "the go-build stage must iterate its owner set");
-  const built = loop[1].trim().split(/\s+/).sort();
-  assert.deepEqual(built, expected, "every owner with a server entrypoint must be built in go-build");
-  assert.ok(
-    goBuildStage.includes("-o /out/opl-$service ./cmd/server"),
-    "go-build must emit one opl-<service> binary per iteration"
+  const symlinkLoop = goBuildStage.match(/for bin in ([^;]+); do\s+ln -s opl-cloud "\/out\/\$bin"/);
+  assert.ok(symlinkLoop, "go-build must symlink every owner entrypoint to /out/opl-cloud");
+  const symlinkedOwners = symlinkLoop[1].trim().split(/\s+/).sort();
+
+  const expectedModules = await ownerModulePackages();
+  assert.ok(expectedModules.length >= 11, `expected all domain owner modules, saw ${expectedModules.map((m) => m.name).join(",")}`);
+  assert.deepEqual(
+    symlinkedOwners,
+    expectedModules.map((m) => m.binary).sort(),
+    "every domain module must receive an opl-<service> symlink to opl-cloud"
   );
-  assert.match(goBuildStage, /-o \/out\/opl-console-bff \.\/cmd\/server/, "go-build must emit the Console BFF");
+
+  const cmdSource = await readFile("cmd/opl-cloud/main.go", "utf8");
+  for (const mod of expectedModules) {
+    assert.ok(cmdSource.includes(`"${mod.importPath}"`), `cmd/opl-cloud/main.go must register ${mod.importPath}`);
+    assert.ok(cmdSource.includes(`"${mod.binary}"`), `cmd/opl-cloud/main.go must dispatch ${mod.binary}`);
+  }
+
   for (const [binary, command] of [
-    ["opl-control-plane", "./cmd/control-plane"],
-    ["opl-fabric", "./cmd/fabric"],
-    ["opl-ledger", "./cmd/ledger"],
+    ["opl-cloud", "./cmd/opl-cloud"],
     ["opl-tencent-provisioner", "./cmd/opl-tencent-provisioner"],
     ["opl-node-image-retire", "./cmd/opl-node-image-retire"],
-    ["opl-owner-probe", "./cmd/opl-owner-probe"],
-    ["opl-cloud-composition", "./cmd/opl-cloud-composition"]
+    ["opl-owner-probe", "./cmd/opl-owner-probe"]
   ]) {
     assert.ok(goBuildStage.includes(`-o /out/${binary} ${command}`), `go-build must build ${binary}`);
   }
 
-  // The runtime image must stay free of Node.js / npm dependencies and ship all Go binaries and topology contract.
+  // The runtime image must stay free of Node.js / npm dependencies and ship all Go binaries, symlinks and topology contract.
   const runtimeStage = dockerfile.slice(dockerfile.lastIndexOf("FROM "));
   assert.match(runtimeStage, /FROM debian:bookworm-slim@sha256:/, "the runtime stage must use slim Debian instead of Node");
   assert.ok(!runtimeStage.includes("npm ci"), "the runtime stage must not install npm packages");
-  assert.match(runtimeStage, /COPY --from=go-build \/out\/ \/usr\/local\/bin\//, "the runtime stage must copy all built Go binaries");
+  assert.match(runtimeStage, /COPY --from=go-build \/out\/ \/usr\/local\/bin\//, "the runtime stage must copy all built Go binaries and symlinks");
   assert.match(runtimeStage, /COPY deploy\/portable\/opl-cloud-owner-topology\.json \/app\/contracts\/opl-cloud-owner-topology\.json/, "the runtime stage must bake the owner topology contract");
 });

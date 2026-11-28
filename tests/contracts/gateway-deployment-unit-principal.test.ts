@@ -23,7 +23,7 @@ const gatewayCallSiteFiles = [
   "apps/console-bff/internal/clients/clients.go",
   "services/serve/internal/delivery/service.go",
   "services/ledger/eventconsumer/configure.go",
-  "services/workspace/cmd/server/main.go",
+  "services/workspace/module/run.go",
 ];
 
 // dialOptionsArguments returns the top-level arguments of every DialOptions(...)

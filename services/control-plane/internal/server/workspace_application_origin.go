@@ -35,7 +35,14 @@ const workspaceApplicationOriginDomainEnv = "OPL_WORKSPACE_APPLICATION_DOMAIN"
 // application origins states no such domain, and every binding then keeps the
 // retained path-based entry.
 func workspaceApplicationOriginDomain() string {
-	return strings.Trim(strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(os.Getenv(workspaceApplicationOriginDomainEnv)), "https://"), "http://"), "/")
+	return workspaceApplicationOriginDomainWith(os.Getenv)
+}
+
+func workspaceApplicationOriginDomainWith(getenv func(string) string) string {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	return strings.Trim(strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(getenv(workspaceApplicationOriginDomainEnv)), "https://"), "http://"), "/")
 }
 
 // workspaceApplicationOriginLabel uses the same canonical binding identity as Serve.
@@ -46,22 +53,34 @@ func workspaceApplicationOriginLabel(workspaceID, applicationID string) (string,
 // workspaceApplicationOriginHost shares the canonical DNS encoding with Serve;
 // retained origins keep their exact bytes and native identities remain reversible.
 func workspaceApplicationOriginHost(workspaceID, applicationID string) (string, bool) {
-	return contracts.WorkspaceApplicationOriginHost(workspaceID, applicationID, workspaceApplicationOriginDomain())
+	return workspaceApplicationOriginHostWith(os.Getenv, workspaceID, applicationID)
+}
+
+func workspaceApplicationOriginHostWith(getenv func(string) string, workspaceID, applicationID string) (string, bool) {
+	return contracts.WorkspaceApplicationOriginHost(workspaceID, applicationID, workspaceApplicationOriginDomainWith(getenv))
 }
 
 // workspaceApplicationOriginURL is the address an operator opens for one
 // binding. The installation terminates TLS in front of this server, which is
 // the same assumption the retained Workspace entry already makes.
 func workspaceApplicationOriginURL(workspaceID, applicationID string) (string, bool) {
-	host, ok := workspaceApplicationOriginHost(workspaceID, applicationID)
+	return workspaceApplicationOriginURLWith(os.Getenv, workspaceID, applicationID)
+}
+
+func workspaceApplicationOriginURLWith(getenv func(string) string, workspaceID, applicationID string) (string, bool) {
+	host, ok := workspaceApplicationOriginHostWith(getenv, workspaceID, applicationID)
 	if !ok {
 		return "", false
 	}
-	scheme := workspaceExternalScheme()
+	scheme := workspaceExternalSchemeWith(getenv)
 	if scheme == "" {
 		return "", false
 	}
 	return scheme + "://" + host + "/", true
+}
+
+func (app *controlPlaneServer) workspaceApplicationOriginURL(workspaceID, applicationID string) (string, bool) {
+	return workspaceApplicationOriginURLWith(app.env, workspaceID, applicationID)
 }
 
 // parseWorkspaceApplicationOriginHost reverses workspaceApplicationOriginHost
@@ -70,11 +89,15 @@ func workspaceApplicationOriginURL(workspaceID, applicationID string) (string, b
 // Workspace's current binding, because a name that no longer matches belongs to
 // a superseded application rather than to this one.
 func parseWorkspaceApplicationOriginHost(host string) (workspaceID, applicationLabel string, ok bool) {
-	return contracts.ParseWorkspaceApplicationOriginHost(host, workspaceApplicationOriginDomain())
+	return parseWorkspaceApplicationOriginHostWith(os.Getenv, host)
+}
+
+func parseWorkspaceApplicationOriginHostWith(getenv func(string) string, host string) (workspaceID, applicationLabel string, ok bool) {
+	return contracts.ParseWorkspaceApplicationOriginHost(host, workspaceApplicationOriginDomainWith(getenv))
 }
 
 // workspaceApplicationOriginRequest reports the binding a request is addressed
 // to, when the request arrives on a binding origin.
-func workspaceApplicationOriginRequest(r *http.Request) (string, string, bool) {
-	return parseWorkspaceApplicationOriginHost(r.Host)
+func (app *controlPlaneServer) workspaceApplicationOriginRequest(r *http.Request) (string, string, bool) {
+	return parseWorkspaceApplicationOriginHostWith(app.env, r.Host)
 }

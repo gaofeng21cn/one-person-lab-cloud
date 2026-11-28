@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"opl-cloud/services/internal/tkeapply"
-	"os"
 	"strings"
 
 	contracts "opl-cloud/packages/contracts/go"
@@ -85,7 +84,7 @@ func (p *TencentProvider) PreflightWorkspaceApplicationRuntime(ctx context.Conte
 		}
 	}
 	if workspaceApplicationRequiresDerivedCredentials(input.Revision) {
-		if strings.TrimSpace(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED")) == "" {
+		if strings.TrimSpace(p.env("OPL_AIONUI_ADMIN_PASSWORD_SEED")) == "" {
 			return errors.New("workspace_application_credential_seed_required")
 		}
 		if _, err := tencentApplicationCredentialToken(ctx, input); err != nil {

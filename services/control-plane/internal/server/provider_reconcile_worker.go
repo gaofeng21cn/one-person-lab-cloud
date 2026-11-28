@@ -18,21 +18,31 @@ const (
 	defaultProviderFreshnessWindow   = 15 * time.Minute
 )
 
-func providerReconcileWorkerEnabled() bool {
-	value := strings.TrimSpace(os.Getenv("OPL_PROVIDER_RECONCILE_WORKER_ENABLED"))
+func providerReconcileWorkerEnabledWith(getenv func(string) string) bool {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	value := strings.TrimSpace(getenv("OPL_PROVIDER_RECONCILE_WORKER_ENABLED"))
 	return value == "1" || strings.EqualFold(value, "true") || strings.EqualFold(value, "yes")
 }
 
-func providerReconcileInterval() time.Duration {
-	return durationFromEnv("OPL_PROVIDER_RECONCILE_INTERVAL_MS", defaultProviderReconcileInterval)
+func providerReconcileIntervalWith(getenv func(string) string) time.Duration {
+	return durationFromEnvWith(getenv, "OPL_PROVIDER_RECONCILE_INTERVAL_MS", defaultProviderReconcileInterval)
 }
 
 func providerFreshnessWindow() time.Duration {
-	return durationFromEnv("OPL_PROVIDER_FRESHNESS_WINDOW_MS", defaultProviderFreshnessWindow)
+	return providerFreshnessWindowWith(os.Getenv)
 }
 
-func durationFromEnv(key string, fallback time.Duration) time.Duration {
-	raw := strings.TrimSpace(os.Getenv(key))
+func providerFreshnessWindowWith(getenv func(string) string) time.Duration {
+	return durationFromEnvWith(getenv, "OPL_PROVIDER_FRESHNESS_WINDOW_MS", defaultProviderFreshnessWindow)
+}
+
+func durationFromEnvWith(getenv func(string) string, key string, fallback time.Duration) time.Duration {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	raw := strings.TrimSpace(getenv(key))
 	if raw == "" {
 		return fallback
 	}

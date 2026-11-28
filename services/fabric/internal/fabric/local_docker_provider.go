@@ -32,6 +32,8 @@ type LocalDockerProviderConfig struct {
 	WorkloadOwnership            localDockerWorkloadOwnership
 	TrustedWorkspaceImageSources []string
 	ProviderProfileJSON          []byte
+	Getenv                       func(string) string
+	LookupEnv                    func(string) (string, bool)
 }
 
 type localDockerProviderProfile struct {
@@ -97,25 +99,48 @@ type LocalDockerProvider struct {
 	profile                           localDockerProviderProfile
 	plans                             map[string]localDockerPackageProfile
 	profileErr                        error
+	getenv                            func(string) string
+}
+
+func (p *LocalDockerProvider) env(key string) string {
+	if p != nil && p.getenv != nil {
+		return p.getenv(key)
+	}
+	return os.Getenv(key)
 }
 
 func NewLocalDockerProvider() *LocalDockerProvider {
+	return NewLocalDockerProviderWithEnv(os.Getenv, os.LookupEnv)
+}
+
+func NewLocalDockerProviderWithEnv(getenv func(string) string, lookupEnv func(string) (string, bool)) *LocalDockerProvider {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	if lookupEnv == nil {
+		lookupEnv = func(key string) (string, bool) {
+			value := getenv(key)
+			return value, value != ""
+		}
+	}
 	trustedSources := []string{}
-	if raw, configured := os.LookupEnv("OPL_FABRIC_LOCAL_DOCKER_TRUSTED_WORKSPACE_IMAGES"); configured {
+	if raw, configured := lookupEnv("OPL_FABRIC_LOCAL_DOCKER_TRUSTED_WORKSPACE_IMAGES"); configured {
 		trustedSources = strings.Split(raw, ",")
 	}
-	runtimeHost := firstNonEmpty(strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_HOST")), "127.0.0.1")
+	runtimeHost := firstNonEmpty(strings.TrimSpace(getenv("OPL_FABRIC_LOCAL_DOCKER_HOST")), "127.0.0.1")
 	return newLocalDockerProvider(LocalDockerProviderConfig{
-		GatewaySecretRoot:            strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT")),
-		HostStorageRoot:              strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT")),
+		GatewaySecretRoot:            strings.TrimSpace(getenv("OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT")),
+		HostStorageRoot:              strings.TrimSpace(getenv("OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT")),
 		RuntimeHost:                  runtimeHost,
-		PublishHost:                  firstNonEmpty(strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST")), runtimeHost),
-		ApplicationProbeImage:        strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_PROBE_IMAGE")),
-		AllowUnboundedSwap:           os.Getenv("OPL_FABRIC_LOCAL_DOCKER_ALLOW_UNBOUNDED_SWAP") == "1",
-		RuntimeGatewayContainer:      strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER")),
+		PublishHost:                  firstNonEmpty(strings.TrimSpace(getenv("OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST")), runtimeHost),
+		ApplicationProbeImage:        strings.TrimSpace(getenv("OPL_FABRIC_LOCAL_DOCKER_PROBE_IMAGE")),
+		AllowUnboundedSwap:           getenv("OPL_FABRIC_LOCAL_DOCKER_ALLOW_UNBOUNDED_SWAP") == "1",
+		RuntimeGatewayContainer:      strings.TrimSpace(getenv("OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER")),
 		ConfigureRuntimeGateway:      true,
 		TrustedWorkspaceImageSources: trustedSources,
-		ProviderProfileJSON:          []byte(strings.TrimSpace(os.Getenv(localDockerProviderProfileEnv))),
+		ProviderProfileJSON:          []byte(strings.TrimSpace(getenv(localDockerProviderProfileEnv))),
+		Getenv:                       getenv,
+		LookupEnv:                    lookupEnv,
 	}, nil)
 }
 
@@ -123,10 +148,25 @@ func newLocalDockerProvider(config LocalDockerProviderConfig, docker localDocker
 	if docker == nil {
 		docker = newMobyDockerClient()
 	}
+	getenv := config.Getenv
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	lookupEnv := config.LookupEnv
+	if lookupEnv == nil {
+		if config.Getenv != nil {
+			lookupEnv = func(key string) (string, bool) {
+				value := getenv(key)
+				return value, value != ""
+			}
+		} else {
+			lookupEnv = os.LookupEnv
+		}
+	}
 	trustedSources := config.TrustedWorkspaceImageSources
 	if trustedSources == nil {
 		trustedSources = []string{}
-		if raw, configured := os.LookupEnv("OPL_FABRIC_LOCAL_DOCKER_TRUSTED_WORKSPACE_IMAGES"); configured {
+		if raw, configured := lookupEnv("OPL_FABRIC_LOCAL_DOCKER_TRUSTED_WORKSPACE_IMAGES"); configured {
 			trustedSources = strings.Split(raw, ",")
 		}
 	}
@@ -145,7 +185,7 @@ func newLocalDockerProvider(config LocalDockerProviderConfig, docker localDocker
 	}
 	profileJSON := config.ProviderProfileJSON
 	if len(bytes.TrimSpace(profileJSON)) == 0 {
-		profileJSON = []byte(strings.TrimSpace(os.Getenv(localDockerProviderProfileEnv)))
+		profileJSON = []byte(strings.TrimSpace(getenv(localDockerProviderProfileEnv)))
 	}
 	profile, plans, profileErr := decodeLocalDockerProviderProfile(profileJSON)
 	runtimeHost := firstNonEmpty(strings.TrimSpace(config.RuntimeHost), "127.0.0.1")
@@ -162,7 +202,8 @@ func newLocalDockerProvider(config LocalDockerProviderConfig, docker localDocker
 		configureRuntimeGatewayEnabled:    config.ConfigureRuntimeGateway,
 		trustedWorkspaceImageRepositories: trustedRepositories, trustedWorkspaceImageReferences: trustedReferences,
 		profile: profile, plans: plans, profileErr: profileErr,
-		now: func() time.Time { return time.Now().UTC() },
+		now:    func() time.Time { return time.Now().UTC() },
+		getenv: getenv,
 	}
 }
 

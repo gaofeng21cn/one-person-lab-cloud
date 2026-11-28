@@ -65,7 +65,14 @@ type localDockerWebUICredentials struct {
 }
 
 func localDockerWebUICredentialsFor(metadata localDockerGatewayMetadata) (localDockerWebUICredentials, error) {
-	seed := strings.TrimSpace(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"))
+	return localDockerWebUICredentialsForWith(metadata, os.Getenv)
+}
+
+func localDockerWebUICredentialsForWith(metadata localDockerGatewayMetadata, getenv func(string) string) (localDockerWebUICredentials, error) {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	seed := strings.TrimSpace(getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"))
 	if seed == "" {
 		return localDockerWebUICredentials{}, fmt.Errorf("local_docker_webui_credential_seed_required")
 	}
@@ -77,8 +84,8 @@ func localDockerWebUICredentialsFor(metadata localDockerGatewayMetadata) (localD
 	return localDockerWebUICredentials{Password: []byte(password), SessionSecret: []byte(sessionSecret)}, nil
 }
 
-func localDockerRuntimeAccess(metadata localDockerGatewayMetadata) (RuntimeAccess, error) {
-	credentials, err := localDockerWebUICredentialsFor(metadata)
+func localDockerRuntimeAccessWith(metadata localDockerGatewayMetadata, getenv func(string) string) (RuntimeAccess, error) {
+	credentials, err := localDockerWebUICredentialsForWith(metadata, getenv)
 	if err != nil {
 		return RuntimeAccess{}, err
 	}
@@ -734,7 +741,7 @@ func validateRuntimeGatewaySecretArchive(body []byte, expected localDockerGatewa
 	if expected.Fingerprint != "sha256:"+digest || expected.Version != digest[:16] {
 		return fail()
 	}
-	credentials, err := localDockerWebUICredentialsFor(expected)
+	credentials, err := localDockerWebUICredentialsForWith(expected, nil)
 	if err != nil || !bytes.Equal(password, credentials.Password) || !bytes.Equal(sessionSecret, credentials.SessionSecret) {
 		return fail()
 	}
@@ -1009,7 +1016,7 @@ func (p *LocalDockerProvider) createWorkspaceRuntimeLocked(ctx context.Context, 
 	if err != nil {
 		return WorkspaceRuntime{}, err
 	}
-	resource.Access, err = localDockerRuntimeAccess(secretMetadata)
+	resource.Access, err = localDockerRuntimeAccessWith(secretMetadata, p.env)
 	if err != nil {
 		return WorkspaceRuntime{}, err
 	}
@@ -1300,7 +1307,7 @@ func (p *LocalDockerProvider) workspaceRuntimeStatusFromContainer(ctx context.Co
 	if err != nil {
 		return WorkspaceRuntime{}, err
 	}
-	runtime.Access, err = localDockerRuntimeAccess(metadata)
+	runtime.Access, err = localDockerRuntimeAccessWith(metadata, p.env)
 	if err != nil {
 		return WorkspaceRuntime{}, err
 	}

@@ -18,13 +18,16 @@ const (
 	monthlyBillingWorkspacePage   = 50
 )
 
-func monthlyBillingWorkerEnabled() bool {
-	value := strings.TrimSpace(os.Getenv("OPL_MONTHLY_BILLING_WORKER_ENABLED"))
+func monthlyBillingWorkerEnabledWith(getenv func(string) string) bool {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	value := strings.TrimSpace(getenv("OPL_MONTHLY_BILLING_WORKER_ENABLED"))
 	return value == "1" || strings.EqualFold(value, "true") || strings.EqualFold(value, "yes")
 }
 
-func monthlyBillingWorkerInterval() time.Duration {
-	return durationFromEnv("OPL_MONTHLY_BILLING_INTERVAL_MS", defaultMonthlyBillingInterval)
+func monthlyBillingWorkerIntervalWith(getenv func(string) string) time.Duration {
+	return durationFromEnvWith(getenv, "OPL_MONTHLY_BILLING_INTERVAL_MS", defaultMonthlyBillingInterval)
 }
 
 func (app *controlPlaneServer) startMonthlyBillingWorker(ctx context.Context, service *controlplane.Service, interval time.Duration) {

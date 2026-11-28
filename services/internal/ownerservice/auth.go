@@ -52,13 +52,19 @@ func Authenticate(ctx context.Context, config Config) (Service, error) {
 		if !ok {
 			return "", status.Error(codes.Unauthenticated, "mTLS peer is required")
 		}
-		tlsInfo, ok := remote.AuthInfo.(credentials.TLSInfo)
-		if !ok || len(tlsInfo.State.VerifiedChains) == 0 || len(tlsInfo.State.PeerCertificates) == 0 {
-			return "", status.Error(codes.Unauthenticated, "verified mTLS peer is required")
-		}
-		certificateOwner, err := owneridentity.CertificateService(tlsInfo.State.PeerCertificates[0])
-		if err != nil || certificateOwner != owner {
-			return "", status.Error(codes.Unauthenticated, "calling service differs from its mTLS certificate")
+		if inproc, ok := remote.AuthInfo.(owneridentity.InProcAuthInfo); ok {
+			if inproc.Caller != owner {
+				return "", status.Error(codes.Unauthenticated, "calling service differs from its in-process identity")
+			}
+		} else {
+			tlsInfo, ok := remote.AuthInfo.(credentials.TLSInfo)
+			if !ok || len(tlsInfo.State.VerifiedChains) == 0 || len(tlsInfo.State.PeerCertificates) == 0 {
+				return "", status.Error(codes.Unauthenticated, "verified mTLS peer is required")
+			}
+			certificateOwner, err := owneridentity.CertificateService(tlsInfo.State.PeerCertificates[0])
+			if err != nil || certificateOwner != owner {
+				return "", status.Error(codes.Unauthenticated, "calling service differs from its mTLS certificate")
+			}
 		}
 	}
 	return owner, nil

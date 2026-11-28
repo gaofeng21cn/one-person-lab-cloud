@@ -50,20 +50,21 @@ type RouteOrigin struct {
 	ApplicationDomain string
 }
 
-// RouteOriginFromEnv reads the installation's declared route origin. It performs
-// no inference: a missing or malformed value stays empty and the affected address
-// is refused later, never guessed.
-func RouteOriginFromEnv() RouteOrigin {
+// RouteOriginFromEnvWith reads the installation's declared route origin via getenv.
+func RouteOriginFromEnvWith(getenv func(string) string) RouteOrigin {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
 	return RouteOrigin{
 		// OPL_PUBLIC_URL: the installation's own public address; its scheme is the
 		// scheme every published entry uses, so the two cannot disagree.
-		Scheme: originScheme(os.Getenv("OPL_PUBLIC_URL")),
+		Scheme: originScheme(getenv("OPL_PUBLIC_URL")),
 		// OPL_WORKSPACE_DOMAIN: the host Workspace entries are published under, for
 		// example the `/w/<workspaceId>/` route.
-		WorkspaceDomain: bareDomain(os.Getenv("OPL_WORKSPACE_DOMAIN")),
+		WorkspaceDomain: bareDomain(getenv("OPL_WORKSPACE_DOMAIN")),
 		// OPL_WORKSPACE_APPLICATION_DOMAIN: the domain per-binding application
 		// origins live under. An installation that publishes none states none.
-		ApplicationDomain: bareDomain(os.Getenv("OPL_WORKSPACE_APPLICATION_DOMAIN")),
+		ApplicationDomain: bareDomain(getenv("OPL_WORKSPACE_APPLICATION_DOMAIN")),
 	}
 }
 

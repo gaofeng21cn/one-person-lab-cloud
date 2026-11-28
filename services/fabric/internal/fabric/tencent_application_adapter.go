@@ -27,7 +27,7 @@ func (p *TencentProvider) applicationExecutor() *tkeapply.Executor {
 		Client:          tencentKubectlClusterAdapter{provider: p},
 		Guard:           p.guard,
 		CredentialToken: tencentApplicationCredentialToken,
-		Installation:    retainedApplicationInstallation(p.namespace),
+		Installation:    retainedApplicationInstallationWith(p.namespace, p.env),
 	}
 }
 
@@ -216,8 +216,15 @@ func (a tencentKubectlClusterAdapter) GetNetworkPolicy(ctx context.Context, name
 }
 
 func retainedApplicationInstallation(namespace string) tkeapply.Installation {
-	return tkeapply.Installation{Namespace: namespace, ImagePullSecretName: os.Getenv("OPL_IMAGE_PULL_SECRET_NAME"),
-		AdminPasswordSeed:       os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"),
+	return retainedApplicationInstallationWith(namespace, os.Getenv)
+}
+
+func retainedApplicationInstallationWith(namespace string, getenv func(string) string) tkeapply.Installation {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	return tkeapply.Installation{Namespace: namespace, ImagePullSecretName: getenv("OPL_IMAGE_PULL_SECRET_NAME"),
+		AdminPasswordSeed:       getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"),
 		ApplicationIngressPeers: []map[string]string{{"app.kubernetes.io/name": "opl-cloud", "app.kubernetes.io/component": "control-plane"}}}
 }
 func applicationPlacement(compute ComputeAllocation, volume StorageVolume) tkeapply.Placement {
