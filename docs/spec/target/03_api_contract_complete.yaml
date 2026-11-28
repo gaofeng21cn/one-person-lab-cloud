@@ -5977,6 +5977,60 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
         '503':
           $ref: '#/components/responses/ErrorResponse'
+  /api/v2/operator/accounts/{actorId}/service-entitlements/{serviceId}:
+    post:
+      operationId: setServiceEntitlement
+      summary: Set companion service entitlement for a Gateway subject
+      tags:
+      - tenant
+      x-feature-id:
+      - F15
+      x-owner: tenant
+      x-permission:
+      - platform_admin
+      x-tables:
+      - tenant.service_entitlements
+      - tenant.audit_events
+      - tenant.idempotency_records
+      parameters:
+      - name: actorId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - name: serviceId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[a-z][a-z0-9_]{1,63}$
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetServiceEntitlementRequest'
+      responses:
+        '200':
+          description: Updated companion service entitlement for the named Gateway subject
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceEntitlementCommand'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
   /api/v2/operator/accounts/{actorId}/platform-admin:
     post:
       operationId: setPlatformAdmin
@@ -6027,6 +6081,60 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
         '422':
           $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v2/client/service-grant:
+    post:
+      operationId: issueServiceGrant
+      summary: Issue short-lived Ed25519 service grant and dispatch origin for non-browser or client login
+      tags:
+      - tenant
+      x-feature-id:
+      - F15
+      x-owner: tenant
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceGrantRequest'
+      responses:
+        '200':
+          description: Short-lived companion service grant or 2FA challenge
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceGrantResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+  /.well-known/opl-grant-jwks.json:
+    get:
+      operationId: getServiceGrantJWKS
+      summary: Read active OPL Cloud Ed25519 grant signing public keys
+      tags:
+      - tenant
+      x-feature-id:
+      - F15
+      x-owner: tenant
+      security: []
+      responses:
+        '200':
+          description: Active Ed25519 OKP verification keys for companion service grants
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceGrantJWKSResponse'
         '503':
           $ref: '#/components/responses/ErrorResponse'
   /api/v2/admin/tenants/{tenantId}/operations/{operationId}:
@@ -7360,6 +7468,162 @@ components:
       - status
       - workspacePurchaseEnabled
       description: Canonical receipt for one Workspace purchase eligibility update.
+    ServiceGrantRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          maxLength: 254
+        password:
+          type: string
+          maxLength: 512
+        totp_code:
+          type: string
+          maxLength: 16
+        service:
+          type: string
+          pattern: ^[a-z][a-z0-9_]{1,63}$
+        scope:
+          type: string
+          pattern: ^(device:enroll|console:login)$
+      required:
+      - service
+      description: Client or edge bootstrap request for a short-lived companion service grant. Credentials use either email/password or Authorization Bearer token.
+    ServiceGrantResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        requires_2fa:
+          type: boolean
+        actor_id:
+          $ref: '#/components/schemas/OpaqueId'
+        email:
+          type: string
+        service:
+          type: string
+        enabled:
+          type: boolean
+        origin:
+          type: string
+        grant_token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        role:
+          type: string
+        limits:
+          type: object
+          additionalProperties: true
+      description: Dispatched companion service endpoint and short-lived Ed25519 grant token, or a 2FA challenge indicator.
+    ServiceGrantJWK:
+      type: object
+      additionalProperties: false
+      properties:
+        kty:
+          type: string
+        crv:
+          type: string
+        alg:
+          type: string
+        use:
+          type: string
+        kid:
+          type: string
+        x:
+          type: string
+      required:
+      - kty
+      - crv
+      - alg
+      - use
+      - kid
+      - x
+      description: Ed25519 OKP public verification key used by companion services to verify grant tokens offline.
+    ServiceGrantJWKSResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceGrantJWK'
+      required:
+      - keys
+      description: Public JWKS payload published by OPL Cloud for companion grant verification.
+    SetServiceEntitlementRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        confirmationAccountId:
+          $ref: '#/components/schemas/OpaqueId'
+        enabled:
+          type: boolean
+        role:
+          type: string
+          minLength: 1
+          maxLength: 32
+        originOverride:
+          type: string
+          maxLength: 253
+        clearOriginOverride:
+          type: boolean
+        limits:
+          type: object
+          additionalProperties: true
+        expiresAt:
+          type: string
+          format: date-time
+        clearExpiresAt:
+          type: boolean
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 200
+      required:
+      - confirmationAccountId
+      - enabled
+      - reason
+      description: Platform administrator command to enable, disable, or override a companion service entitlement for one Gateway subject.
+    ServiceEntitlementCommand:
+      type: object
+      additionalProperties: false
+      properties:
+        operationId:
+          $ref: '#/components/schemas/OpaqueId'
+        accountId:
+          $ref: '#/components/schemas/OpaqueId'
+        serviceId:
+          type: string
+        status:
+          type: string
+          minLength: 1
+        enabled:
+          type: boolean
+        effectiveEnabled:
+          type: boolean
+        role:
+          type: string
+        origin:
+          type: string
+        originOverride:
+          type: string
+        limits:
+          type: object
+          additionalProperties: true
+        expiresAt:
+          type: string
+          format: date-time
+      required:
+      - operationId
+      - accountId
+      - serviceId
+      - status
+      - enabled
+      - effectiveEnabled
+      - role
+      description: Canonical receipt for one companion service entitlement update.
     SetPlatformAdminRequest:
       type: object
       additionalProperties: false
@@ -12445,6 +12709,9 @@ components:
       - setWorkspacePurchaseEligibility
       - listOperatorAccounts
       - setPlatformAdmin
+      - setServiceEntitlement
+      - issueServiceGrant
+      - getServiceGrantJWKS
     ServiceIdentity:
       type: string
       enum:
@@ -14705,6 +14972,7 @@ x-service-action-allowlist:
   - setBuildRuntimePolicy
   - setComputePlanAvailability
   - setRuntimeVersionStatus
+  - setServiceEntitlement
   - setStoragePlanAvailability
   - setWebuiVersionStatus
   - suspendTenant

@@ -111,6 +111,7 @@ var actions = map[api.AuthorizationActionEnum]actionPolicy{
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REENABLETENANT:                        {api.OwnerEnum_OWNER_ENUM_TENANT, []string{"platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTOPERATORACCOUNTS:                  {api.OwnerEnum_OWNER_ENUM_TENANT, []string{"platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETWORKSPACEPURCHASEELIGIBILITY:       {api.OwnerEnum_OWNER_ENUM_TENANT, []string{"platform_admin"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETSERVICEENTITLEMENT:                 {api.OwnerEnum_OWNER_ENUM_TENANT, []string{"platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETPLATFORMADMIN:                      {api.OwnerEnum_OWNER_ENUM_TENANT, []string{"platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANTLIFECYCLEOPERATION:           {api.OwnerEnum_OWNER_ENUM_TENANT, []string{"platform_admin"}},
 	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATERENEWALSETTINGS:                 {api.OwnerEnum_OWNER_ENUM_WORKSPACE, []string{"admin", "owner"}},

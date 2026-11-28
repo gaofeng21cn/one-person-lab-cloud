@@ -62,6 +62,10 @@ func (p *eligibilityTenantProbe) ListWorkspacePurchaseEligibility(_ context.Cont
 	return &api.WorkspacePurchaseEligibilityList{Items: items}, nil
 }
 
+func (p *eligibilityTenantProbe) ListServiceEntitlements(_ context.Context, _ *api.ListServiceEntitlementsRpcRequest, _ ...grpc.CallOption) (*api.ServiceEntitlementList, error) {
+	return &api.ServiceEntitlementList{}, nil
+}
+
 func (p *eligibilityTenantProbe) ListOperatorAccounts(_ context.Context, r *api.ListOperatorAccountsRpcRequest, _ ...grpc.CallOption) (*api.OperatorGatewayAccountPage, error) {
 	p.listAccountsReq = r
 	if p.accountsErr != nil {

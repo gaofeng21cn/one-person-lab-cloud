@@ -263,6 +263,7 @@ export interface OperatorAccountController {
   } | null>;
   disable: (accountId: string) => Promise<void>;
   setWorkspacePurchaseEligibility: (accountId: string, enabled: boolean) => Promise<void>;
+  setServiceEntitlement: (accountId: string, serviceId: string, enabled: boolean) => Promise<void>;
   setPlatformAdmin: (accountId: string, enabled: boolean) => Promise<void>;
 }
 

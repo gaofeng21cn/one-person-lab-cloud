@@ -3,6 +3,7 @@ import type {
   OperatorAccountDTO,
   OperatorPlatformAdminCommandDTO,
   OperatorProvisionAccountCommandDTO,
+  OperatorServiceEntitlementCommandDTO,
   OperatorWorkspacePurchaseEligibilityCommandDTO,
   ProvisionAccountRequest
 } from "../api/dtos.ts";
@@ -101,6 +102,17 @@ export function eligibilityCommandSucceeded(
 ) {
   return accountCommandSucceeded(command, accountId)
     && command.workspacePurchaseEnabled === enabled;
+}
+
+export function serviceEntitlementCommandSucceeded(
+  command: OperatorServiceEntitlementCommandDTO,
+  accountId: string,
+  serviceId: string,
+  enabled: boolean
+) {
+  return accountCommandSucceeded(command, accountId)
+    && command.serviceId === serviceId
+    && command.effectiveEnabled === enabled;
 }
 
 export function platformAdminCommandSucceeded(
