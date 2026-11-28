@@ -90,24 +90,33 @@ func Run(ctx context.Context, env ownerservice.ModuleEnv) error {
 		// The historical OCI destinations live in the frozen Tenant table. This
 		// one-time pass moves them into the Gateway owner's single destination
 		// mapping, which is the only place a destination is written from now on.
-		// A row the owner cannot serve as recorded is reported for an operator
-		// and never blocks the service. An unavailable owner store is different:
-		// the pass cannot be trusted to have completed, so it fails the startup
-		// the same way the owner refuses to serve with an incomplete handover.
+		// An unavailable owner store is different from a reported row: the pass
+		// cannot be trusted to have completed, so it fails the startup the same
+		// way the owner refuses to serve with an incomplete handover.
 		summary, handoverErr := s.HandoverRepositoryBindings(ctx)
 		slog.Info("repository binding handover",
 			"scanned", summary.Scanned, "moved", summary.Moved, "already", summary.Already,
-			"released", summary.Released, "unattributable", summary.Unattributable,
+			"released", summary.Released, "released_unheld", summary.ReleasedUnheld,
+			"unattributable", summary.Unattributable,
 			"conflicting", summary.Conflicting, "failed", summary.Failed,
 			"moved_refs", summary.MovedRefs)
-		if summary.Unattributable > 0 || summary.Conflicting > 0 || summary.Failed > 0 {
-			slog.Error("repository binding handover needs an operator",
-				"moved", summary.MovedRefs, "unattributable", summary.UnattributableRefs,
-				"conflicting", summary.ConflictingRefs, "failed", summary.FailedRefs)
-		}
 		if handoverErr != nil {
 			slog.Error("repository binding handover failed", "error", handoverErr.Error())
 			return handoverErr
+		}
+		// A row the owner could not attribute or serve is a destination nobody
+		// holds. The runtime fallback read is retired, so the frozen table keeps
+		// that destination as provenance only and a new actor could take it and
+		// reach another Tenant's OCI artifacts. The owner therefore refuses to
+		// serve while a residual row exists; the operator resolves the named
+		// rows and the service starts on the next attempt.
+		if residual := summary.ResidualError(); residual != nil {
+			slog.Error("repository binding handover needs an operator",
+				"unattributable", summary.UnattributableRefs,
+				"conflicting", summary.ConflictingRefs,
+				"failed", summary.FailedRefs,
+				"released_unheld", summary.ReleasedUnheldRefs)
+			return residual
 		}
 
 		group := strings.TrimSpace(env.Env("OPL_GATEWAY_WORKSPACE_KEY_GROUP"))

@@ -169,6 +169,23 @@ Git log.
   revoked, or lacks its destination verification is a conflict for an operator. The
   handover inherits the recorded reservation fact; it does not re-verify the
   destination against the OCI registry, because the retired write path never did.
+- **Destination Occupancy Belongs To The Gateway Owner**: Which actor may hold
+  an OCI destination is decided by the Gateway owner's own unique index
+  `identity_mappings_destination` on `gateway.identity_mappings`, and by no other
+  reader. The second reader that guarded a historical reservation in the frozen
+  `tenant.tenant_repository_bindings` table is retired: the one-time handover
+  moved the attributable historical destinations into the owner, and the frozen
+  table stays readable for provenance only. A released historical row still
+  records a destination, and no code in this repository ever wrote the `retired`
+  status, so the uniform rule is that every historical row recording a
+  destination the owner does not hold is a residual, and the startup gate
+  refuses to serve while one exists. The reason is that a second reader of a
+  retired table is a second authority over the same fact and cannot be
+  consistent with the owner — a destination the owner holds is refused to every
+  other actor by the index, while a destination the owner does not hold is free
+  for any new actor to take, which would put another Tenant's OCI artifacts
+  within its reach. The gate makes that an owner decision instead of a
+  deployment-order habit.
 
 - **Tenant Lifecycle Ownership**: `CloudIdentity` (`services/gateway-integration`,
   `tenant.tenants`) owns the Tenant lifecycle, because the owner's own fences
