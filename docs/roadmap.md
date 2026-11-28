@@ -108,6 +108,24 @@ after Framework v2 Wave 1 single-writer source storage lands:
   `one-person-lab`, and simplify `opl-studio` Software Center to use the active
   OPL Gateway account by default while keeping public packages zero-login.
 
+### Unified Service Entitlements & Endpoint Discovery
+
+Implement Cloud-governed companion admission and zero-URL client bootstrap as
+specified in [service-entitlements-and-discovery.md](service-entitlements-and-discovery.md):
+
+- `CloudIdentity` (`opl_tenant`): add `tenant.service_entitlements` migration,
+  admission evaluator (`allowlist_only` and
+  `active_gateway_default_with_overrides`), Console `/operator` grant/revoke and
+  override governance, and Ed25519 `grant_token` signing with JWKS publication
+  (`GET /.well-known/opl-grant-jwks.json`).
+- Instance Service Catalog & Console BFF: bind instance-owned `service_id ->
+  { default_origin, audience, admission_mode }` configuration and expose
+  non-browser `POST /api/v2/client/service-grant` (supporting direct Gateway
+  login with optional 2FA challenge or existing Gateway Bearer session).
+- Consumer Cutover: adopt `service-grant` verification and `actor_id` isolation
+  across `opl-netfleet-cloud` / `site-sync` and unify `opl-link` admission on the
+  same entitlement boundary.
+
 ## Workspace Key And Customer Read Boundaries
 
 Complete migration of remaining transitional customer reads off legacy Control
@@ -130,6 +148,22 @@ Plane / delegated process-local custody onto canonical domain owners:
      `GET /internal/cloud/gateway/endpoint` bridges are retired with it; the
      retained `/api/gateway/*` read routes stay until the retained Control Plane
      Console build is retired.
+   - The customer's account status is bidirectional at the Tenant owner:
+     suspending a Tenant suspends that customer because a personal customer
+     owns exactly one Tenant and the owner's own fences refuse a suspended
+     Tenant, and the platform administrator re-enables a suspended account
+     through `POST /api/v2/admin/tenants/{tenantId}/reenable`, restoring the
+     Tenant, its permission version and its durable Operation in one
+     transaction. The Workspace resume continuation the re-enable contract
+     describes is still open, and it is open for a concrete reason: the
+     Workspace owner suspends a Workspace only for a paid term that expired or a
+     resource that went absent, and it recovers those on its own sweep when the
+     paid term is valid again and the resources are present. The Cloud's tenant
+     suspension pauses no Workspace, so "the Workspaces that the tenant
+     suspension stopped" is an empty set today, and the tenant-to-workspace
+     coordination rpc (`TenantWorkspaceCoordination`) plus the
+     `getTenantLifecycleOperation` readback that would carry the sub-operations
+     are published but implemented nowhere.
 2. **Billing & Announcements Extraction**: Retire retained Control Plane
    bridges (`/internal/cloud/legacy-billing/*`, `/internal/cloud/announcements`)
    once Cloud Ledger and Announcement owners serve authenticated CloudIdentity
@@ -141,11 +175,26 @@ Plane / delegated process-local custody onto canonical domain owners:
      migrated to `CloudIdentity` (`opl_tenant`). The legacy Control Plane
      endpoint `POST /api/operator/accounts/{accountId}/workspace-purchase-eligibility`
      stays only until the retained legacy Console build is retired.
+   - The legacy Control Plane endpoint `POST /api/operator/accounts/{accountId}/disable`
+     writes `control_plane_users.status` in the retiring service. The Cloud
+     build suspends the customer through the Tenant owner instead; the legacy
+     endpoint stays only until the retained legacy Console build is retired.
    - Preserve the retained deletion, refund, and renewal executors until their
      live clients have migrated and a current owner census can distinguish
      non-terminal operations from completed settlement. Include accepted
      refunds that still need their first execution and renewals whose expiry
      or Ledger settlement is incomplete.
+   - The retained Control Plane's own repository tooling no longer lives inside
+     `services/control-plane`: the dead-code boundary tool is
+     `tools/go/deadcode` and the HTTP surface scanners are
+     `tools/go/http-surface-scan` and `tools/go/route-scan`, and the boundary
+     now covers every production package under `services/` and
+     `apps/console-bff` rather than the retained Control Plane package alone.
+     The directory deletion itself stays open until the Control Plane entry
+     leaves the published owner topology declaration in
+     `deploy/portable/opl-cloud-owner-topology.json`, which still names it as a
+     Cloud backend unit member with its own HTTP surfaces, readiness criteria
+     and peer addresses.
    - Every retirement slice must leave no residue, and the instrument that
      proves it is `tools/verify-no-control-plane.ts` in the `source` group of
      `npm run verify:local`: a slice opens its own assertions, the gate turns

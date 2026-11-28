@@ -52,7 +52,8 @@ export const goModules = Object.freeze([
   "services/resource-catalog",
   "services/serve",
   "services/cloud-composition",
-  "apps/console-bff"
+  "apps/console-bff",
+  "tools/go"
 ]);
 
 /**
@@ -140,7 +141,11 @@ export const databaseFreeGoTestSpecs: readonly DatabaseFreeGoTestSpec[] = Object
   // needs and is reported as excluded here instead of being name-filtered out.
   { cwd: "services/internal/protectedresource", packages: ["./..."] },
   { cwd: "services/internal/tkeapply", packages: ["./..."] },
-  { cwd: "services/internal/ownerservice", packages: ["./..."] }
+  { cwd: "services/internal/ownerservice", packages: ["./..."] },
+  // The repository's own Go tools: the dead-code boundary and the HTTP
+  // surface scanner. Their unit tests are the tool's own evidence, so they run
+  // in the exhaustive gate instead of only in a focused run.
+  { cwd: "tools/go", packages: ["./..."] }
 ]);
 
 export type VerificationStep = {
@@ -189,7 +194,7 @@ export const localVerificationSteps: readonly LocalVerificationStep[] = Object.f
   ...goModules.map((cwd) =>
     ({ group: "go" as const, name: `${cwd} compile`, command: "go", args: ["test", "-run", "^$", "./..."], cwd })
   ),
-  { group: "go", name: "Control Plane dead-code boundary", command: "go", args: ["run", "./internal/tools/deadcode"], cwd: "services/control-plane" },
+  { group: "go", name: "Cloud dead-code boundary", command: "go", args: ["run", "./tools/go/deadcode"] },
   ...databaseFreeGoTestSpecs.map((spec) => ({
     group: "go" as const,
     name: `${spec.cwd} database-free tests`,

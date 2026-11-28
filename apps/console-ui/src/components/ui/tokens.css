@@ -19,84 +19,84 @@
   --gray-900: #171717;
   --gray-1000: #111111;
 
-  /* OPL Cloud primary ramp (soft mint to deep teal). */
-  --blue-25: #f0fdfa;
-  --blue-50: #ccfbf1;
-  --blue-100: #99f6e4;
-  --blue-200: #5eead4;
-  --blue-300: #2dd4bf;
-  --blue-400: #14b8a6;
-  --blue-500: #0f766e;
-  --blue-600: #115e59;
-  --blue-700: #134e4a;
-  --blue-800: #042f2e;
+  /* OPL Cloud primary ramp (system-stats app sky-600/700, unified with OPL blue-white mark). */
+  --blue-25: #f0f9ff;
+  --blue-50: #e0f2fe;
+  --blue-100: #bae6fd;
+  --blue-200: #7dd3fc;
+  --blue-300: #38bdf8;
+  --blue-400: #0ea5e9;
+  --blue-500: #0284c7;
+  --blue-600: #0369a1;
+  --blue-700: #075985;
+  --blue-800: #0c4a6e;
 
-  /* Success uses teal so it stays distinct from primary actions. */
-  --green-25: #e8f4ed;
-  --green-50: #e8f4ed;
-  --green-100: #c6e9e6;
-  --green-200: #93d4cf;
-  --green-300: #5cbab4;
-  --green-400: #2a9c95;
-  --green-500: #157b76;
-  --green-600: #0c5c58;
-  --green-700: #074543;
+  /* Success stays crisp emerald green, distinct from sky primary actions. */
+  --green-25: #f0fdf4;
+  --green-50: #dcfce7;
+  --green-100: #bbf7d0;
+  --green-200: #86efac;
+  --green-300: #4ade80;
+  --green-400: #22c55e;
+  --green-500: #16a34a;
+  --green-600: #15803d;
+  --green-700: #166534;
 
-  /* Warning uses warm orange. */
-  --orange-25: #fff3e0;
-  --orange-50: #fff3e0;
-  --orange-100: #fde0b0;
-  --orange-200: #f5b878;
-  --orange-300: #e8964e;
-  --orange-400: #d87536;
-  --orange-500: #b15e2a;
-  --orange-600: #8f4a20;
+  /* Warning uses warm amber. */
+  --orange-25: #fffbeb;
+  --orange-50: #fef3c7;
+  --orange-100: #fde68a;
+  --orange-200: #fcd34d;
+  --orange-300: #fbbf24;
+  --orange-400: #d97706;
+  --orange-500: #b45309;
+  --orange-600: #92400e;
 
   /* Danger remains semantic red. */
-  --red-25: #ffebe9;
-  --red-50: #ffebe9;
-  --red-100: #ffcecb;
-  --red-200: #ff8182;
-  --red-300: #fa4549;
-  --red-400: #cf222e;
-  --red-500: #cf222e;
-  --red-600: #a40e26;
+  --red-25: #fef2f2;
+  --red-50: #fee2e2;
+  --red-100: #fecaca;
+  --red-200: #fca5a5;
+  --red-300: #f87171;
+  --red-400: #ef4444;
+  --red-500: #dc2626;
+  --red-600: #b91c1c;
 
   --color-text: #171717;
   --color-text-secondary: #525252;
   --color-text-tertiary: #737373;
   --color-text-inverse: #ffffff;
   --color-surface: #ffffff;
-  --color-surface-secondary: #f8f8f8;
-  --color-surface-tertiary: #f5f5f5;
+  --color-surface-secondary: #fafafa;
+  --color-surface-tertiary: #f0f0f0;
   --color-surface-raised: #ffffff;
   --color-border: #e5e5e5;
   --color-border-strong: #d4d4d4;
   --focus-accent: #0ea5e9;
-  --color-ring: rgb(15 118 110 / 24%);
+  --color-ring: rgb(2 132 199 / 22%);
 
-  --color-background-primary-solid: #0f766e;
-  --color-background-primary-solid-hover: #115e59;
-  --color-background-primary-soft: #f0fdfa;
-  --color-background-primary-soft-hover: #ccfbf1;
-  --color-text-primary: #115e59;
-  --color-border-primary: #2dd4bf;
+  --color-background-primary-solid: #0284c7;
+  --color-background-primary-solid-hover: #0369a1;
+  --color-background-primary-soft: #f0f9ff;
+  --color-background-primary-soft-hover: #e0f2fe;
+  --color-text-primary: #0369a1;
+  --color-border-primary: #7dd3fc;
 
-  --color-background-success-soft: #e8f4ed;
-  --color-background-success-solid: #157b76;
-  --color-text-success: #0c5c58;
-  --color-border-success: #5cbab4;
-  --color-background-warning-soft: #fff3e0;
-  --color-background-warning-solid: #b15e2a;
-  --color-text-warning: #8f4a20;
-  --color-border-warning: #e8964e;
-  --color-background-danger-soft: #ffebe9;
-  --color-background-danger-solid: #cf222e;
-  --color-text-danger: #a40e26;
-  --color-border-danger: #ff8182;
-  --color-background-info-soft: #f0fdfa;
-  --color-text-info: #115e59;
-  --color-border-info: #5eead4;
+  --color-background-success-soft: #f0fdf4;
+  --color-background-success-solid: #16a34a;
+  --color-text-success: #15803d;
+  --color-border-success: #bbf7d0;
+  --color-background-warning-soft: #fffbeb;
+  --color-background-warning-solid: #d97706;
+  --color-text-warning: #b45309;
+  --color-border-warning: #fde68a;
+  --color-background-danger-soft: #fef2f2;
+  --color-background-danger-solid: #dc2626;
+  --color-text-danger: #b91c1c;
+  --color-border-danger: #fecaca;
+  --color-background-info-soft: #f0f9ff;
+  --color-text-info: #0369a1;
+  --color-border-info: #bae6fd;
 
   --font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
@@ -120,7 +120,8 @@
   --control-size-sm: 2rem;
   --control-size-md: 2.375rem;
   --control-size-lg: 2.75rem;
-  /* Precision neutral elevation (reserved strictly for floating overlays). */
+  /* Precision neutral elevation (clean card lift + floating overlays). */
+  --shadow-card: 0 1px 2px rgb(17 17 17 / 4%);
   --elevation-100: 0 1px 2px rgb(17 17 17 / 6%);
   --elevation-200: 0 6px 18px rgb(17 17 17 / 9%);
   --elevation-300: 0 20px 50px -12px rgb(17 17 17 / 22%);
@@ -140,7 +141,7 @@
   --action: var(--blue-500);
   --action-hover: var(--blue-600);
   --action-soft: var(--blue-25);
-  --canvas: #fafafa;
+  --canvas: #f6f7f9;
   --sidebar-surface: var(--ss-sidebar);
   --surface: var(--gray-0);
   --soft: var(--gray-25);
@@ -160,7 +161,7 @@
   --teal: var(--green-500);
   --orange: var(--orange-400);
   --amber: var(--orange-400);
-  --amber-soft: #f7ead8;
+  --amber-soft: #fef3c7;
   --red: var(--red-500);
-  --shadow-soft: 0 8px 24px rgb(17 17 17 / 8%);
+  --shadow-soft: var(--shadow-card);
 }

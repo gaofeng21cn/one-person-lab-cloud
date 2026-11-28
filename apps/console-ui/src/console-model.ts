@@ -31,10 +31,10 @@ export const apiMenu = Object.freeze([
 ] as const satisfies readonly ApiMenuItem[]);
 
 export const adminMenu = Object.freeze([
-  { id: "admin.overview", label: "运维概览", path: "/admin/overview", icon: "LayoutDashboard" },
-  { id: "admin.accounts", label: "客户与计费账户", path: "/admin/accounts", icon: "UsersRound" },
+  { id: "admin.overview", label: "运维概览", path: "/admin/overview", icon: "ShieldCheck" },
+  { id: "admin.accounts", label: "用户与权限", mobileLabel: "用户", path: "/admin/accounts", icon: "UsersRound" },
   { id: "admin.billing", label: "计费复核", path: "/admin/billing", icon: "CircleDollarSign" },
-  { id: "admin.resources", label: "资源状态", path: "/admin/resources", icon: "Database" },
+  { id: "admin.resources", label: "资源状态", path: "/admin/resources", icon: "HardDrive" },
   { id: "admin.system", label: "系统状态", path: "/admin/system", icon: "Activity" },
   { id: "admin.announcements", label: "公告管理", path: "/admin/announcements", icon: "Megaphone" }
 ] as const satisfies readonly ConsoleMenuItem[]);

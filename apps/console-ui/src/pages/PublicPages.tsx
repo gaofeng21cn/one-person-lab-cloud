@@ -52,20 +52,17 @@ export function PublicHome({ controller }: { controller: ConsoleController }) {
               <img alt="" src="/opl-app-icon.png" />
               <h1 id="home-heading">OPL Cloud</h1>
             </div>
-            <p className="access-tagline">让你的 One Person Lab 在云端继续工作</p>
-            <p className="access-lede">管理在线工作空间、统一治理 AI API 密钥与用量，并随时掌握账户余额与账单明细。</p>
+            <p className="access-tagline">让 <span className="nowrap-brand">One Person Lab</span> 在云端持续运行</p>
+            <p className="access-lede">管理在线工作空间、统一治理 AI API 密钥与用量，随时掌握账户余额与账单明细。</p>
             <div className="access-actions">
               <Button color="primary" onClick={() => controller.navigate("/login")} size="lg">登录 OPL Cloud<ArrowRight aria-hidden size={16} /></Button>
-              <span className="access-note"><span aria-hidden="true" className="access-dot" />已开通账户可直接登录使用</span>
+              <span className="access-note">面向已开通账户开放使用</span>
             </div>
           </section>
 
           <figure className="access-showcase">
-            <div className="access-showcase__bar" aria-hidden="true">
-              <div className="access-showcase__dots"><span /><span /><span /></div>
-              <span className="access-showcase__label">console / overview</span>
-            </div>
             <img alt="OPL Cloud 把本地项目、在线工作空间、AI 接入与账单连接为一条工作链" decoding="async" height={853} src="/opl-cloud-overview.jpg" width={1280} />
+            <figcaption className="access-showcase__caption">工作空间 · OPL Gateway · 账户余额与账单</figcaption>
           </figure>
         </div>
 
@@ -74,18 +71,8 @@ export function PublicHome({ controller }: { controller: ConsoleController }) {
           <ul aria-label="产品能力" className="access-features">
             <li>
               <div className="access-features__head">
-                <span className="access-features__icon" aria-hidden="true"><Cloud size={18} /></span>
-                <span className="access-features__tag">白名单开通</span>
-              </div>
-              <div className="access-features__body">
-                <strong>在线工作空间</strong>
-                <span>创建、启停并访问你的云端工作空间，内置默认应用或自定义智能体运行环境。</span>
-              </div>
-            </li>
-            <li>
-              <div className="access-features__head">
-                <span className="access-features__icon" aria-hidden="true"><KeyRound size={18} /></span>
-                <span className="access-features__tag">网关接入</span>
+                <span className="access-features__icon access-features__icon--sky" aria-hidden="true"><KeyRound size={18} /></span>
+                <span className="access-features__tag">AI Gateway</span>
               </div>
               <div className="access-features__body">
                 <strong>OPL Gateway 与 AI API</strong>
@@ -94,12 +81,22 @@ export function PublicHome({ controller }: { controller: ConsoleController }) {
             </li>
             <li>
               <div className="access-features__head">
+                <span className="access-features__icon access-features__icon--emerald" aria-hidden="true"><Cloud size={18} /></span>
+                <span className="access-features__tag">Workspace</span>
+              </div>
+              <div className="access-features__body">
+                <strong>在线工作空间</strong>
+                <span>创建、启停并访问云端工作空间，内置默认应用或自定义智能体运行环境。</span>
+              </div>
+            </li>
+            <li>
+              <div className="access-features__head">
                 <span className="access-features__icon" aria-hidden="true"><ReceiptText size={18} /></span>
-                <span className="access-features__tag">统一结算</span>
+                <span className="access-features__tag">Billing</span>
               </div>
               <div className="access-features__body">
                 <strong>余额与账单</strong>
-                <span>同一账户余额覆盖工作空间月费与 API 消费，消费记录清晰可查。</span>
+                <span>同一账户余额覆盖工作空间月费与 API 消费，消费明细清晰可查。</span>
               </div>
             </li>
           </ul>
@@ -109,7 +106,7 @@ export function PublicHome({ controller }: { controller: ConsoleController }) {
       <footer className="public-footer">
         <div className="public-footer__inner">
           <span><strong>OPL Cloud</strong> · 云端工作空间与 AI API 统一控制台</span>
-          <span>如需开通账户或申请白名单，请联系平台管理员</span>
+          <span>如需开通账户，请联系平台管理员</span>
         </div>
       </footer>
     </div>
@@ -138,30 +135,49 @@ export function LoginPage({ controller }: { controller: ConsoleController }) {
 
         <div className="login-showcase__main">
           <div className="login-showcase__copy">
-            <h2>让你的 One Person Lab 在云端持续运行</h2>
+            <h2>让 <span className="nowrap-brand">One Person Lab</span> 在云端持续运行</h2>
             <p>一个统一控制台，连接 OPL Gateway API 接入、在线工作空间管理与账单结算。</p>
+          </div>
+
+          <div className="login-metrics-pair" aria-hidden="true">
+            <div className="login-metric-card">
+              <div className="login-metric-card__head">
+                <span>OPL GATEWAY</span>
+                <span className="login-led login-led--ok" />
+              </div>
+              <strong>API 密钥与用量</strong>
+              <small>OpenAI 兼容接入 · 实时统计</small>
+            </div>
+            <div className="login-metric-card">
+              <div className="login-metric-card__head">
+                <span>WORKSPACES</span>
+                <span className="login-led login-led--sky" />
+              </div>
+              <strong>云端运行环境</strong>
+              <small>按账户权限交付与管理</small>
+            </div>
           </div>
 
           <div className="login-ledger">
             <div className="login-ledger__head">
-              <span>控制台模块</span>
+              <span>平台模块</span>
               <span className="login-ledger__pill"><span aria-hidden="true" className="access-dot" />OPL Cloud</span>
             </div>
             <div className="login-ledger__row">
-              <span className="login-ledger__icon" aria-hidden="true"><KeyRound size={15} /></span>
+              <span className="login-ledger__icon login-ledger__icon--sky" aria-hidden="true"><KeyRound size={15} /></span>
               <span className="login-ledger__text">
                 <strong>OPL Gateway 与 AI API</strong>
                 <small>查看可用余额、管理 API 密钥与调用用量</small>
               </span>
-              <span className="login-ledger__badge">即时可用</span>
+              <span className="login-ledger__badge">API</span>
             </div>
             <div className="login-ledger__row">
-              <span className="login-ledger__icon" aria-hidden="true"><Cloud size={15} /></span>
+              <span className="login-ledger__icon login-ledger__icon--emerald" aria-hidden="true"><Cloud size={15} /></span>
               <span className="login-ledger__text">
                 <strong>在线工作空间</strong>
                 <small>云端交付、模型配置与运行入口管理</small>
               </span>
-              <span className="login-ledger__badge">按白名单开通</span>
+              <span className="login-ledger__badge">Workspace</span>
             </div>
             <div className="login-ledger__row">
               <span className="login-ledger__icon" aria-hidden="true"><ReceiptText size={15} /></span>
@@ -169,17 +185,12 @@ export function LoginPage({ controller }: { controller: ConsoleController }) {
                 <strong>余额与账单记录</strong>
                 <small>工作空间订阅、扣款趋势与账单明细</small>
               </span>
-              <span className="login-ledger__badge">统一结算</span>
+              <span className="login-ledger__badge">Billing</span>
             </div>
-          </div>
-
-          <div className="login-facts">
-            <div><span>身份认证</span><strong>统一账户登录</strong></div>
-            <div><span>资源开通</span><strong>白名单受控交付</strong></div>
           </div>
         </div>
 
-        <footer className="login-showcase__foot">OPL Cloud · 仅限已开通账户访问</footer>
+        <footer className="login-showcase__foot">OPL Cloud · 云端工作空间与 AI API 控制台</footer>
       </aside>
 
       <section aria-labelledby="login-heading" className="login-stage">
@@ -193,7 +204,7 @@ export function LoginPage({ controller }: { controller: ConsoleController }) {
         <div className="login-card">
           <div className="login-card__head">
             <h1 id="login-heading">登录 OPL Cloud</h1>
-            <p>使用已开通的账户登录；如需开通账户或申请工作空间白名单请联系管理员。</p>
+            <p>使用你的 OPL Cloud 账户邮箱与密码登录。</p>
           </div>
 
           <form className="login-form" onSubmit={submit}>
@@ -255,7 +266,7 @@ export function LoginPage({ controller }: { controller: ConsoleController }) {
             <Button block busy={controller.authStatus === "checking"} color="primary" size="lg" type="submit">登录</Button>
           </form>
 
-          <p className="login-footnote">账户开通、密码重置与额度充值请联系平台管理员。</p>
+          <p className="login-footnote">如需开通新账户、申请工作空间或重置密码，请联系平台管理员。</p>
         </div>
       </section>
     </main>
@@ -267,10 +278,13 @@ export function SessionRecovery({ controller }: { controller: ConsoleController 
   return (
     <main className="message-page">
       <section className="status-card">
-        {failed ? <AlertCircle aria-hidden size={28} /> : <span className="spinner" />}
+        <span className={`status-card__icon ${failed ? "status-card__icon--danger" : ""}`} aria-hidden="true">
+          {failed ? <AlertCircle size={22} /> : <span className="spinner" />}
+        </span>
+        <span className="status-card__code">{failed ? "AUTH · ERROR" : "AUTH · VERIFYING"}</span>
         <h1>{failed ? "无法恢复登录" : "正在恢复登录"}</h1>
         <p>{failed ? controller.authError || "身份服务暂不可用。" : "正在确认当前登录状态…"}</p>
-        {failed ? <Button onClick={() => controller.navigate("/login")} variant="outline">重新登录</Button> : null}
+        {failed ? <Button color="primary" onClick={() => controller.navigate("/login")}>重新登录</Button> : null}
       </section>
     </main>
   );
@@ -281,10 +295,13 @@ export function LogoutRecovery({ controller }: { controller: ConsoleController }
   return (
     <main className="message-page" data-auth-state={controller.authStatus}>
       <section className="status-card">
-        {unconfirmed ? <AlertCircle aria-hidden size={28} /> : <span className="spinner" />}
+        <span className={`status-card__icon ${unconfirmed ? "status-card__icon--warning" : ""}`} aria-hidden="true">
+          {unconfirmed ? <AlertCircle size={22} /> : <span className="spinner" />}
+        </span>
+        <span className="status-card__code">{unconfirmed ? "SESSION · PENDING" : "SESSION · CLOSING"}</span>
         <h1>{unconfirmed ? "退出未确认" : "正在安全退出"}</h1>
         <p>{unconfirmed ? controller.authError : "正在确认退出登录…"}</p>
-        {unconfirmed ? <Button onClick={() => void controller.signOut()} variant="outline"><RefreshCw aria-hidden size={16} />重试退出</Button> : null}
+        {unconfirmed ? <Button color="primary" onClick={() => void controller.signOut()}><RefreshCw aria-hidden size={16} />重试退出</Button> : null}
       </section>
     </main>
   );
@@ -294,10 +311,11 @@ export function ForbiddenPage({ controller }: { controller: ConsoleController })
   return (
     <main className="message-page">
       <section className="status-card">
-        <LockKeyhole aria-hidden size={28} />
+        <span className="status-card__icon" aria-hidden="true"><LockKeyhole size={22} /></span>
+        <span className="status-card__code">403 · FORBIDDEN</span>
         <h1>无权访问</h1>
         <p>当前账户没有管理权限。</p>
-        <Button onClick={() => controller.navigate("/console/overview")} variant="outline">返回概览</Button>
+        <Button color="primary" onClick={() => controller.navigate("/console/overview")}>返回概览</Button>
       </section>
     </main>
   );
@@ -307,10 +325,11 @@ export function NotFoundPage({ controller }: { controller: ConsoleController }) 
   return (
     <main className="message-page">
       <section className="status-card">
-        <Cloud aria-hidden size={28} />
+        <span className="status-card__icon" aria-hidden="true"><Cloud size={22} /></span>
+        <span className="status-card__code">404 · NOT FOUND</span>
         <h1>页面不存在</h1>
         <p>你访问的页面不存在或暂未开放。</p>
-        <Button onClick={() => controller.navigate(controller.session ? "/console/overview" : "/")} variant="outline">返回</Button>
+        <Button color="primary" onClick={() => controller.navigate(controller.session ? "/console/overview" : "/")}>返回</Button>
       </section>
     </main>
   );

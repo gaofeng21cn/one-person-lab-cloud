@@ -16,6 +16,22 @@ chronological snapshots.
   live under the single root Go module `go.mod` (`module opl-cloud`), backed by
   typed `database/sql` PostgreSQL stores and `services/internal/postgresmigrate`
   (`ent` ORM has been retired).
+- **Dead-Code Boundary Over The Owner Packages**: The repository's dead-code
+  boundary is the tool `tools/go/deadcode`, not a service artifact. It runs
+  `golang.org/x/tools/cmd/deadcode` over the whole module from the repository
+  root, keeps only production declarations in the packages
+  `tools/go/deadcode/targets.txt` declares, and compares the unreachable set
+  against `tools/go/deadcode/allowlist.txt`. The declared list covers the 43
+  production packages under `services/` and `apps/console-bff` — every owner
+  package, not one service — and the tool refuses to run when that list no
+  longer equals the packages the tree contains, so a package cannot leave the
+  boundary unnoticed. Allowlist keys are package-qualified
+  (`<import path>.<Symbol>` for a package-level symbol,
+  `<import path>.<ReceiverType>.<name>` for a method) and every entry carries
+  the reason its declaration cannot simply be deleted. The HTTP surface scanners
+  the owner-topology contract tests read live in `tools/go/http-surface-scan` and
+  `tools/go/route-scan`, so retiring the retained Control Plane directory
+  removes no source check.
 - **Control Plane Retirement Residue Gate**: The retirement of
   `services/control-plane` is proved by one instrument,
   `tools/verify-no-control-plane.ts`, which runs in the `source` group of
@@ -102,6 +118,25 @@ chronological snapshots.
     `GET /api/gateway/balance-history` and `GET /api/gateway/endpoint` routes
     stay for the legacy Console build and are retired with the retained
     Control Plane.
+  - A platform administrator can suspend a customer account through the Tenant
+    owner: `POST /api/v2/admin/tenants/{tenantId}/suspend` is served by the BFF
+    and forwards to `TenantProductService.SuspendTenant`. The owner writes the
+    Tenant's status, its durable Operation and its audit evidence in one
+    transaction, revokes the Tenant's live sessions and advances its permission
+    version, so the owner's own fences refuse that customer afterwards. A
+    personal customer owns exactly one Tenant, so suspending that Tenant is
+    what disables the account.
+  - A platform administrator can re-enable a customer account through the Tenant
+    owner: `POST /api/v2/admin/tenants/{tenantId}/reenable` is served by the BFF
+    and forwards to `TenantProductService.ReenableTenant`. The owner restores
+    the Tenant's status, clears its suspension and advances its permission
+    version in one transaction together with the durable Operation and the
+    audit evidence, so the owner's own fences serve that customer again. A
+    personal customer owns exactly one Tenant, so re-enabling that Tenant is
+    what brings the account back. The revoked sessions stay revoked and the
+    customer signs in again. The Workspace resume continuation the re-enable
+    contract describes stays open, because the Cloud's tenant suspension pauses
+    no Workspace; that is recorded in [roadmap.md](roadmap.md).
   - Control Plane image-replacement creation/preview/worker commands and admin
     activation endpoints are retired; only the operator image-policy GET
     (`GET /api/operator/workspace-runtime-image-policy`), Fabric image

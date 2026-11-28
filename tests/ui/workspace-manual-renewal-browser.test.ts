@@ -35,6 +35,22 @@ function renewalQuote() {
   };
 }
 
+// The Console announces the renewal's outcome and then reads the owner's
+// subscription again. The refresh is a revision bump, so the announcement
+// survives one more render before the read's effect replaces the panel with
+// its loading state: the announcement can be in the page while the read has
+// not been sent yet. A test that counts the reads therefore has to wait for
+// the condition it asserts, and it has to count from a baseline taken before
+// the renewal, because an absolute count is satisfied by reads that happened
+// before the renewal at all.
+async function waitForReads(target: number, reads: () => number, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (reads() < target && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return reads();
+}
+
 function acceptedOperation() {
   return {
     operationId: "op-renew-1", owner: "workspace", kind: "renew_workspace", resourceId: "workspace-one",
@@ -146,10 +162,12 @@ test("a manual renewal prices the owner's own offer, charges it once and reports
 
   await panel(page).getByRole("button", { name: "立即续费", exact: true }).click();
   await page.getByRole("dialog").waitFor();
+  const readsBeforeRenewal = reads;
   await page.getByRole("button", { name: "确认续费", exact: true }).click();
   await panel(page).getByText("续费成功，订阅已更新为新的付费期。", { exact: true }).waitFor();
   assert.deepEqual(renewBodies, [{ quoteId: "quote-renew-1" }], "the owner receives the confirmed quote identifier");
-  assert.equal(reads >= 2, true, "the owner's own subscription readback is read again after the renewal");
+  await waitForReads(readsBeforeRenewal + 1, () => reads);
+  assert.equal(reads > readsBeforeRenewal, true, "the owner's own subscription readback is read again after the renewal");
 
   renewalOutcome = { status: "failed", errorCode: "RENEWAL_PERIOD_ELAPSED" };
   periodEnd = "2027-01-01T00:00:00Z";

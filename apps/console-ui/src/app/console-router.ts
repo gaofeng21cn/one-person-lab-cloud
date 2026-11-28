@@ -115,7 +115,7 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
   "/admin/accounts": {
     kind: "admin.accounts",
     surface: "admin",
-    title: "客户与计费账户",
+    title: "用户与权限",
     requiresSession: true,
     navigationId: "admin.accounts"
   },
